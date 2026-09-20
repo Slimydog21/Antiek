@@ -25,6 +25,26 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
+# Which implementation of the master-spec §9.3 A/B/C share math produced a
+# share vector.
+#
+# §9.3 has TWO live implementations — this module (claim-iterating, §9.0-gating
+# aware through ``compute.py``) and ``ad_inventory/attribution.py``
+# (chunk-iterating, keyed to the durable audit store). They can return different
+# vectors for the same synthesis; the verified topology and the divergences are
+# recorded in ``docs/decisions/afa-synthesis-attribution-canonical.md``, and
+# which one is canonical is an open OPERATOR decision.
+#
+# The other implementation stamps ``ATTRIBUTION_ALGORITHM_VERSION`` on the rows
+# it prices. This one stamped nothing, so a share vector produced here was
+# unidentifiable after the fact — which is the part of a payout dispute you
+# cannot argue your way out of. This constant names THIS implementation. It is
+# not a second version of one contract; it is the missing label on a second
+# implementation that already exists. When the operator ratifies the
+# unification, the two constants collapse into one along with the two
+# implementations.
+ATTRIBUTION_SHARE_MATH_VERSION = "attr-math-v1-substrate"
+
 # Map ConfidenceLevel ("very_high" / "high" / "low" / "very_low") to a
 # numeric weight for the math. The synthesizer's 4-value scale (not
 # the parameter_extractor's). Values picked to spread enough that

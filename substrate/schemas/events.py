@@ -101,6 +101,15 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     # share maps for the operator to validate against intuition before
     # any payouts go live.
     PAGE_ATTRIBUTION_COMPUTED = "page.attribution.computed"
+    # Ads-settlement SPR-2 — attribution RECURSION. Emitted by
+    # substrate.attribution.recursion when one attention-second on a
+    # synthesis is split across the ip_holders of the documents it
+    # sourced plus its author. Distinct from PAGE_ATTRIBUTION_COMPUTED:
+    # that one carries per-document §9.3 SHARES of a page; this one
+    # carries the conserved per-subject split of METERED ATTENTION,
+    # including the explicit unattributed remainder. Telemetry only —
+    # no money moves (§9.0 is open).
+    SYNTHESIS_ATTRIBUTION_RECURSED = "synthesis.attribution.recursed"
 
     # ── Decomposer-specific ──
     DECOMPOSE_QUESTION_REQUESTED = "decompose.requested"
@@ -2412,6 +2421,86 @@ class PageAttributionComputedPayload(_PayloadBase):
     document_count: int = Field(default=0, ge=0)
 
 
+class AttributionRecursionLine(BaseModel):
+    """One conserved line of a recursive attribution split.
+
+    ``units`` is an integer count of attention sub-units (see
+    ``UNITS_PER_ATTENTION_SECOND``), never a float share, so a split
+    reconciles by addition rather than by rounding tolerance.
+
+    ``subject_kind`` is one of ``ip_holder`` (a rights holder resolved
+    through the provenance chain), ``author`` (the writer of the
+    synthesis itself — the "new ideas" leg of the operator's thesis) or
+    ``unattributed`` (the explicit remainder: nobody was resolvable, or
+    the walk hit its depth cap or a cycle). ``reason`` is populated only
+    for ``unattributed`` and names why those units could not be placed;
+    an unattributed line with no reason would be exactly the silent
+    vanishing this contract exists to prevent.
+
+    ``depth`` is 0 for the synthesis the attention was measured on and
+    increments once per nested synthesis; ``via_synthesis_id`` names the
+    synthesis whose own split produced this line, so a dispute can walk
+    back up the chain."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject_kind: Literal["ip_holder", "author", "unattributed"]
+    subject_id: str | None = None
+    units: int = Field(ge=0)
+    depth: int = Field(ge=0)
+    via_synthesis_id: str
+    reason: str | None = None
+
+
+class SynthesisAttributionRecursedPayload(_PayloadBase):
+    """Ads-settlement SPR-2 — the per-second attribution recursion.
+
+    One attention-second measured on a synthesis is split across the
+    ``ip_holder_id`` of every document it sourced, plus its author, plus
+    an explicit unattributed remainder. ``sum(lines[].units)`` equals
+    ``total_units`` exactly; that is the contract.
+
+    Three versions are stamped because three independently-changeable
+    decisions price a row, and a payout dispute must be able to tell
+    which one moved:
+
+    * ``recursion_version`` — the walk itself (author/source split,
+      depth cap, remainder handling).
+    * ``author_share_policy`` — how much of a second counts as new ideas
+      rather than sourced material.
+    * ``share_algorithm`` / ``share_algorithm_version`` — the §9.3 A/B/C
+      per-document share vector the walk apportions across.
+
+    ``gate`` records WHICH rights gate produced the document shares.
+    ``display`` is the §9.0 retrieval-time gate, which withholds
+    ``restricted_pending_opt_in`` — correct for a surface, wrong for an
+    earn path, where that class must keep accruing to escrow (§9.10).
+    A row stamped ``display`` must never be settled as money.
+
+    ``inputs_json`` is the canonical snapshot the walk consumed, so
+    ``substrate.attribution.recursion.replay`` reproduces ``lines``
+    from this event alone. Telemetry only: emitting this moves nothing.
+    """
+
+    action_type: Literal[ActionType.SYNTHESIS_ATTRIBUTION_RECURSED] = (
+        ActionType.SYNTHESIS_ATTRIBUTION_RECURSED
+    )
+    synthesis_id: str
+    recursion_version: str
+    author_share_policy: str
+    author_share: float = Field(ge=0.0, le=1.0)
+    share_algorithm: str
+    share_algorithm_version: str
+    gate: str
+    units_per_second: int = Field(ge=1)
+    seconds: int = Field(ge=0)
+    total_units: int = Field(ge=0)
+    max_depth: int = Field(ge=1)
+    lines: list[AttributionRecursionLine] = Field(default_factory=list)
+    inputs_json: str = ""
+    inputs_digest: str = ""
+
+
 class ClaimAssertedByOperatorPayload(_PayloadBase):
     """Sprint 15 — emitted when the operator's edit to creative_writer's
     output is promoted to a first-class graph claim. Master spec §10.4
@@ -4229,6 +4318,7 @@ TypedPayload = Annotated[
     | InvestigationChaseHaltedPayload
     | ClaimAssertedByOperatorPayload
     | PageAttributionComputedPayload
+    | SynthesisAttributionRecursedPayload
     | RLMBridgeDecidedPayload
     | QualityGateEvaluatedPayload
     | CrossGraphCitationRecordedPayload
@@ -4370,6 +4460,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
         ActionType.INVESTIGATION_CHASE_HALTED.value,
         ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
         ActionType.PAGE_ATTRIBUTION_COMPUTED.value,
+        ActionType.SYNTHESIS_ATTRIBUTION_RECURSED.value,
         ActionType.RLM_BRIDGE_DECIDED.value,
         ActionType.QUALITY_GATE_EVALUATED.value,
         ActionType.CROSS_GRAPH_CITATION_RECORDED.value,
@@ -4699,6 +4790,8 @@ __all__ = [
     "InvestigationChaseHaltedPayload",
     "ClaimAssertedByOperatorPayload",
     "PageAttributionComputedPayload",
+    "AttributionRecursionLine",
+    "SynthesisAttributionRecursedPayload",
     # Sprint 17-30+ additions (v4 schema bump)
     "RLMBridgeDecidedPayload",
     "QualityGateEvaluatedPayload",

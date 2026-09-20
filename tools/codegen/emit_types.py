@@ -106,6 +106,7 @@ GENERATED_HEADER = """\
 
 # Nested helper models (referenced by payloads). Emit first.
 NESTED_MODELS: tuple[type[BaseModel], ...] = (
+    schema_module.AttributionRecursionLine,
     schema_module.ContextLayer,
     schema_module.Claim,
     schema_module.ThesisOutcome,
@@ -221,6 +222,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.InvestigationChaseHaltedPayload,
     schema_module.ClaimAssertedByOperatorPayload,
     schema_module.PageAttributionComputedPayload,
+    # Ads-settlement SPR-2 — per-second attribution recursion.
+    schema_module.SynthesisAttributionRecursedPayload,
     schema_module.RLMBridgeDecidedPayload,
     schema_module.QualityGateEvaluatedPayload,
     schema_module.CrossGraphCitationRecordedPayload,

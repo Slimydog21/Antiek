@@ -19,6 +19,7 @@ from .events import (
     ArtifactGeneratedPayload,
     ArtifactInteractedPayload,
     ArtifactKind,
+    AttributionRecursionLine,
     AuditFindingPayload,
     AuditSeverity,
     AutoPatchAppliedPayload,
@@ -128,6 +129,7 @@ from .events import (
     SupportingClaim,
     SurfaceServedImpressionPayload,
     SynthesisArchivedPayload,
+    SynthesisAttributionRecursedPayload,
     SynthesisRecommendation,
     SynthesisStatus,
     SynthesizeDeliveredPayload,
@@ -286,5 +288,7 @@ __all__ = [
     "InvestigationSpawnedFromPayload",
     "InvestigationChaseHaltedPayload",
     "ClaimAssertedByOperatorPayload",
+    "AttributionRecursionLine",
     "PageAttributionComputedPayload",
+    "SynthesisAttributionRecursedPayload",
 ]

@@ -32,6 +32,7 @@ export const ActionType = {
   INVESTIGATION_CHASE_HALTED: "investigation.chase_halted",
   CLAIM_ASSERTED_BY_OPERATOR: "claim.asserted_by_operator",
   PAGE_ATTRIBUTION_COMPUTED: "page.attribution.computed",
+  SYNTHESIS_ATTRIBUTION_RECURSED: "synthesis.attribution.recursed",
   DECOMPOSE_QUESTION_REQUESTED: "decompose.requested",
   DECOMPOSE_QUESTION_DELIVERED: "decompose.delivered",
   DECOMPOSER_PARAPHRASE_FLAGGED: "decomposer.paraphrase.flagged",
@@ -202,6 +203,36 @@ export type DiscoveryProvider = "exa" | "parallel" | "operator";
 export type DiscoveryDecision = "ingested" | "rejected_by_legal_gate" | "rejected_by_operator" | "fetch_failed";
 
 export type ProvenanceSourceKind = "user" | "ai" | "system";
+
+/**
+ * One conserved line of a recursive attribution split.
+ * 
+ * ``units`` is an integer count of attention sub-units (see
+ * ``UNITS_PER_ATTENTION_SECOND``), never a float share, so a split
+ * reconciles by addition rather than by rounding tolerance.
+ * 
+ * ``subject_kind`` is one of ``ip_holder`` (a rights holder resolved
+ * through the provenance chain), ``author`` (the writer of the
+ * synthesis itself — the "new ideas" leg of the operator's thesis) or
+ * ``unattributed`` (the explicit remainder: nobody was resolvable, or
+ * the walk hit its depth cap or a cycle). ``reason`` is populated only
+ * for ``unattributed`` and names why those units could not be placed;
+ * an unattributed line with no reason would be exactly the silent
+ * vanishing this contract exists to prevent.
+ * 
+ * ``depth`` is 0 for the synthesis the attention was measured on and
+ * increments once per nested synthesis; ``via_synthesis_id`` names the
+ * synthesis whose own split produced this line, so a dispute can walk
+ * back up the chain.
+ */
+export interface AttributionRecursionLine {
+  subject_kind: "ip_holder" | "author" | "unattributed";
+  subject_id?: string | null;
+  units: number;
+  depth: number;
+  via_synthesis_id: string;
+  reason?: string | null;
+}
 
 /**
  * One layer of an assembled context pack. Embedded inside
@@ -1799,6 +1830,53 @@ export interface PageAttributionComputedPayload {
 }
 
 /**
+ * Ads-settlement SPR-2 — the per-second attribution recursion.
+ * 
+ * One attention-second measured on a synthesis is split across the
+ * ``ip_holder_id`` of every document it sourced, plus its author, plus
+ * an explicit unattributed remainder. ``sum(lines[].units)`` equals
+ * ``total_units`` exactly; that is the contract.
+ * 
+ * Three versions are stamped because three independently-changeable
+ * decisions price a row, and a payout dispute must be able to tell
+ * which one moved:
+ * 
+ * * ``recursion_version`` — the walk itself (author/source split,
+ *   depth cap, remainder handling).
+ * * ``author_share_policy`` — how much of a second counts as new ideas
+ *   rather than sourced material.
+ * * ``share_algorithm`` / ``share_algorithm_version`` — the §9.3 A/B/C
+ *   per-document share vector the walk apportions across.
+ * 
+ * ``gate`` records WHICH rights gate produced the document shares.
+ * ``display`` is the §9.0 retrieval-time gate, which withholds
+ * ``restricted_pending_opt_in`` — correct for a surface, wrong for an
+ * earn path, where that class must keep accruing to escrow (§9.10).
+ * A row stamped ``display`` must never be settled as money.
+ * 
+ * ``inputs_json`` is the canonical snapshot the walk consumed, so
+ * ``substrate.attribution.recursion.replay`` reproduces ``lines``
+ * from this event alone. Telemetry only: emitting this moves nothing.
+ */
+export interface SynthesisAttributionRecursedPayload {
+  action_type: "synthesis.attribution.recursed";
+  synthesis_id: string;
+  recursion_version: string;
+  author_share_policy: string;
+  author_share: number;
+  share_algorithm: string;
+  share_algorithm_version: string;
+  gate: string;
+  units_per_second: number;
+  seconds: number;
+  total_units: number;
+  max_depth: number;
+  lines?: AttributionRecursionLine[];
+  inputs_json?: string;
+  inputs_digest?: string;
+}
+
+/**
  * Emitted by the RLM bridge on every document-load when the bridge
  * weighs in (above-threshold → escalate or defer; below-threshold →
  * skipped). Per master-spec §11.6 + rlm_integration_spec.md RLM-1.
@@ -2875,6 +2953,7 @@ export type TypedPayload =
   | InvestigationChaseHaltedPayload
   | ClaimAssertedByOperatorPayload
   | PageAttributionComputedPayload
+  | SynthesisAttributionRecursedPayload
   | RLMBridgeDecidedPayload
   | QualityGateEvaluatedPayload
   | CrossGraphCitationRecordedPayload
@@ -3057,6 +3136,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "source.read",
   "surface.served_impression",
   "synthesis.archived",
+  "synthesis.attribution.recursed",
   "synthesis.master_md_skipped",
   "synthesis.master_md_written",
   "synthesis.substrate_manifest.written",

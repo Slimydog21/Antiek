@@ -185,6 +185,7 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.ROLE_CALL_FAILED]: null, // the human-facing recovery is ROLE_SELF_REPAIR_ATTEMPTED / VALIDATION_FAILED
   [ActionType.AUDIT_FINDING_EMITTED]: null,
   [ActionType.PAGE_ATTRIBUTION_COMPUTED]: null,
+  [ActionType.SYNTHESIS_ATTRIBUTION_RECURSED]: null, // ads-settlement SPR-2 emits the per-second split (who a second on this page is owed to) for the audit trail; the reader is watching research progress, not the ledger
   [ActionType.KNOWLEDGE_REUSED]: null, // SPR-06 emits it to the event log (for the SPR-09 benchmark); the reader-facing "reused N prior insights" surface is SPR-10's job, not a feed line here
   [ActionType.REUSE_GATED]: null, // SPR-08 emits it per unit EXCLUDED from reuse (below-threshold / non-servable) for the audit trail + SPR-09 benchmark; not a reader-facing feed line
   [ActionType.DOCUMENT_CONTENT_CLASS_DEFAULTED]: null, // Personal-Reading Lane SPR-01: a write-side rights-classification default (a third-party ingest landing personal_reading). Substrate bookkeeping the reader never watches — the §9.0 audit trail lives in the event log, not the thinking stream.
