@@ -99,3 +99,15 @@ The claimed files and scoped commit are handed off to the orchestrator for indep
 ### Out-of-scope temptations
 
 Router upgrade, route taxonomy, App.tsx, manifests, callback origin configuration, deployment and unrelated auth refactoring.
+
+### Strict typing follow-up
+
+Strict mypy initially reported 101 errors in the test file and none in `auth.py`. The base commit has 97 errors under the same command/module context. The four introduced errors were missing annotations on the two new tests and their calls to the untyped shared `_client`. The follow-up annotates those two tests and `_client(monkeypatch: pytest.MonkeyPatch) -> TestClient`, without ignores or unrelated test cleanup.
+
+The final result is **63 existing test-file errors; no introduced errors; production auth.py clean**. Typing `_client` also removes its existing missing annotation plus 33 baseline untyped-call diagnostics. This is a clean change relative to baseline, not a clean strict-mypy test file. Existing debt includes other untyped tests and `_requested_code`'s pre-existing incorrect return annotation.
+
+Baseline command: `/Users/slimydog/Antiek/platform/.venv/bin/python -m mypy --strict --follow-imports=silent --explicit-package-bases --shadow-file interfaces/research/api/auth.py .audit/base-auth.py --shadow-file tests/test_magic_link_auth.py .audit/base-test_magic_link_auth.py interfaces/research/api/auth.py tests/test_magic_link_auth.py`. The shadow files contain exactly those files from `f24981db2`; module names, working directory, configuration and imported dependencies remain identical. Exit 1; full log `.audit/login-mypy-base.log`.
+
+Final command: same mypy command without the two `--shadow-file` options. Exit 1; full log `.audit/login-mypy-followup.log`. `.audit/login-mypy-delta.json` records the diagnostic delta and confirms every remaining diagnostic matches a base diagnostic at an unchanged source line.
+
+Reverification: the canonical pytest command above passed all 54 tests, exit 0 (`.audit/backend-typed-followup.log`); Ruff on `auth.py` and `test_magic_link_auth.py` passed, exit 0 (`.audit/login-ruff-followup.log`). Original commit `9a0837d2943a98bc5d5907e1dcdde75084c22eec` remains intact for independent-review provenance.

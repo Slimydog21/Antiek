@@ -57,7 +57,9 @@ _SECRET = "test-secret-" + "x" * 48
     ("", "/"),
     ("/notebooks?q=one#note", "/notebooks?q=one#note"),
 ])
-def test_login_attempt_preserves_only_safe_next(monkeypatch, next_path, expected):
+def test_login_attempt_preserves_only_safe_next(
+    monkeypatch: pytest.MonkeyPatch, next_path: str, expected: str,
+) -> None:
     """The stored destination reaches the browser as JSON, without URL quoting."""
     sender = MockEmailProvider(log_to_stdout=False)
     monkeypatch.setattr("interfaces.research.api.auth.get_email_provider", lambda: sender)
@@ -76,7 +78,9 @@ def test_login_attempt_preserves_only_safe_next(monkeypatch, next_path, expected
 
 
 @pytest.mark.parametrize("frontend", ["", "https://reader.example.test"])
-def test_callback_falls_back_for_backslash_next(monkeypatch, frontend):
+def test_callback_falls_back_for_backslash_next(
+    monkeypatch: pytest.MonkeyPatch, frontend: str,
+) -> None:
     client = _client(monkeypatch)
     monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", frontend)
     monkeypatch.delenv("ANTIEK_PUBLIC_BASE_URL", raising=False)
@@ -147,7 +151,7 @@ def test_session_cookie_rejects_wrong_secret(monkeypatch):
 # ── API flow ─────────────────────────────────────────────────────────
 
 
-def _client(monkeypatch):
+def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("ANTIEK_AUTH_SECRET", _SECRET)
     monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _OPERATOR)
     monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
