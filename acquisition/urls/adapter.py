@@ -278,20 +278,22 @@ def ingest_url(
 
     from runtime.db_lock import connect_write
 
-    with connect_write(resolved_db_path, purpose="acquisition/urls") as con:
-        # One transaction for the whole ingest. The DELETE above drops a
-        # document's chunks and the loop below re-inserts them; DuckDB
-        # autocommits every statement, so a failure part-way through used to
-        # leave the document with its old chunks gone and its new ones only
-        # partly written. That breaks the provenance chain CLAUDE.md lists as
-        # a critical invariant: every claim cites chunks, every chunk cites a
-        # document. The write lock does not help — nothing was racing; the
-        # later statement simply failed after the earlier ones had committed.
-        #
-        # Safe to hold only because the embeddings moved out of this block
-        # (see the hoist above). While they were inside, this transaction
-        # would have spanned N model forward passes on a single-writer DB.
-        with con.transaction():
+    # One transaction for the whole ingest. The DELETE above drops a
+    # document's chunks and the loop below re-inserts them; DuckDB
+    # autocommits every statement, so a failure part-way through used to
+    # leave the document with its old chunks gone and its new ones only
+    # partly written. That breaks the provenance chain CLAUDE.md lists as
+    # a critical invariant: every claim cites chunks, every chunk cites a
+    # document. The write lock does not help — nothing was racing; the
+    # later statement simply failed after the earlier ones had committed.
+    #
+    # Safe to hold only because the embeddings moved out of this block
+    # (see the hoist above). While they were inside, this transaction
+    # would have spanned N model forward passes on a single-writer DB.
+    with (
+        connect_write(resolved_db_path, purpose="acquisition/urls") as con,
+        con.transaction(),
+    ):
             # On a CHANGED re-ingest (``on_conflict="replace"``), drop the prior
             # document row + its chunks FIRST so the re-insert below is a genuine
             # fresh write of the edited body under the SAME deterministic id (no
