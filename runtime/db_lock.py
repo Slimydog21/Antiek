@@ -507,6 +507,47 @@ class LockedConnection:
             self._in_explicit_transaction = False
         return result
 
+    @contextlib.contextmanager
+    def transaction(self) -> Iterator["LockedConnection"]:
+        """Run a multi-statement write atomically.
+
+        The flock this connection holds gives **mutual exclusion**, not
+        **atomicity**. They are different properties and conflating them is a
+        live source of data loss: DuckDB autocommits every statement, so a
+        DELETE followed by a failing INSERT leaves the DELETE durable with no
+        rollback. Holding the lock does not help, because nothing else was
+        ever racing — the second statement simply failed after the first had
+        already committed.
+
+        Any handler whose correctness depends on two or more statements
+        landing together, or not at all, must put them inside this block::
+
+            with connect_write(db, purpose="sections/reorder") as con:
+                with con.transaction():
+                    con.execute("DELETE ...")
+                    con.execute("INSERT ...")
+
+        Re-entrant: entering while already inside an explicit transaction
+        yields the outermost one rather than issuing a nested BEGIN, which
+        DuckDB does not support.
+
+        On the way out of the outermost block this COMMITs, or ROLLBACKs and
+        re-raises. ``close()`` already refuses to park a warm slot while
+        ``_in_explicit_transaction`` is set, so a transaction that escapes
+        cannot be handed to the next caller.
+        """
+        if self._in_explicit_transaction:
+            yield self
+            return
+        self.execute("BEGIN")
+        try:
+            yield self
+        except BaseException:
+            with contextlib.suppress(Exception):
+                self.execute("ROLLBACK")
+            raise
+        self.execute("COMMIT")
+
     def __getattr__(self, name):
         return getattr(self._con, name)
 
@@ -637,7 +678,7 @@ def _connect_write_after_process_gate(
     poll_interval_s: float = 0.25,
     purpose: str = "",
     close_log_max_wait_s: float = 0.25,
-) -> LockedConnection:
+) -> "LockedConnection":
     # Fast path: reuse parked in-process writer (skips ~6.8s duckdb.connect).
     warm = _take_warm_slot(db_path)
     if warm is not None:
@@ -1121,8 +1162,10 @@ class FlockWriteCoordinator:
                         )
                     time.sleep(0.1)
         except Exception:
-            with contextlib.suppress(OSError):
+            try:
                 os.close(fd)
+            except OSError:
+                pass
             raise
         try:
             os.ftruncate(fd, 0)

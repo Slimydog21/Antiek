@@ -3443,6 +3443,7 @@ def create_app(
         metadata. Sprint 15 swaps in cosine search via the embedding
         column so semantic matches surface."""
         import duckdb
+
         db = _resolve_db_path()
         like = f"%{q}%" if q.strip() else "%"
         con = duckdb.connect(db, read_only=True)
@@ -3481,6 +3482,8 @@ def create_app(
         ``(section_id, block_kind, block_id)``. Moving to a new
         section requires DELETE + INSERT under the same lock."""
         from runtime.db_lock import connect_write
+        import duckdb
+
         db = _resolve_db_path()
         target_section = req.new_section_id or req.section_id
 
@@ -3495,23 +3498,36 @@ def create_app(
                     raise HTTPException(
                         status_code=404, detail="target section not found",
                     )
-                # If moving across sections, DELETE old + INSERT new
+                # If moving across sections, DELETE old + INSERT new.
+                # The write lock gives mutual exclusion, not atomicity:
+                # DuckDB autocommits each statement, so a failing INSERT
+                # (composite-PK collision) left the DELETE durable. Wrap the
+                # pair in an explicit transaction.
                 if (
                     req.new_section_id is not None
                     and req.new_section_id != req.section_id
                 ):
-                    con.execute(
-                        "DELETE FROM section_blocks WHERE section_id = ? "
-                        "AND block_kind = ? AND block_id = ?",
-                        [req.section_id, req.block_kind, req.block_id],
-                    )
-                    con.execute(
-                        "INSERT INTO section_blocks "
-                        "(section_id, block_kind, block_id, block_index) "
-                        "VALUES (?, ?, ?, ?)",
-                        [target_section, req.block_kind, req.block_id,
-                         int(req.new_block_index)],
-                    )
+                    try:
+                        with con.transaction():
+                            con.execute(
+                                "DELETE FROM section_blocks WHERE section_id = ? "
+                                "AND block_kind = ? AND block_id = ?",
+                                [req.section_id, req.block_kind, req.block_id],
+                            )
+                            con.execute(
+                                "INSERT INTO section_blocks "
+                                "(section_id, block_kind, block_id, block_index) "
+                                "VALUES (?, ?, ?, ?)",
+                                [target_section, req.block_kind, req.block_id,
+                                 int(req.new_block_index)],
+                            )
+                    except duckdb.ConstraintException as exc:
+                        # Already attached to the target; the rollback keeps
+                        # the source attachment. Say so instead of a bare 500.
+                        raise HTTPException(
+                            status_code=409,
+                            detail="block already attached to the target section",
+                        ) from exc
                 else:
                     # In-section reorder: just bump the index
                     con.execute(
