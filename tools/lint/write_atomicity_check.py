@@ -117,9 +117,12 @@ def _sql_head(call: ast.Call) -> str | None:
 
 
 def _is_execute(node: ast.AST) -> ast.Call | None:
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-        if node.func.attr in ("execute", "executemany"):
-            return node
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in ("execute", "executemany")
+    ):
+        return node
     return None
 
 

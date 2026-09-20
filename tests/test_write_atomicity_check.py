@@ -12,8 +12,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import pytest
-
 _ROOT = Path(__file__).resolve().parents[1]
 _LINT = _ROOT / "tools" / "lint" / "write_atomicity_check.py"
 
