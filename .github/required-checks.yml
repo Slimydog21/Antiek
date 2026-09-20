@@ -47,6 +47,18 @@ emitted_but_not_required:
       It is emitted by ci.yml and is NOT required, so those gates cannot block
       a merge. PR #3210 merged with this job red. Adding it to the ruleset is
       an operator action.
+  gate:
+    why: >-
+      From deploy_backend.yml (#3289), which triggers on `workflow_run` AFTER
+      CI finishes — i.e. only once a commit is ALREADY on main. Requiring it
+      would be circular: a PR could not merge until it had deployed, and it
+      cannot deploy until it has merged. This job re-reads all 8 required
+      contexts for the exact SHA before allowing the deploy, so it consumes
+      the fence rather than belonging to it.
+  deploy:
+    why: >-
+      The ansible deploy itself, gated by `gate` above and likewise
+      post-merge. Same circularity; see `gate`.
   agent-execution-gates:
     why: Advisory per docs/decisions/ci-informational-gates.md.
   test-integrity-floor:
