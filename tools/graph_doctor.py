@@ -39,6 +39,8 @@ import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
+from runtime.db_lock import connect_read
+
 
 @dataclass
 class GraphMetrics:
@@ -92,7 +94,7 @@ def collect(graph_path: str, now: datetime) -> GraphMetrics:
 
     m = GraphMetrics()
     try:
-        con = duckdb.connect(graph_path, read_only=True)
+        con = connect_read(graph_path)
     except duckdb.Error as exc:
         m.schema_notes.append(f"cannot open graph ({type(exc).__name__})")
         return m

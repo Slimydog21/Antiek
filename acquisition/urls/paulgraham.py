@@ -58,6 +58,7 @@ from acquisition.urls.adapter import (  # noqa: E402
 )
 from acquisition.urls.client import DEFAULT_USER_AGENT, FetchedHtml, fetch  # noqa: E402
 from acquisition.urls.extract import html_to_markdown  # noqa: E402
+from runtime.db_lock import connect_read  # noqa: E402
 
 # --- constants -------------------------------------------------------------
 
@@ -589,14 +590,13 @@ def _stored_raw_text(url: str, *, db_path: str | None) -> str | None:
     """Read back the persisted ``documents.raw_text`` (the extracted markdown)
     for this URL's document so the live-path quality verdict inspects the real
     extracted body. Returns None when the doc/DB is absent."""
-    import duckdb
 
     from substrate.graph import default_db_path
 
     resolved = db_path or default_db_path()
     document_id = url_doc_id(url)
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        con = connect_read(resolved)
     except Exception:
         return None
     try:
@@ -657,7 +657,6 @@ def _stored_content_hash(url: str, *, db_path: str | None) -> str | None:
     Returns None when the doc/DB is absent so a first run treats every essay as
     new.
     """
-    import duckdb
 
     from processing.chunking.chunker import content_hash
     from substrate.graph import default_db_path
@@ -665,7 +664,7 @@ def _stored_content_hash(url: str, *, db_path: str | None) -> str | None:
     resolved = db_path or default_db_path()
     document_id = url_doc_id(url)
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        con = connect_read(resolved)
     except Exception:
         return None
     try:
