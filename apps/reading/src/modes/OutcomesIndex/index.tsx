@@ -1,3 +1,4 @@
+import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -62,9 +63,12 @@ export default function OutcomesIndex() {
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Outcomes audit
-            </h1>
+            <div className="flex items-center gap-3">
+              <WorkflowArt workflow="outcomes" size={52} className="shrink-0" />
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
+                Outcomes audit
+              </h1>
+            </div>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Cross-investigation grading history. Per master-spec
               §13.8: outcomes are first-class signals that feed the
