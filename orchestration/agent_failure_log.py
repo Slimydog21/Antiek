@@ -134,7 +134,14 @@ def _maybe_rotate(active: Path) -> None:
         first_date = row.get("observed_at", "")[:10]  # YYYY-MM-DD
     except json.JSONDecodeError:
         return
-    today_str = date.today().isoformat()
+    # UTC, to match `observed_at`. `date.today()` is LOCAL, and comparing a
+    # local date against a UTC one rotates the log every write during the
+    # window where the two disagree — 21:00-24:00 UTC at +03, 00:00-07:00 UTC
+    # at -07. The first record is archived away and the active file keeps only
+    # the newest, which reads as data loss to anyone not on UTC. CI runs UTC,
+    # so no gate here can see it; proven by running this module's suite under
+    # TZ=UTC (17 pass) vs TZ=Asia/Riyadh (2 fail) on the same commit.
+    today_str = datetime.now(UTC).date().isoformat()
     if first_date == today_str or not first_date:
         return
     archive_dir = _archive_dir_for(active)
