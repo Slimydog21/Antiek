@@ -89,6 +89,11 @@ from substrate.schemas import (  # noqa: E402
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
+from .thought_partner_byot import (  # noqa: E402
+    ModelReceipt,
+    dispatch_owner_turn,
+    parse_owner_turn_selection,
+)
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -1300,6 +1305,8 @@ class ThoughtPartnerRequest(BaseModel):
     investigation_id: str | None = None
     system_context: str | None = None
     history: list[ThoughtPartnerTurn] = Field(default_factory=list)
+    model_choice: object | None = None
+    operation_id: object | None = None
 
 
 def _retrieve_thought_partner_context(
@@ -6127,10 +6134,12 @@ def create_app(
         # status mirrors substrate.query (servable|shadow|degraded — brute_force|…).
         library_retrieval_status: str | None = None
         library_retrieval_degraded_reason: str | None = None
+        model_receipt: ModelReceipt | None = None
 
     @app.post(
         "/thought-partner",
         response_model=ThoughtPartnerResponseBody,
+        response_model_exclude_unset=True,
     )
     async def post_thought_partner(
         request: Request,
@@ -6154,6 +6163,7 @@ def create_app(
             raise HTTPException(
                 status_code=400, detail="prompt must not be empty",
             )
+        selected = parse_owner_turn_selection(request, req.model_choice, req.operation_id)
         # §9.0 gate is SERVER-DERIVED, never client-controlled (CWE-862).
         # Reuse the one reviewed owner-read resolver so the gate cannot
         # drift: operator_only only on a proven single-operator auth, else
@@ -6189,24 +6199,35 @@ def create_app(
                 + req.system_context
             )
         assembled_prompt += "\n\n" + role_prompt
-        try:
-            result = dispatch(
-                assembled_prompt,
-                "thought_partner",
-                investigation_id=req.investigation_id or "__sidecar__",
+        model_receipt = None
+        if selected is not None:
+            result, model_receipt = await asyncio.to_thread(
+                dispatch_owner_turn, app, selected, assembled_prompt,
+                req.investigation_id or "__sidecar__",
             )
-        except (ProviderError, KeyError):
-            raise HTTPException(
-                status_code=503, detail="thought_partner_unavailable",
-            ) from None
+        else:
+            try:
+                result = dispatch(
+                    assembled_prompt,
+                    "thought_partner",
+                    investigation_id=req.investigation_id or "__sidecar__",
+                )
+            except (ProviderError, KeyError):
+                raise HTTPException(
+                    status_code=503, detail="thought_partner_unavailable",
+                ) from None
 
         parsed = parse_thought_partner_response(result.text)
-        return ThoughtPartnerResponseBody(
+        response = ThoughtPartnerResponseBody(
             shape=parsed.shape,
             text=result.text,
             library_retrieval_status=lib_status,
             library_retrieval_degraded_reason=lib_degraded,
+            model_receipt=model_receipt,
         )
+        if model_receipt is None:
+            response.model_fields_set.discard("model_receipt")
+        return response
 
     # ── CK-3 inline autocomplete endpoint (cursor-for-knowledge) ──
     @app.post("/complete", response_model=CompleteResponse)

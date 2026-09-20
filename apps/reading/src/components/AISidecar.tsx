@@ -6,10 +6,19 @@ import {
 } from "../hooks/useThoughtPartnerThread";
 
 import { apiFetch } from "../lib/api";
+import {
+  parseThoughtPartnerModelReceipt,
+  thoughtPartnerFailureMessage,
+  thoughtPartnerLaunchKey,
+  thoughtPartnerReceiptLabel,
+  type ThoughtPartnerReceiptDisplay,
+} from "../api/thoughtPartner";
 import { WernerThinking } from "../brand/werner/animated";
 import { useReplyMode } from "../hooks/useReplyMode";
+import { useOwnerModelChoice } from "../hooks/useOwnerModelChoice";
 import SpokenReply from "./SpokenReply";
 import ContextPicker from "./ai/ContextPicker";
+import ModelUsagePicker from "./ai/ModelUsagePicker";
 import {
   dispatchAiAction,
   parseAssistantReply,
@@ -77,6 +86,9 @@ export default function AISidecar() {
   const [composedContext, setComposedContext] = useState<string>("");
   const thread = useThoughtPartnerThread();
   const [pending, setPending] = useState<boolean>(false);
+  const [modelReceipt, setModelReceipt] =
+    useState<ThoughtPartnerReceiptDisplay | null>(null);
+  const ownerModel = useOwnerModelChoice("thought-sidecar");
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // Read SPR-07 — the rabbit hole answers in text OR audio per preference.
   const { mode: replyMode, setMode: setReplyMode } = useReplyMode();
@@ -193,7 +205,21 @@ export default function AISidecar() {
     if (!draft.trim() || pending) return;
     const prompt = draft.trim();
     setPending(true);
+    setModelReceipt(null);
     const history = historyPayload(thread.messages);
+    const systemContext = composeThoughtPartnerSystemContext(
+      composedContext.trim() ? composedContext : null,
+    );
+    const semanticRequest = {
+      investigation_id: "__sidecar__",
+      prompt,
+      history,
+      system_context: systemContext,
+    };
+    const requestedDisplayName = ownerModel.selected
+      ? ownerModel.selected.display_name || ownerModel.selected.model_id
+      : null;
+    const launchFields = ownerModel.launchFields;
     const messageId = thread.startTurn(prompt);
     setDraft("");
     try {
@@ -201,22 +227,22 @@ export default function AISidecar() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          investigation_id: "__sidecar__",
-          prompt,
-          history,
-          system_context: composeThoughtPartnerSystemContext(
-            composedContext.trim() ? composedContext : null,
-          ),
+          ...semanticRequest,
+          ...launchFields(thoughtPartnerLaunchKey(semanticRequest)),
         }),
       });
       if (!resp.ok) {
         thread.failTurn(
           messageId,
-          `Thought-partner unavailable (HTTP ${resp.status}).`,
+          await thoughtPartnerFailureMessage(resp, requestedDisplayName),
         );
         return;
       }
       const data = await resp.json();
+      const receipt = parseThoughtPartnerModelReceipt(data.model_receipt);
+      setModelReceipt(
+        receipt ? { receipt, requestedDisplayName } : null,
+      );
       const rawText: string = data.text ?? data.body ?? JSON.stringify(data);
       const { prose, actions, parseErrors } = parseAssistantReply(rawText);
       thread.completeTurn(
@@ -304,6 +330,25 @@ export default function AISidecar() {
               non-owner path (the picker renders what reached the model).
             */}
             <ContextPicker onContextChange={setComposedContext} />
+            <ModelUsagePicker
+              value={ownerModel.selectedRowId}
+              onChange={ownerModel.select}
+              models={ownerModel.models}
+              triggerLabel={ownerModel.triggerLabel}
+              triggerAriaLabel="Thought partner model"
+              includeDefault
+              showUsage
+              showBalance
+              size="sm"
+            />
+            {modelReceipt ? (
+              <p
+                className="text-[10px] font-mono text-ink-mute dark:text-moonlight"
+                data-testid="thought-partner-model-receipt"
+              >
+                Used {thoughtPartnerReceiptLabel(modelReceipt)}
+              </p>
+            ) : null}
             <textarea
               ref={inputRef}
               value={draft}

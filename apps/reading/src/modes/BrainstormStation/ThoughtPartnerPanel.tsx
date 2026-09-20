@@ -20,8 +20,17 @@ import {
 } from "../../hooks/useThoughtPartnerThread";
 
 import { apiFetch, composeContext } from "../../lib/api";
+import {
+  parseThoughtPartnerModelReceipt,
+  thoughtPartnerFailureMessage,
+  thoughtPartnerLaunchKey,
+  thoughtPartnerReceiptLabel,
+  type ThoughtPartnerReceiptDisplay,
+} from "../../api/thoughtPartner";
 import { WernerThinking } from "../../brand/werner/animated";
 import ContextPicker from "../../components/ai/ContextPicker";
+import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
+import { useOwnerModelChoice } from "../../hooks/useOwnerModelChoice";
 import {
   parseAssistantReply,
   dispatchAiAction,
@@ -34,9 +43,9 @@ import {
 } from "../../components/ai/thoughtPartnerSeed";
 import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
 import InsightLegoShelf from "./InsightLegoShelf";
+import ThoughtPartnerFocusTray from "./ThoughtPartnerFocusTray";
 import {
   mergeSlottedSystemContext,
-  parsePaletteDrag,
   slotInsight,
   slottedToContextItems,
   unslotInsight,
@@ -49,9 +58,11 @@ export default function ThoughtPartnerPanel() {
   const [composedContext, setComposedContext] = useState("");
   const [seedLabel, setSeedLabel] = useState<string | null>(null);
   const [slotted, setSlotted] = useState<PaletteDragPayload[]>([]);
-  const [dropActive, setDropActive] = useState(false);
   const thread = useThoughtPartnerThread();
   const [pending, setPending] = useState(false);
+  const [modelReceipt, setModelReceipt] =
+    useState<ThoughtPartnerReceiptDisplay | null>(null);
+  const ownerModel = useOwnerModelChoice("thought-brainstorm");
   const [error, setError] = useState<string | null>(null);
   const [aiLog, setAiLog] = useState<DispatchedAction[]>([]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -82,36 +93,21 @@ export default function ThoughtPartnerPanel() {
     setSlotted((prev) => slotInsight(prev, payload));
   }, []);
 
-  const onDragOverFocus = useCallback((e: React.DragEvent) => {
-    if (![...e.dataTransfer.types].includes("application/x-antiek-block")) {
-      // Still allow — some browsers hide custom MIME until drop.
-    }
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    setDropActive(true);
+  const removeSlot = useCallback((blockId: string) => {
+    setSlotted((prev) => unslotInsight(prev, blockId));
   }, []);
-
-  const onDragLeaveFocus = useCallback((e: React.DragEvent) => {
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-    setDropActive(false);
-  }, []);
-
-  const onDropFocus = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDropActive(false);
-      const payload = parsePaletteDrag(e.dataTransfer);
-      if (payload) addSlot(payload);
-    },
-    [addSlot],
-  );
 
   const send = useCallback(async () => {
     const prompt = draft.trim();
     if (!prompt || pending) return;
     setPending(true);
+    setModelReceipt(null);
     setError(null);
     const history = historyPayload(thread.messages);
+    const requestedDisplayName = ownerModel.selected
+      ? ownerModel.selected.display_name || ownerModel.selected.model_id
+      : null;
+    const launchFields = ownerModel.launchFields;
     const messageId = thread.startTurn(prompt);
     setDraft("");
     try {
@@ -131,25 +127,33 @@ export default function ThoughtPartnerPanel() {
         insightCtx,
         composedContext.trim() ? composedContext : null,
       );
+      const semanticRequest = {
+        prompt,
+        history,
+        system_context: composeThoughtPartnerSystemContext(
+          merged.trim() ? merged : null,
+        ),
+      };
       const resp = await apiFetch("/thought-partner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt,
-          history,
-          system_context: composeThoughtPartnerSystemContext(
-            merged.trim() ? merged : null,
-          ),
+          ...semanticRequest,
+          ...launchFields(thoughtPartnerLaunchKey(semanticRequest)),
         }),
       });
       if (!resp.ok) {
         thread.failTurn(
           messageId,
-          `Thought-partner unavailable (HTTP ${resp.status}).`,
+          await thoughtPartnerFailureMessage(resp, requestedDisplayName),
         );
         return;
       }
       const data = await resp.json();
+      const receipt = parseThoughtPartnerModelReceipt(data.model_receipt);
+      setModelReceipt(
+        receipt ? { receipt, requestedDisplayName } : null,
+      );
       const rawText: string = data.text ?? "";
       const { prose, actions } = parseAssistantReply(rawText);
       thread.completeTurn(
@@ -172,7 +176,7 @@ export default function ThoughtPartnerPanel() {
     } finally {
       setPending(false);
     }
-  }, [composedContext, draft, pending, slotted, thread]);
+  }, [composedContext, draft, ownerModel, pending, slotted, thread]);
 
   return (
     <div
@@ -200,54 +204,34 @@ export default function ThoughtPartnerPanel() {
 
       <InsightLegoShelf onSlot={addSlot} />
 
-      <div
-        data-testid="thought-partner-focus-tray"
-        onDragOver={onDragOverFocus}
-        onDragLeave={onDragLeaveFocus}
-        onDrop={onDropFocus}
-        className={
-          "min-h-[3.5rem] border border-dashed rounded p-2 space-y-1.5 transition-colors " +
-          (dropActive
-            ? "border-ocean bg-ocean/10"
-            : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-3")
-        }
-      >
-        <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-          Focus tray
-          {slotted.length ? ` · ${slotted.length}` : ""}
-        </p>
-        {slotted.length === 0 ? (
-          <p className="text-[11px] text-ink-mute dark:text-moonlight italic">
-            Drop insight Legos here (or tap + on the shelf).
-          </p>
-        ) : (
-          <ul className="flex flex-wrap gap-1" aria-label="Slotted insights">
-            {slotted.map((s) => (
-              <li
-                key={s.block_id}
-                className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded border border-ocean/40 bg-ocean/10 text-[10px] font-serif text-ink dark:text-bright"
-                data-testid="slotted-insight-chip"
-              >
-                <span className="truncate" title={s.label}>
-                  {s.label}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`Remove ${s.label}`}
-                  className="font-mono text-ink-mute hover:text-emperor"
-                  onClick={() =>
-                    setSlotted((prev) => unslotInsight(prev, s.block_id))
-                  }
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <ThoughtPartnerFocusTray
+        slotted={slotted}
+        onSlot={addSlot}
+        onRemove={removeSlot}
+      />
 
       <ContextPicker onContextChange={setComposedContext} />
+
+      <ModelUsagePicker
+        value={ownerModel.selectedRowId}
+        onChange={ownerModel.select}
+        models={ownerModel.models}
+        triggerLabel={ownerModel.triggerLabel}
+        triggerAriaLabel="Thought partner model"
+        includeDefault
+        showUsage
+        showBalance
+        size="sm"
+      />
+
+      {modelReceipt ? (
+        <p
+          className="text-[10px] font-mono text-ink-mute dark:text-moonlight"
+          data-testid="thought-partner-model-receipt"
+        >
+          Used {thoughtPartnerReceiptLabel(modelReceipt)}
+        </p>
+      ) : null}
 
       <textarea
         ref={inputRef}
