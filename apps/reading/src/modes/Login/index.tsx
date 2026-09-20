@@ -23,6 +23,7 @@ import {
 } from "../../lib/auth";
 import { track, trackException } from "../../lib/analytics";
 import type { AuthDiagnosticCode } from "../../lib/authDiagnosticCodes";
+import { safeNext } from "../../lib/safeNext";
 
 import "./Login.css";
 
@@ -73,12 +74,12 @@ export default function Login() {
   const isSetup = searchParams.get("setup") === "passkey";
   const approvalAttempt = searchParams.get("approve");
   const approvalCode = searchParams.get("code");
+  const routeState: unknown = location.state;
+  const stateFrom = routeState !== null && typeof routeState === "object" && "from" in routeState
+    ? routeState.from : undefined;
   const nextPath = useMemo(
-    () =>
-      searchParams.get("next") ??
-      (location.state as { from?: string } | null)?.from ??
-      "/",
-    [location.state, searchParams],
+    () => safeNext(searchParams.get("next") ?? stateFrom),
+    [stateFrom, searchParams],
   );
 
   useEffect(() => {
@@ -136,8 +137,8 @@ export default function Login() {
           await refresh();
           navigate(
             result.setup_passkey
-              ? `/login?setup=passkey&next=${encodeURIComponent(result.next)}`
-              : result.next,
+              ? `/login?setup=passkey&next=${encodeURIComponent(safeNext(result.next))}`
+              : safeNext(result.next),
             { replace: true },
           );
           return;
@@ -172,8 +173,8 @@ export default function Login() {
       await refresh();
       navigate(
         result.setup_passkey
-          ? `/login?setup=passkey&next=${encodeURIComponent(result.next)}`
-          : result.next,
+          ? `/login?setup=passkey&next=${encodeURIComponent(safeNext(result.next))}`
+          : safeNext(result.next),
         { replace: true },
       );
       return;

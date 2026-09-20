@@ -288,11 +288,13 @@ def _is_safe_relative(path: str) -> bool:
     """Only accept same-origin relative redirects. Protects against
     open-redirect to attacker-controlled URLs piggybacking on a
     legitimate magic link."""
-    if not path:
-        return False
-    if path.startswith("//"):
-        return False
-    return path.startswith("/")
+    # Keep this policy aligned with apps/reading/src/lib/safeNext.ts:
+    # claim responses carry the path as JSON, without RedirectResponse quoting.
+    return (
+        path.startswith("/")
+        and not path.startswith("//")
+        and not any(char == "\\" or ord(char) < 32 or ord(char) == 127 for char in path)
+    )
 
 
 def _resolve_redirect(next_path: str) -> str:

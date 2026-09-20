@@ -47,6 +47,47 @@ _MULTI_OPERATOR_ENV = f"{_OPERATOR},{_OPERATOR_SECOND}"
 _SECRET = "test-secret-" + "x" * 48
 
 
+@pytest.mark.parametrize("next_path, expected", [
+    ("/\\outside.example/path", "/"),
+    ("/notes\n/other", "/"),
+    ("/notes\x7f", "/"),
+    ("//outside.example/path", "/"),
+    ("https://outside.example/path", "/"),
+    ("javascript:alert(1)", "/"),
+    ("", "/"),
+    ("/notebooks?q=one#note", "/notebooks?q=one#note"),
+])
+def test_login_attempt_preserves_only_safe_next(monkeypatch, next_path, expected):
+    """The stored destination reaches the browser as JSON, without URL quoting."""
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr("interfaces.research.api.auth.get_email_provider", lambda: sender)
+    client = _client(monkeypatch)
+    requested = client.post("/auth/request", json={"email": _OPERATOR, "next": next_path})
+    assert requested.status_code == 200
+    handoff = requested.json()
+    code = sender.sent[-1].email.subject.rsplit("·", 1)[-1].strip()
+    claimed = client.post("/auth/claim", json={
+        "attempt_id": handoff["attempt_id"],
+        "claim_secret": handoff["claim_secret"],
+        "code": code,
+    })
+    assert claimed.status_code == 200
+    assert claimed.json()["next"] == expected
+
+
+@pytest.mark.parametrize("frontend", ["", "https://reader.example.test"])
+def test_callback_falls_back_for_backslash_next(monkeypatch, frontend):
+    client = _client(monkeypatch)
+    monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", frontend)
+    monkeypatch.delenv("ANTIEK_PUBLIC_BASE_URL", raising=False)
+    response = client.get("/auth/callback", params={
+        "token": mint_magic_link_token(_OPERATOR),
+        "next": "/\\outside.example/path",
+    }, follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"] == frontend + "/"
+
+
 # ── Substrate primitives ─────────────────────────────────────────────
 
 

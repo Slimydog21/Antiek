@@ -1,0 +1,101 @@
+# Login destination policy — 2026-09-20
+
+Malformed login destinations could throw `SecurityError` during history replacement or retain an unusable destination through passkey setup. Frontend and backend now accept only root-relative strings starting with one slash, without backslashes or ASCII control characters (U+0000–001F and U+007F). Invalid destinations fall back to `/`; valid paths, queries, fragments and Unicode remain intact. No extra percent-decoding or URL rewriting is performed.
+
+## Failure Dossier
+
+### Signatures
+
+Source and `inspect.signature` agree: `_is_safe_relative(path: str) -> bool`; `_resolve_redirect(next_path: str) -> str`. New frontend boundary: `safeNext(value: unknown): string`. Inspection output: `.audit/env-contracts.log`.
+
+### Numbered failure chain
+
+1. `Login/index.tsx` accepted raw query `next` or history state `from`, and raw `claimLogin` response `next`.
+2. Login called actual React Router `navigate(destination, {replace: true})`.
+3. Router resolved `/\\outside.example/path` to a path interpreted by the browser URL parser as another origin. `replaceState` threw `SecurityError`; unlike Router's push branch, replacement has no `location.assign` fallback.
+4. Backend `_is_safe_relative` accepted backslashes and controls; `/auth/request` stored them and `/auth/claim` returned them as JSON. The callback's actual Starlette response percent-encoded a backslash, so this audit did not demonstrate an HTTP open redirect or XSS.
+
+The pre-fix real Login test failed with the history exception. Four of five frontend cases failed; one valid destination passed. Five of ten backend route cases failed. Full logs: `.audit/login-red.log` and `.audit/backend-red.log`. LLM/provider contacted on failure path: no.
+
+## Scope Map
+
+| Entry point | Evidence |
+|---|---|
+| Authenticated Login query and history-state destination | Real Login inside BrowserRouter, rejected backslash/external scheme, nonstring state; valid query/fragment and state preserved |
+| Email handoff polling | Actual component, mocked auth service boundary; invalid claim destination falls back, with and without setup |
+| Typed email-code claim | Actual component and form interactions, real BrowserRouter; malformed query sent as `/`, malformed response normalized in both setup branches |
+| Passkey success / skip setup | Uses the same normalized `nextPath`; hardware ceremony and button-specific paths not driven |
+| Backend request → stored attempt → code claim | Actual FastAPI routes and mock email provider; rejected destinations become `/` in JSON; valid query/fragment preserved |
+| Backend callback | Actual route; invalid destination falls back with configured frontend origin and without one |
+
+## Handoff
+
+### Env Card
+
+- Date: 2026-09-20 UTC.
+- Repo: `/Users/slimydog/Antiek/.worktrees/login-next-policy-20260920`.
+- Branch: `fix/login-next-policy-20260920`.
+- Base and observed `origin/main`: `f24981db2bde8ce2fb88158fc54460cfd168c294`.
+- Python: `/Users/slimydog/Antiek/platform/.venv/bin/python`, 3.12.13.
+- Node: `/opt/homebrew/opt/node@22/bin/node`, 22.22.0.
+- Final dependencies: clean `npm ci` from unchanged branch lock; React Router and react-router-dom 6.30.4, @remix-run/router 1.23.3, Vitest 4.1.10, jsdom 29.1.1.
+- Initial red/green frontend run used a temporary symlink to `frontend-dependency-patches-20260920` dependencies (Router 6.30.6). It was removed before clean install and final verification.
+- Network: npm registry install only; no production API, email, telemetry or browser calls. Python `ANTIEK_HOME` and `ANTIEK_DUCKDB_PATH` were scratch paths before final imports; pytest additionally isolates each database.
+
+### Not proved
+
+No browser-engine E2E, live email/passkey ceremony, deployment, full product suite, or elimination of Router dependency advisories. This is a bounded login policy repair. The regression establishes navigation failure, not confirmed external navigation or XSS. Independent review remains pending.
+
+### Status
+
+Local scoped tests and typecheck pass. Not merged or deployed.
+
+### Files touched
+
+`apps/reading/src/modes/Login/index.tsx`, adjacent `Login.redirect.test.tsx`, `apps/reading/src/lib/safeNext.ts` and its test, `interfaces/research/api/auth.py`, `tests/test_magic_link_auth.py`, this dossier. No App.tsx or manifests changed.
+
+### Milestones (checkboxes)
+
+- [x] Reproduce actual Login and backend response regressions before production edits.
+- [x] Normalize query/state and both claim-response branches.
+- [x] Align backend persisted destination policy.
+- [x] Clean dependency install, focused frontend suite, full magic-link module, typecheck.
+- [ ] Independent review and integration.
+
+### Gate results
+
+Commands ran from repo root except npm tests/typecheck, which ran from `apps/reading`. npm used `PATH=/opt/homebrew/opt/node@22/bin:$PATH`. Full command output retained; counts are local results.
+
+| Command | Exit | Result / full log |
+|---|---|---|
+| `npm test -- src/modes/Login/Login.redirect.test.tsx` before fix | 1 | 4 failed, 1 passed; `.audit/login-red.log` |
+| Python pytest selected new backend cases before fix | 1 | 5 failed, 5 passed; `.audit/backend-red.log` |
+| `npm --prefix apps/reading ci` | 0 | `.audit/npm-ci.log`; existing dependency advisories remain outside scope |
+| `npm test -- src/modes/Login/Login.redirect.test.tsx src/lib/safeNext.test.ts src/lib/auth.test.ts` | 0 | 40 passed / 3 files; `.audit/login-final.log` |
+| `npm run typecheck` | 0 | `.audit/typecheck.log` |
+| `ANTIEK_HOME=$PWD/.audit/runtime ANTIEK_DUCKDB_PATH=$PWD/.audit/runtime/graph.duckdb PYTHONPATH=$PWD /Users/slimydog/Antiek/platform/.venv/bin/python -m pytest tests/test_magic_link_auth.py -q` | 0 | 54 passed, existing Starlette/httpx deprecation warning; `.audit/backend-green.log` |
+| `git diff --check` | 0 | No whitespace errors |
+
+### Decisions mid-flight
+
+Treat the issue as navigation failure. Starlette encodes backslashes in Location headers, while claim JSON retains them. Validate both frontend destination entry points and backend persistence instead of assuming the response header and JSON boundaries behave alike.
+
+### Assumptions surfaced
+
+Login destinations are strings containing root-relative application paths. Router state objects are not accepted as destinations. Explicit malformed query values fall back to `/` rather than silently selecting history state. Backslashes and controls are rejected anywhere, including query/fragment; ordinary encoded characters are preserved.
+
+### Steelman rejected alternative
+
+A Router upgrade alone could address dependency advisories, but would leave the application's destination contract implicit and divergent between query, history state and backend claim responses. The route-level regressions pin the product behavior independently of that migration.
+
+### Open questions
+
+Independent critic to assess boundary policy and test coverage. Hardware passkey/browser acceptance remains separate.
+
+### Next sprint can start when
+
+The claimed files and scoped commit are handed off to the orchestrator for independent review; any wider routing change must coordinate the existing App.tsx owner.
+
+### Out-of-scope temptations
+
+Router upgrade, route taxonomy, App.tsx, manifests, callback origin configuration, deployment and unrelated auth refactoring.
