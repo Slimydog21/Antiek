@@ -70,6 +70,7 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from runtime.db_lock import connect_read  # noqa: E402
 from substrate.event_log import EVENT_SCHEMA_VERSION, default_events_dir  # noqa: E402
 from substrate.graph import default_db_path  # noqa: E402
 
@@ -225,10 +226,10 @@ def _export_graph(
         except OSError:
             pass
 
-        import duckdb
+
 
         try:
-            con = duckdb.connect(db_path, read_only=True)
+            con = connect_read(db_path)
         except Exception:
             raise _ExportUnavailable(_DB_UNAVAILABLE) from None
         try:

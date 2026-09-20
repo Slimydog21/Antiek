@@ -16,6 +16,8 @@ import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from runtime.db_lock import connect_read
+
 
 class CampaignSummaryResponse(BaseModel):
     advertiser_id: str
@@ -73,7 +75,7 @@ def register_campaign_routes(app: FastAPI) -> None:
         advertiser_id: str,
     ) -> CampaignSummaryResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             exists, monthly_budget = _load_advertiser_budget(
                 con, advertiser_id,

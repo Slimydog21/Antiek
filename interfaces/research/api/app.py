@@ -3347,9 +3347,10 @@ def create_app(
 
     @app.get("/deliverables", response_model=DeliverableListResponse)
     async def list_deliverables(limit: int = 50) -> DeliverableListResponse:
-        import duckdb
+
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT d.deliverable_id, d.title, d.deliverable_kind, "
@@ -3378,9 +3379,9 @@ def create_app(
     async def get_deliverable(deliverable_id: str) -> DeliverableDetailResponse:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             head = con.execute(
                 "SELECT deliverable_id, title, deliverable_kind, status, "
@@ -3489,17 +3490,17 @@ def create_app(
         q: str = Query(default="", max_length=200),
         limit: int = Query(default=20, ge=1, le=100),
     ) -> BlockSearchResponse:
+        from runtime.db_lock import connect_read
         """Search the operator's graph for insight/claim/note blocks to
         drag into a deliverable section. Mode C palette uses this.
 
         Sprint 14 implementation: ILIKE over nodes.canonical_label +
         metadata. Sprint 15 swaps in cosine search via the embedding
         column so semantic matches surface."""
-        import duckdb
 
         db = _resolve_db_path()
         like = f"%{q}%" if q.strip() else "%"
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT n.node_id, n.canonical_label, n.node_type, "
@@ -3743,6 +3744,7 @@ def create_app(
         deliverable_id: str,
         format: str = Query(default="markdown"),
     ) -> ExportFormat:
+        from runtime.db_lock import connect_read
         """Export a deliverable as Markdown, HTML, or a structured JSON
         bundle. Returns the content inline (the caller can save it via
         the Blob API in the browser). The substrate keeps no
@@ -3759,13 +3761,11 @@ def create_app(
             )
         import json as _json
 
-        import duckdb
-
         from substrate.write.deliverable_sources import (
             resolve_deliverable_sources,
         )
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             head = con.execute(
                 "SELECT title, deliverable_kind FROM deliverables "
@@ -4309,9 +4309,9 @@ def create_app(
     async def list_interview_projects() -> list[InterviewProjectSummary]:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT p.project_id, p.title, p.topic_description, "
@@ -4349,11 +4349,11 @@ def create_app(
     async def list_interviews_for_project(
         project_id: str,
     ) -> list[InterviewSummary]:
+        from runtime.db_lock import connect_read
         """All interviews invited under one project, oldest first."""
-        import duckdb
 
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT i.interview_id, i.project_id, i.informant_handle, "
@@ -4434,9 +4434,9 @@ def create_app(
     async def get_interview(interview_id: str) -> InterviewDetailResponse:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             row = con.execute(
                 "SELECT i.interview_id, i.project_id, i.status, "
