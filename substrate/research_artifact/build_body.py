@@ -41,7 +41,7 @@ def build_body(
     excerpt, withheld, event_ids = synthesis_from_events(
         investigation_id, events_dir=events_dir
     )
-    agent_notes = load_persisted_agent_notes(investigation_id)
+    agent_notes = load_persisted_agent_notes(investigation_id, events_dir=events_dir)
     return ResearchArtifactBody(
         investigation_id=investigation_id,
         problem_question=question,
