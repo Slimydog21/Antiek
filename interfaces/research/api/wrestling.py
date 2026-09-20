@@ -221,8 +221,12 @@ def _resolve_region_text_from_db(
     except Exception:
         return None
     try:
+        from substrate.graph.owner_read import owner_body_sql
+
+        allowed, policy_params = owner_body_sql()
         row = con.execute(
-            "SELECT text FROM chunks WHERE chunk_id = ?", [chunk_id]
+            "SELECT c.text FROM chunks c JOIN documents d ON d.document_id=c.document_id "
+            f"WHERE c.chunk_id = ? AND {allowed}", [chunk_id, *policy_params]
         ).fetchone()
     except Exception:
         return None

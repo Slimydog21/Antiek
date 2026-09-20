@@ -1,0 +1,27 @@
+........................................................................ [ 22%]
+........................................................................ [ 45%]
+........................................................................ [ 67%]
+.............s....ssss..sssss........................................... [ 90%]
+...............................                                          [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/slimydog/Antiek/worktrees/research-only-principal-split/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_owner_read_path.py: 15 warnings
+  /Users/slimydog/Antiek/worktrees/research-only-principal-split/.venv/lib/python3.12/site-packages/starlette/testclient.py:454: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] services/antiek_format/tests/test_sidecar_e2e.py:407: apply_sidecar restores sidecar rows into the receiving substrate via substrate.behavior + substrate.voice + runtime.db_lock, which are Wave-2 modules not present on a fresh branch off main. The self-contained container-format tests (read/write/sign/verify/project/forbidden-fields/determinism) run regardless. Skipped until the substrate surface lands on this branch.
+SKIPPED [1] services/antiek_format/tests/test_sidecar_e2e.py:527: services.ingestion.sidecar_detector is SPR-03/SPR-10 ingestion-boundary work, not part of the SPR-01 self-contained .antiek container format. Skipped until the ingestion surface lands on this branch.
+SKIPPED [1] services/antiek_format/tests/test_sidecar_e2e.py:552: apply_sidecar restores sidecar rows into the receiving substrate via substrate.behavior + substrate.voice + runtime.db_lock, which are Wave-2 modules not present on a fresh branch off main. The self-contained container-format tests (read/write/sign/verify/project/forbidden-fields/determinism) run regardless. Skipped until the substrate surface lands on this branch.
+SKIPPED [1] services/antiek_format/tests/test_sidecar_e2e.py:604: apply_sidecar restores sidecar rows into the receiving substrate via substrate.behavior + substrate.voice + runtime.db_lock, which are Wave-2 modules not present on a fresh branch off main. The self-contained container-format tests (read/write/sign/verify/project/forbidden-fields/determinism) run regardless. Skipped until the substrate surface lands on this branch.
+SKIPPED [1] services/antiek_format/tests/test_sidecar_e2e.py:644: apply_sidecar restores sidecar rows into the receiving substrate via substrate.behavior + substrate.voice + runtime.db_lock, which are Wave-2 modules not present on a fresh branch off main. The self-contained container-format tests (read/write/sign/verify/project/forbidden-fields/determinism) run regardless. Skipped until the substrate surface lands on this branch.
+SKIPPED [1] services/antiek_format/tests/test_sidecar_e2e.py:763: services.ingestion.sidecar_detector is SPR-03/SPR-10 ingestion-boundary work, not part of the SPR-01 self-contained .antiek container format. Skipped until the ingestion surface lands on this branch.
+SKIPPED [1] services/antiek_format/tests/test_sidecar_e2e.py:780: services.ingestion.sidecar_detector is SPR-03/SPR-10 ingestion-boundary work, not part of the SPR-01 self-contained .antiek container format. Skipped until the ingestion surface lands on this branch.
+SKIPPED [1] services/antiek_format/tests/test_sidecar_e2e.py:790: services.ingestion.sidecar_detector is SPR-03/SPR-10 ingestion-boundary work, not part of the SPR-01 self-contained .antiek container format. Skipped until the ingestion surface lands on this branch.
+SKIPPED [1] services/antiek_format/tests/test_sidecar_e2e.py:799: services.ingestion.sidecar_detector is SPR-03/SPR-10 ingestion-boundary work, not part of the SPR-01 self-contained .antiek container format. Skipped until the ingestion surface lands on this branch.
+SKIPPED [1] services/antiek_format/tests/test_sidecar_e2e.py:824: services.ingestion.sidecar_detector is SPR-03/SPR-10 ingestion-boundary work, not part of the SPR-01 self-contained .antiek container format. Skipped until the ingestion surface lands on this branch.
+309 passed, 10 skipped, 16 warnings in 87.18s (0:01:27)

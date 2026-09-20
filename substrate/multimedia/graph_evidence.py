@@ -182,13 +182,16 @@ def _load_snapshots(
     if len(set(chunk_ids)) != len(chunk_ids) or len(chunk_ids) > _MAX_CANDIDATES:
         raise ValueError("multimedia evidence chunk identities are invalid")
     placeholders = ",".join("?" for _ in chunk_ids)
+    from substrate.graph.owner_read import owner_body_sql
+
+    allowed, policy_params = owner_body_sql()
     rows = connection.execute(
         "SELECT c.chunk_id,c.document_id,d.title,c.section_path,c.text "
         "FROM chunks c JOIN documents d ON d.document_id=c.document_id "
         "LEFT JOIN book_assets b ON b.document_id=d.document_id "
         f"WHERE c.chunk_id IN ({placeholders}) AND d.owner_user_id=? "
-        "AND COALESCE(b.taken_down,FALSE)=FALSE",
-        [*chunk_ids, owner_id],
+        f"AND COALESCE(b.taken_down,FALSE)=FALSE AND {allowed}",
+        [*chunk_ids, owner_id, *policy_params],
     ).fetchall()
     by_id = {
         str(row[0]): (

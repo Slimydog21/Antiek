@@ -6,8 +6,9 @@ SQL fragment. ``search()``, VSS (RG-02), and HTTP (RG-03) must import
 (RESTRICTED_CONTENT_CLASSES)`` alone.
 
 **RESTRICTED_CONTENT_CLASSES alone is never sufficient** for chunk gates:
-owner-only ``personal_reading`` must be excluded on the same non-privileged
-branch as gated-but-public ``restricted_pending_opt_in``. The union is
+owner-only ``personal_reading`` and derivable-only ``research_only`` must be
+excluded on the same non-privileged branch as gated-but-public
+``restricted_pending_opt_in``. The union is
 ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES``.
 
 Chunk search uses a **denylist** (exclude withheld classes on public paths).
@@ -27,6 +28,7 @@ from __future__ import annotations
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
     PERSONAL_READING_CONTENT_CLASS,
+    RESEARCH_ONLY_CONTENT_CLASS,
 )
 
 # Policy tags privileged to bypass the restricted-content gate.
@@ -39,6 +41,21 @@ PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({
     "private_research",
     "operator_only",
 })
+
+# Only the agent derivation principal can retrieve licensed research bodies.
+RESEARCH_AGENT_POLICY_TAG = "private_research"
+assert RESEARCH_AGENT_POLICY_TAG in PRIVILEGED_POLICY_TAGS
+
+
+def research_policy_tag_from_env(value: str | None) -> str:
+    """Validate the research principal before any retrieval or event emission."""
+    tag = (value or "").strip() or "attribution_eligible"
+    if tag not in {"attribution_eligible", RESEARCH_AGENT_POLICY_TAG}:
+        raise ValueError(
+            "ANTIEK_RESEARCH_POLICY_TAG must be attribution_eligible or private_research"
+        )
+    return tag
+
 
 # Content classes that the substrate may withhold from retrieval
 # depending on policy_tag. Per master-spec §9.0 §9.10.
@@ -73,11 +90,19 @@ PERSONAL_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
     PERSONAL_READING_CONTENT_CLASS,
 })
 
+# Agent-only source bodies. Owner authentication cannot grant this permission.
+# Derived notes retain their separate provenance policy below.
+RESEARCH_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
+    RESEARCH_ONLY_CONTENT_CLASS,
+})
+
 # The full set of content classes withheld from a non-privileged retrieval —
-# the union of the gated-but-public class and the owner-only class. Both are
-# excluded on the public branch; only the PRIVILEGED_POLICY_TAGS bypass.
+# the union of the gated-but-public class, the owner-only class, and the
+# derivable-only class. Privileged tags have separate permissions below.
 _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES: frozenset[str] = (
-    RESTRICTED_CONTENT_CLASSES | PERSONAL_ONLY_CONTENT_CLASSES
+    RESTRICTED_CONTENT_CLASSES
+    | PERSONAL_ONLY_CONTENT_CLASSES
+    | RESEARCH_ONLY_CONTENT_CLASSES
 )
 
 
@@ -112,8 +137,9 @@ def non_privileged_chunk_sql_clause(
     ingest always writes an explicit class via ``register_source_document``, so
     NULL denotes only pre-migration legacy content, which the codebase serves by
     contract (``test_sprint11_api::test_get_chunk_null_content_class_grandfathered``,
-    ``test_graph``, ``test_grounding``). A privileged tag bypasses rights
-    withholding but still requires exact ownership for owner-only classes.
+    ``test_graph``, ``test_grounding``). Private research admits research-only
+    bodies; operator-only never does.
+    Both privileged tags still require exact ownership for owner-only classes.
 
     NOTE: ASR SR-07 proposed flipping NULL fail-closed here; that was rejected for
     #65 because it hides legacy content from search/grounding with no backfill.
@@ -127,12 +153,21 @@ def non_privileged_chunk_sql_clause(
     if policy_tag in PRIVILEGED_POLICY_TAGS:
         owner_only = sorted(PERSONAL_ONLY_CONTENT_CLASSES)
         placeholders = ",".join("?" for _ in owner_only)
-        return (
+        sql = (
             f" AND ({table_alias}.content_class IS NULL OR "
             f"{table_alias}.content_class NOT IN ({placeholders}) OR "
-            f"{table_alias}.owner_user_id = ?)",
-            [*owner_only, owner_user_id],
+            f"{table_alias}.owner_user_id = ?)"
         )
+        params = [*owner_only, owner_user_id]
+        if policy_tag != RESEARCH_AGENT_POLICY_TAG:
+            research_only = sorted(RESEARCH_ONLY_CONTENT_CLASSES)
+            research_placeholders = ",".join("?" for _ in research_only)
+            sql = (
+                f" AND ({table_alias}.content_class IS NULL OR "
+                f"{table_alias}.content_class NOT IN ({research_placeholders}))"
+            ) + sql
+            params = [*research_only, *params]
+        return sql, params
     excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
     placeholders = ",".join("?" for _ in excluded)
     sql = (
@@ -250,7 +285,8 @@ def is_chunk_body_withheld(
 
     Returns:
         ``(withheld, label)`` — label is ``"taken_down"``, ``"personal_readable"``,
-        ``"restricted"``, or ``None`` when the body may be served.
+        ``"research_only"``, ``"restricted"``, or ``None`` when the body may be
+        served.
         (``personal_readable`` is the ASR SR-09 API contract label for the
         owner-only personal_reading class — pinned by
         ``tests/test_get_chunk_personal_reading`` + ``test_retrieval_gate_matrix``.)
@@ -259,6 +295,11 @@ def is_chunk_body_withheld(
         return True, "taken_down"
     if content_class in PERSONAL_ONLY_CONTENT_CLASSES:
         return True, "personal_readable"
+    if content_class in RESEARCH_ONLY_CONTENT_CLASSES:
+        # Unconditional: unlike personal_readable, this one has no owner path
+        # that later releases the body. The HTTP chunk surface serves users, and
+        # no user receives a research_only body.
+        return True, "research_only"
     if content_class in RESTRICTED_CONTENT_CLASSES:
         return True, "restricted"
     return False, None

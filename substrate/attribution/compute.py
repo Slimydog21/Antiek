@@ -157,25 +157,9 @@ def compute_attribution_for_synthesis(
         doc_to_content_class: dict[str, Optional[str]] = {r[0]: r[3] for r in doc_rows}
         doc_to_ip_holder: dict[str, Optional[str]] = {r[0]: r[4] for r in doc_rows}
 
-        # §9.0 retrieval-time gating, on the SURFACED (attribution) path.
-        # Two content_classes must NOT surface into an attribution-triggering
-        # synthesis — neither body, nor title, nor a share:
-        #   - restricted_pending_opt_in (gated-but-public copyrighted work
-        #     withheld pending opt-in), and
-        #   - personal_reading (the owner's private third-party reading — the
-        #     Personal-Reading Lane, SPR-01).
-        # This endpoint resolves WHATEVER chunks a given synthesis cited, so a
-        # synthesis built on a privileged (private_research / operator_only)
-        # path could legitimately have included personal_reading chunks; when
-        # attribution is later computed here — an attribution-ELIGIBLE surface,
-        # not a privileged owner read — both classes must be dropped so they
-        # receive zero display share and zero title (personal_reading accrues
-        # zero ad attribution by construction, master-spec §9.0 / lane invariant).
-        # We filter on the SAME non-privileged exclusion union the public
-        # chunk-search gate uses (substrate/graph/search.py
-        # _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES = RESTRICTED ∪ PERSONAL_ONLY)
-        # so the two surfaces can never drift apart. (SPR-01 M2 defense-in-depth;
-        # supersedes the RESTRICTED-only filter from SPR-10 M1.)
+        # Public attribution excludes gated, personal-reading, and research-only
+        # sources using the same union as public chunk retrieval. Private agent
+        # retrieval never grants a source display share or title here.
         from substrate.graph.retrieval_gate import (
             _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
         )

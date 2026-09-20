@@ -1,6 +1,9 @@
 """P1 §6 — full-graph export bundle (read half). ``GET /export/my-graph``.
 
-Streams a downloadable zip of the operator's full knowledge graph:
+Streams a downloadable zip of the operator's full knowledge graph. Refuses
+snapshots containing research-only sources. Event snapshots omit agent-only input
+context; server backups and owner exports have different permissions:
+
 
 - ``graph/`` — DuckDB ``EXPORT DATABASE`` snapshot of the graph DB
   (``schema.sql`` + ``load.sql`` + per-table Parquet shards), taken on a
@@ -10,8 +13,8 @@ Streams a downloadable zip of the operator's full knowledge graph:
   ``schema.sql`` DuckDB emits for self-referential FKs is normalized with
   ``tools/backup_normalize_schema.py`` so the bundle restores via
   ``IMPORT DATABASE``.
-- ``events/`` — sealed event-log Parquet files plus live JSONL tails, copied
-  byte-for-byte. No locks: the event log is append-only by construction
+- ``events/`` — sealed event-log Parquet files plus live JSONL tails, projected
+  for the owner. No locks: the event log is append-only by construction
   (substrate/event_log/events.py), so reads never race a writer.
 - ``manifest.json`` — generated_at, source db basename, schema versions,
   counts, and an explicit ``graph_not_mutated`` statement.
@@ -70,8 +73,11 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from substrate.constants import RESEARCH_ONLY_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import EVENT_SCHEMA_VERSION, default_events_dir  # noqa: E402
 from substrate.graph import default_db_path  # noqa: E402
+
+from .event_visibility import owner_event_projection  # noqa: E402
 
 export_router = APIRouter(prefix="/export", tags=["export"])
 
@@ -84,6 +90,7 @@ EXPORT_LOCK_TIMEOUT_S = 15.0
 _DB_UNAVAILABLE = "graph database unavailable"
 _EXPORT_FAILED = "graph export failed"
 _LOCK_BUSY = "graph write lock held by another process"
+_OWNER_EXPORT_WITHHELD = "full graph export contains agent-only source data"
 
 
 class _ExportUnavailable(RuntimeError):
@@ -145,6 +152,10 @@ async def export_my_graph(request: Request) -> StreamingResponse:
             },
             "master_md": _master_md_status(),
             "graph_not_mutated": True,
+            "owner_projection": {
+                "event_agent_inputs": "omitted",
+                "note_taker_windows": "omitted agent replay work; not an operational backup",
+            },
         }
         (bundle_root / "manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
@@ -244,6 +255,13 @@ def _export_graph(
                     "ORDER BY table_name"
                 ).fetchall()
             ]
+            # Full database snapshots cannot be made owner-readable by the
+            # retrieval gate. Refuse inside the same snapshot transaction.
+            if "documents" in tables and con.execute(
+                "SELECT 1 FROM documents WHERE content_class = ? LIMIT 1",
+                [RESEARCH_ONLY_CONTENT_CLASS],
+            ).fetchone():
+                raise HTTPException(status_code=403, detail=_OWNER_EXPORT_WITHHELD)
             table_rows: dict[str, int] = {}
             for t in tables:
                 quoted = '"' + t.replace('"', '""') + '"'
@@ -256,6 +274,15 @@ def _export_graph(
             # string literal.
             escaped = str(out_dir).replace("'", "''")
             con.execute(f"EXPORT DATABASE '{escaped}' (FORMAT PARQUET);")
+            # Replay work contains private agent prompts copied from chunks and
+            # event inputs. It is not owner knowledge and survives source deletion.
+            if "note_taker_windows" in tables:
+                replay_file = (out_dir / "note_taker_windows.parquet").as_posix().replace("'", "''")
+                con.execute(
+                    "COPY (SELECT * FROM note_taker_windows WHERE FALSE) "
+                    f"TO '{replay_file}' (FORMAT PARQUET)"
+                )
+                table_rows["note_taker_windows"] = 0
             version_row = con.execute("SELECT version()").fetchone()
             duckdb_version = (
                 str(version_row[0]) if version_row is not None else "unknown"
@@ -284,10 +311,11 @@ def _export_graph(
 
 
 def _copy_event_files(events_root: str, out_dir: Path) -> dict[str, int]:
-    """Copy sealed ``*.parquet`` + live ``*.jsonl`` event files byte-for-byte.
+    """Copy and project sealed ``*.parquet`` and live ``*.jsonl`` event files.
 
     No locks on the event log (append-only by construction); a torn tail
-    line in a live JSONL is copied as-is, exactly like the nightly backup.
+    line in a live JSONL fails validation of the copied snapshot. Unlike the
+    server backup, owner export omits agent-only context.
     Symlinks are skipped (the hardened reader in substrate/event_log/events.py
     treats non-regular event files as a physical-trajectory error).
     """
@@ -304,11 +332,56 @@ def _copy_event_files(events_root: str, out_dir: Path) -> dict[str, int]:
             continue
         if name.endswith(".parquet"):
             shutil.copyfile(src, out_dir / name)
+            _project_owner_events(out_dir / name)
             counts["parquet"] += 1
         elif name.endswith(".jsonl"):
             shutil.copyfile(src, out_dir / name)
+            _project_owner_events(out_dir / name)
             counts["jsonl"] += 1
     return counts
+
+
+def _project_owner_events(path: Path) -> None:
+    """Project a copied event snapshot without changing the agent's source log.
+
+    Historical agent inputs are omitted, while event identity and derived results
+    remain exportable. Malformed snapshots fail rather than release unknown bytes.
+    """
+    def project(row: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(row.get("payload"), str):
+            row = {**row, "payload": json.loads(row["payload"])}
+        return owner_event_projection(row)
+
+    staged = path.with_suffix(path.suffix + ".owner")
+    if path.suffix == ".jsonl":
+        with path.open(encoding="utf-8") as source, staged.open("w", encoding="utf-8") as out:
+            for line in source:
+                if line.strip():
+                    out.write(json.dumps(project(json.loads(line)), default=str) + "\n")
+        staged.replace(path)
+        return
+
+    import duckdb
+
+    with duckdb.connect(":memory:") as con:
+        con.execute("CREATE TABLE owner_events AS SELECT * FROM read_parquet(?)", [str(path)])
+        columns = [row[0] for row in con.execute("DESCRIBE owner_events").fetchall()]
+        if "payload" not in columns:
+            return  # legacy metadata-only event files contain no source context
+        reader = con.cursor()
+        try:
+            reader.execute("SELECT rowid, * FROM owner_events")
+            while rows := reader.fetchmany(1000):
+                for values in rows:
+                    row = dict(zip(columns, values[1:], strict=True))
+                    projected = project(row)
+                    payload = json.dumps(projected["payload"], default=str)
+                    con.execute("UPDATE owner_events SET payload=? WHERE rowid=?", [payload, values[0]])
+        finally:
+            reader.close()
+        escaped = str(staged).replace("'", "''")
+        con.execute(f"COPY owner_events TO '{escaped}' (FORMAT PARQUET)")
+    staged.replace(path)
 
 
 def _master_md_status() -> dict[str, Any]:

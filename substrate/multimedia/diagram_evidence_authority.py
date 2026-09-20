@@ -185,6 +185,9 @@ def _validate_chunk_ids(chunk_ids: tuple[str, ...]) -> None:
 def _chunk_snapshot_on(connection: Any, chunk_ids: tuple[str, ...]) -> list[list[str | None]]:
     _validate_chunk_ids(chunk_ids)
     placeholders = ",".join("?" for _ in chunk_ids)
+    from substrate.graph.owner_read import owner_body_sql
+
+    allowed, policy_params = owner_body_sql()
     try:
         rows = connection.execute(
             "SELECT c.chunk_id, c.document_id, c.text, CAST(c.chunk_index AS VARCHAR), "
@@ -196,8 +199,8 @@ def _chunk_snapshot_on(connection: Any, chunk_ids: tuple[str, ...]) -> list[list
             "CASE WHEN d.raw_text IS NULL THEN NULL ELSE sha256(d.raw_text) END, "
             "CASE WHEN d.metadata IS NULL THEN NULL ELSE sha256(d.metadata) END, "
             "d.owner_user_id FROM chunks c JOIN documents d ON d.document_id=c.document_id "
-            f"WHERE c.chunk_id IN ({placeholders})",
-            list(chunk_ids),
+            f"WHERE c.chunk_id IN ({placeholders}) AND {allowed}",
+            [*chunk_ids, *policy_params],
         ).fetchall()
     except Exception:
         raise DiagramEvidenceAuthorityError("canonical graph chunks are unavailable") from None

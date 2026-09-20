@@ -67,7 +67,10 @@ def test_privileged_policy_tag_retains_owner_boundary():
         sql, params = non_privileged_chunk_sql_clause(policy_tag=tag)
         assert "owner_user_id = ?" in sql
         assert params[-1] == "__operator__"
-        assert set(params[:-1]) == PERSONAL_ONLY_CONTENT_CLASSES
+        excluded = set(PERSONAL_ONLY_CONTENT_CLASSES)
+        if tag == "operator_only":
+            excluded.add("research_only")
+        assert set(params[:-1]) == excluded
 
 
 @pytest.fixture

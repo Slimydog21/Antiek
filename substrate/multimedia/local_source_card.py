@@ -312,14 +312,17 @@ def _snapshot(
     for value in chunk_ids:
         _identifier(value, "source_chunk_id")
     placeholders = ",".join("?" for _ in chunk_ids)
+    from substrate.graph.owner_read import owner_body_sql
+
+    allowed, policy_params = owner_body_sql()
     try:
         with connect_read(db_path) as connection:
             rows = connection.execute(
                 "SELECT c.chunk_id, c.document_id, c.text, c.section_path, "
                 "d.title, d.source_uri, d.owner_user_id FROM chunks c "
                 "JOIN documents d ON d.document_id=c.document_id "
-                f"WHERE c.chunk_id IN ({placeholders})",
-                list(chunk_ids),
+                f"WHERE c.chunk_id IN ({placeholders}) AND {allowed}",
+                [*chunk_ids, *policy_params],
             ).fetchall()
     except Exception:
         raise LocalSourceCardError("canonical source-card evidence is unavailable") from None

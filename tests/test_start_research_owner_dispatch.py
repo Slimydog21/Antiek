@@ -10,6 +10,12 @@ from interfaces.research.api.owner_byot_dispatch import OwnerByotOutcomeUnknown
 from interfaces.research.api.settings_models_admin import UserModelChoice
 from substrate.dispatch.base import NormalizedUsage
 from substrate.dispatch.router import DispatchResult
+from substrate.schemas import EvidenceRetrieveRequestedPayload
+
+
+def evidence_request():
+    return EvidenceRetrieveRequestedPayload(sub_question="same", category="market_sizing",
+        evidence_type_required="quantitative", chunks_block="", subgraph_block="")
 
 
 @pytest.mark.parametrize("role", subject.PAID_LOOP_ONE_ROLES)
@@ -33,8 +39,8 @@ def test_every_paid_role_uses_deterministic_owner_child_operation(monkeypatch, r
     )
     token = subject.install_manifest(manifest)
     try:
-        first = subject.dispatch_loop_one("same prompt", role, investigation_id="inv-1")
-        second = subject.dispatch_loop_one("same prompt", role, investigation_id="inv-1")
+        first = subject.dispatch_loop_one("same prompt", role, investigation_id="inv-1", evidence_request=evidence_request())
+        second = subject.dispatch_loop_one("same prompt", role, investigation_id="inv-1", evidence_request=evidence_request())
     finally:
         subject.reset_manifest(token)
 
@@ -62,8 +68,8 @@ def test_semantic_identity_distinguishes_duplicate_question_ordinals(monkeypatch
         Mock(), "owner", "inv", "op", {r: choice for r in subject.PAID_LOOP_ONE_ROLES},
     ))
     try:
-        subject.dispatch_loop_one("same", "evidence_retriever", investigation_id="inv", semantic_call_id="phase2:0:abc")
-        subject.dispatch_loop_one("same", "evidence_retriever", investigation_id="inv", semantic_call_id="phase2:1:abc")
+        subject.dispatch_loop_one("same", "evidence_retriever", investigation_id="inv", semantic_call_id="phase2:0:abc", evidence_request=evidence_request())
+        subject.dispatch_loop_one("same", "evidence_retriever", investigation_id="inv", semantic_call_id="phase2:1:abc", evidence_request=evidence_request())
     finally:
         subject.reset_manifest(token)
     assert ids[0] != ids[1]

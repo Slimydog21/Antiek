@@ -33,8 +33,13 @@ from typing import Any, Literal
 from substrate.constants import (
     PERSONAL_READABLE_CONTENT_CLASSES,
     PERSONAL_READING_CONTENT_CLASS,
+    RESEARCH_ONLY_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
     SERVE_SNIPPET_MAX_CHARS,
+)
+from substrate.rights.research_only import (
+    apply_quotation_policy,
+    resolve_quotation_policy,
 )
 
 from .html_sanitizer import is_trusted_sanitized
@@ -100,6 +105,14 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
     difference. The gate is no less enforced for being applied after the
     fetch: a non-servable book's ``raw_text`` never leaves this function.
 
+    A ``research_only`` document (books/publishers SPR-1) is refused a body on
+    EVERY path — the public one, and the owner one too. It is the one class whose
+    refusal does not consult ``owner`` at all, because the person who paid for its
+    ingestion is the owner and the terms withhold the work from them by design.
+    What it may return is a quotation bounded by its negotiated per-tier policy
+    (``substrate.rights.research_only``), which is zero characters unless a deal
+    recorded otherwise.
+
     ``owner`` (Personal-Reading Lane SPR-01) is the OWNER full-read switch and
     it defaults to ``False`` so the PUBLIC serve path is byte-identical to
     before — every existing caller (the public serve, ``serve_full_text_guarded``,
@@ -143,6 +156,31 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
             document_id=document_id, found=True, servability=status,
             servable=False, full_text=None, snippet=None,
             title=title, author=author, reason="taken_down",
+        )
+
+    # Derivable-only (books/publishers SPR-1). A research_only work is served to
+    # NOBODY: no full body on any path, and no default snippet either. It sits
+    # ABOVE the owner branch deliberately. The owner branch below already keys on
+    # personal_reading and so cannot admit this class today, but ordering the
+    # refusal first means the guarantee survives an edit to that predicate —
+    # ``owner`` is not read anywhere in this branch, so there is no owner-shaped
+    # hole to widen. That matters more here than elsewhere: the user who paid for
+    # the ingestion is the owner, and they are exactly who the terms withhold the
+    # body from.
+    #
+    # What may leave is a quotation, and only as much of one as this work's
+    # negotiated tier permits — zero unless a deal recorded otherwise. It rides in
+    # ``snippet`` rather than ``full_text`` because it is an excerpt inside a
+    # citation, not the work; ``servable`` stays False so no downstream caller
+    # reads this as a servable book.
+    if content_class == RESEARCH_ONLY_CONTENT_CLASS:
+        policy = resolve_quotation_policy(metadata)
+        return ServeResult(
+            document_id=document_id, found=True, servability=status,
+            servable=False, full_text=None,
+            snippet=apply_quotation_policy(raw_text, policy),
+            title=title, author=author,
+            reason=f"research_only_derivable:{policy.tier}",
         )
 
     # Owner full-read (Personal-Reading Lane SPR-01). On the OWNER path only, a

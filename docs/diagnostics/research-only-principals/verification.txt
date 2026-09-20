@@ -1,0 +1,39 @@
+SUPERSEDED COVERAGE CLAIM: see reader-audit.md and direct-reader-verification.txt.
+The results below are historical; user probes disproved the citation coverage claim.
+
+Research-only principal split verification, 2026-09-20
+Worktree: /Users/slimydog/Antiek/worktrees/research-only-principal-split
+Base: f24981db2bde8ce2fb88158fc54460cfd168c294
+Python: .venv/bin/python, Python 3.12.13
+
+Canonical command (exit 0; 179 passed, 16 deprecation warnings):
+ANTIEK_OPERATOR_TOKEN='' ANTIEK_OPERATOR_EMAIL='' ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID='' .venv/bin/python -m pytest tests/test_research_only_principals.py tests/test_research_only_rights_state.py tests/test_owner_read_path.py tests/test_retrieval_gate_canon.py tests/test_retrieval_gate_polarity.py tests/test_retrieval_time_gate.py tests/test_null_content_class_gate.py tests/test_loop_one_phase2_parallel.py tests/test_turbopuffer_hybrid_mount.py tests/test_turbopuffer_shadow.py tests/test_api.py tests/test_retrieval_gate_closure.py tests/test_retrieval_gate_matrix.py tests/test_export_routes.py -q
+Full output: acceptance.txt
+Owner regressions explicitly set their own bearer token; clearing inherited auth is only legacy test isolation.
+
+Types (exit 0):
+.venv/bin/python -m mypy --follow-imports=silent substrate/graph/retrieval_gate.py substrate/rights/research_only.py interfaces/research/api/event_visibility.py interfaces/research/api/export_routes.py
+Output: mypy.txt
+
+Lint (exit 0):
+.venv/bin/ruff check interfaces/research/api/event_visibility.py interfaces/research/api/export_routes.py interfaces/research/api/app.py substrate/graph/retrieval_gate.py substrate/rights/research_only.py orchestration/loop_one/orchestrator.py tests/test_research_only_principals.py tests/test_retrieval_gate_canon.py tools/codegen/chunk_provenance.py
+Output: lint.txt
+Full carried-file lint additionally reports 8 inherited modernization findings in comment-only attribution/compute.py and 1 inherited enum finding in books/servability.py. Not changed as part of this fix.
+git diff --check: exit 0.
+
+Pre-fix reproductions:
+retrieval-before.txt: 3 failed, 3 passed; actual HTTP sentinel leaks plus owner-tag chunk access.
+transport-before.txt: 2 failed; both trajectory routes expose raw agent context.
+export-before.txt: 3 failed; owner export permits source DB and historical JSONL/Parquet contexts.
+
+Broader evidence-bridge suite:
+4 failures, 12 passed on rejected lane 88dbbf454, same four failures on this branch.
+Existing xiaomi override bypasses stub dispatch and attempts a connection; DNS fails.
+Not claimed green. Full baseline output: bridge-baseline.txt.
+No successful live provider call, payment, source mutation, merge or deployment.
+
+Independent review:
+Standards: no code-level violation; stale policy comment and missing evidence/scope map repaired.
+Spec: found owner full-export bypass; added snapshot-time refusal and regression tests.
+Final export repair review: ACCEPT, no remaining blocking finding.
+Reviews used separate agents of the same model lineage; no different-lineage ship approval claimed.

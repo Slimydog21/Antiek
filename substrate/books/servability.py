@@ -39,6 +39,7 @@ from enum import Enum
 from substrate.constants import (
     BOOK_DEFAULT_SERVABILITY,
     PERSONAL_READING_CONTENT_CLASS,
+    RESEARCH_ONLY_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
 )
 
@@ -71,6 +72,17 @@ class ServabilityStatus(str, Enum):
     # reading" (owner can open it in full) distinctly from a gated book (the
     # owner cannot read a gated copyrighted book in full).
     PERSONAL_READABLE = "personal_readable"
+    # Derivable-only (books/publishers SPR-1). content_class='research_only' is a
+    # work the user paid an agent to ingest on terms that let nobody read it: the
+    # agent derives claims from it, and the body is served to no one, the payer
+    # included. It is NOT in _SERVABLE_STATUSES and NOT mapped through
+    # _CONTENT_CLASS_TO_STATUS, so the drift assertion below is untouched. It is a
+    # status of its own rather than GATED_METADATA_ONLY because the two promise
+    # different things to the reader: a gated book is withheld pending an opt-in
+    # that might arrive, and yields a snippet meanwhile; a research_only work is
+    # withheld permanently by the terms it was acquired under, and quotes only
+    # what its negotiated tier permits (zero, by default).
+    RESEARCH_DERIVABLE_ONLY = "research_derivable_only"
 
 
 # content_class → servable ServabilityStatus. Only the four allowlisted
@@ -118,7 +130,13 @@ def servability_of(
        it in full, a gated copyrighted book they cannot; the library renders the
        two differently). It is still non-servable on the public path
        (``is_servable_full_text(PERSONAL_READABLE)`` is False).
-    4. Everything else — ``restricted_pending_opt_in``, ``None``, an
+    4. ``research_only`` resolves to ``RESEARCH_DERIVABLE_ONLY`` — also a
+       DISTINCT branch before the fall-through, and for the opposite reason to
+       (3): flattening it to gated would hand it the gated snippet, and this
+       state's quotation allowance is a negotiated per-tier value whose floor is
+       zero. It is non-servable on every path, owner included
+       (``is_servable_full_text(RESEARCH_DERIVABLE_ONLY)`` is False).
+    5. Everything else — ``restricted_pending_opt_in``, ``None``, an
        unrecognised value — resolves to ``GATED_METADATA_ONLY``
        (deny-by-default). This is the branch that catches "aggregated
        from online with unknown rights".
@@ -127,6 +145,8 @@ def servability_of(
         return ServabilityStatus.TAKEN_DOWN
     if content_class == PERSONAL_READING_CONTENT_CLASS:
         return ServabilityStatus.PERSONAL_READABLE
+    if content_class == RESEARCH_ONLY_CONTENT_CLASS:
+        return ServabilityStatus.RESEARCH_DERIVABLE_ONLY
     if content_class is None:
         return ServabilityStatus.GATED_METADATA_ONLY
     return _CONTENT_CLASS_TO_STATUS.get(

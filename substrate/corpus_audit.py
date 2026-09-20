@@ -127,6 +127,7 @@ from substrate.collective_graph.eligibility import (
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
     PERSONAL_READING_CONTENT_CLASS,
+    RESEARCH_ONLY_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
     THIRD_PARTY_DOCUMENT_TYPES,
 )
@@ -140,6 +141,7 @@ from substrate.ingest_budget import (
     BudgetState,
 )
 from substrate.quality_gate import QualityGateResult, QualityGateVerdict
+from substrate.rights.research_only import resolve_quotation_policy
 
 # Check names — stable string ids so CI, the dashboard, and the merge step refer
 # to the same checks. Order is the reading order of the spec's M2 list.
@@ -199,6 +201,23 @@ CHECK_PERSONAL_NONATTRIB = "personal_reading_nonattributable"
 CHECK_PERSONAL_NOT_TRAINING = "personal_reading_not_in_training"
 CHECK_DANGLING_IP_HOLDER = "dangling_ip_holder"
 
+# ── Derivable-only standing check (books/publishers SPR-1) ──
+# CHECK_RESEARCH_ONLY_WITHHELD — a research_only document must be servable to
+# NOBODY: not the public path, and not the owner path either. This exists for the
+# same reason the personal-lane arm above does: _check_gated_leak is structurally
+# blind to the class (research_only is neither GATED_DEFAULT_CONTENT_CLASS nor a
+# member of SERVABLE_CONTENT_CLASSES), so without this arm no standing check ever
+# exercises the serve path for it. It differs from the personal arm in the half
+# that matters — it asserts the OWNER path too, because the user who paid for the
+# ingestion is the owner and the terms withhold the work from exactly them.
+#
+# It also re-derives each row's quotation policy from metadata and compares it
+# against the bytes the serve path returned. That is a genuine cross-check rather
+# than a restatement: the served snippet and the recomputed cap come from
+# different places, so a policy that drifted from what is actually being served
+# shows up here instead of in a publisher's complaint.
+CHECK_RESEARCH_ONLY_WITHHELD = "research_only_withheld"
+
 ALL_CHECK_NAMES = (
     CHECK_SERVABLE_BASIS,
     CHECK_GATED_LEAK,
@@ -210,6 +229,7 @@ ALL_CHECK_NAMES = (
     CHECK_PERSONAL_NONATTRIB,
     CHECK_PERSONAL_NOT_TRAINING,
     CHECK_DANGLING_IP_HOLDER,
+    CHECK_RESEARCH_ONLY_WITHHELD,
 )
 
 # The training/RL export tables/views this corpus exports documents through. EMPTY
@@ -635,6 +655,59 @@ def _check_personal_not_in_training_impl(
         count=len(offenders),
         offending=_bounded(offenders),
         detail=detail,
+    )
+
+
+def _check_research_only_withheld(con: Any) -> CheckResult:
+    """No research_only row renders a body, on the public path OR the owner path.
+
+    Three ways a row can offend, each checked against the REAL serve chokepoint
+    rather than a column comparison:
+
+      1. the public projection returns ``servable`` or a ``full_text``;
+      2. the OWNER projection (``owner=True`` — the switch that legitimately
+         releases a personal_reading body) returns one. This is the arm that
+         catches research_only being folded into the personal lane;
+      3. the bytes served alongside the refusal exceed the quotation cap this
+         row's own metadata resolves to. A capped quote is permitted; more of the
+         work than the deal allows is not.
+    """
+    rows = con.execute(
+        "SELECT document_id, metadata FROM documents "
+        "WHERE content_class = ? ORDER BY document_id",
+        [RESEARCH_ONLY_CONTENT_CLASS],
+    ).fetchall()
+
+    leaked: list[str] = []
+    for doc_id, metadata in rows:
+        policy = resolve_quotation_policy(metadata)
+        for label, served in (
+            ("public", serve_full_text(con, doc_id)),
+            ("owner", serve_full_text(con, doc_id, owner=True)),
+        ):
+            if served.servable or served.full_text is not None:
+                leaked.append(f"{doc_id} (research_only body renders on the {label} path)")
+                continue
+            snippet = served.snippet
+            # +1 for the ellipsis apply_quotation_policy appends to a cut quote.
+            if snippet is not None and len(snippet) > policy.max_quote_chars + 1:
+                leaked.append(
+                    f"{doc_id} ({label} path served {len(snippet)} chars against a "
+                    f"{policy.max_quote_chars}-char {policy.tier} quotation cap)"
+                )
+
+    ok = not leaked
+    return CheckResult(
+        name=CHECK_RESEARCH_ONLY_WITHHELD,
+        ok=ok,
+        count=len(leaked),
+        offending=_bounded(leaked),
+        detail=(
+            f"{len(rows)} research_only row(s) audited; all withheld on both the "
+            "public and owner serve paths, within their quotation caps"
+            if ok
+            else f"{len(leaked)} research_only row(s) served more than the terms allow"
+        ),
     )
 
 
@@ -1230,6 +1303,7 @@ def run_audit(
             _check_personal_nonattributable(con),
             _check_personal_not_in_training(con),
             _check_dangling_ip_holder(con),
+            _check_research_only_withheld(con),
         ]
     finally:
         con.close()
