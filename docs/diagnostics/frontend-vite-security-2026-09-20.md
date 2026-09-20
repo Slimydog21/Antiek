@@ -43,7 +43,9 @@ checks for changed configuration defaults and tool compatibility. This app does
 not customize resolve.conditions, use library build mode or Sass configuration.
 The installed Storybook builder overrides optimizeDeps.entries with its story
 entries, so the application entry restriction does not replace Storybook's scan.
-Storybook is rebuilt to test that contract, rather than relying only on source.
+The production Storybook build passes, but does not exercise development-only
+optimization. A separate Storybook development-server browser check below
+verifies a real story and optimized dependencies.
 
 ## Vite upgrade — Handoff
 
@@ -59,13 +61,18 @@ No application LLM, production, paid provider or remote visual service tested.
 
 Windows-specific alternate-path exploits cannot be reproduced on this Mac.
 The probe verifies configured HTTP proxies, not the /ws backend proxy.
-No rendered browser interaction or screenshot parity check ran for this upgrade.
+A single Storybook story renders in Chrome; application journeys and screenshot
+parity against a baseline remain unproved. The development probe uses the
+global WebSocket available in Node 22. Its current command requires Node 22,
+although Vite itself supports the existing Node 20 CI runtime.
 Remaining moderate dependencies and Router migration remain open.
 
 ### Status
 
-Final local tests/builds pass after the entry correction. Independent review
-and CI remain pending. Provisional readiness 90/100 until those gates complete. This does not establish deployed security or full product completion.
+Final local tests/builds pass after the entry correction. Independent GLM review
+returned ACCEPT, 92/100, and independently reproduced the audit and development
+probe. Integrated CI remains pending. This does not establish deployed security
+or full product completion.
 
 ### Files touched
 
@@ -80,7 +87,9 @@ and CI remain pending. Provisional readiness 90/100 until those gates complete. 
 - [x] Reproduce generated-HTML scanner error and repair its entry contract.
 - [x] Real optimized dependency, HMR, HTTP proxy and file-deny verification.
 - [x] Final tests/builds after the entry correction.
-- [ ] Independent review and CI.
+- [x] Independent review ACCEPT, 92/100.
+- [x] Storybook development story renders with optimized dependencies in Chrome.
+- [ ] Integrated CI.
 
 ### Gate results
 
@@ -142,3 +151,30 @@ in order: PR #3260, then #3263, then this branch, with checks on integrated stat
 
 Router migration, PDF runtime deletion, screenshot rebaselining and production
 changes remain separate work.
+
+### Independent-review follow-up
+
+With Node 22.22.0, ran `npm run storybook -- --ci --no-open --port 18885`
+with telemetry disabled and a synthetic API address. Chrome loaded
+`/iframe.html?id=lemon-button--grid&viewMode=story` from this local server.
+All 12 buttons rendered, the settled page had `sb-show-main`, and resource
+timing recorded Storybook's optimized dependency modules. The reload captured
+zero window errors or unhandled rejections. The screenshot was visually inspected.
+This proves one story's development path, not every story or baseline parity.
+Storybook still warns about addon-essentials 8.6.14 versus core 8.6.18.
+
+The initial browser read inspected hidden loading/error-template DOM too early;
+it was not a component failure. The final check waits for 12 buttons inside the
+actual story root and the settled body class. Private evidence remains in
+`.audit/storybook-dev.log`, `storybook-dev-browser.json` and
+`storybook-dev-browser.png`. No app source changed after the reviewed commit
+169e2af2b430e90da1b1bbbb484788cb34839d60.
+
+The review's concern about the lock-delta artifact was checked against the file:
+its esbuild and platform records correctly say 0.21.5 to 0.25.12. No correction
+is needed. Future application HTML entry points must be added to
+`optimizeDeps.entries`; the present app has one index.html entry.
+
+Evidence SHA-256 `storybook-dev-browser.json`: `8ba417c89643d3de77bbcec450c79329fb6a45ff7e23a04ef8c709fcbe0a126c`.
+
+Evidence SHA-256 `storybook-dev-browser.png`: `a2665b32056565cc92f927ea100bd56e70adcaf8ad7d726a468a3d93a56e8a92`.
