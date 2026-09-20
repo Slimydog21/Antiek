@@ -59,7 +59,7 @@ import json
 import os
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 DEFAULT_LOG_PATH = Path.home() / ".antiek" / "agent_failures.jsonl"
