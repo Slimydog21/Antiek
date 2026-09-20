@@ -1,3 +1,4 @@
+import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -164,7 +165,7 @@ function EmptyState({
   return (
     <div className="h-full flex items-center justify-center bg-ice-2 dark:bg-space-2">
       <div className="max-w-md text-center px-6 text-ink dark:text-bright">
-        <h1 className="text-2xl font-serif mb-3">Load a PDF to wrestle.</h1>
+        <span className="flex items-center gap-3"><WorkflowArt workflow="wrestler" size={52} className="shrink-0" /><h1 className="text-2xl font-serif mb-3">Load a PDF to wrestle.</h1></span>
         <p className="text-sm text-shadow-1 dark:text-moonlight font-serif leading-relaxed mb-5">
           Drop the PDF. Highlight any passage to capture it as a region.
           The trajectory feed will appear as a docked panel; cross-document
