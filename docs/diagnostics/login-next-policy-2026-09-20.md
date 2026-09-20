@@ -40,19 +40,19 @@ The pre-fix real Login test failed with the history exception. Four of five fron
 - Node: `/opt/homebrew/opt/node@22/bin/node`, 22.22.0.
 - Final dependencies: clean `npm ci` from unchanged branch lock; React Router and react-router-dom 6.30.4, @remix-run/router 1.23.3, Vitest 4.1.10, jsdom 29.1.1.
 - Initial red/green frontend run used a temporary symlink to `frontend-dependency-patches-20260920` dependencies (Router 6.30.6). It was removed before clean install and final verification.
-- Network: npm registry install only; no production API, email, telemetry or browser calls. Python `ANTIEK_HOME` and `ANTIEK_DUCKDB_PATH` were scratch paths before final imports; pytest additionally isolates each database.
+- Initial gate network: npm registry install only. The later Chrome checks use loopback mocked auth HTTP as described below, without production auth calls or live email. Python `ANTIEK_HOME` and `ANTIEK_DUCKDB_PATH` were scratch paths before final imports; pytest additionally isolates each database.
 
 ### Not proved
 
-No browser-engine E2E, live email/passkey ceremony, deployment, full product suite, or elimination of Router dependency advisories. This is a bounded login policy repair. The regression establishes navigation failure, not confirmed external navigation or XSS. Independent review remains pending.
+Chrome component integration is verified below, using mocked auth HTTP responses and a synthetic destination screen. No live email/passkey ceremony, production session authorization, deployment, full workstation E2E, full product suite, or elimination of Router dependency advisories is proved. The regression establishes navigation failure, not confirmed external navigation or XSS.
 
 ### Status
 
-Local scoped tests and typecheck pass. Not merged or deployed.
+Local scoped tests and typecheck pass. Independent GLM review accepted the source at 93/100; eight Chrome integration cases subsequently passed. Draft PR3269 remains subject to CI and integration; not merged or deployed.
 
 ### Files touched
 
-`apps/reading/src/modes/Login/index.tsx`, adjacent `Login.redirect.test.tsx`, `apps/reading/src/lib/safeNext.ts` and its test, `interfaces/research/api/auth.py`, `tests/test_magic_link_auth.py`, this dossier. No App.tsx or manifests changed.
+`apps/reading/src/modes/Login/index.tsx`, adjacent `Login.redirect.test.tsx`, `apps/reading/src/lib/safeNext.ts` and its test, `interfaces/research/api/auth.py`, `tests/test_magic_link_auth.py`, this dossier, and the three browser artifacts under `docs/diagnostics/assets/login-next-policy-20260920/`. No App.tsx or manifests changed.
 
 ### Milestones (checkboxes)
 
@@ -60,7 +60,9 @@ Local scoped tests and typecheck pass. Not merged or deployed.
 - [x] Normalize query/state and both claim-response branches.
 - [x] Align backend persisted destination policy.
 - [x] Clean dependency install, focused frontend suite, full magic-link module, typecheck.
-- [ ] Independent review and integration.
+- [x] Independent source review (GLM ACCEPT 93/100).
+- [x] Eight Chrome component/HTTP integration cases with sanitized artifacts.
+- [ ] CI and integration.
 
 ### Gate results
 
@@ -90,11 +92,11 @@ A Router upgrade alone could address dependency advisories, but would leave the 
 
 ### Open questions
 
-Independent critic to assess boundary policy and test coverage. Hardware passkey/browser acceptance remains separate.
+Independent source critic accepted the repair. Full workstation and hardware passkey acceptance remain separate from the recorded Chrome fixture checks.
 
 ### Next sprint can start when
 
-The claimed files and scoped commit are handed off to the orchestrator for independent review; any wider routing change must coordinate the existing App.tsx owner.
+Draft PR3269 passes its remaining integration gates; any wider routing change must coordinate the existing App.tsx owner.
 
 ### Out-of-scope temptations
 
@@ -111,3 +113,18 @@ Baseline command: `/Users/slimydog/Antiek/platform/.venv/bin/python -m mypy --st
 Final command: same mypy command without the two `--shadow-file` options. Exit 1; full log `.audit/login-mypy-followup.log`. `.audit/login-mypy-delta.json` records the diagnostic delta and confirms every remaining diagnostic matches a base diagnostic at an unchanged source line.
 
 Reverification: the canonical pytest command above passed all 54 tests, exit 0 (`.audit/backend-typed-followup.log`); Ruff on `auth.py` and `test_magic_link_auth.py` passed, exit 0 (`.audit/login-ruff-followup.log`). Original commit `9a0837d2943a98bc5d5907e1dcdde75084c22eec` remains intact for independent-review provenance.
+
+
+### Browser integration and review follow-up
+
+The orchestrator drove eight Chrome cases through browser-harness: malformed slash/backslash, external HTTPS and JavaScript scheme queries; empty `next`; a valid path with query/fragment; a typed-code claim returning malformed `next`; its passkey-setup variant; and skipping setup. All observed destinations matched expectations, and every captured `error`/`unhandledrejection` list was empty. These are captured page-error events, not a claim that every browser diagnostic channel was inspected.
+
+The harness mounts the real Login component, AuthProvider and BrowserRouter, uses real loopback HTTP requests to mocked auth responses, and renders a synthetic destination display outside Login. This proves component and navigation integration in Chrome; it does not prove email delivery, hardware passkeys, backend authorization, or the full workstation. The source component/helper hashes, harness hashes, raw-evidence hashes, sanitized request observations and screenshot hashes are in [browser-verification.json](assets/login-next-policy-20260920/browser-verification.json). No claim secrets, session cookies or submitted code values are included. Screenshots show [setup](assets/login-next-policy-20260920/setup.png) and the [valid destination](assets/login-next-policy-20260920/destination.png).
+
+The source review in `.audit/login-next-independent-review.log` returned **GLM ACCEPT — 93/100**, covering source commit `9a0837d2943a98bc5d5907e1dcdde75084c22eec`. Its boundary-coverage suggestions are addressed by four additional component cases: explicit empty query and numeric, boolean and array-valued state destinations. The same frontend command above now passes **44 tests across three files**, exit 0; full output `.audit/login-review-followup-tests.log`. Production source did not change in this evidence update. The review predates these extra assertions and browser artifacts.
+
+Red-evidence provenance: the original five-case red run used the name “replaces a malformed next query with home without a history SecurityError”; that case later became a parameterized invalid-query test. Nonstring history-state coverage likewise became parameterized, and typed-code/other cases were added after the red run. The historical red log proves the original failure modes; it is not a red run of all 44 final cases.
+
+The parser basis is the [WHATWG URL Standard, relative slash state](https://url.spec.whatwg.org/#relative-slash-state): for a special scheme such as HTTP, a slash or backslash at that state transitions toward authority parsing; a backslash records a validation error without necessarily terminating parsing. This explains why a slash/backslash destination can designate another host at the URL layer. Login's observed pre-fix behavior is still a failed same-origin history replacement, not demonstrated external navigation.
+
+Before this follow-up, `python3 .infinite/validate-control-plane.py` at the harness root returned `CONTROL_PLANE_OK agents=649 active_portfolio=9 owned_surfaces=1729 lease_tip=818a73788`. The expanded claim explicitly owns these three browser assets. `git fetch origin` ran before the evidence commit. Browser/server processes were left under the orchestrator's ownership.

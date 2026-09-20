@@ -43,7 +43,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-it.each(["/\\outside.example/path", "https://outside.example/path", "javascript:alert(1)"])("replaces invalid next %s with home", async (next) => {
+it.each(["", "/\\outside.example/path", "https://outside.example/path", "javascript:alert(1)"])("replaces invalid next %s with home", async (next) => {
   mountLogin(`/login?next=${encodeURIComponent(next)}`);
   await waitFor(() => expect(screen.getByTestId("destination").textContent).toBe("/"));
 });
@@ -53,8 +53,8 @@ it("preserves an internal destination including its query and fragment", async (
   await waitFor(() => expect(screen.getByTestId("destination").textContent).toBe("/notebooks?q=one#note"));
 });
 
-it("rejects a nonstring history-state destination", async () => {
-  mountLogin("/login", { from: { pathname: "/unexpected" } });
+it.each([{ from: { pathname: "/unexpected" } }, { from: 42 }, { from: false }, { from: ["/unexpected"] }])("rejects a nonstring history-state destination: %j", async (state) => {
+  mountLogin("/login", state);
   await waitFor(() => expect(screen.getByTestId("destination").textContent).toBe("/"));
 });
 

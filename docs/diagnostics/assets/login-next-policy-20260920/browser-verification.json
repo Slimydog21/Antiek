@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-20",
+  "browser": "Chrome (orchestrator browser-harness run; version not recorded in supplied evidence)",
+  "source_commit": "1afa1d48de8cfd9999765903c34179d672e07133",
+  "source_sha256": {
+    "apps/reading/src/modes/Login/index.tsx": "8b2654fe418a723909b1ce2b86b13b1d11ada2e19f2d6a9177b0d4830c3dd011",
+    "apps/reading/src/lib/safeNext.ts": "7633543bbccaeade95f13bb1e625bc039e862cc6bfff2c11e51a40adadfb9e0c",
+    "apps/reading/src/lib/auth.tsx": "032330c459857931cc0ae53fa65302816667f3e64db6ad0850b95f406a32db77",
+    "interfaces/research/api/auth.py": "82e89135d9e128272ee350b7b1a3c5909abdb3c712d6da055ecb9f838322145d"
+  },
+  "scope": {
+    "real": [
+      "Login component",
+      "AuthProvider",
+      "BrowserRouter",
+      "browser history",
+      "HTTP requests to loopback fixture"
+    ],
+    "mocked": [
+      "auth HTTP responses, session state and email-code acceptance"
+    ],
+    "synthetic": [
+      "destination display outside Login"
+    ],
+    "not_proved": [
+      "live email",
+      "hardware passkey ceremony",
+      "production backend/session authorization",
+      "full workstation navigation",
+      "external redirect or XSS exploit"
+    ]
+  },
+  "cases": [
+    {
+      "id": 1,
+      "case": "authenticated query destination",
+      "expected_path": "/",
+      "observed_path": "/",
+      "captured_errors": [],
+      "input": "/\\outside.example/path"
+    },
+    {
+      "id": 2,
+      "case": "authenticated query destination",
+      "expected_path": "/",
+      "observed_path": "/",
+      "captured_errors": [],
+      "input": "https://outside.example/path"
+    },
+    {
+      "id": 3,
+      "case": "authenticated query destination",
+      "expected_path": "/",
+      "observed_path": "/",
+      "captured_errors": [],
+      "input": "javascript:alert(1)"
+    },
+    {
+      "id": 4,
+      "case": "authenticated query destination",
+      "expected_path": "/",
+      "observed_path": "/",
+      "captured_errors": [],
+      "input": ""
+    },
+    {
+      "id": 5,
+      "case": "authenticated query destination",
+      "expected_path": "/notebooks?q=one#note",
+      "observed_path": "/notebooks?q=one#note",
+      "captured_errors": [],
+      "input": "/notebooks?q=one#note"
+    },
+    {
+      "id": 6,
+      "case": "typed-code claim with malformed server next",
+      "expected_path": "/",
+      "observed_path": "/",
+      "captured_errors": []
+    },
+    {
+      "id": 7,
+      "case": "typed-code claim requests passkey setup with normalized next",
+      "expected_path": "/login?setup=passkey&next=%2F",
+      "observed_path": "/login?setup=passkey&next=%2F",
+      "captured_errors": [],
+      "normalized_next": "/"
+    },
+    {
+      "id": 8,
+      "case": "skip passkey setup follows normalized next",
+      "expected_path": "/",
+      "observed_path": "/",
+      "captured_errors": []
+    }
+  ],
+  "http_boundary_observations": [
+    {
+      "evidence": "claim-evidence.json",
+      "request_next_values": [
+        "/"
+      ],
+      "typed_code_claim_count": 1,
+      "claim_poll_count": 5
+    },
+    {
+      "evidence": "setup-evidence.json",
+      "request_next_values": [
+        "/"
+      ],
+      "typed_code_claim_count": 1,
+      "claim_poll_count": 1
+    }
+  ],
+  "fixture_sha256": {
+    "apps/reading/.audit/login-proof.tsx": "5fae2787326ff3fc3a02a8b86b5d7f7c57d03f6d22aeff5f36f6955796b90ce0",
+    "apps/reading/.audit/login-server.mjs": "36fc6294a922c1b5bd9e3894c175d02e8d17473e44aacabb4d7af7603ddff0e6"
+  },
+  "raw_evidence_sha256": {
+    "browser-cases.json": "e8be3c9847f6ecb8a375fe06bfdfc4dc5c9ba76022c1146e7d56d678d39417d1",
+    "claim-evidence.json": "d114fd30e8244c118f961675a8d2e10495a1b24e39c7e4cb82c01d3f1dd60360",
+    "setup-evidence.json": "776a275a41279975d07f30086567d577cf05c316612eb25f5ed60454fcdf7f9e"
+  },
+  "screenshots_sha256": {
+    "setup.png": "3f1906289f6265f29f236e472918c45c5ea6a392f49d789299a794c9f9ad92fb",
+    "destination.png": "1cc1f2710d48184b229630a0ae2655682749a8e6a18354be68c237a5bf65fa37"
+  },
+  "independent_review": {
+    "verdict": "ACCEPT",
+    "score": 93,
+    "reviewed_source_commit": "9a0837d2943a98bc5d5907e1dcdde75084c22eec",
+    "log_sha256": "b2399da02d1537414aab487c2e1ec207646c8613f928ac27f54e7cfd2d2bdc54",
+    "scope_note": "Review predates four added boundary assertions and persisted browser artifacts."
+  }
+}
