@@ -105,8 +105,20 @@ jobs:
           XAI_API_KEY: ""
           OPENAI_API_KEY: ""
           ANTIEK_OPERATOR_TOKEN: ""
+          # pytest -q emits a newline only every 72 tests. Hosted runners
+          # shut down a step that prints nothing for ~10 minutes, so a
+          # slow file between progress lines looks like a hung job.
+          PYTHONUNBUFFERED: "1"
         run: |
-          python -m pytest tests/ -q -m "not integration" \
+          (
+            while true; do
+              sleep 60
+              echo "[pytest-heartbeat] $(date -u +%H:%M:%SZ) still running"
+            done
+          ) &
+          heartbeat_pid=$!
+          trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
+          python -u -m pytest tests/ -q -m "not integration" \
             -p tools.pytest_file_shard
 
   pytest:
