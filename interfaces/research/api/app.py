@@ -1407,6 +1407,26 @@ class AttributionComputeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class PublisherClaimRequest(BaseModel):
+    """Body of ``POST /publishers/{ip_holder_id}/claim``.
+
+    Module level, NOT nested inside ``create_app``. This module sets
+    ``from __future__ import annotations`` (line 29), so every annotation is a
+    string that Pydantic resolves against MODULE globals when it builds the
+    request-body TypeAdapter. A class defined in the factory's local scope is
+    not in those globals, so the reference never resolves and
+    ``app.openapi()`` raises PydanticUserError -- taking the whole schema
+    down, not just this route.
+
+    The 32 sibling models that stay local are fine because they are only ever
+    passed as ``response_model=X``, which hands Pydantic the class OBJECT
+    rather than a name to look up. Only a PARAMETER annotation goes through
+    string resolution, and this was the only one.
+    """
+
+    stripe_connect_account_id: str | None = None
+
+
 def create_app(
     *,
     broadcaster: EventBroadcaster | None = None,
@@ -4880,9 +4900,6 @@ def create_app(
         if h is None:
             raise HTTPException(status_code=404, detail="publisher not found")
         return _holder_to_response(h)
-
-    class PublisherClaimRequest(BaseModel):
-        stripe_connect_account_id: str | None = None
 
     @app.post("/publishers/{ip_holder_id}/claim", response_model=PublisherResponse)
     async def claim_publisher(
