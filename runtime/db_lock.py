@@ -405,6 +405,16 @@ class WriteLockTimeout(RuntimeError):
 WriteCoordinatorTimeout = WriteLockTimeout
 
 
+class TransactionAborted(RuntimeError):
+    """A ``transaction()`` block exited cleanly after swallowing a failure.
+
+    DuckDB aborts the entire transaction on the first failing statement, and a
+    later COMMIT then succeeds while applying nothing. Raising here converts
+    that silence into a signal: the caller learns its write did not land
+    instead of being told it did.
+    """
+
+
 def _log_write_event(
     db_path: str,
     purpose: str,
@@ -544,6 +554,7 @@ class LockedConnection:
         self._error: str | None = None
         self._close_log_max_wait_s = close_log_max_wait_s
         self._in_explicit_transaction = False
+        self._txn_statement_failed = False
         self._from_warm = from_warm
         self._keepalive_s = (
             _write_keepalive_s() if keepalive_s is None else max(0.0, float(keepalive_s))
@@ -560,13 +571,26 @@ class LockedConnection:
     def execute(
         self, sql: str, parameters: Sequence[Any] | None = None
     ) -> Any:
-        """Forward SQL while tracking explicit transaction ownership safely."""
-        result = self._con.execute(sql, parameters)
+        """Forward SQL while tracking explicit transaction ownership safely.
+
+        A statement that raises INSIDE an explicit transaction is recorded,
+        because DuckDB aborts the whole transaction at that point and a later
+        ``COMMIT`` then succeeds while applying nothing. See
+        ``transaction()`` for why that silence has to be turned into a raise.
+        """
+        try:
+            result = self._con.execute(sql, parameters)
+        except Exception:
+            if self._in_explicit_transaction:
+                self._txn_statement_failed = True
+            raise
         command = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ""
         if command == "BEGIN":
             self._in_explicit_transaction = True
+            self._txn_statement_failed = False
         elif command in {"COMMIT", "ROLLBACK"}:
             self._in_explicit_transaction = False
+            self._txn_statement_failed = False
         return result
 
     @contextlib.contextmanager
@@ -597,6 +621,22 @@ class LockedConnection:
         re-raises. ``close()`` already refuses to park a warm slot while
         ``_in_explicit_transaction`` is set, so a transaction that escapes
         cannot be handed to the next caller.
+
+        A block that exits cleanly after SWALLOWING a failed statement raises
+        ``TransactionAborted`` rather than committing. DuckDB aborts the whole
+        transaction on the first failing statement, and — verified on DuckDB
+        1.5.4 — a subsequent ``COMMIT`` then *succeeds* while applying
+        nothing::
+
+            BEGIN; DELETE ...; INSERT ... -> ConstraintException (caught)
+            COMMIT  -> succeeds
+            SELECT  -> the DELETE is gone too; nothing was applied
+
+        Committing there would tell the caller its write landed when the
+        datastore is unchanged, which is worse than the non-atomic behaviour
+        this contextmanager exists to remove. Catch the failure OUTSIDE the
+        ``with`` block instead, which is what the 409 path in
+        ``POST /sections/reorder-block`` does.
         """
         if self._in_explicit_transaction:
             yield self
@@ -608,6 +648,15 @@ class LockedConnection:
             with contextlib.suppress(Exception):
                 self.execute("ROLLBACK")
             raise
+        if self._txn_statement_failed:
+            with contextlib.suppress(Exception):
+                self.execute("ROLLBACK")
+            raise TransactionAborted(
+                "a statement failed inside this transaction and the error was "
+                "swallowed; DuckDB had already aborted the transaction, so "
+                "COMMIT would have reported success while applying nothing. "
+                "Handle the failure outside the `with con.transaction()` block."
+            )
         self.execute("COMMIT")
 
     def __getattr__(self, name):
