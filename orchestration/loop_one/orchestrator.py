@@ -90,6 +90,7 @@ from orchestration.phase_runner import (  # noqa: E402
     verify_phase,
 )
 from orchestration.session_evidence_pack import SessionEvidencePack  # noqa: E402
+from runtime.db_lock import connect_read  # noqa: E402
 from skills.domain import (  # noqa: E402
     extract_and_patch,
     generate_master_md,
@@ -246,7 +247,6 @@ def _render_chunks_block_for_sub_question(
     never serves/attributes that content publicly.
     """
     try:
-        import duckdb
 
         from processing.embedding.embed import default_embedding_provider
         from substrate.graph import default_db_path
@@ -255,7 +255,7 @@ def _render_chunks_block_for_sub_question(
         db_path = default_db_path()
         embedder = default_embedding_provider()
         keywords = _extract_keywords(sub_question)
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
         try:
             # Embedding side — half the slots
             emb_half = max(1, top_k // 2)
@@ -360,7 +360,6 @@ def _render_subgraph_block_for_sub_question(
     additive evidence, the chunks_block remains the floor.
     """
     try:
-        import duckdb
 
         from processing.embedding.embed import default_embedding_provider
         from substrate.graph import default_db_path
@@ -368,7 +367,7 @@ def _render_subgraph_block_for_sub_question(
 
         db_path = default_db_path()
         embedder = default_embedding_provider()
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
         try:
             res = graph_search(
                 con, sub_question, model=embedder, top_k=top_k,

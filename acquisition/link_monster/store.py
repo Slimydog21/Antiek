@@ -41,6 +41,7 @@ from processing.embedding.embed import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
+from runtime.db_lock import connect_read  # noqa: E402
 from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
@@ -394,11 +395,10 @@ def list_digests(
     """Monster Menu: recent digests (documents with Link Monster
     metadata), newest first. Read-only; fails open to [] on a missing
     DB."""
-    import duckdb
 
     resolved = db_path or default_db_path()
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        con = connect_read(resolved)
     except Exception:
         return []
     try:
@@ -441,11 +441,10 @@ def get_digest(
     db_path: str | None = None,
 ) -> dict[str, Any] | None:
     """One digest + chunk summary + graph neighbors. Read-only."""
-    import duckdb
 
     resolved = db_path or default_db_path()
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        con = connect_read(resolved)
     except Exception:
         return None
     try:
@@ -510,11 +509,10 @@ def get_digest(
 def digest_stats(*, db_path: str | None = None) -> dict[str, Any]:
     """Monster stats: counts by outcome/platform + graph contribution.
     Read-only; fails open on a missing DB."""
-    import duckdb
 
     resolved = db_path or default_db_path()
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        con = connect_read(resolved)
     except Exception:
         return {
             "meals": 0, "snacks": 0, "total": 0, "chunks": 0,

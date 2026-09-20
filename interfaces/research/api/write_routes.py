@@ -45,7 +45,7 @@ from pydantic import BaseModel, Field
 
 from roles.creative_writer.prompt import AdjacentSection
 from roles.interviewer.drivers import DriverSet
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.write import block_search
 from substrate.write import folders as folders_mod
@@ -111,7 +111,7 @@ def _write(purpose: str) -> Iterator[Any]:
 
 @contextmanager
 def _read() -> Iterator[duckdb.DuckDBPyConnection]:
-    con = duckdb.connect(_db(), read_only=True)
+    con = connect_read(_db())
     try:
         yield con
     finally:

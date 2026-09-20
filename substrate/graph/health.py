@@ -26,6 +26,8 @@ from typing import Any
 
 import duckdb
 
+from runtime.db_lock import connect_read
+
 
 @dataclass(frozen=True)
 class DuckDBHealth:
@@ -109,7 +111,7 @@ def probe_duckdb_health(db_path: str) -> DuckDBHealth:
         )
 
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        con = connect_read(resolved)
     except Exception as exc:
         return DuckDBHealth(
             ready=False,

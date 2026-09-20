@@ -38,7 +38,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from middleware.supersession.apply import apply_review
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.graph import default_db_path
 
 supersession_router = APIRouter()
@@ -55,7 +55,7 @@ def _read() -> Iterator[duckdb.DuckDBPyConnection]:
     # schema is initialized at deploy/startup; on a never-initialized DB the
     # query 500s, which is the correct failure for a review endpoint hitting a
     # graph that doesn't yet exist.
-    con = duckdb.connect(default_db_path(), read_only=True)
+    con = connect_read(default_db_path())
     try:
         yield con
     finally:
