@@ -102,7 +102,18 @@ declaration and no dependency file moves.
 Two Prime spawn paths exist and they disagree about exactly this variable.
 
 `runtime/remote_exec/prime_exec.py:432-435` forwards
-`PRIME_AGENT_KERNEL_PYTHON` into the child environment deliberately.
+`PRIME_AGENT_KERNEL_PYTHON` into the child environment deliberately, and
+`_SAFE_ENV_KEYS` forwards the real `HOME` alongside it, so a kernel venv
+resolves normally on that path. That is consistent with what the argv there
+does: `_spawn` at line 447 builds `prime-agent --mode rpc --session-dir …`
+with no `--no-tools`, no `--offline` and none of the discovery flags. It is
+the one tool-enabled Prime invocation in this repository, and the thing that
+contains it is a gate rather than a flag — `_require_enabled` raises unless
+`ANTIEK_PRIME_EXEC_ENABLED` is truthy, the default remote-exec factory never
+registers the provider, and the module requires its caller to supply an
+external isolation boundary. §3's DuckDB rule therefore binds that path too:
+whatever a kernel spawned there can import is governed by the kernel venv's
+contents, which is why §6 stays operator-gated.
 
 `runtime/prime_agent/process.py:205-226` — the path
 `PrimeAgentRLMBackend` uses — does not. It passes through only `PATH`, `LANG`

@@ -49,6 +49,20 @@ currently restate independently (``prime_agent_backend._argv``,
 ``verify_prime_agent_installation`` probes the binary against). Those three
 have to agree; until now nothing checked that they did.
 
+A fourth site builds a ``prime-agent`` argv and is deliberately outside that
+agreement. ``PrimeExecProvider._spawn`` at
+``runtime/remote_exec/prime_exec.py:447`` spawns ``--mode rpc`` with a
+``--session-dir`` and nothing else: no ``--no-tools``, no ``--offline``, and
+none of the discovery flags. It is the one tool-enabled Prime invocation in
+this tree, and it also forwards the real ``HOME``, so a kernel venv resolves
+there. What holds it is not a flag block but a gate — ``_require_enabled``
+raises unless ``ANTIEK_PRIME_EXEC_ENABLED`` is truthy, the default remote-exec
+factory never registers it, and its own module docstring requires the caller
+to supply an external isolation boundary. Anyone reading this module for the
+whole picture of what Prime is allowed to do has to read that one too; the
+profiles here govern the ``-p`` and ``--mode rpc`` evidence paths, not the
+research fan-out adapter.
+
 ``RLM`` is the other half of the same written-down decision: a value, pinned
 by tests, that no code path selects. ``ACTIVE_PROFILE`` is the single
 greppable place that would have to change, and a test asserts it is
@@ -59,7 +73,9 @@ this commit it is not. ``PrimeAgentRLMBackend.run`` reaches
 ``run_prime_agent_process``, which calls ``subprocess.Popen`` directly at
 ``runtime/prime_agent/process.py:124`` — a child of the API process, on the
 host, as the service user. No ``ExecutionBackend`` and no ``Workspace``
-appears anywhere under ``runtime/prime_agent/`` or ``orchestration/rlm/``.
+appears anywhere under ``runtime/prime_agent/`` or ``orchestration/rlm/`` —
+the sandbox-provider abstraction lives in ``runtime/remote_exec/``, which this
+backend does not reach.
 The contained gather loop added at
 ``runtime/research_runner/contained_gather.py`` contains a stdlib-only
 placeholder program and never mentions Prime; the two paths do not meet.
@@ -132,7 +148,9 @@ class PrimeInvocationProfile(StrEnum):
 #: This is the one line that changes when containment lands. It is a module
 #: constant rather than a constructor argument on purpose: a per-call selector
 #: would make ``RLM`` reachable by configuration, and the whole point is that
-#: it is currently reachable by nothing.
+#: it is currently reachable by nothing. That is an invariant, not a habit, so
+#: ``test_no_construction_path_accepts_a_profile`` reads the signatures and
+#: fails if a selector is ever added.
 ACTIVE_PROFILE: PrimeInvocationProfile = PrimeInvocationProfile.EVIDENCE
 
 

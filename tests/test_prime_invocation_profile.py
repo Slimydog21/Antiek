@@ -11,9 +11,14 @@ enumerated rather than described.
 from __future__ import annotations
 
 import hashlib
+import inspect
 from pathlib import Path
 
-from orchestration.rlm.prime_agent_backend import PrimeAgentRequest, PrimeAgentRLMBackend
+from orchestration.rlm.prime_agent_backend import (
+    PrimeAgentRequest,
+    PrimeAgentRLMBackend,
+    prime_agent_backend_from_environment,
+)
 from orchestration.rlm.prime_authority import PrimeAuthorizationRequest
 from orchestration.rlm.prime_invocation_profile import (
     ACTIVE_PROFILE,
@@ -112,15 +117,35 @@ class TestRlmProfileIsWrittenDownNotWiredUp:
             assert flag in rlm
 
     def test_no_production_code_path_selects_rlm(self, tmp_path: Path) -> None:
-        # The constructor takes no profile argument, so RLM cannot be reached by
-        # configuration — only by editing ACTIVE_PROFILE, which the test above
-        # pins. Constructing a backend and reading its argv is the whole surface.
+        # Editing ACTIVE_PROFILE is the only way to reach RLM, and the test above
+        # pins that constant. Constructing a backend and reading its argv is the
+        # rest of the surface.
         backend = PrimeAgentRLMBackend(cwd=tmp_path, environ={})
         argv = backend._argv(PrimeAgentRequest(prompt="p", workflow="w", request_id="r"))
         assert TOOL_FLAG in argv
 
+    def test_no_construction_path_accepts_a_profile(self) -> None:
+        # The module docstring claims RLM is unreachable by configuration. That
+        # claim rests entirely on no construction path taking a profile, which
+        # nothing enforced: adding `profile: PrimeInvocationProfile =
+        # ACTIVE_PROFILE` to the constructor and building argv from it passes
+        # every other test in this file while the docstring goes on saying the
+        # opposite. Read the signatures instead of trusting the prose.
+        for constructor in (
+            PrimeAgentRLMBackend.__init__,
+            prime_agent_backend_from_environment,
+        ):
+            parameters = inspect.signature(constructor).parameters
+            assert "profile" not in parameters, constructor.__qualname__
+            for name, parameter in parameters.items():
+                annotation = str(parameter.annotation)
+                assert PrimeInvocationProfile.__name__ not in annotation, (
+                    constructor.__qualname__,
+                    name,
+                )
 
-class TestTheThreeFlagListsAgree:
+
+class TestTheFlagListsThatMustAgree:
     def test_installation_probe_verifies_every_flag_both_profiles_use(self) -> None:
         # verify_prime_agent_installation probes the binary's --help for
         # _PRINT_FLAGS. A profile flag missing from that set would be sent to a
@@ -134,6 +159,13 @@ class TestTheThreeFlagListsAgree:
         # different shape (no --no-session; it adds --provider/--model). The
         # containment clauses must still match, or the two Prime entry points
         # would run under different postures while both being called "evidence".
+        #
+        # PrimeExecProvider._spawn (runtime/remote_exec/prime_exec.py:447) is a
+        # fourth prime-agent argv and is not asserted here on purpose: it
+        # deliberately carries none of these flags, and what contains it is the
+        # ANTIEK_PRIME_EXEC_ENABLED gate that tests/test_prime_exec_provider.py
+        # covers. Asserting its current flagless shape here would pin that shape
+        # as a contract rather than describe an exception.
         rpc = _rpc_argv(Path("/nonexistent/prime-agent"), _authorization())
         assert TOOL_FLAG in rpc
         for flag in DISCOVERY_FLAGS:

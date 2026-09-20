@@ -17,8 +17,10 @@ Four independent checks, all on this checkout of main:
   start_new_session=True)` at **`runtime/prime_agent/process.py:124-133`**. A
   child of the API process, on the host, as the service user.
 - `grep -rn "exec_backend\|ExecutionBackend\|Workspace" runtime/prime_agent/
-  orchestration/rlm/` returns **nothing**. Prime never touches the isolation
-  seam.
+  orchestration/rlm/` returns **nothing**. The RLM backend never touches the
+  isolation seam. Read the scope of that grep literally: the sandbox-provider
+  abstraction lives in `runtime/remote_exec/`, and Prime *does* have an adapter
+  there. See the verifier note below.
 - `runtime/research_runner/contained_gather.py` contains only `GATHER_PROGRAM`
   (`:136-176`), a stdlib-only placeholder its own docstring calls "the
   placeholder payload… not a research agent" (`:52-62`). `grep -rin prime
@@ -29,6 +31,40 @@ Four independent checks, all on this checkout of main:
 So `contained_gather` contains the gather loop's step payload and nothing else.
 No Prime invocation runs inside a workspace. Per the brief's decision tree, tools
 stay off and this lane adds the profile seam only.
+
+### Verifier correction — there is a fourth Prime argv, and it is tool-enabled
+
+`PrimeExecProvider._spawn` at `runtime/remote_exec/prime_exec.py:447` builds
+`prime-agent --mode rpc --session-dir <dir>` plus optional `--provider`/`--model`
+and nothing else: no `--no-tools`, no `--offline`, none of the five discovery
+flags. `_build_env` (`:431-438`) forwards the real `HOME` through
+`_SAFE_ENV_KEYS` as well as `PRIME_AGENT_KERNEL_PYTHON`, so a kernel venv
+resolves there normally — the §5 breakage below is specific to the RLM backend's
+throwaway `HOME`, not to Prime generally.
+
+That path is not a hole. `_require_enabled` raises `RemoteExecUnavailable`
+unless `ANTIEK_PRIME_EXEC_ENABLED` is truthy, the default remote-exec factory
+never registers the provider, and the module docstring requires the caller to
+supply an external isolation boundary; `tests/test_prime_exec_provider.py`
+covers both the gate and the non-registration. But it is the one tool-enabled
+Prime invocation in this tree, so the original claim that the flag list is
+restated by *three* files was an undercount that the module docstring, the
+decision record and a test class name all carried. All three now name the
+fourth site and say why it is outside the agreement. It is not asserted against
+the profile flags, because pinning its current flagless shape would make that
+shape a contract rather than a documented exception.
+
+### Verifier correction — "unreachable by configuration" was unenforced
+
+The profile module said `ACTIVE_PROFILE` is a module constant rather than a
+constructor argument "on purpose", and a test comment said "the constructor
+takes no profile argument, so RLM cannot be reached by configuration". Nothing
+tested it. Adding `profile: PrimeInvocationProfile = ACTIVE_PROFILE` to
+`PrimeAgentRLMBackend.__init__` and building argv from `self._profile` passed
+the entire lane suite while both comments went on asserting the opposite.
+`test_no_construction_path_accepts_a_profile` now reads the signatures of the
+constructor and of `prime_agent_backend_from_environment` and fails if a
+selector appears; that mutation is caught.
 
 ## 2. Brief corrections
 
