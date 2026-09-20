@@ -37,6 +37,7 @@ from pathlib import Path
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
+from interfaces.research.api.settings_models_admin import request_owner_user_id
 from substrate.dp_shuffler.epsilon_registry import SurfaceConfig
 from substrate.dp_shuffler.production import get_production_registry
 from substrate.telemetry_preferences import (
@@ -74,7 +75,6 @@ CATEGORY_DESCRIPTIONS: dict[str, str] = {
 _ENV_DB_PATH = "ANTIEK_TELEMETRY_DB"
 _ENV_HOME = "ANTIEK_HOME"
 _DB_RELATIVE_PATH = Path("telemetry") / "preferences.sqlite"
-_LEGACY_OWNER_USER_ID = "__operator__"
 
 
 def default_telemetry_preferences_db_path() -> Path | None:
@@ -181,10 +181,11 @@ def _surface_row(
 
 
 def _request_owner_user_id(request: Request) -> str:
-    value = getattr(request.state, "user_id", _LEGACY_OWNER_USER_ID)
-    if not isinstance(value, str) or not value or len(value) > 256:
-        raise HTTPException(status_code=401, detail="authenticated user identity required")
-    return value
+    # Delegate to the shared settings owner predicate so privacy preferences
+    # live in the SAME per-person namespace as models, usage and budgets
+    # (derived from the verified session e-mail), and fail closed the same
+    # way. See settings_models_admin.request_owner_user_id.
+    return request_owner_user_id(request)
 
 
 def _store_for_app(app: FastAPI) -> PreferenceStore:
