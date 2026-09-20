@@ -213,16 +213,17 @@ def start_async_interview(
     iid = interview_id or f"interview-{uuid.uuid4().hex[:12]}"
     with connect_write(db_path, purpose="speak/async_interview.start") as con:
         ensure_speak_schema(con)
-        if interview_guide is not None and not _project_guide(con, project_id):
+        with con.transaction():
+            if interview_guide is not None and not _project_guide(con, project_id):
+                con.execute(
+                    "UPDATE interview_projects SET interview_guide = ? WHERE project_id = ?",
+                    [json.dumps(interview_guide), project_id],
+                )
             con.execute(
-                "UPDATE interview_projects SET interview_guide = ? WHERE project_id = ?",
-                [json.dumps(interview_guide), project_id],
+                "INSERT INTO interviews (interview_id, project_id, informant_handle, status) "
+                "VALUES (?, ?, ?, 'invited') ON CONFLICT (interview_id) DO NOTHING",
+                [iid, project_id, informant_handle],
             )
-        con.execute(
-            "INSERT INTO interviews (interview_id, project_id, informant_handle, status) "
-            "VALUES (?, ?, ?, 'invited') ON CONFLICT (interview_id) DO NOTHING",
-            [iid, project_id, informant_handle],
-        )
     return resume(db_path, iid)
 
 
