@@ -1704,53 +1704,57 @@ def register_book_routes(app: FastAPI) -> None:
 
         chunks = _chunk_book_html_for_research(req.html_body)
 
-        con = connect_write(db, purpose="books:html_publish_job")
-        try:
-            exists = con.execute(
-                "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1",
-                [document_id],
-            ).fetchone()
-            if exists:
-                raise HTTPException(status_code=409, detail="document_id_exists")
-            insert_document(
-                con,
-                document_id=document_id,
-                source_tier=2,
-                document_type="book",
-                source_uri=f"antiek://book-import/{publication_request_id}",
-                title=req.title.strip(),
-                author=req.author.strip() if req.author else None,
-                raw_text=req.html_body,
-                metadata={
-                    "import_target": "antiek_html",
-                    "publication_request_id": publication_request_id,
-                    "serve_gate_review_id": serve_gate_review_id,
-                    "rights_basis": req.rights_basis,
-                },
-                content_class=content_class,
-            )
-            chunk_count = 0
-            for index, chunk_text in enumerate(chunks):
-                insert_chunk(
+        def _publish_write() -> tuple[int, Any]:
+            con = connect_write(db, purpose="books:html_publish_job")
+            try:
+                exists = con.execute(
+                    "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1",
+                    [document_id],
+                ).fetchone()
+                if exists:
+                    raise HTTPException(status_code=409, detail="document_id_exists")
+                insert_document(
                     con,
                     document_id=document_id,
-                    chunk_index=index,
-                    section_path=f"HTML section {index + 1}",
-                    text=chunk_text,
-                    token_count=len(chunk_text.split()),
+                    source_tier=2,
+                    document_type="book",
+                    source_uri=f"antiek://book-import/{publication_request_id}",
+                    title=req.title.strip(),
+                    author=req.author.strip() if req.author else None,
+                    raw_text=req.html_body,
+                    metadata={
+                        "import_target": "antiek_html",
+                        "publication_request_id": publication_request_id,
+                        "serve_gate_review_id": serve_gate_review_id,
+                        "rights_basis": req.rights_basis,
+                    },
+                    content_class=content_class,
                 )
-                chunk_count += 1
-            asset = register_book(
-                con,
-                document_id=document_id,
-                content_class=content_class,
-                page_count=req.page_count,
-                pagination_scheme="html_section",
-                provenance=f"Antiek HTML import publication request {publication_request_id}",
-                license_basis=req.license_basis.strip(),
-            )
-        finally:
-            con.close()
+                chunk_count = 0
+                for index, chunk_text in enumerate(chunks):
+                    insert_chunk(
+                        con,
+                        document_id=document_id,
+                        chunk_index=index,
+                        section_path=f"HTML section {index + 1}",
+                        text=chunk_text,
+                        token_count=len(chunk_text.split()),
+                    )
+                    chunk_count += 1
+                asset = register_book(
+                    con,
+                    document_id=document_id,
+                    content_class=content_class,
+                    page_count=req.page_count,
+                    pagination_scheme="html_section",
+                    provenance=f"Antiek HTML import publication request {publication_request_id}",
+                    license_basis=req.license_basis.strip(),
+                )
+            finally:
+                con.close()
+            return chunk_count, asset
+
+        chunk_count, asset = await asyncio.to_thread(_publish_write)
 
         return BookHtmlPublishJobOut(
             publish_job_id=_book_html_publish_job_id(req),
@@ -1867,26 +1871,30 @@ def register_book_routes(app: FastAPI) -> None:
         finally:
             con.close()
 
-        vectors_rewritten = 0
-        con_w = connect_write(db, purpose="books:html_index_job")
-        try:
-            before_total = con_w.execute(
-                "SELECT count(*) FROM chunks WHERE document_id = ?",
-                [document_id],
-            ).fetchone()[0]
-            for chunk_id, text in rows:
-                con_w.execute(
-                    "UPDATE chunks SET embedding = ? WHERE chunk_id = ?",
-                    [list(provider.encode(text)), chunk_id],
-                )
-                record_chunk_embedding_meta(con_w, chunk_id=chunk_id, provider=provider)
-                vectors_rewritten += 1
-            after_total = con_w.execute(
-                "SELECT count(*) FROM chunks WHERE document_id = ?",
-                [document_id],
-            ).fetchone()[0]
-        finally:
-            con_w.close()
+        def _index_write() -> tuple[int, int]:
+            vectors_rewritten = 0
+            con_w = connect_write(db, purpose="books:html_index_job")
+            try:
+                before_total = con_w.execute(
+                    "SELECT count(*) FROM chunks WHERE document_id = ?",
+                    [document_id],
+                ).fetchone()[0]
+                for chunk_id, text in rows:
+                    con_w.execute(
+                        "UPDATE chunks SET embedding = ? WHERE chunk_id = ?",
+                        [list(provider.encode(text)), chunk_id],
+                    )
+                    record_chunk_embedding_meta(con_w, chunk_id=chunk_id, provider=provider)
+                    vectors_rewritten += 1
+                after_total = con_w.execute(
+                    "SELECT count(*) FROM chunks WHERE document_id = ?",
+                    [document_id],
+                ).fetchone()[0]
+            finally:
+                con_w.close()
+            return vectors_rewritten, before_total, after_total
+
+        vectors_rewritten, before_total, after_total = await asyncio.to_thread(_index_write)
 
         count_preserved = int(before_total) == int(after_total) == chunks_found
         return BookHtmlIndexJobOut(

@@ -33,17 +33,17 @@ from substrate.conversation.policy import CompactionConfig, CompactionPolicy
 from substrate.conversation.token_counter import count_tokens
 from substrate.harness.apply import apply_harness
 from substrate.harness.fork import create_fork
+from substrate.harness_diff import diff_snapshots, load_snapshot
 from substrate.observability.burn import BurnRecorder
 from substrate.observability.burn_context import (
     BurnContext,
     reset_burn_context,
     set_burn_context,
 )
-
-from substrate.edit import EditTransaction
-from substrate.harness_diff import diff_snapshots, load_snapshot
 from substrate.queue import BoundedQueue, QueueFull
 from substrate.queue import get_registry as get_queue_registry
+
+from substrate.edit import EditTransaction
 
 
 @pytest.fixture(autouse=True)
@@ -189,7 +189,7 @@ def test_end_to_end_every_primitive_in_one_session(tmp_path: Path) -> None:
     assert by_tool.get("queue.watermark", 0) >= 1
 
     # 9. HARNESS DIFF — capture again; diff is non-empty
-    apply_result_v2 = apply_harness(
+    apply_harness(
         project_root=project_root, fork_name="e2e_fork", capture_tag="e2e-final",
     )
     a_snap = load_snapshot("e2e-initial", project_root)

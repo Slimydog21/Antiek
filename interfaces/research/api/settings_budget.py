@@ -50,10 +50,16 @@ from orchestration.continuous.budget import (
     _utc_date_stamp,
 )
 from runtime.research_runner.provider_route_authority import RouteExecutionStatus
+from substrate.antiek_bench import read_latest_scorecard
 from substrate.dispatch.advisory_decision import (
     DecisionCandidate,
     DecisionTask,
     rank_model_candidates,
+)
+from substrate.model_routing import (
+    NotDiamondAdvisorCandidate,
+    NotDiamondAdvisorRecommendation,
+    resolve_notdiamond_advisor,
 )
 from substrate.research_spend import (
     FallbackHistoryCursor,
@@ -64,12 +70,6 @@ from substrate.research_spend import (
     RunNotFound,
     SpendCeilingExceeded,
     default_research_spend_db_path,
-)
-from substrate.antiek_bench import read_latest_scorecard
-from substrate.model_routing import (
-    NotDiamondAdvisorCandidate,
-    NotDiamondAdvisorRecommendation,
-    resolve_notdiamond_advisor,
 )
 
 settings_router = APIRouter(prefix="/settings", tags=["settings"])

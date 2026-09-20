@@ -61,7 +61,6 @@ Quick start::
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import re
@@ -69,7 +68,7 @@ import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from orchestration.rlm.prime_agent_backend import (
     PrimeAgentOutcome,

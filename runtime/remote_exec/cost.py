@@ -40,11 +40,11 @@ import sys
 from typing import Literal, cast
 
 try:
+    from runtime.remote_exec.provider import RemoteStepEvent
+    from runtime.research_runner.budget import BudgetManager
     from substrate.dispatch.nd_attribution import consume_nd_decision
     from substrate.event_log import emit_typed
     from substrate.schemas.events import DispatchCallPayload
-    from runtime.research_runner.budget import BudgetManager
-    from runtime.remote_exec.provider import RemoteStepEvent
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))

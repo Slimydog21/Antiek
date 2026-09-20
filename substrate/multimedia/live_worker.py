@@ -327,10 +327,11 @@ def plan_public_export(
 def evaluate_public_publish_blocker(
     store: MultimediaAssetStore,
     asset_id: str,
+    owner_id: str = "__operator__",
 ) -> MultimediaAssetRecord:
     """Record that a staged export plan is not publishable yet."""
 
-    record = store.get(asset_id)
+    record = store.get(asset_id, owner_id=owner_id)
     gate = _latest_public_export_gate(record)
     review = _latest_public_export_review(record)
     export_plan = _latest_public_export_plan(record)
@@ -402,10 +403,11 @@ def deny_public_publish_request(
     store: MultimediaAssetStore,
     asset_id: str,
     request: MultimediaPublicPublishRequest,
+    owner_id: str = "__operator__",
 ) -> MultimediaAssetRecord:
     """Record that public publishing is unavailable in the no-spend lane."""
 
-    record = store.get(asset_id)
+    record = store.get(asset_id, owner_id=owner_id)
     gate = _latest_public_export_gate(record)
     review = _latest_public_export_review(record)
     export_plan = _latest_public_export_plan(record)
@@ -517,10 +519,11 @@ def deny_public_publish_request(
 def attach_provider_artifacts_to_manifest(
     store: MultimediaAssetStore,
     asset_id: str,
+    owner_id: str = "__operator__",
 ) -> MultimediaAssetRecord:
     """Attach validated provider file metadata to the asset manifest."""
 
-    record = store.get(asset_id)
+    record = store.get(asset_id, owner_id=owner_id)
     attachment_plan = _latest_attachment_plan(record)
     if attachment_plan is None:
         return store.record_job(
@@ -581,10 +584,11 @@ def attach_provider_artifacts_to_manifest(
 def plan_provider_artifact_attachment(
     store: MultimediaAssetStore,
     asset_id: str,
+    owner_id: str = "__operator__",
 ) -> MultimediaAssetRecord:
     """Validate the latest successful receipt and stage manifest attachment."""
 
-    record = store.get(asset_id)
+    record = store.get(asset_id, owner_id=owner_id)
     plan = _latest_execution_plan(record)
     preview = _latest_route_preview(record)
     receipt = _latest_succeeded_receipt(record)
@@ -656,10 +660,11 @@ def record_provider_artifact_receipt(
     store: MultimediaAssetStore,
     asset_id: str,
     receipt: LiveProviderArtifactReceipt,
+    owner_id: str = "__operator__",
 ) -> MultimediaAssetRecord:
     """Append a no-spend provider artifact receipt from polling/webhook data."""
 
-    record = store.get(asset_id)
+    record = store.get(asset_id, owner_id=owner_id)
     plan = _latest_execution_plan(record)
     if plan is None:
         return store.record_job(
@@ -729,10 +734,14 @@ def record_provider_artifact_receipt(
     )
 
 
-def preview_next_live_execution(store: MultimediaAssetStore, asset_id: str) -> MultimediaAssetRecord:
+def preview_next_live_execution(
+    store: MultimediaAssetStore,
+    asset_id: str,
+    owner_id: str = "__operator__",
+) -> MultimediaAssetRecord:
     """Append a no-spend route preview for the latest queued live job."""
 
-    record = store.get(asset_id)
+    record = store.get(asset_id, owner_id=owner_id)
     queued = _latest_queued_execution(record)
     if queued is None or queued.execution_plan is None:
         return store.record_job(

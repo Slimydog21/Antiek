@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -26,8 +27,8 @@ from substrate.contracts.anti_ek_honesty import (  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
     apply_source_merge_review,
-    build_html_only,
     build_body,
+    build_html_only,
     commit_source_merge_review,
     compose_artifacts,
     export_research_artifact,
@@ -38,7 +39,6 @@ from substrate.research_artifact import (  # noqa: E402
     research_projection_doc_model,
     restore_source_merge_review,
 )
-from substrate.research_artifact.build_body import build_body  # noqa: E402
 from substrate.research_artifact.paths import artifact_path_for  # noqa: E402
 from substrate.research_artifact.store import ResearchArtifactStore  # noqa: E402
 
@@ -389,20 +389,29 @@ async def post_source_merge_apply(body: SourceMergeApplyIn) -> SourceMergeApplyO
     db_path = _db()
     member_ids = _validate_source_merge_preflight(body, db_path=db_path)
     packet = body.reviewed_packet
+
+    def _apply_sync():
+        try:
+            with connect_write(db_path, purpose="research_artifact/source_merge_apply") as con:
+                return apply_source_merge_review(
+                    con,
+                    document_id=packet.document_id,
+                    parent_reading_thread_id=packet.parent_reading_thread_id,
+                    draft_merge_path=packet.draft_merge_path,
+                    compose_index_path=packet.compose_index_path,
+                    member_investigation_ids=member_ids,
+                    expected_content_hashes=body.expected_content_hashes,
+                    hash_conflicts=packet.hash_conflicts,
+                    hash_conflicts_acknowledged=body.acknowledge_hash_conflicts,
+                    operator_reviewer=body.operator_reviewer,
+                )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
     try:
-        with connect_write(db_path, purpose="research_artifact/source_merge_apply") as con:
-            receipt = apply_source_merge_review(
-                con,
-                document_id=packet.document_id,
-                parent_reading_thread_id=packet.parent_reading_thread_id,
-                draft_merge_path=packet.draft_merge_path,
-                compose_index_path=packet.compose_index_path,
-                member_investigation_ids=member_ids,
-                expected_content_hashes=body.expected_content_hashes,
-                hash_conflicts=packet.hash_conflicts,
-                hash_conflicts_acknowledged=body.acknowledge_hash_conflicts,
-                operator_reviewer=body.operator_reviewer,
-            )
+        receipt = await asyncio.to_thread(_apply_sync)
     except HTTPException:
         raise
     except Exception as exc:
@@ -416,8 +425,6 @@ async def post_source_merge_apply(body: SourceMergeApplyIn) -> SourceMergeApplyO
         member_investigation_ids=receipt.member_investigation_ids,
         hash_conflicts_acknowledged=receipt.hash_conflicts_acknowledged,
     )
-
-
 @artifact_router.post("/artifacts/source-merge/preview", response_model=SourceMergePreviewOut)
 async def post_source_merge_preview(body: SourceMergeApplyIn) -> SourceMergePreviewOut:
     """Preview source/twin revision evidence without writing bodies or events."""
@@ -425,9 +432,9 @@ async def post_source_merge_preview(body: SourceMergeApplyIn) -> SourceMergePrev
     db_path = _db()
     member_ids = _validate_source_merge_preflight(body, db_path=db_path)
     packet = body.reviewed_packet
-    try:
+    def _preview_sync():
         with connect_write(db_path, purpose="research_artifact/source_merge_preview") as con:
-            preview = preview_source_merge_review(
+            return preview_source_merge_review(
                 con,
                 document_id=packet.document_id,
                 draft_merge_path=packet.draft_merge_path,
@@ -436,6 +443,9 @@ async def post_source_merge_preview(body: SourceMergeApplyIn) -> SourceMergePrev
                 expected_content_hashes=body.expected_content_hashes,
                 hash_conflicts=packet.hash_conflicts,
             )
+
+    try:
+        preview = await asyncio.to_thread(_preview_sync)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
@@ -466,9 +476,9 @@ async def post_source_merge_commit(body: SourceMergeCommitIn) -> SourceMergeComm
     db_path = _db()
     member_ids = _validate_source_merge_preflight(body, db_path=db_path)
     packet = body.reviewed_packet
-    try:
+    def _commit_sync():
         with connect_write(db_path, purpose="research_artifact/source_merge_commit") as con:
-            receipt = commit_source_merge_review(
+            return commit_source_merge_review(
                 con,
                 document_id=packet.document_id,
                 parent_reading_thread_id=packet.parent_reading_thread_id,
@@ -485,6 +495,9 @@ async def post_source_merge_commit(body: SourceMergeCommitIn) -> SourceMergeComm
                 expected_after_twin_hash=body.expected_after_twin_hash,
                 operator_reviewer=body.operator_reviewer,
             )
+
+    try:
+        receipt = await asyncio.to_thread(_commit_sync)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
@@ -514,9 +527,9 @@ async def post_source_merge_restore(body: SourceMergeRestoreIn) -> SourceMergeRe
     if not body.acknowledge_restore:
         _raise_source_merge_refusal("source_merge_restore_acknowledgement_required")
     db_path = _db()
-    try:
+    def _restore_sync():
         with connect_write(db_path, purpose="research_artifact/source_merge_restore") as con:
-            receipt = restore_source_merge_review(
+            return restore_source_merge_review(
                 con,
                 document_id=body.document_id,
                 parent_reading_thread_id=body.parent_reading_thread_id,
@@ -526,6 +539,9 @@ async def post_source_merge_restore(body: SourceMergeRestoreIn) -> SourceMergeRe
                 expected_before_source_hash=body.expected_before_source_hash,
                 operator_reviewer=body.operator_reviewer,
             )
+
+    try:
+        receipt = await asyncio.to_thread(_restore_sync)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
