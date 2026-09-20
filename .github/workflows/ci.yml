@@ -204,6 +204,27 @@ jobs:
           python -m pytest services/html_projection/ services/antiek_format/ services/ingestion/ \
             -q -p no:cacheprovider
 
+      - name: Previously-uncollected test suites
+        # A 2026-09-20 sweep found nine test files (115 test functions) that
+        # NO runner collected: pytest's `testpaths` is overridden by the
+        # explicit paths every CI invocation passes, so anything outside
+        # `tests/`, `services/*`, `compounding/` and `tools/faultinject/`
+        # executed zero times. Two were failing at the time of the sweep --
+        # including tools/tests/test_fake_gate_detector.py, the suite for the
+        # tool that certifies other gates are not fake.
+        #
+        # fixtures/ is excluded deliberately: it is the corpus the meta-tests
+        # consume (test_always_fails.py etc. are MEANT to fail when executed
+        # directly) and is not a test suite of its own.
+        #
+        # tests/test_test_collection_coverage.py keeps this list honest -- it
+        # fails if a new test file lands outside every invocation here.
+        run: |
+          python -m pytest tools/tests/ runtime/notdiamond/ \
+            interfaces/research/api/test_krea_stream.py \
+            --ignore=tools/tests/fixtures \
+            -q -p no:cacheprovider
+
       - name: Substrate/dispatch boundary check
         # SPR-03 (DDIA-execution): forbid direct vendor-SDK imports
         # outside substrate/dispatch/providers/ and the explicit
