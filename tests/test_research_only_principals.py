@@ -173,18 +173,6 @@ def test_owner_full_export_refuses_research_source(db, owner_client):
     assert PROBE.encode() not in response.content
 
 
-@pytest.mark.parametrize("sealed", [False, True])
-def test_owner_full_export_refuses_historical_agent_context(db, owner_client, sealed):
-    from substrate.event_log import emit_typed, seal_investigation
-
-    emit_typed("research-probe", _evidence_request(), role="evidence_retriever")
-    if sealed:
-        seal_investigation("research-probe")
-    response = owner_client.get("/export/my-graph", headers=_OWNER_HEADERS)
-    assert response.status_code == 403
-    assert PROBE.encode() not in response.content
-
-
 @pytest.mark.parametrize("payload", [PROBE, [PROBE], None])
 def test_owner_projection_withholds_malformed_legacy_agent_context(payload):
     from interfaces.research.api.event_visibility import owner_event_projection

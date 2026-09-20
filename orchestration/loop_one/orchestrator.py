@@ -245,6 +245,9 @@ def _render_chunks_block_for_sub_question(
     documents are visible to their own research — a fair-use owner-read that
     never serves/attributes that content publicly.
     """
+    from interfaces.research.api.research_owner_dispatch import owner_model_retrieval_policy
+
+    policy_tag = owner_model_retrieval_policy(policy_tag)
     try:
         import duckdb
 

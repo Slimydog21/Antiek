@@ -1,0 +1,44 @@
+Direct-reader correction, 2026-09-20
+Previous PR head: 560e462670c9904e16ade13191dd37f7e978a7fa
+Worktree: /Users/slimydog/Antiek/worktrees/research-only-principal-split
+
+Final focused run: 309 passed, 10 skipped, 16 warnings in 87.18 seconds.
+The ten existing sidecar skips name unavailable integration modules; no new test is skipped.
+Output: direct-reader-acceptance.txt.
+Command:
+ANTIEK_OPERATOR_TOKEN='' ANTIEK_OPERATOR_EMAIL='' ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID='' .venv/bin/python -m pytest -q tests/test_chunk_reader_census.py tests/test_research_only_direct_readers.py tests/test_research_only_principals.py tests/test_research_only_rights_state.py tests/test_retrieval_gate_canon.py tests/test_owner_read_path.py tests/test_explain_routes.py tests/test_export_routes.py tests/test_multimedia_diagram_evidence_authority.py tests/test_multimedia_graph_evidence.py tests/test_multimedia_local_source_card.py tests/test_antiek_memory_mcp.py tests/tools/test_antiek_memory_e2e.py tests/test_start_research_owner_dispatch.py services/antiek_format/tests/test_sidecar_e2e.py tests/test_retrieval_gate_polarity.py tests/test_retrieval_time_gate.py tests/test_null_content_class_gate.py tests/test_loop_one_phase2_parallel.py tests/test_turbopuffer_hybrid_mount.py tests/test_turbopuffer_shadow.py tests/test_api.py tests/test_retrieval_gate_closure.py tests/test_retrieval_gate_matrix.py
+
+Reader discovery: 82 reviewed expressions/table bindings, 65 functions.
+.venv/bin/python tools/lint/chunk_reader_census.py --check: pass.
+Inventory regression is included in the final run. Source dependency fingerprints
+also cover dynamic merge SQL and downstream serializers/context handlers.
+
+Mutation proof: temporarily replace owner_body_sql return with ("TRUE", []).
+Run tests/test_research_only_direct_readers.py -k 'explain_preserves or mcp_readers or owner_selected or sidecar_voice'.
+Nine licensed-body tests fail with actual sentinel disclosure; 13 positive/unaffected
+controls pass. Mutation restored before final run. See direct-reader-mutation.txt.
+
+BYOT reachability before fix: one no-network capturing probe passes against the
+previous head. Source, output and trace: byot-before-probe.py.txt, byot-before.txt,
+byot-before.md. Final tests cover production event/task/thread dispatch, public
+positive controls, private/missing refusal, unstructured input, forged adjacent
+body, foreign ownership and takedown. No live provider delivery was attempted.
+
+Scoped Ruff: pass, direct-reader-lint.txt.
+Mypy --follow-imports=silent on owner_read.py, export_routes.py,
+research_owner_dispatch.py, chunk_reader_census.py: pass, direct-reader-mypy.txt.
+git diff --check: pass.
+
+Independent spec review found composite-prompt parsing and an MCP citation
+regression during rework; both fixed and covered. Follow-up review found no
+additional direct body reader in interfaces/services/tools/middleware.
+Independent standards/boundary review found that source IDs do not authenticate
+body bytes, then required ownership/takedown on rebuilt context. Both addressed
+with canonical re-read and focused negative controls. Export replay omission has
+no schema foreign-key dependency; populated-window probe passes.
+
+Limits: this is repository verification, not a production deployment. Code-only
+proof and runtime proof are distinguished per reader. Trusted host administration
+is a different authority from the paid owner. Generated prose quotation compliance
+is not proved. Historical four evidence-bridge baseline failures remain recorded
+in verification.txt and bridge-baseline.txt; this run does not claim those fixed.

@@ -1,3 +1,8 @@
+> Reopened and corrected after the owner identified three explain leaks and the
+> ordinary-export regression in 560e46267. Earlier ACCEPT/test records below are
+> historical evidence, not acceptance of that revision. See the direct-reader
+> correction and reader inventory for the current scope.
+
 # Research-only purchases distinguish the agent from the owner
 
 Decision: option B from `BLOCKER-research-only-principal-seam.md`, directed by the
@@ -46,14 +51,34 @@ This is a separate event-transport boundary, not a per-search-hit redaction rule
 New outward event transports must use the owner projection. Raw event logs are
 server-side agent data, not an owner export format.
 
-Independent review found `/export/my-graph` bypassed both boundaries by copying
-the entire database and raw logs. Full owner export now returns 403 if its database
-snapshot contains any research-only document, or if a copied JSONL/Parquet event
-snapshot would lose fields under the owner projection. The database check runs
-inside the export transaction and writer lock. Historical event context is checked
-even after the original source was removed. Malformed copied events fail closed.
-This deliberately refuses a full export rather than silently generating a partial
-backup. Server backup permissions are unchanged.
+The initial full-export refusal was too broad: every ordinary Phase 2 investigation
+contains raw request context. The corrected owner export projects copied event
+logs using the same owner projection, retaining derived output. The database
+snapshot still returns 403 if it contains research-only documents. Agent replay
+work in `note_taker_windows` is exported as an empty table because its stored
+prompts can survive source deletion. The manifest calls this an owner projection,
+not an operational backup. Source database rows and event files remain unchanged.
+
+## Direct readers and buyer credentials
+
+The retrieval gate does not govern SQL readers that resolve a chunk by ID. All
+three explain routes now preserve citation identity while selecting NULL for
+research-only text. MCP, wrestling, multimedia selection, and sidecar voice-note
+references enforce an owner body predicate before using licensed source bodies.
+
+Buyer BYOT credentials are an owner destination. A no-network capture proved that
+private agent context reached that dispatch boundary. Retrieval now downscopes for
+buyer-provider evidence calls. Dispatch also rebuilds the typed request from
+canonical owner-readable chunk rows, checking ownership and takedown status.
+Historical body and graph blocks never become buyer-provider inputs merely because
+their headings name readable chunks. Unclassified, missing, and licensed sources
+refuse before dispatch. Server-agent processing retains private research access.
+
+The reader inventory and its regression check live in
+`docs/diagnostics/research-only-principals/reader-inventory.json` and
+`tools/lint/chunk_reader_census.py`. The accompanying `reader-audit.md` distinguishes
+runtime probes from code inspection and trusted host maintenance. It supersedes
+the earlier claim that citation projections had been checked comprehensively.
 
 ## Failure dossier
 
@@ -81,7 +106,8 @@ disclosure before transport integration. Logs are under
 - Deployment and production data migration were not run.
 - This does not prove that arbitrary model-generated prose obeys negotiated
   quotation terms. The checked boundaries are source retrieval, direct serving,
-  citation projections, raw event context delivery, and full owner export refusal.
+  citation projections, raw event context delivery, owner-provider evidence input,
+  and owner export projection. The inventory identifies evidence per reader.
 - This does not authorize publisher activation, payouts, or purchase checkout.
 - New owner event transports need the same projection contract.
 

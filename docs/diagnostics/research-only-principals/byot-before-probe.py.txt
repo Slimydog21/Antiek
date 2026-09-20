@@ -1,0 +1,39 @@
+import asyncio
+from unittest.mock import Mock
+import pytest
+from tests.test_owner_read_path import db, _gated_book, StubEmbedding
+from interfaces.research.api import research_owner_dispatch as authority
+from interfaces.research.api.broadcast import EventBroadcaster
+from interfaces.research.api.evidence_retriever import make_evidence_retriever_handler
+from interfaces.research.api.settings_models_admin import UserModelChoice
+from orchestration.loop_one.coordinator import broadcast_emit
+from orchestration.loop_one.orchestrator import _render_chunks_block_for_sub_question_async
+from substrate.schemas import ActionType, EvidenceRetrieveRequestedPayload
+
+@pytest.mark.asyncio
+async def test_raw_body_reaches_owner_byot_boundary(db, monkeypatch):
+    from processing.embedding import embed
+    probe = 'PUBLISHERCONFIDENTIALPROBE'
+    _gated_book(db, 'research', content_class='research_only', title='Licensed', probe=probe)
+    monkeypatch.setattr(embed, 'default_embedding_provider', lambda: StubEmbedding())
+    captured = []
+    def capture(**kwargs):
+        captured.append(kwargs)
+        raise RuntimeError('STOP BEFORE OWNER PROVIDER CALL')
+    monkeypatch.setattr(authority, 'dispatch_talk_to_book_byot', capture)
+    bus = EventBroadcaster()
+    bus.register_handler(ActionType.EVIDENCE_RETRIEVE_REQUESTED.value, make_evidence_retriever_handler(bus))
+    choice = UserModelChoice(authority='user_model', provider_id='owner-provider', model_id='owner-model')
+    token = authority.install_manifest(authority.ResearchOwnerManifest(Mock(), 'payer', 'probe-inv', 'probe-launch', {r: choice for r in authority.PAID_LOOP_ONE_ROLES}))
+    try:
+        block = await _render_chunks_block_for_sub_question_async('quantum', policy_tag='private_research')
+        assert probe in block
+        await broadcast_emit(bus, 'probe-inv', EvidenceRetrieveRequestedPayload(sub_question='quantum', category='market_sizing', evidence_type_required='quantitative', chunks_block=block, subgraph_block=''), role='orchestrator')
+        await bus.wait_for_handlers()
+    finally:
+        authority.reset_manifest(token)
+    assert len(captured) == 1
+    assert captured[0]['request_owner_user_id'] == 'payer'
+    assert captured[0]['choice'].provider_id == 'owner-provider'
+    assert probe in captured[0]['prompt']
+    print('PROVED: real research_only corpus -> async retrieval -> production evidence handler -> owner BYOT boundary contains raw probe; no provider called')

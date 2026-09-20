@@ -239,14 +239,65 @@ def reset_manifest(token: contextvars.Token[ResearchOwnerManifest | None]) -> No
     _CURRENT.reset(token)
 
 
+def owner_model_retrieval_policy(policy_tag: str) -> str:
+    """A buyer's provider account is an owner recipient, never the agent principal."""
+    manifest = _CURRENT.get()
+    if (manifest is not None and manifest.choices["evidence_retriever"].authority == "user_model"
+            and policy_tag == "private_research"):
+        return "operator_only"
+    return policy_tag
+
+
+def _owner_evidence_prompt(request: object, *, owner_user_id: str) -> str:
+    """Rebuild source input; historical text and source IDs are not authority."""
+    from roles.evidence_retriever import render_full_prompt
+    from runtime.db_lock import connect_read
+    from substrate.graph import default_db_path
+    from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+    from substrate.schemas import EvidenceRetrieveRequestedPayload
+
+    from .evidence_retriever import _extract_chunk_ids_from_block
+
+    if not isinstance(request, EvidenceRetrieveRequestedPayload):
+        raise OwnerLaunchConflict("owner_evidence_request_required")
+    ids = _extract_chunk_ids_from_block(request.chunks_block)
+    if (request.chunks_block.strip() not in ("", "(corpus search returned no matches above the similarity floor)")
+            and not ids):
+        raise OwnerLaunchConflict("unclassified_owner_evidence_context")
+    rows: list[tuple[str, str]] = []
+    if ids:
+        placeholders = ",".join("?" for _ in ids)
+        gate, policy_params = non_privileged_chunk_sql_clause(
+            policy_tag="operator_only", owner_user_id=owner_user_id,
+        )
+        with connect_read(default_db_path()) as con:
+            rows = con.execute(
+                "SELECT c.chunk_id, c.text FROM chunks c JOIN documents d ON d.document_id=c.document_id "
+                "LEFT JOIN book_assets b ON b.document_id=d.document_id "
+                f"WHERE c.chunk_id IN ({placeholders}) {gate} AND COALESCE(b.taken_down,FALSE)=FALSE",
+                [*ids, *policy_params],
+            ).fetchall()
+        if {row[0] for row in rows} != set(ids):
+            raise OwnerLaunchConflict("research_only_source_requires_platform_agent")
+    bodies = dict(rows)
+    block = "\n---\n".join(f"### chunk_id: {chunk_id}\n{bodies[chunk_id]}" for chunk_id in ids)
+    return render_full_prompt(
+        sub_question=request.sub_question.strip(), category=request.category,
+        evidence_type_required=request.evidence_type_required, top_k=request.top_k,
+        chunks_block=block, subgraph_block="",
+    )
+
+
 def dispatch_loop_one(prompt: str, role: str, *, investigation_id: str,
                       semantic_call_id: str | None = None, attempt: int = 0,
-                      parent_event_id: str | None = None, **legacy: object) -> DispatchResult | None:
+                      parent_event_id: str | None = None, evidence_request: object = None, **legacy: object) -> DispatchResult | None:
     """Dispatch an owner-selected rung, or return None for the byte-stable legacy path."""
     manifest = _CURRENT.get()
     if manifest is None:
         return None
     choice = manifest.choices[role]
+    if role == "evidence_retriever" and choice.authority == "user_model":
+        prompt = _owner_evidence_prompt(evidence_request, owner_user_id=manifest.owner_user_id)
     # The durable requested-event identity is the stable call ordinal for the
     # fan-out roles. Prompt digest disambiguates same-event repair attempts.
     if attempt < 0 or attempt >= MAX_CHILD_ATTEMPTS:

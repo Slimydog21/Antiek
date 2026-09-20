@@ -650,10 +650,13 @@ def _gather_anchors_and_audio(
             duration: float | None = None
             # Look up the voice-note row for transcript + audio hints.
             try:
+                from substrate.graph.owner_read import owner_body_sql
+
+                allowed, policy_params = owner_body_sql()
                 vn_row = con.execute(
-                    "SELECT raw_text, metadata FROM documents "
-                    "WHERE document_id = ?",
-                    [voice_note_id],
+                    "SELECT d.raw_text, d.metadata FROM documents d "
+                    f"WHERE d.document_id = ? AND {allowed}",
+                    [voice_note_id, *policy_params],
                 ).fetchone()
             except duckdb.CatalogException:
                 vn_row = None

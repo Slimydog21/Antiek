@@ -185,6 +185,7 @@ def _dispatch_once(
             semantic_call_id=semantic_call_id
             or "phase2:" + hashlib.sha256(sub_question.encode()).hexdigest()[:16],
             attempt=attempt,
+            evidence_request=event.payload,
         )
     if result is None:
         kwargs: dict[str, Any] = {

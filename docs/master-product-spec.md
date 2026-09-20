@@ -1239,8 +1239,13 @@ Only the server-side `private_research` principal may retrieve its source chunks
 `operator_only` must exclude them even for the paying owner. Public and unknown
 tags also exclude them. The research-loop environment setting accepts only
 `attribution_eligible` or `private_research`; owner and unknown tags are errors.
-Derived notes retain citation identity without exposing the source body. This
-permission does not change attribution, payout, or publisher activation gates.
+Direct chunk-ID readers and provenance projections must enforce the owner body
+boundary too; retrieval policy alone is insufficient. Buyer-owned provider
+credentials are an owner destination. Evidence prompts for them must be rebuilt
+from owner-readable canonical sources, never forwarded from raw agent context.
+Owner exports project agent events and omit replay prompts; ordinary investigations
+must remain exportable. Derived notes retain citation identity without exposing
+the source body. This permission does not change attribution, payout, or publisher activation gates.
 See `docs/decisions/research-only-principals.md` for verification and remaining
 transport constraints.
 

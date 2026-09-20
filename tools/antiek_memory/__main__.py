@@ -33,20 +33,23 @@ def _make_handlers(db_path: str):
 
     # ── search_personal ───────────────────────────────────────────
     def search_personal(args: dict) -> ToolResult:
+        from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+
         query = args["query"]
         top_k = args.get("top_k", 5)
+        gate, gate_params = non_privileged_chunk_sql_clause(policy_tag="operator_only")
         con = connect_read(db_path)
         try:
             rows = con.execute(
-                """
+                f"""
                 SELECT c.chunk_id, c.text, d.title, d.source_tier, d.owner_user_id
                 FROM chunks c
                 JOIN documents d ON c.document_id = d.document_id
-                WHERE d.owner_user_id = ?
+                WHERE d.owner_user_id = ? {gate}
                 ORDER BY c.chunk_index
                 LIMIT ?
                 """,
-                ["__operator__", top_k],
+                ["__operator__", *gate_params, top_k],
             ).fetchall()
         finally:
             con.close()
@@ -67,19 +70,23 @@ def _make_handlers(db_path: str):
 
     # ── search_public ─────────────────────────────────────────────
     def search_public(args: dict) -> ToolResult:
+        from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+
         query = args["query"]
         top_k = args.get("top_k", 5)
+        gate, gate_params = non_privileged_chunk_sql_clause(policy_tag="attribution_eligible")
         con = connect_read(db_path)
         try:
             rows = con.execute(
-                """
+                f"""
                 SELECT c.chunk_id, c.text, d.title, d.source_tier
                 FROM chunks c
                 JOIN documents d ON c.document_id = d.document_id
+                WHERE TRUE {gate}
                 ORDER BY c.chunk_index
                 LIMIT ?
                 """,
-                [top_k],
+                [*gate_params, top_k],
             ).fetchall()
         finally:
             con.close()
@@ -241,14 +248,17 @@ def _make_handlers(db_path: str):
                 chunk_id = parts[4] if len(parts) > 4 else None
                 if not isbn or not chunk_id:
                     return None
+                from substrate.graph.owner_read import owner_body_sql
+
+                allowed, policy_params = owner_body_sql()
                 row = con.execute(
-                    """
+                    f"""
                     SELECT c.chunk_id, c.text, d.title
                     FROM chunks c
                     JOIN documents d ON c.document_id = d.document_id
-                    WHERE c.chunk_id = ?
+                    WHERE c.chunk_id = ? AND {allowed}
                     """,
-                    [chunk_id],
+                    [chunk_id, *policy_params],
                 ).fetchone()
                 if row is None:
                     return None

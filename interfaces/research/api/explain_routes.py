@@ -34,6 +34,8 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException
 
+from substrate.graph.owner_read import owner_body_sql
+
 _EXCERPT_MAX_CHARS = 500
 
 explain_router = APIRouter(tags=["explain"])
@@ -149,11 +151,13 @@ def _load_chunks(con: Any, chunk_ids: list[str]) -> list[dict[str, Any]]:
     if not chunk_ids:
         return []
     placeholders = ",".join("?" for _ in chunk_ids)
+    allowed, policy_params = owner_body_sql()
     rows = con.execute(
-        f"SELECT chunk_id, document_id, section_path, text, chunk_index "
-        f"FROM chunks WHERE chunk_id IN ({placeholders}) "
-        f"ORDER BY chunk_id",
-        chunk_ids,
+        f"SELECT c.chunk_id, c.document_id, c.section_path, "
+        f"CASE WHEN {allowed} THEN c.text ELSE NULL END, c.chunk_index "
+        f"FROM chunks c JOIN documents d ON d.document_id=c.document_id "
+        f"WHERE c.chunk_id IN ({placeholders}) ORDER BY c.chunk_id",
+        [*policy_params, *chunk_ids],
     ).fetchall()
     return [
         {
@@ -360,10 +364,13 @@ def resolve_document_explain(
         documents = _load_documents(con, [document_id])
         if not documents:
             return None
+        allowed, policy_params = owner_body_sql()
         chunk_rows = con.execute(
-            "SELECT chunk_id, chunk_index, section_path, text "
-            "FROM chunks WHERE document_id = ? ORDER BY chunk_index, chunk_id",
-            [document_id],
+            "SELECT c.chunk_id, c.chunk_index, c.section_path, "
+            f"CASE WHEN {allowed} THEN c.text ELSE NULL END "
+            "FROM chunks c JOIN documents d ON d.document_id=c.document_id "
+            "WHERE c.document_id = ? ORDER BY c.chunk_index, c.chunk_id",
+            [*policy_params, document_id],
         ).fetchall()
         chunks = [
             {

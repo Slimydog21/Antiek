@@ -1,3 +1,6 @@
+SUPERSEDED COVERAGE CLAIM: see reader-audit.md and direct-reader-verification.txt.
+The results below are historical; user probes disproved the citation coverage claim.
+
 Research-only principal split verification, 2026-09-20
 Worktree: /Users/slimydog/Antiek/worktrees/research-only-principal-split
 Base: f24981db2bde8ce2fb88158fc54460cfd168c294

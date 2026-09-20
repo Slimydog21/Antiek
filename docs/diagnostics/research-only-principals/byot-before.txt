@@ -1,0 +1,4 @@
+evidence_retriever.handle: dispatch failed — RuntimeError: STOP BEFORE OWNER PROVIDER CALL
+PROVED: real research_only corpus -> async retrieval -> production evidence handler -> owner BYOT boundary contains raw probe; no provider called
+.
+1 passed in 0.69s

@@ -1,0 +1,274 @@
+FFF.....F...FFFF....F.                                                   [100%]
+=================================== FAILURES ===================================
+_ test_explain_preserves_identity_without_licensed_body[research_only-/docs/doc-probe/explain] _
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-510e5qs8/graph.duckdb'
+owner_client = <starlette.testclient.TestClient object at 0x118339e50>
+path = '/docs/doc-probe/explain', content_class = 'research_only'
+
+    @pytest.mark.parametrize("path", ["/docs/doc-probe/explain", "/claims/claim-probe/explain", "/syntheses/syn-probe/explain"])
+    @pytest.mark.parametrize("content_class", ["research_only", "public_domain"])
+    def test_explain_preserves_identity_without_licensed_body(db, owner_client, path, content_class):
+        seed(db, content_class)
+        response = owner_client.get(path, headers=owner_fixtures._OWNER_HEADERS)
+        assert response.status_code == 200, response.text
+        assert "chunk-probe0" in response.text
+        assert "Licensed title" in response.text
+>       assert (PROBE in response.text) is (content_class == "public_domain")
+E       assert ('PUBLISHERCONFIDENTIALPROBE' in '{"document":{"document_id":"doc-probe","title":"Licensed title","author":null,"source_tier":1,"acquired_at":"2026-09-...reated_at":"2026-09-20T17:06:12.015525"}],"chunk_tier_overrides":[],"generated_at":"2026-09-20T14:06:12.268332+00:00"}') is ('research_only' == 'public_domain'
+E        +  where '{"document":{"document_id":"doc-probe","title":"Licensed title","author":null,"source_tier":1,"acquired_at":"2026-09-...reated_at":"2026-09-20T17:06:12.015525"}],"chunk_tier_overrides":[],"generated_at":"2026-09-20T14:06:12.268332+00:00"}' = <Response [200 OK]>.text
+E
+E         - public_domain
+E         + research_only)
+
+tests/test_research_only_direct_readers.py:46: AssertionError
+_ test_explain_preserves_identity_without_licensed_body[research_only-/claims/claim-probe/explain] _
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-kcfln424/graph.duckdb'
+owner_client = <starlette.testclient.TestClient object at 0x1193b3bc0>
+path = '/claims/claim-probe/explain', content_class = 'research_only'
+
+    @pytest.mark.parametrize("path", ["/docs/doc-probe/explain", "/claims/claim-probe/explain", "/syntheses/syn-probe/explain"])
+    @pytest.mark.parametrize("content_class", ["research_only", "public_domain"])
+    def test_explain_preserves_identity_without_licensed_body(db, owner_client, path, content_class):
+        seed(db, content_class)
+        response = owner_client.get(path, headers=owner_fixtures._OWNER_HEADERS)
+        assert response.status_code == 200, response.text
+        assert "chunk-probe0" in response.text
+        assert "Licensed title" in response.text
+>       assert (PROBE in response.text) is (content_class == "public_domain")
+E       assert ('PUBLISHERCONFIDENTIALPROBE' in '{"claim_node":{"node_id":"claim-probe","canonical_label":"Derived claim","node_type":"claim","graph_scope":"depth","c...quired_at":"2026-09-20T17:06:12.896750"}],"chunk_tier_overrides":[],"generated_at":"2026-09-20T14:06:13.814914+00:00"}') is ('research_only' == 'public_domain'
+E        +  where '{"claim_node":{"node_id":"claim-probe","canonical_label":"Derived claim","node_type":"claim","graph_scope":"depth","c...quired_at":"2026-09-20T17:06:12.896750"}],"chunk_tier_overrides":[],"generated_at":"2026-09-20T14:06:13.814914+00:00"}' = <Response [200 OK]>.text
+E
+E         - public_domain
+E         + research_only)
+
+tests/test_research_only_direct_readers.py:46: AssertionError
+_ test_explain_preserves_identity_without_licensed_body[research_only-/syntheses/syn-probe/explain] _
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-mjd71py6/graph.duckdb'
+owner_client = <starlette.testclient.TestClient object at 0x11815d400>
+path = '/syntheses/syn-probe/explain', content_class = 'research_only'
+
+    @pytest.mark.parametrize("path", ["/docs/doc-probe/explain", "/claims/claim-probe/explain", "/syntheses/syn-probe/explain"])
+    @pytest.mark.parametrize("content_class", ["research_only", "public_domain"])
+    def test_explain_preserves_identity_without_licensed_body(db, owner_client, path, content_class):
+        seed(db, content_class)
+        response = owner_client.get(path, headers=owner_fixtures._OWNER_HEADERS)
+        assert response.status_code == 200, response.text
+        assert "chunk-probe0" in response.text
+        assert "Licensed title" in response.text
+>       assert (PROBE in response.text) is (content_class == "public_domain")
+E       assert ('PUBLISHERCONFIDENTIALPROBE' in '{"synthesis_id":"syn-probe","pins":{"document":[{"document":{"document_id":"doc-probe","title":"Licensed title","auth..."claim-probe","pinned_at":"2026-09-20T17:06:14.784043"}],"edge":[]},"generated_at":"2026-09-20T14:06:14.958037+00:00"}') is ('research_only' == 'public_domain'
+E        +  where '{"synthesis_id":"syn-probe","pins":{"document":[{"document":{"document_id":"doc-probe","title":"Licensed title","auth..."claim-probe","pinned_at":"2026-09-20T17:06:14.784043"}],"edge":[]},"generated_at":"2026-09-20T14:06:14.958037+00:00"}' = <Response [200 OK]>.text
+E
+E         - public_domain
+E         + research_only)
+
+tests/test_research_only_direct_readers.py:46: AssertionError
+_________ test_mcp_readers_respect_body_rights[research_only-resource] _________
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-61k34awp/graph.duckdb'
+surface = 'resource', content_class = 'research_only'
+
+    @pytest.mark.parametrize("surface", ["search_personal", "search_public", "resource"])
+    @pytest.mark.parametrize("content_class", ["research_only", "public_domain"])
+    def test_mcp_readers_respect_body_rights(db, surface, content_class):
+        from tools.antiek_memory.__main__ import _make_handlers
+
+        seed(db, content_class, count=1)
+        handlers, resource = _make_handlers(db)
+        result = resource("antiek://books/123/chunk-probe0") if surface == "resource" else handlers[surface]({"query": "quantum"})
+>       assert (PROBE in str(result)) is (content_class == "public_domain")
+E       assert ('PUBLISHERCONFIDENTIALPROBE' in 'ResourceContent(uri=\'antiek://books/123/chunk-probe0\', mime_type=\'application/json\', text=\'{"chunk_id": "chunk-p...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "title": "Licensed title"}\')') is ('research_only' == 'public_domain'
+E        +  where 'ResourceContent(uri=\'antiek://books/123/chunk-probe0\', mime_type=\'application/json\', text=\'{"chunk_id": "chunk-p...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "title": "Licensed title"}\')' = str(ResourceContent(uri='antiek://books/123/chunk-probe0', mime_type='application/json', text='{"chunk_id": "chunk-probe0"...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "title": "Licensed title"}'))
+E
+E         - public_domain
+E         + research_only)
+
+tests/test_research_only_direct_readers.py:61: AssertionError
+__________ test_owner_selected_chunk_inputs[research_only-wrestling] ___________
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-9jqj4fir/graph.duckdb'
+surface = 'wrestling', content_class = 'research_only'
+
+    @pytest.mark.parametrize("surface", ["wrestling", "multimedia", "source_card", "diagram"])
+    @pytest.mark.parametrize("content_class", ["research_only", "public_domain"])
+    def test_owner_selected_chunk_inputs(db, surface, content_class):
+        seed(db, content_class, count=1)
+        if surface == "wrestling":
+            from interfaces.research.api.wrestling import _resolve_region_text_from_db
+            result = _resolve_region_text_from_db(db, "r-probe0")
+>           assert (PROBE in str(result)) is (content_class == "public_domain")
+E           AssertionError: assert ('PUBLISHERCONFIDENTIALPROBE' in 'PUBLISHERCONFIDENTIALPROBE quantum xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx') is ('research_only' == 'public_domain'
+E            +  where 'PUBLISHERCONFIDENTIALPROBE quantum xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' = str('PUBLISHERCONFIDENTIALPROBE quantum xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
+E
+E             - public_domain
+E             + research_only)
+
+tests/test_research_only_direct_readers.py:71: AssertionError
+__________ test_owner_selected_chunk_inputs[research_only-multimedia] __________
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-t050p78l/graph.duckdb'
+surface = 'multimedia', content_class = 'research_only'
+
+    @pytest.mark.parametrize("surface", ["wrestling", "multimedia", "source_card", "diagram"])
+    @pytest.mark.parametrize("content_class", ["research_only", "public_domain"])
+    def test_owner_selected_chunk_inputs(db, surface, content_class):
+        seed(db, content_class, count=1)
+        if surface == "wrestling":
+            from interfaces.research.api.wrestling import _resolve_region_text_from_db
+            result = _resolve_region_text_from_db(db, "r-probe0")
+            assert (PROBE in str(result)) is (content_class == "public_domain")
+            return
+        from substrate.multimedia.diagram_evidence_authority import (
+            DiagramEvidenceAuthorityError,
+            _chunk_snapshot_on,
+        )
+        from substrate.multimedia.graph_evidence import _load_snapshots
+        from substrate.multimedia.local_source_card import LocalSourceCardError, _snapshot
+
+        with connect_write(db, purpose="direct-reader-check") as con:
+            if surface == "multimedia":
+                def call():
+                    return _load_snapshots(con, ("chunk-probe0",), owner_id="__operator__")
+            elif surface == "diagram":
+                def call():
+                    return _chunk_snapshot_on(con, ("chunk-probe0",))
+            else:
+                # Source card opens its own read connection, after this writer closes.
+                call = None
+            if call is not None:
+                if content_class == "research_only":
+>                   with pytest.raises((ValueError, DiagramEvidenceAuthorityError)):
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                   Failed: DID NOT RAISE any of (ValueError, DiagramEvidenceAuthorityError)
+
+tests/test_research_only_direct_readers.py:92: Failed
+_________ test_owner_selected_chunk_inputs[research_only-source_card] __________
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-jxuoxjdm/graph.duckdb'
+surface = 'source_card', content_class = 'research_only'
+
+    @pytest.mark.parametrize("surface", ["wrestling", "multimedia", "source_card", "diagram"])
+    @pytest.mark.parametrize("content_class", ["research_only", "public_domain"])
+    def test_owner_selected_chunk_inputs(db, surface, content_class):
+        seed(db, content_class, count=1)
+        if surface == "wrestling":
+            from interfaces.research.api.wrestling import _resolve_region_text_from_db
+            result = _resolve_region_text_from_db(db, "r-probe0")
+            assert (PROBE in str(result)) is (content_class == "public_domain")
+            return
+        from substrate.multimedia.diagram_evidence_authority import (
+            DiagramEvidenceAuthorityError,
+            _chunk_snapshot_on,
+        )
+        from substrate.multimedia.graph_evidence import _load_snapshots
+        from substrate.multimedia.local_source_card import LocalSourceCardError, _snapshot
+
+        with connect_write(db, purpose="direct-reader-check") as con:
+            if surface == "multimedia":
+                def call():
+                    return _load_snapshots(con, ("chunk-probe0",), owner_id="__operator__")
+            elif surface == "diagram":
+                def call():
+                    return _chunk_snapshot_on(con, ("chunk-probe0",))
+            else:
+                # Source card opens its own read connection, after this writer closes.
+                call = None
+            if call is not None:
+                if content_class == "research_only":
+                    with pytest.raises((ValueError, DiagramEvidenceAuthorityError)):
+                        call()
+                else:
+                    result = call()
+                    assert "chunk-probe0" in str(result)
+                    if surface == "multimedia":
+                        assert PROBE in str(result)
+        if surface == "source_card":
+            if content_class == "research_only":
+>               with pytest.raises(LocalSourceCardError):
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               Failed: DID NOT RAISE LocalSourceCardError
+
+tests/test_research_only_direct_readers.py:101: Failed
+___________ test_owner_selected_chunk_inputs[research_only-diagram] ____________
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-527hk51p/graph.duckdb'
+surface = 'diagram', content_class = 'research_only'
+
+    @pytest.mark.parametrize("surface", ["wrestling", "multimedia", "source_card", "diagram"])
+    @pytest.mark.parametrize("content_class", ["research_only", "public_domain"])
+    def test_owner_selected_chunk_inputs(db, surface, content_class):
+        seed(db, content_class, count=1)
+        if surface == "wrestling":
+            from interfaces.research.api.wrestling import _resolve_region_text_from_db
+            result = _resolve_region_text_from_db(db, "r-probe0")
+            assert (PROBE in str(result)) is (content_class == "public_domain")
+            return
+        from substrate.multimedia.diagram_evidence_authority import (
+            DiagramEvidenceAuthorityError,
+            _chunk_snapshot_on,
+        )
+        from substrate.multimedia.graph_evidence import _load_snapshots
+        from substrate.multimedia.local_source_card import LocalSourceCardError, _snapshot
+
+        with connect_write(db, purpose="direct-reader-check") as con:
+            if surface == "multimedia":
+                def call():
+                    return _load_snapshots(con, ("chunk-probe0",), owner_id="__operator__")
+            elif surface == "diagram":
+                def call():
+                    return _chunk_snapshot_on(con, ("chunk-probe0",))
+            else:
+                # Source card opens its own read connection, after this writer closes.
+                call = None
+            if call is not None:
+                if content_class == "research_only":
+>                   with pytest.raises((ValueError, DiagramEvidenceAuthorityError)):
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                   Failed: DID NOT RAISE any of (ValueError, DiagramEvidenceAuthorityError)
+
+tests/test_research_only_direct_readers.py:92: Failed
+__ test_sidecar_voice_reference_cannot_read_licensed_document[research_only] ___
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-scgsfzop/graph.duckdb'
+content_class = 'research_only'
+
+    @pytest.mark.parametrize("content_class", ["research_only", "public_domain"])
+    def test_sidecar_voice_reference_cannot_read_licensed_document(db, content_class):
+        from services.antiek_format.sidecar_writer import _gather_anchors_and_audio
+        seed(db, content_class, count=1)
+        with connect_write(db, purpose="seed-anchor") as con:
+            con.execute("""CREATE TABLE voice_note_anchor (
+                anchor_id TEXT, voice_note_id TEXT, document_id TEXT, page INTEGER,
+                bbox TEXT, chunk_id TEXT, chunker_version TEXT, created_at TIMESTAMP)""")
+            con.execute("INSERT INTO voice_note_anchor VALUES ('anchor','doc-probe','owner-doc',1,'{}',NULL,'v1',CURRENT_TIMESTAMP)")
+        anchors, _ = _gather_anchors_and_audio(document_id="owner-doc", db_path=str(db))
+        assert len(anchors) == 1
+>       assert (PROBE in str(anchors[0].transcript)) is (content_class == "public_domain")
+E       AssertionError: assert ('PUBLISHERCONFIDENTIALPROBE' in 'PUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONF...FIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBE') is ('research_only' == 'public_domain'
+E        +  where 'PUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONF...FIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBE' = str('PUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONF...FIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBE')
+E        +    where 'PUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONF...FIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBE' = AnchorRow(anchor_id='anchor', voice_note_id='doc-probe', document_id='owner-doc', page=1, bbox_x0=0.0, bbox_y0=0.0, bb...SHERCONFIDENTIALPROBEPUBLISHERCONFIDENTIALPROBE', created_at='2026-09-20T17:06:22.944730+00:00', duration_seconds=None).transcript
+E
+E         - public_domain
+E         + research_only)
+
+tests/test_research_only_direct_readers.py:230: AssertionError
+=============================== warnings summary ===============================
+tests/test_research_only_direct_readers.py::test_explain_preserves_identity_without_licensed_body[research_only-/docs/doc-probe/explain]
+  /Users/slimydog/Antiek/worktrees/research-only-principal-split/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_research_only_direct_readers.py::test_explain_preserves_identity_without_licensed_body[research_only-/docs/doc-probe/explain]
+FAILED tests/test_research_only_direct_readers.py::test_explain_preserves_identity_without_licensed_body[research_only-/claims/claim-probe/explain]
+FAILED tests/test_research_only_direct_readers.py::test_explain_preserves_identity_without_licensed_body[research_only-/syntheses/syn-probe/explain]
+FAILED tests/test_research_only_direct_readers.py::test_mcp_readers_respect_body_rights[research_only-resource]
+FAILED tests/test_research_only_direct_readers.py::test_owner_selected_chunk_inputs[research_only-wrestling]
+FAILED tests/test_research_only_direct_readers.py::test_owner_selected_chunk_inputs[research_only-multimedia]
+FAILED tests/test_research_only_direct_readers.py::test_owner_selected_chunk_inputs[research_only-source_card]
+FAILED tests/test_research_only_direct_readers.py::test_owner_selected_chunk_inputs[research_only-diagram]
+FAILED tests/test_research_only_direct_readers.py::test_sidecar_voice_reference_cannot_read_licensed_document[research_only]
+9 failed, 13 passed, 17 deselected, 1 warning in 14.76s
