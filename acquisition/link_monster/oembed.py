@@ -110,7 +110,9 @@ def fetch_oembed(
         # enforced at the send for the same bypass-proof reason.
         resp = govern_if_arxiv(
             endpoint,
-            lambda: client.get(endpoint, params={"url": url, "format": "json"}),
+            lambda: client.get(
+                endpoint, params={"url": url, "format": "json"}, timeout=timeout_s
+            ),
         )
         if resp.status_code != 200:
             return None
