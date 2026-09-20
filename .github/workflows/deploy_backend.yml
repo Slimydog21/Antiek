@@ -196,15 +196,19 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Checkout the exact SHA that passed the gate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.gate.outputs.sha }}
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 22
-          cache: npm
+          # Node 20 + these action versions are what the required `tsc` and
+          # `vitest` jobs already prove work against this lockfile on an
+          # ubuntu runner. Matching them keeps the deploy's frontend build
+          # off a configuration nothing else exercises.
+          node-version: '20'
+          cache: 'npm'
           cache-dependency-path: apps/reading/package-lock.json
 
       # Phase A of playbooks/deploy.yml runs `npm run build` (tsc -b &&
@@ -215,8 +219,11 @@ jobs:
         run: npm ci
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
+          # Not the repo's 3.14: ansible-core's supported interpreter matrix
+          # lags the newest CPython, and this is the one job where a control
+          # node that fails to import is a failed production deploy.
           python-version: "3.12"
 
       - name: Install Ansible
