@@ -319,6 +319,8 @@ def test_over_bound_thesis_falls_back_instead_of_claiming_partial_completeness(
         ("", "https://public.example.test", "https://public.example.test"),
         ("https://frontend.example.test", "https://public.example.test", "https://frontend.example.test"),
         ("http://localhost:8080/", "", "http://localhost:8080"),
+        ("http://127.0.0.1:8080", "", "http://127.0.0.1:8080"),
+        ("https://reader.cafe", "", "https://reader.cafe"),
         ("http://[::1]:8080/", "", "http://[::1]:8080"),
     ],
 )
@@ -342,7 +344,10 @@ def test_real_resolver_uses_configured_reader_origin(
      "https://reader.example.test/subpath", "https://reader.example.test?redirect=evil",
      "https://reader.example.test#fragment", "https://reader.example.test:bad",
      "https://reader.\nexample.test", "https://reader..example.test",
-     "https://-reader.example.test", "http://999.1.2.3"],
+     "https://-reader.example.test", "http://999.1.2.3",
+     "https://reader.example.test\\@evil.test", "https://reader.example.test:99999",
+     "https://read%65r.example.test", "http://0x7f.1", "http://0x7f000001",
+     "http://0177.0.0.1", "http://reader.123", "http://0X7F000001.", "http://0x"],
 )
 def test_unavailable_reader_origin_keeps_visible_unclickable_references(
     archived_synthesis: tuple[str, str], monkeypatch: pytest.MonkeyPatch,
@@ -412,7 +417,7 @@ def test_both_real_html_routes_keep_configured_links_despite_spoofed_headers(
     "document_id,encoded",
     [("a/b", "a%2Fb"), ("a?b", "a%3Fb"), ("a#b", "a%23b"),
      ("a b", "a%20b"), ("café", "caf%C3%A9"), ("%2e%2e", "%252e%252e"),
-     (".", None), ("..", None)],
+     (".", None), ("..", None), ("", None)],
 )
 def test_reader_locator_keeps_document_identity_in_one_path_segment(
     document_id: str, encoded: str | None,
@@ -422,3 +427,13 @@ def test_reader_locator_keeps_document_identity_in_one_path_segment(
     origin = "https://reader.example.test"
     expected = None if encoded is None else f"{origin}/read/{encoded}"
     assert _reader_locator(origin, document_id) == expected
+
+
+def test_invalid_public_origin_without_frontend_has_no_reader_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from interfaces.research.api.synthesis_artifact import _reader_origin
+
+    monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", "")
+    monkeypatch.setenv("ANTIEK_PUBLIC_BASE_URL", "https://reader.example.test:99999")
+    assert _reader_origin() is None

@@ -224,7 +224,15 @@ The 498-test suite covers precedence, malformed/unset configuration, header
 spoofing, localhost/IPv6, encoded IDs, both endpoints and machine-island links.
 Strict mypy is clean on the four implementation/integration files.
 The earlier followup review is terminal ACCEPT95 at8c6e8da5b. Independent
-review of this portable-link delta is running in .audit/portable-links-review.log.
+review of this portable-link delta completed ACCEPT94 at380d1407f in
+.audit/portable-links-review.log. Its small followups reject noncanonical
+numeric hosts and add backslash, port, percent-host, empty-ID and invalid
+PUBLIC fallback tests. Canonical IPv4 and alphabetic hex-shaped DNS labels
+remain accepted. The [WHATWG host parser](https://url.spec.whatwg.org/#concept-host-parser)
+selects IPv4 parsing from numeric final labels, including hex notation; merely
+rejecting digits-and-dots missed that case. Followup verification passes511tests,
+strict mypy on4files and Ruff. Historical browser source hashes still identify
+the earlier380d1407f implementation, not this validation-only followup.
 
 Browser verification used an isolated Chrome profile with a real signed session
 cookie, the real shared export component, and the local full app. A canonical

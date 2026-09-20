@@ -98,7 +98,11 @@ def _valid_reader_host(host: str) -> bool:
         ascii_host = host.encode("idna").decode("ascii").rstrip(".")
     except UnicodeError:
         return False
-    if not ascii_host or len(ascii_host) > 253 or all(c in "0123456789." for c in ascii_host):
+    if not ascii_host or len(ascii_host) > 253:
+        return False
+    # WHATWG parses numeric final labels as IPv4, including hex and octal.
+    # Canonical IP literals already passed ipaddress above.
+    if re.fullmatch(r"(?:[0-9]+|0[xX][0-9a-fA-F]*)", ascii_host.rsplit(".", 1)[-1]):
         return False
     return all(re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", label)
                for label in ascii_host.split("."))
