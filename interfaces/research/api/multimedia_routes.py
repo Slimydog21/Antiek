@@ -45,6 +45,7 @@ from substrate.multimedia.listening_progress import (
 from substrate.multimedia.live_worker import (
     evaluate_public_export_gate,
     plan_public_export,
+    preview_next_live_execution,
     record_public_export_review,
 )
 from substrate.multimedia.local_audible_coordinator import LocalAudibleCoordinator
@@ -769,6 +770,18 @@ def plan_multimedia_public_export(
 ) -> MultimediaAssetRecord:
     try:
         return plan_public_export(get_store(), asset_id, owner_id=operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.post("/assets/{asset_id}/live-execution-preview", response_model=MultimediaAssetRecord)
+def preview_multimedia_live_execution(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaAssetRecord:
+    """No-spend worker preview for the latest queued live execution plan."""
+    try:
+        return preview_next_live_execution(get_store(), asset_id, owner_id=operator_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
 
