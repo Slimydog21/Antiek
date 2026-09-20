@@ -71,11 +71,19 @@ WHAT IS NOT FLAGGED, AND WHY — each decision, with its cost stated
    still has to check that the closure reaches a hop.
 
 2. **A ``@contextmanager`` helper that wraps ``connect_write`` and is called
-   from async code.** This IS a real violation and this lint cannot see it: the
-   ``connect_write`` sits in a module-level sync generator whose nearest scope
-   is sync, and only a call graph would connect it to the async caller. Closing
-   it needs whole-program analysis, which is a different and much more
-   expensive tool. Recorded here rather than papered over.
+   from async code — SAME MODULE: now flagged.** This is a real violation, and
+   the original note here said only a call graph could see it. That is true
+   across modules and false within one: when the wrapper and its callers are
+   in the same file, the AST being parsed already contains both. A module-level
+   sync ``def`` whose body takes the lock is now a derived entry for that
+   module (:func:`_collect_same_module_wrappers`), one hop, module level only.
+
+   The cost of leaving it open was not hypothetical:
+   ``interfaces/research/api/speak_routes.py`` defines ``_write()`` around
+   ``connect_write`` and calls it from 24 coroutines, six of them reachable
+   with no session — so this lint's baseline was EMPTY while a single file held
+   24 live instances. An empty baseline is indistinguishable from a clean one
+   unless something proves the tool can still see.
 
 3. **An alias bound in one module and imported from another.** ``_cw`` defined
    in ``helpers.py`` and imported into a route module reads as an ordinary
@@ -154,6 +162,52 @@ def _callee_name(node: ast.Call) -> str | None:
     if isinstance(func, ast.Name):
         return func.id
     return None
+
+
+def _collect_same_module_wrappers(tree: ast.AST) -> dict[str, str]:
+    """Map module-level sync helpers that TAKE the lock onto the entry they take.
+
+    Closes the same-module half of limitation 2 above. A module-level
+    ``def``/``@contextmanager`` whose own body calls a write-lock entry is, for
+    every caller in THIS file, indistinguishable from the entry itself — so an
+    ``async def`` that calls it takes the flock on the loop just as surely as
+    if it had called ``connect_write`` directly.
+
+    That is decidable from this module's AST alone. No call graph is needed,
+    because both the wrapper and its callers are in the file being parsed. The
+    cross-module case (limitation 3, an alias imported from elsewhere) still
+    needs whole-program analysis and is still not attempted.
+
+    Scope is deliberately ONE hop and module-level only. A wrapper calling a
+    wrapper, or a helper defined inside another function, is not followed:
+    each extra hop widens the blast radius of a false positive, and one hop is
+    what the observed shape needs — ``interfaces/research/api/speak_routes.py``
+    defines ``_write()`` as a ``@contextmanager`` around ``connect_write`` and
+    calls it from 24 coroutines in the same file, none of which this lint
+    could see.
+
+    Nested sync defs are NOT collected, for the reason limitation 1 gives:
+    they are the shape of the sanctioned fix.
+    """
+    direct = {name: name for name in WRITE_LOCK_ENTRIES}
+    direct.update(_collect_alias_names(tree))
+    wrappers: dict[str, str] = {}
+    if not isinstance(tree, ast.Module):
+        return wrappers
+    for node in tree.body:  # module level only — not ast.walk
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        if isinstance(node, ast.AsyncFunctionDef):
+            continue  # an async wrapper is itself checked by the walker
+        for sub in ast.walk(node):
+            if (
+                isinstance(sub, ast.Call)
+                and isinstance(sub.func, ast.Name)
+                and sub.func.id in direct
+            ):
+                wrappers[node.name] = direct[sub.func.id]
+                break
+    return wrappers
 
 
 def _collect_alias_names(tree: ast.AST) -> dict[str, str]:
@@ -265,6 +319,9 @@ def scan_file(path: Path) -> list[Violation]:
         return []
     entries = {name: name for name in WRITE_LOCK_ENTRIES}
     entries.update(_collect_alias_names(tree))
+    # Same-module one-hop: a sync helper in THIS file that takes the lock is,
+    # to a caller in this file, the lock. See _collect_same_module_wrappers.
+    entries.update(_collect_same_module_wrappers(tree))
     walker = _Walker(path, entries)
     walker.visit(tree)
     return walker.violations
