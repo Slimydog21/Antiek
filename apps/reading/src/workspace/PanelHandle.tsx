@@ -282,7 +282,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
           className="absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize z-10"
           style={{
             background:
-              "linear-gradient(135deg, transparent 0%, transparent 50%, #F5DF24 50%, #F5DF24 60%, transparent 60%, transparent 70%, #F5DF24 70%, #F5DF24 80%, transparent 80%)",
+              "linear-gradient(135deg, transparent 0%, transparent 50%, var(--sun) 50%, var(--sun) 60%, transparent 60%, transparent 70%, var(--sun) 70%, var(--sun) 80%, transparent 80%)",
           }}
         />
       )}
