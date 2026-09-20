@@ -88,6 +88,7 @@ from substrate.schemas import (  # noqa: E402
 
 from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
+from .event_visibility import owner_event_projection  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -2409,7 +2410,7 @@ def create_app(
         return {
             "investigation_id": investigation_id,
             "count": len(rows),
-            "events": rows,
+            "events": [owner_event_projection(row) for row in rows],
         }
 
     def _iter_event_log_investigation_ids() -> list[str]:
@@ -2460,7 +2461,7 @@ def create_app(
             reverse=True,
         )
         rows = rows[:limit]
-        return {"count": len(rows), "events": rows}
+        return {"count": len(rows), "events": [owner_event_projection(row) for row in rows]}
 
     # ── Loop 1 entry point ─────────────────────────────────────
     # POST /investigations kicks off a cold question; GET
@@ -4559,7 +4560,7 @@ def create_app(
                     # arbitrary clients, so send a no-op JSON object.
                     await ws.send_json({"type": "ping"})
                     continue
-                await ws.send_json(event.model_dump(mode="json"))
+                await ws.send_json(owner_event_projection(event.model_dump(mode="json")))
         except WebSocketDisconnect:
             pass
         finally:

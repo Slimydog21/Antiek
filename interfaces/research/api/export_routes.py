@@ -1,6 +1,9 @@
 """P1 §6 — full-graph export bundle (read half). ``GET /export/my-graph``.
 
-Streams a downloadable zip of the operator's full knowledge graph:
+Streams a downloadable zip of the operator's full knowledge graph. Refuses
+snapshots containing research-only sources or agent-only event context; server
+backups and owner exports have different permissions:
+
 
 - ``graph/`` — DuckDB ``EXPORT DATABASE`` snapshot of the graph DB
   (``schema.sql`` + ``load.sql`` + per-table Parquet shards), taken on a
@@ -70,8 +73,11 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from substrate.constants import RESEARCH_ONLY_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import EVENT_SCHEMA_VERSION, default_events_dir  # noqa: E402
 from substrate.graph import default_db_path  # noqa: E402
+
+from .event_visibility import owner_event_projection  # noqa: E402
 
 export_router = APIRouter(prefix="/export", tags=["export"])
 
@@ -84,6 +90,7 @@ EXPORT_LOCK_TIMEOUT_S = 15.0
 _DB_UNAVAILABLE = "graph database unavailable"
 _EXPORT_FAILED = "graph export failed"
 _LOCK_BUSY = "graph write lock held by another process"
+_OWNER_EXPORT_WITHHELD = "full graph export contains agent-only source data"
 
 
 class _ExportUnavailable(RuntimeError):
@@ -244,6 +251,13 @@ def _export_graph(
                     "ORDER BY table_name"
                 ).fetchall()
             ]
+            # Full database snapshots cannot be made owner-readable by the
+            # retrieval gate. Refuse inside the same snapshot transaction.
+            if "documents" in tables and con.execute(
+                "SELECT 1 FROM documents WHERE content_class = ? LIMIT 1",
+                [RESEARCH_ONLY_CONTENT_CLASS],
+            ).fetchone():
+                raise HTTPException(status_code=403, detail=_OWNER_EXPORT_WITHHELD)
             table_rows: dict[str, int] = {}
             for t in tables:
                 quoted = '"' + t.replace('"', '""') + '"'
@@ -287,7 +301,8 @@ def _copy_event_files(events_root: str, out_dir: Path) -> dict[str, int]:
     """Copy sealed ``*.parquet`` + live ``*.jsonl`` event files byte-for-byte.
 
     No locks on the event log (append-only by construction); a torn tail
-    line in a live JSONL is copied as-is, exactly like the nightly backup.
+    line in a live JSONL fails validation of the copied snapshot. Unlike the
+    server backup, owner export refuses agent-only context.
     Symlinks are skipped (the hardened reader in substrate/event_log/events.py
     treats non-regular event files as a physical-trajectory error).
     """
@@ -304,11 +319,42 @@ def _copy_event_files(events_root: str, out_dir: Path) -> dict[str, int]:
             continue
         if name.endswith(".parquet"):
             shutil.copyfile(src, out_dir / name)
+            _require_owner_readable_events(out_dir / name)
             counts["parquet"] += 1
         elif name.endswith(".jsonl"):
             shutil.copyfile(src, out_dir / name)
+            _require_owner_readable_events(out_dir / name)
             counts["jsonl"] += 1
     return counts
+
+
+def _require_owner_readable_events(path: Path) -> None:
+    """Refuse a raw event export if owner projection would withhold any fields.
+
+    Inspect the copied snapshot, never a racing live tail. Malformed snapshots
+    fail the export rather than releasing bytes whose principal is unknown.
+    """
+    def check(row: dict[str, Any]) -> None:
+        if isinstance(row.get("payload"), str):
+            row = {**row, "payload": json.loads(row["payload"])}
+        if owner_event_projection(row) != row:
+            raise HTTPException(status_code=403, detail=_OWNER_EXPORT_WITHHELD)
+
+    if path.suffix == ".jsonl":
+        with path.open(encoding="utf-8") as stream:
+            for line in stream:
+                if line.strip():
+                    check(json.loads(line))
+        return
+
+    import duckdb
+
+    with duckdb.connect(":memory:") as con:
+        cursor = con.execute("SELECT * FROM read_parquet(?)", [str(path)])
+        columns = [column[0] for column in cursor.description]
+        while rows := cursor.fetchmany(1000):
+            for row in rows:
+                check(dict(zip(columns, row, strict=True)))
 
 
 def _master_md_status() -> dict[str, Any]:

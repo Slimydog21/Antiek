@@ -712,16 +712,12 @@ async def _run_phase_2(
         return False
 
     async def work() -> None:
-        # §9.0 research lane. Default 'attribution_eligible' (public lane,
-        # unchanged behaviour). An owner researching their OWN acquired corpus
-        # sets ANTIEK_RESEARCH_POLICY_TAG=private_research so their gated
-        # (restricted_pending_opt_in / personal_reading) documents are visible
-        # to their own research — a fair-use owner-read. This NEVER changes the
-        # serve/attribute path (master-spec §9.0 legal gate is untouched); it
-        # only widens what the owner's research retrieval can SEE.
-        research_policy_tag = (
-            os.environ.get("ANTIEK_RESEARCH_POLICY_TAG", "").strip()
-            or "attribution_eligible"
+        # Research is a separate principal from the owner-facing reading API.
+        # Keep the public default; require an explicit agent tag for private input.
+        from substrate.graph.retrieval_gate import research_policy_tag_from_env
+
+        research_policy_tag = research_policy_tag_from_env(
+            os.environ.get("ANTIEK_RESEARCH_POLICY_TAG")
         )
         sem = asyncio.Semaphore(PHASE_2_MAX_CONCURRENCY)
         delivered_action = _action_value(ActionType.EVIDENCE_RETRIEVE_DELIVERED)

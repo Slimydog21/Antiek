@@ -1,0 +1,58 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+___ test_owner_trajectory_withholds_agent_inputs[/trajectory/research-probe] ___
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-ozibobyy/graph.duckdb'
+owner_client = <starlette.testclient.TestClient object at 0x10e7d3050>
+path = '/trajectory/research-probe'
+
+    @pytest.mark.parametrize("path", ["/trajectory/research-probe", "/trajectory"])
+    def test_owner_trajectory_withholds_agent_inputs(db, owner_client, path):
+        from substrate.event_log import emit_typed, trajectory
+    
+        emit_typed("research-probe", _evidence_request(), role="evidence_retriever")
+        assert PROBE in str(trajectory("research-probe")), "agent replay must retain context"
+        response = owner_client.get(path, headers=_OWNER_HEADERS)
+        assert response.status_code == 200, response.text
+        assert response.json()["count"] == 1
+>       assert PROBE not in response.text
+E       assert 'PUBLISHERCONFIDENTIALPROBE' not in '{"investiga..._id":null}]}'
+E         
+E         'PUBLISHERCONFIDENTIALPROBE' is contained here:
+E           s_block":"PUBLISHERCONFIDENTIALPROBE","subgraph_block":"PUBLISHERCONFIDENTIALPROBE","owner_semantic_call_id":null},"parent_event_id":null,"policy_id":"orchestrator-deterministic","param_version":"0.2.0","schema_version":40,"emitted_at":"2026-09-20T12:51:09.430084Z","document_id":null}]}
+E         ?           ++++++++++++++++++++++++++
+
+tests/test_research_only_principals.py:86: AssertionError
+__________ test_owner_trajectory_withholds_agent_inputs[/trajectory] ___________
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-gb39shni/graph.duckdb'
+owner_client = <starlette.testclient.TestClient object at 0x10edfe8a0>
+path = '/trajectory'
+
+    @pytest.mark.parametrize("path", ["/trajectory/research-probe", "/trajectory"])
+    def test_owner_trajectory_withholds_agent_inputs(db, owner_client, path):
+        from substrate.event_log import emit_typed, trajectory
+    
+        emit_typed("research-probe", _evidence_request(), role="evidence_retriever")
+        assert PROBE in str(trajectory("research-probe")), "agent replay must retain context"
+        response = owner_client.get(path, headers=_OWNER_HEADERS)
+        assert response.status_code == 200, response.text
+        assert response.json()["count"] == 1
+>       assert PROBE not in response.text
+E       assert 'PUBLISHERCONFIDENTIALPROBE' not in '{"count":1,..._id":null}]}'
+E         
+E         'PUBLISHERCONFIDENTIALPROBE' is contained here:
+E           s_block":"PUBLISHERCONFIDENTIALPROBE","subgraph_block":"PUBLISHERCONFIDENTIALPROBE","owner_semantic_call_id":null},"parent_event_id":null,"policy_id":"orchestrator-deterministic","param_version":"0.2.0","schema_version":40,"emitted_at":"2026-09-20T12:51:09.709119Z","document_id":null}]}
+E         ?           ++++++++++++++++++++++++++
+
+tests/test_research_only_principals.py:86: AssertionError
+=============================== warnings summary ===============================
+tests/test_research_only_principals.py::test_owner_trajectory_withholds_agent_inputs[/trajectory/research-probe]
+  /Users/slimydog/Antiek/worktrees/research-only-principal-split/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_research_only_principals.py::test_owner_trajectory_withholds_agent_inputs[/trajectory/research-probe]
+FAILED tests/test_research_only_principals.py::test_owner_trajectory_withholds_agent_inputs[/trajectory]
+2 failed, 18 deselected, 1 warning in 1.95s

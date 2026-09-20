@@ -1,0 +1,167 @@
+FF....F.F.......                                                         [100%]
+=================================== FAILURES ===================================
+______________ test_evidence_retriever_happy_path_emits_delivered ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10f1d3e90>
+app_and_bus = (<fastapi.applications.FastAPI object at 0x10f1f0a40>, <interfaces.research.api.broadcast.EventBroadcaster object at 0x10e5191c0>)
+async_client = <httpx.AsyncClient object at 0x10f5b86e0>
+
+    @pytest.mark.asyncio
+    async def test_evidence_retriever_happy_path_emits_delivered(
+        monkeypatch, app_and_bus, async_client,
+    ):
+        _, bus = app_and_bus
+        inv = "inv-ev-happy"
+        sub_q = "What's the addressable market?"
+    
+        register_provider(_StubEvidenceRetriever(json.dumps(_good_response(sub_q))))
+        _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
+    
+        await _post_evidence_request(async_client, investigation_id=inv, sub_question=sub_q)
+        await bus.wait_for_handlers(timeout=5.0)
+    
+        delivered = [
+            r for r in trajectory(inv)
+            if r["action_type"] == ActionType.EVIDENCE_RETRIEVE_DELIVERED.value
+        ]
+        assert len(delivered) == 1
+        e = Event.model_validate(delivered[0])
+        assert isinstance(e.payload, EvidenceRetrieveDeliveredPayload)
+        p = e.payload
+        assert p.sub_question == sub_q
+>       assert p.insufficient_evidence is False
+E       assert True is False
+E        +  where True = EvidenceRetrieveDeliveredPayload(action_type='evidence.retrieve.delivered', sub_question="What's the addressable market?", answer='(parse_failed)', supporting_claims=[], evidentiary_gaps=[], insufficient_evidence=True).insufficient_evidence
+
+tests/test_evidence_retriever_bridge.py:231: AssertionError
+----------------------------- Captured stdout call -----------------------------
+evidence_retriever.handle: dispatch failed — ProviderError: xiaomi: network error — [Errno 8] nodename nor servname provided, or not known
+_____________ test_live_loop_one_chunk_heading_authorizes_cited_id _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10f1d3f20>
+app_and_bus = (<fastapi.applications.FastAPI object at 0x10f873c80>, <interfaces.research.api.broadcast.EventBroadcaster object at 0x10f728200>)
+async_client = <httpx.AsyncClient object at 0x10835cad0>
+
+    @pytest.mark.asyncio
+    async def test_live_loop_one_chunk_heading_authorizes_cited_id(
+        monkeypatch, app_and_bus, async_client,
+    ):
+        _, bus = app_and_bus
+        inv = "inv-ev-live-heading"
+        sub_q = "What does the retrieved evidence show?"
+        register_provider(_StubEvidenceRetriever(json.dumps(_good_response(sub_q))))
+        _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
+    
+        await _post_evidence_request(
+            async_client,
+            investigation_id=inv,
+            sub_question=sub_q,
+            chunks_block="### chunk_id: chunk-1\nSource tier: 1\n\nretrieved text\n",
+        )
+        await bus.wait_for_handlers(timeout=5.0)
+    
+        delivered = [
+            Event.model_validate(row)
+            for row in trajectory(inv)
+            if row["action_type"] == ActionType.EVIDENCE_RETRIEVE_DELIVERED.value
+        ]
+        assert len(delivered) == 1
+        payload = delivered[0].payload
+        assert isinstance(payload, EvidenceRetrieveDeliveredPayload)
+>       assert payload.insufficient_evidence is False
+E       AssertionError: assert True is False
+E        +  where True = EvidenceRetrieveDeliveredPayload(action_type='evidence.retrieve.delivered', sub_question='What does the retrieved evidence show?', answer='(parse_failed)', supporting_claims=[], evidentiary_gaps=[], insufficient_evidence=True).insufficient_evidence
+
+tests/test_evidence_retriever_bridge.py:266: AssertionError
+----------------------------- Captured stdout call -----------------------------
+evidence_retriever.handle: dispatch failed — ProviderError: xiaomi: network error — [Errno 8] nodename nor servname provided, or not known
+___________________ test_insufficient_evidence_flows_through ___________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10ff78290>
+app_and_bus = (<fastapi.applications.FastAPI object at 0x11226ba40>, <interfaces.research.api.broadcast.EventBroadcaster object at 0x11226ab10>)
+async_client = <httpx.AsyncClient object at 0x11265fce0>
+
+    @pytest.mark.asyncio
+    async def test_insufficient_evidence_flows_through(
+        monkeypatch, app_and_bus, async_client,
+    ):
+        _, bus = app_and_bus
+        inv = "inv-ev-ins"
+        sub_q = "Unanswerable question"
+        response = {
+            "sub_question": sub_q,
+            "answer": "",
+            "supporting_claims": [],
+            "evidentiary_gaps": [{"gap_description": "everything"}],
+            "insufficient_evidence": True,
+        }
+        register_provider(_StubEvidenceRetriever(json.dumps(response)))
+        _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
+    
+        await _post_evidence_request(async_client, investigation_id=inv, sub_question=sub_q)
+        await bus.wait_for_handlers(timeout=5.0)
+    
+        delivered = [
+            r for r in trajectory(inv)
+            if r["action_type"] == ActionType.EVIDENCE_RETRIEVE_DELIVERED.value
+        ]
+        assert len(delivered) == 1
+        p = Event.model_validate(delivered[0]).payload
+        assert p.insufficient_evidence is True
+        assert p.supporting_claims == []
+>       assert len(p.evidentiary_gaps) == 1
+E       AssertionError: assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = EvidenceRetrieveDeliveredPayload(action_type='evidence.retrieve.delivered', sub_question='Unanswerable question', answer='(parse_failed)', supporting_claims=[], evidentiary_gaps=[], insufficient_evidence=True).evidentiary_gaps
+
+tests/test_evidence_retriever_bridge.py:370: AssertionError
+----------------------------- Captured stdout call -----------------------------
+evidence_retriever.handle: dispatch failed — ProviderError: xiaomi: network error — [Errno 8] nodename nor servname provided, or not known
+_________ test_parse_failure_falls_back_preserving_dispatch_policy_id __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10f262120>
+app_and_bus = (<fastapi.applications.FastAPI object at 0x108247650>, <interfaces.research.api.broadcast.EventBroadcaster object at 0x11208acf0>)
+async_client = <httpx.AsyncClient object at 0x10f203620>
+
+    @pytest.mark.asyncio
+    async def test_parse_failure_falls_back_preserving_dispatch_policy_id(
+        monkeypatch, app_and_bus, async_client,
+    ):
+        _, bus = app_and_bus
+        inv = "inv-ev-badparse"
+    
+        stub = _StubEvidenceRetriever("totally not JSON")
+        register_provider(stub)
+        _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
+    
+        await _post_evidence_request(
+            async_client, investigation_id=inv, sub_question="anything",
+        )
+        await bus.wait_for_handlers(timeout=5.0)
+    
+        delivered = [
+            r for r in trajectory(inv)
+            if r["action_type"] == ActionType.EVIDENCE_RETRIEVE_DELIVERED.value
+        ]
+        assert len(delivered) == 1
+        e = Event.model_validate(delivered[0])
+        p = e.payload
+        assert p.insufficient_evidence is True
+        assert p.supporting_claims == []
+        # Dispatch succeeded — parse failed (initial + one self-repair). Policy
+        # stamp reflects the dispatched provider, NOT the no-provider fallback.
+>       assert e.policy_id == "stub-evidence/stub-flash-model"
+E       AssertionError: assert 'evidence-ret...k/no-provider' == 'stub-evidenc...b-flash-model'
+E         
+E         - stub-evidence/stub-flash-model
+E         + evidence-retriever-fallback/no-provider
+
+tests/test_evidence_retriever_bridge.py:438: AssertionError
+----------------------------- Captured stdout call -----------------------------
+evidence_retriever.handle: dispatch failed — ProviderError: xiaomi: network error — [Errno 8] nodename nor servname provided, or not known
+=========================== short test summary info ============================
+FAILED tests/test_evidence_retriever_bridge.py::test_evidence_retriever_happy_path_emits_delivered
+FAILED tests/test_evidence_retriever_bridge.py::test_live_loop_one_chunk_heading_authorizes_cited_id
+FAILED tests/test_evidence_retriever_bridge.py::test_insufficient_evidence_flows_through
+FAILED tests/test_evidence_retriever_bridge.py::test_parse_failure_falls_back_preserving_dispatch_policy_id
+4 failed, 12 passed in 7.47s

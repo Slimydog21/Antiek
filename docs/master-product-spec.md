@@ -1233,6 +1233,17 @@ ships.** Three options for ingested-but-restricted content:
   returns only when `policy_tag in {"private_research",
   "operator_only"}`.
 
+**Research-only principal split, operator-directed 2026-09-20.** A discounted
+`research_only` purchase grants agent derivation access, not owner reading access.
+Only the server-side `private_research` principal may retrieve its source chunks.
+`operator_only` must exclude them even for the paying owner. Public and unknown
+tags also exclude them. The research-loop environment setting accepts only
+`attribution_eligible` or `private_research`; owner and unknown tags are errors.
+Derived notes retain citation identity without exposing the source body. This
+permission does not change attribution, payout, or publisher activation gates.
+See `docs/decisions/research-only-principals.md` for verification and remaining
+transport constraints.
+
 Sprint 18 ships ONLY after retrieval-time gating is in production AND
 publisher onboarding is a prerequisite to payouts (no payout
 activates until at least one publisher has opted in). This converts

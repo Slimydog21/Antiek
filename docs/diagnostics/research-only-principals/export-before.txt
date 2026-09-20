@@ -1,0 +1,64 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+________________ test_owner_full_export_refuses_research_source ________________
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-ijbb_p_j/graph.duckdb'
+owner_client = <starlette.testclient.TestClient object at 0x12a0ec320>
+
+    def test_owner_full_export_refuses_research_source(db, owner_client):
+        _gated_book(db, "research", content_class="research_only", title="Licensed", probe=PROBE)
+        response = owner_client.get("/export/my-graph", headers=_OWNER_HEADERS)
+>       assert response.status_code == 403
+E       assert 200 == 403
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_research_only_principals.py:172: AssertionError
+________ test_owner_full_export_refuses_historical_agent_context[False] ________
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-8sv_jv18/graph.duckdb'
+owner_client = <starlette.testclient.TestClient object at 0x12c4537a0>
+sealed = False
+
+    @pytest.mark.parametrize("sealed", [False, True])
+    def test_owner_full_export_refuses_historical_agent_context(db, owner_client, sealed):
+        from substrate.event_log import emit_typed, seal_investigation
+    
+        emit_typed("research-probe", _evidence_request(), role="evidence_retriever")
+        if sealed:
+            seal_investigation("research-probe")
+        response = owner_client.get("/export/my-graph", headers=_OWNER_HEADERS)
+>       assert response.status_code == 403
+E       assert 200 == 403
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_research_only_principals.py:184: AssertionError
+________ test_owner_full_export_refuses_historical_agent_context[True] _________
+
+db = '/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/antiek-owner-read-sv4tnzk1/graph.duckdb'
+owner_client = <starlette.testclient.TestClient object at 0x12eb35ee0>
+sealed = True
+
+    @pytest.mark.parametrize("sealed", [False, True])
+    def test_owner_full_export_refuses_historical_agent_context(db, owner_client, sealed):
+        from substrate.event_log import emit_typed, seal_investigation
+    
+        emit_typed("research-probe", _evidence_request(), role="evidence_retriever")
+        if sealed:
+            seal_investigation("research-probe")
+        response = owner_client.get("/export/my-graph", headers=_OWNER_HEADERS)
+>       assert response.status_code == 403
+E       assert 200 == 403
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_research_only_principals.py:184: AssertionError
+=============================== warnings summary ===============================
+tests/test_research_only_principals.py::test_owner_full_export_refuses_research_source
+  /Users/slimydog/Antiek/worktrees/research-only-principal-split/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_research_only_principals.py::test_owner_full_export_refuses_research_source
+FAILED tests/test_research_only_principals.py::test_owner_full_export_refuses_historical_agent_context[False]
+FAILED tests/test_research_only_principals.py::test_owner_full_export_refuses_historical_agent_context[True]
+3 failed, 25 deselected, 1 warning in 2.91s
