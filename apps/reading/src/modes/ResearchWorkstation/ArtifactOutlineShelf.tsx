@@ -387,7 +387,7 @@ export default function ArtifactOutlineShelf({
               className="cursor-grab rounded border border-rule bg-ice-1 px-2 py-1.5 text-sm active:cursor-grabbing"
               title="Drag to Write outline"
             >
-              <span className="text-[10px] uppercase text-ocean">{b.kind}</span>
+              <span className="text-[10px] uppercase text-sun-deep">{b.kind}</span>
               <p className="line-clamp-2 text-ink">{b.label}</p>
             </li>
           ))}

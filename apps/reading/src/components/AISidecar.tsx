@@ -263,8 +263,10 @@ export default function AISidecar() {
   //
   // For backward-compat, the legacy ⌘J toggle still works — it
   // routes through the workspace store (open or focus). The
-  // `antiek:aisidecar:toggle` event handler kept above also routes
-  // through the workspace.
+  // `antiek:aisidecar:toggle` dispatch above is kept only for
+  // Storybook listeners; production toggling (⌘/, SceneChrome "Ask",
+  // CommandPalette) goes through `toggleAISidecar` in shortcuts.ts —
+  // the event itself has no production listener.
   return (
     <aside
       className="h-full overflow-hidden flex flex-col"

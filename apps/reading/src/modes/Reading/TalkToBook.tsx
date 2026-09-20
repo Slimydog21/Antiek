@@ -625,7 +625,7 @@ function CitationChip({
           type="button"
           onClick={() => onJumpToPage(citation.page_index as number)}
           title={citation.snippet}
-          className="rounded bg-aurora/15 text-aurora-deep dark:text-aurora px-1.5 py-0.5 text-[11px] font-mono hover:bg-aurora/25"
+          className="rounded bg-aurora/15 text-aurora px-1.5 py-0.5 text-[11px] font-mono hover:bg-aurora/25"
         >
           p.{(citation.page_index as number) + 1}
         </button>

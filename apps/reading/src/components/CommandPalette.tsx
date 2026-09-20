@@ -9,7 +9,7 @@ import {
   clearScope,
   project,
 } from "../workspace/persistence";
-import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
+import { toggleAISidecar } from "../workspace/shortcuts";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
   WORKFLOWS,
@@ -573,10 +573,10 @@ export default function CommandPalette() {
         id: "ws:toggle-aisidecar",
         title: "Toggle AI sidecar",
         subtitle: "Workspace · ⌘/",
+        // Same workspace-store toggle as ⌘/ — the bare AISIDECAR_TOGGLE
+        // event this used to dispatch has no production listener.
         run: () => {
-          window.dispatchEvent(
-            new CustomEvent(SHORTCUT_EVENTS.AISIDECAR_TOGGLE),
-          );
+          toggleAISidecar();
         },
       },
       {

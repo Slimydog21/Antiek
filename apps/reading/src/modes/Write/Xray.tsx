@@ -154,7 +154,7 @@ export default function Xray({
       {selectedBlock && (
         <div
           data-testid="xray-block-uses"
-          className="rounded border border-ocean/50 bg-ocean/5 p-2 text-xs"
+          className="rounded border border-sun-deep/50 bg-sun-deep/5 p-2 text-xs"
         >
           <p className="font-medium text-ink dark:text-bright">
             {blockLabel(selectedBlock, blocks).label}
@@ -176,7 +176,7 @@ export default function Xray({
               setSelectedBlock(null);
               setTrace(null);
             }}
-            className="mt-1 text-ocean underline"
+            className="mt-1 text-sun-deep underline"
           >
             clear
           </button>
@@ -193,7 +193,7 @@ export default function Xray({
               data-testid={`xray-paragraph-${idx}`}
               className={
                 "rounded border p-2 " +
-                (open ? "border-ocean ring-1 ring-ocean/40" : "border-rule dark:border-charcoal-1")
+                (open ? "border-sun-deep ring-1 ring-sun/40" : "border-rule dark:border-charcoal-1")
               }
             >
               <button
@@ -231,7 +231,7 @@ export default function Xray({
                             draggable={!!onRegenerateParagraph}
                             onDragEnd={() => void onRegenerateParagraph?.(idx)}
                             onClick={() => void openTrace(bid)}
-                            className="flex-1 cursor-grab rounded border-l-2 border-ocean/50 bg-ocean/5 px-2 py-1 text-left text-[12px] text-ink dark:text-bright active:cursor-grabbing"
+                            className="flex-1 cursor-grab rounded border-l-2 border-sun-deep/50 bg-sun-deep/5 px-2 py-1 text-left text-[12px] text-ink dark:text-bright active:cursor-grabbing"
                             title="Click to trace to source · drag to re-draft this section"
                           >
                             {label}
@@ -244,7 +244,7 @@ export default function Xray({
                     <button
                       type="button"
                       onClick={() => void onRegenerateParagraph(idx)}
-                      className="text-[11px] text-ocean underline"
+                      className="text-[11px] text-sun-deep underline"
                     >
                       regenerate this section
                     </button>

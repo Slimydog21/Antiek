@@ -86,9 +86,9 @@ export default function SubAgentProposal({
   return (
     <div
       data-testid="sub-agent-proposal"
-      className="rounded-md border border-ocean/50 bg-ocean/5 p-3 text-sm"
+      className="rounded-md border border-sun-deep/50 bg-sun-deep/5 p-3 text-sm"
     >
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ocean">
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-sun-deep">
         Strengthen this claim
       </p>
       <blockquote className="mb-2 border-l-2 border-sun pl-2 text-[13px] italic text-ink dark:text-bright line-clamp-2">

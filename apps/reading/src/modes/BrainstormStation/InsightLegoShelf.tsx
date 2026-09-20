@@ -93,7 +93,7 @@ export default function InsightLegoShelf({
                   e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
                   e.dataTransfer.effectAllowed = "copy";
                 }}
-                className="flex items-start gap-1 px-1.5 py-1 border border-rule dark:border-charcoal-1 rounded cursor-grab hover:border-ocean bg-ice-1 dark:bg-charcoal-2"
+                className="flex items-start gap-1 px-1.5 py-1 border border-rule dark:border-charcoal-1 rounded cursor-grab hover:border-sun-deep bg-ice-1 dark:bg-charcoal-2"
                 title="Drag into the thought-partner focus tray"
               >
                 <div className="min-w-0 flex-1">
@@ -108,7 +108,7 @@ export default function InsightLegoShelf({
                 {onSlot ? (
                   <button
                     type="button"
-                    className="shrink-0 text-[10px] font-mono text-ocean hover:underline px-1"
+                    className="shrink-0 text-[10px] font-mono text-sun-deep hover:underline px-1"
                     aria-label={`Slot ${h.label}`}
                     onClick={() => onSlot(payload)}
                   >

@@ -3,7 +3,7 @@ import { useLocation, useNavigate, type NavigateFunction } from "react-router-do
 import type { ReactNode } from "react";
 
 import { createDeliverable } from "../lib/api";
-import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
+import { toggleAISidecar } from "../workspace/shortcuts";
 import {
   WORKFLOWS,
   workflowForPath,
@@ -38,8 +38,10 @@ import type { Thread, ThreadHop } from "./threadModel";
 type Action = {
   id: string;
   label: string;
-  /** Navigate to a route, or dispatch a workspace event. */
+  /** Navigate to a route, fire a synchronous workspace verb, or dispatch a
+   *  workspace event (only where a production listener exists). */
   to?: string;
+  act?: () => void;
   event?: string;
   /** A verb that DOES something (create a record) before/instead of
    *  navigating. Takes precedence over `to`/`event`. The handler owns
@@ -66,7 +68,11 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
   research: {
     actions: [
       { id: "new-investigation", label: "New investigation", to: "/", primary: true },
-      { id: "ask", label: "Ask", event: SHORTCUT_EVENTS.AISIDECAR_TOGGLE },
+      // "Ask" toggles the REAL AI sidecar via the same workspace-store path
+      // as ⌘/ (shortcuts.ts toggleAISidecar). It used to dispatch the bare
+      // AISIDECAR_TOGGLE CustomEvent, which has no production listener — a
+      // dead verb on the primary action bar.
+      { id: "ask", label: "Ask", act: toggleAISidecar },
       { id: "outcomes", label: "Outcomes", to: "/outcomes" },
     ],
     tabs: [
@@ -162,6 +168,8 @@ export function SceneChrome({
       void a
         .run(navigate)
         .finally(() => setRunningAction(null));
+    } else if (a.act) {
+      a.act();
     } else if (a.to) {
       navigate(a.to);
     } else if (a.event) {

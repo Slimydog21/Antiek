@@ -125,7 +125,7 @@ export function Home() {
           className="mt-8 rounded-hog border-edge border-sun bg-sun/10 p-5 dark:bg-sun/5"
         >
           <div className="flex items-start gap-4">
-            <BrainMascot mood="celebrate" size={48} label="" />
+            <BrainMascot mood="idle" size={48} label="" />
             <div className="min-w-0">
               <h2 className="font-serif text-lg font-semibold text-ink dark:text-bright">
                 Write someone&rsquo;s biography

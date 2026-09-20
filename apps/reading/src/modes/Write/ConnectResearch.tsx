@@ -158,7 +158,7 @@ export default function ConnectResearch({
         type="button"
         onClick={() => void connectNone()}
         disabled={disabled || spawning}
-        className="w-full rounded border border-dashed border-rule px-3 py-2 text-left text-sm hover:border-ocean disabled:opacity-60 dark:border-charcoal-1"
+        className="w-full rounded border border-dashed border-rule px-3 py-2 text-left text-sm hover:border-sun-deep disabled:opacity-60 dark:border-charcoal-1"
       >
         <span className="font-medium text-ink dark:text-bright">
           {spawning ? "Opening a research folder…" : "Start without a project"}
@@ -197,7 +197,7 @@ export default function ConnectResearch({
                 type="button"
                 onClick={() => void connectExisting(p)}
                 disabled={disabled || spawning}
-                className={`w-full rounded border px-3 py-2 text-left hover:border-ocean disabled:opacity-60 dark:bg-charcoal-2 ${preferredInvestigationId === p.investigation_id ? "border-aurora bg-ice-1 dark:border-aurora" : "border-rule bg-ice-0 dark:border-charcoal-1"}`}
+                className={`w-full rounded border px-3 py-2 text-left hover:border-sun-deep disabled:opacity-60 dark:bg-charcoal-2 ${preferredInvestigationId === p.investigation_id ? "border-aurora bg-ice-1 dark:border-aurora" : "border-rule bg-ice-0 dark:border-charcoal-1"}`}
               >
                 <span className="block truncate font-serif text-sm text-ink dark:text-bright">
                   {p.question?.trim() || "(untitled research)"}

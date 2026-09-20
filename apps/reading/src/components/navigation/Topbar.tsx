@@ -1,7 +1,9 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
 import LemonButton from "../lemon/LemonButton";
+import { toast } from "../lemon/LemonToast";
+import { useAuth } from "../../lib/auth";
 
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
@@ -73,6 +75,8 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
 
 export function Topbar() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { signOut } = useAuth();
   const crumbs = defaultBreadcrumbsFor(pathname);
 
   return (
@@ -111,7 +115,9 @@ export function Topbar() {
           entry to the CommandPalette. The Topbar no longer carries a
           second search box — one door, not two. */}
 
-      {/* account */}
+      {/* account — every item here does something real. "Profile" was cut:
+          no profile route exists, and a menu item that only closes the
+          menu is a dead control (Q7 honesty sweep). */}
       <LemonDropdown
         align="below-right"
         trigger={
@@ -122,10 +128,27 @@ export function Topbar() {
       >
         {({ close }) => (
           <>
-            <LemonMenuItem onClick={close}>Profile</LemonMenuItem>
-            <LemonMenuItem onClick={close}>Settings</LemonMenuItem>
+            <LemonMenuItem
+              onClick={() => {
+                navigate("/settings");
+                close();
+              }}
+            >
+              Settings
+            </LemonMenuItem>
             <div className="my-1 border-t border-rule dark:border-charcoal-1" />
-            <LemonMenuItem onClick={close}>Sign out</LemonMenuItem>
+            <LemonMenuItem
+              onClick={() => {
+                close();
+                signOut().catch(() => {
+                  // Honest failure: the session may still be live — say so
+                  // instead of pretending the logout landed.
+                  toast.err("Sign out failed — the session may still be active. Try again.");
+                });
+              }}
+            >
+              Sign out
+            </LemonMenuItem>
           </>
         )}
       </LemonDropdown>

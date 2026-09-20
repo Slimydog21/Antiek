@@ -117,7 +117,14 @@ function AuthenticatedRoutes() {
         <Route
           path="/link-monster"
           element={
-            <Suspense fallback={<div className="lm-loading">summoning the Monster…</div>}>
+            <Suspense fallback={
+              // Styled like the RequireAuth veil (App.tsx RequireAuth loading
+              // branch) — the old `lm-loading` class had no CSS definition
+              // anywhere, so the fallback rendered unstyled.
+              <div className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-[12px] tracking-[0.18em] uppercase font-sans">
+                summoning the Monster…
+              </div>
+            }>
               <LinkMonster />
             </Suspense>
           }

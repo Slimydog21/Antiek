@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 
 import LemonButton from "../components/lemon/LemonButton";
 import { LemonDropdown, LemonMenuItem } from "../components/lemon/LemonDropdown";
+import { formatBinding } from "../components/hotkeys/bindings";
 import { press } from "../design/motion";
 
 import { useWorkspace } from "./WorkspaceStore";
@@ -187,9 +188,15 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
           >
             {({ close }) => (
               <>
+                {/* No hotkey hints here except the one binding that actually
+                    exists: ⌘W closes the FOCUSED FLOATING panel (bindings.ts
+                    `close-float`). ⇧⌘B/⌃⌘B/⌥⌘F/⌥⌘P were phantom hints with no
+                    handler anywhere, and ⌘B belongs to the ProjectTree toggle
+                    (bindings.ts `projecttree`) — advertising it on "Dock left"
+                    was lying chrome. Mode switches stay click-only until a
+                    real binding lands in shortcuts.ts + bindings.ts. */}
                 <LemonMenuItem
                   icon="◧"
-                  hint="⌘B"
                   onClick={() => {
                     setMode("docked-left");
                     close();
@@ -199,7 +206,6 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                 </LemonMenuItem>
                 <LemonMenuItem
                   icon="◨"
-                  hint="⇧⌘B"
                   onClick={() => {
                     setMode("docked-right");
                     close();
@@ -209,7 +215,6 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                 </LemonMenuItem>
                 <LemonMenuItem
                   icon="◯"
-                  hint="⌃⌘B"
                   onClick={() => {
                     setMode("docked-bottom");
                     close();
@@ -219,7 +224,6 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                 </LemonMenuItem>
                 <LemonMenuItem
                   icon="▢"
-                  hint="⌥⌘F"
                   onClick={() => {
                     setMode("floating");
                     close();
@@ -229,7 +233,6 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                 </LemonMenuItem>
                 <LemonMenuItem
                   icon="↗"
-                  hint="⌥⌘P"
                   onClick={() => {
                     setMode("popout");
                     close();
@@ -240,7 +243,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                 <div className="my-1 border-t border-rule dark:border-charcoal-1" />
                 <LemonMenuItem
                   icon="✕"
-                  hint="⌘W"
+                  hint={formatBinding("mod+w")}
                   onClick={() => {
                     actions().close(id);
                     close();

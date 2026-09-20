@@ -109,7 +109,7 @@ export function ContextWindow({ className }: ContextWindowProps) {
         {state.items.map((item, i) => (
           <span
             key={`${item.node_id ?? item.content}-${i}`}
-            className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-ocean/10 text-ocean text-xs font-serif"
+            className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-sun-deep/10 text-sun-deep text-xs font-serif"
           >
             {item.label}
             <button

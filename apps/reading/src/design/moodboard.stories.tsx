@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
-import { sun, surface, shadow, type as typeTokens, werner } from "./tokens";
+import { accent, sun, surface, shadow, type as typeTokens, werner } from "./tokens";
 
 /**
  * Antiek design moodboard — operator sign-off gate.
@@ -54,7 +54,7 @@ function Swatch({
         background: hex,
         border: `2.5px solid ${sun.base}`,
         borderRadius: 6,
-        boxShadow: dark ? "5px 5px 0 0 #8A7300" : "5px 5px 0 0 #0F1419",
+        boxShadow: dark ? shadow.night.z2 : shadow.day.z2,
         padding: 14,
         minHeight: 88,
         color: dark || ["ink", "shadow-2", "shadow-1", "void", "space-1", "space-2", "charcoal-1", "charcoal-2", "slate-1", "slate-2"].includes(name) ? "#FBFCFD" : "#0F1419",
@@ -118,8 +118,8 @@ export const PaletteDay: Story = {
 
       <Heading>Reserved accents</Heading>
       <Grid>
-        <Swatch name="aurora"  hex="#16C2C2" role="AI thinking" />
-        <Swatch name="emperor" hex="#E33C2D" role="danger only" />
+        <Swatch name="aurora"  hex={accent.aurora.day}  role="AI thinking" />
+        <Swatch name="emperor" hex={accent.emperor.day} role="danger only" />
       </Grid>
     </div>
   ),

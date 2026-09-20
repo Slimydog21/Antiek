@@ -358,7 +358,7 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
 function Acknowledgement({ checked, onChange, label }: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
   return (
     <label className="flex items-start gap-2 text-[12px] leading-relaxed text-ink dark:text-bright">
-      <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <input type="checkbox" className="mt-0.5 size-4 accent-sun-deep" checked={checked} onChange={(event) => onChange(event.target.checked)} />
       <span>{label}</span>
     </label>
   );

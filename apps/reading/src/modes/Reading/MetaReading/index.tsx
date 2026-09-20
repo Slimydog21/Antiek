@@ -265,7 +265,7 @@ export default function MetaReading() {
                           type="button"
                           onClick={() => openCitation(c)}
                           title={c.snippet}
-                          className="rounded bg-aurora/15 text-aurora-deep dark:text-aurora px-2 py-0.5 text-[11px] font-mono hover:bg-aurora/25"
+                          className="rounded bg-aurora/15 text-aurora px-2 py-0.5 text-[11px] font-mono hover:bg-aurora/25"
                         >
                           {c.page_resolved && c.page_index !== null
                             ? `open at p.${c.page_index + 1}`
@@ -288,7 +288,7 @@ export default function MetaReading() {
                 </div>
               )}
               {promoted && (
-                <p className="text-[13px] text-aurora-deep dark:text-aurora" data-testid="promote-done">
+                <p className="text-[13px] text-aurora" data-testid="promote-done">
                   Promoted to a research.{" "}
                   <button
                     type="button"

@@ -496,7 +496,10 @@ export default function Settings() {
                       style={{ width: `${spendPct}%` }}
                     />
                   ) : (
-                    <div className="h-full w-full bg-dashed opacity-30" />
+                    // Unknown spend (cap unset / no reading): an honest empty
+                    // state — a dashed token-colour outline, not the dead
+                    // `bg-dashed` class (undefined → rendered invisible).
+                    <div className="h-full w-full rounded-full border border-dashed border-ink/25 dark:border-bright/25" />
                   )}
                 </div>
                 {spendPct == null && (

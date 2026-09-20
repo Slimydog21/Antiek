@@ -85,7 +85,7 @@ export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps)
           type="button"
           disabled={!canAskMore(clarify)}
           onClick={() => setClarify((s) => recordTurn(s, { shouldEnd: false }))}
-          className="px-2 py-0.5 rounded border border-rule disabled:opacity-40 hover:border-ocean"
+          className="px-2 py-0.5 rounded border border-rule disabled:opacity-40 hover:border-sun-deep"
         >
           Ask a clarifying question
         </button>
@@ -93,7 +93,7 @@ export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps)
           type="button"
           disabled={clarify.done}
           onClick={() => setClarify((s) => recordTurn(s, { shouldEnd: true }))}
-          className="px-2 py-0.5 rounded border border-rule disabled:opacity-40 hover:border-ocean"
+          className="px-2 py-0.5 rounded border border-rule disabled:opacity-40 hover:border-sun-deep"
         >
           Done clarifying
         </button>

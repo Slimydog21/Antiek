@@ -7,6 +7,7 @@
 
 import { createSeededRng } from "./engine/rng";
 import type { Cartridge } from "./engine/types";
+import type { Mode } from "../design/tokens";
 import { createIceFishingCartridge } from "./games/ice-fishing";
 import { createZombiesCartridge } from "./games/zombies";
 
@@ -14,15 +15,24 @@ export type ArcadeGameKind = "ice-fishing" | "zombies";
 
 export function createArcadeCartridge(
   game: ArcadeGameKind,
-  options?: { reducedMotion?: boolean },
+  options?: {
+    reducedMotion?: boolean;
+    /**
+     * App light/dark mode. Cartridges follow the host theme (D10); defaults
+     * to "day", matching the `prefers-color-scheme` fallback.
+     */
+    mode?: Mode;
+  },
 ): Cartridge {
   if (game === "ice-fishing") {
     return createIceFishingCartridge({
       reducedMotion: Boolean(options?.reducedMotion),
+      mode: options?.mode,
     });
   }
   return createZombiesCartridge({
     reducedMotion: Boolean(options?.reducedMotion),
+    mode: options?.mode,
   });
 }
 

@@ -91,8 +91,8 @@ export function ProjectTypeField({ value, onChange, disabled }: ProjectTypeField
             className={
               "rounded-full border px-2 py-0.5 text-[11px] disabled:opacity-60 " +
               (resolveKind(text) === p.kind && text.trim()
-                ? "border-ocean bg-ocean/15 text-ocean"
-                : "border-rule text-ink-soft hover:border-ocean dark:border-charcoal-1")
+                ? "border-sun-deep bg-sun-deep/15 text-sun-deep"
+                : "border-rule text-ink-soft hover:border-sun-deep dark:border-charcoal-1")
             }
           >
             {p.label}

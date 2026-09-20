@@ -34,8 +34,8 @@ function LegoBlockView({ node, deleteNode }: NodeViewProps) {
 
   return (
     <NodeViewWrapper className="my-2" data-block="lego">
-      <div className="border-l-edge border-ocean bg-ocean/5 pl-3 py-2 pr-4 rounded-r flex items-start gap-2">
-        <span className="text-ocean font-mono text-[10px] font-bold uppercase tracking-wider shrink-0 mt-1">
+      <div className="border-l-edge border-sun-deep bg-sun-deep/5 pl-3 py-2 pr-4 rounded-r flex items-start gap-2">
+        <span className="text-sun-deep font-mono text-[10px] font-bold uppercase tracking-wider shrink-0 mt-1">
           {blockKind}
         </span>
         <p className="flex-1 font-serif text-[15px] leading-relaxed text-ink dark:text-bright">
@@ -60,7 +60,7 @@ function LegoBlockView({ node, deleteNode }: NodeViewProps) {
               })
             }
             title="Trace to source"
-            className="shrink-0 mt-1 px-1 rounded font-mono text-[10px] font-semibold bg-ocean/15 text-ocean hover:bg-ocean/25"
+            className="shrink-0 mt-1 px-1 rounded font-mono text-[10px] font-semibold bg-sun-deep/15 text-sun-deep hover:bg-sun-deep/25"
           >
             trace
           </button>

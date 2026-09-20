@@ -11,6 +11,7 @@ import {
   type DeliverableSummary,
 } from "../../lib/api";
 import GlassSurface from "../../shell/GlassSurface";
+import { toast } from "../../components/lemon/LemonToast";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import BlockRepository from "./BlockRepository";
 import ConnectResearch from "./ConnectResearch";
@@ -100,7 +101,7 @@ export default function WriteHome() {
   useEffect(() => {
     return onTraceIntent((intent) => {
       if (!intent.outlineBlockId) {
-        window.alert("This is your own note — it traces to your session, not an external source.");
+        toast.info("This is your own note — it traces to your session, not an external source.");
         return;
       }
       void (async () => {
@@ -111,13 +112,13 @@ export default function WriteHome() {
           } else {
             // Honest fallback (§9.0): gated/unreachable source — say so, don't
             // open a dead page.
-            window.alert(
+            toast.warn(
               target.detail ??
                 "That source isn't available to open here — it's gated or not reachable yet.",
             );
           }
         } catch {
-          window.alert("Couldn't reach that source right now. Try again.");
+          toast.err("Couldn't reach that source right now. Try again.");
         }
       })();
     });
@@ -234,7 +235,7 @@ export default function WriteHome() {
             </p>
           )}
           {starting && (
-            <p className="text-xs text-ocean">Starting your piece…</p>
+            <p className="text-xs text-sun-deep">Starting your piece…</p>
           )}
           <button
             type="button"
@@ -266,7 +267,7 @@ export default function WriteHome() {
                   <button
                     type="button"
                     onClick={() => navigate(`/write/${p.deliverable_id}`)}
-                    className="w-full rounded border border-rule bg-ice-0 px-3 py-2 text-left hover:border-ocean dark:border-charcoal-1 dark:bg-charcoal-2"
+                    className="w-full rounded border border-rule bg-ice-0 px-3 py-2 text-left hover:border-sun-deep dark:border-charcoal-1 dark:bg-charcoal-2"
                   >
                     <span className="font-serif text-ink dark:text-bright">{p.title}</span>
                     <span className="ml-2 text-xs text-ink-mute dark:text-moonlight">

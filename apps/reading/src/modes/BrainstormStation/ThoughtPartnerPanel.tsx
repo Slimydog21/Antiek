@@ -208,7 +208,7 @@ export default function ThoughtPartnerPanel() {
         className={
           "min-h-[3.5rem] border border-dashed rounded p-2 space-y-1.5 transition-colors " +
           (dropActive
-            ? "border-ocean bg-ocean/10"
+            ? "border-sun-deep bg-sun-deep/10"
             : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-3")
         }
       >
@@ -225,7 +225,7 @@ export default function ThoughtPartnerPanel() {
             {slotted.map((s) => (
               <li
                 key={s.block_id}
-                className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded border border-ocean/40 bg-ocean/10 text-[10px] font-serif text-ink dark:text-bright"
+                className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded border border-sun-deep/40 bg-sun-deep/10 text-[10px] font-serif text-ink dark:text-bright"
                 data-testid="slotted-insight-chip"
               >
                 <span className="truncate" title={s.label}>

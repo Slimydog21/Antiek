@@ -186,7 +186,7 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
                     {cat.label}
                   </h2>
                   {cat.ordering === "theme" && (
-                    <span className="text-[10px] font-mono text-aurora-deep dark:text-aurora">
+                    <span className="text-[10px] font-mono text-aurora">
                       auto
                     </span>
                   )}
@@ -287,7 +287,7 @@ function AssetRow({
       {/* M3 — the continuous suggestion: appears, never auto-fires; accept files
           into the ONE chosen project, decline (dismiss) leaves it. */}
       {filedInto && (
-        <p className="text-[12px] text-aurora-deep dark:text-aurora" data-testid="personal-asset-filed">
+        <p className="text-[12px] text-aurora" data-testid="personal-asset-filed">
           Filed into “{filedInto}.”
         </p>
       )}

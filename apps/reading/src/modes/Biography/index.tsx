@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import BrainMascot from "../../brand/BrainMascot";
@@ -13,6 +13,7 @@ import {
 } from "../../lib/speakApi";
 import { useOwnerModelChoice } from "../../hooks/useOwnerModelChoice";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 
 /**
  * Biography — the dedicated landing for the biography TEMPLATE (SPR-11).
@@ -224,6 +225,14 @@ function BiographyOnboarding({
   const [inviteFailed, setInviteFailed] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // The "biography is started" moment is the payoff beat: celebrate once on
+  // first render, then the header brain settles back to idle — celebrate is a
+  // one-shot slot, never a persistent pose (brand/README restraint rule).
+  const { celebrating, celebrate } = useCelebrate();
+  useEffect(() => {
+    celebrate();
+  }, [celebrate]);
+
   const who = subjectName || "this person";
 
   const sendToAFriend = useCallback(async () => {
@@ -253,7 +262,14 @@ function BiographyOnboarding({
     <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
       <div className="mx-auto max-w-2xl px-6 py-12">
         <header className="mb-7 flex items-start gap-3">
-          <BrainMascot mood="celebrate" size={52} label="" />
+          <span className="relative inline-flex shrink-0">
+            <BrainMascot mood="idle" size={52} label="" />
+            <CelebrateBurst
+              active={celebrating}
+              size={52}
+              className="absolute inset-0"
+            />
+          </span>
           <div>
             <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
               {who}&rsquo;s biography is started

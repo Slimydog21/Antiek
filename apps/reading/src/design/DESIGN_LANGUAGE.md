@@ -1,4 +1,4 @@
-# Antiek design language — Werner skin, PostHog pattern
+# Antiek design language — sun-yellow skin, PostHog pattern
 
 The operating manual for every interface decision in `apps/reading/`. Read it
 before adding a component, a colour, or a screen. It is the human-readable
@@ -23,15 +23,15 @@ otherwise. Decoration is what is left when an element does no work.
 
 We borrow PostHog's *forms* (content-first navigation, keyboard-first density,
 scene-as-object-with-views, honest empty states) because each is the answer to
-a functional question we also face. We keep the **Werner skin** — sun-yellow
-edge, chunky offset shadow, Charter-serif prose, the Werner penguin — because
-the researcher's-notebook identity is itself functional: it tells the user,
-before they read a word, what kind of work this is. Generic SaaS-blue chrome
-would misreport the product. No PostHog voice, mascot, or palette.
+a functional question we also face. We keep the **Antiek skin** — sun-yellow
+edge, chunky offset shadow, Charter-serif prose, the coral brain mascot —
+because the researcher's-notebook identity is itself functional: it tells the
+user, before they read a word, what kind of work this is. Generic SaaS-blue
+chrome would misreport the product. No PostHog voice, mascot, or palette.
 
 ## Five principles
 
-| Principle | PostHog pattern borrowed | Werner rule kept |
+| Principle | PostHog pattern borrowed | Antiek rule kept |
 |---|---|---|
 | **Content over tools** | navigate a tree of what you made; pin a few; push the rest to a launcher + ⌘K | the "things" are insight nodes, books, deliverables, interviews — substrate entities with provenance, not generic files |
 | **Keyboard-first** | ⌘K indexes everything; dense, fast; trackpad optional | the palette searches the graph (claims, notes, investigations), with serif previews |
@@ -45,15 +45,18 @@ would misreport the product. No PostHog voice, mascot, or palette.
 variables (for Storybook + raw CSS); `tailwind.config.js` exposes it as
 utilities. **These three must agree** — drift is a bug.
 
-- **Brand (invariant across modes):** `sun #F5DF24` (the constant edge), `sun-deep #B89A00` (day) / `#8A7300` (night), `sun-glow`.
+- **Brand (invariant across modes):** `sun #F5DF24` (the constant edge + bottom-bar day accent — never softened), `sun-deep #9C8636` (day) / `#84722F` (night) (weathered SPR-09 hover/depth; night also casts the offset shadows), `sun-glow #F1E08F` (day) / `#F2DE9A` (night) (weathered highlight peaks).
+- **Weathered sun-light family (SPR-09):** `sun-light #E8D98C` (calm straw the chrome leans on), `sun-light-soft #F0E6B8`, `sun-light-deep #9C8636`. Theme-invariant by design.
+- **Chrome border + bar accent (SPR-01):** `rule #788596` (day) / `#606C7E` (night) — the default border is a calm neutral blue-grey, *not* yellow (adjudication D6: `border-sun` survives only on the ratified LemonCard primitive); `bar-accent` keeps the yellow loud on the bottom bar (`sun` day, pinned `#FFEC5F` night).
+- **Glass (scene panels):** `glass` — translucent panel fill/hairline/12px blur per mode, with an opaque `glass-solid` fallback; body text over glass must keep WCAG AA 4.5:1 (scrim contract in tokens.ts).
 - **Day surface ramp:** `ice-0 #FFFFFF` → `ice-4 #DCE5ED` → `glacial-1/2` → `shadow-1 #4F5F70` → `shadow-2 #384858` → `ink #0F1419`.
 - **Night surface ramp:** `void #040508` → `space-1/2` → `charcoal-1/2` → `slate-1/2` → `moonlight #6B7585` → `starlight #C4CCD7` → `bright #EEF1F6`.
 - **Muted-text hierarchy (Q1):** `ink-soft` (lede/secondary; day `#2A3441`, night `starlight #C4CCD7`) → `ink-mute` (metadata/tertiary; day `#647380`, night `#828C9C` — the AA-cleared steps; both clear WCAG AA 4.5:1 on their usual card/page surfaces in both modes).
-- **Shadows (chunky offset):** day `z1/z2/z3 = 3/5/8px 3/5/8px 0 0 ink`; night casts the same offsets in `sun-deep` (the edge glows).
-- **Radius:** `sm 4px`, `hog 6px`, `hog-lg 10px`. **Edge width:** `2.5px` (`border-edge`).
+- **Shadows (chunky offset):** day `z1/z2/z3 = 3/5/8px 3/5/8px 0 0 ink`; night casts the same offsets in `sun-deep #84722F` (the edge glows, weathered).
+- **Radius:** `sm/md/lg = 4/6/10px` in tokens.ts; Tailwind exposes the two larger steps as `rounded-hog` (6px) / `rounded-hog-lg` (10px). **Edge width:** `2.5px` (`border-edge`).
 - **Type:** sans `Inter`, mono `JetBrains Mono`, **serif `Charter`** (prose — the notebook register).
-- **Werner mascot:** coat = ink, belly = ice-1, **bill + feet = sun** (the visual hook). Eyes = ink (day) / starlight (night).
-- **Reserved accents (sparingly, never substituting for sun):** `aurora #16C2C2` (AI-thinking), `emperor #CE3623` (danger only — also exposed under its semantic alias `danger`, same values day + night).
+- **Brain mascot (shipped):** the mark is the coral brain — warm coral-pink body, soft-black eyes/stick limbs, rosy cheeks; full palette + hard rules in `src/brand/mascot-brain/PROFILE.md` (the Krea character bible). `BrainMascot.tsx` renders the four moods (`idle`/`thinking`/`empty`/`celebrate`); `BrainMark.tsx` is the geometric line-brain rail mark. The `werner` palette still exported from tokens.ts is legacy penguin chrome, pending the batch rename pass.
+- **Reserved accents (sparingly, never substituting for sun):** `aurora #16C2C2` (day) / `#3FE0DC` (night) (AI-thinking only, adjudication D8), `emperor #CE3623` (day) / `#FF6155` (night) (danger only — also exposed under its semantic alias `danger`, same values day + night).
 
 ### SPR-01 reconciliation (2026-05-25)
 `tokens.css` lagged the a11y-darkening that `tokens.ts` + `tailwind.config.js`
@@ -61,11 +64,21 @@ already carried: `shadow-1` `#64778A → #4F5F70` (6.32:1 on white) and `emperor
 `#E33C2D → #CE3623` (4.51:1 with white text). Reconciled to the canonical
 values. Both clear WCAG AA; the visual delta is ~one Munsell step.
 
+### SPR-09 re-tone (weathered sun)
+`sun-deep`/`sun-glow`/`sun-highlight` were re-toned from the loud lemon depths
+to weathered ochre/straw (`sun-deep` `#B89A00/#8A7300 → #9C8636/#84722F`);
+`sun.base` and the bottom-bar accent stay loud by operator decision.
+`tailwind.config.js` resolves `sun-deep`/`sun-glow` and the night shadow keys
+through `var(--sun-deep)`/`var(--sun-glow)`, so the three sources cannot drift
+on this family again — `scripts/check_token_parity.ts` asserts it.
+
 ## The token lint — "every colour is a token"
 
 `scripts/lint_tokens.ts` (`npm run lint:tokens`) fails on any **new** hardcoded
-hex outside `tokens.ts` / `tokens.css`. Existing literals (120 at mint —
-mostly Werner SVG fills + Storybook swatches) are grandfathered in
+hex outside `tokens.ts` / `tokens.css`. Existing literals (120 at mint, 80 live
+at the 2026-09-20 audit and only shrinking since — the dead entries are
+penguin-era SVG fills migrated to tokens, and re-minting the baseline down is
+a deliberate reviewed pass, not a silencing) are grandfathered in
 `scripts/token_lint_baseline.json`. Policy:
 
 - The baseline only ever **shrinks**. Migrate a literal to a token, the lint

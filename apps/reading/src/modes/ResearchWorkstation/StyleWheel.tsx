@@ -416,9 +416,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
                   className="style-wheel__swatch"
                   style={
                     {
-                      "--style-theme": style.source_fidelity
-                        ? "var(--ocean)"
-                        : "var(--sun-deep)",
+                      "--style-theme": "var(--sun-deep)",
                     } as CSSProperties
                   }
                   aria-hidden="true"
@@ -570,7 +568,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
               rows={6}
               value={draft.theme_css}
               onChange={(e) => setDraft({ ...draft, theme_css: e.target.value })}
-              placeholder=":root { --antiek-accent: var(--ocean); }"
+              placeholder=":root { --antiek-accent: var(--sun-deep); }"
               spellCheck={false}
             />
           </label>

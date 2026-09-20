@@ -15,6 +15,7 @@ import {
 } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
+import { toast } from "../../components/lemon/LemonToast";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
@@ -389,7 +390,7 @@ function SectionCard({
       // §9.0: a withheld selection arrives as null — refuse, never send a
       // withheld body to a model or a spawn.
       if (intent.safeText === null) {
-        window.alert(
+        toast.warn(
           "That selection includes a restricted source, so it can't be sent to rewrite or a sub-agent.",
         );
         return;
@@ -468,7 +469,7 @@ function SectionCard({
       onDrop={handleDrop}
       className={
         "rounded-md border bg-ice-0 p-4 transition-colors dark:bg-charcoal-2 " +
-        (dropHover ? "border-ocean ring-2 ring-ocean/40" : "border-rule dark:border-charcoal-1")
+        (dropHover ? "border-sun-deep ring-2 ring-sun/40" : "border-rule dark:border-charcoal-1")
       }
     >
       <header className="mb-2 flex items-baseline justify-between gap-3">
@@ -497,10 +498,10 @@ function SectionCard({
                 }
               }}
               onDrop={(e) => void handleReorderDrop(e, idx)}
-              className="flex cursor-grab items-start gap-2 rounded border-l-2 border-ocean/50 bg-ocean/5 py-1.5 pl-2 pr-2 active:cursor-grabbing"
+              className="flex cursor-grab items-start gap-2 rounded border-l-2 border-sun-deep/50 bg-sun-deep/5 py-1.5 pl-2 pr-2 active:cursor-grabbing"
               title="Drag to reorder"
             >
-              <span className="mt-1 shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider text-ocean">
+              <span className="mt-1 shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider text-sun-deep">
                 {provenanceLabel(b)}
               </span>
               <p className="min-w-0 flex-1 font-serif text-[14px] leading-relaxed text-ink dark:text-bright">

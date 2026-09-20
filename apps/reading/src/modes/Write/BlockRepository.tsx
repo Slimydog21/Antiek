@@ -140,7 +140,7 @@ export default function BlockRepository({
                 e.dataTransfer.effectAllowed = "copy";
               }}
               title="Tap to add to the outline (or drag)"
-              className="w-full cursor-grab rounded border border-rule bg-ice-0 px-2 py-1.5 text-left hover:border-ocean active:cursor-grabbing dark:border-charcoal-1 dark:bg-charcoal-2"
+              className="w-full cursor-grab rounded border border-rule bg-ice-0 px-2 py-1.5 text-left hover:border-sun-deep active:cursor-grabbing dark:border-charcoal-1 dark:bg-charcoal-2"
             >
               <p className="truncate font-serif text-ink dark:text-bright">{hit.label}</p>
               {(hit.document_title || hit.source_tier != null) && (
@@ -180,8 +180,8 @@ function FolderChip({
       className={
         "rounded-full border px-2 py-0.5 text-[11px] " +
         (active
-          ? "border-ocean bg-ocean/15 text-ocean"
-          : "border-rule text-ink-soft hover:border-ocean dark:border-charcoal-1")
+          ? "border-sun-deep bg-sun-deep/15 text-sun-deep"
+          : "border-rule text-ink-soft hover:border-sun-deep dark:border-charcoal-1")
       }
     >
       {label}

@@ -56,7 +56,6 @@ import { useResearchSession } from "./useResearchSession";
 import { useWernerResearchReactions } from "./useWernerResearchReactions";
 import { emitWernerExperience, notifyResearchStarted } from "../../werner";
 import { wernerResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
-import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import { deriveResearchWaitArcadeMode } from "./researchWaitArcadePolicy";
 
 const LazyResearchWaitArcade = lazy(() => import("./ResearchWaitArcade"));
@@ -552,13 +551,11 @@ export function ResearchWaitArcadeGate({
   allTerminal,
   returnFocusRef,
 }: ResearchWaitArcadeGateProps) {
-  const reducedMotion = usePrefersReducedMotion();
   const eligible = activeResearchCount > 0 && deriveResearchWaitArcadeMode({
     featureEnabled: enabled,
     hasAuthoritativeSnapshot,
     researchCount,
     allTerminal,
-    reducedMotion,
     offerReady: false,
     optedIn: false,
   }) !== "hidden";
