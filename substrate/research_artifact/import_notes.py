@@ -67,6 +67,7 @@ def parse_body_from_path(path: Path) -> ResearchArtifactBody:
 
 def _persisted_notes(
     investigation_id: str, *, events_dir: str | None, require_legacy_migrated: bool = True,
+    recovery_texts: dict[str, str] | None = None,
 ) -> dict[str, str]:
     notes.validate_investigation_id(investigation_id)
     accepted: dict[str, str] = {}
@@ -104,7 +105,17 @@ def _persisted_notes(
                     or payload.artifact_kind != "other"):
                 raise notes.NotePersistenceError("accepted note event identity does not match")
             # artifact_path is descriptive metadata, never read authority.
-            text = notes.read_note(investigation_id, digest, payload.size_bytes)
+            try:
+                text = notes.read_note(investigation_id, digest, payload.size_bytes)
+            except (notes.MissingNoteError, notes.CorruptNoteError):
+                replacement = (recovery_texts or {}).get(digest)
+                if (replacement is None or len(replacement.encode("utf-8")) != payload.size_bytes
+                        or hashlib.sha256(replacement.encode("utf-8")).hexdigest() != digest):
+                    raise
+                # Explicit reimport restores only the bytes already authorized
+                # by this event. Unsafe storage never enters this recovery path.
+                notes.restore_note(investigation_id, digest, payload.size_bytes, replacement)
+                text = replacement
         except (ValueError, OSError) as exc:
             raise notes.NotePersistenceError("accepted note event or object is missing or corrupt") from exc
         if digest not in accepted:
@@ -147,9 +158,11 @@ def import_agent_notes(
     imported = 0
     skipped = 0
     event_ids: list[str] = []
+    proposed = {hashlib.sha256(text.encode("utf-8")).hexdigest(): text for text in batch}
     with notes.note_import_lock(iid):
-        accepted = _persisted_notes(iid, events_dir=events_dir, require_legacy_migrated=False)
-        proposed = {hashlib.sha256(text.encode("utf-8")).hexdigest(): text for text in batch}
+        accepted = _persisted_notes(
+            iid, events_dir=events_dir, require_legacy_migrated=False, recovery_texts=proposed,
+        )
         new = {digest: text for digest, text in proposed.items() if digest not in accepted}
         if (len(new) > notes.MAX_BATCH_NOTES
                 or sum(len(text.encode("utf-8")) for text in new.values()) > notes.MAX_BATCH_BYTES):

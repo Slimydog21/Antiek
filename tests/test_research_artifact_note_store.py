@@ -74,3 +74,31 @@ def test_invalid_objects_reject_without_blocking(tmp_path: Path, damage: str) ->
 def test_storage_identity_validation(iid: str, digest: str) -> None:
     with pytest.raises(store.NotePersistenceError):
         store.note_path(iid, digest)
+
+
+@pytest.mark.parametrize("component", ["notes", "inv"])
+@pytest.mark.parametrize("violation", ["mode", "owner"])
+def test_existing_managed_directories_must_be_private(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                      component: str, violation: str) -> None:
+    with store.note_import_lock("inv"):
+        pass
+    directory = tmp_path / "artifacts" / "notes"
+    if component == "inv":
+        directory /= "inv"
+    if violation == "mode":
+        directory.chmod(0o755)
+    else:
+        original = os.fstat
+        inode = directory.stat().st_ino
+
+        def foreign_directory(fd: int) -> os.stat_result:
+            info = original(fd)
+            if info.st_ino == inode:
+                fields = list(info)
+                fields[4] = os.getuid() + 1
+                return os.stat_result(fields)
+            return info
+
+        monkeypatch.setattr(os, "fstat", foreign_directory)
+    with pytest.raises(store.NotePersistenceError, match="private directory"), store.note_import_lock("inv"):
+        pass

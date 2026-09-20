@@ -322,3 +322,121 @@ def test_legacy_migration_requires_every_accepted_hash(imp_env: dict[str, str], 
         load_persisted_agent_notes("inv-note")
     assert import_agent_notes(_html(tmp_path, ["Second"])).notes_imported == 1
     assert load_persisted_agent_notes("inv-note") == ["First", "Second"]
+
+
+def test_exact_reimport_restores_missing_object_without_new_event(imp_env: dict[str, str], tmp_path: Path) -> None:
+    original = _html(tmp_path, ["Accepted recovery"])
+    first = import_agent_notes(original)
+    stored = next(Path(imp_env["arts"]).glob("notes/*/*.txt"))
+    stored.unlink()
+    with pytest.raises(note_store.NotePersistenceError, match="missing or corrupt"):
+        load_persisted_agent_notes("inv-note")
+    with pytest.raises(note_store.NotePersistenceError):
+        import_agent_notes(_html(tmp_path, ["Unrelated new content"]))
+    assert not stored.exists()
+    assert len(trajectory("inv-note")) == 1
+    result = import_agent_notes(_html(tmp_path, ["Accepted recovery"]))
+    assert (result.notes_imported, result.notes_skipped_duplicate, result.event_ids) == (0, 1, [])
+    assert [row["event_id"] for row in trajectory("inv-note")] == first.event_ids
+    assert stored.read_text() == "Accepted recovery"
+    exported = export_research_artifact("inv-note", db_path=imp_env["db"])
+    assert parse_body_from_path(exported.path).agent_notes == ["Accepted recovery"]
+
+
+def test_reimport_cannot_restore_with_mismatched_accepted_size(imp_env: dict[str, str], tmp_path: Path) -> None:
+    path = _html(tmp_path, ["Accepted"])
+    import_agent_notes(path)
+    stored = next(Path(imp_env["arts"]).glob("notes/*/*.txt"))
+    stored.unlink()
+    event_path = next(Path(imp_env["events"]).glob("*.jsonl"))
+    row = json.loads(event_path.read_text())
+    row["payload"]["size_bytes"] += 1
+    event_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    with pytest.raises(note_store.NotePersistenceError):
+        import_agent_notes(path)
+    assert not stored.exists()
+    assert len(trajectory("inv-note")) == 1
+
+
+def test_exact_reimport_quarantines_corrupt_bytes_without_new_event(imp_env: dict[str, str], tmp_path: Path) -> None:
+    path = _html(tmp_path, ["Accepted"])
+    first = import_agent_notes(path)
+    stored = next(Path(imp_env["arts"]).glob("notes/*/*.txt"))
+    stored.write_bytes(b"Corrupted bytes")
+    with pytest.raises(note_store.NotePersistenceError):
+        import_agent_notes(_html(tmp_path, ["Wrong replacement"]))
+    assert stored.read_bytes() == b"Corrupted bytes"
+    assert not list(stored.parent.glob(".quarantine-*"))
+    result = import_agent_notes(_html(tmp_path, ["Accepted"]))
+    assert (result.notes_imported, result.notes_skipped_duplicate, result.event_ids) == (0, 1, [])
+    assert stored.read_text() == "Accepted"
+    quarantined = list(stored.parent.glob(".quarantine-*"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_bytes() == b"Corrupted bytes"
+    assert quarantined[0].stat().st_mode & 0o777 == 0o600
+    assert [row["event_id"] for row in trajectory("inv-note")] == first.event_ids
+    healthy_inode = stored.stat().st_ino
+    assert import_agent_notes(_html(tmp_path, ["Accepted"])).notes_imported == 0
+    assert stored.stat().st_ino == healthy_inode
+    assert list(stored.parent.glob(".quarantine-*")) == quarantined
+
+
+@pytest.mark.parametrize("damage", ["symlink", "hardlink", "mode", "oversized"])
+def test_explicit_reimport_never_moves_unsafe_objects(imp_env: dict[str, str], tmp_path: Path,
+                                                     damage: str) -> None:
+    path = _html(tmp_path, ["Accepted"])
+    import_agent_notes(path)
+    stored = next(Path(imp_env["arts"]).glob("notes/*/*.txt"))
+    if damage == "symlink":
+        stored.unlink()
+        stored.symlink_to(path)
+    elif damage == "hardlink":
+        (tmp_path / "extra-link").hardlink_to(stored)
+    elif damage == "mode":
+        stored.chmod(0o644)
+    else:
+        stored.write_bytes(b"x" * (note_store.MAX_NOTE_BYTES + 1))
+    before = stored.lstat()
+    with pytest.raises(note_store.NotePersistenceError):
+        import_agent_notes(path)
+    assert stored.lstat() == before
+    assert not list(stored.parent.glob(".quarantine-*"))
+    assert len(trajectory("inv-note")) == 1
+
+
+def test_caller_html_symlink_is_rejected(imp_env: dict[str, str], tmp_path: Path) -> None:
+    target = _html(tmp_path, ["Caller note"])
+    link = tmp_path / "linked.html"
+    link.symlink_to(target)
+    with pytest.raises(OSError):
+        import_agent_notes(link)
+    assert trajectory("inv-note") == []
+    assert not Path(imp_env["arts"]).exists()
+
+
+def test_failed_recovery_publication_preserves_quarantine_and_retries(imp_env: dict[str, str], tmp_path: Path,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    path = _html(tmp_path, ["Accepted"])
+    first = import_agent_notes(path)
+    stored = next(Path(imp_env["arts"]).glob("notes/*/*.txt"))
+    stored.write_bytes(b"damaged")
+
+    def fail_link(*args: object, **kwargs: object) -> None:
+        raise OSError("injected publication failure after quarantine")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "link", fail_link)
+        with pytest.raises(note_store.NotePersistenceError):
+            import_agent_notes(path)
+    assert not stored.exists()
+    quarantined = list(stored.parent.glob(".quarantine-*"))
+    assert len(quarantined) == 1 and quarantined[0].read_bytes() == b"damaged"
+    with pytest.raises(note_store.NotePersistenceError):
+        load_persisted_agent_notes("inv-note")
+    result = import_agent_notes(path)
+    assert (result.notes_imported, result.event_ids) == (0, [])
+    assert load_persisted_agent_notes("inv-note") == ["Accepted"]
+    assert [row["event_id"] for row in trajectory("inv-note")] == first.event_ids
+    assert quarantined[0].read_bytes() == b"damaged"
