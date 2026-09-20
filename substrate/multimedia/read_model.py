@@ -1184,6 +1184,70 @@ class MultimediaAssetStore:
                 public_publish_denial=public_publish_denial,
             )
 
+    def prepare_live_execution(
+        self,
+        asset_id: str,
+        request: LiveProviderExecutionRequest,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> MultimediaAssetRecord:
+        """Gate and enqueue a live-provider attempt WITHOUT spending.
+
+        The gate checks acknowledgement, revision freshness, and provider
+        readiness BEFORE any queued state is recorded; a missing provider
+        key records ``provider_unconfigured`` without echoing the secret
+        value. The queued job carries the deterministic execution plan a
+        later worker previews via ``preview_next_live_execution``.
+        """
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            record = self._load_unlocked(asset_id, owner_digest)
+            if (
+                request.dry_run_revision_id is not None
+                and request.dry_run_revision_id != record.asset.revision_id
+            ):
+                raise ValueError("multimedia asset revision is stale")
+            if not request.operator_acknowledged_spend:
+                raise ValueError("live provider spend requires operator acknowledgement")
+            unknown = tuple(
+                family
+                for family in request.provider_families
+                if family.strip().lower() not in _KNOWN_PROVIDER_FAMILIES
+            )
+            if unknown:
+                raise ValueError(
+                    "unknown provider families requested: " + ", ".join(unknown)
+                )
+            missing_keys = tuple(
+                family
+                for family in request.provider_families
+                if not os.environ.get(_PROVIDER_KEY_ENV.get(family.strip().lower(), ""))
+            )
+            if missing_keys:
+                return self._record_job_unlocked(
+                    record,
+                    owner_digest=owner_digest,
+                    kind="provider_execution",
+                    status="failed",
+                    progress_percent=0,
+                    message="Provider API key is not configured; no spend was attempted.",
+                    error_code="provider_unconfigured",
+                    retryable=True,
+                )
+            plan = _live_execution_plan(record, request)
+            return self._record_job_unlocked(
+                record,
+                owner_digest=owner_digest,
+                kind="provider_execution",
+                status="queued",
+                progress_percent=0,
+                message=(
+                    f"Live execution queued for {', '.join(plan.provider_families)} "
+                    f"with budget ${plan.max_budget_usd:.2f}; awaiting no-spend worker preview."
+                ),
+                execution_plan=plan,
+            )
+
     def attach_knowledge_link(
         self,
         asset_id: str,
@@ -1805,6 +1869,7 @@ def _stable_fingerprint(*parts: str) -> str:
 
 
 _KNOWN_PROVIDER_FAMILIES = frozenset({"krea"})
+_PROVIDER_KEY_ENV = {"krea": "KREA_API_KEY"}
 
 
 def _missing_provider_families(provider_families: tuple[str, ...]) -> tuple[str, ...]:

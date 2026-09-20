@@ -44,6 +44,7 @@ def _create_reviewed_public_export_asset(tmp_path, monkeypatch):
             mode="video",
             route_policy="balanced",
             sources=("Digital flight controls changed aircraft design and safety cases.",),
+            selected_arc_ids=("consequences",),
         )
     )
     store.approve_dry_run(draft.asset.asset_id)
@@ -120,6 +121,7 @@ def test_live_worker_preview_consumes_queued_plan_without_provider_call(tmp_path
             mode="video",
             route_policy="balanced",
             sources=("Digital flight controls changed aircraft design and safety cases.",),
+            selected_arc_ids=("consequences",),
         )
     )
     store.approve_dry_run(draft.asset.asset_id)
@@ -183,6 +185,7 @@ def test_live_worker_preview_respects_route_budget_ceiling(tmp_path, monkeypatch
             mode="video",
             route_policy="highest_quality",
             sources=("Supersonic transport economics depended on fuel, noise, and routes.",),
+            selected_arc_ids=("history",),
         )
     )
     store.approve_dry_run(draft.asset.asset_id)
@@ -219,6 +222,7 @@ def test_provider_artifact_receipt_records_progress_without_manifest_attachment(
             mode="video",
             route_policy="balanced",
             sources=("Composite materials changed fatigue, maintenance, and weight tradeoffs.",),
+            selected_arc_ids=("consequences",),
         )
     )
     approved = store.approve_dry_run(draft.asset.asset_id)
@@ -280,6 +284,7 @@ def test_provider_artifact_attachment_plan_validates_receipt_without_manifest_mu
             mode="video",
             route_policy="balanced",
             sources=("Composite materials changed fatigue, maintenance, and weight tradeoffs.",),
+            selected_arc_ids=("consequences",),
         )
     )
     approved = store.approve_dry_run(draft.asset.asset_id)
@@ -344,6 +349,7 @@ def test_attach_provider_artifacts_to_manifest_after_validated_plan(tmp_path, mo
             mode="video",
             route_policy="balanced",
             sources=("Composite materials changed fatigue, maintenance, and weight tradeoffs.",),
+            selected_arc_ids=("consequences",),
         )
     )
     approved = store.approve_dry_run(draft.asset.asset_id)
@@ -427,6 +433,8 @@ def test_attach_provider_artifacts_to_manifest_rejects_duplicate_file_ids(tmp_pa
             target_minutes=20,
             mode="video",
             route_policy="balanced",
+            sources=("Digital flight controls changed aircraft design and safety cases.",),
+            selected_arc_ids=("consequences",),
         )
     )
     approved = store.approve_dry_run(draft.asset.asset_id)
@@ -504,6 +512,7 @@ def test_public_export_gate_requires_manual_review_after_attachment(tmp_path, mo
             mode="video",
             route_policy="balanced",
             sources=("Composite materials changed fatigue, maintenance, and weight tradeoffs.",),
+            selected_arc_ids=("consequences",),
         )
     )
     store.approve_dry_run(draft.asset.asset_id)
@@ -565,6 +574,8 @@ def test_public_export_gate_blocks_failed_hardening(tmp_path, monkeypatch):
             target_minutes=20,
             mode="video",
             route_policy="balanced",
+            sources=("Digital flight controls changed aircraft design and safety cases.",),
+            selected_arc_ids=("consequences",),
         )
     )
     store.approve_dry_run(draft.asset.asset_id)
@@ -666,6 +677,7 @@ def test_public_export_review_requires_all_manual_gate_ids(tmp_path, monkeypatch
             mode="video",
             route_policy="balanced",
             sources=("Composite materials changed fatigue, maintenance, and weight tradeoffs.",),
+            selected_arc_ids=("consequences",),
         )
     )
     store.approve_dry_run(draft.asset.asset_id)
@@ -747,6 +759,7 @@ def test_public_export_review_approval_records_ready_without_enabling_publish(tm
             mode="video",
             route_policy="balanced",
             sources=("Digital flight controls changed aircraft design and safety cases.",),
+            selected_arc_ids=("consequences",),
         )
     )
     store.approve_dry_run(draft.asset.asset_id)
@@ -1117,6 +1130,8 @@ def test_provider_artifact_attachment_plan_requires_successful_receipt(tmp_path,
             target_minutes=20,
             mode="video",
             route_policy="balanced",
+            sources=("Digital flight controls changed aircraft design and safety cases.",),
+            selected_arc_ids=("consequences",),
         )
     )
     store.approve_dry_run(draft.asset.asset_id)
@@ -1147,6 +1162,8 @@ def test_provider_artifact_attachment_plan_rejects_shape_mismatch(tmp_path, monk
             target_minutes=20,
             mode="video",
             route_policy="balanced",
+            sources=("Digital flight controls changed aircraft design and safety cases.",),
+            selected_arc_ids=("consequences",),
         )
     )
     store.approve_dry_run(draft.asset.asset_id)
@@ -1198,6 +1215,8 @@ def test_provider_artifact_receipt_rejects_provider_outside_plan(tmp_path, monke
             target_minutes=20,
             mode="video",
             route_policy="balanced",
+            sources=("Digital flight controls changed aircraft design and safety cases.",),
+            selected_arc_ids=("consequences",),
         )
     )
     store.approve_dry_run(draft.asset.asset_id)

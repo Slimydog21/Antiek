@@ -625,6 +625,8 @@ def _dispatch_authoritative(
     tier = _override_primary(
         config.tiers[tier_name], provider_override, model_override
     )
+    manual_override = bool(provider_override and model_override)
+    candidates = _candidate_models(tier)
     chain_index = 0
     last_error: ProviderError | None = None
 
@@ -675,6 +677,18 @@ def _dispatch_authoritative(
                 provider=provider_name, model=model_name or "<none>",
                 latency_ms=0, retryable=True,
             )
+            receipt = _route_receipt(
+                prompt_hash=prompt_hash,
+                role=role,
+                selected_tier_name=tier_name,
+                provider=provider_name,
+                model=model_name,
+                pricing=current.pricing,
+                fallback_chain_index=chain_index,
+                candidate_models=candidates,
+                reason_code="circuit_breaker_open",
+                manual_override=manual_override,
+            )
             _emit_dispatch_call(
                 investigation_id=investigation_id,
                 parent_event_id=parent_event_id,
@@ -690,6 +704,7 @@ def _dispatch_authoritative(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                route_receipt=receipt,
                 nd_scope=nd_scope,
             )
             current = current.fallback
@@ -710,6 +725,18 @@ def _dispatch_authoritative(
             # Emit a failure event so the error is queryable too. Use the
             # latency the provider reported on the exception if available.
             latency_ms = e.latency_ms or int((time.monotonic() - t_start) * 1000)
+            receipt = _route_receipt(
+                prompt_hash=prompt_hash,
+                role=role,
+                selected_tier_name=tier_name,
+                provider=provider_name,
+                model=model_name,
+                pricing=current.pricing,
+                fallback_chain_index=chain_index,
+                candidate_models=candidates,
+                reason_code="provider_error",
+                manual_override=manual_override,
+            )
             _emit_dispatch_call(
                 investigation_id=investigation_id,
                 parent_event_id=parent_event_id,
@@ -725,6 +752,7 @@ def _dispatch_authoritative(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                route_receipt=receipt,
                 nd_scope=nd_scope,
             )
             # Count this genuine provider-call failure toward the breaker. Config
@@ -741,6 +769,24 @@ def _dispatch_authoritative(
         usage = provider.normalize_usage(raw.raw_usage)
         finish = normalize_finish_reason(raw.finish_reason)
         cost = _compute_cost_usd(usage, current.pricing)
+        receipt = _route_receipt(
+            prompt_hash=prompt_hash,
+            role=role,
+            selected_tier_name=tier_name,
+            provider=provider_name,
+            model=model_name,
+            pricing=current.pricing,
+            fallback_chain_index=chain_index,
+            candidate_models=candidates,
+            reason_code=(
+                "operator_override"
+                if manual_override and chain_index == 0
+                else "primary"
+                if chain_index == 0
+                else "fallback_after_error"
+            ),
+            manual_override=manual_override,
+        )
         eid = _emit_dispatch_call(
             investigation_id=investigation_id,
             parent_event_id=parent_event_id,
@@ -756,6 +802,7 @@ def _dispatch_authoritative(
             prompt_hash=prompt_hash,
             finish_reason=finish,
             context_pack_event_id=context_pack_event_id,
+            route_receipt=receipt,
             nd_scope=nd_scope,
         )
         return DispatchResult(
@@ -769,6 +816,7 @@ def _dispatch_authoritative(
             finish_reason=finish,
             fallback_chain_index=chain_index,
             event_id=eid,
+            route_receipt=receipt,
         )
 
     # All tiers exhausted.

@@ -11,6 +11,9 @@ Parses a publisher's catalog manifest and, per work:
      (only the ``rights_holder`` name) -> deny-by-default gated branch
      (``restricted_pending_opt_in``), accrual-eligible because a rights holder
      exists. content_class is NEVER assigned by any other route.
+     The binding import this module must keep:
+     ``from acquisition.licenses_core import classify`` — no other
+     content_class route is permitted here.
   3. Ingests the body through the shared servable path
      (``acquisition.books.adapter.ingest_servable_book`` ->
      ``substrate.books.ingest.register_book``), passing classify()'s

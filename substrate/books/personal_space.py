@@ -284,9 +284,11 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     for x, y in zip(a, b, strict=False):
         na += float(x) * float(x)
         nb += float(y) * float(y)
+    na = na**0.5
+    nb = nb**0.5
     if na == 0.0 or nb == 0.0:
         return 0.0
-    return dot / (na * nb)
+    return float(dot / (na * nb))
 
 
 def categorize_assets(

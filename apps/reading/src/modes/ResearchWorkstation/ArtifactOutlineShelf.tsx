@@ -16,7 +16,7 @@ import {
 import LemonButton from "../../components/lemon/LemonButton";
 import StyleWheel from "./StyleWheel";
 import { useChaseDraftHandoffs } from "./chaseHandoffs";
-import { artifactKindToBlockKind } from "../../lib/artifactBlocks";
+import { artifactPalettePayload } from "../../lib/artifactDragPayload";
 
 /**
  * ANT-AHT SPR-AHT-06 — draggable insight/question blocks sourced from
@@ -28,12 +28,7 @@ export interface ArtifactOutlineShelfProps {
 }
 
 function startDrag(e: DragEvent, block: ResearchArtifactBlock) {
-  const payload: PaletteDragPayload = {
-    from: "palette",
-    block_kind: artifactKindToBlockKind(block.kind),
-    block_id: block.node_id,
-    label: block.label.slice(0, 120),
-  };
+  const payload: PaletteDragPayload = artifactPalettePayload(block);
   e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
   e.dataTransfer.effectAllowed = "copy";
 }
