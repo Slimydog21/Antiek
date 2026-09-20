@@ -27,6 +27,16 @@ name: deploy-backend
 #   means the gate job runs twice; the run that fires while siblings are
 #   still pending exits without deploying, and the last one through deploys.
 #
+# DELIBERATELY NOT ADDED — a `schedule:` trigger that reconciles drift:
+#   It is the obvious next feature, and it is a trap. This workflow already
+#   skips a SHA prod is on, so a cron would be a no-op almost always. The
+#   time it WOULD act is the time it must not: when an operator has
+#   deliberately rolled production back to an older SHA during an incident,
+#   main is still green and ahead, so a scheduled run would roll prod
+#   forward again and undo the rollback — automation fighting the person
+#   holding the pager. Drift is surfaced instead by prod_parity.yml, and
+#   corrected on purpose with `gh workflow run deploy-backend -f force=true`.
+#
 # WHY the gate re-reads every required context instead of trusting
 # `workflow_run.conclusion`:
 #   That field describes ONE workflow. A green `CI` says nothing about
