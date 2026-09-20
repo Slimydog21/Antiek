@@ -17,12 +17,11 @@ Subcommands:
   assert   --investigation-id ID [--phase N]
   status   --investigation-id ID
 
-Postcondition wiring: Day 1 ships with the no-op default — every
-``verify`` call passes structurally as long as the phase was entered
-+ exited. Day 2 ships ``postconditions.py`` with real per-phase
-checks; the CLI auto-discovers them via the env-var-controlled
-``--postcondition-module`` flag (default: ``orchestration.phase_runner.postconditions``,
-falls back to no-op when the module isn't importable yet).
+Postcondition wiring: ``verify`` and ``status`` require an importable module
+with a callable ``run_check``. The default is
+``orchestration.phase_runner.postconditions``; ``--postcondition-module``
+can select another checker. Invalid configuration exits 2 before invoking
+the runner or writing verification evidence.
 """
 
 from __future__ import annotations
@@ -31,27 +30,41 @@ import argparse
 import importlib
 import json
 import sys
+from typing import cast
 
 from orchestration.phase_log import PhaseAssertionError
 
 from . import runner as _runner
 
 
+class PostconditionConfigurationError(ValueError):
+    """The CLI cannot resolve its required artifact checker."""
+
+
 def _load_postcondition_check(module_path: str | None):
-    """Resolve a ``PostconditionCheck`` callable from a dotted module
-    path. The module is expected to expose ``run_check(phase,
-    investigation_id) -> (passed, reason)``. Falls back to the
-    library's no-op default when the module isn't importable yet
-    (Day 1 state — postconditions lands Day 2)."""
-    if not module_path:
-        return None
+    """Resolve the required ``run_check(phase, investigation_id)`` callable."""
+    if not module_path or not module_path.strip():
+        raise PostconditionConfigurationError("postcondition module must not be empty")
     try:
         mod = importlib.import_module(module_path)
-    except ImportError:
-        return None
-    if hasattr(mod, "run_check"):
-        return mod.run_check
-    return None
+    except Exception as exc:
+        # Import-time failures, including a missing nested dependency, must
+        # never select the library's structural-only verification default.
+        raise PostconditionConfigurationError(
+            f"cannot load postcondition module {module_path!r}: {exc}"
+        ) from exc
+    check = getattr(mod, "run_check", None)
+    if not callable(check):
+        raise PostconditionConfigurationError(
+            f"postcondition module {module_path!r} must expose callable run_check"
+        )
+    typed_check = cast(_runner.PostconditionCheck, check)
+    # The library selects its optional default by truthiness. A callable
+    # object with __bool__ returning False must still run on the CLI path.
+    def required_check(phase: int, investigation_id: str) -> tuple[bool, str]:
+        return typed_check(phase, investigation_id)
+
+    return required_check
 
 
 # ---------------------------------------------------------------------------
@@ -132,8 +145,8 @@ def _add_postcondition_arg(sp: argparse.ArgumentParser) -> None:
         "--postcondition-module", default=_DEFAULT_POSTCONDITION_MODULE,
         help=(
             "Dotted module path exposing ``run_check(phase, "
-            "investigation_id) -> (passed, reason)``. Falls back to "
-            "the runner's no-op default when not importable."
+            "investigation_id) -> (passed, reason)``. Required: load failures "
+            "or a missing callable exit 2 without verification."
         ),
     )
 
@@ -204,7 +217,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except PostconditionConfigurationError as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
