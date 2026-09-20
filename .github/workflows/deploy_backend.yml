@@ -214,6 +214,20 @@ jobs:
       # Phase A of playbooks/deploy.yml runs `npm run build` (tsc -b &&
       # vite build) on the control node. devDependencies must be present
       # before the playbook gets there, so install them here.
+      #
+      # BUILD-TIME ENV, and why nothing is injected here:
+      #   The operator's Mac has an untracked apps/reading/.env.local
+      #   carrying VITE_POSTHOG_PROJECT_TOKEN. A runner has no such file, so
+      #   this build omits it. That is deliberate and is NOT a regression:
+      #   measured 2026-09-20, the SPA copy this playbook rsyncs to
+      #   api.antiek.ai already ships WITHOUT the token, while the canonical
+      #   user-facing frontend at antiek.ai is built by Cloudflare Pages
+      #   (which has the variable configured) and is untouched by this
+      #   workflow. Injecting analytics here would change product behaviour
+      #   inside a deploy-automation change and start double-capturing from
+      #   a second host. If the api.antiek.ai copy should carry the token,
+      #   that is its own decision: add the secret and write .env.local in
+      #   this step.
       - name: Install reading-app dependencies
         working-directory: apps/reading
         run: npm ci
