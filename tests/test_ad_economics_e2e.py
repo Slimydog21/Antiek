@@ -390,6 +390,12 @@ def test_report_reconciles_and_is_reproducible(con):
 
     r1 = ve.render_report(ve.verify(con))
 
+    # The in-process write gate (db_lock, 38171a350) serializes ALL
+    # connect_write calls in one process, so the second DB cannot open
+    # while the fixture's writer is parked. r1 is fully rendered above, so
+    # release con first; the fixture's teardown close() is idempotent.
+    con.close()
+
     tmpdir = tempfile.mkdtemp(prefix="antiek-spr11-repro-")
     db2 = os.path.join(tmpdir, "repro.duckdb")
     c2 = connect_write(db2, purpose="spr11_repro")

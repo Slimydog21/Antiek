@@ -565,14 +565,21 @@
           ansible.builtin.systemd:
             name: antiek.service
             state: restarted
+          register: antiek_schema_restart
 
       tags: [code]
 
+    # The in-block restart above already bounced the service on full deploys.
+    # Restarting again here doubled the drain window on every deploy (two
+    # stop→boot cycles per run). Skip it when the schema block just restarted;
+    # it still fires for `--tags restart` partial runs, where the block's
+    # `code` tag kept it out and antiek_schema_restart is undefined.
     - name: restart antiek
       ansible.builtin.systemd:
         name: antiek.service
         state: restarted
       tags: [restart]
+      when: antiek_schema_restart is not defined
 
     # ── 5. Wait for systemd to report it back up ────────────────────────
     - name: wait for systemd active

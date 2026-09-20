@@ -7,6 +7,12 @@
 ``GET /artifacts/{id}/render``  — re-project a stored artifact HTML in a
                                   chosen style (``restyle_artifact`` — NO
                                   model call, deterministic).
+``GET /documents/{id}/render``  — project an INGESTED document (a PDF, a web
+                                  page, a .docx) through the same engine in a
+                                  chosen style. This is the route that lets
+                                  the style wheel reach the documents the
+                                  operator actually ingests, rather than only
+                                  the artifacts Antiek itself exported.
 
 Per-user persistence: forks are stored keyed by ``user_id``
 (``substrate/styles/store.py``). Every request assembles the caller's wheel
@@ -26,15 +32,19 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from services.html_projection.context import RenderContext
+from services.html_projection.adapters.document import (
+    adapt_document_for_projection,
+)
+from services.html_projection.context import Provenance, RenderContext
 from services.html_projection.gate import ScriptViolation, assert_script_free
 from services.html_projection.island import IslandError, extract_island
-from services.html_projection.renderer import restyle_artifact
+from services.html_projection.renderer import render, restyle_artifact
 from services.html_projection.styles import (
     ProjectionStyle,
     StyleError,
@@ -411,6 +421,137 @@ async def artifact_version(artifact_id: str, version: int, request: Request) -> 
     if version < 1:
         raise HTTPException(status_code=404, detail="artifact version not found")
     return await _serve_version(artifact_id, request, version)
+
+# ── Ingested documents ────────────────────────────────────────────────────
+#
+# The artifact routes above restyle something Antiek itself produced: its
+# HTML already carries a data island, so restyling is "recover the doc-model,
+# re-render". An ingested document has no island — it is a flat sanitized
+# HTML body in the reader sidecar — so the doc-model has to be built first,
+# by services/html_projection/adapters/document.py. After that one step the
+# two paths are the same engine, the same wheel and the same gate.
+#
+# TWO IDENTITIES ARE IN PLAY HERE and they are not the same question.
+# ``_user_id`` says WHICH WHEEL: the caller's forks layered over the
+# builtins. ``_owner_read_policy_tag`` says WHETHER THE BODY MAY BE READ AT
+# ALL: URL ingests are personal_reading by default, and the sidecar's serve
+# gate refuses them to a caller who has not proven owner identity with a real
+# credential. The rights ring is the one that must not be relaxed to make the
+# route convenient.
+
+_READER_REFUSALS: dict[str, tuple[int, str]] = {
+    "document_not_found": (404, "document_not_found"),
+    "taken_down": (403, "taken_down"),
+    "rights_denied": (403, "rights_denied"),
+    "no_reader_html": (422, "no_reader_html"),
+    "sanitizer_version_stale": (422, "sanitizer_version_stale"),
+}
+
+
+def _document_identity(con: Any, document_id: str) -> tuple[str | None, str | None]:
+    """The document's title and content_class, for the provenance footer.
+
+    Read only after the rights ring has already released the body, and
+    tolerant of a missing row: a footer that loses its title is a cosmetic
+    loss, and failing the whole render over it would be the wrong trade.
+    """
+    try:
+        row = con.execute(
+            "SELECT title, content_class FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+    except Exception:  # pragma: no cover - schema drift, not a render failure
+        return None, None
+    if row is None:
+        return None, None
+    title, content_class = row
+    return (str(title) if title else None), (str(content_class) if content_class else None)
+
+
+@style_router.get("/documents/{document_id}/render", response_class=HTMLResponse)
+async def render_document(
+    document_id: str, request: Request, style: str | None = None
+) -> HTMLResponse:
+    """Project an ingested document through the projection engine.
+
+    Reads the sanitized reader-HTML sidecar through its own fail-closed serve
+    gate, adapts it into a doc-model, and renders it under ``style``. No model
+    call: the doc-model is parsed from stored bytes and the style only swaps
+    the inlined stylesheet, so switching style re-renders the same document
+    deterministically.
+
+    A body the sidecar will not release as HTML is refused with the gate's own
+    reason rather than rendered from some other representation — projecting a
+    markdown fallback under a wheel style would look identical to projecting
+    the real document, which is precisely the confusion the version gate
+    exists to prevent.
+    """
+    from runtime.db_lock import connect_read
+
+    from .books import _OWNER_READ_POLICY_TAG, _owner_read_policy_tag
+
+    user_id = _user_id(request)
+    registry = _merged_registry(user_id)
+    if style is None:
+        resolved = None
+    else:
+        try:
+            resolved = registry.get(style)
+        except StyleError as err:
+            raise HTTPException(status_code=404, detail=str(err)) from err
+
+    from substrate.reader_html.store import serve_reader_html
+
+    con = connect_read(_db_path())
+    try:
+        result = serve_reader_html(
+            con,
+            document_id,
+            owner=(_owner_read_policy_tag(request) == _OWNER_READ_POLICY_TAG),
+        )
+        if result.reason in _READER_REFUSALS:
+            status, detail = _READER_REFUSALS[result.reason]
+            raise HTTPException(status_code=status, detail=detail)
+        if result.content_format != "html" or not result.body:
+            raise HTTPException(status_code=422, detail=result.reason)
+        title, content_class = _document_identity(con, document_id)
+    finally:
+        con.close()
+
+    doc_model = adapt_document_for_projection(
+        document_id,
+        result.body,
+        result.source_kind or "unknown",
+        result.source_url,
+        title=title,
+    )
+    ctx = RenderContext(
+        provenance=Provenance(
+            document_id=document_id,
+            title=title,
+            content_class=content_class,
+            # The sidecar's capture time — stored substrate DATA, never
+            # wall-clock, so two renders of the same row are byte-identical.
+            rendered_at=result.captured_at,
+        )
+    )
+    html = render(doc_model, ctx, style=resolved)
+    try:
+        assert_script_free(html)
+    except ScriptViolation as err:
+        raise HTTPException(
+            status_code=500,
+            detail="projected document failed the zero-script gate; refused",
+        ) from err
+    return HTMLResponse(
+        content=html,
+        headers={
+            "X-Document-ID": document_id,
+            "X-Artifact-Style": resolved.name if resolved is not None else "antiek",
+            "X-Content-SHA256": hashlib.sha256(html.encode("utf-8")).hexdigest(),
+            "X-Reader-Revision": str(result.revision) if result.revision else "",
+        },
+    )
 
 
 __all__ = ["style_router"]
