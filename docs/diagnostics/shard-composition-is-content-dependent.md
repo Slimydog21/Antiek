@@ -81,6 +81,21 @@ connection leaked from an earlier test in the same shard. It is load-sensitive,
 which is why it appeared on a day with 36 CI runs queued and not on a quiet
 board.
 
+**It is also non-deterministic at fixed composition, which is stronger than
+anything above.** Both failures cleared without the defect being touched:
+
+* #3281 failed, then passed. The only commits in between added a markdown file.
+  A `.md` is not collected, so the node set — and therefore the shard
+  composition — was byte-identical across the two runs.
+* #3282 failed, then passed on a **plain re-run of the same commit**. No diff at
+  all.
+
+So composition explains *which shard* a failure appears in; it does not explain
+*whether* it appears. The trigger is a race or an ordering effect within the
+shard process, amplified by load. Any attribution that stops at "this PR changed
+the shard" is incomplete, and any green run is weak evidence — the same commit
+produced both outcomes.
+
 `tests/quarantine.toml` already has an `order-dependent` category in its
 taxonomy. This test is not listed in it.
 
