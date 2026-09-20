@@ -43,6 +43,7 @@ on:
       - 'substrate/**/*.py'
       - 'tools/**/*.py'
       - 'tools/lints/baselines/no_blocking_write_in_async.json'
+      - 'tools/lints/baselines/no_raw_read_only_connect.json'
       - 'tests/test_no_blocking_write_in_async.py'
       - '.github/workflows/write_lock_async_floor.yml'
   push:
@@ -60,6 +61,7 @@ on:
       - 'substrate/**/*.py'
       - 'tools/**/*.py'
       - 'tools/lints/baselines/no_blocking_write_in_async.json'
+      - 'tools/lints/baselines/no_raw_read_only_connect.json'
 
 jobs:
   write-lock-async-gate:
@@ -77,6 +79,23 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+
+      - name: Enforce — read sites use connect_read, not a raw read-only connect
+        # db_lock.py:921: "Use this instead of raw duckdb.connect(...,
+        # read_only=True) at read sites." DuckDB REFUSES a read-only handle
+        # when this process already holds the file read-write, which under
+        # `--workers 1` is the steady state — and the ConnectionException it
+        # raises is not the IOException callers catch, so it escapes as a 500.
+        #
+        # Found because tools/reachability/probes/usability_keystone.py, a
+        # five-leg journey probe nothing runs, failed on its first execution
+        # at app.py:3018. That site is fixed; this holds the line for the 54
+        # that remain, shrink-only.
+        run: |
+          python -m tools.lints.cli_with_baseline enforce raw_read_only_connect \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_raw_read_only_connect.json \
+            --check-stale
 
       - name: Enforce — no blocking DuckDB write on the event loop
         run: |
