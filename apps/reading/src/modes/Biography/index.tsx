@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import BrainMascot from "../../brand/BrainMascot";
+import WorkflowArt from "../../brand/WorkflowArt";
 import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
 import { LemonButton } from "../../components/lemon";
 import { startInvestigation } from "../../lib/api";
@@ -96,7 +97,7 @@ export default function Biography() {
     <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
       <div className="mx-auto max-w-2xl px-6 py-12">
         <header className="mb-8 flex items-start gap-3">
-          <BrainMascot mood="idle" size={52} label="" />
+          <WorkflowArt workflow="biography" size={56} className="shrink-0" />
           <div>
             <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
               Write someone&rsquo;s biography

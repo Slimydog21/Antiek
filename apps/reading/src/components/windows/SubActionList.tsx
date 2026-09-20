@@ -6,6 +6,7 @@ import {
   type ModeEntry,
   type Workflow,
 } from "../../shell/workflowTaxonomy";
+import WorkflowArt from "../../brand/WorkflowArt";
 import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
 
@@ -89,7 +90,11 @@ export default function SubActionList({ workflow, __windowId }: SubActionListPro
       className={`flex flex-col h-full ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}
     >
       <div className="px-5 py-4 space-y-4 overflow-y-auto">
-        <header>
+        <header className="flex items-start gap-3">
+          {/* The mascot doing this product's verb. Decorative — the label and
+              tagline beside it carry the meaning. */}
+          <WorkflowArt workflow={workflow} size={56} className="shrink-0 -mt-1" />
+          <div className="min-w-0">
           <h2 className="font-serif text-lg text-ink dark:text-bright">
             {meta?.label ?? "Workflow"}
           </h2>
@@ -103,6 +108,7 @@ export default function SubActionList({ workflow, __windowId }: SubActionListPro
               No workflow was given to this window.
             </p>
           )}
+          </div>
         </header>
 
         {modes.length === 0 && workflow ? (
