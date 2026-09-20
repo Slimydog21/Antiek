@@ -62,8 +62,11 @@ export const config: CustomProjectConfig = {
   // PR-baseline runs). Skip them at every breakpoint — same tradeoff the
   // workspace-demo skip made: swap the animation for a deterministic
   // transition and then re-include the shots.
-  filterShot: ({ shotName }: { shotName?: string }) => {
-    if (!shotName) return true;
+  filterShot: (story: { id?: string }) => {
+    // filterShot receives the STORY (id/kind), not the viewport-suffixed
+    // shot filename — match on the storybook story id.
+    const id = story?.id ?? "";
+    if (!id) return true;
     const flakyAnimated = [
       "workspace-demo--scene",
       "navigation-app-shell--empty",
@@ -72,6 +75,6 @@ export const config: CustomProjectConfig = {
       "sketches-processing-seed-sketches--all-three-animated",
       "sketches-processing-seed-sketches--alternate-seed",
     ];
-    return !flakyAnimated.some((prefix) => shotName.startsWith(prefix));
+    return !flakyAnimated.some((prefix) => id.startsWith(prefix));
   },
 };
