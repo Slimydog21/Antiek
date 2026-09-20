@@ -1015,6 +1015,13 @@ async def reping_invitee(req: RepingRequest) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+# Ceiling for an invite voice note. Matches the upload limit this repo
+# already uses (doc_ingest_routes.py:58, upload_routes.py:66) rather than
+# inventing a new number. A MediaRecorder note is far smaller in practice;
+# this is a ceiling, not a target.
+_MAX_VOICE_BYTES = 64 * 1024 * 1024
+
+
 class InviteConsentRequest(BaseModel):
     scopes: list[str] = Field(..., min_length=1)
 
@@ -1236,7 +1243,45 @@ async def invitee_voice(
     or silently distils a misheard one — the invitee is told their
     recording couldn't be turned into words, and the text fallback stands.
     """
+    # Resolve the token BEFORE buffering the body. request.body() reads the
+    # whole payload into memory, and this route is waved through the operator
+    # gate, so doing it first let an anonymous caller with a junk token push
+    # an arbitrary number of bytes into the process before being 404'd.
+    try:
+        with _translate(), _read("speak/api:invite_voice_resolve:precheck") as _pre:
+            _known = _invite_read_or_404(_pre, token) is not None
+    except FileNotFoundError:
+        # No DB file yet means no invite can exist. Map to the same 404
+        # rather than letting the writer create the database for an
+        # anonymous caller -- _read documents this exact contract.
+        _known = False
+    if not _known:
+        raise HTTPException(
+            status_code=404, detail="unknown or expired invite link"
+        )
+    # Bound the payload. There is no limit at the edge (the Caddy template
+    # sets no request_body max) and the middleware's only Content-Length
+    # check is the TTS gateway's. The declared-length pre-check mirrors
+    # settings_tiers.py:200; the post-read check catches a lying header.
+    _declared = request.headers.get("Content-Length")
+    if _declared is not None:
+        try:
+            _declared_n = int(_declared)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="invalid Content-Length"
+            ) from None
+        if _declared_n > _MAX_VOICE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"voice note exceeds {_MAX_VOICE_BYTES} byte limit",
+            )
     audio = await request.body()
+    if len(audio) > _MAX_VOICE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"voice note exceeds {_MAX_VOICE_BYTES} byte limit",
+        )
     if not audio:
         raise HTTPException(status_code=400, detail="empty audio body")
     content_type = request.headers.get("content-type", "audio/webm")
@@ -1264,18 +1309,6 @@ async def invitee_voice(
         # rejection filter, not the check itself, so the race between the
         # two is harmless: a token revoked in between is caught by the
         # write-side check exactly as before.
-        try:
-            with _translate(), _read("speak/api:invite_voice_resolve:precheck") as _pre:
-                _known = _invite_read_or_404(_pre, token) is not None
-        except FileNotFoundError:
-            # No DB file yet means no invite can exist. Map to the same 404
-            # rather than letting the writer create the database for an
-            # anonymous caller -- _read documents this exact contract.
-            _known = False
-        if not _known:
-            raise HTTPException(
-                status_code=404, detail="unknown or expired invite link"
-            )
         with _translate(), _write("speak/api:invite_voice_resolve") as con:
             interview_id, _ = _require_token(con, token)
         # transcribe + submit acquire their own locks; do them OUTSIDE ours
