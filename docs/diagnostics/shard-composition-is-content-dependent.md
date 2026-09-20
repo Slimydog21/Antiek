@@ -99,6 +99,57 @@ produced both outcomes.
 `tests/quarantine.toml` already has an `order-dependent` category in its
 taxonomy. This test is not listed in it.
 
+## CORRECTION — there are TWO causes behind this one error message
+
+A later commit on `main`, `d87dd5208` "fix(loop-one): deposit the synthesis
+BEFORE announcing INVESTIGATION_COMPLETED", found a **real production race**
+producing this identical DuckDB error, and its author explicitly retracted their
+own "pre-existing order-dependence exposed by shard packing" call.
+
+They are right about their branch and it does not transfer to the instances
+above. Checked rather than assumed:
+
+* The race was introduced by `28ce4af9e` "hop the last three non-route
+  write-lock calls off the loop", which changed
+  `_deposit_synthesis_to_substrate(ctx)` to
+  `await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)`. Correct in
+  intent — the DuckDB write does not belong on the event loop — but both call
+  sites emitted `InvestigationCompletedPayload` FIRST. While the deposit was
+  synchronous there was no yield between the two; `await asyncio.to_thread(...)`
+  introduces exactly that yield, so a subscriber can observe
+  INVESTIGATION_COMPLETED before the syntheses row exists. The frontend and the
+  artifact exporter are exposed to it, not only the test that caught it.
+* `grep -c "asyncio.to_thread(_deposit_synthesis_to_substrate"` returns **0** at
+  `b00ad8913`, **0** at `57c2337fb`, and **0** on both
+  `fix/provider-env-isolation-20260920` and
+  `fix/attribution-share-invariant-20260920`. `28ce4af9e` merged to `main` after
+  `57c2337fb`, so neither branch above ever carried it.
+
+So the same error message has two roots, and they need different responses:
+
+| | cause | response |
+| --- | --- | --- |
+| tree contains `to_thread` on the deposit path | real production race, ordering guarantee broken | fixed by `d87dd5208` — deposit first, announce after |
+| tree does not | something else, non-deterministic at fixed composition | still open |
+
+**Check which tree you are in before attributing.** `git grep -c
+"asyncio.to_thread(_deposit_synthesis_to_substrate" -- orchestration/loop_one/`
+settles it in one command. The evidence above — two failures clearing with
+byte-identical composition, one on a plain re-run of the same commit — stands
+for the second row only, and this document previously implied it covered both.
+
+### And the misdiagnosis had a cause this repo can fix
+
+`d87dd5208`'s own message explains why three CI runs were spent on the wrong
+answer: *"every local reproduction had provider keys exported, so
+`_dispatch_once` found a registered `xiaomi`, forced `provider_override="xiaomi"`
+and died on DNS long before the deposit. That masked the real behaviour."*
+
+That is precisely the defect PR #3281 closes. Ambient provider credentials made
+a local reproduction diverge from CI and hid a real production race behind a DNS
+error. It is the strongest argument for that change that anyone has made, and it
+was made by someone who did not know the change existed.
+
 ## What NOT to conclude
 
 A red shard on a PR that touches nothing related is not evidence that the PR
