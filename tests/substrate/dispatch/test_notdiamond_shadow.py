@@ -89,8 +89,21 @@ def test_shadow_requires_separate_prompt_disclosure_consent() -> None:
 
 
 def test_outer_deadline_bounds_a_hung_selector() -> None:
+    # The selector sleeps far LONGER than the deadline, and the assertion
+    # below is far SHORTER than the selector. Previously both were tight —
+    # a 50ms selector against a `< 0.04` wall-clock bound — so ordinary
+    # thread-start latency on a loaded machine tripped it. Measured on this
+    # tree before the change: 3 failures in 5 runs on clean main, and the
+    # same 3-in-5 on the integration branch, i.e. ~60% flaky. It carries no
+    # marker and no tests/quarantine.toml entry, so the REQUIRED pytest
+    # shards collect it on every PR.
+    #
+    # Widening the gap keeps exactly what the test proves — that the outer
+    # deadline returns rather than waiting for a hung selector — while
+    # removing the scheduler sensitivity: 1.0s of work against a 5ms
+    # deadline cannot be confused with a 0.5s bound.
     def slow(**_: object) -> Recommendation:
-        time.sleep(0.05)
+        time.sleep(1.0)
         return _recommendation()
 
     started = time.monotonic()
@@ -105,9 +118,9 @@ def test_outer_deadline_bounds_a_hung_selector() -> None:
         selector=slow,
         timeout_ms=5,
     )
-    assert time.monotonic() - started < 0.04
+    assert time.monotonic() - started < 0.5
     assert result is not None and result.bypass_reason == "timeout"
-    time.sleep(0.06)  # Let the daemon release the single selector slot.
+    time.sleep(1.05)  # Outlast the selector so the daemon releases its slot.
 
 
 def test_malformed_recommendation_is_not_recorded_as_identity() -> None:

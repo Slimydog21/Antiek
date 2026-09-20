@@ -2,7 +2,9 @@
  * S12 bundle-budget enforcement.
  *
  * Runs after `vite build`. Fails the build if any of the named chunks
- * exceeds its gzipped size budget. Budgets are programme-wide ceilings
+ * exceeds its gzipped size budget, OR when a budgeted chunk is missing
+ * entirely (an unenforced ceiling is not a passing one). Budgets are
+ * programme-wide ceilings
  * documented in `docs/ui_redesign_posthog/sprint_12_visual_regression_release.html`
  * WP-12.2.
  *
@@ -72,11 +74,32 @@ function fmtKB(bytes: number): string {
 }
 
 let failed = 0;
+let missing = 0;
 console.log("== bundle budget check ==");
 for (const b of BUDGETS) {
   const f = findChunk(b.chunk);
   if (!f) {
-    console.warn(`[?] no chunk for prefix \`${b.chunk}\` (skipping)`);
+    // A budgeted chunk that cannot be found is a FAILURE, not a skip.
+    //
+    // This used to `continue`, so the script printed a warning nobody reads
+    // and exited 0. Rename an entry, change vite's manualChunks, or break the
+    // split, and that chunk's ceiling silently stopped being enforced while
+    // the job stayed green and the log still ended "All chunks within
+    // budget." — a gate that reports success precisely because it lost track
+    // of what it was measuring.
+    //
+    // Both budgets here are unconditional: `index` ships on every page load
+    // and `lemon` is split out via manualChunks. So an absent chunk means
+    // either the budget needs repointing at the new name, or the build is
+    // broken. Both need a human; neither is "within budget".
+    console.error(
+      `[✗] ${b.chunk.padEnd(12)} NO CHUNK MATCHED prefix \`${b.chunk}-\` in ` +
+        `dist/assets. Its ${fmtKB(b.maxBytes)} ceiling is unenforced. Either ` +
+        `repoint this budget at the chunk's new name, or fix the build that ` +
+        `stopped emitting it.`,
+    );
+    failed += 1;
+    missing += 1;
     continue;
   }
   const gz = gzippedSize(f);
@@ -91,7 +114,11 @@ for (const b of BUDGETS) {
 }
 
 if (failed > 0) {
-  console.error(`\n${failed} chunk(s) over budget. See spec WP-12.2.`);
+  const over = failed - missing;
+  const parts: string[] = [];
+  if (over > 0) parts.push(`${over} chunk(s) over budget`);
+  if (missing > 0) parts.push(`${missing} budgeted chunk(s) missing`);
+  console.error(`\n${parts.join(", ")}. See spec WP-12.2.`);
   process.exit(1);
 }
 

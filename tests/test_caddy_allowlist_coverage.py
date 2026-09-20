@@ -138,3 +138,89 @@ def test_browser_navigation_never_swallows_auth_callbacks() -> None:
         "browser-shaped /auth/callback requests would receive SPA index.html "
         "instead of reaching FastAPI"
     )
+
+
+# ── Full-glob coverage (the sound check) ────────────────────────────────────
+#
+# Everything above compares TOP-LEVEL SEGMENTS: both sides reduce
+# "/api/ad/*" and "/api/notebooks/{id}/artifact.html" to "/api". That makes a
+# single narrow allowlist token vouch for an entire first segment, which is a
+# false negative in exactly the direction that costs a production route.
+#
+# It did. The delta shipped GET /api/deliverables/{id}/artifact,
+# /api/notebooks/{id}/artifact(.html) and /api/syntheses/{id}/artifact(.html)
+# while the only /api glob in the Caddyfile was "/api/ad/*". All five were
+# served the SPA shell at the edge, for every client, and the check above
+# stayed green because "/api/ad/*" collapses to "/api".
+#
+# These compare the FULL glob the way Caddy's `path` matcher does. The
+# segment-level tests are kept: they still catch a whole prefix going missing,
+# and they are cheap.
+
+
+def _registered_full_paths() -> set[str]:
+    """Every concrete route path declared in the API modules."""
+    out: set[str] = set()
+    for f in glob.glob(os.path.join(_API_DIR, "*.py")):
+        with open(f, encoding="utf-8") as fh:
+            src = fh.read()
+        for m in _DECORATOR.finditer(src):
+            path = m.group(1)
+            if path.startswith("/") and path != "/":
+                out.add(path)
+    return out
+
+
+def _allowlist_globs() -> list[str]:
+    """The raw Caddy `path` tokens, unreduced."""
+    with open(_CADDY, encoding="utf-8") as fh:
+        line = next(t for t in fh if "@api_routes path" in t)
+    return [t for t in line.split()[2:] if t.startswith("/")]
+
+
+def _concrete(route: str) -> str:
+    """Substitute a sample segment for each {param} so globs can be matched."""
+    return re.sub(r"\{[^}]+\}", "x", route)
+
+
+def _covered(route: str, globs: list[str]) -> bool:
+    path = _concrete(route)
+    for g in globs:
+        if g.endswith("*"):
+            if path.startswith(g[:-1]):
+                return True
+        elif path == g:
+            return True
+    return False
+
+
+def test_every_registered_route_matches_a_full_caddy_glob() -> None:
+    globs = _allowlist_globs()
+    missing = sorted(
+        r for r in _registered_full_paths() if not _covered(r, globs)
+    )
+    assert not missing, (
+        "these registered routes match NO glob in the Caddy @api_routes "
+        f"allowlist, so production serves them the SPA HTML shell: {missing}. "
+        "Add a covering glob to infrastructure/ansible/templates/Caddyfile.j2."
+    )
+
+
+def test_full_glob_check_is_not_vacuous() -> None:
+    """Both sides must be non-trivially populated, and the matcher must work.
+
+    The segment-level check above passed for months while five routes were
+    dead at the edge; a coverage test that silently compares empty sets fails
+    the same way.
+    """
+    routes = _registered_full_paths()
+    globs = _allowlist_globs()
+    assert len(routes) >= 100, f"only {len(routes)} routes parsed"
+    assert len(globs) >= 40, f"only {len(globs)} allowlist globs parsed"
+    # The matcher must actually discriminate, not just return True.
+    assert _covered("/health", ["/health"])
+    assert _covered("/auth/callback", ["/auth/*"])
+    assert not _covered("/api/notebooks/x/artifact", ["/api/ad/*"]), (
+        "the matcher is collapsing prefixes again — /api/ad/* must not vouch "
+        "for /api/notebooks/..."
+    )

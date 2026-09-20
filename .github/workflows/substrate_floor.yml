@@ -113,10 +113,22 @@ jobs:
         run: |
           pytest --doctest-modules $SCOPE_FILES -v
 
-      - name: Substrate invariants (skip if module absent on this branch)
+      - name: Substrate invariants (registry meta-check)
+        # This step was dead in two independent ways and announced neither.
+        #
+        #   if [ -f substrate/invariants.py ]
+        #
+        # `substrate/invariants` is a PACKAGE (a directory of TOMLs plus
+        # __init__.py), so `-f` was permanently false and every run printed
+        # "::notice::substrate/invariants.py absent on this branch — skipping"
+        # — a reassuring message for a condition that could never be true.
+        # Had it somehow passed, `python -m substrate.invariants` would have
+        # failed anyway: the package has no __main__.py.
+        #
+        # docs/substrate_quality_toolkit.md:177 states this workflow runs
+        # "the invariants check". It now does. The registry meta-check is the
+        # real one: it asserts every invariant in substrate/invariants/*.toml
+        # names a guard that collects, and that each guard's non-vacuity claim
+        # is exercised.
         run: |
-          if [ -f substrate/invariants.py ]; then
-            python -m substrate.invariants
-          else
-            echo "::notice::substrate/invariants.py absent on this branch — skipping invariants check"
-          fi
+          pytest tests/test_invariant_registry_meta.py -q

@@ -387,7 +387,13 @@ export default function CommandPalette() {
         ).flatMap(
           (inv: {
             investigation_id: string;
-            topic?: string;
+            // GET /investigations returns InvestigationSummary, whose title
+            // field is `question` (app.py:419). This was declared and read as
+            // `topic`, a key that schema has never had, so the value was
+            // always undefined and every row fell through to the raw UUID.
+            // lib/api.ts:359 already declared `question`; this file was the
+            // only outlier.
+            question?: string;
             status?: string;
             completed_at?: string | null;
           }) => {
@@ -414,7 +420,7 @@ export default function CommandPalette() {
               {
                 kind: "investigation" as const,
                 id: `inv:${inv.investigation_id}`,
-                title: inv.topic ?? inv.investigation_id,
+                title: inv.question ?? inv.investigation_id,
                 subtitle: `Investigation · ${inv.investigation_id.slice(0, 8)}`,
                 path: `/inv/${inv.investigation_id}`,
                 state,
@@ -423,7 +429,7 @@ export default function CommandPalette() {
               {
                 kind: "investigation" as const,
                 id: `replay:${inv.investigation_id}`,
-                title: `Replay: ${inv.topic ?? inv.investigation_id}`,
+                title: `Replay: ${inv.question ?? inv.investigation_id}`,
                 subtitle: `Trajectory · ${inv.investigation_id.slice(0, 8)}`,
                 path: `/replay/${inv.investigation_id}`,
                 state,
@@ -465,7 +471,11 @@ export default function CommandPalette() {
 
       if (pResp?.ok) {
         const data = await pResp.json();
-        const items: PaletteParkedQuestion[] = (data.parked ?? []).map(
+        // GET /watch-for-later returns WatchForLaterResponse, which is
+        // {count, questions} (app.py:4589). This read a `parked` key the
+        // backend has never emitted, so the `?? []` silently produced an
+        // empty section on every open.
+        const items: PaletteParkedQuestion[] = (data.questions ?? []).map(
           (q: { question_id: string; question_text: string }) => ({
             kind: "parked_question" as const,
             id: `pq:${q.question_id}`,

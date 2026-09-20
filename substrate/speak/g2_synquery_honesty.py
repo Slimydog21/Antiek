@@ -76,7 +76,15 @@ def g2_synquery_honesty() -> dict[str, Any]:
         "disbursement_allowed": bool(disb.allowed),
         "public_publishing_allowed": bool(pub.allowed),
         "money_model": MONEY_MODEL,
-        "paid_today": False,
+        # False while disbursement is GATED — provable, no money can move.
+        # None once the operator flips it: this envelope is deliberately
+        # DB-free ("Pure honesty envelope" above) and cannot see the payouts
+        # ledger, so it does not know whether anything was paid. It used to
+        # emit a bare False, which is a claim it cannot support and fails in
+        # the worst direction — telling a contributor they were not paid when
+        # they may have been. Unknown is the honest value; the ledger is the
+        # place that can answer it.
+        "paid_today": False if not disb.allowed else None,
         "synquery_partnership": "live" if syn_live else "gated",
         "synquery_gated": not syn_live,
         "g2_requires": list(G2_REQUIRES),
