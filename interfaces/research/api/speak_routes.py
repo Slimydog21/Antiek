@@ -41,11 +41,6 @@ from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
 from runtime.db_lock import connect_read, connect_write
-
-# Reuse auth.py's throttle window rather than starting a second one: it
-# already carries the ``reset_auth_throttles()`` test seam, and sharing the
-# store means a test that clears throttles clears these too.
-from .auth import _client_ip, _throttled
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.speak import (
     biography,
@@ -92,6 +87,11 @@ from substrate.speak.contributor import DisbursementBlocked
 from substrate.speak.invitations import PublicEcosystemGated
 from substrate.speak.publish_gate import PublishBlocked
 from substrate.speak.schema import ensure_speak_schema
+
+# Reuse auth.py's throttle window rather than starting a second one: it
+# already carries the ``reset_auth_throttles()`` test seam, and sharing the
+# store means a test that clears throttles clears these too.
+from .auth import _client_ip, _throttled
 
 speak_router = APIRouter(prefix="/speak", tags=["speak"])
 
