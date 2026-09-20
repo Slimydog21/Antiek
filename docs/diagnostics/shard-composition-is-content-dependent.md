@@ -91,8 +91,11 @@ broke something, and a green board is not evidence that an order-dependent
 defect is absent — it may simply have landed in a shard where its trigger did
 not run. Attribute by mechanism, not by which PR was unlucky:
 
-1. Does the PR change the collected `.py` set at all? If not, its composition
-   equals `main`'s and the defect is on `main`.
+1. Does the PR change the collected node set at all? Note that this is not the
+   same question as "does it touch `.py`" — re-check the premise above first,
+   because a Python test parametrized over a tree glob would let a non-Python
+   diff change the count. If the node set is unchanged, composition equals
+   `main`'s and the defect is on `main`.
 2. Does the failing test isolate its own state? If yes, a collision means
    something process-global leaked from a sibling.
 3. Does it reproduce in isolation? If it passes there, it is order-dependent by
