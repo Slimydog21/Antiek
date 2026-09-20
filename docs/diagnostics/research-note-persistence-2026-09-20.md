@@ -11,8 +11,8 @@ Runtime signatures are retained in `.audit/notes-signatures.log`.
 | Callable | Source | Contract |
 |---|---|---|
 | `export_research_artifact` | `substrate/research_artifact/export.py:30` | investigation id; optional keyword database/event paths, event flag, role and owner |
-| `import_agent_notes` | `substrate/research_artifact/import_notes.py:120` | caller HTML `Path`; optional keyword investigation id, event directory and role; returns imported/skipped counts and accepted event ids |
-| `load_persisted_agent_notes` | `substrate/research_artifact/import_notes.py:189` | investigation id and optional event directory; legacy `artifact_path` argument explicitly requires reimport |
+| `import_agent_notes` | `substrate/research_artifact/import_notes.py:131` | caller HTML `Path`; optional keyword investigation id, event directory and role; returns imported/skipped counts and accepted event ids |
+| `load_persisted_agent_notes` | `substrate/research_artifact/import_notes.py:202` | investigation id and optional event directory; legacy `artifact_path` argument explicitly requires reimport |
 | `build_body` | `substrate/research_artifact/build_body.py:12` | forwards the selected event directory to the note loader |
 
 ### Numbered failure chain
@@ -150,3 +150,56 @@ Independent review accepts the immutable commit and parent records any remaining
 ### Out-of-scope temptations
 
 No schema migration, graph mutation, event-log redesign, automatic legacy-path ingestion, background orphan deletion, renderer changes, broader ownership acquisition or deployment.
+
+### Browser and source-scan follow-up
+
+On source6e2c73d11, Chrome interacted with the actual private HTML Add-note
+control. The edited DOM was serialized to a caller HTML file through DevTools;
+the actual artifact_router import returned200/one accepted note/event. The caller
+file was deleted, and actual re-export returned200 with the same note. Window
+error and rejection capture remained empty. This is not native Save Page, full
+application authentication, or the complete writing workflow. See
+[verification JSON](assets/research-note-persistence-20260920/browser-verification.json)
+and [screenshot](assets/research-note-persistence-20260920/add-note.png).
+
+A second browser case containing literal closing-script-tag text produced
+non-importable saved HTML, returning400 with an unterminated JSON string.
+The existing renderer updates the JSON island without escaping less-than signs.
+That separate renderer defect is assigned to the stacked serialization repair;
+it is not hidden by the ordinary-note success above.
+
+Source-only strict Hardenx scan exited0, LOW, zero REAL and six advisory findings
+on the frozen changed Python files with the repository ignore rules preserved.
+Evidence: .audit/notes-hardenx.json. No dependency or production clearance follows.
+Independent GLM review26146 returned ACCEPT, 88/100, on source6e2c73d11.
+Follow-up work addresses managed-directory permissions and explicit restoration
+of accepted note objects. The original acceptance does not cover that follow-up.
+
+
+### Independent-review implementation follow-up
+
+GLM review 26146 accepted source `6e2c73d11` at 88/100. Its acceptance does not cover this subsequent change. Board validation before follow-up edits passed with 653 agents, 9 active portfolio entries and 1763 owned surfaces.
+
+**L1:** every managed `notes` and investigation directory is now checked by descriptor for current-user ownership and exact 0700 mode. Existing permissive or foreign-owned directories fail closed; no automatic chmod/chown is attempted. The configured artifact root's existing trust policy is unchanged. The mode regressions alter real directory permissions. Owner regressions inject foreign UID metadata through `fstat`, without requiring privileged chown.
+
+**M1:** explicit import can restore missing or damaged accepted bytes only when the supplied normalized text matches both the accepted full SHA-256 and byte size. Recovery occurs under the existing import lock. It reuses the original event and reports the restored note as a skipped duplicate, with zero new event ids. Ordinary loading/export still fails until recovery succeeds. An unrelated new import cannot bypass an unavailable accepted note. Earlier restored or accepted notes remain intact if a later note in the batch fails.
+
+For damaged bytes, only an owned, regular, singly linked, 0600 object within the note-size bound qualifies. Recovery prepares and fsyncs replacement bytes first, revalidates the damaged object through its descriptor and matching directory entry, fsyncs the old bytes, reserves a fresh private quarantine sibling, then atomically renames the damaged object there. After directory fsync, it links the prepared replacement without clobbering an existing name, unlinks its temporary name and fsyncs the directory again. Quarantined bytes are retained. A failure after quarantine leaves a missing accepted path that exact reimport can restore. Concurrent exports can fail explicitly during this recovery window; the operation does not promise uninterrupted reads.
+
+Symlinks, foreign-owned, multiply linked, permissive or oversized objects are never moved or overwritten. Healthy accepted objects keep their inode and produce no quarantine. The tests preserve damaged bytes, refuse wrong replacement text, and inject publication failure after quarantine before successfully retrying. This injection demonstrates retry semantics, not real power-loss behavior.
+
+**L2:** inspection confirmed the existing `_directory` context manager already wraps `OSError` thrown by leaf open or operations in its yielded body. No redundant catch was added. Specific missing-object and corrupt-byte subclasses distinguish authorized recovery candidates from unsafe storage.
+
+**L3:** caller-selected HTML can be outside artifact storage, but its final path component must be a regular file, not a symlink. The importer opens with `O_NOFOLLOW`; a symlink is rejected before notes or events are written. Callers must explicitly choose the regular target path. Event paths remain non-authoritative regardless of caller-path policy.
+
+Review regressions were run before production edits: **5 failed, 45 deselected**, covering missing-object restoration and both managed directory levels under wrong mode/UID. Log: `.audit/notes-review-red.log`. The additional corrupt-byte restoration regression also failed before its implementation: **1 failed, 37 deselected**, `.audit/notes-corrupt-recovery-red.log`. The final consumer suite includes these cases, unsafe-object refusal, caller-symlink rejection and failure after quarantine.
+
+| Follow-up gate | Result | Evidence |
+|---|---|---|
+| Consumer suite | exit 0, 186 passed, no skips; one existing Starlette warning, 36.46 seconds | `.audit/notes-review-consumers-final.log` |
+| Ruff | exit 0, all checks passed | `.audit/notes-review-ruff.log` |
+| Strict mypy | exit 0, no issues in five files; zero new versus recorded baseline | `.audit/notes-review-mypy.log` |
+
+After conservative rename-error cleanup was removed to avoid deleting potentially moved bytes, the affected recovery cases were rerun: **9 passed, 30 deselected**, `.audit/notes-review-recovery-final.log`. A failed rename can leave an empty reserved quarantine placeholder; it cannot authorize a note or trigger automatic cleanup of damaged bytes.
+
+The previous browser proof and source scan remain tied to `6e2c73d11`. Updated independent review remains the parent's responsibility. This lane added no production-incident fixture: both observed failures were local reproductions, not claims of incidents seen in production.
