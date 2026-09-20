@@ -13,13 +13,15 @@ from __future__ import annotations
 import contextlib
 import os
 import tempfile
-from typing import Literal
+from typing import Any, Final, Literal
 
 import httpx
 from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 
 from acquisition.doc_to_html.ssrf import _MAX_REDIRECTS, SsrfError, validate_public_http_url
+from services.demand_gate.roundtrip_detector import ExportRegistry
 
 from .account_memory_identity import distinct_signed_owner
 
@@ -305,7 +307,386 @@ async def ingest_asset_route(
     )
 
 
-__all__ = ["doc_ingest_router", "register_doc_ingest_routes"]
+# ── POST /ingest/antiek — the `.antiek` return leg (HPRJ SPR-4) ──
+#
+# The export half ships three signed formats. Until this route existed the
+# import half was a library with no caller: an artifact could leave Antiek and
+# never come home, which is most of the argument for having a signed container
+# at all.
+#
+# WHAT A VALID SIGNATURE DOES AND DOES NOT PROVE. Both verifiers check the
+# artifact against the public key the artifact itself carries, so a signature
+# that verifies proves the bytes are internally consistent — nobody edited a
+# signed file — and proves nothing whatsoever about who signed it. Authorship is
+# established by the round-trip classification instead: a document_id and
+# content hash that match what Antiek exported. That distinction decides the
+# rights class below, and conflating the two would be the §9.0 leak.
+
+
+class AntiekIngestResponse(BaseModel):
+    """What POST /ingest/antiek returns for an artifact that came home."""
+
+    document_id: str
+    reader_html_url: str
+    render_url: str
+    title: str | None = None
+    content_class: str
+    # "returned_unmodified" | "traveled_and_changed" | None when this instance
+    # has no record of exporting the document.
+    roundtrip: str | None = None
+
+
+class _SubstrateExportRegistry(ExportRegistry):
+    """An ExportRegistry that answers from the substrate rather than memory.
+
+    ``ExportRegistry`` is an in-memory ledger of "what did Antiek export", and
+    nothing in the tree ever populated one outside a test, so a route that
+    handed ``ingest_antiek`` a bare registry would classify every returning
+    artifact as untracked and the round-trip signal would be dead on arrival —
+    the same has-no-caller defect this lane exists to fix, one layer down.
+
+    Exports are reproducible, so the ledger does not have to be stored: the
+    export route builds its ``ExportItem`` from the notebook rows, and
+    ``notebook_export_item`` is now the one place that shape lives, so asking
+    "what would we export for this document today?" is a read away. Lookups are
+    lazy because ``ingest_antiek`` learns the document_id only after it has
+    parsed and verified the artifact.
+
+    The honest limit: this compares against what Antiek would export NOW. A
+    notebook edited in place after its artifact left will classify that
+    artifact's unmodified return as ``traveled_and_changed``. The classification
+    stays truthful about the content ("these bytes are not our current
+    content") and loses the ability to say which side moved. Recording export
+    hashes at emit time is what would close that, and it needs a durable ledger
+    this lane does not own.
+    """
+
+    def __init__(self, db_path: str) -> None:
+        super().__init__()
+        self._db_path = db_path
+        self._loaded: set[str] = set()
+
+    def _load(self, document_id: str) -> None:
+        if document_id in self._loaded:
+            return
+        self._loaded.add(document_id)
+        notebook_id = _notebook_id_for_document(document_id, self._db_path)
+        if notebook_id is None:
+            return
+        from .notebook_artifact import notebook_export_item, resolve_notebook_export
+
+        source = resolve_notebook_export(notebook_id, db_path=self._db_path)
+        if source is None:
+            return
+        item = notebook_export_item(source, notebook_id)
+        self.record_export(item.document_id, item.content_tiptap)
+
+    def knows_document(self, document_id: str) -> bool:
+        self._load(document_id)
+        return super().knows_document(document_id)
+
+    def knows_exact(self, document_id: str, hash_: str) -> bool:
+        self._load(document_id)
+        return super().knows_exact(document_id, hash_)
+
+
+def _notebook_id_for_document(document_id: str, db_path: str) -> str | None:
+    """The notebook an exported document_id came from, or None.
+
+    ``resolve_notebook_export`` falls back to the notebook_id when a notebook
+    has no bound document, so an exported artifact's document_id is either the
+    ``notebooks.document_id`` binding or the notebook_id itself. Both are
+    checked, bound column first.
+    """
+    from runtime.db_lock import connect_read
+
+    con = connect_read(db_path)
+    try:
+        row = con.execute(
+            "SELECT notebook_id FROM notebooks WHERE document_id = ? LIMIT 1",
+            [document_id],
+        ).fetchone()
+        if row is not None:
+            return str(row[0])
+        row = con.execute(
+            "SELECT notebook_id FROM notebooks WHERE notebook_id = ? LIMIT 1",
+            [document_id],
+        ).fetchone()
+        return str(row[0]) if row is not None else None
+    except Exception:  # pragma: no cover — a missing notebooks table is not
+        # an ingest failure; it only means nothing can be classified.
+        return None
+    finally:
+        con.close()
+
+
+def _reader_sidecar_source_kind(document_id: str, db_path: str) -> str | None:
+    """The ``source_kind`` of an existing reader-HTML row, or None if there is none.
+
+    The return leg must never overwrite a reader body some other lane wrote.
+    A notebook can be BOUND to a document (``notebooks.document_id``), and the
+    export path stamps that binding into the manifest, so a wrestle notebook
+    attached to a book exports an artifact whose claimed document_id is the
+    BOOK's. Writing the notebook's prose under that id on re-import would
+    replace the book's reader body with it — silently, and with no way back.
+    So the claimed id is honoured only when nothing is there yet, or when this
+    route put it there (which keeps a second import of the same artifact
+    idempotent instead of minting a duplicate).
+    """
+    from runtime.db_lock import connect_read
+
+    con = connect_read(db_path)
+    try:
+        row = con.execute(
+            "SELECT source_kind FROM document_reader_html WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+        return str(row[0]) if row is not None and row[0] is not None else None
+    except Exception:  # pragma: no cover — no sidecar table means nothing to clobber.
+        return None
+    finally:
+        con.close()
+
+
+ANTIEK_SOURCE_KIND: Final[str] = "antiek"
+
+
+def _antiek_db_path() -> str:
+    from substrate.graph import default_db_path, ensure_initialized
+
+    path = str(default_db_path())
+    ensure_initialized(path)
+    return path
+
+
+def _doc_model_content(doc_model: dict[str, Any]) -> list[Any]:
+    """The top-level node array, whichever doc-model shape arrived.
+
+    A container hands back the TipTap document (``{"type": "doc", "content":
+    [...]}``); a single-file island hands back the projection doc-model
+    (``{"content": [...], "title": ...}``). Both keep the nodes under
+    ``content``, which is the only field the renderer needs.
+    """
+    content = doc_model.get("content")
+    return content if isinstance(content, list) else []
+
+
+def _plain_text(nodes: list[Any]) -> str:
+    """Flatten the doc-model's text nodes for the document's ``raw_text``.
+
+    The substrate stores a text representation next to every document; a
+    returning artifact that stored none would be invisible to search while
+    appearing ingested. Structure is deliberately dropped here — the structured
+    payload survives as the doc-model the projection renders, and this is the
+    plain reading of it, not a second source of truth.
+    """
+    out: list[str] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, str):
+            out.append(node)
+            return
+        if not isinstance(node, dict):
+            return
+        text = node.get("text")
+        if isinstance(text, str):
+            out.append(text)
+        children = node.get("content")
+        if isinstance(children, list):
+            for child in children:
+                walk(child)
+
+    for node in nodes:
+        walk(node)
+        out.append("\n")
+    return "".join(out).strip()
+
+
+def _minted_document_id(doc_model: dict[str, Any]) -> str:
+    """A content-derived id for an artifact that cannot prove where it is from.
+
+    Derived from the canonical content hash — the same canonicalisation the
+    `.antiek` signature covers — so re-uploading the same artifact lands on the
+    same row instead of accumulating duplicates, and so an id can never be
+    steered by whatever the uploaded manifest claims.
+    """
+    from services.demand_gate.roundtrip_detector import content_hash
+
+    return f"doc-antiek-{content_hash(doc_model)[:16]}"
+
+
+@doc_ingest_router.post(
+    "/antiek",
+    response_model=AntiekIngestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def ingest_antiek_route(
+    request: Request,
+    file: UploadFile = File(...),
+) -> AntiekIngestResponse:
+    """Bring a born-Antiek artifact home.
+
+    Accepts a `.antiek` container or a signed single-file `.antiek.html`, reads
+    ONLY the signed structured doc-model (the rendered markup is never parsed
+    for content), and stores it as a document the reader and the style wheel can
+    open. A quarantined artifact is refused with its typed reason and is never
+    rendered.
+    """
+    owner = _owner(request)
+
+    data = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"upload exceeds {_MAX_UPLOAD_BYTES} byte limit",
+        )
+    if not data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="file body must not be empty",
+        )
+
+    def _ingest_and_store() -> AntiekIngestResponse:
+        # Everything below takes the DuckDB write lock or blocks on a read, so
+        # it runs in a worker thread: connect_write polls with time.sleep, and
+        # the single uvicorn worker would stop serving for the whole wait.
+        from runtime.db_lock import WriteLockTimeout, connect_write
+        from services.html_projection.context import RenderContext
+        from services.html_projection.renderer import render_block
+        from services.ingestion.ingest_antiek import (
+            DISPOSITION_MALFORMED,
+            ingest_antiek,
+            quarantine_disposition,
+        )
+        from substrate.books.html_sanitizer import strip_trust_markers
+        from substrate.constants import PERSONAL_READING_CONTENT_CLASS
+        from substrate.graph.ops import insert_document
+        from substrate.reader_html.store import store_reader_html
+
+        db_path = _antiek_db_path()
+        result = ingest_antiek(data, export_registry=_SubstrateExportRegistry(db_path))
+
+        if result.quarantined or not result.ok or result.doc_model is None:
+            # A dict detail, where this module's other refusals use a string.
+            # The classification IS the product here: a caller has to act
+            # differently on a tampered artifact than on a malformed one, and a
+            # sentence it has to parse would make that a guess.
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "error": "quarantined",
+                    "disposition": (
+                        quarantine_disposition(result.reason_code)
+                        if result.quarantined
+                        else DISPOSITION_MALFORMED
+                    ),
+                    "reason_code": result.reason_code,
+                    "reason": result.reason,
+                },
+            )
+
+        content = _doc_model_content(result.doc_model)
+
+        # WHICH DOCUMENT THIS BECOMES, AND UNDER WHICH RIGHTS CLASS.
+        #
+        # A signature verifies against the key the artifact carries, so it says
+        # "nobody edited these bytes", not "Antiek made this". Only
+        # `returned_unmodified` says the second thing: the document_id AND the
+        # canonical content hash match what this instance exports for that
+        # document. That is the one case where writing to the claimed id is
+        # safe — the body is byte-identical to the one already there, so the
+        # sidecar upsert cannot clobber anything — and the one case where
+        # `user_owned` is true.
+        #
+        # Everything else, `traveled_and_changed` included, carries content this
+        # instance did not produce, whatever id the manifest claims. It lands on
+        # a content-derived id so an upload can never overwrite an existing
+        # document's reader body, and as `personal_reading`: owner-readable,
+        # never publicly servable, never earning. That is the §9.0 discipline —
+        # an uploaded body reaching the monetized read path because it asserted
+        # an id is exactly the leak the rights states exist to prevent.
+        returned_home = (
+            result.roundtrip == "returned_unmodified"
+            and result.document_id is not None
+            and _reader_sidecar_source_kind(result.document_id, db_path)
+            in (None, ANTIEK_SOURCE_KIND)
+        )
+        if returned_home and result.document_id is not None:
+            document_id = result.document_id
+            content_class = "user_owned"
+        else:
+            document_id = _minted_document_id(result.doc_model)
+            content_class = PERSONAL_READING_CONTENT_CLASS
+
+        ctx = RenderContext()
+        body_html = "".join(render_block(node, ctx) for node in content)
+        raw_text = _plain_text(content)
+
+        metadata = strip_trust_markers(
+            {
+                "source": "ingest_antiek",
+                "artifact_format": (
+                    "antiek_container" if data[:2] == b"PK" else "antiek_single_file"
+                ),
+                "roundtrip": result.roundtrip,
+                # What the artifact SAID it was, kept separately from the id it
+                # was given, so a claim is never mistaken for a fact.
+                "claimed_document_id": result.document_id,
+                "signature_verified": True,
+            }
+        )
+
+        def _sync() -> None:
+            with connect_write(db_path, purpose="ingest/antiek") as con:
+                insert_document(
+                    con,
+                    document_id=document_id,
+                    source_tier=2,
+                    document_type="antiek_artifact",
+                    source_uri=f"antiek://{document_id}",
+                    title=result.title,
+                    raw_text=raw_text,
+                    metadata=metadata,
+                    content_class=content_class,
+                    owner_user_id=owner,
+                    # An artifact that comes home twice must not rewrite the
+                    # rights class the document already carries.
+                    on_conflict="ignore",
+                )
+                store_reader_html(
+                    con,
+                    document_id=document_id,
+                    main_html=body_html,
+                    source_kind=ANTIEK_SOURCE_KIND,
+                    source_url=None,
+                )
+
+        try:
+            _sync()
+        except WriteLockTimeout as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="write lock unavailable; retry",
+            ) from exc
+
+        return AntiekIngestResponse(
+            document_id=document_id,
+            reader_html_url=f"/sources/{document_id}/reader-html",
+            render_url=f"/documents/{document_id}/render",
+            title=result.title,
+            content_class=content_class,
+            roundtrip=result.roundtrip,
+        )
+
+    # flock wait + the substrate reads off the uvicorn loop.
+    return await run_in_threadpool(_ingest_and_store)
+
+
+__all__ = [
+    "AntiekIngestResponse",
+    "doc_ingest_router",
+    "register_doc_ingest_routes",
+]
 
 
 def register_doc_ingest_routes(app: FastAPI) -> None:

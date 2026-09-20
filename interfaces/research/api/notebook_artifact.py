@@ -107,6 +107,39 @@ def resolve_notebook_export(
 
 
 
+def notebook_doc_model(source: NotebookExportSource) -> dict[str, Any]:
+    """The rights-filtered projection doc-model for a notebook export."""
+    resolved_refs: dict[str, ResolvedRefData] = source.resolved_refs
+    return adapt_notebook_for_export(
+        source.content_tiptap, title=source.title, resolved_refs=resolved_refs
+    )
+
+
+def notebook_export_item(
+    source: NotebookExportSource, notebook_id: str, doc_model: dict[str, Any] | None = None
+) -> ExportItem:
+    """The ExportItem a notebook emits — the shape `.antiek` signs.
+
+    This lives at module scope with one caller pair on purpose. The export route
+    builds an artifact from it; the `.antiek` return leg
+    (``doc_ingest_routes``) rebuilds it to ask "is this the content we
+    exported for that document?". If the two sides each spelled the item out
+    inline, the round-trip classification would hold only by coincidence, and it
+    would stop holding the first time one side learned a field the other did
+    not.
+    """
+    if doc_model is None:
+        doc_model = notebook_doc_model(source)
+    return ExportItem(
+        content_tiptap={"type": "doc", "content": doc_model.get("content", [])},
+        title=source.title,
+        document_id=source.document_id,
+        user_id=source.owner_user_id,
+        notebook_id=notebook_id,
+        content_class="notebook",
+    )
+
+
 def _script_free_html(html: str) -> str:
     try:
         assert_script_free(html)
@@ -128,12 +161,6 @@ def _html_headers(*, filename: str, inline: bool) -> dict[str, str]:
 def register_notebook_artifact_routes(app: FastAPI) -> None:
     """Mount notebook artifact view + export. One call from create_app."""
 
-    def _doc_model(source: NotebookExportSource) -> dict[str, Any]:
-        resolved_refs: dict[str, ResolvedRefData] = source.resolved_refs
-        return adapt_notebook_for_export(
-            source.content_tiptap, title=source.title, resolved_refs=resolved_refs
-        )
-
     @app.get("/api/notebooks/{notebook_id}/artifact.html", tags=["notebooks"])
     async def notebook_artifact_html(notebook_id: str) -> Response:
         """Daily-use HTML-native view — inline, script-free (not a download)."""
@@ -142,7 +169,7 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
             raise HTTPException(
                 status_code=404, detail=f"notebook {notebook_id!r} not found"
             )
-        html = _script_free_html(render(_doc_model(source), RenderContext()))
+        html = _script_free_html(render(notebook_doc_model(source), RenderContext()))
         return HTMLResponse(
             content=html,
             headers=_html_headers(
@@ -163,7 +190,7 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
                 detail=f"unknown format {format!r}; valid: {list(EXPORT_FORMATS)}",
             )
         # The rights-filtering pre-resolve happens here (the only path).
-        doc_model = _doc_model(source)
+        doc_model = notebook_doc_model(source)
 
         if format == "html":
             html = _script_free_html(render(doc_model, RenderContext()))
@@ -177,14 +204,7 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
         from services.antiek_format.signature import ensure_keypair
 
         keypair = ensure_keypair(source.owner_user_id, db_path=_resolve_db_path())
-        item = ExportItem(
-            content_tiptap={"type": "doc", "content": doc_model.get("content", [])},
-            title=source.title,
-            document_id=source.document_id,
-            user_id=source.owner_user_id,
-            notebook_id=notebook_id,
-            content_class="notebook",
-        )
+        item = notebook_export_item(source, notebook_id, doc_model)
         artifact = emit(item, format, keypair=keypair)
         if format == "antiek":
             return Response(
@@ -206,4 +226,10 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
         )
 
 
-__all__ = ["NotebookExportSource", "register_notebook_artifact_routes", "resolve_notebook_export"]
+__all__ = [
+    "NotebookExportSource",
+    "notebook_doc_model",
+    "notebook_export_item",
+    "register_notebook_artifact_routes",
+    "resolve_notebook_export",
+]
