@@ -1,3 +1,4 @@
+import WorkflowArt from "../../brand/WorkflowArt";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -219,9 +220,12 @@ export default function Sources() {
     <div className="flex flex-col h-screen bg-ice-1 dark:bg-charcoal-2">
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
-            Sources
+          <div className="flex items-center gap-3">
+              <WorkflowArt workflow="sources" size={52} className="shrink-0" />
+              <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
+              Sources
           </h1>
+            </div>
           <p className="mt-1 text-sm text-ink-soft dark:text-starlight">
             Add arXiv papers, YouTube transcripts, podcast feeds, or any
             URL into the substrate graph. Auto-detects source kind from
