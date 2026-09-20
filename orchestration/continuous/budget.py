@@ -24,8 +24,10 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
+
 
 PER_INVESTIGATION_CAP_USD: float = 2.0
 DEFAULT_DAILY_CAP_USD: float = 5.0
@@ -41,25 +43,28 @@ class DaemonBudgetError(RuntimeError):
     instead of crashing the daemon."""
 
 
-def _utc_date_stamp(now: datetime | None = None) -> str:
-    ref = now or datetime.now(UTC)
+def _utc_date_stamp(now: Optional[datetime] = None) -> str:
+    ref = now or datetime.now(timezone.utc)
     if ref.tzinfo is None:
-        ref = ref.replace(tzinfo=UTC)
+        ref = ref.replace(tzinfo=timezone.utc)
     return ref.strftime("%Y-%m-%d")
 
 
 def _budget_dir() -> Path:
     base = os.environ.get(_ENV_HOME)
-    p = Path(base) / "budgets" if base else Path.home() / ".antiek" / "budgets"
+    if base:
+        p = Path(base) / "budgets"
+    else:
+        p = Path.home() / ".antiek" / "budgets"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def _budget_path(date_stamp: str | None = None) -> Path:
+def _budget_path(date_stamp: Optional[str] = None) -> Path:
     return _budget_dir() / f"daemon_{date_stamp or _utc_date_stamp()}.json"
 
 
-def _resolve_daily_cap(override: float | None = None) -> float:
+def _resolve_daily_cap(override: Optional[float] = None) -> float:
     if override is not None:
         return max(0.0, float(override))
     raw = os.environ.get(_ENV_DAILY_CAP)
@@ -127,12 +132,12 @@ class DaemonBudget:
     per_investigation_cap_usd: float = PER_INVESTIGATION_CAP_USD
 
     @classmethod
-    def from_env(cls) -> DaemonBudget:
+    def from_env(cls) -> "DaemonBudget":
         """Build a budget reading the daily cap from
         ``ANTIEK_DAEMON_HOURLY_BUDGET_USD`` with a $5/day default."""
         return cls(daily_cap_usd=_resolve_daily_cap(None))
 
-    def remaining_today(self, *, now: datetime | None = None) -> float:
+    def remaining_today(self, *, now: Optional[datetime] = None) -> float:
         snap = _read_snapshot(_utc_date_stamp(now), self.daily_cap_usd)
         return max(0.0, snap.cap_usd - snap.spent_usd)
 
@@ -140,7 +145,7 @@ class DaemonBudget:
         self,
         expected_cost_usd: float,
         *,
-        now: datetime | None = None,
+        now: Optional[datetime] = None,
     ) -> None:
         """Atomically check both caps + commit the reservation.
 
@@ -176,7 +181,7 @@ class DaemonBudget:
         self,
         delta_usd: float,
         *,
-        now: datetime | None = None,
+        now: Optional[datetime] = None,
     ) -> None:
         """Adjust today's spend after a spawn completes. ``delta_usd``
         is signed: a positive value if the investigation cost more

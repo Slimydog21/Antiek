@@ -26,16 +26,17 @@ import json
 import os
 import sys
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import Any
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Optional
 
 from substrate.event_log.events import default_events_dir, trajectory
 
 from .budget import DaemonBudget, DaemonBudgetError
 from .research_topic import ResearchTopic, topic_id_for
 from .scoring import GapRegistry, score_gap
+
 
 # ── Public types ──────────────────────────────────────────────────────
 
@@ -45,10 +46,10 @@ from .scoring import GapRegistry, score_gap
 #: own the actual cost — the daemon only reserves an expected amount
 #: via DaemonBudget; the spawn function reports actual cost back via
 #: a callback on its context dict (key ``record_actual_cb``).
-SpawnFn = Callable[[str, dict[str, Any]], str | None]
+SpawnFn = Callable[[str, dict], Optional[str]]
 
 
-def no_op_spawn(question: str, context: dict[str, Any]) -> str | None:  # noqa: ARG001
+def no_op_spawn(question: str, context: dict) -> Optional[str]:  # noqa: ARG001
     """Default spawn: does nothing, returns None. Substitute the real
     orchestrator wiring in production (Sprint 14 follow-up)."""
     return None
@@ -58,7 +59,7 @@ def no_op_spawn(question: str, context: dict[str, Any]) -> str | None:  # noqa: 
 class DaemonConfig:
     """Runtime configuration for ``run_one_iteration`` and the CLI loop."""
 
-    events_dir: str | None = None
+    events_dir: Optional[str] = None
     expected_cost_per_spawn_usd: float = 0.50
     max_spawns_per_iteration: int = 3
     min_score_to_spawn: float = 0.05
@@ -109,14 +110,14 @@ def _parse_emitted_at(raw: Any) -> datetime:
         try:
             return datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except ValueError:
-            return datetime.now(UTC)
-    return datetime.now(UTC)
+            return datetime.now(timezone.utc)
+    return datetime.now(timezone.utc)
 
 
 def scan_gaps(
-    events_dir: str | None = None,
+    events_dir: Optional[str] = None,
     *,
-    investigation_filter: set[str] | None = None,
+    investigation_filter: Optional[set[str]] = None,
 ) -> GapRegistry:
     """Scan the event log for ``evidence.retrieve.delivered`` events
     and build a GapRegistry. Public surface so tests can construct
@@ -183,7 +184,7 @@ def run_one_iteration(
     config: DaemonConfig,
     budget: DaemonBudget,
     spawn_fn: SpawnFn = no_op_spawn,
-    now: datetime | None = None,
+    now: Optional[datetime] = None,
 ) -> IterationResult:
     """One scan → score → spawn cycle. Returns an IterationResult for
     inspection. Mutates ``state`` (chase_counts, topics, counters).
@@ -277,10 +278,10 @@ def run_one_iteration(
 
 def run_forever(
     *,
-    config: DaemonConfig | None = None,
-    budget: DaemonBudget | None = None,
+    config: Optional[DaemonConfig] = None,
+    budget: Optional[DaemonBudget] = None,
     spawn_fn: SpawnFn = no_op_spawn,
-    iterations: int | None = None,
+    iterations: Optional[int] = None,
 ) -> DaemonState:
     """Long-running loop. ``iterations=None`` means forever; finite
     values let smoke tests invoke a known number of cycles."""
