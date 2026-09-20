@@ -661,10 +661,78 @@ GATED_DEFAULT_CONTENT_CLASS: Final[str] = "restricted_pending_opt_in"
 # copyrighted-but-public content — body withheld, never trainable). Defined here
 # (after GATED_DEFAULT_CONTENT_CLASS resolves) via an explicit union so it can
 # never silently diverge from the gated-class name.
+# ── The fifth rights state: research_only (books/publishers SPR-1) ──
+#
+# The operator's product (ii): a user pays a discounted price for an agent to
+# ingest an asset, and the asset itself is never legible to them — all they
+# interact with is the notes and analysis the agent produces in its research
+# outcome artifact. That is a rights state, and it is a new one.
+#
+# It is the MIRROR IMAGE of personal_reading, which is why it cannot reuse it.
+# personal_reading is owner-READABLE / publicly non-servable: the owner fetched
+# a third-party work for their own reading and reads it in full on the owner
+# path. research_only is never-owner-readable / derivable-only: the body is
+# ingested, chunked, embedded and cited by an agent, and is served to NOBODY —
+# including the user who paid for the ingestion. Folding the two together would
+# widen personal_reading's owner-read privilege onto content that was never
+# licensed to be read, which is the precise §9.0 leak this state exists to close.
+#
+# Against the other four states:
+#   * SERVABLE_CONTENT_CLASSES        → body served publicly. research_only: no.
+#   * restricted_pending_opt_in       → body withheld pending an opt-in, but it
+#                                       EARNS to escrow and yields the bounded
+#                                       Authors-Guild snippet by default.
+#                                       research_only withholds by default (a
+#                                       quotation cap is a NEGOTIATED per-tier
+#                                       policy value, floor 0) and earns nothing.
+#   * personal_reading                → owner reads in full. research_only: never.
+#   * user_owned                      → the operator's own work. Not third-party.
+#
+# The memberships that make the promise structural:
+#   * NOT in SERVABLE_CONTENT_CLASSES            → never publicly servable
+#   * NOT in PERSONAL_READABLE_CONTENT_CLASSES   → never owner-readable either.
+#     This is the load-bearing one: it is what distinguishes this state from
+#     personal_reading, and the assertion below is what keeps it true.
+#   * NOT in TURBOPUFFER_INDEX_CONTENT_CLASSES   → body stays DuckDB-only
+#   * in NON_TRAINABLE_CONTENT_CLASSES           → never enters an SFT/RL export
+#   * in retrieval_gate._NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES → withheld from
+#     every non-privileged chunk retrieval; the agent reaches it only on the
+#     privileged private_research / operator_only path, which is what "ingested,
+#     chunked, embedded and cited by an agent" means in this codebase.
+#   * in collective_graph NON_ATTRIBUTABLE_CONTENT_CLASSES and ABSENT from
+#     ad_inventory PUBLIC_GRAPH_CONTENT_CLASSES → it neither accrues nor pays.
+#     The user's discounted ingestion fee is the consideration here, and that fee
+#     is a §9.0 counsel-gated money path this lane deliberately does not build.
+#   * CITABLE — deliberately NOT in NON_CITABLE_CONTENT_CLASSES. A derived claim
+#     must still render its provenance, or the research artifact is unfalsifiable.
+#     The citation carries identity (title, ip_holder, locator), never the body.
+RESEARCH_ONLY_CONTENT_CLASS: Final[str] = "research_only"
+
 NON_TRAINABLE_CONTENT_CLASSES: Final[frozenset[str]] = frozenset({
     PERSONAL_READING_CONTENT_CLASS,
     GATED_DEFAULT_CONTENT_CLASS,
+    # The paid-ingestion body is the one asset the payer never sees; letting it
+    # into a training export would launder it into model weights instead.
+    RESEARCH_ONLY_CONTENT_CLASS,
 })
+
+# research_only is servable to nobody — not the public, and not the owner. Both
+# assertions fail AT IMPORT TIME rather than let a future edit quietly promote
+# the state into a readable set; the owner assertion is the one that keeps
+# research_only from collapsing back into personal_reading.
+assert RESEARCH_ONLY_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES, (
+    "research_only must NOT be in SERVABLE_CONTENT_CLASSES — the body is "
+    "derivable-only. If a work may be served, give it a positive rights class."
+)
+assert RESEARCH_ONLY_CONTENT_CLASS not in PERSONAL_READABLE_CONTENT_CLASSES, (
+    "research_only must NOT be in PERSONAL_READABLE_CONTENT_CLASSES — it is "
+    "never-owner-readable, the exact inverse of personal_reading. Admitting it "
+    "to the owner read path would serve the payer the body they paid NOT to "
+    "receive, and would defeat the publisher terms the state exists to honour."
+)
+assert RESEARCH_ONLY_CONTENT_CLASS not in TURBOPUFFER_INDEX_CONTENT_CLASSES, (
+    "research_only bodies must not reach the secondary index — DuckDB only."
+)
 
 # The content_class a book is moved to on takedown. It is the SAME gate
 # state as the gated default — a removal demand restricts the content
@@ -696,6 +764,11 @@ BOOK_SERVABILITY_STATUSES: Final[tuple[str, ...]] = (
     # from gated_metadata_only so the library can render it differently (the
     # owner CAN read it in full; a gated book they cannot).
     "personal_readable",
+    # derivable-only (books/publishers SPR-1). Readable by NO ONE — the surface
+    # renders the agent's notes and the citation, never the work. Distinct from
+    # both gated_metadata_only (which yields a snippet by default) and
+    # personal_readable (which the owner may open in full).
+    "research_derivable_only",
 )
 
 # The default servability for a freshly-ingested book with no established

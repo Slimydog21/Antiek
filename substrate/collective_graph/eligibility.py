@@ -47,6 +47,13 @@ NON_ATTRIBUTABLE_CONTENT_CLASSES = frozenset({
     "operator_uploaded",
     "restricted_pending_opt_in",
     "personal_reading",
+    # research_only (books/publishers SPR-1): the consideration for a
+    # derivable-only work is the discounted ingestion fee the user already paid,
+    # not a share of ad revenue, and at this stage there is no ad revenue to
+    # share. Deny-by-default until §9.0 counsel ratifies an accrual basis: a
+    # class that earns nothing can be widened later, a class that accrued into
+    # escrow on terms nobody agreed to cannot be unwound.
+    "research_only",
 })
 
 

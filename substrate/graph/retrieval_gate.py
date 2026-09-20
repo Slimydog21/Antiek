@@ -6,8 +6,9 @@ SQL fragment. ``search()``, VSS (RG-02), and HTTP (RG-03) must import
 (RESTRICTED_CONTENT_CLASSES)`` alone.
 
 **RESTRICTED_CONTENT_CLASSES alone is never sufficient** for chunk gates:
-owner-only ``personal_reading`` must be excluded on the same non-privileged
-branch as gated-but-public ``restricted_pending_opt_in``. The union is
+owner-only ``personal_reading`` and derivable-only ``research_only`` must be
+excluded on the same non-privileged branch as gated-but-public
+``restricted_pending_opt_in``. The union is
 ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES``.
 
 Chunk search uses a **denylist** (exclude withheld classes on public paths).
@@ -27,6 +28,7 @@ from __future__ import annotations
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
     PERSONAL_READING_CONTENT_CLASS,
+    RESEARCH_ONLY_CONTENT_CLASS,
 )
 
 # Policy tags privileged to bypass the restricted-content gate.
@@ -73,11 +75,34 @@ PERSONAL_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
     PERSONAL_READING_CONTENT_CLASS,
 })
 
+# Content classes that are DERIVABLE-ONLY: an agent may retrieve their chunks on
+# a privileged research path and cite them, but no user ever receives the text —
+# including the user who paid for the ingestion (books/publishers SPR-1). This is
+# the point of the class, so the privileged bypass below is not a leak but the
+# product: "ingested, chunked, embedded and cited by an agent" IS the
+# private_research path, and everything downstream of it (serve, chunk HTTP,
+# projection) withholds the body independently.
+#
+# It is a set of its own rather than a member of PERSONAL_ONLY_CONTENT_CLASSES
+# because the two differ on the owner axis in opposite directions: the privileged
+# branch below grants PERSONAL_ONLY classes to a matching ``owner_user_id``, which
+# is exactly the grant research_only must never receive. Keeping it separate means
+# the owner-match clause cannot pick it up. It is likewise not folded into
+# RESTRICTED_CONTENT_CLASSES, which carries the documented contract that it equals
+# the write-side GATED_DEFAULT_CONTENT_CLASS and which EARNS to escrow;
+# research_only earns nothing.
+RESEARCH_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
+    RESEARCH_ONLY_CONTENT_CLASS,
+})
+
 # The full set of content classes withheld from a non-privileged retrieval —
-# the union of the gated-but-public class and the owner-only class. Both are
-# excluded on the public branch; only the PRIVILEGED_POLICY_TAGS bypass.
+# the union of the gated-but-public class, the owner-only class, and the
+# derivable-only class. All are excluded on the public branch; only the
+# PRIVILEGED_POLICY_TAGS bypass.
 _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES: frozenset[str] = (
-    RESTRICTED_CONTENT_CLASSES | PERSONAL_ONLY_CONTENT_CLASSES
+    RESTRICTED_CONTENT_CLASSES
+    | PERSONAL_ONLY_CONTENT_CLASSES
+    | RESEARCH_ONLY_CONTENT_CLASSES
 )
 
 
@@ -250,7 +275,8 @@ def is_chunk_body_withheld(
 
     Returns:
         ``(withheld, label)`` — label is ``"taken_down"``, ``"personal_readable"``,
-        ``"restricted"``, or ``None`` when the body may be served.
+        ``"research_only"``, ``"restricted"``, or ``None`` when the body may be
+        served.
         (``personal_readable`` is the ASR SR-09 API contract label for the
         owner-only personal_reading class — pinned by
         ``tests/test_get_chunk_personal_reading`` + ``test_retrieval_gate_matrix``.)
@@ -259,6 +285,11 @@ def is_chunk_body_withheld(
         return True, "taken_down"
     if content_class in PERSONAL_ONLY_CONTENT_CLASSES:
         return True, "personal_readable"
+    if content_class in RESEARCH_ONLY_CONTENT_CLASSES:
+        # Unconditional: unlike personal_readable, this one has no owner path
+        # that later releases the body. The HTTP chunk surface serves users, and
+        # no user receives a research_only body.
+        return True, "research_only"
     if content_class in RESTRICTED_CONTENT_CLASSES:
         return True, "restricted"
     return False, None

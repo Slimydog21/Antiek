@@ -35,6 +35,7 @@ from substrate import ip_holders
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
     PERSONAL_READING_CONTENT_CLASS,
+    RESEARCH_ONLY_CONTENT_CLASS,
 )
 from substrate.graph.ops import update_document_gate_columns
 
@@ -74,6 +75,7 @@ VALID_CONTENT_CLASSES: frozenset[str] = frozenset({
     "user_public_contribution",
     "restricted_pending_opt_in",
     PERSONAL_READING_CONTENT_CLASS,  # Personal-Reading Lane SPR-01 — owner-readable, non-servable
+    RESEARCH_ONLY_CONTENT_CLASS,     # books/publishers SPR-1 — readable by nobody, derivable-only
 })
 
 
