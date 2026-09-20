@@ -1,56 +1,8 @@
 {
-  "generated_at": "2026-06-02T10:05:47.675277+00:00",
+  "generated_at": "2026-09-20T11:10:01.078004+00:00",
   "lint": "declared_bar_mypy",
   "schema_version": 1,
   "violations": [
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 35,
-      "path": "acquisition/arxiv/__init__.py",
-      "snippet": "from .licenses import LicenseResolution, license_basis_string, resolve_license"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 88,
-      "path": "acquisition/arxiv/adapter.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 369,
-      "path": "acquisition/arxiv/adapter.py",
-      "snippet": "# outer ``governed_request`` governs the initial hop (the hooks defer to it)."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 370,
-      "path": "acquisition/arxiv/adapter.py",
-      "snippet": "# BOTH must use the SAME throttle instance so the initial-hop claim handshake"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 371,
-      "path": "acquisition/arxiv/adapter.py",
-      "snippet": "# matches (else the initial hop would be double-waited) \u2014 pin the canonical."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 371,
-      "path": "acquisition/arxiv/adapter.py",
-      "snippet": "# matches (else the initial hop would be double-waited) \u2014 pin the canonical."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 418,
-      "path": "acquisition/arxiv/adapter.py"
-    },
     {
       "col": 0,
       "kind": "mypy:type-arg",
@@ -116,96 +68,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 306,
-      "path": "acquisition/arxiv/bulk.py",
-      "snippet": "r.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 307,
-      "path": "acquisition/arxiv/bulk.py",
-      "snippet": "content = r.content"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 309,
-      "path": "acquisition/arxiv/bulk.py",
-      "snippet": "return content"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 82,
-      "path": "acquisition/arxiv/client.py",
-      "snippet": "metadata: dict[str, object] = field(default_factory=dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 168,
-      "path": "acquisition/arxiv/client.py",
-      "snippet": "(name_el.text or \"\").strip()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 259,
-      "path": "acquisition/arxiv/client.py",
-      "snippet": "r = governed_request(_send, throttle=throttle)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 260,
-      "path": "acquisition/arxiv/client.py",
-      "snippet": "r.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 261,
-      "path": "acquisition/arxiv/client.py",
-      "snippet": "return r.content"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 261,
-      "path": "acquisition/arxiv/client.py",
-      "snippet": "return r.content"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 267,
-      "path": "acquisition/arxiv/client.py",
-      "snippet": "return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 268,
-      "path": "acquisition/arxiv/client.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 269,
-      "path": "acquisition/arxiv/client.py",
-      "snippet": "r = governed_request(_send, throttle=throttle)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 269,
-      "path": "acquisition/arxiv/client.py",
-      "snippet": "r = governed_request(_send, throttle=throttle)"
-    },
-    {
-      "col": 0,
       "kind": "mypy:type-arg",
       "line": 148,
       "path": "acquisition/arxiv/enrich_openalex.py",
@@ -234,58 +96,10 @@
     },
     {
       "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 56,
-      "path": "acquisition/arxiv/oai_persist.py",
-      "snippet": "from .licenses import license_basis_string, resolve_license"
-    },
-    {
-      "col": 0,
       "kind": "mypy:type-arg",
       "line": 90,
       "path": "acquisition/arxiv/oai_persist.py",
       "snippet": "def _record_metadata(record: ArxivOaiRecord) -> dict:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 92,
-      "path": "acquisition/arxiv/oai_pmh.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 99,
-      "path": "acquisition/arxiv/oai_pmh.py",
-      "snippet": "@classmethod"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 245,
-      "path": "acquisition/arxiv/oai_pmh.py",
-      "snippet": "url, headers=headers, timeout=self._timeout_s"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 246,
-      "path": "acquisition/arxiv/oai_pmh.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 248,
-      "path": "acquisition/arxiv/oai_pmh.py",
-      "snippet": "timeout=self._timeout_s,  # instance default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 249,
-      "path": "acquisition/arxiv/oai_pmh.py",
-      "snippet": ") as c:"
     },
     {
       "col": 0,
@@ -303,66 +117,10 @@
     },
     {
       "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 228,
-      "path": "acquisition/arxiv/pdf_fetch.py",
-      "snippet": "resp = governed_request(_send, throttle=throttle)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 229,
-      "path": "acquisition/arxiv/pdf_fetch.py",
-      "snippet": "resp.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 230,
-      "path": "acquisition/arxiv/pdf_fetch.py",
-      "snippet": "content = resp.content"
-    },
-    {
-      "col": 0,
       "kind": "mypy:union-attr",
       "line": 234,
       "path": "acquisition/arxiv/pdf_fetch.py",
       "snippet": "client.close()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:exit-return",
-      "line": 300,
-      "path": "acquisition/arxiv/rate_governor.py",
-      "snippet": "if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 300,
-      "path": "acquisition/arxiv/rate_governor.py",
-      "snippet": "if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:return",
-      "line": 363,
-      "path": "acquisition/arxiv/rate_governor.py",
-      "snippet": "under an exclusive ``fcntl.flock`` so the rate gate holds GLOBALLY across"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 558,
-      "path": "acquisition/arxiv/rate_governor.py",
-      "snippet": "_HOOK_STATE.claim_throttle = None"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 651,
-      "path": "acquisition/arxiv/rate_governor.py",
-      "snippet": "eff_throttle = throttle if throttle is not None else canonical_arxiv_throttle()"
     },
     {
       "col": 0,
@@ -391,33 +149,6 @@
       "line": 239,
       "path": "acquisition/arxiv/store.py",
       "snippet": "extract_text = read_pdf  # type: ignore[assignment]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 96,
-      "path": "acquisition/arxiv/throttle.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 97,
-      "path": "acquisition/arxiv/throttle.py",
-      "snippet": "def _coerce_float(value: object) -> float:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 100,
-      "path": "acquisition/arxiv/throttle.py",
-      "snippet": "the state file has always used, made type-safe (``json.loads`` hands back"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 106,
-      "path": "acquisition/books/adapter.py",
-      "snippet": "# just to recover the TOC."
     },
     {
       "col": 0,
@@ -572,20 +303,6 @@
       "line": 265,
       "path": "acquisition/books/public_domain.py",
       "snippet": "def _request(self, url: str, *, params: dict | None = None) -> requests.Response:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 286,
-      "path": "acquisition/books/public_domain.py",
-      "snippet": "resp = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:return-value",
-      "line": 307,
-      "path": "acquisition/books/public_domain.py",
-      "snippet": "return resp"
     },
     {
       "col": 0,
@@ -758,84 +475,9 @@
     {
       "col": 0,
       "kind": "mypy:attr-defined",
-      "line": 41,
-      "path": "acquisition/openaccess/doaj.py",
-      "snippet": "from acquisition.licenses_core import LicenseResolution"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 80,
-      "path": "acquisition/openaccess/doaj.py",
-      "snippet": "url = first.get(\"url\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 94,
-      "path": "acquisition/openaccess/doaj.py",
-      "snippet": "def _extract_fulltext_url(bibjson: dict[str, Any]) -> str | None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 149,
-      "path": "acquisition/openaccess/doaj.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 150,
-      "path": "acquisition/openaccess/doaj.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 161,
-      "path": "acquisition/openaccess/doaj.py",
-      "snippet": "if client is not None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 167,
-      "path": "acquisition/openaccess/doaj.py",
-      "snippet": "with httpx.Client("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 168,
-      "path": "acquisition/openaccess/doaj.py",
-      "snippet": "follow_redirects=True,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 169,
-      "path": "acquisition/openaccess/doaj.py",
-      "snippet": "timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 169,
-      "path": "acquisition/openaccess/doaj.py",
-      "snippet": "timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
       "line": 26,
       "path": "acquisition/openaccess/ingest.py",
       "snippet": "from .licenses import LicenseResolution, license_basis_string"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 96,
-      "path": "acquisition/openaccess/ingest.py",
-      "snippet": "con.close()"
     },
     {
       "col": 0,
@@ -846,182 +488,10 @@
     },
     {
       "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 54,
-      "path": "acquisition/openaccess/openalex.py",
-      "snippet": "metadata: dict[str, Any] = field(default_factory=dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 145,
-      "path": "acquisition/openaccess/openalex.py",
-      "snippet": "def _http_get(url: str, *, client: httpx.Client | None) -> dict[str, Any]:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 159,
-      "path": "acquisition/openaccess/openalex.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 165,
-      "path": "acquisition/openaccess/openalex.py",
-      "snippet": "def _send() -> httpx.Response:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 166,
-      "path": "acquisition/openaccess/openalex.py",
-      "snippet": "return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 167,
-      "path": "acquisition/openaccess/openalex.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 167,
-      "path": "acquisition/openaccess/openalex.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 170,
-      "path": "acquisition/openaccess/openalex.py",
-      "snippet": "return cast(\"dict[str, Any]\", r.json())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 209,
-      "path": "acquisition/openaccess/openalex.py",
-      "snippet": "throttle: OAThrottle | None = None,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 258,
-      "path": "acquisition/openaccess/openalex.py"
-    },
-    {
-      "col": 0,
       "kind": "mypy:unused-ignore",
       "line": 80,
       "path": "acquisition/openaccess/pdf_detect.py",
       "snippet": "from pypdf import PdfReader  # type: ignore[import-not-found]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 30,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "from acquisition.licenses_core import LicenseResolution"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 84,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "avail = (u.get(\"availability\") or \"\").lower()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 139,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": ") -> list[PMCArticle]:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 150,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "def _send() -> httpx.Response:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 156,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "follow_redirects=True,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 157,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 158,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": ") as c:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 158,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": ") as c:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 203,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "headers = {\"User-Agent\": DEFAULT_USER_AGENT}"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 205,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "install_arxiv_request_hook(client, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 206,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "def _send() -> httpx.Response:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 212,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "content = r.content"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 214,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "with arxiv_governed_client(throttle=canonical_arxiv_throttle()) as c:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 215,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "def _send() -> httpx.Response:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 219,
-      "path": "acquisition/openaccess/pmc.py",
-      "snippet": "content_type = r.headers.get(\"content-type\")"
     },
     {
       "col": 0,
@@ -1036,115 +506,6 @@
       "line": 89,
       "path": "acquisition/openaccess/throttle.py",
       "snippet": "def _note_status(self, status_code: int, headers: dict | None) -> None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 28,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "from acquisition.licenses_core import LicenseResolution"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 115,
-      "path": "acquisition/openaccess/unpaywall.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 129,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "headers = {\"User-Agent\": DEFAULT_USER_AGENT}"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 135,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "else:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 136,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "with httpx.Client("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 137,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "follow_redirects=True,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 137,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "follow_redirects=True,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 194,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 198,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "def _get() -> bytes:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 200,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "if client is not None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 201,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "# Govern every arXiv hop the CALLER's client follows, too."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 205,
-      "path": "acquisition/openaccess/unpaywall.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 209,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "content = r.content"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 211,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "from acquisition.arxiv.rate_governor import arxiv_governed_client"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 212,
-      "path": "acquisition/openaccess/unpaywall.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 214,
-      "path": "acquisition/openaccess/unpaywall.py",
-      "snippet": "def _send() -> httpx.Response:"
     },
     {
       "col": 0,
@@ -1211,34 +572,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 150,
-      "path": "acquisition/papers/biorxiv.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 156,
-      "path": "acquisition/papers/biorxiv.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 157,
-      "path": "acquisition/papers/biorxiv.py",
-      "snippet": "r.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 158,
-      "path": "acquisition/papers/biorxiv.py",
-      "snippet": "return r.json()"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-any-return",
       "line": 158,
       "path": "acquisition/papers/biorxiv.py",
@@ -1250,34 +583,6 @@
       "line": 124,
       "path": "acquisition/papers/core.py",
       "snippet": ") -> dict:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 151,
-      "path": "acquisition/papers/core.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 157,
-      "path": "acquisition/papers/core.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 158,
-      "path": "acquisition/papers/core.py",
-      "snippet": "r.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 159,
-      "path": "acquisition/papers/core.py",
-      "snippet": "return r.json()"
     },
     {
       "col": 0,
@@ -1295,34 +600,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 126,
-      "path": "acquisition/papers/plos.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 132,
-      "path": "acquisition/papers/plos.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 133,
-      "path": "acquisition/papers/plos.py",
-      "snippet": "r.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 134,
-      "path": "acquisition/papers/plos.py",
-      "snippet": "return r.json()"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-any-return",
       "line": 134,
       "path": "acquisition/papers/plos.py",
@@ -1337,210 +614,10 @@
     },
     {
       "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 159,
-      "path": "acquisition/papers/semantic_scholar.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 165,
-      "path": "acquisition/papers/semantic_scholar.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 166,
-      "path": "acquisition/papers/semantic_scholar.py",
-      "snippet": "r.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 167,
-      "path": "acquisition/papers/semantic_scholar.py",
-      "snippet": "return r.json()"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-any-return",
       "line": 167,
       "path": "acquisition/papers/semantic_scholar.py",
       "snippet": "return r.json()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 80,
-      "path": "acquisition/podcasts/client.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 102,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "if isinstance(val, list) and val:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 106,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 125,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "\"transcript\" in rel.lower()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 148,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "enc.get(\"href\") if isinstance(enc, dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 152,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "mtype.startswith(\"audio/\") or any("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:misc",
-      "line": 164,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "entry.get(\"itunes_duration\") if isinstance(entry, dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:return-value",
-      "line": 166,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:return-value",
-      "line": 168,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "return 0"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:return-value",
-      "line": 170,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 176,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "minutes, seconds = parts"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 188,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "converts ``pubDate`` into ``published_parsed`` (time.struct_time);"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-untyped",
-      "line": 206,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "*,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 206,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "*,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 225,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "# arbitrary caller-supplied URL, routed through ``govern_if_arxiv`` so an"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 231,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "if client is not None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 232,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "def _send() -> httpx.Response:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 234,
-      "path": "acquisition/podcasts/client.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:misc",
-      "line": 242,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "return c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 268,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "entry.get(\"summary\") if isinstance(entry, dict) else getattr(entry, \"summary\", \"\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 316,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": ") -> str:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 322,
-      "path": "acquisition/podcasts/client.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 323,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "headers = {\"User-Agent\": DEFAULT_USER_AGENT}"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 326,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": "def _send() -> httpx.Response:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 334,
-      "path": "acquisition/podcasts/client.py",
-      "snippet": ") as c:"
     },
     {
       "col": 0,
@@ -1664,82 +741,6 @@
     {
       "col": 0,
       "kind": "mypy:type-arg",
-      "line": 171,
-      "path": "acquisition/search/exa/client.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 210,
-      "path": "acquisition/search/exa/client.py",
-      "snippet": "raw = self._post(\"/findSimilar\", body)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 239,
-      "path": "acquisition/search/exa/client.py",
-      "snippet": "attempt += 1"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:operator",
-      "line": 242,
-      "path": "acquisition/search/exa/client.py",
-      "snippet": "return client.post("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 251,
-      "path": "acquisition/search/exa/client.py",
-      "snippet": "raise ExaClientError("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:operator",
-      "line": 252,
-      "path": "acquisition/search/exa/client.py",
-      "snippet": "f\"transport error: {e}\", status=None, url=url"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 257,
-      "path": "acquisition/search/exa/client.py",
-      "snippet": "# misbehaving server can't park us forever."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 263,
-      "path": "acquisition/search/exa/client.py",
-      "snippet": "raise ExaClientError("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 263,
-      "path": "acquisition/search/exa/client.py",
-      "snippet": "raise ExaClientError("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 276,
-      "path": "acquisition/search/exa/client.py",
-      "snippet": "status=r.status_code,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 290,
-      "path": "acquisition/search/exa/client.py",
-      "snippet": "# 1s, 2s, 4s with no jitter \u2014 single-operator substrate, jitter is"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
       "line": 50,
       "path": "acquisition/search/retention.py",
       "snippet": "def _parse_event_ts(raw: dict) -> datetime | None:"
@@ -1764,109 +765,6 @@
       "line": 284,
       "path": "acquisition/search/retention.py",
       "snippet": ") -> list[dict]:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 268,
-      "path": "acquisition/substack/adapter.py",
-      "snippet": "results) and additionally rolls up counts so a multi-publication"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 102,
-      "path": "acquisition/substack/client.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-untyped",
-      "line": 104,
-      "path": "acquisition/substack/client.py",
-      "snippet": "class _FeedParserModule(Protocol):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 104,
-      "path": "acquisition/substack/client.py",
-      "snippet": "class _FeedParserModule(Protocol):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 125,
-      "path": "acquisition/substack/client.py",
-      "snippet": "raise ValueError(\"guid must be non-empty\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 139,
-      "path": "acquisition/substack/client.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 146,
-      "path": "acquisition/substack/client.py",
-      "snippet": "except (TypeError, ValueError, OverflowError):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 152,
-      "path": "acquisition/substack/client.py",
-      "snippet": "if hasattr(entry, \"get\"):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 162,
-      "path": "acquisition/substack/client.py",
-      "snippet": "def _entry_optional_str(entry: object, key: str) -> str | None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 177,
-      "path": "acquisition/substack/client.py",
-      "snippet": "def _entry_body_html(entry: object) -> str:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 250,
-      "path": "acquisition/substack/client.py",
-      "snippet": "return False, TRUNCATION_REASON_NONE"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 267,
-      "path": "acquisition/substack/client.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 273,
-      "path": "acquisition/substack/client.py",
-      "snippet": "# wrap is the sanctioned, scanner-visible pattern (tools/lint/"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 274,
-      "path": "acquisition/substack/client.py",
-      "snippet": "# rate_governor_check, mirroring acquisition/urls/client.py), not an allowlist"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 275,
-      "path": "acquisition/substack/client.py",
-      "snippet": "# exception, so a future feed_url change cannot silently re-open the hole."
     },
     {
       "col": 0,
@@ -1976,13 +874,6 @@
     {
       "col": 0,
       "kind": "mypy:type-arg",
-      "line": 144,
-      "path": "acquisition/textbooks/doab.py",
-      "snippet": "if query:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
       "line": 80,
       "path": "acquisition/textbooks/libretexts.py",
       "snippet": "def _declared_license(item: dict) -> str | None:"
@@ -2060,51 +951,9 @@
     {
       "col": 0,
       "kind": "mypy:type-arg",
-      "line": 318,
-      "path": "acquisition/twitter/adapter.py",
-      "snippet": "return IngestTwitterResult("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
       "line": 92,
       "path": "acquisition/twitter/api_client.py",
       "snippet": "def _http_get(self, path: str, params: dict[str, Any]) -> dict:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 121,
-      "path": "acquisition/twitter/api_client.py",
-      "snippet": "return resp.read().decode(\"utf-8\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 124,
-      "path": "acquisition/twitter/api_client.py",
-      "snippet": "body = govern_if_arxiv(url, _send)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 125,
-      "path": "acquisition/twitter/api_client.py",
-      "snippet": "return json.loads(body)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 125,
-      "path": "acquisition/twitter/api_client.py",
-      "snippet": "return json.loads(body)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 133,
-      "path": "acquisition/twitter/api_client.py",
-      "snippet": "def recent_search(self, query: str) -> list[dict]:"
     },
     {
       "col": 0,
@@ -2119,20 +968,6 @@
       "line": 151,
       "path": "acquisition/twitter/api_client.py",
       "snippet": "def conversation(self, conversation_id: str) -> list[dict]:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 161,
-      "path": "acquisition/twitter/api_client.py",
-      "snippet": "def _paged(self, path: str, base_params: dict[str, Any]) -> list[dict]:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 162,
-      "path": "acquisition/twitter/api_client.py",
-      "snippet": "out: list[dict] = []"
     },
     {
       "col": 0,
@@ -2164,55 +999,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 125,
-      "path": "acquisition/urls/adapter.py",
-      "snippet": "except Exception:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 93,
-      "path": "acquisition/urls/client.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 101,
-      "path": "acquisition/urls/client.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 102,
-      "path": "acquisition/urls/client.py",
-      "snippet": "r.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 106,
-      "path": "acquisition/urls/client.py",
-      "snippet": "final_url=str(r.url),"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 110,
-      "path": "acquisition/urls/client.py",
-      "snippet": "body=r.content,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 177,
-      "path": "acquisition/urls/client_browserbase.py",
-      "snippet": "return bb.sessions.create(project_id=project_id)"
-    },
-    {
-      "col": 0,
       "kind": "mypy:unused-ignore",
       "line": 30,
       "path": "acquisition/urls/extract.py",
@@ -2224,27 +1010,6 @@
       "line": 38,
       "path": "acquisition/urls/extract.py",
       "snippet": "import html2text  # type: ignore[import-not-found]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 112,
-      "path": "acquisition/urls/extract.py",
-      "snippet": "return og[\"content\"].strip()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 128,
-      "path": "acquisition/urls/extract.py",
-      "snippet": "meta = soup.find(\"meta\", attrs=sel)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 130,
-      "path": "acquisition/urls/extract.py",
-      "snippet": "return meta[\"content\"].strip()"
     },
     {
       "col": 0,
@@ -2287,33 +1052,6 @@
       "line": 91,
       "path": "acquisition/voice/client.py",
       "snippet": "return self._client.post("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 96,
-      "path": "acquisition/voice/client.py",
-      "snippet": "r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 102,
-      "path": "acquisition/voice/client.py",
-      "snippet": "timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 103,
-      "path": "acquisition/voice/client.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 104,
-      "path": "acquisition/voice/client.py"
     },
     {
       "col": 0,
@@ -2370,20 +1108,6 @@
       "line": 76,
       "path": "compounding/benchmark/harness.py",
       "snippet": "from processing.embedding.embed import HashEmbedding  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 201,
-      "path": "compounding/benchmark/harness.py",
-      "snippet": "con.close()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 213,
-      "path": "compounding/benchmark/harness.py",
-      "snippet": "con.close()"
     },
     {
       "col": 0,
@@ -3094,31 +1818,10 @@
     },
     {
       "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 116,
-      "path": "compounding/skill_growth/gate.py",
-      "snippet": ") -> dict:"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-untyped-def",
       "line": 109,
       "path": "interfaces/research/api/ad_impressions.py",
       "snippet": "def _load_serving_inventory(con) -> tuple["
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 128,
-      "path": "interfaces/research/api/ad_routes.py",
-      "snippet": "documents gate columns \u2014 server-side, never from the client hint. An asset"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 238,
-      "path": "interfaces/research/api/ad_routes.py",
-      "snippet": "asset_id=s.asset_id,"
     },
     {
       "col": 0,
@@ -3137,599 +1840,6 @@
     {
       "col": 0,
       "kind": "mypy:type-arg",
-      "line": 425,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 485,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "deliverables: list[DeliverableSummary] = Field(default_factory=list)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 790,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "if explicit:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 877,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "# Strip ``vN`` version suffix; the arXiv client handles"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 889,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "# These are intentionally module-scope (not nested inside ``create_app``)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 909,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 932,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 1030,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "model text unchanged alongside the parser-derived response shape."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 1031,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 1032,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "`system_context` (UI-redesign S8 WP-8.4) is the serialised"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 1033,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "workspace state the operator's client ships so the model can"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:name-defined",
-      "line": 1058,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "Per master-spec \u00a713.8: outcomes are first-class signals that feed"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 1195,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "# Multi-tenant trajectory (Sprint 19+): replace the"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 1232,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "_CF_ACCESS_CLIENT_ID_HEADER = \"Cf-Access-Client-Id\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 1250,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "from substrate.multi_user.auth import operator_claims as _oc"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 1252,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "request.state.user_id = claims.user_id"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 1255,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "return await call_next(request)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 1717,
-      "path": "interfaces/research/api/app.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 1734,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "Looks up the ``ai.action.applied`` event in the trajectory"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 1867,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "rows.append(row)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 2272,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 2273,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "\u00a79.0 retrieval gate: a chunk whose source is on the canonical"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 2286,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "``servable`` / ``servability`` so the surface need not re-derive"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 2287,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "it.\"\"\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 2287,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "it.\"\"\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 2297,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "raise HTTPException("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 2298,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "status_code=503,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:dict-item",
-      "line": 2304,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "# for a chunk of a public-domain book (taken_down wins over"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 2307,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "row = con.execute("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 2308,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "\"\"\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 2348,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "section_path=row[2],"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 2349,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "token_count=int(row[3] or 0),"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 2349,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "token_count=int(row[3] or 0),"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 2359,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "ip_holder_status=(row[10] if servable else None),"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 2360,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "servability=label,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 2508,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "\"investigation_id\": req.investigation_id"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 2576,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "\"strftime(d.created_at, '%Y-%m-%dT%H:%M:%S'), \""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-redef",
-      "line": 2795,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "extracted thread content.\"\"\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2810,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2811,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "# \u2500\u2500 Sprint 15: section prose update + promote-to-graph \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2812,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2816,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "status_code=202,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2819,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "section_id: str, req: UpdateSectionProseRequest,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 2838,
-      "path": "interfaces/research/api/app.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 2838,
-      "path": "interfaces/research/api/app.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2856,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "metadata={"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2866,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "claim_event_id: str | None = None"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2867,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "if req.promote_to_graph and claim_node_id is not None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2871,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "# grounder demotes the tier on success."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2874,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "section_id=section_id,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 2898,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "deliverable_id: str,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 2898,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "deliverable_id: str,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2919,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "con = duckdb.connect(db, read_only=True)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2930,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "\"SELECT section_index, title, prose_text \""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 2931,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "\"FROM deliverable_sections WHERE deliverable_id = ? \""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 3132,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "# read back. Cleanup via ``delete=True`` after read."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 3699,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "source_investigation_id: str"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 3839,
-      "path": "interfaces/research/api/app.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 3856,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "if row.get(\"event_id\") == start_event_id:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 4514,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 4591,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "await bus_obj.broadcast(evt)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 4592,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "except Exception:  # pragma: no cover \u2014 never block on emission"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 4601,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "padding_phrase_count=verdict.voice_style.padding_phrase_count,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 4602,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "sector_vocab_overlap=verdict.voice_style.sector_vocab_overlap,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 4611,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "period: str  # YYYY-MM"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 4612,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "free_tokens_consumed: int"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 4631,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "status_code=400,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 4632,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "detail=\"period must be YYYY-MM\","
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 4635,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "end = datetime(year + 1, 1, 1, tzinfo=UTC)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 4687,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "record,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 5067,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "# \u2500\u2500 Sprint 30+ cross-graph citation endpoint (\u00a713.9) \u2500\u2500"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 5210,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "state = getattr(request, \"state\", None)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 5211,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "user_id = getattr(state, \"user_id\", None) if state else None"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 5212,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "scopes = getattr(state, \"scopes\", None) if state else None"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 5287,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "snap = snapshot(con)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 5519,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "added_edges_since=report.added_edges_since,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 5626,
-      "path": "interfaces/research/api/app.py",
-      "snippet": "requests=["
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 171,
-      "path": "interfaces/research/api/auth.py",
-      "snippet": "def _redirect_login_error(*, error_code: str, next_path: str = \"/\") -> RedirectResponse:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 178,
-      "path": "interfaces/research/api/auth.py",
-      "snippet": "safe_next = next_path if _is_safe_relative(next_path) else \"/\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 53,
-      "path": "interfaces/research/api/books.py",
-      "snippet": "# real credential. These four are the ONLY paths past the middleware when"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 88,
-      "path": "interfaces/research/api/books.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 547,
-      "path": "interfaces/research/api/books.py",
-      "snippet": "@app.get("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 643,
-      "path": "interfaces/research/api/books.py",
-      "snippet": "tags=[\"books\"],"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 766,
-      "path": "interfaces/research/api/books.py",
-      "snippet": "policy_tag=_owner_read_policy_tag(request),"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 960,
-      "path": "interfaces/research/api/books.py",
-      "snippet": "length_unit=deliverable.length_box.unit,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 964,
-      "path": "interfaces/research/api/books.py",
-      "snippet": "corpus_scope=deliverable.corpus_scope,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
       "line": 119,
       "path": "interfaces/research/api/broadcast.py",
       "snippet": "self._handler_tasks: set[asyncio.Task] = set()"
@@ -3740,217 +1850,6 @@
       "line": 46,
       "path": "interfaces/research/api/campaigns.py",
       "snippet": "def _load_advertiser_budget("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 78,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "from orchestration.session_evidence_pack import SessionEvidencePack"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 98,
-      "path": "interfaces/research/api/cascade_routes.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 112,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "ensure_initialized(path)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 117,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "def _write(purpose: str) -> Iterator[Any]:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 124,
-      "path": "interfaces/research/api/cascade_routes.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 130,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "except PlanNotApproved as e:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 171,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "raise HTTPException(status_code=400, detail=f\"unknown steer command {kind!r}\") from e"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 201,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "class LaunchRequest(BaseModel):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 257,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "@cascade_router.get(\"/suggestions\", response_model=SuggestionsResponse)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 262,
-      "path": "interfaces/research/api/cascade_routes.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 263,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "READ-ONLY \u2014 the load-bearing invariant of this sprint. Building suggestions"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 270,
-      "path": "interfaces/research/api/cascade_routes.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 277,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "items = build_suggestions(max_suggestions=capped, min_score=0.0)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 286,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "source_investigation_id=s.source_investigation_id,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 298,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "sub_questions = req.sub_questions"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 318,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "\"code\": c.code,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 332,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "@cascade_router.get(\"/plans/{root_id}\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 351,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "raise HTTPException(status_code=400, detail=f\"edit {req.op!r} failed (bad target?)\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 352,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "with _write(\"edit_plan\") as con:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 379,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "\"launchable\": is_plan_launchable(root_id, db_path=_db())}"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 408,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "for i, leaf in enumerate(tree.leaves)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 416,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "_SESSIONS[session_id] = session"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 442,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "stage = \"join_and_merge\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 448,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "await _SYNTHESIS_TAIL_RUNNER(session, pack)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 454,
-      "path": "interfaces/research/api/cascade_routes.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 473,
-      "path": "interfaces/research/api/cascade_routes.py",
-      "snippet": "\"synthesis_tail_error\": terminal[\"synthesis_tail_error\"],"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 91,
-      "path": "interfaces/research/api/connector.py",
-      "snippet": "max_paths_per_pair: int,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:list-item",
-      "line": 102,
-      "path": "interfaces/research/api/connector.py",
-      "snippet": "# shortest_path already returns [path_dict] (or [] when no path) \u2014"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 119,
-      "path": "interfaces/research/api/connector.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 159,
-      "path": "interfaces/research/api/connector.py",
-      "snippet": "for edge_id in path.edge_ids:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 259,
-      "path": "interfaces/research/api/connector.py",
-      "snippet": "list[GraphPath],"
     },
     {
       "col": 0,
@@ -3996,60 +1895,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 162,
-      "path": "interfaces/research/api/evidence_retriever.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 96,
-      "path": "interfaces/research/api/grounding.py",
-      "snippet": "embedder: EmbeddingProvider,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 110,
-      "path": "interfaces/research/api/grounding.py",
-      "snippet": "finally:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 113,
-      "path": "interfaces/research/api/grounding.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 146,
-      "path": "interfaces/research/api/grounding.py",
-      "snippet": "# Handler factory"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 625,
-      "path": "interfaces/research/api/krea_routes.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 653,
-      "path": "interfaces/research/api/krea_routes.py",
-      "snippet": "docs.krea.ai 2026-06-12) BEFORE the billable submit: the three axes"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 672,
-      "path": "interfaces/research/api/krea_routes.py",
-      "snippet": "def _ensure_client(client: httpx.Client | None) -> tuple[httpx.Client, bool]:"
-    },
-    {
-      "col": 0,
       "kind": "mypy:type-arg",
       "line": 97,
       "path": "interfaces/research/api/note_taking.py",
@@ -4061,20 +1906,6 @@
       "line": 144,
       "path": "interfaces/research/api/note_taking.py",
       "snippet": "def make_note_taker_handler("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 145,
-      "path": "interfaces/research/api/parameter_extractor.py",
-      "snippet": "# ---------------------------------------------------------------------------"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 114,
-      "path": "interfaces/research/api/speak_routes.py",
-      "snippet": "con.close()"
     },
     {
       "col": 0,
@@ -4239,183 +2070,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 862,
-      "path": "interfaces/research/api/speak_routes.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 875,
-      "path": "interfaces/research/api/speak_routes.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 192,
-      "path": "interfaces/research/api/synthesizer.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 306,
-      "path": "interfaces/research/api/synthesizer.py",
-      "snippet": "The defect this guards: the start-event ``research_tier`` used to"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 380,
-      "path": "interfaces/research/api/synthesizer.py",
-      "snippet": "provider_override, model_override = _research_tier_override("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 415,
-      "path": "interfaces/research/api/synthesizer.py",
-      "snippet": "the bridge gives the model ONE chance to fix it by re-dispatching"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 77,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "from starlette.routing import WebSocketRoute"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 93,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "\"ANTIEK_KREA_MODEL_PATH\","
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 99,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "monkeypatch.delenv(var, raising=False)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 109,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "def _client_with_transport("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 125,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "for r in app.routes"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 128,
-      "path": "interfaces/research/api/test_krea_stream.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 153,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "params={\"mood\": \"calm\", \"day_night\": \"day\", \"season\": \"summer\"},"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 159,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "assert body[\"reason\"] == \"no_key\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 180,
-      "path": "interfaces/research/api/test_krea_stream.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 188,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "assert body[\"isFallback\"] is True"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 229,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "r1 = tc.get(\"/krea/scene\", params={\"mood\": \"calm\", \"day_night\": \"day\","
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 239,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "assert body[\"enabled\"] is False"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 271,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "# Submit worked example (docs.krea.ai flux-1-dev, 2026-06-12)."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 282,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "client = _client_with_transport(app, handler)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 322,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "submits[\"n\"] += 1"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 326,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "\"created_at\": \"2026-06-12T00:00:00Z\","
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 344,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "\"season\": \"summer\"})"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 348,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "# 60s window \u2014 a runaway is CAPPED, not unbounded."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 356,
-      "path": "interfaces/research/api/test_krea_stream.py",
-      "snippet": "client.close()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 361,
-      "path": "interfaces/research/api/test_krea_stream.py"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-untyped-def",
       "line": 198,
       "path": "interfaces/research/api/visual.py",
@@ -4479,148 +2133,10 @@
     },
     {
       "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 466,
-      "path": "interfaces/research/api/wrestling.py",
-      "snippet": "con.close()"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-untyped-def",
       "line": 541,
       "path": "interfaces/research/api/wrestling.py",
       "snippet": "def make_region_selected_handler("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 639,
-      "path": "interfaces/research/api/wrestling.py",
-      "snippet": "con.close()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 88,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "finally:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 116,
-      "path": "interfaces/research/api/write_routes.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 125,
-      "path": "interfaces/research/api/write_routes.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 189,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.post(\"/blocks\", status_code=201)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 204,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.post(\"/blocks/{outline_block_id}/move\", status_code=202)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 214,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.delete(\"/blocks/{outline_block_id}\", status_code=200)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 223,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.get(\"/sections/{section_id}/blocks\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 249,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.get(\"/deliverables/{deliverable_id}/outline\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 256,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.get(\"/blocks/{outline_block_id}/provenance\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 275,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.get(\"/blocks/{outline_block_id}/trace\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 295,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.post(\"/folders\", status_code=201)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 302,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.get(\"/folders\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 315,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.post(\"/folders/{folder_id}/blocks\", status_code=202)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 322,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.delete(\"/folders/{folder_id}/blocks/{node_id}\", status_code=200)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 334,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "limit: int = Query(default=20, ge=1, le=100),"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 359,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.post(\"/brainstorm/emit-blocks\", status_code=201)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 388,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.post(\"/context/promote\", status_code=201)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 414,
-      "path": "interfaces/research/api/write_routes.py",
-      "snippet": "@write_router.post(\"/sections/{section_id}/generate\", status_code=200)"
     },
     {
       "col": 0,
@@ -5283,90 +2799,6 @@
     {
       "col": 0,
       "kind": "mypy:import-not-found",
-      "line": 27,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "from ...constants import RELATION_TO_CLAIM_CLASS, STALENESS_TTL_DAYS"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 28,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "from ...event_log import emit_typed"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 29,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "from ...schemas import StalenessFlaggedPayload, StalenessResolvePayload"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 33,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "from substrate.constants import (  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 37,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "from substrate.event_log import emit_typed  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 38,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "from substrate.schemas import (  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 70,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "return RELATION_TO_CLAIM_CLASS[rel]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 74,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "return cls"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 125,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "return emit_typed("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 157,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "return emit_typed("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 161,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "entity_kind=entity_kind,  # type: ignore[arg-type]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 163,
-      "path": "middleware/temporal/staleness.py",
-      "snippet": "status=status,  # type: ignore[arg-type]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
       "line": 37,
       "path": "orchestration/audit/phase_audit.py",
       "snippet": "from ...constants import AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION"
@@ -5412,60 +2844,6 @@
       "line": 273,
       "path": "orchestration/audit/phase_audit.py",
       "snippet": "severity=f.severity,  # type: ignore[arg-type]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 119,
-      "path": "orchestration/cascade_session.py",
-      "snippet": "return all(RunState(r.state).is_terminal() for r in self.researches)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 120,
-      "path": "orchestration/cascade_session.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 158,
-      "path": "orchestration/cascade_session.py",
-      "snippet": "payload={\"plan_root_node_id\": plan_root_node_id,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 161,
-      "path": "orchestration/cascade_session.py",
-      "snippet": "handles: list[Handle] = []"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 181,
-      "path": "orchestration/cascade_session.py",
-      "snippet": "async def stream(self) -> AsyncIterator[StepEvent]:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 192,
-      "path": "orchestration/cascade_session.py",
-      "snippet": "if item is _SESSION_DONE:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 226,
-      "path": "orchestration/cascade_session.py",
-      "snippet": "await self._funnel.drain_and_stop()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 236,
-      "path": "orchestration/cascade_session.py"
     },
     {
       "col": 0,
@@ -5515,310 +2893,6 @@
       "line": 88,
       "path": "orchestration/interview/orchestrator.py",
       "snippet": "def advance_interview("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 59,
-      "path": "orchestration/loop_one/coordinator.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 137,
-      "path": "orchestration/loop_one/coordinator.py",
-      "snippet": "``(investigation_id, action_type)``. No-op when nobody is"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 148,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "for t in tokens:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 148,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "for t in tokens:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 221,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "policy_tag: str = \"attribution_eligible\","
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 306,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "# read has no rights gate and nodes carry no rights provenance, so these labels"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 309,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "_FREE_TEXT_NODE_TYPES = frozenset({\"insight\", \"question\", \"claim\"})"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 402,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "for e in edges"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 440,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "DEFAULT_ROLE_TIMEOUT = 600.0"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 468,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "connector_result: Any | None = None  # ConnectorDeliveredPayload"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 508,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": ") -> bool:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 518,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "except Exception as e:  # pragma: no cover \u2014 diagnostic"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 550,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "return False"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 564,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "from orchestration.phase_runner.postconditions import default_research_dir"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 594,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "role=\"orchestrator\","
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 602,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 613,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 747,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "_write_marker("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 756,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 771,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "async def work() -> None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 792,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "# for any round2-*.md (\u2260 critique) above the size floor."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 805,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "\"\"\"Phase 5 \u2014 structural pass-through. The round-2 critique role"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 811,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "\"# Round 2 critique\\n\\n\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 813,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "\"inline; this file is the postcondition marker the \""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 814,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "\"Loop 1 orchestrator writes to keep the phase log \""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 816,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "f\"Investigation: `{ctx.investigation_id}`\\n\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 819,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "_write_marker(ctx, \"round2-critique.md\", body)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 822,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 824,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "\"\"\"Emit the Phase-6 quality signals for the synthesis on ``ctx`` \u2014"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 833,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "This function itself only scores + emits; it does NOT gate. Keeping"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 846,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 848,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "signal on any crash. That swallow is removed: each scorer is isolated"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 850,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "logs the error AND emits a ``groundedness.failed`` event naming the"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 853,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "if ctx.synthesis is None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:union-attr",
-      "line": 856,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "# SPR-03: captured so the caller can enforce (off/flag/block). ``None``"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 900,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 927,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "synthesis_id=synthesis_id,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 992,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "parameters_block=parameters_block,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 1014,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "groundedness_result = _score_phase_6_synthesis(ctx)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 1180,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "{"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 1199,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "from substrate.schemas import AutoPatchAppliedPayload"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 1205,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "with contextlib.suppress(Exception):  # pragma: no cover \u2014 diagnostic only"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 1211,
-      "path": "orchestration/loop_one/orchestrator.py",
-      "snippet": "patched=ctx.patched_domains,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 1222,
-      "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 0,
@@ -6025,23 +3099,10 @@
     },
     {
       "col": 0,
-      "kind": "mypy:name-defined",
-      "line": 61,
-      "path": "orchestration/rlm/bridge.py"
-    },
-    {
-      "col": 0,
       "kind": "mypy:type-arg",
       "line": 97,
       "path": "orchestration/rlm/session.py",
       "snippet": "iterations: list[dict] = field(default_factory=list)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 118,
-      "path": "processing/embedding/embed.py",
-      "snippet": "from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]"
     },
     {
       "col": 0,
@@ -6339,48 +3400,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 30,
-      "path": "roles/cascade_planner/planner.py",
-      "snippet": "from roles.cascade_planner.focus import MAX_BRANCHES, is_over_broad"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 34,
-      "path": "roles/cascade_planner/planner.py",
-      "snippet": "DEFAULT_MAX_DEPTH = 3"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:call-arg",
-      "line": 63,
-      "path": "roles/cascade_planner/planner.py",
-      "snippet": "investigation_id = f\"decomp-{uuid.uuid4().hex[:12]}\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:misc",
-      "line": 63,
-      "path": "roles/cascade_planner/planner.py",
-      "snippet": "investigation_id = f\"decomp-{uuid.uuid4().hex[:12]}\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:call-arg",
-      "line": 64,
-      "path": "roles/cascade_planner/planner.py",
-      "snippet": "prompt = render_full_prompt("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 86,
-      "path": "roles/cascade_planner/planner.py",
-      "snippet": "def build_plan("
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-untyped-def",
       "line": 58,
       "path": "roles/cascade_planner/tree_contract.py",
@@ -6455,20 +3474,6 @@
       "line": 73,
       "path": "roles/challenger/resolver.py",
       "snippet": "def make_dispatch_resolver("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 38,
-      "path": "roles/connector/parser.py",
-      "snippet": "from roles._json_decode import ("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 91,
-      "path": "roles/connector/parser.py",
-      "snippet": "text: str"
     },
     {
       "col": 0,
@@ -6686,27 +3691,6 @@
       "line": 163,
       "path": "roles/decomposer/seeds.py",
       "snippet": "by_synth: dict[str, dict] = {}"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 30,
-      "path": "roles/evidence_retriever/parser.py",
-      "snippet": "from roles._json_decode import ("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 82,
-      "path": "roles/evidence_retriever/parser.py",
-      "snippet": "typed Pydantic payloads when Sprint 7 wires the delivered"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 27,
-      "path": "roles/grounder/parser.py",
-      "snippet": "from roles._json_decode import ("
     },
     {
       "col": 0,
@@ -6963,13 +3947,6 @@
     {
       "col": 0,
       "kind": "mypy:unused-ignore",
-      "line": 24,
-      "path": "roles/note_taker/parser.py",
-      "snippet": "from roles._json_decode import ("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
       "line": 31,
       "path": "roles/note_taker/scheduler.py",
       "snippet": "from roles.note_taker.distill import Distiller  # type: ignore[no-redef]"
@@ -7054,19 +4031,6 @@
     {
       "col": 0,
       "kind": "mypy:unused-ignore",
-      "line": 38,
-      "path": "roles/parameter_extractor/parser.py",
-      "snippet": "from roles._json_decode import ("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 86,
-      "path": "roles/parameter_extractor/parser.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
       "line": 40,
       "path": "roles/style_extractor/parser.py",
       "snippet": "extract_json_object as _extract_json_object,  # type: ignore[no-redef]"
@@ -7077,20 +4041,6 @@
       "line": 80,
       "path": "roles/style_extractor/parser.py",
       "snippet": "raw: dict"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 54,
-      "path": "roles/synthesizer/parser.py",
-      "snippet": "from roles._json_decode import ("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 139,
-      "path": "roles/synthesizer/parser.py",
-      "snippet": "thesis_summary: str"
     },
     {
       "col": 0,
@@ -7248,20 +4198,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 136,
-      "path": "runtime/byok/store.py",
-      "snippet": "def _read_artifact(artifact_path: str) -> dict:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 147,
-      "path": "runtime/byok/store.py",
-      "snippet": "def _write_artifact(artifact_path: str, data: dict) -> None:"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-untyped-def",
       "line": 214,
       "path": "runtime/db_lock.py",
@@ -7283,20 +4219,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 225,
-      "path": "runtime/db_lock.py",
-      "snippet": "self.close()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 228,
-      "path": "runtime/db_lock.py",
-      "snippet": "def close(self) -> None:"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-untyped-def",
       "line": 448,
       "path": "runtime/db_lock.py",
@@ -7308,13 +4230,6 @@
       "line": 479,
       "path": "runtime/db_lock.py",
       "snippet": "def acquire_write_context(self, purpose: str):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 500,
-      "path": "runtime/db_lock.py",
-      "snippet": "con.close()"
     },
     {
       "col": 0,
@@ -7350,13 +4265,6 @@
       "line": 539,
       "path": "runtime/db_lock.py",
       "snippet": "con, fd, lock_path,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 548,
-      "path": "runtime/db_lock.py",
-      "snippet": "wrapped.close()"
     },
     {
       "col": 0,
@@ -7592,103 +4500,6 @@
     {
       "col": 0,
       "kind": "mypy:import-not-found",
-      "line": 48,
-      "path": "runtime/research_runner/host_local.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 49,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 66,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "_here = os.path.dirname(os.path.abspath(__file__))"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 67,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 79,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "StopResearch,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 80,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 147,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "return self._seq"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 151,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "text: str,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 154,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "tokens: int = 0,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 157,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "return StepEvent(self.investigation_id, self._next_seq(), \"step\","
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 166,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "def plan_event(self, text: str, **data: Any) -> StepEvent:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 167,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "return StepEvent(self.investigation_id, self._next_seq(), \"plan\", text=text, data=data)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 352,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "return"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 452,
-      "path": "runtime/research_runner/host_local.py",
-      "snippet": "try:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
       "line": 30,
       "path": "runtime/research_runner/promotion_funnel.py",
       "snippet": "from ...graph.insight_question import ("
@@ -7720,90 +4531,6 @@
       "line": 42,
       "path": "runtime/research_runner/promotion_funnel.py",
       "snippet": "from substrate.graph.insight_question import (  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 58,
-      "path": "runtime/research_runner/promotion_funnel.py",
-      "snippet": "pack read for grounding \u2014 ``source_document_id``. Without this map the"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 59,
-      "path": "runtime/research_runner/promotion_funnel.py",
-      "snippet": "id would land under ``document_id`` in metadata, which"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 63,
-      "path": "runtime/staging_db.py",
-      "snippet": "con.close()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 358,
-      "path": "runtime/weekly_report.py",
-      "snippet": "\"completed\": len(completed),"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 400,
-      "path": "runtime/weekly_report.py",
-      "snippet": "\"total_synthesis_deliveries\": total,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 401,
-      "path": "runtime/weekly_report.py",
-      "snippet": "\"distribution\": distribution,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 432,
-      "path": "runtime/weekly_report.py",
-      "snippet": "\"top_domains_patched\": ["
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 434,
-      "path": "runtime/weekly_report.py",
-      "snippet": "for d, n in domain_counts.most_common(10)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 49,
-      "path": "skills/domain/auto_patch.py",
-      "snippet": "from ...event_log import emit_typed"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 50,
-      "path": "skills/domain/auto_patch.py",
-      "snippet": "from ...schemas import ("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 57,
-      "path": "skills/domain/auto_patch.py",
-      "snippet": "from substrate.event_log import emit_typed  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 58,
-      "path": "skills/domain/auto_patch.py",
-      "snippet": "from substrate.schemas import (  # type: ignore[no-redef]"
     },
     {
       "col": 0,
@@ -8249,13 +4976,6 @@
     {
       "col": 0,
       "kind": "mypy:type-arg",
-      "line": 256,
-      "path": "substrate/audit/arxiv_audit.py",
-      "snippet": "amount_cents, detail_json"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
       "line": 211,
       "path": "substrate/auth/email_provider.py",
       "snippet": "payload: dict = {"
@@ -8361,30 +5081,9 @@
     {
       "col": 0,
       "kind": "mypy:type-arg",
-      "line": 106,
-      "path": "substrate/books/book_qa.py",
-      "snippet": "def _build_prompt("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 134,
-      "path": "substrate/books/book_qa.py",
-      "snippet": "parts.append(f\"[{i}] ({page_tag}) {ch.get('chunk_text', '')}\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
       "line": 268,
       "path": "substrate/books/meta_reading.py",
       "snippet": "context_chunks: Sequence[dict],"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 174,
-      "path": "substrate/books/model.py",
-      "snippet": "def _row_to_asset(row: tuple) -> BookAsset:"
     },
     {
       "col": 0,
@@ -8535,97 +5234,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 84,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "from context_pack.assembler import (  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 93,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "from graph.search import cosine_similarity_sql  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 208,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "return self.unit.node_id"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 212,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "return self.unit.investigation_id"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 216,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "return self.unit.text"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 333,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "from graph.insight_question import knowledge_unit_of  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 574,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "kind=REUSE_LAYER_KIND,  # type: ignore[arg-type]  \u2014 added to LayerKind in assembler"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:syntax",
-      "line": 574,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "kind=REUSE_LAYER_KIND,  # type: ignore[arg-type]  \u2014 added to LayerKind in assembler"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 606,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "def assemble_context_pack_with_reuse("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 733,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "threshold=threshold,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 734,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "context_pack_event_id=pack.event_id,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 783,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "from event_log import emit_typed  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 784,
-      "path": "substrate/context_pack/knowledge_reuse.py",
-      "snippet": "from schemas.events import KnowledgeReusedPayload  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
       "kind": "mypy:type-arg",
       "line": 61,
       "path": "substrate/context_pack/note_budget.py",
@@ -8686,40 +5294,6 @@
       "line": 117,
       "path": "substrate/context_pack/style_guide.py",
       "snippet": "val = sub_question.get(\"evidence_type_required\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:name-defined",
-      "line": 522,
-      "path": "substrate/corpus_audit.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:misc",
-      "line": 1283,
-      "path": "substrate/corpus_audit.py",
-      "snippet": "db_path: str"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:misc",
-      "line": 1284,
-      "path": "substrate/corpus_audit.py",
-      "snippet": "total_docs: int"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:misc",
-      "line": 1286,
-      "path": "substrate/corpus_audit.py",
-      "snippet": "total_chunks: int"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:misc",
-      "line": 1292,
-      "path": "substrate/corpus_audit.py"
     },
     {
       "col": 0,
@@ -8884,83 +5458,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 29,
-      "path": "substrate/dispatch/router.py",
-      "snippet": "import yaml  # type: ignore[import]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 45,
-      "path": "substrate/dispatch/router.py",
-      "snippet": "sys.path.insert(0, os.path.dirname(_here))  # substrate/"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 50,
-      "path": "substrate/dispatch/router.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 51,
-      "path": "substrate/dispatch/router.py",
-      "snippet": "from dispatch.breaker import default_breaker  # type: ignore[import-not-found, no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 474,
-      "path": "substrate/dispatch/router.py",
-      "snippet": "current = current.fallback"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 488,
-      "path": "substrate/dispatch/router.py",
-      "snippet": "_emit_dispatch_call("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 489,
-      "path": "substrate/dispatch/router.py",
-      "snippet": "investigation_id=investigation_id,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 513,
-      "path": "substrate/dispatch/router.py",
-      "snippet": "model=model_name,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 514,
-      "path": "substrate/dispatch/router.py",
-      "snippet": "prompt=prompt,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 529,
-      "path": "substrate/dispatch/router.py",
-      "snippet": "usage=NormalizedUsage(input_tokens=0, output_tokens=0),"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 530,
-      "path": "substrate/dispatch/router.py",
-      "snippet": "cost_usd=0.0,"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-untyped-def",
       "line": 23,
       "path": "substrate/dp_shuffler/event_emit.py",
@@ -9049,182 +5546,6 @@
       "line": 63,
       "path": "substrate/edit/harvest_authoring.py",
       "snippet": "triples: list[dict] = []"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 203,
-      "path": "substrate/eval/groundedness/harness.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 264,
-      "path": "substrate/eval/groundedness/harness.py",
-      "snippet": ")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 266,
-      "path": "substrate/eval/groundedness/harness.py",
-      "snippet": "for iid, payload in all_payloads:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 104,
-      "path": "substrate/event_log/events.py",
-      "snippet": "sys.path.insert(0, os.path.dirname(_here))  # substrate/"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 105,
-      "path": "substrate/event_log/events.py",
-      "snippet": "from constants import (  # type: ignore[no-redef,import-not-found]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 151,
-      "path": "substrate/event_log/events.py",
-      "snippet": "# ---------------------------------------------------------------------------"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 172,
-      "path": "substrate/event_log/events.py",
-      "snippet": "return os.environ.get(\"ANTIEK_EVENTS_DISABLED\", \"\").lower() in (\"1\", \"true\", \"yes\")"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 224,
-      "path": "substrate/event_log/events.py",
-      "snippet": "\"document_id\": document_id,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 290,
-      "path": "substrate/event_log/events.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 338,
-      "path": "substrate/event_log/events.py",
-      "snippet": "enabled=not _events_disabled(),"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 341,
-      "path": "substrate/event_log/events.py",
-      "snippet": "def set_synthesis_id(self, synthesis_id: str) -> None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 492,
-      "path": "substrate/event_log/events.py",
-      "snippet": "return pq"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 493,
-      "path": "substrate/event_log/events.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 522,
-      "path": "substrate/event_log/events.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 549,
-      "path": "substrate/event_log/events.py",
-      "snippet": "rows: list[dict[str, Any]] = []"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 550,
-      "path": "substrate/event_log/events.py",
-      "snippet": "if os.path.exists(pq):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 617,
-      "path": "substrate/event_log/events.py",
-      "snippet": "\"\"\"Sanity-check a trajectory: dangling parent refs, ordering, required"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 619,
-      "path": "substrate/event_log/events.py",
-      "snippet": "\"\"\""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 630,
-      "path": "substrate/event_log/events.py",
-      "snippet": "if not r.get(\"action_type\"):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 653,
-      "path": "substrate/event_log/events.py",
-      "snippet": "# Worker-identity helpers (antiek-yegge-execute SPR-01)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 665,
-      "path": "substrate/event_log/events.py",
-      "snippet": "expected_lifetime_s: int | None = None,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 670,
-      "path": "substrate/event_log/events.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 675,
-      "path": "substrate/event_log/events.py",
-      "snippet": "emit_typed contract). ``worker_id`` UUID-v7 shape is NOT validated here \u2014"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 681,
-      "path": "substrate/event_log/events.py",
-      "snippet": "\"inv-1\", worker_id=\"0192-...\", role=\"extractor\","
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 686,
-      "path": "substrate/event_log/events.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-call",
-      "line": 730,
-      "path": "substrate/event_log/events.py",
-      "snippet": "if parent_worker_id is not None and payload.get(\"parent_worker_id\") != parent_worker_id:"
     },
     {
       "col": 0,
@@ -9473,13 +5794,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 186,
-      "path": "substrate/graph/insight_question.py",
-      "snippet": "def _with_connection(con: LockedConnection | None, purpose: str, fn):"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-untyped-call",
       "line": 295,
       "path": "substrate/graph/insight_question.py",
@@ -9494,13 +5808,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 343,
-      "path": "substrate/graph/insight_question.py",
-      "snippet": "return _with_connection(con, \"promote_insight\", _do)"
-    },
-    {
-      "col": 0,
       "kind": "mypy:no-untyped-call",
       "line": 403,
       "path": "substrate/graph/insight_question.py",
@@ -9512,13 +5819,6 @@
       "line": 420,
       "path": "substrate/graph/insight_question.py",
       "snippet": "return match.existing_unit_id"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 451,
-      "path": "substrate/graph/insight_question.py",
-      "snippet": "return _with_connection(con, \"promote_question\", _do)"
     },
     {
       "col": 0,
@@ -9711,41 +6011,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 37,
-      "path": "substrate/graph/retrieval_adapters/turbopuffer.py",
-      "snippet": "from substrate.graph.search import EmbeddingModel  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 40,
-      "path": "substrate/graph/retrieval_adapters/turbopuffer.py",
-      "snippet": "from ....runtime.db_lock import connect_read"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 44,
-      "path": "substrate/graph/retrieval_adapters/turbopuffer.py",
-      "snippet": "from runtime.db_lock import connect_read  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 89,
-      "path": "substrate/graph/retrieval_adapters/turbopuffer.py",
-      "snippet": ") -> dict:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 63,
-      "path": "substrate/graph/retrieval_substrate.py",
-      "snippet": "non_privileged_chunk_sql_clause,"
-    },
-    {
-      "col": 0,
       "kind": "mypy:import-not-found",
       "line": 72,
       "path": "substrate/graph/retrieval_substrate.py",
@@ -9764,41 +6029,6 @@
       "line": 112,
       "path": "substrate/graph/retrieval_substrate.py",
       "snippet": ") -> dict: ..."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 147,
-      "path": "substrate/graph/retrieval_substrate.py",
-      "snippet": ") -> dict:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 381,
-      "path": "substrate/graph/retrieval_substrate.py",
-      "snippet": "con.close()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 397,
-      "path": "substrate/graph/retrieval_substrate.py",
-      "snippet": "self._con, text, model=self._model, top_k=top_k,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 451,
-      "path": "substrate/graph/retrieval_substrate.py",
-      "snippet": "# \u00a79.0 gate \u2014 composed from retrieval_gate (same helper as search())."
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 494,
-      "path": "substrate/graph/retrieval_substrate.py",
-      "snippet": "return os.path.exists(path)"
     },
     {
       "col": 0,
@@ -9827,55 +6057,6 @@
       "line": 138,
       "path": "substrate/graph/rlm_tools.py",
       "snippet": "tool_specs: list[dict], max_rounds: int,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 225,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "params={"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 233,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "_serp_url, _serp_send, throttle=canonical_arxiv_throttle()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 235,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "r.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 236,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "data = r.json()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 263,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "r = govern_if_arxiv(_ddg_url, _ddg_send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 264,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "r.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 268,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "return _parse_ddg_html(r.text, query=query)"
     },
     {
       "col": 0,
@@ -9925,34 +6106,6 @@
       "line": 316,
       "path": "substrate/graph/rlm_tools.py",
       "snippet": "parser = DDGParser()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 382,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "r = govern_if_arxiv(current, _send, throttle=canonical_arxiv_throttle())"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 383,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "if r.is_redirect or r.status_code in (301, 302, 303, 307, 308):"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 389,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "r.raise_for_status()"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:attr-defined",
-      "line": 399,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "text = _extract_text_from_html(r.text)"
     },
     {
       "col": 0,
@@ -10012,13 +6165,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 782,
-      "path": "substrate/graph/rlm_tools.py",
-      "snippet": "def _run_one(task: dict) -> str:"
-    },
-    {
-      "col": 0,
       "kind": "mypy:import-not-found",
       "line": 49,
       "path": "substrate/graph/schema.py",
@@ -10030,61 +6176,6 @@
       "line": 53,
       "path": "substrate/graph/schema.py",
       "snippet": "from runtime.db_lock import LockedConnection, connect_write  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 39,
-      "path": "substrate/graph/search.py",
-      "snippet": "from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 43,
-      "path": "substrate/graph/search.py",
-      "snippet": "PERSONAL_ONLY_CONTENT_CLASSES = _retrieval_gate.PERSONAL_ONLY_CONTENT_CLASSES"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 71,
-      "path": "substrate/graph/search.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 179,
-      "path": "substrate/graph/search.py",
-      "snippet": "by \u00a716.2; and personal_reading (the owner's private third-party"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 303,
-      "path": "substrate/graph/search.py",
-      "snippet": "\"\"\","
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 336,
-      "path": "substrate/graph/search.py",
-      "snippet": "return edges, nodes"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 367,
-      "path": "substrate/graph/search.py",
-      "snippet": "policy_tag=policy_tag,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 386,
-      "path": "substrate/graph/search.py",
-      "snippet": "``runtime.db_lock.connect_read`` \u2014 exposed here so search.py is"
     },
     {
       "col": 0,
@@ -10305,48 +6396,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:assignment",
-      "line": 43,
-      "path": "substrate/legal_gate/predicate.py",
-      "snippet": "host: str, banned: Iterable[str] = None,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 70,
-      "path": "substrate/legal_gate/predicate.py",
-      "snippet": "banned_domains: Iterable[str] = None,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 110,
-      "path": "substrate/legal_gate/predicate.py",
-      "snippet": "author: str, banned: Iterable[str] = None,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 124,
-      "path": "substrate/legal_gate/predicate.py",
-      "snippet": "title: str, banned: Iterable[str] = None,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 136,
-      "path": "substrate/legal_gate/predicate.py",
-      "snippet": "source_corpus: str, banned: Iterable[str] = None,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:assignment",
-      "line": 155,
-      "path": "substrate/legal_gate/predicate.py",
-      "snippet": "content_hash: str, banned: Iterable[str] = None,"
-    },
-    {
-      "col": 0,
       "kind": "mypy:type-arg",
       "line": 21,
       "path": "substrate/loop_3/trajectory_harvest.py",
@@ -10379,32 +6428,6 @@
       "line": 45,
       "path": "substrate/loop_3/unlock_gate.py",
       "snippet": "notes: dict = field(default_factory=dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 21,
-      "path": "substrate/loop_3/verifiers_env.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 29,
-      "path": "substrate/loop_3/verifiers_env.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 45,
-      "path": "substrate/loop_3/verifiers_env.py",
-      "snippet": "only, training forbidden until unlock.'"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 116,
-      "path": "substrate/loop_3/verifiers_env.py",
-      "snippet": "\"action_type\": ev.get(\"action_type\"),"
     },
     {
       "col": 0,
@@ -10625,34 +6648,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 55,
-      "path": "substrate/research_bridge/extractors.py",
-      "snippet": "def extract_text("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 81,
-      "path": "substrate/research_bridge/extractors.py",
-      "snippet": "def _decode(data, *, kind: str, extractor: str) -> ExtractionResult:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 94,
-      "path": "substrate/research_bridge/extractors.py",
-      "snippet": "def _extract_html(data) -> ExtractionResult:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 110,
-      "path": "substrate/research_bridge/extractors.py",
-      "snippet": "def _extract_pdf(data) -> ExtractionResult:"
-    },
-    {
-      "col": 0,
       "kind": "mypy:import-not-found",
       "line": 14,
       "path": "substrate/research_bridge/gap.py",
@@ -10786,69 +6781,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 33,
-      "path": "substrate/research_bridge/ingest_file.py",
-      "snippet": "from ...runtime.db_lock import LockedConnection, connect_write"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 42,
-      "path": "substrate/research_bridge/ingest_file.py",
-      "snippet": "from runtime.db_lock import LockedConnection, connect_write  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 43,
-      "path": "substrate/research_bridge/ingest_file.py",
-      "snippet": "from substrate.graph.insight_question import graph_db_path  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 44,
-      "path": "substrate/research_bridge/ingest_file.py",
-      "snippet": "from substrate.graph.ops import (  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 50,
-      "path": "substrate/research_bridge/ingest_file.py",
-      "snippet": "detect_external_research,  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 52,
-      "path": "substrate/research_bridge/ingest_file.py",
-      "snippet": "from substrate.research_bridge.extractors import (  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 56,
-      "path": "substrate/research_bridge/ingest_file.py",
-      "snippet": "from substrate.research_bridge.ingest import (  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 83,
-      "path": "substrate/research_bridge/ingest_file.py",
-      "snippet": "chunk_ids: tuple"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 88,
-      "path": "substrate/research_bridge/ingest_file.py",
-      "snippet": "def ingest_file("
-    },
-    {
-      "col": 0,
       "kind": "mypy:unused-ignore",
       "line": 15,
       "path": "substrate/research_bridge/llm_dispatch.py",
@@ -10972,20 +6904,6 @@
       "line": 204,
       "path": "substrate/schemas/documents.py",
       "snippet": "_counts: dict = field(default_factory=dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 3076,
-      "path": "substrate/schemas/events.py",
-      "snippet": "\"JS-detect\","
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 3077,
-      "path": "substrate/schemas/events.py",
-      "snippet": "]"
     },
     {
       "col": 0,
@@ -11269,34 +7187,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 108,
-      "path": "substrate/write/draft_generation.py",
-      "snippet": "supply their prose (so the model does not repeat them), upcoming"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 228,
-      "path": "substrate/write/draft_generation.py",
-      "snippet": "section_id: str | None"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 337,
-      "path": "substrate/write/draft_generation.py",
-      "snippet": "f\"persist_section_draft only persists a 'generated' result; \""
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 338,
-      "path": "substrate/write/draft_generation.py",
-      "snippet": "f\"got {result.status!r} (a gate_failed/invalid draft never ships)\""
-    },
-    {
-      "col": 0,
       "kind": "mypy:import-not-found",
       "line": 38,
       "path": "substrate/write/folders.py",
@@ -11378,13 +7268,6 @@
       "line": 62,
       "path": "substrate/write/outline_block.py",
       "snippet": "from runtime.db_lock import LockedConnection  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 63,
-      "path": "substrate/write/outline_block.py",
-      "snippet": "from substrate.event_log import emit_typed  # type: ignore[no-redef]"
     },
     {
       "col": 0,
@@ -11490,237 +7373,6 @@
       "line": 39,
       "path": "substrate/write/trace.py",
       "snippet": "from substrate.books.servability import (  # type: ignore[no-redef]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 40,
-      "path": "tools/antiek_memory/server.py",
-      "snippet": "input_schema: dict"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 47,
-      "path": "tools/antiek_memory/server.py",
-      "snippet": "content: list[dict]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 90,
-      "path": "tools/antiek_memory/server.py",
-      "snippet": "handler_fns: dict[str, Callable[[dict], ToolResult]] = field(default_factory=dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 92,
-      "path": "tools/antiek_memory/server.py",
-      "snippet": "server_info: dict = field(default_factory=lambda: {"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 97,
-      "path": "tools/antiek_memory/server.py",
-      "snippet": "def handle_request(self, request: dict) -> dict | None:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:arg-type",
-      "line": 132,
-      "path": "tools/antiek_memory/server.py",
-      "snippet": "handler = self.handler_fns.get(tool_name)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 192,
-      "path": "tools/antiek_memory/server.py",
-      "snippet": "def _ok(rpc_id: Any, result: dict) -> dict:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 196,
-      "path": "tools/antiek_memory/server.py",
-      "snippet": "def _err(rpc_id: Any, code: int, message: str) -> dict:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-untyped-def",
-      "line": 209,
-      "path": "tools/antiek_memory/server.py",
-      "snippet": "def serve_stdio("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:var-annotated",
-      "line": 68,
-      "path": "tools/gepa/pareto_front.py",
-      "snippet": "dominated = {v.variant_id: [] for v in variants}"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 25,
-      "path": "tools/prompt_autoresearch/budget.py",
-      "snippet": "cap_breaches: list[dict] = field(default_factory=list)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 41,
-      "path": "tools/prompt_autoresearch/score.py",
-      "snippet": "FORBIDDEN_PADDING_PATTERNS: tuple[re.Pattern, ...] = ("
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 58,
-      "path": "tools/stripe_connect/accounts.py",
-      "snippet": "log_entries: list[dict] = field(default_factory=list)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 68,
-      "path": "tools/stripe_connect/accounts.py",
-      "snippet": "metadata: Optional[dict] = None,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 69,
-      "path": "tools/stripe_connect/accounts.py",
-      "snippet": ") -> dict:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 106,
-      "path": "tools/stripe_connect/accounts.py",
-      "snippet": "def _find_by_idem(self, key: str) -> Optional[dict]:"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 50,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "metadata: dict,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 59,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "metadata: dict,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 68,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "metadata: dict,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 78,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "accounts: dict[str, dict] = field(default_factory=dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 79,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "customers: dict[str, dict] = field(default_factory=dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 80,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "usage_records: dict[str, dict] = field(default_factory=dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 81,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "transfers: dict[str, dict] = field(default_factory=dict)"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 105,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "metadata: dict,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 122,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "metadata: dict,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 144,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "metadata: dict,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 247,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "return acct[\"id\"]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 253,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "metadata: dict,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 261,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "return customer[\"id\"]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 269,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "metadata: dict,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 285,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "return intent[\"id\"]"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:type-arg",
-      "line": 293,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "metadata: dict,"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:no-any-return",
-      "line": 305,
-      "path": "tools/stripe_connect/providers.py",
-      "snippet": "return transfer[\"id\"]"
     }
   ]
 }

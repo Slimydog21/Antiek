@@ -25,8 +25,8 @@ from yt_dlp import YoutubeDL
 def require_reviewed_versions():
     pins = Path(__file__).resolve().parents[1] / "infrastructure/requirements-security.txt"
     expected = dict(
-        line.split("==") for line in pins.read_text().splitlines()
-        if line and not line.startswith("#")
+        line.strip().split("==") for line in pins.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
     )
     minima = {"cryptography": "50.0.0", "pypdf": "6.16.1", "yt-dlp": "2026.7.4"}
     assert set(expected) == set(minima)

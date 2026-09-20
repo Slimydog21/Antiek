@@ -106,3 +106,26 @@ Staged environment rollback remains open and is not claimed by this patch.
 The explicit-requirement rerun succeeded from all three old production versions:
 3 Ansible tasks passed,0 failures. All9 focused deployment/library tests passed,
 including installed-version anchoring. The GLM follow-up review is pending.
+
+## Completed regeneration and review
+
+GLM follow-up ACCEPT91/100 for bounded deployment and verification. Minor test
+feedback on whitespace and exact verify-path wiring was addressed;9 focused
+tests pass afterward. Full isolated Python3.14 library selection passed125,
+with10 existing sidecar integration skips. Linux compatibility jobs on both3.12
+and3.14 passed on head4ce79af8f, run35506967766. Final-head CI remains required.
+
+The full CI-extra environment was installed under previous pins with only the
+three security versions changed. Actual freeze adds13 previously unconstrained
+runtime packages, removes none, and changes three existing versions. pip check
+passes. Post-regeneration Ruff and mypy gates with --check-stale report zero NEW
+and zero stale entries. Raw mypy checked1023 files and reported1068 error lines;
+the parser captured all1068. The remaining baseline is still technical debt,
+not a claim that raw mypy reports zero errors.
+
+The baseline shrinks1683→1053 by removing630 stale entries; retained dictionaries
+and ordering are unchanged. Histogram diff shows one timestamp insertion and
+4349 removed lines. A final constrained resolver dry-run selects the same112
+packages, proposing only the editable-project reinstall. Ubuntu declared-bar
+CI is the binding cross-platform check; its previous failure was the expected
+old cryptography49 constraint conflicting with the new>=50 floor.

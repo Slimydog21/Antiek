@@ -35,7 +35,11 @@ def test_dependency_tasks_run_under_code_tag_before_service_changes(playbook):
     assert "code" in entries[index]["tags"]
     assert not entries[index].get("ignore_errors", False)
     assert remote["become"] is True
-    assert "youtube" in entries[index]["vars"]["antiek_dependency_extras"].split(",")
+    assert "youtube" in {
+        extra.strip() for extra in entries[index]["vars"]["antiek_dependency_extras"].split(",")
+    }
+
+    # A tripwire for deployment ordering, not a proof against arbitrary scripts.
     def assert_no_service_change(task):
         for key, value in task.items():
             action = key.rsplit(".", 1)[-1]
@@ -53,7 +57,10 @@ def test_dependency_tasks_run_under_code_tag_before_service_changes(playbook):
     install, verify, consistency = tasks()
     pip = install["ansible.builtin.pip"]
     assert pip["extra_args"].split(maxsplit=1)[0] in {"-r", "--requirement"}
-    assert "requirements-security.txt" in pip["extra_args"]
+    assert "'/infrastructure/requirements-security.txt'" in pip["extra_args"]
+    assert verify["ansible.builtin.command"]["argv"][-1] == (
+        "{{ antiek_install_dir }}/infrastructure/requirements-security.txt"
+    )
     assert pip["editable"] is True
     assert verify["ansible.builtin.command"]["argv"][0].endswith("/.venv/bin/python")
     assert consistency["ansible.builtin.command"]["argv"][1:] == ["-m", "pip", "check"]
@@ -63,9 +70,9 @@ def test_dependency_tasks_run_under_code_tag_before_service_changes(playbook):
 @pytest.mark.parametrize("failure", [None, "missing", "stale", "empty"])
 def test_installed_version_gate_executes_against_package_metadata(tmp_path, failure):
     pins = {
-        line.split("==")[0]: line.split("==")[1]
+        line.strip().split("==")[0]: line.strip().split("==")[1]
         for line in PINS.read_text().splitlines()
-        if line and not line.startswith("#")
+        if line.strip() and not line.lstrip().startswith("#")
     }
     for name, version in pins.items():
         if failure == "missing" and name == "yt-dlp":
