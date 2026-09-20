@@ -105,3 +105,12 @@ The orchestrator accepts this scoped commit after independent review and relevan
 ### Out-of-scope temptations
 
 Retry-count inflation, broad filesystem cleanup, database/schema changes, unrelated multimedia changes, CI reruns and deployment.
+
+### Source security scan
+
+Hardenx scanned copies of the changed Python source and test with the repository's
+.gitignore preserved. Strict scan exited 0, LOW, zero REAL and seven advisory
+findings. This is source-only evidence, not dependency or production clearance.
+The first reduced fixture omitted .gitignore and was classified as a Git tree
+without ignore protection. It exited 1 for that fixture condition; both reports
+remain under .audit/publication-hardenx*.json. No finding was waived.
