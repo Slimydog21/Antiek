@@ -109,8 +109,10 @@ quality. Public export rights and citation completeness are separate checks.
 
 ### Status
 
-In progress. Current tests and types pass; implementation review at c9b5c81b1 accepted91; followup review of copy and coverage changes pending. Initial M4 compliance was assessed at35/100, provisional repaired
-local-graph compliance at88/100 pending independent review. Broad export
+In progress. Tests and types pass. Independent implementation review accepted
+c9b5c81b1 at 91/100, copy/coverage followup accepted 8c6e8da5b at 95/100,
+portable links accepted 380d1407f at 94/100, and numeric-host hardening accepted
+e9315b636 at 95/100. Initial M4 compliance was assessed at 35/100. Broad export
 readiness remains below completion due to full-workstation/live/federated gaps.
 
 ### Files touched
@@ -122,7 +124,8 @@ boundary tests from the first evidence commit; this diagnostic.
 
 - [x] Production-shaped archive and full-app authenticated export proof.
 - [x] Exact claim/chunk resolution and honest incomplete fallbacks.
-- [ ] Independent implementation acceptance and current CI.
+- [x] Independent implementation and followup acceptance.
+- [ ] Current CI.
 - [x] Local shared component download/refusal and rendered artifact.
 - [ ] Full workstation and deployed verification.
 
@@ -130,12 +133,13 @@ boundary tests from the first evidence commit; this diagnostic.
 
 | Gate | Result | Local evidence |
 |---|---|---|
-| Full export suite above | 498 passed, exit0 | .audit/portable-links-full-tests.log |
-| Strict mypy, explicit-package-bases, follow-imports=silent | 4 files clean | .audit/portable-links-mypy.log |
+| Full export suite at e9315b636 | 511 passed, exit 0 | .audit/portable-review-followup-tests.log |
+| Strict mypy, explicit-package-bases, follow-imports=silent | 4 files clean | .audit/portable-review-followup-mypy.log |
 | Ruff on changed Python | passed | command output |
 | Gate-removal mutation | expected pytest exit1 | .audit/gate-mutation.log |
 | Initial evidence-only GLM | ACCEPT84, entrenchment concern | .audit/export-review.log |
 | Implementation GLM at c9b5c81b1 | ACCEPT91, terminal0 | .audit/provenance-review.log |
+| Numeric-host GLM at e9315b636 | ACCEPT 95, terminal 0 | .audit/portable-numeric-followup-review.log |
 | Source-only security | LOW, 0 REAL, 7 advisory, exit0 | .audit/export-source-security-summary.json |
 
 ### Decisions mid-flight
@@ -223,16 +227,16 @@ Both HTML routes and direct resolver calls share this behavior.
 The 498-test suite covers precedence, malformed/unset configuration, header
 spoofing, localhost/IPv6, encoded IDs, both endpoints and machine-island links.
 Strict mypy is clean on the four implementation/integration files.
-The earlier followup review is terminal ACCEPT95 at8c6e8da5b. Independent
-review of this portable-link delta completed ACCEPT94 at380d1407f in
+The earlier followup review is terminal ACCEPT95 at 8c6e8da5b. Independent
+review of this portable-link delta completed ACCEPT94 at 380d1407f in
 .audit/portable-links-review.log. Its small followups reject noncanonical
 numeric hosts and add backslash, port, percent-host, empty-ID and invalid
 PUBLIC fallback tests. Canonical IPv4 and alphabetic hex-shaped DNS labels
 remain accepted. The [WHATWG host parser](https://url.spec.whatwg.org/#concept-host-parser)
 selects IPv4 parsing from numeric final labels, including hex notation; merely
-rejecting digits-and-dots missed that case. Followup verification passes511tests,
-strict mypy on4files and Ruff. Historical browser source hashes still identify
-the earlier380d1407f implementation, not this validation-only followup.
+rejecting digits-and-dots missed that case. Followup verification passes 511 tests,
+strict mypy on 4 files and Ruff. Historical browser source hashes still identify
+the earlier 380d1407f implementation, not this validation-only followup.
 
 Browser verification used an isolated Chrome profile with a real signed session
 cookie, the real shared export component, and the local full app. A canonical
@@ -246,14 +250,14 @@ availability for every graph document or deployed configuration.
 [rendered file](assets/synthesis-export-20260920/portable-download-render.png),
 [actual reader](assets/synthesis-export-20260920/portable-reader.png), and
 [hashes, source digests and scope](assets/synthesis-export-20260920/portable-verification.json)
-retain the evidence. The new file is10,118bytes, SHA256
+retain the evidence. The new file is 10,118 bytes, SHA256
 c79cdd07be1ee74b0c5e6812f34a5b4c3c5fe830586c79ae0810dfd8288e2b19.
 API, Vite and Chrome were stopped; ephemeral session credentials were removed.
 The previous c9b5c81b1 artifacts remain as historical before-fix evidence.
 
 A clean isolated npm ci resolved the missing p5 dependency without changing
-package manifests. Its audit revealed50 affected package entries, including
-2critical and10high; runtime-only audit reported1high and30moderate. Those
+package manifests. Its audit revealed 50 affected package entries, including
+2 critical and 10 high; runtime-only audit reported 1 high and 30 moderate. Those
 counts describe package entries, not distinct advisories or proven application
 exploits. Read-only triage found the runtime high in Tiptap and critical dev
 findings in form-data/Lost Pixel's dependency chain. Evidence is retained under
