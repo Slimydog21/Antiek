@@ -247,6 +247,57 @@ def test_reachability_seeds_red_then_green_route(tmp_path: Path) -> None:
     )
 
 
+@_reach_skip
+def test_reachability_route_line_shift_is_not_new(tmp_path: Path) -> None:
+    """Issue #3236's reachability leg: a baselined no-inbound-link route whose
+    App.tsx declaration SHIFTS line (an unrelated edit above it) is the same
+    grandfathered stranding — NOT a NEW finding. Pre-fix this red the gate on
+    main three pushes in a row (/coordination/cost-consent, /_panel)."""
+    root = tmp_path / "tree"
+    gate = _build_reachability_tree(root)
+    src = root / "apps" / "reading" / "src"
+
+    # An unreachable route, grandfathered: mint the baseline WITH it present.
+    (src / "App.tsx").write_text(
+        '<Route path="/read" />\n<Link to="/read">read</Link>\n'
+        '<Route path="/dormant" />\n'
+    )
+    mint = _run([sys.executable, str(gate), "--write-baseline"], cwd=root)
+    assert mint.returncode == 0, f"{mint.stdout}\n{mint.stderr}"
+    clean = _run([sys.executable, str(gate)], cwd=root)
+    assert clean.returncode == 0, (
+        f"expected green right after mint, got {clean.returncode}\n"
+        f"{clean.stdout}\n{clean.stderr}"
+    )
+
+    # SHIFT: insert a line above the route declarations — /dormant moves from
+    # line 3 to line 4, byte-identical declaration text.
+    (src / "App.tsx").write_text(
+        '// header comment inserted by an unrelated PR\n'
+        '<Route path="/read" />\n<Link to="/read">read</Link>\n'
+        '<Route path="/dormant" />\n'
+    )
+    shifted = _run([sys.executable, str(gate)], cwd=root)
+    assert shifted.returncode == 0, (
+        f"a line-shifted grandfathered route must NOT red the gate, got "
+        f"{shifted.returncode}\n{shifted.stdout}\n{shifted.stderr}"
+    )
+
+    # NO-MASK: a NEW route with no inbound link, added alongside the shifted
+    # grandfathered one, still reds.
+    (src / "App.tsx").write_text(
+        '// header comment inserted by an unrelated PR\n'
+        '<Route path="/read" />\n<Link to="/read">read</Link>\n'
+        '<Route path="/dormant" />\n<Route path="/orphan-2" />\n'
+    )
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, (
+        f"expected RED=1 on a NEW no-inbound-link route, got {red.returncode}\n"
+        f"{red.stdout}\n{red.stderr}"
+    )
+    assert "/orphan-2" in red.stdout + red.stderr
+
+
 # =========================================================================== #
 # (b) Merge-age gate — synthesize a base 30 commits behind a fake origin/main
 #     -> red with the distance in the message; rebase to tip -> green.
