@@ -49,20 +49,71 @@ disciplinary:
     ``HostLocalRunner`` shows every promotable result arriving at ``on_emit``
     and nowhere else.
 
-Honest scope of the payload
----------------------------
-What runs in the workspace is ``GATHER_PROGRAM`` below: a stdlib-only script
-that reads the host's request, appends a record to ``out/gather.jsonl`` and
-prints a one-line summary. It performs no retrieval. That is the *same
-honesty class* as ``make_contract_gather_stub``, the loop it replaces, which
-its own docstring calls "an honest production gather placeholder — not real
-research". This lane ships the join, not an agent: the seam, the workspace
-lifecycle, the input and artifact channels and the failure taxonomy are real
-and exercised end to end; the program they carry is still a placeholder, and
-naming it one here is the point.
+The payload: a default placeholder, and a parameter that is the point
+---------------------------------------------------------------------
+``make_contained_gather_loop`` takes a *program* string. It defaults to
+``GATHER_PROGRAM`` below — a stdlib-only script that reads the host's request,
+appends a record to ``out/gather.jsonl`` and prints a one-line summary, and
+performs no retrieval. That default is the *same honesty class* as
+``make_contract_gather_stub``, the loop it replaces, which its own docstring
+calls "an honest production gather placeholder — not real research".
 
-The one fact it reports that is not a placeholder is ``uid`` — the effective
-user the contained step ran as. Under ``DockerBackend`` that is 65534; under
+Passing a different string is how a research agent runs the SQL or the
+analysis it wrote itself, which is the entire reason this seam exists. Until
+that parameter existed the containment machinery was protecting against a
+program that could not vary, and every invariant below was untested by any
+adversary.
+
+Accepting a caller's program: what changes, and what does not
+--------------------------------------------------------------
+What changes is only the threat model's *realism*. Not one containment
+invariant moves, because none of them ever assumed the program was trusted —
+``exec`` has always been documented as running "untrusted code", and the
+``DockerBackend`` was written to hold a hostile one (uid 65534, ``--read-only``
+rootfs, ``--network none`` under ``DENY_ALL``, ``--tmpfs`` scratch, no host
+bind mounts at all, ``--security-opt no-new-privileges``, ``--pids-limit 256``
+and ``--cpus``/``--memory`` ceilings).
+
+The specific properties that survive a hostile *program*, each with the thing
+that enforces it:
+
+  * **The caller supplies text, never a path.** ``PROGRAM_PATH`` remains this
+    module's constant ``work/gather.py``. A caller cannot choose where the
+    bytes land, so the workspace path jail (``_LocalWorkspace._jailed``, which
+    rejects ``..`` chains and absolute paths) gains no new surface from this
+    change.
+  * **The program cannot reach the graph.** Nothing of this repo is in the
+    workspace, no store path and no handle is passed in, and the child's
+    environment is an allowlist (``PATH``/``LANG``/``HOME``) that never
+    inherits the host's secrets. Under ``DockerBackend`` the graph file is not
+    mounted at all and the rootfs is read-only.
+  * **The program cannot be reached on the uncontained backend.** This loop
+    declares ``DENY_ALL``; ``LocalProcessBackend`` refuses that policy at
+    ``create()`` (I4). So on any path that does not explicitly override
+    ``net_policy`` — including ``cascade_routes._research_loop_factory`` —
+    a caller-supplied program is unprovisionable anywhere but a backend that
+    can actually contain it. **Do not relax that default to make a demo run.**
+  * **The program cannot exfiltrate.** ``DENY_ALL`` is ``--network none``.
+  * **The program cannot run forever or flood the host.** ``timeout_s`` is
+    mandatory (I1), a timeout kills the whole process group, and
+    ``MAX_OUTPUT_BYTES`` caps each stream.
+  * **The program cannot persist.** ``destroy()`` runs in a ``finally`` and is
+    idempotent (I6); the docker scratch is a tmpfs that dies with the
+    container.
+  * **The program's output is still only bytes, and bounded.** The artifact
+    returns through ``get_file`` of ``out/`` and becomes ordinary
+    ``StepEvent``s; ``_DockerWorkspace.get_file`` raises past
+    ``MAX_OUTPUT_BYTES`` rather than handing the host an unbounded read. A
+    program that writes garbage there makes ``json.loads`` raise and the leaf
+    fail loudly. Neither path becomes a second writer, because the host funnel
+    is still the only thing that goes near the graph.
+
+The one property this parameter deliberately does **not** grant is a remote
+one: ``program`` is an in-process Python argument. No HTTP request field feeds
+it, and wiring one would be a different change with a different review.
+
+The one fact the default program reports that is not a placeholder is
+``uid`` — the effective user the contained step ran as. Under ``DockerBackend`` that is 65534; under
 ``LocalProcessBackend`` it is the service user, which is precisely the
 condition this seam exists to end. The host logs it, so an operator can see
 from the event data whether the step was actually contained.
@@ -176,6 +227,27 @@ if __name__ == "__main__":
 '''
 
 
+def _encode_program(program: str) -> bytes:
+    """Validate a caller-supplied program once, at loop-construction time.
+
+    Not a safety check — nothing about the *content* of the program is
+    inspectable or restricted here, and pretending otherwise would be the
+    lie this seam exists to avoid; containment is the backend's job. This
+    only turns two mechanical mistakes (an empty program, a string that is
+    not encodable) into a loud error when the loop is built, rather than a
+    puzzling exit-code or ``UnicodeEncodeError`` halfway through someone's
+    investigation.
+    """
+    if not isinstance(program, str):
+        raise TypeError(f"program must be str source text, got {type(program).__name__}")
+    if not program.strip():
+        raise ValueError("program must be non-empty source text")
+    try:
+        return program.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError(f"program is not encodable as utf-8: {exc}") from exc
+
+
 def _fail(result: Any, argv: list[str]) -> ExecutionBackendError:
     """Turn a non-zero / timed-out ``ExecResult`` into a loud failure.
 
@@ -194,6 +266,7 @@ def make_contained_gather_loop(
     *,
     steps: int = 2,
     cost_per_step: float = 0.01,
+    program: str = GATHER_PROGRAM,
     interpreter: str = DEFAULT_INTERPRETER,
     image: str | None = DEFAULT_GATHER_IMAGE,
     net_policy: NetPolicy = DENY_ALL,
@@ -209,12 +282,26 @@ def make_contained_gather_loop(
     stub. The workspace's ``out/`` artifact is exported once at the end and
     becomes the note the promotion funnel promotes.
 
+    *program* is the source text executed on every pass. It defaults to
+    ``GATHER_PROGRAM``, so every existing caller is byte-identical; supplying
+    a different string is how an agent runs code it authored. The string is
+    validated and encoded once here (see ``_encode_program``) and written to
+    the fixed ``PROGRAM_PATH`` — the caller chooses the *code*, never the
+    *path*, and never the ``net_policy`` by omission. Read the module
+    docstring's containment section before passing one; in particular, the
+    ``DENY_ALL`` default is what keeps a supplied program off
+    ``LocalProcessBackend``, and overriding it to ``ALLOW_ALL`` to make
+    something run is how this seam would be defeated.
+
     Signature mirrors ``make_contract_gather_stub`` (*steps*, *cost_per_step*)
     so the swap at ``cascade_routes._research_loop_factory`` is one line and the
     budget arithmetic is unchanged.
     """
     profile = WorkspaceProfile(name="antiek-contained-gather", image=image)
     resource_limits = limits if limits is not None else ResourceLimits()
+    # Encode once, here: a bad program is a caller error and belongs at the
+    # call that built the loop, not inside an investigation's first pass.
+    program_bytes = _encode_program(program)
 
     async def _loop(ctx: Any) -> AsyncIterator[StepEvent]:
         yield ctx.plan_event(
@@ -229,7 +316,7 @@ def make_contained_gather_loop(
             profile, limits=resource_limits, net_policy=net_policy
         )
         try:
-            await workspace.put_file(PROGRAM_PATH, GATHER_PROGRAM.encode("utf-8"))
+            await workspace.put_file(PROGRAM_PATH, program_bytes)
             await workspace.put_file(
                 REQUEST_PATH,
                 json.dumps(

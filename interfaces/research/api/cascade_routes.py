@@ -102,7 +102,10 @@ from runtime.research_runner import (
     make_contract_gather_stub,
     make_exa_gather_loop,
 )
-from runtime.research_runner.contained_gather import make_contained_gather_loop
+from runtime.research_runner.contained_gather import (
+    GATHER_PROGRAM,
+    make_contained_gather_loop,
+)
 from runtime.research_runner.cost_projection import project_cascade_cost
 from runtime.research_runner.protocol import BrowseLoop
 from runtime.research_runner.provider_gateway import (
@@ -335,7 +338,7 @@ def _decompose(problem: str, max_depth: int) -> PlanReport:
     return build_plan(problem, decomposer=DispatchDecomposer(), max_depth=max_depth)
 
 
-def _research_loop_factory() -> BrowseLoop:
+def _research_loop_factory(*, program: str = GATHER_PROGRAM) -> BrowseLoop:
     """The browse loop each investigation runs.
 
     Default = the contract gather stub (an honest placeholder that does
@@ -355,12 +358,33 @@ def _research_loop_factory() -> BrowseLoop:
     ``BackendUnavailable``) surface at launch, not as a silent local
     downgrade.
 
+    *program* is the source text the contained gather step executes. It
+    defaults to ``GATHER_PROGRAM`` — the stdlib-only placeholder — so the
+    production call site is unchanged; an in-process caller that has an agent's
+    own SQL or analysis passes it here. It is threaded, never widened: this is
+    a Python keyword argument, no request field is bound to it, and the loop
+    still declares ``DENY_ALL``, so a supplied program cannot run on
+    ``LocalProcessBackend`` at all (it refuses that policy at ``create()``).
+
+    Supplying a *program* without ``ANTIEK_EXEC_BACKEND`` raises rather than
+    quietly running the uncontained stub loop, for the same reason the
+    exec/exa combination raises below: the dangerous failure here is a caller
+    believing its code ran when it did not.
+
     Reading the env here (not at import) keeps both branches — and any
     ``ExaClient`` or backend they would build — out of the stub-default path
     entirely.
     """
     mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
     backend_kind = os.environ.get(BACKEND_ENV, "").strip()
+
+    if program != GATHER_PROGRAM and not backend_kind:
+        raise RuntimeError(
+            "a caller-supplied program requires a contained backend: set "
+            f"{BACKEND_ENV}. Neither the contract gather stub nor the Exa "
+            "loop executes a program, so honouring this silently would leave "
+            "the caller believing its code ran."
+        )
 
     if backend_kind:
         if mode == "exa":
@@ -386,7 +410,9 @@ def _research_loop_factory() -> BrowseLoop:
                 BACKEND_ENV,
                 backend_kind,
             )
-        return make_contained_gather_loop(backend, steps=2, cost_per_step=0.01)
+        return make_contained_gather_loop(
+            backend, steps=2, cost_per_step=0.01, program=program
+        )
 
     if mode == "exa":
         return cast(BrowseLoop, make_exa_gather_loop(top_k=3))
