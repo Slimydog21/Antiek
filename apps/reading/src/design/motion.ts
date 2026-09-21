@@ -56,13 +56,27 @@ export const cardLift =
  * keyframe-free form (transition, not animation) keeps it inside the
  * motion system and out of the anti-noise guard's keyframe net.
  *
- * Provided for panel/modal adoption; not yet wired to a consumer in this run
- * (`press` + `cardLift` are the wired primitives — LemonButton / BookCard).
+ * Wired: LemonModal — the dialog rises as it arrives. Panels/windows use
+ * the framer `surfaceSpring` below instead (they already animate scale +
+ * opacity through framer-motion, so a second CSS enter would fight it).
  */
 export const enter =
   "transition-[opacity,transform] duration-base ease-enter " +
   "data-[enter=false]:opacity-0 data-[enter=false]:translate-y-1 " +
   "data-[enter=true]:opacity-100 data-[enter=true]:translate-y-0";
+
+/**
+ * SURFACE-SPRING — the one framer-motion spring for the "a surface
+ * arrives" gesture (floating panels, workspace windows). Was hand-tuned
+ * per layer (320/28 vs 320/30 — audit 01); one spec consumed by both so
+ * interaction physics can't diverge again. Callers still gate it behind
+ * their reduced-motion check (`reduceMotion ? { duration: 0 } : …`).
+ */
+export const surfaceSpring = {
+  type: "spring",
+  stiffness: 320,
+  damping: 30,
+} as const;
 
 /** Duration tokens in ms (numbers), for JS timers matched to a beat. */
 export const durationMs = {

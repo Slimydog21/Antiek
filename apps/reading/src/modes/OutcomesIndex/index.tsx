@@ -2,6 +2,7 @@ import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonTable from "../../components/lemon/LemonTable";
 import { apiFetch } from "../../lib/api";
 
@@ -59,7 +60,7 @@ export default function OutcomesIndex() {
   }, [reload]);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -77,7 +78,7 @@ export default function OutcomesIndex() {
           </header>
 
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-4">
-            <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight block mb-1">
+            <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight block mb-1">
               Filter by observer
             </label>
             <input
@@ -90,9 +91,9 @@ export default function OutcomesIndex() {
           </section>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (
@@ -139,7 +140,7 @@ export default function OutcomesIndex() {
                   key: "observed",
                   header: "Observed",
                   render: (r) => (
-                    <span className="font-mono text-[12px] text-ink-soft dark:text-starlight">
+                    <span className="font-mono text-xs text-ink-soft dark:text-starlight">
                       {r.observed_at} · {r.observer}
                     </span>
                   ),
@@ -149,7 +150,7 @@ export default function OutcomesIndex() {
                   header: "Outcome id",
                   align: "right",
                   render: (r) => (
-                    <span className="font-mono text-[11px] text-ink-mute dark:text-moonlight">
+                    <span className="font-mono text-xs text-ink-mute dark:text-moonlight">
                       {r.outcome_id.slice(0, 12)}
                     </span>
                   ),

@@ -1,4 +1,6 @@
 import type { Cartridge, GameContext, InputState } from "../../engine/types";
+import type { Mode } from "../../../design/tokens";
+import { ARCADE_CARTRIDGE_META } from "../../cartridgeMeta";
 import { createZombiesState, stepZombies, type ZombiesState } from "./logic";
 import { drawZombiesScene } from "./zombiesVisuals";
 
@@ -6,18 +8,17 @@ import { drawZombiesScene } from "./zombiesVisuals";
 export function createZombiesCartridge(options?: {
   reducedMotion?: boolean;
   lives?: number;
+  /** App light/dark mode; the scene follows it (D10 — no fixed pinning). */
+  mode?: Mode;
 }): Cartridge {
   let state: ZombiesState | null = null;
   const reduced = Boolean(options?.reducedMotion);
+  const mode = options?.mode ?? "day";
   let terminalReported = false;
 
   return {
     id: "paperclip-zombies",
-    meta: {
-      title: "Paperclip Zombies",
-      blurb: "Defend the fort while deep research runs.",
-      style: "zombies-arcade",
-    },
+    meta: ARCADE_CARTRIDGE_META.zombies,
     init(ctx: GameContext) {
       terminalReported = false;
       state = createZombiesState({
@@ -35,6 +36,10 @@ export function createZombiesCartridge(options?: {
           : null;
       const start =
         input.keysPressed.has("Enter") || input.keysPressed.has(" ");
+      // Escape has ONE owner: the host shell. ResearchWaitArcade intercepts
+      // Escape in the capture phase (focus restore included), so this exit
+      // path never fires there — it remains for hosts that mount the
+      // cartridge without their own exit chrome.
       const exit =
         input.keysPressed.has("Escape") || input.keysPressed.has("q");
       state = stepZombies(state, dt, { fireAt, start, exit }, ctx.rng);
@@ -49,7 +54,7 @@ export function createZombiesCartridge(options?: {
     render(c2d, ctx) {
       if (!state) return;
       c2d.clearRect(0, 0, ctx.width, ctx.height);
-      drawZombiesScene(c2d, state, ctx.width, ctx.height);
+      drawZombiesScene(c2d, state, ctx.width, ctx.height, mode);
     },
     teardown() {
       state = null;

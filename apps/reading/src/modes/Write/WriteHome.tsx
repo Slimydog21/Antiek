@@ -11,6 +11,7 @@ import {
   type DeliverableSummary,
 } from "../../lib/api";
 import GlassSurface from "../../shell/GlassSurface";
+import { toast } from "../../components/lemon/LemonToast";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import BlockRepository from "./BlockRepository";
 import ConnectResearch from "./ConnectResearch";
@@ -100,7 +101,7 @@ export default function WriteHome() {
   useEffect(() => {
     return onTraceIntent((intent) => {
       if (!intent.outlineBlockId) {
-        window.alert("This is your own note — it traces to your session, not an external source.");
+        toast.info("This is your own note — it traces to your session, not an external source.");
         return;
       }
       void (async () => {
@@ -111,13 +112,13 @@ export default function WriteHome() {
           } else {
             // Honest fallback (§9.0): gated/unreachable source — say so, don't
             // open a dead page.
-            window.alert(
+            toast.warn(
               target.detail ??
                 "That source isn't available to open here — it's gated or not reachable yet.",
             );
           }
         } catch {
-          window.alert("Couldn't reach that source right now. Try again.");
+          toast.err("Couldn't reach that source right now. Try again.");
         }
       })();
     });
@@ -211,7 +212,7 @@ export default function WriteHome() {
           {fromInvestigation ? (
             <p
               data-testid="write-from-notebook-banner"
-              className="rounded border border-aurora/40 bg-ice-1 px-3 py-2 text-xs text-ink dark:bg-charcoal-1 dark:text-bright"
+              className="rounded border border-sun/40 bg-ice-1 px-3 py-2 text-xs text-ink dark:bg-charcoal-1 dark:text-bright"
             >
               Continuing from auto-notebook — title is prefilled when the notebook
               sent one. Connect the highlighted research to import its outline when
@@ -234,7 +235,7 @@ export default function WriteHome() {
             </p>
           )}
           {starting && (
-            <p className="text-xs text-ocean">Starting your piece…</p>
+            <p className="text-xs text-sun-deep">Starting your piece…</p>
           )}
           <button
             type="button"
@@ -266,7 +267,7 @@ export default function WriteHome() {
                   <button
                     type="button"
                     onClick={() => navigate(`/write/${p.deliverable_id}`)}
-                    className="w-full rounded border border-rule bg-ice-0 px-3 py-2 text-left hover:border-ocean dark:border-charcoal-1 dark:bg-charcoal-2"
+                    className="w-full rounded border border-rule bg-ice-0 px-3 py-2 text-left hover:border-sun-deep dark:border-charcoal-1 dark:bg-charcoal-2"
                   >
                     <span className="font-serif text-ink dark:text-bright">{p.title}</span>
                     <span className="ml-2 text-xs text-ink-mute dark:text-moonlight">
@@ -309,7 +310,7 @@ export default function WriteHome() {
             {detail && (
               <p
                 data-testid="active-connection"
-                className="mt-0.5 text-[11px] text-ink-mute dark:text-moonlight"
+                className="mt-0.5 text-xs text-ink-mute dark:text-moonlight"
               >
                 {detail.investigation_root_id ? (
                   <>Connected to research · backing folder linked</>

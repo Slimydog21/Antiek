@@ -13,8 +13,10 @@
  * We clone the *idiom* from Notebook's ClaimCardBlock / QuestionCardBlock
  * (the colored left-bar + an Inspect/cite affordance) but NOT their TipTap
  * NodeViews — a canvas block is a different concept (a free-floating graph
- * node, not an inline editor node). The colors match DistillView's section
- * dots: aurora for insights, sun-deep for questions.
+ * node, not an inline editor node). Per adjudication D11, aurora is the one
+ * AI-cognition colour — thinking AND emergent outputs — so insights and
+ * questions share it (matching DistillView's dots and QuestionCardBlock's
+ * aurora bar); the kind label, not a second colour, tells them apart.
  *
  * Provenance (§9, acceptance criterion): every block surfaces a source
  * affordance. When the node carries a `source_document_id` we render a
@@ -49,9 +51,9 @@ const KIND_STYLE = {
     text: "insight",
   },
   question: {
-    bar: "border-sun-deep dark:border-sun",
-    bg: "bg-sun/10 dark:bg-sun/15",
-    label: "text-sun-deep dark:text-sun",
+    bar: "border-aurora",
+    bg: "bg-aurora/10 dark:bg-aurora/15",
+    label: "text-aurora",
     text: "question",
   },
 } as const;
@@ -79,13 +81,13 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
       }
     >
       <div className="flex items-center justify-between gap-2">
-        <span className={`font-mono text-[10px] uppercase tracking-wider ${s.label}`}>
+        <span className={`font-mono text-xxs uppercase tracking-wider ${s.label}`}>
           {/* Show the real kind so an unexpected graph kind is visible, not
               silently relabeled. */}
           {node.kind === "insight" || node.kind === "question" ? s.text : node.kind}
         </span>
         {node.escalated && (
-          <span className="font-mono text-[10px] text-sun-deep dark:text-sun" title="this needs more research">
+          <span className="font-mono text-xxs text-sun-deep dark:text-sun" title="this needs more research">
             needs more research
           </span>
         )}
@@ -100,19 +102,19 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
           className="text-left"
           aria-label="Open block detail"
         >
-          <p className="line-clamp-4 font-serif text-[13px] leading-relaxed text-ink dark:text-bright">
+          <p className="line-clamp-4 font-serif text-sm leading-relaxed text-ink dark:text-bright">
             {node.text || <span className="italic text-ink-mute dark:text-moonlight">(empty)</span>}
           </p>
         </button>
       ) : (
-        <p className="line-clamp-4 font-serif text-[13px] leading-relaxed text-ink dark:text-bright">
+        <p className="line-clamp-4 font-serif text-sm leading-relaxed text-ink dark:text-bright">
           {node.text || <span className="italic text-ink-mute dark:text-moonlight">(empty)</span>}
         </p>
       )}
 
       {/* Provenance affordance — the §9 chain stays reachable. We surface the
           source's presence/absence in human terms; a raw id is never a label. */}
-      <div className="flex items-center gap-2 text-[10px] text-shadow-1 dark:text-moonlight">
+      <div className="flex items-center gap-2 text-xxs text-shadow-1 dark:text-moonlight">
         {hasSource ? (
           onCiteSource ? (
             <button

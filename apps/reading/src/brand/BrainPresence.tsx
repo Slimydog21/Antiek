@@ -15,6 +15,7 @@
  */
 import type { CSSProperties } from "react";
 
+import { zIndex } from "../design/zIndex";
 import BrainMascot from "./BrainMascot";
 import "./mascot-brain/brainMascot.css";
 
@@ -45,7 +46,9 @@ export default function BrainPresence({
         height: size,
         opacity,
         pointerEvents: "none",
-        zIndex: 1,
+        // One notch over the living scene floor (Scene is z-0), below all
+        // chrome — the named `scenePresence` rung of the zIndex ladder.
+        zIndex: zIndex.scenePresence,
         ...style,
       }}
     >

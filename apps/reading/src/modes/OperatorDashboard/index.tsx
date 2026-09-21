@@ -133,7 +133,7 @@ export default function OperatorDashboard() {
   };
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
@@ -229,7 +229,7 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
             <p className="text-xl font-serif text-ink dark:text-bright">
               {(counts[k] ?? 0).toLocaleString()}
             </p>
-            <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+            <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
               {label}
             </p>
           </div>
@@ -238,7 +238,7 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
 
       <div className="grid grid-cols-2 gap-3">
         <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
-          <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+          <p className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
             Pending deletion requests
           </p>
           <p className="text-lg font-serif text-ink dark:text-bright">
@@ -254,7 +254,7 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
           </p>
         </div>
         <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
-          <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+          <p className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
             Recent payouts
           </p>
           {snapshot.recentPayouts.length === 0 ? (
@@ -274,7 +274,7 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
           )}
           <Link
             to="/payouts"
-            className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+            className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:underline"
           >
             full audit →
           </Link>
