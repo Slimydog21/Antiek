@@ -1,0 +1,997 @@
+FFFFFFFFFFFFF....F...............                                        [100%]
+=================================== FAILURES ===================================
+__________ test_selected_model_settles_once_and_returns_safe_receipt ___________
+
+owner_client = (<starlette.testclient.TestClient object at 0x10f1b5c70>, {'prompt': 'Compare these ideas', 'system_context': 'private...ner_byot.RecordingProvider object at 0x10f47bfe0>, <substrate.byot_usage.ledger.ByotUsageLedger object at 0x10f47be90>)
+
+    def test_selected_model_settles_once_and_returns_safe_receipt(owner_client):
+        client, payload, provider, house, ledger = owner_client
+        first = client.post("/thought-partner", json=payload)
+        assert first.status_code == 200, first.text
+        assert first.json()["text"] == "Owner-selected reply"
+>       receipt = first.json()["model_receipt"]
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'model_receipt'
+
+tests/test_thought_partner_owner_byot.py:89: KeyError
+______ test_invalid_selection_refuses_before_retrieval_or_spend[change0] _______
+  + Exception Group Traceback (most recent call last):
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 117, in test_invalid_selection_refuses_before_retrieval_or_spend
+  |     response = client.post("/thought-partner", json=payload | change)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 555, in post
+  |     return super().post(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1144, in post
+  |     return self.request(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 454, in request
+  |     return super().request(
+  |            ^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 825, in request
+  |     return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 914, in send
+  |     response = self._send_handling_auth(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+  |     response = self._send_handling_redirects(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+  |     response = self._send_single_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1014, in _send_single_request
+  |     response = transport.handle_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 356, in handle_request
+  |     raise exc
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 353, in handle_request
+  |     portal.call(self.app, scope, receive, send)
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 338, in call
+  |     return cast(T_Retval, self.start_task_soon(func, *args).result())
+  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+  |     return self.__get_result()
+  |            ^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+  |     raise self._exception
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+  |     retval = await self._coro
+  |              ^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 263, in _call_func
+  |     retval = await retval_or_awaitable
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+  |     await super().__call__(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+  |     await self.middleware_stack(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+  |     await self.app(scope, receive, _send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 192, in __call__
+  |     async with create_collapsing_task_group() as task_group:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in create_collapsing_task_group
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 811, in __aexit__
+  |     raise BaseExceptionGroup(
+  | BaseExceptionGroup: unhandled errors in a TaskGroup (2 sub-exceptions)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 151, in call_next
+    |     message = await recv_stream.receive()
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/streams/memory.py", line 132, in receive
+    |     raise EndOfStream from None
+    | anyio.EndOfStream
+    | 
+    | During handling of the above exception, another exception occurred:
+    | 
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 86, in create_collapsing_task_group
+    |     yield tg
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 1666, in _operator_auth_middleware
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 169, in call_next
+    |     raise RuntimeError("No response returned.")
+    | RuntimeError: No response returned.
+    +---------------- 2 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+    |     retval = await self._coro
+    |              ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2543, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1241, in handle
+    |     await super().handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 276, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 150, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 136, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 690, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 6169, in post_thought_partner
+    |     selected_notes, lib_status, lib_degraded = _retrieve_thought_partner_context(
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 116, in <lambda>
+    |     monkeypatch.setattr(api, "_retrieve_thought_partner_context", lambda *a: pytest.fail("invalid choice reached retrieval"))
+    |                                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/_pytest/outcomes.py", line 162, in __call__
+    |     raise Failed(msg=reason, pytrace=pytrace)
+    | Failed: invalid choice reached retrieval
+    +------------------------------------
+______ test_invalid_selection_refuses_before_retrieval_or_spend[change1] _______
+  + Exception Group Traceback (most recent call last):
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 117, in test_invalid_selection_refuses_before_retrieval_or_spend
+  |     response = client.post("/thought-partner", json=payload | change)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 555, in post
+  |     return super().post(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1144, in post
+  |     return self.request(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 454, in request
+  |     return super().request(
+  |            ^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 825, in request
+  |     return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 914, in send
+  |     response = self._send_handling_auth(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+  |     response = self._send_handling_redirects(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+  |     response = self._send_single_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1014, in _send_single_request
+  |     response = transport.handle_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 356, in handle_request
+  |     raise exc
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 353, in handle_request
+  |     portal.call(self.app, scope, receive, send)
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 338, in call
+  |     return cast(T_Retval, self.start_task_soon(func, *args).result())
+  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+  |     return self.__get_result()
+  |            ^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+  |     raise self._exception
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+  |     retval = await self._coro
+  |              ^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 263, in _call_func
+  |     retval = await retval_or_awaitable
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+  |     await super().__call__(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+  |     await self.middleware_stack(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+  |     await self.app(scope, receive, _send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 192, in __call__
+  |     async with create_collapsing_task_group() as task_group:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in create_collapsing_task_group
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 811, in __aexit__
+  |     raise BaseExceptionGroup(
+  | BaseExceptionGroup: unhandled errors in a TaskGroup (2 sub-exceptions)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 151, in call_next
+    |     message = await recv_stream.receive()
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/streams/memory.py", line 132, in receive
+    |     raise EndOfStream from None
+    | anyio.EndOfStream
+    | 
+    | During handling of the above exception, another exception occurred:
+    | 
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 86, in create_collapsing_task_group
+    |     yield tg
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 1666, in _operator_auth_middleware
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 169, in call_next
+    |     raise RuntimeError("No response returned.")
+    | RuntimeError: No response returned.
+    +---------------- 2 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+    |     retval = await self._coro
+    |              ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2543, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1241, in handle
+    |     await super().handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 276, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 150, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 136, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 690, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 6169, in post_thought_partner
+    |     selected_notes, lib_status, lib_degraded = _retrieve_thought_partner_context(
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 116, in <lambda>
+    |     monkeypatch.setattr(api, "_retrieve_thought_partner_context", lambda *a: pytest.fail("invalid choice reached retrieval"))
+    |                                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/_pytest/outcomes.py", line 162, in __call__
+    |     raise Failed(msg=reason, pytrace=pytrace)
+    | Failed: invalid choice reached retrieval
+    +------------------------------------
+______ test_invalid_selection_refuses_before_retrieval_or_spend[change2] _______
+  + Exception Group Traceback (most recent call last):
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 117, in test_invalid_selection_refuses_before_retrieval_or_spend
+  |     response = client.post("/thought-partner", json=payload | change)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 555, in post
+  |     return super().post(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1144, in post
+  |     return self.request(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 454, in request
+  |     return super().request(
+  |            ^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 825, in request
+  |     return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 914, in send
+  |     response = self._send_handling_auth(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+  |     response = self._send_handling_redirects(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+  |     response = self._send_single_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1014, in _send_single_request
+  |     response = transport.handle_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 356, in handle_request
+  |     raise exc
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 353, in handle_request
+  |     portal.call(self.app, scope, receive, send)
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 338, in call
+  |     return cast(T_Retval, self.start_task_soon(func, *args).result())
+  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+  |     return self.__get_result()
+  |            ^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+  |     raise self._exception
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+  |     retval = await self._coro
+  |              ^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 263, in _call_func
+  |     retval = await retval_or_awaitable
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+  |     await super().__call__(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+  |     await self.middleware_stack(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+  |     await self.app(scope, receive, _send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 192, in __call__
+  |     async with create_collapsing_task_group() as task_group:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in create_collapsing_task_group
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 811, in __aexit__
+  |     raise BaseExceptionGroup(
+  | BaseExceptionGroup: unhandled errors in a TaskGroup (2 sub-exceptions)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 151, in call_next
+    |     message = await recv_stream.receive()
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/streams/memory.py", line 132, in receive
+    |     raise EndOfStream from None
+    | anyio.EndOfStream
+    | 
+    | During handling of the above exception, another exception occurred:
+    | 
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 86, in create_collapsing_task_group
+    |     yield tg
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 1666, in _operator_auth_middleware
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 169, in call_next
+    |     raise RuntimeError("No response returned.")
+    | RuntimeError: No response returned.
+    +---------------- 2 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+    |     retval = await self._coro
+    |              ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2543, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1241, in handle
+    |     await super().handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 276, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 150, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 136, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 690, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 6169, in post_thought_partner
+    |     selected_notes, lib_status, lib_degraded = _retrieve_thought_partner_context(
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 116, in <lambda>
+    |     monkeypatch.setattr(api, "_retrieve_thought_partner_context", lambda *a: pytest.fail("invalid choice reached retrieval"))
+    |                                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/_pytest/outcomes.py", line 162, in __call__
+    |     raise Failed(msg=reason, pytrace=pytrace)
+    | Failed: invalid choice reached retrieval
+    +------------------------------------
+______ test_invalid_selection_refuses_before_retrieval_or_spend[change3] _______
+  + Exception Group Traceback (most recent call last):
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 117, in test_invalid_selection_refuses_before_retrieval_or_spend
+  |     response = client.post("/thought-partner", json=payload | change)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 555, in post
+  |     return super().post(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1144, in post
+  |     return self.request(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 454, in request
+  |     return super().request(
+  |            ^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 825, in request
+  |     return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 914, in send
+  |     response = self._send_handling_auth(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+  |     response = self._send_handling_redirects(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+  |     response = self._send_single_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1014, in _send_single_request
+  |     response = transport.handle_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 356, in handle_request
+  |     raise exc
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 353, in handle_request
+  |     portal.call(self.app, scope, receive, send)
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 338, in call
+  |     return cast(T_Retval, self.start_task_soon(func, *args).result())
+  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+  |     return self.__get_result()
+  |            ^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+  |     raise self._exception
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+  |     retval = await self._coro
+  |              ^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 263, in _call_func
+  |     retval = await retval_or_awaitable
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+  |     await super().__call__(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+  |     await self.middleware_stack(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+  |     await self.app(scope, receive, _send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 192, in __call__
+  |     async with create_collapsing_task_group() as task_group:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in create_collapsing_task_group
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 811, in __aexit__
+  |     raise BaseExceptionGroup(
+  | BaseExceptionGroup: unhandled errors in a TaskGroup (2 sub-exceptions)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 151, in call_next
+    |     message = await recv_stream.receive()
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/streams/memory.py", line 132, in receive
+    |     raise EndOfStream from None
+    | anyio.EndOfStream
+    | 
+    | During handling of the above exception, another exception occurred:
+    | 
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 86, in create_collapsing_task_group
+    |     yield tg
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 1666, in _operator_auth_middleware
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 169, in call_next
+    |     raise RuntimeError("No response returned.")
+    | RuntimeError: No response returned.
+    +---------------- 2 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+    |     retval = await self._coro
+    |              ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2543, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1241, in handle
+    |     await super().handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 276, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 150, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 136, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 690, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 6169, in post_thought_partner
+    |     selected_notes, lib_status, lib_degraded = _retrieve_thought_partner_context(
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 116, in <lambda>
+    |     monkeypatch.setattr(api, "_retrieve_thought_partner_context", lambda *a: pytest.fail("invalid choice reached retrieval"))
+    |                                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/_pytest/outcomes.py", line 162, in __call__
+    |     raise Failed(msg=reason, pytrace=pytrace)
+    | Failed: invalid choice reached retrieval
+    +------------------------------------
+______ test_invalid_selection_refuses_before_retrieval_or_spend[change4] _______
+  + Exception Group Traceback (most recent call last):
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 117, in test_invalid_selection_refuses_before_retrieval_or_spend
+  |     response = client.post("/thought-partner", json=payload | change)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 555, in post
+  |     return super().post(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1144, in post
+  |     return self.request(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 454, in request
+  |     return super().request(
+  |            ^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 825, in request
+  |     return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 914, in send
+  |     response = self._send_handling_auth(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+  |     response = self._send_handling_redirects(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+  |     response = self._send_single_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1014, in _send_single_request
+  |     response = transport.handle_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 356, in handle_request
+  |     raise exc
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 353, in handle_request
+  |     portal.call(self.app, scope, receive, send)
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 338, in call
+  |     return cast(T_Retval, self.start_task_soon(func, *args).result())
+  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+  |     return self.__get_result()
+  |            ^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+  |     raise self._exception
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+  |     retval = await self._coro
+  |              ^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 263, in _call_func
+  |     retval = await retval_or_awaitable
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+  |     await super().__call__(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+  |     await self.middleware_stack(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+  |     await self.app(scope, receive, _send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 192, in __call__
+  |     async with create_collapsing_task_group() as task_group:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in create_collapsing_task_group
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 811, in __aexit__
+  |     raise BaseExceptionGroup(
+  | BaseExceptionGroup: unhandled errors in a TaskGroup (2 sub-exceptions)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 151, in call_next
+    |     message = await recv_stream.receive()
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/streams/memory.py", line 132, in receive
+    |     raise EndOfStream from None
+    | anyio.EndOfStream
+    | 
+    | During handling of the above exception, another exception occurred:
+    | 
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 86, in create_collapsing_task_group
+    |     yield tg
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 1666, in _operator_auth_middleware
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 169, in call_next
+    |     raise RuntimeError("No response returned.")
+    | RuntimeError: No response returned.
+    +---------------- 2 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+    |     retval = await self._coro
+    |              ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2543, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1241, in handle
+    |     await super().handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 276, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 150, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 136, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 690, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 6169, in post_thought_partner
+    |     selected_notes, lib_status, lib_degraded = _retrieve_thought_partner_context(
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 116, in <lambda>
+    |     monkeypatch.setattr(api, "_retrieve_thought_partner_context", lambda *a: pytest.fail("invalid choice reached retrieval"))
+    |                                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/_pytest/outcomes.py", line 162, in __call__
+    |     raise Failed(msg=reason, pytrace=pytrace)
+    | Failed: invalid choice reached retrieval
+    +------------------------------------
+______ test_invalid_selection_refuses_before_retrieval_or_spend[change5] _______
+  + Exception Group Traceback (most recent call last):
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 117, in test_invalid_selection_refuses_before_retrieval_or_spend
+  |     response = client.post("/thought-partner", json=payload | change)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 555, in post
+  |     return super().post(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1144, in post
+  |     return self.request(
+  |            ^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 454, in request
+  |     return super().request(
+  |            ^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 825, in request
+  |     return self.send(request, auth=auth, follow_redirects=follow_redirects)
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 914, in send
+  |     response = self._send_handling_auth(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 942, in _send_handling_auth
+  |     response = self._send_handling_redirects(
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 979, in _send_handling_redirects
+  |     response = self._send_single_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1014, in _send_single_request
+  |     response = transport.handle_request(request)
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 356, in handle_request
+  |     raise exc
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py", line 353, in handle_request
+  |     portal.call(self.app, scope, receive, send)
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 338, in call
+  |     return cast(T_Retval, self.start_task_soon(func, *args).result())
+  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 456, in result
+  |     return self.__get_result()
+  |            ^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+  |     raise self._exception
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+  |     retval = await self._coro
+  |              ^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/from_thread.py", line 263, in _call_func
+  |     retval = await retval_or_awaitable
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+  |     await super().__call__(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+  |     await self.middleware_stack(scope, receive, send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+  |     await self.app(scope, receive, _send)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 192, in __call__
+  |     async with create_collapsing_task_group() as task_group:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in create_collapsing_task_group
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 811, in __aexit__
+  |     raise BaseExceptionGroup(
+  | BaseExceptionGroup: unhandled errors in a TaskGroup (2 sub-exceptions)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 151, in call_next
+    |     message = await recv_stream.receive()
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/streams/memory.py", line 132, in receive
+    |     raise EndOfStream from None
+    | anyio.EndOfStream
+    | 
+    | During handling of the above exception, another exception occurred:
+    | 
+    | Traceback (most recent call last):
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 86, in create_collapsing_task_group
+    |     yield tg
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 1666, in _operator_auth_middleware
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 169, in call_next
+    |     raise RuntimeError("No response returned.")
+    | RuntimeError: No response returned.
+    +---------------- 2 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/slimydog/Antiek/platform/.venv/lib/python3.12/site-packages/anyio/_core/_tasks.py", line 278, in _run_coro
+    |     retval = await self._coro
+    |              ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2543, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1241, in handle
+    |     await super().handle(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/routing.py", line 276, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 150, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 136, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 690, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/interfaces/research/api/app.py", line 6169, in post_thought_partner
+    |     selected_notes, lib_status, lib_degraded = _retrieve_thought_partner_context(
+    |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/tests/test_thought_partner_owner_byot.py", line 116, in <lambda>
+    |     monkeypatch.setattr(api, "_retrieve_thought_partner_context", lambda *a: pytest.fail("invalid choice reached retrieval"))
+    |                                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/_pytest/outcomes.py", line 162, in __call__
+    |     raise Failed(msg=reason, pytrace=pytrace)
+    | Failed: invalid choice reached retrieval
+    +------------------------------------
+__ test_operation_cannot_replay_different_content[prompt-Compare other ideas] __
+
+owner_client = (<starlette.testclient.TestClient object at 0x10f4e2900>, {'prompt': 'Compare these ideas', 'system_context': 'private...ner_byot.RecordingProvider object at 0x10f4e2e70>, <substrate.byot_usage.ledger.ByotUsageLedger object at 0x10f4e2cf0>)
+field = 'prompt', value = 'Compare other ideas'
+
+    @pytest.mark.parametrize("field,value", [
+        ("prompt", "Compare other ideas"),
+        ("system_context", "changed-context"),
+        ("history", [{"question": "Earlier question", "answer": "Changed answer"}]),
+        ("investigation_id", "different-investigation"),
+    ])
+    def test_operation_cannot_replay_different_content(owner_client, field, value):
+        client, payload, provider, house, _ = owner_client
+        assert client.post("/thought-partner", json=payload).status_code == 200
+        response = client.post("/thought-partner", json=payload | {field: value})
+>       assert response.status_code == 503
+E       assert 200 == 503
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_thought_partner_owner_byot.py:135: AssertionError
+_ test_operation_cannot_replay_different_content[system_context-changed-context] _
+
+owner_client = (<starlette.testclient.TestClient object at 0x118dfac00>, {'prompt': 'Compare these ideas', 'system_context': 'private...ner_byot.RecordingProvider object at 0x119c18110>, <substrate.byot_usage.ledger.ByotUsageLedger object at 0x118dfb0e0>)
+field = 'system_context', value = 'changed-context'
+
+    @pytest.mark.parametrize("field,value", [
+        ("prompt", "Compare other ideas"),
+        ("system_context", "changed-context"),
+        ("history", [{"question": "Earlier question", "answer": "Changed answer"}]),
+        ("investigation_id", "different-investigation"),
+    ])
+    def test_operation_cannot_replay_different_content(owner_client, field, value):
+        client, payload, provider, house, _ = owner_client
+        assert client.post("/thought-partner", json=payload).status_code == 200
+        response = client.post("/thought-partner", json=payload | {field: value})
+>       assert response.status_code == 503
+E       assert 200 == 503
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_thought_partner_owner_byot.py:135: AssertionError
+________ test_operation_cannot_replay_different_content[history-value2] ________
+
+owner_client = (<starlette.testclient.TestClient object at 0x119a994f0>, {'prompt': 'Compare these ideas', 'system_context': 'private...ner_byot.RecordingProvider object at 0x119a10530>, <substrate.byot_usage.ledger.ByotUsageLedger object at 0x119a999a0>)
+field = 'history'
+value = [{'question': 'Earlier question', 'answer': 'Changed answer'}]
+
+    @pytest.mark.parametrize("field,value", [
+        ("prompt", "Compare other ideas"),
+        ("system_context", "changed-context"),
+        ("history", [{"question": "Earlier question", "answer": "Changed answer"}]),
+        ("investigation_id", "different-investigation"),
+    ])
+    def test_operation_cannot_replay_different_content(owner_client, field, value):
+        client, payload, provider, house, _ = owner_client
+        assert client.post("/thought-partner", json=payload).status_code == 200
+        response = client.post("/thought-partner", json=payload | {field: value})
+>       assert response.status_code == 503
+E       assert 200 == 503
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_thought_partner_owner_byot.py:135: AssertionError
+_ test_operation_cannot_replay_different_content[investigation_id-different-investigation] _
+
+owner_client = (<starlette.testclient.TestClient object at 0x119f65250>, {'prompt': 'Compare these ideas', 'system_context': 'private...ner_byot.RecordingProvider object at 0x119f657f0>, <substrate.byot_usage.ledger.ByotUsageLedger object at 0x119f65730>)
+field = 'investigation_id', value = 'different-investigation'
+
+    @pytest.mark.parametrize("field,value", [
+        ("prompt", "Compare other ideas"),
+        ("system_context", "changed-context"),
+        ("history", [{"question": "Earlier question", "answer": "Changed answer"}]),
+        ("investigation_id", "different-investigation"),
+    ])
+    def test_operation_cannot_replay_different_content(owner_client, field, value):
+        client, payload, provider, house, _ = owner_client
+        assert client.post("/thought-partner", json=payload).status_code == 200
+        response = client.post("/thought-partner", json=payload | {field: value})
+>       assert response.status_code == 503
+E       assert 200 == 503
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_thought_partner_owner_byot.py:135: AssertionError
+__________________ test_other_owner_cannot_use_selected_model __________________
+
+owner_client = (<starlette.testclient.TestClient object at 0x10f4449e0>, {'prompt': 'Compare these ideas', 'system_context': 'private...ner_byot.RecordingProvider object at 0x10f4461b0>, <substrate.byot_usage.ledger.ByotUsageLedger object at 0x10f446030>)
+
+    def test_other_owner_cannot_use_selected_model(owner_client):
+        client, payload, provider, house, ledger = owner_client
+        client.cookies.set("ANTIEK_SESSION", mint_session_cookie(user_id="owner-b", email="owner@example.test"))
+        response = client.post("/thought-partner", json=payload)
+>       assert response.status_code == 503, response.text
+E       AssertionError: {"shape":"synthesis","text":"Owner-selected reply","library_retrieval_status":"empty","library_retrieval_degraded_reason":null}
+E       assert 200 == 503
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_thought_partner_owner_byot.py:144: AssertionError
+__________ test_unknown_provider_outcome_never_uses_house_or_resends ___________
+
+owner_client = (<starlette.testclient.TestClient object at 0x10f3ad880>, {'prompt': 'Compare these ideas', 'system_context': 'private...ner_byot.RecordingProvider object at 0x10f3adee0>, <substrate.byot_usage.ledger.ByotUsageLedger object at 0x10f3aeea0>)
+
+    def test_unknown_provider_outcome_never_uses_house_or_resends(owner_client):
+        client, payload, provider, house, ledger = owner_client
+        provider.fail = True
+        first = client.post("/thought-partner", json=payload)
+>       assert first.status_code == 503, first.text
+E       AssertionError: {"shape":"synthesis","text":"Owner-selected reply","library_retrieval_status":"empty","library_retrieval_degraded_reason":null}
+E       assert 200 == 503
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_thought_partner_owner_byot.py:154: AssertionError
+__________ test_thought_partner_policy_tag_threads_the_section_9_gate __________
+
+client = <starlette.testclient.TestClient object at 0x10f5245c0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x11a1187d0>
+
+    def test_thought_partner_policy_tag_threads_the_section_9_gate(client, monkeypatch):
+        """CWE-862 (Strix PR #215): the §9.0 retrieval ``policy_tag`` is
+        SERVER-DERIVED and fail-closed — a caller MUST NOT be able to select a
+        privileged policy (private_research / operator_only) to pull
+        personal_reading / restricted passages into the model context. The
+        unauthenticated test client resolves to attribution_eligible regardless
+        of what it posts in the body. Stubs the retrieval primitives so no real
+        DB / embedding model is touched and the tag reaching search() is
+        captured."""
+        import contextlib
+    
+        captured: dict[str, str] = {}
+    
+        class _StubEmbedding:
+            dimension = 4
+    
+            def encode(self, _text: str) -> list[float]:
+                return [0.0, 0.0, 0.0, 0.0]
+    
+        def _fake_search(con, text, *, model, top_k, policy_tag, **_kw):
+            captured["policy_tag"] = policy_tag
+            return {"results": []}
+    
+        @contextlib.contextmanager
+        def _fake_connect_read(_path):
+            yield object()
+    
+        # Monkeypatch the MODULE object directly: substrate.graph.search is also
+        # re-exported as a function from the package __init__, so a dotted-string
+        # setattr would target the function, not the module the helper imports.
+        # importlib.import_module always resolves the module (an ``import ... as``
+        # here binds the re-exported function, not the module).
+        import importlib
+    
+        search_mod = importlib.import_module("substrate.graph.search")
+    
+        monkeypatch.setattr(search_mod, "SentenceTransformerEmbedding", _StubEmbedding)
+        monkeypatch.setattr(search_mod, "search", _fake_search)
+        monkeypatch.setattr("runtime.db_lock.connect_read", _fake_connect_read)
+        monkeypatch.setattr("substrate.graph.default_db_path", lambda: "/dummy")
+        register_provider(_MockZaiProvider('{"shape":"synthesis","synthesis_text":"ok"}'))
+    
+        # No policy_tag in the body → server-derived attribution_eligible.
+        resp = client.post("/thought-partner", json={"prompt": "q"})
+        assert resp.status_code == 200, resp.text
+>       assert captured.get("policy_tag") == "attribution_eligible"
+E       AssertionError: assert None == 'attribution_eligible'
+E        +  where None = <built-in method get of dict object at 0x118bb5f00>('policy_tag')
+E        +    where <built-in method get of dict object at 0x118bb5f00> = {}.get
+
+tests/test_thought_partner.py:236: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_thought_partner_account_memory.py: 16 warnings
+  /private/tmp/antiek-thought-partner-base-20260920/.venv/lib/python3.12/site-packages/starlette/testclient.py:454: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+tests/test_thought_partner_account_memory.py: 14 warnings
+  /private/tmp/antiek-thought-partner-base-20260920/substrate/graph/search.py:91: FutureWarning: The `get_sentence_embedding_dimension` method has been renamed to `get_embedding_dimension`.
+    self.dimension = int(self._model.get_sentence_embedding_dimension() or 384)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_thought_partner_owner_byot.py::test_selected_model_settles_once_and_returns_safe_receipt
+FAILED tests/test_thought_partner_owner_byot.py::test_invalid_selection_refuses_before_retrieval_or_spend[change0]
+FAILED tests/test_thought_partner_owner_byot.py::test_invalid_selection_refuses_before_retrieval_or_spend[change1]
+FAILED tests/test_thought_partner_owner_byot.py::test_invalid_selection_refuses_before_retrieval_or_spend[change2]
+FAILED tests/test_thought_partner_owner_byot.py::test_invalid_selection_refuses_before_retrieval_or_spend[change3]
+FAILED tests/test_thought_partner_owner_byot.py::test_invalid_selection_refuses_before_retrieval_or_spend[change4]
+FAILED tests/test_thought_partner_owner_byot.py::test_invalid_selection_refuses_before_retrieval_or_spend[change5]
+FAILED tests/test_thought_partner_owner_byot.py::test_operation_cannot_replay_different_content[prompt-Compare other ideas]
+FAILED tests/test_thought_partner_owner_byot.py::test_operation_cannot_replay_different_content[system_context-changed-context]
+FAILED tests/test_thought_partner_owner_byot.py::test_operation_cannot_replay_different_content[history-value2]
+FAILED tests/test_thought_partner_owner_byot.py::test_operation_cannot_replay_different_content[investigation_id-different-investigation]
+FAILED tests/test_thought_partner_owner_byot.py::test_other_owner_cannot_use_selected_model
+FAILED tests/test_thought_partner_owner_byot.py::test_unknown_provider_outcome_never_uses_house_or_resends
+FAILED tests/test_thought_partner.py::test_thought_partner_policy_tag_threads_the_section_9_gate
+14 failed, 19 passed, 31 warnings in 19.40s
