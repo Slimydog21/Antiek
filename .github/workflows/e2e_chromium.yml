@@ -1,0 +1,104 @@
+# Playwright e2e — the self-contained `chromium` project.
+#
+# WHY THIS EXISTS. Before this job, NO workflow ever invoked `playwright test`.
+# Playwright was installed in CI only as a browser driver for Lost-Pixel and
+# Storybook, so 30 spec files / 136 cases had never executed there. Measured
+# 2026-09-20 at dbb8e0e7d: the first real run of this project gave
+# 35 passed / 9 failed / 3 skipped. EVERY failure was a test that had drifted
+# from a deliberate product change, not a product bug: an em dash where SPR-06
+# ships a hyphen, a second "private" banner tripping strict mode, a thread
+# hop-position rule, a story that mounts after `load`, a `shadowRank` helper
+# referenced from inside `evaluateAll` (which executes in the page, not Node),
+# and two specs for the fishing rod the operator had removed in #3082. All are
+# now resolved and the project is 41 passed / 0 failed / 3 skipped -- so the
+# flip condition below is actually reachable rather than aspirational.
+#
+# INFORMATIONAL-FIRST, WITHOUT THE `exit 0`. Sibling floors follow
+# docs/decisions/test-integrity-ci-floor.md and stay advisory by ending each
+# step `exit 0`. This job does NOT do that, because it does not need to: it is
+# simply absent from the `main-gate-integrity` ruleset's required contexts, so
+# a red run shows an honest red X on the PR and blocks nothing. The check
+# status therefore reflects reality instead of reporting success over known
+# failures.
+#
+# FLIP CONDITION. Add `e2e-chromium` to the required contexts once the run is
+# green on main for 10 consecutive pushes. Until then a NEW failure is visible
+# but not blocking. Do not silence a failure with `test.fail()` to reach that
+# bar -- an expected-failure annotation would also hide a real regression in
+# the same spec.
+#
+# SCOPE. Only `--project=chromium`. The ams-real / login-real / passkey-real
+# projects need a live app or secrets (LOGIN_E2E, PASSKEY_E2E) and are out of
+# scope here; their 89 cases stay unrun and that is a separate decision.
+#
+# The path filter is safe here BECAUSE this check is not required. A required
+# check behind `paths:` is never reported on a PR that misses the filter, so it
+# stays permanently pending and deadlocks the merge.
+name: e2e-chromium
+
+on:
+  pull_request:
+    paths:
+      - 'apps/reading/src/**'
+      - 'apps/reading/e2e/**'
+      - 'apps/reading/playwright.config.ts'
+      - 'apps/reading/package.json'
+      - 'apps/reading/package-lock.json'
+      - '.github/workflows/e2e_chromium.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-chromium-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  e2e-chromium:
+    name: e2e-chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/reading
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/reading/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install Playwright chromium
+        run: npx playwright install chromium --with-deps
+
+      # playwright.config.ts starts its own webServers (http-server over
+      # storybook-static on 6006, vite preview on 4173), but both need the
+      # artifacts to exist first.
+      - name: Build app
+        run: npm run build
+
+      - name: Build Storybook
+        run: npm run build-storybook
+
+      - name: Playwright (chromium project)
+        run: npx playwright test --project=chromium --reporter=list
+
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-chromium
+          path: apps/reading/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore

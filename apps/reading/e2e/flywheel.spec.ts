@@ -58,10 +58,22 @@ test.describe("SPR-08 — frontend flywheel walk (one entity, four workflows)", 
     // entity. Every hop in the full-flywheel fixture carries `insight-7f3a9c`;
     // the breadcrumb renders that single thread, not four disconnected views.
     // (The forked case below proves the breadcrumb refuses a multi-id trail.)
-    const research = page.locator('[data-testid="thread-hop-current-research"]');
+    // `isCurrent` is "same entity AND last occurrence", so that a
+    // back-and-forth thread highlights the operator's ACTUAL position. This
+    // fixture is research -> read -> write -> read on one entity id, so the
+    // current hop is the FINAL read, and research renders as a plain hop.
+    // Measured testids for this story: thread-hop-research, thread-hop-read,
+    // thread-hop-write, thread-hop-current-read. The old selector asked for
+    // thread-hop-current-research, which this fixture cannot produce.
+    const research = page.locator('[data-testid="thread-hop-research"]');
     const write = page.locator('[data-testid="thread-hop-write"]');
     await expect(research).toBeVisible();
     await expect(write).toBeVisible();
+    // Pin the position semantics the component documents, rather than only
+    // asserting the hops exist.
+    await expect(
+      page.locator('[data-testid="thread-hop-current-read"]'),
+    ).toBeVisible();
   });
 
   test("an unbuilt workflow hop shows the honest SPR-04 stub, not a fake screen", async ({
