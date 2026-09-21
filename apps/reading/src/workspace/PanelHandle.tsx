@@ -33,6 +33,7 @@ type Props = {
 export function PanelHandle({ id, draggable, resizable = false }: Props) {
   const panel = useWorkspace((s) => s.panels[id]);
   const focused = useWorkspace((s) => s.focusedPanelId === id);
+  const isZoomed = useWorkspace((s) => s.zoomedPanelId === id);
   const actions = useWorkspace.getState;
   const start = useRef<{ x: number; y: number } | null>(null);
   const resizeStart = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -170,6 +171,27 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
           }
         >
           {panel.pinned ? "★" : "☆"}
+        </button>
+
+        {/* Zoom toggle (herdr transfer P1) — fills the workspace with this
+            panel. The button is itself the persistent chrome when zoomed:
+            it reads "⤡" and sits on the only visible handle. */}
+        <button
+          type="button"
+          data-handle-action="zoom"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => actions().toggleZoom(isZoomed ? null : id)}
+          aria-label={isZoomed ? "Exit zoom" : "Zoom to full workspace"}
+          aria-pressed={isZoomed}
+          title={isZoomed ? "Exit zoom (Esc)" : "Zoom to full workspace"}
+          className={
+            "px-1.5 leading-none text-[13px] " +
+            (isZoomed
+              ? "text-sun-deep dark:text-sun"
+              : "text-ink-mute dark:text-moonlight hover:text-ink dark:hover:text-bright")
+          }
+        >
+          {isZoomed ? "⤡" : "⤢"}
         </button>
 
         {/* Kebab — mode actions */}
