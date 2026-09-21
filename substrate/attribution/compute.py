@@ -16,8 +16,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-import duckdb
-
 from runtime.db_lock import connect_read
 from substrate.event_log import emit_typed
 from substrate.graph import default_db_path, ensure_initialized
