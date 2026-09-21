@@ -67,7 +67,7 @@ def main() -> int:
 
     hits = [
         (n, v, [x["id"] for x in (r.get("vulns") or [])])
-        for (n, v), r in zip(found, results)
+        for (n, v), r in zip(found, results, strict=True)
         if r.get("vulns")
     ]
     if not hits:
