@@ -97,7 +97,7 @@ jobs:
           # conversion path that production actually runs. It is a small pure
           # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
 
       - name: Install local media runtime
         run: |
@@ -190,7 +190,7 @@ jobs:
           # conversion path that production actually runs. It is a small pure
           # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
 
       - name: Install local media runtime
         run: |
@@ -523,7 +523,7 @@ jobs:
           # conversion path that production actually runs. It is a small pure
           # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
       - name: Compounding benchmark (SPR-09 keystone)
         # The falsifiable compounding benchmark (compounding/benchmark/tests/).
         # `-m "not slow"` excludes the full n=20 multi-arm run. The seed-and-catch
