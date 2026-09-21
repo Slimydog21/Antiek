@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -57,10 +57,10 @@ def negation_verifier(a: str, b: str) -> bool:
     return a_neg != b_neg
 
 
-def _cosine(u, v) -> float:
+def _cosine(u: Sequence[float], v: Sequence[float]) -> float:
     if not u or not v:
         return 0.0
-    dot = sum(x * y for x, y in zip(u, v))
+    dot = sum(x * y for x, y in zip(u, v, strict=False))
     nu = math.sqrt(sum(x * x for x in u))
     nv = math.sqrt(sum(y * y for y in v))
     return dot / (nu * nv) if nu and nv else 0.0
@@ -89,7 +89,10 @@ def find_contradictions(
     out: list[Contradiction] = []
     for i in range(len(items)):
         for j in range(i + 1, len(items)):
-            sim = _cosine(items[i][2], items[j][2])
+            vi, vj = items[i][2], items[j][2]
+            if vi is None or vj is None:
+                continue
+            sim = _cosine(vi, vj)
             if sim < similarity_threshold:
                 continue
             if verify(items[i][1], items[j][1]):

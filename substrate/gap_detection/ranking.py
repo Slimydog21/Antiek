@@ -29,7 +29,7 @@ W_RECENCY = 0.20
 W_DEPENDENTS = 0.30
 
 
-def node_metrics(con: Any, node_ids: Sequence[str]) -> dict[str, dict]:
+def node_metrics(con: Any, node_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
     """Fetch degree + in-degree + created_at for a set of nodes, in one pass.
     Returns ``{node_id: {"degree", "dependents", "created_at"}}``."""
     if not node_ids:
@@ -53,7 +53,7 @@ def _norm(value: float, max_value: float) -> float:
     return 0.0 if max_value <= 0 else value / max_value
 
 
-def impact_score(metrics: dict, *, max_degree: int, max_dependents: int, recency_rank: float) -> float:
+def impact_score(metrics: dict[str, Any], *, max_degree: int, max_dependents: int, recency_rank: float) -> float:
     """Compute a node's gap impact. ``recency_rank`` is precomputed in
     [0,1] (1.0 = newest) so the score has no wall-clock dependency."""
     return (

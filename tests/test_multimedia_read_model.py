@@ -680,6 +680,76 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     )
     assert [response.status_code for response in denied] == [404, 404, 404, 404, 503]
 
+    public_export_status = client.get(f"/multimedia/assets/{asset_id}/public-export-status")
+    assert public_export_status.status_code == 200
+    public_export_body = public_export_status.json()
+    assert public_export_body["asset_id"] == asset_id
+    assert public_export_body["public_url"] is None
+    assert public_export_body["publish_blocked"] is True
+    assert public_export_body["next_required_action"] in {
+        "run_hardening",
+        "manual_publication_review",
+        "stage_export_plan",
+        "record_publish_blocker",
+        "publisher_implementation",
+    }
+
+    missing_public_export_status = client.get("/multimedia/assets/mm-missing/public-export-status")
+    assert missing_public_export_status.status_code == 404
+
+    export_gate = client.post(f"/multimedia/assets/{asset_id}/evaluate-public-export-gate")
+    assert export_gate.status_code == 200
+    export_gate_job = export_gate.json()["jobs"][-1]
+    assert export_gate_job["kind"] == "export_gate"
+    assert export_gate_job["public_export_gate"]["public_export_enabled"] is False
+
+    # Main's approval gate requires graph-grounded narration, so reuse the
+    # already-grounded + approved asset above for the export review flow.
+    review_asset_id = asset_id
+
+    assert client.post(f"/multimedia/assets/{review_asset_id}/approve-dry-run").status_code == 200
+    review_gate = client.post(f"/multimedia/assets/{review_asset_id}/evaluate-public-export-gate")
+    assert review_gate.status_code == 200
+    assert review_gate.json()["jobs"][-1]["public_export_gate"]["status"] == "manual_review"
+
+    review = client.post(
+        f"/multimedia/assets/{review_asset_id}/public-export-review",
+        json={
+            "decision": "approved",
+            "gate_ids": ["hardening", "rights_and_publication"],
+            "operator_acknowledged_public_distribution": True,
+            "notes": "Approved for future public export staging; do not publish yet.",
+        },
+    )
+    assert review.status_code == 200
+    review_job = review.json()["jobs"][-1]
+    assert review_job["kind"] == "export_gate"
+    assert review_job["public_export_review"]["decision"] == "approved"
+    assert review_job["public_export_gate"]["public_export_enabled"] is False
+
+    export_plan = client.post(f"/multimedia/assets/{review_asset_id}/plan-public-export")
+    assert export_plan.status_code == 200
+    export_plan_job = export_plan.json()["jobs"][-1]
+    assert export_plan_job["kind"] == "export_gate"
+    assert export_plan_job["public_export_plan"]["publish_enabled"] is False
+    assert export_plan_job["public_export_plan"]["public_url"] is None
+
+    missing_export_gate = client.post("/multimedia/assets/mm-missing/evaluate-public-export-gate")
+    assert missing_export_gate.status_code == 404
+
+    missing_review = client.post(
+        "/multimedia/assets/mm-missing/public-export-review",
+        json={
+            "decision": "approved",
+            "gate_ids": ["rights_and_publication"],
+            "operator_acknowledged_public_distribution": True,
+        },
+    )
+    assert missing_review.status_code == 404
+
+    missing_export_plan = client.post("/multimedia/assets/mm-missing/plan-public-export")
+    assert missing_export_plan.status_code == 404
+
 
 def test_hybrid_approve_does_not_double_count_audio_cost_rows(tmp_path):
     store = MultimediaAssetStore(tmp_path)

@@ -42,12 +42,12 @@ MARGIN_PUBLIC = Decimal("0.10")
 MARGIN_PRIVATE_PUBLISHED = Decimal("0.50")
 
 
-class InvitationMode(str, enum.Enum):
+class InvitationMode(enum.StrEnum):
     PRIVATE = "private"
     PUBLIC = "public"
 
 
-class PublishingMode(str, enum.Enum):
+class PublishingMode(enum.StrEnum):
     NEVER_PUBLISHED = "never_published"
     PUBLIC = "public"
 

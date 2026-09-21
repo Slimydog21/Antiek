@@ -71,6 +71,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -147,6 +148,82 @@ def assert_parity(health: dict, expected_sha: str) -> list[str]:
     return failures
 
 
+def staleness_failures(
+    build_sha: str, expected_sha: str, *, max_lag_hours: float
+) -> list[str]:
+    """Drift assertions for the SCHEDULED probe, where ``expected_sha`` is
+    main's tip rather than a just-deployed SHA.
+
+    Exact equality is the right contract right after a deploy: you shipped X,
+    prod must report X. It is the WRONG contract for a daily alarm. With
+    automatic deploys main advances while a deploy is in flight, so
+    ``build_sha == origin/main`` is false for a window after every merge —
+    and a busy day is nothing but such windows. Measured 2026-09-21: this
+    job had failed 30 of its last 100 scheduled runs, 13 of the last 15,
+    while production was provably healthy and converging. An alarm that reds
+    on correct operation is one people stop reading, which is how dep_audit
+    sat red for nine weeks.
+
+    What the alarm is actually for, per this workflow's own header, is "a
+    stale deploy that survives an operator's eyeball". That is precisely:
+    **main contains a commit, merged more than ``max_lag_hours`` ago, that
+    production is still not running.** Normal lag is minutes and fails this
+    test; a stuck deploy is hours or days and trips it.
+
+    Two conditions fail:
+      * prod's SHA is NOT an ancestor of the expected SHA — prod is on a fork
+        or was rolled back. Never correct, regardless of timing.
+      * the OLDEST commit main has and prod lacks is older than the budget.
+
+    Returns [] when prod is converging normally.
+    """
+    if build_sha == expected_sha:
+        return []
+    if not build_sha:
+        return ["no build_sha reported by /health"]
+
+    def _git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args], capture_output=True, text=True, check=False
+        ).stdout.strip()
+
+    if _git("cat-file", "-t", build_sha) != "commit":
+        return [
+            f"deployed build_sha={build_sha!r} is not a commit in this "
+            f"checkout — cannot establish ancestry (fetch depth?)"
+        ]
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", build_sha, expected_sha],
+        capture_output=True, check=False,
+    ).returncode == 0
+    if not ancestor:
+        return [
+            f"deployed build_sha={build_sha!r} is NOT an ancestor of "
+            f"{expected_sha!r} — production is on a fork or was rolled back"
+        ]
+
+    # Oldest commit main has that prod does not.
+    oldest = _git(
+        "log", "--reverse", "--format=%ct", f"{build_sha}..{expected_sha}"
+    ).split("\n")[0]
+    if not oldest:
+        return []
+    lag_h = (time.time() - int(oldest)) / 3600.0
+    behind = _git("rev-list", "--count", f"{build_sha}..{expected_sha}")
+    if lag_h > max_lag_hours:
+        return [
+            f"stale deploy: production runs {build_sha[:9]}, which is "
+            f"{behind} commit(s) behind main; the oldest unshipped commit "
+            f"merged {lag_h:.1f}h ago (budget {max_lag_hours}h)"
+        ]
+    print(
+        f"prod-parity: converging — {behind} commit(s) behind, oldest "
+        f"unshipped {lag_h:.1f}h old (within {max_lag_hours}h budget)",
+        file=sys.stderr,
+    )
+    return []
+
+
 def flywheel_warnings(health: dict) -> list[str]:
     """SPR-11 flywheel-liveness check — INFORMATIONAL by default.
 
@@ -207,6 +284,7 @@ def run(
     auth_probe: bool = False,
     auth_origin: str = "https://antiek.ai",
     require_flywheel: bool = False,
+    max_lag_hours: float = 0.0,
 ) -> int:
     """Fetch + assert; return the process exit code. Pure-enough to call
     from tests (they pass a fake ``url`` or monkeypatch ``fetch_health``).
@@ -221,6 +299,16 @@ def run(
         print(f"prod-parity: could not reach {url}/health: {exc}", file=sys.stderr)
         return 2
     failures = assert_parity(health, expected_sha)
+    if max_lag_hours > 0:
+        # Scheduled drift-alarm mode: `expected_sha` is main's TIP, which moves
+        # while a deploy is in flight, so exact equality is not the property we
+        # want. Swap ONLY the SHA verdict for the staleness verdict; the
+        # provider-registry assertion is untouched and still blocks.
+        failures = [f for f in failures if not f.startswith("SHA mismatch")]
+        failures += staleness_failures(
+            health.get("build_sha", ""), expected_sha,
+            max_lag_hours=max_lag_hours,
+        )
     flywheel = flywheel_warnings(health)
     if require_flywheel:
         # Operator opted in (post-corpus): a dead flywheel is now blocking.
@@ -281,6 +369,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Origin for auth-probe CORS stage.",
     )
     parser.add_argument(
+        "--max-lag-hours",
+        type=float,
+        default=0.0,
+        help="Scheduled-alarm mode. 0 (default) keeps the exact "
+             "build_sha == expected_sha contract, which is correct right "
+             "after a deploy. Above 0, prod may trail main as long as it is "
+             "an ANCESTOR of it and the oldest unshipped commit is younger "
+             "than this many hours; a fork/rollback still fails immediately.",
+    )
+    parser.add_argument(
         "--require-flywheel",
         action="store_true",
         help="Promote the flywheel-liveness check from informational to "
@@ -304,6 +402,7 @@ def main(argv: list[str] | None = None) -> int:
         auth_probe=args.auth_probe,
         auth_origin=args.auth_origin.strip(),
         require_flywheel=args.require_flywheel,
+        max_lag_hours=args.max_lag_hours,
     )
 
 

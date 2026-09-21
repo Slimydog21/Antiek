@@ -76,9 +76,16 @@ const DERIVED = {
 const IS_HEX = /^#[0-9a-fA-F]{3,8}$/;
 
 describe("token-parity guard (the CI command)", () => {
-  it("scripts/check_token_parity.ts exits 0 on the current tree", () => {
+  // The guard spawns `npx tsx` (cold TypeScript transform); on a busy
+  // machine the default 5s vitest timeout expires before the child
+  // process finishes. 30s covers the cold start with headroom.
+  it("scripts/check_token_parity.ts exits 0 on the current tree", { timeout: 30_000 }, () => {
     // Throws (and fails the test) if the guard exits non-zero.
-    const out = execFileSync("npx", ["tsx", GUARD], {
+    // Invoke the repo-local tsx binary directly: going through `npx` inside
+    // the vitest child environment can stall on resolution and blow any
+    // sane timeout, even though the guard itself runs in ~7s.
+    const tsx = join(APP, "node_modules", ".bin", "tsx");
+    const out = execFileSync(tsx, [GUARD], {
       cwd: APP,
       encoding: "utf8",
     });
@@ -193,7 +200,7 @@ describe("research-state token family (herdr transfer P0-1)", () => {
   it("state aliases point only at palette constants (never raw hex)", () => {
     const aliases = cssStateAliases(day);
     for (const target of aliases.values()) {
-      expect(target).toMatch(/^--(sun|emperor|aurora|shadow-)/);
+      expect(target).toMatch(/^--(sun|emperor|aurora|shadow-|success)/);
     }
   });
 });

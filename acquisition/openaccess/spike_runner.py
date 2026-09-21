@@ -115,15 +115,15 @@ def run() -> int:
     dj_in = dj_servable = dj_none = 0
     for doi in SAMPLE_DOIS:
         try:
-            art = doaj.confirm_by_doi(doi, throttle=throttle)
+            dj_art = doaj.confirm_by_doi(doi, throttle=throttle)
         except Exception as e:
             print(f"  doaj {doi}: {type(e).__name__}")
             continue
-        if art is None:
+        if dj_art is None:
             dj_none += 1
             continue
         dj_in += 1
-        if art.resolution.redistributable:
+        if dj_art.resolution.redistributable:
             dj_servable += 1
     print(
         f"DOAJ: in-doaj={dj_in}/{len(SAMPLE_DOIS)} servable-license={dj_servable}/{dj_in} "

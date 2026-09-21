@@ -52,6 +52,8 @@ import tempfile
 from dataclasses import dataclass
 from typing import Any
 
+from runtime.db_lock import connect_read
+
 DEFAULT_DB_PATH = "/Users/slimydog/.antiek/research_graph.duckdb"
 DEFAULT_SOURCE_TIER = 2
 DEFAULT_ROLE = "note_taker"
@@ -303,7 +305,6 @@ def run_loop(
     apply: bool,
 ) -> LoopResult:
     """Run the full thought-partner loop against ``db_path``."""
-    import duckdb
 
     from runtime.db_lock import connect_write
 
@@ -324,7 +325,7 @@ def run_loop(
         with connect_write(db_path, purpose="d4:license_source") as con:
             _license_source(con, source_doc)
 
-    read = duckdb.connect(db_path, read_only=True)
+    read = connect_read(db_path)
     try:
         chunk_id, chunk_text = _pick_substantive_chunk(read, source_doc)
         target = read.execute(
@@ -366,7 +367,7 @@ def run_loop(
 
     # Reuse step — the flywheel turning over the (now richer) graph.
     events_dir = tempfile.mkdtemp(prefix=f"d4_{investigation_id}_")
-    read = duckdb.connect(db_path, read_only=True)
+    read = connect_read(db_path)
     try:
         units_n, injected, reused = _reuse_step(
             read,

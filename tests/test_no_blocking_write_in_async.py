@@ -275,10 +275,19 @@ def test_known_false_negative_sync_closure_that_never_reaches_a_hop(tmp_path):
     assert scan_file(p) == []
 
 
-def test_known_false_negative_contextmanager_helper(tmp_path):
-    """A @contextmanager wrapper called from async code is invisible here.
+def test_same_module_contextmanager_helper_is_flagged(tmp_path):
+    """A @contextmanager wrapper called from async code IN THE SAME FILE.
 
-    Limitation 3 in the module docstring. Pinned for the same reason as above.
+    This used to assert ``scan_file(p) == []`` under the comment "really
+    blocks; not lexically visible" — the test conceded the violation was real
+    and pinned the blindness. The old docstring justified it with "only a call
+    graph would connect it to the async caller", which holds ACROSS modules and
+    not within one: when the wrapper and its caller are in the same file, the
+    AST being parsed already contains both.
+
+    The cost of leaving it open was 24 live instances in
+    interfaces/research/api/speak_routes.py, six of them on routes reachable
+    with no session, while this lint's baseline sat empty.
     """
     p = _write(tmp_path, """
         import contextlib
@@ -290,10 +299,53 @@ def test_known_false_negative_contextmanager_helper(tmp_path):
                 yield con
 
         async def handler(db):
-            with writer(db) as con:      # really blocks; not lexically visible
+            with writer(db) as con:      # really blocks — now visible
+                con.execute("INSERT INTO t VALUES (1)")
+    """)
+    violations = scan_file(p)
+    assert len(violations) == 1, f"expected the one-hop wrapper to be flagged: {violations}"
+    assert violations[0].func == "handler"
+
+
+def test_cross_module_wrapper_is_still_a_known_false_negative(tmp_path):
+    """The one-hop rule is SAME-MODULE only, and stays that way deliberately.
+
+    A wrapper imported from another file still needs whole-program analysis.
+    Pinned so the boundary is explicit rather than incidental — if someone
+    later widens the rule, this test should be the thing that makes them say so.
+    """
+    p = _write(tmp_path, """
+        from helpers import writer
+
+        async def handler(db):
+            with writer(db) as con:
                 con.execute("INSERT INTO t VALUES (1)")
     """)
     assert scan_file(p) == []
+
+
+def test_one_hop_does_not_follow_a_wrapper_of_a_wrapper(tmp_path):
+    """Exactly one hop. Each extra hop widens the false-positive blast radius,
+    and one is what the observed shape needed."""
+    p = _write(tmp_path, """
+        import contextlib
+        from runtime.db_lock import connect_write
+
+        @contextlib.contextmanager
+        def inner(db):
+            with connect_write(db) as con:
+                yield con
+
+        @contextlib.contextmanager
+        def outer(db):
+            with inner(db) as con:
+                yield con
+
+        async def handler(db):
+            with outer(db) as con:
+                con.execute("INSERT INTO t VALUES (1)")
+    """)
+    assert scan_file(p) == [], "the rule is one hop; outer() must not be derived"
 
 
 def test_scan_paths_recurses_into_subpackages(tmp_path):

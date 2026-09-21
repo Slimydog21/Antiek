@@ -21,6 +21,7 @@ Two-way bridge:
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from .rollover import RolloverEntry, RolloverLedger, RolloverState
@@ -28,7 +29,7 @@ from .rollover import RolloverEntry, RolloverLedger, RolloverState
 
 def ensure_table(con: Any) -> None:
     """Defensive table create. Canonical schema in V6 chunk."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS rollover_ledger (
@@ -44,8 +45,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def load_ledger(con: Any) -> RolloverLedger:
@@ -81,7 +80,7 @@ def persist_ledger(con: Any, ledger: RolloverLedger) -> None:
     """Flush every entry in the in-memory ledger back to the
     persistent table. Idempotent — UPSERTs by recipient_ref."""
     ensure_table(con)
-    for recipient_ref, entry in ledger.entries.items():
+    for _recipient_ref, entry in ledger.entries.items():
         persist_entry(con, entry)
 
 

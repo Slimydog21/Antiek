@@ -42,8 +42,8 @@ export default function WernerCaughtAFish({
       >
         <g className="werner-fish-flipper" transform="translate(12 -4) scale(0.55)">
           <path d="M44 32 Q52 22 50 16 Q48 18 47 22 Q45 26 44 32 Z" fill="var(--werner-coat)" />
-          <ellipse cx="51" cy="14" rx="5" ry="2.6" fill="#16C2C2" />
-          <path d="M55 14 L58 12 L58 16 Z" fill="#16C2C2" />
+          <ellipse cx="51" cy="14" rx="5" ry="2.6" fill="var(--aurora)" />
+          <path d="M55 14 L58 12 L58 16 Z" fill="var(--aurora)" />
           <circle cx="49" cy="13.5" r="0.6" fill="#EEF1F6" />
         </g>
         <g className="werner-fish-sparkle" transform="translate(22 -6) scale(0.45)">

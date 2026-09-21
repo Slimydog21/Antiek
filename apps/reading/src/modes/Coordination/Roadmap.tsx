@@ -74,7 +74,7 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
       {/* Reconciliation banner — the count, summed out loud (rigor #1). */}
       <LemonCard colour="glacial" elevation="z1">
         <div className="p-4 space-y-1">
-          <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+          <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
             Reconciled sprint count
           </p>
           <p className="text-sm font-mono text-ink dark:text-bright">
@@ -85,7 +85,7 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
 
       {/* DRW critical path — the load-bearing spine, explicit. */}
       <div className="space-y-2">
-        <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
           DRW critical path
         </p>
         <div className="flex items-center gap-2 flex-wrap">
@@ -215,7 +215,7 @@ function SubstrateLayerSection({ layers }: { layers: SubstrateLayerView[] }) {
   if (layers.length === 0) return null;
   return (
     <div className="space-y-2">
-      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+      <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
         Substrate-execution layer (the foundation beneath the four workflows)
       </p>
       <LemonCard elevation="z1">

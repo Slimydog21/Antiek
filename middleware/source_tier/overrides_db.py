@@ -33,10 +33,7 @@ def record_chunk_tier_override(
 
     ``set_at`` defaults to ``now(UTC)``; pass a fixed value for
     backtest replay scenarios where timing matters."""
-    try:
-        from ...runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
-    except ImportError:
-        from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
     if not isinstance(con, LockedConnection):
         raise TypeError(
             "record_chunk_tier_override requires a LockedConnection."

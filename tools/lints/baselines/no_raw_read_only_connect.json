@@ -1,0 +1,6 @@
+{
+  "generated_at": "2026-09-20T18:10:04.140411+00:00",
+  "lint": "no_raw_read_only_connect",
+  "schema_version": 1,
+  "violations": []
+}

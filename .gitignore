@@ -86,4 +86,5 @@ docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/
 
 # hardenx scratch output (triage layer; never source)
 .harden/
+.venv314/
 .antiek-home/

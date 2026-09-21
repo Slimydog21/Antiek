@@ -31,11 +31,11 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from .aggregate import DEFAULT_BOOTSTRAP_RESAMPLES, aggregate_comparison
-from .harness import ArmResult, ColdSeed, IrrelevantSeed, WarmSeed, run_arm
+from .harness import ArmResult, ArmSeed, ColdSeed, IrrelevantSeed, WarmSeed, run_arm
 from .measure import CostToResolve
 from .pilot import propose_parameters, run_pilot
 from .profiles import BenchmarkProfile, load_profile
-from .question_set import QUESTION_SET_PATH, QuestionSet, load_question_set
+from .question_set import QUESTION_SET_PATH, BenchmarkQuestion, QuestionSet, load_question_set
 from .result_schema import ArmComparison, BenchmarkResult
 from .validity import HEADLINE_METRIC, decide
 
@@ -85,8 +85,8 @@ def _now_iso() -> str:
 
 
 def _run_cell(
-    questions: Sequence,
-    arm_seed,
+    questions: Sequence[BenchmarkQuestion],
+    arm_seed: ArmSeed,
     *,
     events_dir: str,
     graphs_dir: str,
@@ -146,7 +146,12 @@ def run_benchmark(
     warm = _run_cell(all_qs, WarmSeed(), events_dir=events_dir, graphs_dir=graphs_dir, n=n)
     irrelevant = _run_cell(all_qs, IrrelevantSeed(), events_dir=events_dir, graphs_dir=graphs_dir, n=n)
 
-    def compare(label, exp_qids, base_cell, exp_cell) -> ArmComparison:
+    def compare(
+        label: str,
+        exp_qids: Sequence[str],
+        base_cell: dict[str, list[CostToResolve]],
+        exp_cell: dict[str, list[CostToResolve]],
+    ) -> ArmComparison:
         return aggregate_comparison(
             label,
             _pool(exp_cell, exp_qids),
@@ -330,9 +335,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"  frozen_sha = {result.frozen_sha}")
     print(f"  n          = {result.n}  mock_run = {result.mock_run}")
     print(f"  validity   = {result.validity}")
-    print(f"  verdict    = {result.headline.metric(HEADLINE_METRIC).delta:+.6g} "
-          f"[{result.headline.metric(HEADLINE_METRIC).ci_low:+.6g}, "
-          f"{result.headline.metric(HEADLINE_METRIC).ci_high:+.6g}] {HEADLINE_METRIC}")
+    token = result.headline.metric(HEADLINE_METRIC)
+    verdict = (
+        f"{token.delta:+.6g} [{token.ci_low:+.6g}, {token.ci_high:+.6g}]"
+        if token is not None
+        else f"no {HEADLINE_METRIC} metric"
+    )
+    print(f"  verdict    = {verdict} {HEADLINE_METRIC}")
     print(f"  interpretation = {result.headline_interpretation}")
     return 0
 

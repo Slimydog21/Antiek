@@ -63,6 +63,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from collections.abc import Iterable
@@ -187,6 +188,73 @@ def ruff_violation_to_key(v: object) -> ViolationKey:
     return ViolationKey(path=v.path, line=v.line, col=v.col, kind=f"ruff:{v.code}")
 
 
+_CONSTRAINTS = Path(__file__).resolve().parent / "constraints.txt"
+
+
+def _pinned_version(tool: str) -> str:
+    """The version of ``tool`` that the committed baselines were captured
+    against, read from ``tools/lints/constraints.txt``.
+
+    Raises RuntimeError when the pin cannot be read. That is deliberate: a
+    baseline is only meaningful relative to a known tool version, so "I could
+    not determine the pin" must stop the gate rather than let it render a
+    verdict it cannot stand behind.
+    """
+    try:
+        text = _CONSTRAINTS.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(
+            f"cannot read the version pins at {_CONSTRAINTS}: {exc}. "
+            f"The baselines are only valid against the pinned tool versions."
+        ) from exc
+    for line in text.splitlines():
+        entry = line.strip()
+        if entry.startswith(f"{tool}=="):
+            return entry.split("==", 1)[1].strip()
+    raise RuntimeError(
+        f"no `{tool}==` pin found in {_CONSTRAINTS}. The baselines are only "
+        f"valid against the pinned tool versions."
+    )
+
+
+def _assert_pinned_version(binary: str, tool: str) -> None:
+    """Fail loudly when ``binary`` is not the pinned version of ``tool``.
+
+    tools/lints/baselines/* are line-and-code keyed against the EXACT tool
+    version recorded in constraints.txt. A different version silently changes
+    the finding set -- a newer parser understands syntax an older one reports
+    as `syntax`, rules are added, renamed and removed -- so the subtraction
+    against the baseline stops meaning anything and the gate reports a
+    confident wrong answer.
+
+    Observed 2026-09-20: `mypy` resolved from PATH to an unrelated 1.19.1 on a
+    developer machine while the pin is 2.1.0. 1.19.1 cannot parse PEP 695
+    (`def f[T](...)`), so it emitted `syntax` at the first generic function and
+    the gate reported that as a NEW violation. Nothing was wrong with the code.
+    """
+    expected = _pinned_version(tool)
+    try:
+        proc = subprocess.run(
+            [binary, "--version"], capture_output=True, text=True, check=False
+        )
+    except (OSError, FileNotFoundError):
+        # The caller's own invocation raises a better-targeted RuntimeError
+        # for a missing binary; do not pre-empt it with a worse message.
+        return
+    out = ((proc.stdout or "") + " " + (proc.stderr or "")).strip()
+    match = re.search(r"(\d+\.\d+(?:\.\d+)?)", out)
+    found = match.group(1) if match else out[:60] or "<unknown>"
+    if found != expected:
+        raise RuntimeError(
+            f"{tool} version mismatch: {binary!r} is {found}, but the "
+            f"committed baselines were captured against {tool}=={expected} "
+            f"(tools/lints/constraints.txt). A different version changes the "
+            f"finding set, so the baseline subtraction is meaningless. "
+            f"Install the pin:  pip install -c tools/lints/constraints.txt "
+            f"{tool}=={expected}"
+        )
+
+
 def run_ruff(
     ruff_bin: str = "ruff",
     cwd: Path | None = None,
@@ -195,6 +263,7 @@ def run_ruff(
     no ``--exclude`` argument: ruff discovers files via its own
     pyproject config) and return parsed findings. Raises RuntimeError
     only if ruff can't be invoked (binary missing)."""
+    _assert_pinned_version(ruff_bin, "ruff")
     argv = [ruff_bin, "check", "--output-format=json", "--no-fix"]
     try:
         proc = subprocess.run(
@@ -218,6 +287,7 @@ def run_mypy(
     package targets, not ``--strict`` re-declared on the CLI, so the
     pyproject contract is the single source of truth. Raises
     RuntimeError only if mypy can't be invoked."""
+    _assert_pinned_version(mypy_bin, "mypy")
     argv = [mypy_bin, *targets]
     try:
         proc = subprocess.run(

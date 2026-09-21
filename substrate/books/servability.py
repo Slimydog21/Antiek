@@ -34,7 +34,7 @@ servable is precisely the enjoined Internet-Archive pattern. We refuse it.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from substrate.constants import (
     BOOK_DEFAULT_SERVABILITY,
@@ -43,7 +43,7 @@ from substrate.constants import (
 )
 
 
-class ServabilityStatus(str, Enum):
+class ServabilityStatus(StrEnum):
     """The presentation vocabulary the library + reader render. Derived
     from ``(content_class, taken_down)`` by :func:`servability_of`; never
     stored as an authoritative column. ``str``-valued so it serializes

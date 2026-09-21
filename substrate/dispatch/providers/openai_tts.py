@@ -19,10 +19,10 @@ from typing import Any
 # A poster turns (url, headers, json_body) into the raw audio bytes the
 # API returns. Injected so tests synthesize without a network call or a
 # real key burn; production uses the httpx default below.
-SpeechPoster = Callable[[str, dict, dict], bytes]
+SpeechPoster = Callable[[str, dict[str, Any], dict[str, Any]], bytes]
 
 
-def _httpx_poster(url: str, headers: dict, json_body: dict) -> bytes:
+def _httpx_poster(url: str, headers: dict[str, str], json_body: dict[str, Any]) -> bytes:
     import httpx
 
     resp = httpx.post(url, headers=headers, json=json_body, timeout=60.0)

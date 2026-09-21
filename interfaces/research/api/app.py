@@ -125,6 +125,13 @@ class HealthResponse(BaseModel):
     registered_providers: list[str] = Field(default_factory=list)
     # DRW honest-failure: True when at least one dispatch provider registered.
     providers_ready: bool = False
+    # Which gather backend the DRW cascade would build: "stub" (no real
+    # retrieval), "exa" (live Exa Wedge-1), "contained" (execution backend),
+    # or "conflict" (mutually exclusive flags — _gather_loop raises). Prod
+    # had no outside signal for this: ansible renders ANTIEK_DRW_GATHER
+    # EMPTY, which resolves to the stub, so a deploy could do no retrieval
+    # while the smoke runbook read green.
+    drw_gather_mode: str = "unknown"
     # SPR-07 (antiek-foundation-v2): the commit SHA the running process was
     # built from, so the prod-parity check (tools/prod_parity/check.py) can
     # assert deployed-SHA == main-SHA. Sourced (in order) from the
@@ -161,8 +168,11 @@ class HealthResponse(BaseModel):
     turbopuffer_resolved_kind: str = "brute_force"
     turbopuffer_indexed_row_count: int | None = None
     turbopuffer_content_hash: str | None = None
-    turbopuffer_duckdb_is_sot: bool = True
-    turbopuffer_thought_partner_hybrid_wired: bool = True
+    # bool | None, not bool: None means the probe could not determine it.
+    # These were `bool = True`, so a FAILED probe still reported both as
+    # satisfied — two claims asserted exactly when nothing had checked them.
+    turbopuffer_duckdb_is_sot: bool | None = None
+    turbopuffer_thought_partner_hybrid_wired: bool | None = None
     turbopuffer_production_default_mount: bool = False
     # GF-7: startup read-only health snapshot for the graph DuckDB file.
     # This is intentionally separate from ``status`` so /health can keep
@@ -289,8 +299,10 @@ def _probe_turbopuffer() -> dict[str, Any]:
             "resolved_kind": "brute_force",
             "indexed_row_count": None,
             "content_hash": None,
-            "duckdb_is_sot": True,
-            "thought_partner_hybrid_wired": True,
+            # Probe unavailable → unknown, not "yes". See the same reasoning
+            # in substrate/graph/retrieval_adapters/turbopuffer.py.
+            "duckdb_is_sot": None,
+            "thought_partner_hybrid_wired": None,
             "production_default_mount": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
@@ -353,6 +365,12 @@ class InvestigationStartRequest(BaseModel):
     # window closes (Sprint 20 verdict landed), the operator may restore a
     # "deep" default if deep-synthesizer routing is then desired.
     research_tier: Literal["fast", "deep"] | None = None
+    # Metadata-only source-pack intent from the research entry. Recording this
+    # does not launch retrieval or connector calls; runner/source-pack execution
+    # must still be explicitly wired through the approved research path.
+    source_policy: list[
+        Literal["arxiv", "substack", "web", "operator_corpus"]
+    ] = Field(default_factory=list)
     # Parsed manually: validation errors must never reflect provider/model values.
     model_choice: object | None = None
     operation_id: object | None = None
@@ -446,7 +464,9 @@ class IngestSourceRequest(BaseModel):
     when adding evidence to a specific run."""
 
     url: str = Field(..., min_length=8)
-    kind: Literal["arxiv", "youtube", "podcast", "twitter", "url", "inbox"] | None = None
+    kind: Literal[
+        "arxiv", "youtube", "podcast", "twitter", "substack", "url", "inbox"
+    ] | None = None
     investigation_id: str = Field(default="__operator__", min_length=1)
     source_tier: int | None = Field(default=None, ge=1, le=5)
     max_episodes: int = Field(default=10, ge=1, le=50)  # podcast feeds only
@@ -543,6 +563,9 @@ class InvestigationStatusResponse(BaseModel):
     # the start event has no tier (legacy / daemon-spawned runs predate
     # the field); the surface treats null as the default, never fabricates.
     research_tier: str | None = None
+    # Source-pack intent recorded on the start event. Empty for legacy runs
+    # and for requests that did not choose a source pack; never recomputed.
+    source_policy: list[str] = Field(default_factory=list)
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -884,6 +907,8 @@ def _detect_source_kind(
         return "youtube"
     if "twitter.com" in u or "x.com" in u or "://t.co" in u:
         return "twitter"
+    if "substack.com" in u:
+        return "substack"
     # Podcast feeds: heuristic — RSS-ish URL OR explicit feed-like path.
     # The dashboard convention "podcasts.<host>/feed" + ".rss"
     # extensions cover most.
@@ -1407,6 +1432,26 @@ class AttributionComputeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class PublisherClaimRequest(BaseModel):
+    """Body of ``POST /publishers/{ip_holder_id}/claim``.
+
+    Module level, NOT nested inside ``create_app``. This module sets
+    ``from __future__ import annotations`` (line 29), so every annotation is a
+    string that Pydantic resolves against MODULE globals when it builds the
+    request-body TypeAdapter. A class defined in the factory's local scope is
+    not in those globals, so the reference never resolves and
+    ``app.openapi()`` raises PydanticUserError -- taking the whole schema
+    down, not just this route.
+
+    The 32 sibling models that stay local are fine because they are only ever
+    passed as ``response_model=X``, which hands Pydantic the class OBJECT
+    rather than a name to look up. Only a PARAMETER annotation goes through
+    string resolution, and this was the only one.
+    """
+
+    stripe_connect_account_id: str | None = None
+
+
 def create_app(
     *,
     broadcaster: EventBroadcaster | None = None,
@@ -1829,6 +1874,11 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    # Midnight-oil SPR-06 — no-spend preflight for autonomous research swarms:
+    # time box, approved ceiling, route policy, source policy, and HTML/twin-note
+    # artifact obligations. Does not launch agents or reserve budget.
+    from .midnight_oil_routes import register_midnight_oil_routes
+    register_midnight_oil_routes(app)
     # OYM P1 §5 — visible tiers (write half): user-settable chunk tier
     # overrides (POST /settings/tier-overrides) + per-chunk override
     # history (GET /settings/tier-overrides?chunk_id=...).
@@ -2050,6 +2100,10 @@ def create_app(
 
     # ── Health ──────────────────────────────────────────────────
 
+    from interfaces.research.api.cascade_routes import (
+        resolved_gather_mode as _resolved_gather_mode,
+    )
+
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         # Deferred flywheel probe (see create_app): never block /health on the
@@ -2094,6 +2148,7 @@ def create_app(
 
         route_ready_providers = route_ready_provider_ids(registered_providers)
         return HealthResponse(
+            drw_gather_mode=_resolved_gather_mode(),
             status="ok",
             param_version=ANTIEK_PARAM_VERSION,
             schema_version=EVENT_SCHEMA_VERSION,
@@ -2148,14 +2203,17 @@ def create_app(
                     "content_hash"
                 )
             ),
-            turbopuffer_duckdb_is_sot=bool(
+            # No bool() and no True default: both would launder "unknown"
+            # into a definite answer. A missing key means the probe never ran,
+            # which is exactly as unknown as a probe that raised.
+            turbopuffer_duckdb_is_sot=(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "duckdb_is_sot", True
+                    "duckdb_is_sot"
                 )
             ),
-            turbopuffer_thought_partner_hybrid_wired=bool(
+            turbopuffer_thought_partner_hybrid_wired=(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "thought_partner_hybrid_wired", True
+                    "thought_partner_hybrid_wired"
                 )
             ),
             turbopuffer_production_default_mount=bool(
@@ -2594,6 +2652,8 @@ def create_app(
                     # start event (queryable after the fact). The payload
                     # field is the same CLOSED set.
                     research_tier=req.research_tier,
+
+                    source_policy=req.source_policy,
                     owner_user_id=owner_user_id,
                     owner_operation_id=operation_id,
                     owner_model_choices=parsed_choices,
@@ -2746,6 +2806,7 @@ def create_app(
         # (legacy/daemon runs predate the field) — never fabricated.
         start_action = ActionType.INVESTIGATION_START_REQUESTED.value
         research_tier: str | None = None
+        source_policy: list[str] = []
         for r in rows:
             if r.get("action_type") == start_action:
                 payload = r.get("payload")
@@ -2753,6 +2814,9 @@ def create_app(
                     rt = payload.get("research_tier")
                     if isinstance(rt, str):
                         research_tier = rt
+                    sp = payload.get("source_policy")
+                    if isinstance(sp, list):
+                        source_policy = [x for x in sp if isinstance(x, str)]
                 break
 
         if terminal_row is not None:
@@ -2769,6 +2833,7 @@ def create_app(
                 terminal_payload=terminal_row.get("payload"),
                 rubric_score=rubric_score,
                 research_tier=research_tier,
+                source_policy=source_policy,
             )
 
         return InvestigationStatusResponse(
@@ -2779,6 +2844,7 @@ def create_app(
             terminal_payload=None,
             rubric_score=rubric_score,
             research_tier=research_tier,
+            source_policy=source_policy,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────
@@ -3010,12 +3076,25 @@ def create_app(
         it."""
         import duckdb as _duckdb
 
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
         from substrate.graph.retrieval_gate import is_chunk_body_withheld
 
         db_path = default_db_path()
         try:
-            con = _duckdb.connect(db_path, read_only=True)
+            # connect_read, not raw duckdb.connect(read_only=True).
+            # db_lock.py:921 says so in as many words, and the reason is not
+            # style: DuckDB REFUSES a read-only handle when this process
+            # already holds the same file read-write, which under
+            # `--workers 1` is the normal state. The raw call raises
+            # ConnectionException — NOT the IOException caught below — so it
+            # escaped as a 500. connect_read catches that exact conflict and
+            # falls back to a read-oriented read-write handle.
+            #
+            # Found by running tools/reachability/probes/usability_keystone.py,
+            # a five-leg journey probe that exists in the tree and that no
+            # workflow runs. Every per-brick test passed; the journey did not.
+            con = connect_read(db_path)
         except _duckdb.IOException as exc:
             raise HTTPException(
                 status_code=503,
@@ -3182,6 +3261,37 @@ def create_app(
                     episodes_processed=len(results),
                     episodes_ingested=ingested,
                 )
+            if detected == "substack":
+                from acquisition.substack import ingest_publication_feed
+
+                feed_url = req.url.rstrip("/")
+                if "/feed" not in feed_url.lower():
+                    feed_url = f"{feed_url}/feed"
+                substack_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id,
+                    "max_posts": req.max_episodes,
+                }
+                if req.source_tier is not None:
+                    substack_kwargs["source_tier"] = req.source_tier
+                summary = ingest_publication_feed(feed_url, **substack_kwargs)
+                chunks_written = sum(r.chunks_written for r in summary.results)
+                first_result = next(
+                    (r for r in summary.results if r.status == "ingested"),
+                    summary.results[0] if summary.results else None,
+                )
+                return IngestSourceResponse(
+                    status="ingested" if summary.ingested > 0 else "skipped",
+                    detected_kind="substack",
+                    document_id=first_result.document_id if first_result else None,
+                    document_loaded_event_id=(
+                        first_result.document_loaded_event_id if first_result else None
+                    ),
+                    chunks_written=chunks_written,
+                    skipped_reason=None if summary.ingested > 0 else "no_public_posts_ingested",
+                    title=summary.publication_title,
+                    episodes_processed=len(summary.results),
+                    episodes_ingested=summary.ingested,
+                )
             if detected == "twitter":
                 # The URL alone is insufficient for X — the auth wall
                 # blocks direct fetch. Tell the operator to use the
@@ -3294,9 +3404,10 @@ def create_app(
 
     @app.get("/deliverables", response_model=DeliverableListResponse)
     async def list_deliverables(limit: int = 50) -> DeliverableListResponse:
-        import duckdb
+
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT d.deliverable_id, d.title, d.deliverable_kind, "
@@ -3325,9 +3436,9 @@ def create_app(
     async def get_deliverable(deliverable_id: str) -> DeliverableDetailResponse:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             head = con.execute(
                 "SELECT deliverable_id, title, deliverable_kind, status, "
@@ -3436,17 +3547,17 @@ def create_app(
         q: str = Query(default="", max_length=200),
         limit: int = Query(default=20, ge=1, le=100),
     ) -> BlockSearchResponse:
+        from runtime.db_lock import connect_read
         """Search the operator's graph for insight/claim/note blocks to
         drag into a deliverable section. Mode C palette uses this.
 
         Sprint 14 implementation: ILIKE over nodes.canonical_label +
         metadata. Sprint 15 swaps in cosine search via the embedding
         column so semantic matches surface."""
-        import duckdb
 
         db = _resolve_db_path()
         like = f"%{q}%" if q.strip() else "%"
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT n.node_id, n.canonical_label, n.node_type, "
@@ -3690,6 +3801,7 @@ def create_app(
         deliverable_id: str,
         format: str = Query(default="markdown"),
     ) -> ExportFormat:
+        from runtime.db_lock import connect_read
         """Export a deliverable as Markdown, HTML, or a structured JSON
         bundle. Returns the content inline (the caller can save it via
         the Blob API in the browser). The substrate keeps no
@@ -3706,13 +3818,11 @@ def create_app(
             )
         import json as _json
 
-        import duckdb
-
         from substrate.write.deliverable_sources import (
             resolve_deliverable_sources,
         )
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             head = con.execute(
                 "SELECT title, deliverable_kind FROM deliverables "
@@ -4256,9 +4366,9 @@ def create_app(
     async def list_interview_projects() -> list[InterviewProjectSummary]:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT p.project_id, p.title, p.topic_description, "
@@ -4296,11 +4406,11 @@ def create_app(
     async def list_interviews_for_project(
         project_id: str,
     ) -> list[InterviewSummary]:
+        from runtime.db_lock import connect_read
         """All interviews invited under one project, oldest first."""
-        import duckdb
 
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT i.interview_id, i.project_id, i.informant_handle, "
@@ -4381,9 +4491,9 @@ def create_app(
     async def get_interview(interview_id: str) -> InterviewDetailResponse:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             row = con.execute(
                 "SELECT i.interview_id, i.project_id, i.status, "
@@ -4542,11 +4652,66 @@ def create_app(
 
     # ── WebSocket live tail ─────────────────────────────────────
 
+    def _ws_client_is_authorised(ws: WebSocket) -> bool:
+        """Apply the operator gate to a WebSocket handshake.
+
+        ``_operator_auth_middleware`` is installed with
+        ``@app.middleware("http")``, i.e. Starlette ``BaseHTTPMiddleware``,
+        whose ``__call__`` begins ``if scope["type"] != "http": await
+        self.app(...); return``. A WebSocket scope is therefore never seen by
+        it — and for the same reason never seen by ``CORSMiddleware``, so the
+        ``Origin`` header is not validated either. ``/ws/events`` called
+        ``ws.accept()`` unconditionally, which on 2026-09-20 answered a
+        credential-free handshake from an arbitrary Origin with
+        ``101 Switching Protocols`` in production and streamed the owner's
+        live typed-event bus (investigation_id, document_id, question_text)
+        to it.
+
+        The check below is the middleware's cookie path, verbatim in effect:
+        same enforcement-disabled escape, same ``ANTIEK_AUTH_SECRET`` gate,
+        same ``verify_session_cookie`` + allowlist comparison.
+
+        Cookies are the right credential here because a browser cannot set
+        headers on ``new WebSocket()``. The session cookie is issued with
+        ``Domain=.antiek.ai`` and ``SameSite=Lax``, so a handshake from
+        ``antiek.ai`` to ``api.antiek.ai`` is SAME-site and carries it, while
+        a page on any other registrable domain is cross-site and does not —
+        which is precisely the boundary we want.
+        """
+        expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
+        operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
+        expected_st_client_id = os.environ.get(
+            _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
+        ).strip().lower()
+        if not expected_token and not operator_emails and not expected_st_client_id:
+            # Enforcement disabled — local dev and the existing tests, which
+            # connect to this socket with no credentials, work unchanged.
+            return True
+        if not os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
+            return False
+        session_value = ws.cookies.get(_SESSION_COOKIE_NAME, "")
+        if not session_value:
+            return False
+        try:
+            from substrate.auth import verify_session_cookie
+            claims = verify_session_cookie(session_value)
+        except Exception:  # noqa: BLE001 — invalid cookie is simply unauthorised
+            return False
+        if claims is None:
+            return False
+        cookie_email = claims.email.strip().lower()
+        return not operator_emails or cookie_email in operator_emails
+
     @app.websocket("/ws/events")
     async def ws_events(
         ws: WebSocket,
         investigation_id: str | None = Query(default=None),
     ) -> None:
+        if not _ws_client_is_authorised(ws):
+            # Close BEFORE accept: an unauthenticated peer must never reach
+            # the event bus, and never sees 101.
+            await ws.close(code=1008)
+            return
         await ws.accept()
         sub = await bus.subscribe(ws, investigation_id=investigation_id)
         try:
@@ -4880,9 +5045,6 @@ def create_app(
         if h is None:
             raise HTTPException(status_code=404, detail="publisher not found")
         return _holder_to_response(h)
-
-    class PublisherClaimRequest(BaseModel):
-        stripe_connect_account_id: str | None = None
 
     @app.post("/publishers/{ip_holder_id}/claim", response_model=PublisherResponse)
     async def claim_publisher(
@@ -5292,27 +5454,39 @@ def create_app(
                             "existing_block_count": existing_block_count,
                         },
                     )
-                # Atomic replace: drop all existing blocks, then re-insert
-                # in order. Both operations sit inside the single
-                # connect_write lock so a concurrent read never sees a
-                # partial state.
-                con.execute(
-                    "DELETE FROM notebook_blocks WHERE notebook_id = ?",
-                    [notebook_id],
-                )
-                for block in decomposed:
-                    append_block(
-                        con,
-                        notebook_id=notebook_id,
-                        block_type=block.block_type,
-                        ref_id=block.ref_id,
-                        content=block.content_json,
+                # Atomic replace: drop all existing blocks, then re-insert in
+                # order, then stamp the notebook — all or nothing.
+                #
+                # The write lock alone does NOT make this atomic, and the
+                # previous comment here claimed it did. DuckDB autocommits
+                # every statement, so a failure part-way through the re-insert
+                # loop left the DELETE durable and destroyed the operator's
+                # notes; `append_block` raises on an unknown block_type and a
+                # SQL CHECK backs it, so that failure is reachable from a
+                # decomposer emitting a node type the schema rejects.
+                # Fault-injected on origin/main, a 3-block notebook lost 2 of 3.
+                #
+                # SPR-01 closed the empty-doc TRIGGER of this loss. This closes
+                # the class: mutual exclusion is not atomicity, and only the
+                # transaction supplies the second.
+                with con.transaction():
+                    con.execute(
+                        "DELETE FROM notebook_blocks WHERE notebook_id = ?",
+                        [notebook_id],
                     )
-                con.execute(
-                    "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
-                    "WHERE notebook_id = ?",
-                    [notebook_id],
-                )
+                    for block in decomposed:
+                        append_block(
+                            con,
+                            notebook_id=notebook_id,
+                            block_type=block.block_type,
+                            ref_id=block.ref_id,
+                            content=block.content_json,
+                        )
+                    con.execute(
+                        "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
+                        "WHERE notebook_id = ?",
+                        [notebook_id],
+                    )
                 return get_notebook(con, notebook_id)
 
         # flock wait off the uvicorn loop (#3111 to_thread class).
@@ -5662,7 +5836,7 @@ def create_app(
         response_model=BillingSummaryResponse,
     )
     async def billing_summary(
-        user_id: str, period: str,
+        user_id: str, period: str, request: Request,
     ) -> BillingSummaryResponse:
         """Per-user-month billing summary. Period format: YYYY-MM.
 
@@ -5671,6 +5845,27 @@ def create_app(
         wires this against a persisted dispatch.call event index.
         For Sprint 19 the substrate computes from event log on
         demand (slow but correct)."""
+        # `user_id` is a PATH parameter and was used unchecked: any
+        # authenticated caller could read any other user's spend by editing
+        # the URL. The operator allowlist is comma-separated
+        # (operator_allowlist_from_env), so more than one identity
+        # authenticating is a supported configuration, and each gets a
+        # distinct request.state.user_id — which makes this a live IDOR in
+        # that configuration rather than a theoretical one.
+        #
+        # `me` resolves to the caller, so a client never needs to know or
+        # transmit its own id. The operator keeps cross-user read: the
+        # billing dashboard and AISidecar are operator surfaces. When auth is
+        # disabled the caller IS `__operator__` (the same fallback the rest of
+        # the API uses), so local dev and the existing tests are unchanged.
+        caller = str(getattr(request.state, "user_id", None) or "__operator__")
+        if user_id == "me":
+            user_id = caller
+        elif user_id != caller and caller != "__operator__":
+            raise HTTPException(
+                status_code=403,
+                detail="billing summary is scoped to the authenticated user",
+            )
         from substrate.billing.aggregator import aggregate_period
         from tools.stripe_connect.pricing import FREE_TIER_MONTHLY_TOKEN_CAP
 
