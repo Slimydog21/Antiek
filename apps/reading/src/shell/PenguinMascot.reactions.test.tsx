@@ -109,14 +109,14 @@ describe("PenguinMascot product reactions", () => {
         <PenguinMascot />
       </MemoryRouter>,
     );
-    const mascot = screen.getByTestId("penguin-mascot");
-    expect(mascot.getAttribute("data-werner-emote")).toBe("none");
+    const mascot = screen.getByTestId("brain-mascot");
+    expect(mascot.getAttribute("data-mascot-emote")).toBe("none");
 
     act(() => emitWernerExperience("highlight"));
-    expect(mascot.getAttribute("data-werner-emote")).toBe("curious");
+    expect(mascot.getAttribute("data-mascot-emote")).toBe("curious");
 
     act(() => emitWernerExperience("deep_research_complete"));
-    expect(mascot.getAttribute("data-werner-emote")).toBe("happy");
+    expect(mascot.getAttribute("data-mascot-emote")).toBe("happy");
   });
 
   it("removes the shared reaction listener on unmount", () => {
