@@ -5,7 +5,7 @@
 .style-wheel__fork-toggle,.style-wheel__receipt button { border:0; background:transparent; color:var(--wheel-green); font-size:.75rem; font-weight:650; text-decoration:underline; text-underline-offset:3px; }
 .style-wheel button:focus-visible,.style-wheel input:focus-visible,.style-wheel textarea:focus-visible { outline:2px solid var(--wheel-green); outline-offset:2px; }
 .style-wheel__rail { display:flex; gap:.65rem; margin:.9rem -.25rem .75rem; padding:.2rem .25rem .55rem; overflow-x:auto; scroll-snap-type:x mandatory; overscroll-behavior-inline:contain; scrollbar-width:thin; mask-image:linear-gradient(90deg,transparent,black 1.25rem,black calc(100% - 1.25rem),transparent); }
-.style-wheel__option { flex:0 0 9.5rem; min-height:5.25rem; padding:.65rem; border:1px solid var(--rule); border-radius:.45rem; background:var(--card); color:var(--wheel-ink); box-shadow:0 3px 0 var(--rule); scroll-snap-align:center; text-align:left; transition:transform 160ms ease,box-shadow 160ms ease; }
+.style-wheel__option { flex:0 0 9.5rem; min-height:5.25rem; padding:.65rem; border:1px solid var(--rule); border-radius:.45rem; background:var(--card); color:var(--wheel-ink); box-shadow:0 3px 0 var(--rule); scroll-snap-align:center; text-align:left; transition:transform var(--motion-base) var(--ease-standard),box-shadow var(--motion-base) var(--ease-standard); }
 .style-wheel__option:hover { transform:translateY(-1px); box-shadow:0 4px 0 var(--rule); }
 .style-wheel__option[aria-selected="true"] { border-color:var(--wheel-green); box-shadow:0 3px 0 var(--wheel-green); }
 .style-wheel__option strong,.style-wheel__option span { display:block; }

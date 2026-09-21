@@ -30,7 +30,7 @@
 .antiek-login__lede { margin: 22px 0 30px; max-width: 430px; font: 450 15px/1.65 Inter, sans-serif; color: var(--text-muted); }
 .antiek-login__lede strong { color: var(--login-ink); font-weight: 700; overflow-wrap: anywhere; }
 
-.antiek-login__primary { width: 100%; min-height: 76px; display: grid; grid-template-columns: 42px 1fr 24px; align-items: center; gap: 14px; padding: 12px 18px; border: 2px solid var(--login-ink); border-radius: 6px; color: var(--login-ink); background: var(--sun); box-shadow: 5px 5px 0 var(--login-ink); text-align: left; cursor: pointer; transition: transform 90ms ease, box-shadow 90ms ease; }
+.antiek-login__primary { width: 100%; min-height: 76px; display: grid; grid-template-columns: 42px 1fr 24px; align-items: center; gap: 14px; padding: 12px 18px; border: 2px solid var(--login-ink); border-radius: 6px; color: var(--login-ink); background: var(--sun); box-shadow: 5px 5px 0 var(--login-ink); text-align: left; cursor: pointer; transition: transform var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard); }
 .antiek-login__primary:hover:not(:disabled) { transform: translate(-2px, -2px); box-shadow: 8px 8px 0 var(--login-ink); }
 .antiek-login__primary:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--login-ink); }
 .antiek-login__primary:focus-visible, .antiek-login__quiet:focus-visible, .antiek-login__passkey-alt__button:focus-visible, .antiek-login__footer a:focus-visible { outline: 3px solid var(--sun); outline-offset: 4px; }
@@ -146,7 +146,7 @@
 
 .antiek-login__passkey-alt { margin-top: 26px; border-top: 1px solid var(--divider); padding-top: 20px; display: grid; gap: 13px; }
 .antiek-login__passkey-alt__rule { justify-self: center; padding: 0 10px; font: 700 9px/1 Inter, sans-serif; letter-spacing: .16em; text-transform: uppercase; color: var(--text-muted); }
-.antiek-login__passkey-alt__button { width: 100%; min-height: 62px; display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 12px; padding: 10px 16px; border: 2px solid var(--login-ink); border-radius: 6px; background: transparent; color: var(--login-ink); text-align: left; cursor: pointer; transition: background 90ms ease; }
+.antiek-login__passkey-alt__button { width: 100%; min-height: 62px; display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 12px; padding: 10px 16px; border: 2px solid var(--login-ink); border-radius: 6px; background: transparent; color: var(--login-ink); text-align: left; cursor: pointer; transition: background var(--motion-fast) var(--ease-standard); }
 .antiek-login__passkey-alt__button:hover:not(:disabled) { background: color-mix(in srgb, var(--sun) 18%, transparent); }
 .antiek-login__passkey-alt__button:disabled { cursor: progress; opacity: .7; }
 .antiek-login__passkey-alt__button strong, .antiek-login__passkey-alt__button small { display: block; }
