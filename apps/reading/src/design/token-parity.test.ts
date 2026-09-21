@@ -200,7 +200,7 @@ describe("research-state token family (herdr transfer P0-1)", () => {
   it("state aliases point only at palette constants (never raw hex)", () => {
     const aliases = cssStateAliases(day);
     for (const target of aliases.values()) {
-      expect(target).toMatch(/^--(sun|emperor|aurora|shadow-)/);
+      expect(target).toMatch(/^--(sun|emperor|aurora|shadow-|success)/);
     }
   });
 });

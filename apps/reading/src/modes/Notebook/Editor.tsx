@@ -186,7 +186,7 @@ export function NotebookEditor({
     editorProps: {
       attributes: {
         class:
-          "tiptap font-serif text-[15px] leading-relaxed text-ink dark:text-bright " +
+          "tiptap font-serif text-base leading-relaxed text-ink dark:text-bright " +
           "focus:outline-none min-h-[120px]",
       },
     },
@@ -385,7 +385,7 @@ export function NotebookEditor({
       )}
       <div
         className={
-          "absolute top-2 right-3 font-mono text-[10.5px] " +
+          "absolute top-2 right-3 font-mono text-xxs " +
           (saved === "conflict"
             ? "text-emperor"
             : "text-ink-mute dark:text-moonlight")
