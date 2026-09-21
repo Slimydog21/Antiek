@@ -187,3 +187,49 @@ def test_quota_copy_discloses_host_global_scope(client) -> None:
         "/settings/tools/youtube", json={"credential": SECRET}, cookies=_cookie("user-a")
     )
     assert "Host-global shared" in response.json()["quota"]["note"]
+
+
+def _row(payload: dict, vendor: str) -> dict:
+    return next(item for item in payload["connections"] if item["vendor"] == vendor)
+
+
+def test_x_tool_quota_quotes_a_sourced_pay_per_use_cost_not_an_allowance(client) -> None:
+    """The X row must say what a search costs, not just how often it may run.
+
+    X retired the flat 200-USD Basic tier to new signups on 2026-02-06 and now
+    bills pay-per-use credits per post RETURNED, so the request ceiling this
+    row used to show alone implied an allowance the user does not have.
+    """
+    payload = client.get("/settings/tools", cookies=_cookie("user-a")).json()
+    quota = _row(payload, "x")["quota"]
+
+    # The number, pinned as a literal: 25 posts at the published 0.005 USD read.
+    assert quota["estimated_cost_usd"] == 0.125
+
+    note = quota["cost_note"]
+    assert note is not None
+    assert "pay-per-use" in note
+    assert "$0.005 per post returned" in note
+    # Sourced and dated, because an unsourced price is what this field prevents.
+    assert "https://docs.x.com/x-api/getting-started/pricing" in note
+    assert "2026-09-21" in note
+    # And explicitly NOT a balance read; X publishes no billing endpoint.
+    assert "cannot read your credit balance" in note
+    # The retired flat tier must not be quoted back at the user anywhere.
+    assert "$200" not in note and "200 dollars" not in note
+
+    # The ceiling is still disclosed, and is now named as Antiek's own brake
+    # rather than something the provider grants.
+    assert quota["limit"] == 25
+    assert "not a provider allowance" in quota["note"]
+
+
+def test_x_tool_quota_cost_is_not_invented_for_vendors_without_a_sourced_rate(
+    client,
+) -> None:
+    """Silence beats a made-up number for every vendor whose rate is unsourced."""
+    payload = client.get("/settings/tools", cookies=_cookie("user-a")).json()
+    for vendor in ("youtube", "polygon", "fmp", "edgar"):
+        quota = _row(payload, vendor)["quota"]
+        assert quota["estimated_cost_usd"] is None, vendor
+        assert quota["cost_note"] is None, vendor
