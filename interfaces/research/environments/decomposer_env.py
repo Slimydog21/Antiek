@@ -163,7 +163,7 @@ class DecomposerEnvironment:
         self.weights = dict(weights or self.DEFAULT_WEIGHTS)
         # Rubric.__init__ (skills) is untyped outside the interfaces scope;
         # the constructor takes no arguments.
-        self.paraphrase_rubric = ParaphraseGuardRubric()  # type: ignore[no-untyped-call]
+        self.paraphrase_rubric = ParaphraseGuardRubric()
         self._extra_rubrics: list[Any] = []
 
     # ── Task surface ──

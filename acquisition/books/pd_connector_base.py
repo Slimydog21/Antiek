@@ -45,7 +45,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-import requests  # type: ignore[import-untyped]
+import requests
 
 from acquisition.licenses_core import ClassificationResult, classify
 
