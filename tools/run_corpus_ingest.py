@@ -61,8 +61,10 @@ import argparse
 import logging
 import os
 import sys
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
@@ -96,6 +98,9 @@ from substrate.dedup import (  # noqa: E402
     identity_basis,
     identity_key,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from substrate.source_throttle import SourceThrottle
 
 logger = logging.getLogger("tools.run_corpus_ingest")
 
@@ -455,6 +460,30 @@ def _arxiv_bulk_candidates(
     return out
 
 
+def _mirror_ban_if_active(
+    banned_until: float,
+    shared: SourceThrottle,
+    source_key: str,
+    *,
+    now: Callable[[], float] = time.time,
+) -> bool:
+    """Mirror an arXiv export ban into the SHARED source sentinel, but only
+    while that ban is still in the future.
+
+    The shared sentinel exists so the orchestrator's source rotation skips a
+    banned endpoint at the top of the next run. A ban that has already expired
+    carries no such instruction, and ``SourceThrottle.note_response_at`` takes
+    the LATER of the stored and supplied expiry, so mirroring a dead timestamp
+    both re-publishes a ban nobody is serving and writes it into a file shared
+    with every other source. Returns True when a mirror was actually written,
+    so the caller (and a test) can tell a skipped mirror from a performed one.
+    """
+    if banned_until <= now():
+        return False
+    shared.note_response_at(source_key, banned_until)
+    return True
+
+
 def _arxiv_candidates(
     *, query: str | None, category: str | None,
     ids: Sequence[str] | None, limit: int, investigation_id: str,
@@ -490,9 +519,7 @@ def _arxiv_candidates(
     shared = SourceThrottle()
 
     def _mirror_export_ban() -> None:
-        until = throttle.banned_until()
-        if until > 0:
-            shared.note_response_at(ARXIV_EXPORT_KEY, until)
+        _mirror_ban_if_active(throttle.banned_until(), shared, ARXIV_EXPORT_KEY)
 
     papers: list[ArxivPaper] = []
     # Isolate arXiv discovery like the PD/OA paths: a live 429 (export.arxiv.org
