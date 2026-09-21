@@ -209,6 +209,12 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ needs.gate.outputs.sha }}
+          # Full history: the post-deploy assertion below decides ANCESTRY
+          # (`git merge-base --is-ancestor`). Under the default shallow
+          # fetch that question is not merely slower, it is unanswerable —
+          # merge-base would report "not an ancestor" for a commit whose
+          # history simply was not fetched, turning a healthy deploy red.
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -304,17 +310,69 @@ jobs:
         run: ansible-playbook -i inventory.ini playbooks/deploy.yml
 
       # The playbook already asserts /health + prod-parity internally. This
-      # repeats the parity assertion from OUTSIDE the playbook so a future
-      # edit that weakens or skips the in-playbook gate still cannot let a
-      # silently-stale deploy report success.
-      - name: Independent post-deploy parity assertion
+      # repeats the assertion from OUTSIDE the playbook so a future edit that
+      # weakens or skips the in-playbook gate still cannot let a silently
+      # stale deploy report success.
+      #
+      # WHY THIS IS NOT `--expected-sha <gate sha>`:
+      #   It was, and it produced a FALSE RED on run 35592958825 (2026-09-21):
+      #     deployed build_sha=3e5f2d624 != expected_sha=0923e2ef7
+      #   Nothing was wrong. playbooks/deploy.yml pulls `antiek_repo_branch`
+      #   (= main), NOT the SHA that triggered this run, so when main advances
+      #   between the trigger and the `git pull` the box legitimately lands
+      #   AHEAD of the gate's SHA. Exact equality calls that a failure and
+      #   reds a deploy that in fact shipped strictly newer, fully-gated code.
+      #
+      # The honest contract is two separate claims, asserted separately:
+      #   (1) production contains the code that passed the gate  — ancestry,
+      #       which catches a rollback or a fork (prod on a commit that is NOT
+      #       downstream of the gated one).
+      #   (2) production is not STALE with respect to main — delegated to
+      #       tools/prod_parity/check.py's --max-lag-hours mode (PR #3318),
+      #       which is unit-tested including a non-ancestor negative control,
+      #       rather than re-implemented here.
+      - name: Assert production contains the gated commit
         env:
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
           set -euo pipefail
+          PROD_SHA=$(curl -fsS --max-time 30 https://api.antiek.ai/health \
+                     | python3 -c 'import json,sys; print(json.load(sys.stdin)["build_sha"])')
+          echo "gate SHA : $SHA"
+          echo "prod SHA : $PROD_SHA"
+          if [ "$PROD_SHA" = "$SHA" ]; then
+            echo "exact match"
+          elif git merge-base --is-ancestor "$SHA" "$PROD_SHA"; then
+            echo "production is AHEAD of the gated commit (main advanced mid-deploy) — acceptable"
+          else
+            echo "::error::production SHA $PROD_SHA does NOT contain gated commit $SHA (rollback or fork)"
+            exit 1
+          fi
+
+      - name: Assert production is on main's line, and providers are live
+        run: |
+          set -euo pipefail
+          MAIN_SHA=$(git rev-parse origin/main)
+          # --max-lag-hours is deliberately LARGE here, and that is not a
+          # weakened gate: per check.py's own contract (and its unit test
+          # test_staleness_non_ancestor_fails_regardless_of_budget) a fork or
+          # rollback fails immediately AT ANY BUDGET. Only the time-based
+          # component is relaxed.
+          #
+          # It must be relaxed, because this step runs POST-deploy. Commits
+          # merged to main AFTER this deploy's `git pull` are commits this run
+          # could not possibly have shipped; failing on them would red a
+          # correct deploy for a sibling's merge. Measured 2026-09-21 with a
+          # 1h budget against live prod:
+          #   FAIL - stale deploy: production runs 3e5f2d624, 4 commit(s)
+          #   behind main; oldest unshipped commit merged 2.3h ago
+          # — true, and none of it this deploy's doing. TIME-staleness is the
+          # scheduled probe's job (prod_parity.yml, PR #3318). This step's job
+          # is fork/rollback + provider liveness.
           python tools/prod_parity/check.py \
             --url https://api.antiek.ai \
-            --expected-sha "$SHA"
+            --expected-sha "$MAIN_SHA" \
+            --max-lag-hours 720
 
       - name: Summary
         if: always()
