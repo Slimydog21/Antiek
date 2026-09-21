@@ -260,7 +260,7 @@ function AutoNotebookBody({
           <Link
             to={writeHandoffHref(notebook.investigationId, notebook.title)}
             data-testid="auto-notebook-import-write"
-            className="inline-flex font-mono text-[11px] uppercase tracking-wider text-aurora underline-offset-2 hover:underline"
+            className="inline-flex font-mono text-[11px] uppercase tracking-wider text-sun-deep dark:text-sun underline-offset-2 hover:underline"
           >
             Import outline into Write →
           </Link>
@@ -361,7 +361,7 @@ function SectionView({
                 >
                   <Link
                     to={`/read/${encodeURIComponent(e.sourceDocumentId)}`}
-                    className="underline-offset-2 hover:underline text-aurora"
+                    className="underline-offset-2 hover:underline text-sun-deep dark:text-sun"
                     data-testid="auto-notebook-citation-link"
                   >
                     open source in reader →

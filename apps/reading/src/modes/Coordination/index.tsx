@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
+import { ModePage } from "../../components/lemon/ModePage";
 import { GateLedger } from "./GateLedger";
 import type { GateView } from "./GateLedger";
 import { Roadmap } from "./Roadmap";
@@ -64,35 +65,22 @@ export default function Coordination() {
   }, [reload]);
 
   return (
-    <div className="flex flex-col h-full">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-10">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Coordination
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              What's blocked and why. The gate ledger is a read-only view over
-              the canonical operator gate file; the roadmap reads the five
-              specs' rosters and the dependency DAG. Nothing on this page can
-              change a gate's state — that is an operator action in the source
-              file.
-            </p>
-          </header>
+    <ModePage
+      width="lg"
+      title="Coordination"
+      lede="What's blocked and why. The gate ledger is a read-only view over the canonical operator gate file; the roadmap reads the five specs' rosters and the dependency DAG. Nothing on this page can change a gate's state — that is an operator action in the source file."
+    >
+      {loading && (
+        <p className="text-sm text-shadow-1 dark:text-moonlight">
+          Loading coordination view…
+        </p>
+      )}
+      {error && <p className="text-sm text-emperor">{error}</p>}
 
-          {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight">
-              Loading coordination view…
-            </p>
-          )}
-          {error && <p className="text-sm text-emperor">{error}</p>}
-
-          {gates && (
-            <GateLedger gates={gates.gates} sourcePath={gates.source_path} />
-          )}
-          {roadmap && <Roadmap roadmap={roadmap} />}
-        </div>
-      </main>
-    </div>
+      {gates && (
+        <GateLedger gates={gates.gates} sourcePath={gates.source_path} />
+      )}
+      {roadmap && <Roadmap roadmap={roadmap} />}
+    </ModePage>
   );
 }

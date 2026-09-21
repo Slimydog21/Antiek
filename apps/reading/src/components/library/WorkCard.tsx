@@ -1,4 +1,5 @@
 import { LemonTag } from "../lemon";
+import { placeholderSpine } from "./placeholderSpine";
 import { cardLift } from "../../design/motion";
 import type { BookSummary } from "../../api/books";
 import { servabilityLabel } from "../../api/books";
@@ -32,15 +33,6 @@ export interface WorkCardProps {
   onClaim?: (documentId: string) => void;
 }
 
-// Deterministic cover hue from the document id so a placeholder spine is stable
-// across renders (no flicker) without storing a colour. Mirrors the existing
-// BookCard so the two shelves never disagree on a placeholder.
-function placeholderHue(seed: string): number {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
-  return h;
-}
-
 /** A short, human source line from the servability basis — "what kind of thing
  *  this is", distinct from the author. */
 function sourceLine(work: BookSummary): string {
@@ -63,7 +55,7 @@ function sourceLine(work: BookSummary): string {
 export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
   const { label, colour } = servabilityLabel(work.servability);
   const title = work.title ?? work.document_id;
-  const hue = placeholderHue(work.document_id);
+  const spine = placeholderSpine(work.document_id);
   const servable = work.servable_full_text;
   const removed = work.taken_down || work.servability === "taken_down";
 
@@ -92,15 +84,7 @@ export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
         className={`relative aspect-[2/3] w-full rounded-hog border-edge border-sun overflow-hidden shadow-z1 dark:shadow-z1-night ${
           removed ? "" : cardLift
         }`}
-        style={
-          work.cover_uri
-            ? undefined
-            : {
-                background: `linear-gradient(160deg, hsl(${hue} 45% 32%), hsl(${
-                  (hue + 40) % 360
-                } 50% 22%))`,
-              }
-        }
+        style={work.cover_uri ? undefined : { background: spine }}
       >
         {work.cover_uri ? (
           <img

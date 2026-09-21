@@ -19,9 +19,9 @@ import { PUSHES_COPY } from "../../../lib/speakVocab";
  * (b) Private re-pings — prepare followups + SpeakInvite door.
  * No second notification stack; no ML. Optional AgentMail/Resend when env gate on.
  */
-const PANEL =
-  "rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 " +
-  "dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night";
+const STATIC_PANEL =
+  "rounded-hog border-edge border-rule bg-ice-0 p-4 shadow-z1 " +
+  "dark:border-charcoal-1 dark:bg-charcoal-2 dark:shadow-z1-night";
 
 export default function PushesLane() {
   const navigate = useNavigate();
@@ -110,7 +110,7 @@ export default function PushesLane() {
         </h2>
         <aside
           role="note"
-          className="mt-2 rounded border-2 border-ink bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
+          className="mt-2 rounded-hog border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-2"
           data-testid="pushes-honesty-banner"
         >
           <p className="font-serif text-[12px] text-ink dark:text-bright">
@@ -130,7 +130,7 @@ export default function PushesLane() {
         </p>
       )}
 
-      <div className={PANEL} data-testid="pushes-public-panel">
+      <div className={STATIC_PANEL} data-testid="pushes-public-panel">
         <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           {PUSHES_COPY.publicHeading}
         </h3>
@@ -173,7 +173,7 @@ export default function PushesLane() {
         )}
       </div>
 
-      <div className={PANEL} data-testid="pushes-private-panel">
+      <div className={STATIC_PANEL} data-testid="pushes-private-panel">
         <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           {PUSHES_COPY.privateHeading}
         </h3>

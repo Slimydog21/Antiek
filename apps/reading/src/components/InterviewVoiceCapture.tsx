@@ -222,7 +222,7 @@ export default function InterviewVoiceCapture({
         <button
           type="button"
           onClick={startRecording}
-          className="px-3 py-1.5 rounded-md bg-rose-700 text-white text-sm font-medium hover:bg-rose-600 transition-colors"
+          className="px-3 py-1.5 rounded-md bg-danger text-white dark:text-ink text-sm font-medium hover:bg-danger/90 transition-colors"
         >
           Start recording
         </button>
@@ -248,7 +248,7 @@ export default function InterviewVoiceCapture({
       )}
 
       {state === "uploaded" && (
-        <p className="text-xs font-mono text-emerald-700">
+        <p className="text-xs font-mono text-success">
           Upload complete · {durationSeconds}s of audio captured.
         </p>
       )}

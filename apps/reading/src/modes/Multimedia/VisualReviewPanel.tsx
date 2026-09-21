@@ -396,7 +396,7 @@ export function VisualReviewPanel({
                   const attested = activeReview.attestedCandidateIds.includes(candidate.candidate_id);
                   return (
                     <article key={candidate.candidate_id} className={`overflow-hidden rounded-md border ${selected ? "border-sun shadow-z1" : "border-rule dark:border-charcoal-1"}`}>
-                      <div className="aspect-video bg-ink">
+                      <div className="aspect-video bg-media-well">
                         {activeReview.previewUrls[candidate.candidate_id] && (
                           <img className="h-full w-full object-contain" src={activeReview.previewUrls[candidate.candidate_id]} alt={`Generated candidate ${index + 1} for ${chapters.find((chapter) => chapter.id === activeChapterId)?.title}`} />
                         )}

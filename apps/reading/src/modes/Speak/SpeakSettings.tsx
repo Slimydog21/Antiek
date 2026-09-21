@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { LemonButton } from "../../components/lemon";
+import { LemonButton, LemonCard } from "../../components/lemon";
 import type { EconomicsView, PayoutReleaseView } from "../../lib/speakApi";
 import { GATE_PHRASES, PAYOUT_COPY, PRIVATE_ECON_COPY } from "../../lib/speakVocab";
 
@@ -104,7 +104,8 @@ export default function SpeakSettings({
   };
 
   return (
-    <div className="space-y-5 rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
+    <LemonCard elevation="z1">
+      <div className="space-y-5">
       {/* How it's shared */}
       <section>
         <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
@@ -362,7 +363,8 @@ export default function SpeakSettings({
           isn't possible).
         </p>
       </section>
-    </div>
+      </div>
+    </LemonCard>
   );
 }
 

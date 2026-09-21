@@ -83,11 +83,11 @@ function usageBar(usage?: SettingsUsageKeyEntry): React.ReactNode {
   const over = (usage.used_cents || 0) > usage.limit_cents;
   return (
     <div className="flex items-center gap-1.5 min-w-[120px]">
-      <div className="h-1.5 flex-1 bg-ice-2 dark:bg-charcoal-3 rounded overflow-hidden border border-edge">
+      <div className="h-1.5 flex-1 bg-ice-2 dark:bg-charcoal-1 rounded overflow-hidden border border-edge">
         <div
           className={
             "h-full " +
-            (over ? "bg-red-500" : "bg-sun")
+            (over ? "bg-danger" : "bg-sun")
           }
           style={{ width: `${pct}%` }}
         />
@@ -110,8 +110,8 @@ function balanceChip(b?: SettingsBalanceResponse | null, loading?: boolean): Rea
       className={
         "text-[10px] tabular-nums px-1 py-px rounded " +
         (b.balance_usd < 0
-          ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30"
-          : "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30")
+          ? "text-danger bg-danger/10"
+          : "text-success bg-success/10")
       }
       title={b.note || b.window_label || undefined}
     >
@@ -262,7 +262,7 @@ export default function ModelUsagePicker({
       {({ close }) => (
         <div className="py-1 text-[13px]">
           {loadError && (
-            <div className="px-3 py-2 text-red-600 dark:text-red-400 text-xs">
+            <div className="px-3 py-2 text-danger text-xs">
               {loadError}
             </div>
           )}
@@ -323,7 +323,7 @@ export default function ModelUsagePicker({
                         <div className="flex items-center gap-2 shrink-0">
                           {showBalance && balanceChip(m.balance, m.balanceLoading)}
                           {m.key_present ? null : (
-                            <span className="text-[10px] text-amber-600">no key</span>
+                            <span className="text-[10px] text-sun-deep dark:text-sun">no key</span>
                           )}
                         </div>
                       </div>

@@ -753,8 +753,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                     className={
                       "rounded-hog border px-2.5 py-1 text-[12px] font-mono transition-colors disabled:opacity-50 disabled:pointer-events-none " +
                       (active
-                        ? "border-aurora bg-aurora/15 text-ink dark:text-bright"
-                        : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 text-ink-mute dark:text-moonlight hover:bg-aurora/10")
+                        ? "border-sun-deep bg-sun/15 text-ink dark:text-bright"
+                        : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 text-ink-mute dark:text-moonlight hover:bg-sun/10")
                     }
                   >
                     {opt.label}

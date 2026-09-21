@@ -106,14 +106,14 @@ function PlanNodeRow({
             </p>
             <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
               <button
-                className="text-[11px] text-shadow-1 hover:text-aurora dark:text-moonlight"
+                className="text-[11px] text-shadow-1 hover:text-sun-deep dark:text-moonlight"
                 disabled={busy}
                 onClick={() => { setDraft(node.question); setEditing(true); }}
               >
                 edit
               </button>
               <button
-                className="text-[11px] text-shadow-1 hover:text-aurora dark:text-moonlight"
+                className="text-[11px] text-shadow-1 hover:text-sun-deep dark:text-moonlight"
                 disabled={busy}
                 onClick={() => onEdit({ op: "add_child", target_local_id: node.local_id, question: "New sub-question" })}
               >

@@ -142,7 +142,7 @@ export default function InterviewTranscript({
                     "block font-mono text-[10px] uppercase tracking-wider " +
                     (t.role === "interviewer"
                       ? "text-sun-deep dark:text-sun"
-                      : "text-aurora")
+                      : "text-ink-soft")
                   }
                 >
                   {t.role}

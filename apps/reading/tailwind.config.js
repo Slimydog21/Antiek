@@ -111,6 +111,12 @@ export default {
         "sun-light-soft": "var(--sun-light-soft)",
         "sun-light-deep": "var(--sun-light-deep)",
 
+        // Media well (Q16; ui-audit 12-modes-c #63) — the ONE deliberate
+        // media backdrop (players, candidates, frames). Reads the CSS var so
+        // the day/night swap cascades (day charcoal-2 tone, night void).
+        // Mirrors tokens.ts `mediaWell` + tokens.css --media-well.
+        "media-well": "var(--media-well)",
+
         // Night surface ramp (off-blacks + dark greys — majestic night sky)
         void: "#040508",
         "space-1": "#080A10",

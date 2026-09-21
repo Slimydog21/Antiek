@@ -264,7 +264,7 @@ export default function LineupPitch({
             <span className="text-[11px] font-semibold text-ink dark:text-bright">
               Bench — pick the substitute for {selection.label}
             </span>
-            {error && <span className="font-mono text-[10px] text-red-700 dark:text-red-300">{error}</span>}
+            {error && <span className="font-mono text-[10px] text-danger">{error}</span>}
           </div>
           {bench.length === 0 ? (
             <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-[11px] text-emperor">

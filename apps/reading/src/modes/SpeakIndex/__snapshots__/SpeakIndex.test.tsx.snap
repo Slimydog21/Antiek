@@ -144,7 +144,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         </p>
         <div
           aria-label="Open public contributions"
-          class="rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+          class="rounded-hog border-edge border-rule bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:shadow-z1-night"
           role="note"
         >
           <h3
@@ -158,50 +158,54 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
             Open public contributions arrive after the ecosystem review (G7); for now, contributions come through your invites.
           </p>
         </div>
-        <div
-          class="rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+        <section
+          class="border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright shadow-z1 dark:shadow-z1-night "
         >
-          <h3
-            class="font-serif text-[15px] font-semibold text-ink dark:text-bright"
+          <div
+            class="px-4 py-3"
           >
-            How public remembrances will work
-          </h3>
-          <ol
-            class="mt-2 space-y-2"
-          >
-            <li
-              class="font-serif text-[13px] text-ink dark:text-bright"
+            <h3
+              class="font-serif text-[15px] font-semibold text-ink dark:text-bright"
             >
-              Anyone will be able to find an open remembrance and add what they remember.
-            </li>
-            <li
-              class="font-serif text-[13px] text-ink dark:text-bright"
+              How public remembrances will work
+            </h3>
+            <ol
+              class="mt-2 space-y-2"
             >
-              Open contribution by anyone arrives after the ecosystem review — see the note above; for now, contributions come through your invites.
-            </li>
-            <li
-              class="font-serif text-[13px] text-ink dark:text-bright"
+              <li
+                class="font-serif text-[13px] text-ink dark:text-bright"
+              >
+                Anyone will be able to find an open remembrance and add what they remember.
+              </li>
+              <li
+                class="font-serif text-[13px] text-ink dark:text-bright"
+              >
+                Open contribution by anyone arrives after the ecosystem review — see the note above; for now, contributions come through your invites.
+              </li>
+              <li
+                class="font-serif text-[13px] text-ink dark:text-bright"
+              >
+                Public sharing opens after a legal review (G2/G3). Until then a remembrance stays private to you and the people you invite.
+              </li>
+              <li
+                class="font-serif text-[13px] text-ink dark:text-bright"
+              >
+                Contributor shares accrue to escrow now; money begins routing once the legal review clears (G2/G3).
+              </li>
+              <li
+                class="font-serif text-[13px] text-ink dark:text-bright"
+                data-testid="public-lane-synquery-gate"
+              >
+                Expert-network booking (Synquery) opens only after creation-surface PMF and an operator partnership flip — not a live booking surface today.
+              </li>
+            </ol>
+            <p
+              class="mt-2 font-serif text-[12px] italic text-ink-mute dark:text-moonlight"
             >
-              Public sharing opens after a legal review (G2/G3). Until then a remembrance stays private to you and the people you invite.
-            </li>
-            <li
-              class="font-serif text-[13px] text-ink dark:text-bright"
-            >
-              Contributor shares accrue to escrow now; money begins routing once the legal review clears (G2/G3).
-            </li>
-            <li
-              class="font-serif text-[13px] text-ink dark:text-bright"
-              data-testid="public-lane-synquery-gate"
-            >
-              Expert-network booking (Synquery) opens only after creation-surface PMF and an operator partnership flip — not a live booking surface today.
-            </li>
-          </ol>
-          <p
-            class="mt-2 font-serif text-[12px] italic text-ink-mute dark:text-moonlight"
-          >
-            A contribution's share is weighted by how well-corroborated and well-sourced it is — by the quality of what's remembered, nothing else.
-          </p>
-        </div>
+              A contribution's share is weighted by how well-corroborated and well-sourced it is — by the quality of what's remembered, nothing else.
+            </p>
+          </div>
+        </section>
       </section>
     </div>
   </div>
@@ -434,59 +438,75 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         >
           <li>
             <a
-              class="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+              class="block"
               href="/speak/y1"
             >
-              <div
-                class="flex items-center justify-between gap-3"
+              <section
+                class="border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright shadow-z1 dark:shadow-z1-night transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5"
               >
-                <span
-                  class="font-serif text-[16px] text-ink dark:text-bright"
+                <div
+                  class="px-4 py-3"
                 >
-                  Grandma Rosa
-                </span>
-                <span
-                  class="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight"
-                >
-                  no voices yet
-                </span>
-              </div>
-              <p
-                class="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight"
-              >
-                Kept private
-              </p>
+                  <div
+                    class="flex items-center justify-between gap-3"
+                  >
+                    <span
+                      class="font-serif text-[16px] text-ink dark:text-bright"
+                    >
+                      Grandma Rosa
+                    </span>
+                    <span
+                      class="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight"
+                    >
+                      no voices yet
+                    </span>
+                  </div>
+                  <p
+                    class="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+                  >
+                    Kept private
+                  </p>
+                </div>
+              </section>
             </a>
           </li>
           <li>
             <a
-              class="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+              class="block"
               href="/speak/y2"
             >
-              <div
-                class="flex items-center justify-between gap-3"
+              <section
+                class="border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright shadow-z1 dark:shadow-z1-night transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5"
               >
-                <span
-                  class="font-serif text-[16px] text-ink dark:text-bright"
+                <div
+                  class="px-4 py-3"
                 >
-                  Dad
-                </span>
-                <span
-                  class="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight"
-                >
-                  2 voices
-                </span>
-              </div>
-              <p
-                class="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight"
-              >
-                Will be shared publicly
-              </p>
-              <p
-                class="mt-1 font-serif text-[12px] italic text-ink-soft dark:text-moonlight"
-              >
-                Their story is coming together — 2 voices have added a memory.
-              </p>
+                  <div
+                    class="flex items-center justify-between gap-3"
+                  >
+                    <span
+                      class="font-serif text-[16px] text-ink dark:text-bright"
+                    >
+                      Dad
+                    </span>
+                    <span
+                      class="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight"
+                    >
+                      2 voices
+                    </span>
+                  </div>
+                  <p
+                    class="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+                  >
+                    Will be shared publicly
+                  </p>
+                  <p
+                    class="mt-1 font-serif text-[12px] italic text-ink-soft dark:text-moonlight"
+                  >
+                    Their story is coming together — 2 voices have added a memory.
+                  </p>
+                </div>
+              </section>
             </a>
           </li>
         </ul>

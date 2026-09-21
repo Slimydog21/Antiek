@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import WernerThinking from "../../brand/werner/animated/WernerThinking";
-import { LemonButton } from "../../components/lemon";
+import { LemonButton, LemonCard } from "../../components/lemon";
 import { track } from "../../lib/analytics";
 import { apiFetch } from "../../lib/api";
 import {
@@ -296,7 +296,7 @@ export default function Speak() {
         ) : (
           <>
             {/* 1 · Invite by link */}
-            <section className="mb-5 rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
+            <LemonCard elevation="z1" className="mb-5">
               <h2 className="font-serif text-[16px] text-ink dark:text-bright">
                 Invite the people who knew them
               </h2>
@@ -351,7 +351,7 @@ export default function Speak() {
                   />
                 </div>
               </details>
-            </section>
+            </LemonCard>
 
             {/* 2 · Arriving voices */}
             <section className="mb-5">

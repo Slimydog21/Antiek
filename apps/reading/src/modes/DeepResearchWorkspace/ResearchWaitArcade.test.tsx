@@ -42,7 +42,12 @@ import { isStationInstrumentSuspended } from "../../werner/stationInstrumentSusp
 function cartridge() {
   return {
     id: "paperclip-zombies",
-    meta: { title: "Paperclip Zombies", blurb: "", style: "zombies-arcade" },
+    meta: {
+      title: "Paperclip Zombies",
+      blurb: "",
+      instructions: "",
+      style: "defense",
+    },
     init: vi.fn(),
     update: vi.fn(),
     render: vi.fn(),

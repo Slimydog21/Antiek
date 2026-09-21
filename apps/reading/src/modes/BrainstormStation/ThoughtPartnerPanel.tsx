@@ -21,6 +21,7 @@ import {
 
 import { apiFetch, composeContext } from "../../lib/api";
 import { WernerThinking } from "../../brand/werner/animated";
+import { LemonButton } from "../../components/lemon/LemonButton";
 import ContextPicker from "../../components/ai/ContextPicker";
 import {
   parseAssistantReply,
@@ -259,11 +260,12 @@ export default function ThoughtPartnerPanel() {
         className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 resize-y bg-ice-0 dark:bg-charcoal-3"
       />
 
-      <button
-        type="button"
+      <LemonButton
+        variant="primary"
+        size="sm"
+        fullWidth
         onClick={() => void send()}
         disabled={pending || !draft.trim()}
-        className="w-full px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
       >
         {pending ? (
           <>
@@ -273,7 +275,7 @@ export default function ThoughtPartnerPanel() {
         ) : (
           "Send"
         )}
-      </button>
+      </LemonButton>
 
       {error ? (
         <p className="text-[11px] text-danger" role="alert">

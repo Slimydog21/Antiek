@@ -312,7 +312,7 @@ export function SourcePolicyPreflightPanel({
                 className={
                   "rounded border px-2 py-0.5 text-[11px] font-mono disabled:opacity-50 " +
                   (active
-                    ? "border-aurora bg-aurora/15 text-ink dark:text-bright"
+                    ? "border-sun-deep bg-sun/15 text-ink dark:text-bright"
                     : "border-rule text-ink-mute dark:border-charcoal-1 dark:text-moonlight")
                 }
               >
@@ -471,7 +471,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
         <h2 ref={monitorHeadingRef} tabIndex={-1} className="text-sm font-semibold text-ink dark:text-bright">
           {session.researches.length} researches
           {!session.allTerminal && session.researches.length > 0 && (
-            <span className="ml-2 text-[11px] font-normal text-aurora">live</span>
+            <span className="ml-2 text-[11px] font-normal text-sun-deep dark:text-sun">live</span>
           )}
           {session.allTerminal && (
             <span className="ml-2 text-[11px] font-normal text-shadow-1 dark:text-moonlight">complete</span>

@@ -143,6 +143,29 @@ export const barAccent = {
 } as const;
 
 /**
+ * The media well (Q16; ui-audit 12-modes-c #63) — the ONE deliberate backdrop
+ * behind players, candidates, and media frames. Wells were improvising four
+ * answers (charcoal-2 in day mode, raw black, ink, hardcoded white); this is
+ * the single one. A well stays dark in BOTH themes so letterboxed media
+ * recedes: day borrows the charcoal card tone, night steps deeper to void so
+ * the well sits below the card face. Text on a well is `bright` (#EEF1F6) —
+ * 13.9:1 on the day tone, 17.4:1 on night void.
+ *
+ * EXCEPTION, documented: the KnowledgePanel twin iframe keeps `bg-white` on
+ * purpose — its sandboxed srcDoc is light-authored HTML, so a white well
+ * avoids a dark flash before the document paints. It is not a media
+ * backdrop.
+ *
+ * Mirrors tokens.css `--media-well` (day :root + night block) and the
+ * Tailwind `bg-media-well` color, which reads the var so the theme swap
+ * cascades automatically.
+ */
+export const mediaWell = {
+  day: "#1B202A", // charcoal-2 — the tone day playback surfaces already used
+  night: "#040508", // void — deepest night; the well recedes below the card
+} as const;
+
+/**
  * Glass / transparency surfaces (AMS-SPR-01, consumed by SPR-03/04/09).
  *
  * The mountainscape scene (SPR-04) sits behind the working surfaces; these

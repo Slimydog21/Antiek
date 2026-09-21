@@ -132,7 +132,7 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
       onDrop={onDrop}
       className={`rounded-md border px-3 py-3 transition-colors ${
         dragOver
-          ? "border-aurora bg-aurora/10"
+          ? "border-sun-deep bg-sun/10"
           : "border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2"
       }`}
     >

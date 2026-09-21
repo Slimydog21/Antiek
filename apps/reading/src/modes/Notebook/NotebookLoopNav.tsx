@@ -60,7 +60,7 @@ export default function NotebookLoopNav({
         to={writeTo}
         className={
           canWrite
-            ? "text-aurora underline-offset-2 hover:underline"
+            ? "text-sun-deep dark:text-sun underline-offset-2 hover:underline"
             : "underline-offset-2 hover:underline"
         }
         data-testid="auto-notebook-continue-write"

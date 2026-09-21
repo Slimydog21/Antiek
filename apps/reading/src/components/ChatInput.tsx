@@ -121,7 +121,7 @@ function RegionContextChip({
       : region.text_excerpt;
   return (
     <div className="text-[10px] font-mono text-shadow-1 dark:text-moonlight px-1 flex items-center gap-1.5 truncate">
-      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight">
         region
         {region.page != null && <span className="ml-1">p{region.page}</span>}
       </span>

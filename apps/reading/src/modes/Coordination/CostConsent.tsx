@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { LemonCard, LemonTable, LemonTag } from "../../components/lemon";
+import { LemonCard, LemonTable, LemonTag, ModePage } from "../../components/lemon";
 import type { LemonColumn } from "../../components/lemon";
 import { apiFetch } from "../../lib/api";
 
@@ -443,33 +443,20 @@ export default function CostConsent() {
   }, [reload]);
 
   return (
-    <div className="flex flex-col h-full">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-10">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Cost &amp; consent
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              What you are spending, what is accruing, what is gated, and who
-              consented — one read-only surface across the four workflows. Every
-              number traces to a canonical source: cost to the dispatch event
-              log, escrow to the IP-holder ledger, gate state to the operator
-              gate file. Nothing here disburses money.
-            </p>
-          </header>
+    <ModePage
+      width="lg"
+      title="Cost & consent"
+      lede="What you are spending, what is accruing, what is gated, and who consented — one read-only surface across the four workflows. Every number traces to a canonical source: cost to the dispatch event log, escrow to the IP-holder ledger, gate state to the operator gate file. Nothing here disburses money."
+    >
+      {loading && (
+        <p className="text-sm text-shadow-1 dark:text-moonlight">
+          Loading cost &amp; consent view…
+        </p>
+      )}
+      {error && <p className="text-sm text-emperor">{error}</p>}
 
-          {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight">
-              Loading cost &amp; consent view…
-            </p>
-          )}
-          {error && <p className="text-sm text-emperor">{error}</p>}
-
-          {cost && <CostSection cost={cost} />}
-          {consent && <ConsentSection consent={consent} />}
-        </div>
-      </main>
-    </div>
+      {cost && <CostSection cost={cost} />}
+      {consent && <ConsentSection consent={consent} />}
+    </ModePage>
   );
 }

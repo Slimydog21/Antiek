@@ -1,8 +1,8 @@
 /**
- * Shared arcade cartridge factory — the single entry both ArcadeCabinet and
- * LoadingGameHost use to build a playable cartridge. Tests drive score/wave
- * progression through THIS factory (the host entry path), not a re-implemented
- * game loop.
+ * Shared arcade cartridge factory — the single entry the wait-arcade host
+ * (`ResearchWaitArcadeGame`) uses to build a playable cartridge. Tests drive
+ * score/wave progression through THIS factory (the host entry path), not a
+ * re-implemented game loop.
  */
 
 import { createSeededRng } from "./engine/rng";

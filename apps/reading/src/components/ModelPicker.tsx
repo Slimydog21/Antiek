@@ -173,7 +173,7 @@ export default function ModelPicker({
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5">
                       {c.quality_basis === "measured" ? (
-                        <span className="rounded bg-aurora/15 px-1 text-[9px] text-aurora">measured</span>
+                        <span className="rounded bg-success/10 px-1 text-[9px] text-success">measured</span>
                       ) : (
                         <span className="rounded bg-moonlight/15 px-1 text-[9px] text-shadow-1 dark:text-moonlight">prior</span>
                       )}

@@ -450,7 +450,7 @@ export default function AISidecar() {
               Recent dispatch
             </p>
             {contextError ? (
-              <p className="text-[11px] text-red-700 dark:text-red-300">
+              <p className="text-[11px] text-danger">
                 {contextError}
               </p>
             ) : recentCalls.length === 0 ? (

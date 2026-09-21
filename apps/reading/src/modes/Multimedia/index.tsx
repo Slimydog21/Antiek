@@ -1530,7 +1530,7 @@ export default function Multimedia() {
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="space-y-3">
-                  <div className={`flex items-center justify-center rounded-md border border-rule bg-charcoal-2 text-bright dark:border-charcoal-1 ${playback && "chapters" in playback ? "overflow-visible" : "aspect-video overflow-hidden"}`}>
+                  <div className={`flex items-center justify-center rounded-md border border-rule bg-media-well text-bright dark:border-charcoal-1 ${playback && "chapters" in playback ? "overflow-visible" : "aspect-video overflow-hidden"}`}>
                     {playbackLoading ? (
                       <p className="font-mono text-[12px] uppercase text-moonlight" role="status">Verifying media...</p>
                     ) : playback && playerView === "video" && "video_url" in playback ? (
@@ -1540,7 +1540,7 @@ export default function Multimedia() {
                         crossOrigin="use-credentials"
                         preload="metadata"
                         src={playback.video_url}
-                        className="h-full w-full bg-black object-contain"
+                        className="h-full w-full bg-media-well object-contain"
                         aria-label={`Video playback for ${selectedRecord?.asset.title ?? "multimedia asset"}`}
                       />
                     ) : playback && "chapters" in playback ? (

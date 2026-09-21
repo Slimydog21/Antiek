@@ -329,9 +329,9 @@ function NodeRow({
   onClick: (e: React.MouseEvent) => void;
   onPin: () => void;
 }) {
-  const dot: Record<NonNullable<TreeNode["status"]>, "sun" | "aurora" | "danger"> = {
+  const dot: Record<NonNullable<TreeNode["status"]>, "sun" | "success" | "danger"> = {
     running: "sun",
-    done: "aurora",
+    done: "success",
     failed: "danger",
   };
   const icon: Record<NodeKind, string> = {

@@ -113,7 +113,7 @@ function useToasts(): Item[] {
 }
 
 const kindStyles: Record<Kind, string> = {
-  ok:   "bg-aurora text-ink border-ink",
+  ok:   "bg-success text-ice-0 dark:text-ink border-ink",
   warn: "bg-sun text-ink border-ink",
   err:  "bg-emperor text-ice-1 border-ink",
   info: "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright border-sun",

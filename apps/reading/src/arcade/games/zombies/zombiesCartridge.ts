@@ -36,6 +36,10 @@ export function createZombiesCartridge(options?: {
           : null;
       const start =
         input.keysPressed.has("Enter") || input.keysPressed.has(" ");
+      // Escape has ONE owner: the host shell. ResearchWaitArcade intercepts
+      // Escape in the capture phase (focus restore included), so this exit
+      // path never fires there — it remains for hosts that mount the
+      // cartridge without their own exit chrome.
       const exit =
         input.keysPressed.has("Escape") || input.keysPressed.has("q");
       state = stepZombies(state, dt, { fireAt, start, exit }, ctx.rng);

@@ -340,6 +340,8 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
             title={viewer.title}
             sandbox=""
             srcDoc={viewer.html}
+            // bg-white is deliberate (not a media well): the sandboxed srcDoc
+            // is light-authored HTML — tokens.ts `mediaWell` documents this.
             className="mt-3 h-[420px] w-full border border-rule bg-white dark:border-charcoal-1"
           />
         </section>

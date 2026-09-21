@@ -25,29 +25,42 @@ z=60   mascot           floating mascot — above panels/windows, below modals
 LAYER B  WorkspaceStore — opaque when floating
          z=2…50  PanelLayoutPanel (floatingPanelBase=2 → floatingPanelCeiling=50;
                  the store's zCounter walks up on focus)
+         z=50    mobileRailToggle — the collapsed mobile nav hamburger, at the
+                 floating-band ceiling so it stays tappable
          z=5     sceneBadge — SceneStatusBadge over the scene floor
          z=0–1   docked (flat); raised=1 lifts a docked panel over dock chrome
 ─────────────────────────────────────────
 LAYER A  windowsStore — glass over scene
          z≥40   WorkspaceWindow (windowBase=40; interleaves the floating
                 band but always under the modal/popover/toast stack)
+         z=40   mobileRail — the mobile NavRail as an absolute overlay, at
+                the window-band base (was a z-40 literal)
 ─────────────────────────────────────────
-z≈0     the living scene (mountainscape) + BrainPresence ambience
+z=1     scenePresence    BrainPresence ambience — one notch over the scene
+z≈0     the living scene (mountainscape)
 ```
+
+Ties the ladder records (same value, no real collision — each rung's doc
+comment in `zIndex.ts` says why): `scenePresence`=`raised` (1, disjoint local
+z=0 floors), `mobileRail`=`windowBase` (40), `mobileRailToggle`=
+`floatingPanelCeiling` (50). `zIndex.test.ts` pins this exact tie set.
 
 ### Known off-ladder call sites (documented, owned by the overlay pass)
 
-The ladder is a catalogue + drift tripwire; these call sites currently sit
-off it and are being fixed separately (work-queue Q8) — do not "fix" them by
-editing the diagram:
-
-- `BrainPresence.tsx` — inline `zIndex: 1`, uncatalogued; gets a named
-  `scenePresence` rung in the same pass.
+The ladder is a catalogue + drift tripwire; call sites found off it are fixed
+by the overlay pass (work-queue Q8/Q8b) rather than by editing the diagram.
+None are currently known.
 
 Fixed by the Q8 overlay pass (2026-09-21): `FloatMenu.tsx` now consumes
 `zIndex.popover` (120); `ChunkModal.tsx`, `ProductsLauncher.tsx` and the
 LinkMonster detail modal are rebuilt on LemonModal (the `modal` rung, z=100,
 with Esc, scrim dismissal and the focus trap).
+
+Fixed by the Q8b layering pass (2026-09-21): `BrainPresence.tsx` consumes
+`zIndex.scenePresence` (1, one notch over the scene floor); the NavRail
+mobile overlay rail and its collapsed hamburger consume `zIndex.mobileRail`
+(40) and `zIndex.mobileRailToggle` (50) — the exact values the `z-40`/`z-50`
+literals carried.
 
 ## Motion — the ambience slot (adjudication D9)
 

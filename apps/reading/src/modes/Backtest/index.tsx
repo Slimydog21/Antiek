@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonCard from "../../components/lemon/LemonCard";
+import { ModePage } from "../../components/lemon/ModePage";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -66,114 +67,113 @@ export default function Backtest() {
   }, [reload]);
 
   return (
-    <div className="flex flex-col h-full">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Backtest report
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              How has the substrate changed under this synthesis since
-              it landed? Per master-spec §13.8 — replay first, then
-              grade outcomes against the current substrate.
-            </p>
-            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-              synthesis_id = {synthesisId ?? "—"}
-            </p>
-          </header>
+    <ModePage
+      width="lg"
+      header={
+        <header className="space-y-2">
+          <h1 className="text-2xl font-serif text-ink dark:text-bright">
+            Backtest report
+          </h1>
+          <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
+            How has the substrate changed under this synthesis since
+            it landed? Per master-spec §13.8 — replay first, then
+            grade outcomes against the current substrate.
+          </p>
+          <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+            synthesis_id = {synthesisId ?? "—"}
+          </p>
+        </header>
+      }
+    >
+      {loading && (
+        <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+      )}
 
-          {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
-          )}
+      {error && (
+        <ErrorBanner>
+          {error}
+        </ErrorBanner>
+      )}
 
-          {error && (
-            <ErrorBanner>
-              {error}
-            </ErrorBanner>
-          )}
-
-          {report && (
-            <>
-              {/* S10 row 10.11: synthesis + metric sections use LemonCard. */}
-              <LemonCard
-                elevation="z2"
-                title="Synthesis"
-              >
-                <div className="p-5 space-y-2">
-                  <p className="text-sm text-ink dark:text-bright">
-                    {report.target_question}
-                  </p>
-                  <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                    {report.synthesis_timestamp} · status={report.status}
-                    {report.implicit_recommendation
-                      ? ` · ${report.implicit_recommendation}`
-                      : ""}
-                  </p>
-                </div>
-              </LemonCard>
-
-              <section className="grid grid-cols-3 gap-3">
-                <Metric
-                  label="Edges added since"
-                  value={report.added_edges_since}
-                />
-                <Metric
-                  label="Edges superseded since"
-                  value={report.superseded_edges_since}
-                />
-                <Metric
-                  label="Load-bearing edges invalidated"
-                  value={report.cited_edges_now_superseded_count}
-                  highlight={report.cited_edges_now_superseded_count > 0}
-                />
-                <Metric
-                  label="Cited chunks demoted"
-                  value={report.chunks_retired_downward_count}
-                  highlight={report.chunks_retired_downward_count > 0}
-                />
-                <Metric
-                  label="Outcomes recorded"
-                  value={report.outcomes_recorded}
-                />
-                <Metric
-                  label="Substrate manifest entries"
-                  value={Object.values(report.substrate_manifest_counts).reduce(
-                    (a, b) => a + b,
-                    0,
-                  )}
-                />
-              </section>
-
-              <DetailList
-                title="Load-bearing edges now superseded"
-                description="Cited at synthesis time but later marked superseded — the conclusion may need revisiting."
-                rows={report.cited_edges_now_superseded}
-              />
-              <DetailList
-                title="Cited chunks retired downward in tier"
-                description="Chunks the synthesis cited but the substrate later demoted (e.g., from Tier 1 to Tier 3)."
-                rows={report.chunks_retired_downward}
-              />
-              <DetailList
-                title="Outcomes recorded against this synthesis"
-                description="Operator-graded verdicts. Replay then grade — outcomes feed the Phase 8 gate."
-                rows={report.outcomes}
-              />
-
-              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-                <Link
-                  to={`/outcomes/${encodeURIComponent(report.synthesis_id)}`}
-                  className="text-ink dark:text-bright hover:underline"
-                >
-                  Open outcomes grading view →
-                </Link>
+      {report && (
+        <>
+          {/* S10 row 10.11: synthesis + metric sections use LemonCard. */}
+          <LemonCard
+            elevation="z2"
+            title="Synthesis"
+          >
+            <div className="p-5 space-y-2">
+              <p className="text-sm text-ink dark:text-bright">
+                {report.target_question}
               </p>
-            </>
-          )}
-        </div>
-      </main>
-    </div>
+              <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                {report.synthesis_timestamp} · status={report.status}
+                {report.implicit_recommendation
+                  ? ` · ${report.implicit_recommendation}`
+                  : ""}
+              </p>
+            </div>
+          </LemonCard>
+
+          <section className="grid grid-cols-3 gap-3">
+            <Metric
+              label="Edges added since"
+              value={report.added_edges_since}
+            />
+            <Metric
+              label="Edges superseded since"
+              value={report.superseded_edges_since}
+            />
+            <Metric
+              label="Load-bearing edges invalidated"
+              value={report.cited_edges_now_superseded_count}
+              highlight={report.cited_edges_now_superseded_count > 0}
+            />
+            <Metric
+              label="Cited chunks demoted"
+              value={report.chunks_retired_downward_count}
+              highlight={report.chunks_retired_downward_count > 0}
+            />
+            <Metric
+              label="Outcomes recorded"
+              value={report.outcomes_recorded}
+            />
+            <Metric
+              label="Substrate manifest entries"
+              value={Object.values(report.substrate_manifest_counts).reduce(
+                (a, b) => a + b,
+                0,
+              )}
+            />
+          </section>
+
+          <DetailList
+            title="Load-bearing edges now superseded"
+            description="Cited at synthesis time but later marked superseded — the conclusion may need revisiting."
+            rows={report.cited_edges_now_superseded}
+          />
+          <DetailList
+            title="Cited chunks retired downward in tier"
+            description="Chunks the synthesis cited but the substrate later demoted (e.g., from Tier 1 to Tier 3)."
+            rows={report.chunks_retired_downward}
+          />
+          <DetailList
+            title="Outcomes recorded against this synthesis"
+            description="Operator-graded verdicts. Replay then grade — outcomes feed the Phase 8 gate."
+            rows={report.outcomes}
+          />
+
+          <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+            <Link
+              to={`/outcomes/${encodeURIComponent(report.synthesis_id)}`}
+              className="text-ink dark:text-bright hover:underline"
+            >
+              Open outcomes grading view →
+            </Link>
+          </p>
+        </>
+      )}
+    </ModePage>
   );
 }
 
@@ -187,10 +187,9 @@ function Metric({
   highlight?: boolean;
 }) {
   return (
-    <div
-      className={`border rounded-md px-3 py-2 ${
-        highlight ? "border-sun-deep bg-sun/10 dark:bg-sun/5" : "border-rule dark:border-charcoal-1"
-      }`}
+    <LemonCard
+      elevation="z1"
+      className={highlight ? "bg-sun/10 dark:bg-sun/5" : ""}
     >
       <p
         className={`text-2xl font-serif ${
@@ -202,7 +201,7 @@ function Metric({
       <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
         {label}
       </p>
-    </div>
+    </LemonCard>
   );
 }
 

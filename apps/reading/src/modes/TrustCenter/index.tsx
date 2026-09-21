@@ -102,7 +102,7 @@ export default function TrustCenter() {
           <header className="space-y-3">
             <div className="flex items-center gap-3">
               <WorkflowArt workflow="trust" size={56} className="shrink-0" />
-              <h1 className="text-3xl font-serif text-ink dark:text-bright">
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
                 Trust Center
               </h1>
             </div>

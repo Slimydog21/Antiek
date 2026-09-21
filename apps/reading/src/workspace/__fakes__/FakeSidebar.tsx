@@ -13,7 +13,7 @@ export function FakeSidebar() {
   ];
   const dot: Record<string, string> = {
     running: "bg-sun",
-    done: "bg-aurora",
+    done: "bg-success",
     failed: "bg-emperor",
   };
   return (

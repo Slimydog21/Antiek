@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { LemonButton, LemonInput } from "../../../components/lemon";
+import { LemonButton, LemonCard, LemonInput } from "../../../components/lemon";
 import {
   getEconomics,
   makeContributionInvitePath,
@@ -58,9 +58,15 @@ export interface PublicLaneProps {
   visitorMode?: boolean;
 }
 
-const PANEL =
-  "rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 " +
-  "dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night";
+/**
+ * Static-chrome card recipe (D6): heavy edge in `rule`, no sun — the
+ * sun-yellow edge stays on the ratified LemonCard primitive only. Used
+ * where a panel needs its own element/role (gate notices) and LemonCard
+ * can't carry the semantics.
+ */
+const STATIC_PANEL =
+  "rounded-hog border-edge border-rule bg-ice-0 p-4 shadow-z1 " +
+  "dark:border-charcoal-1 dark:bg-charcoal-2 dark:shadow-z1-night";
 
 
 /**
@@ -237,7 +243,8 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
       ) : (
         <ul className="space-y-2">
           {filtered.map((f) => (
-            <li key={f.id} className={PANEL}>
+            <li key={f.id}>
+              <LemonCard elevation="z1">
               <div className="flex items-center justify-between gap-3">
                 {visitorMode ? (
                   <span className="font-serif text-[16px] text-ink dark:text-bright">
@@ -299,6 +306,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
                   </>
                 )}
               </div>
+              </LemonCard>
             </li>
           ))}
         </ul>
@@ -309,7 +317,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
           the canonical future-tense G7 sentence VERBATIM. No close/enable
           affordance; future tense only. */}
       <div
-        className={PANEL}
+        className={STATIC_PANEL}
         role="note"
         aria-label={GATE_PHRASES.publicEcosystem.label}
       >
@@ -331,7 +339,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
           STATE sentence when the gate has cleared. The payout basis is §9.3
           Option-B — corroboration × source quality, NOT an airtime/ad-duration
           model (see the guard at speakApi.ts releasePayout). */}
-      <div className={PANEL}>
+      <LemonCard elevation="z1">
         <h3 className="font-serif text-[15px] font-semibold text-ink dark:text-bright">
           {PUBLIC_LANE_LABELS.explainerHeading}
         </h3>
@@ -369,7 +377,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
         <p className="mt-2 font-serif text-[12px] italic text-ink-mute dark:text-moonlight">
           {PUBLIC_LANE_LABELS.explainerPayoutBasis}
         </p>
-      </div>
+      </LemonCard>
 
       {/*
         PARTIAL close of spine SPR-03: feed CTA now mints invite tokens →

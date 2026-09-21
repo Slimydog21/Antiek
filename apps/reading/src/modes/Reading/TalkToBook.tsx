@@ -255,11 +255,11 @@ export default function TalkToBook({
         data-testid="talk-to-book-bookmark"
         onClick={() => setOpen(true)}
         title="Thought partner — this book"
-        className="fixed bottom-6 right-6 z-30 flex min-h-11 items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-serif text-white shadow-lg hover:opacity-90"
+        className="fixed bottom-6 right-6 z-30 flex min-h-11 items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-serif text-white shadow-z3 hover:opacity-90 dark:bg-bright dark:text-ink dark:shadow-z3-night"
       >
         Thought partner
         {turnCount > 0 && (
-          <span className="rounded-full bg-white/25 px-1.5 text-[11px] font-mono" data-testid="talk-turn-count">
+          <span className="rounded-full bg-white/25 px-1.5 text-[11px] font-mono dark:bg-ink/15" data-testid="talk-turn-count">
             {turnCount}
           </span>
         )}
@@ -270,7 +270,7 @@ export default function TalkToBook({
   return (
     <aside
       data-testid="talk-to-book"
-      className="fixed bottom-3 left-3 right-3 z-30 flex max-h-[75vh] flex-col rounded-lg border border-rule bg-ice-0 shadow-2xl dark:border-charcoal-1 dark:bg-charcoal-2 sm:bottom-6 sm:left-auto sm:right-6 sm:w-96"
+      className="fixed bottom-3 left-3 right-3 z-30 flex max-h-[75vh] flex-col rounded-hog-lg border border-rule bg-ice-0 shadow-z3 dark:border-charcoal-1 dark:bg-charcoal-2 dark:shadow-z3-night sm:bottom-6 sm:left-auto sm:right-6 sm:w-96"
       aria-label="Thought partner for this book"
     >
       <header className="flex items-center justify-between gap-2 border-b border-rule dark:border-charcoal-1 px-3 py-2">
@@ -314,7 +314,7 @@ export default function TalkToBook({
               aria-pressed={b.branch_id === thread.activeBranchId}
               className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-mono ${
                 b.branch_id === thread.activeBranchId
-                  ? "bg-ink text-white"
+                  ? "bg-ink text-white dark:bg-bright dark:text-ink"
                   : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4"
               }`}
             >
@@ -625,7 +625,7 @@ function CitationChip({
           type="button"
           onClick={() => onJumpToPage(citation.page_index as number)}
           title={citation.snippet}
-          className="rounded bg-aurora/15 text-aurora px-1.5 py-0.5 text-[11px] font-mono hover:bg-aurora/25"
+          className="rounded bg-sun/15 text-sun-deep dark:text-sun px-1.5 py-0.5 text-[11px] font-mono hover:bg-sun/25"
         >
           p.{(citation.page_index as number) + 1}
         </button>

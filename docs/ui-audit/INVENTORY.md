@@ -295,3 +295,14 @@ Q4/Q5 — verify explicitly when Billing lands.
 | D8 | Aurora stays reserved for AI-thinking. Link/selection/human-speaker roles that leak aurora move to sun-deep or ink-soft as context dictates. | Reservation is what makes the thinking state legible. |
 | D9 | `sceneMotion` 1200ms crossfade is ambience, not interaction: document a fifth "ambience" slot in FEEL_CONTRACT rather than forcing the 800ms interaction ceiling. | Ambient drift is a different category; the ceiling guards interaction feedback. |
 | D10 | Arcade cartridges follow app light/dark mode (pass mode via `aliasFor(mode)`); no fixed-mode pinning without a documented exemption. | "Function is never lost" applies to theme too. |
+
+## 7. Wave-3 follow-ups (queued 2026-09-21)
+
+| ID | Item | Notes |
+|----|------|-------|
+| Q18 | Aurora-status leftovers → success (D2): ~18 sites (FloatMenu "Saved", VoiceToDraft "Added", StartResearch "Added to corpus", PasteIngest, PersonalSpace ×3, Speak/Invites completed, CostMeter, VisualReviewPanel "Reviewed", CostConsent ×2, Attribution, Multimedia:1007, NotebooksIndex:246, DocumentsIndex:206, StyleWheel:443, api/books.ts servabilityLabel) | From Q3b handoff |
+| Q19 | Aurora question/insight unification (D11 below) | BlockCard vs QuestionCardBlock inversion |
+| Q20 | ThoughtPartnerPanel:259 dead `dark:bg-charcoal-3`; Reading-mode `bg-ink` chips (TocPanel/MetaReading) dark variants | Q5/Q3b handoffs |
+| Q21 | lemon/README.md: add ModePage entry | Q5 handoff |
+
+**D11 adjudication (2026-09-21):** aurora's reserved semantic widens to "AI cognition: thinking AND emergent outputs (questions, insights)" — one role. Components distinguishing questions from insights use label/icon, not a second colour. BlockCard's sun-deep=questions inversion is a bug under D11; fix in Q19. SlashMenu's "Emergent question · aurora bar" is the canonical reading.

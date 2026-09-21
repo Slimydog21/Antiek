@@ -36,16 +36,16 @@ export default function CapacitySoftWarnBanner({
     <div
       role="status"
       data-testid="capacity-soft-warn-banner"
-      className="mx-3 mt-3 rounded-md border border-amber-300/80 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-600/50 dark:bg-amber-950/40 dark:text-amber-100"
+      className="mx-3 mt-3 rounded-md border border-sun/60 bg-sun/10 px-3 py-2 text-sm text-ink dark:text-bright"
     >
       <div className="font-medium">Agent compute capacity</div>
       <p className="mt-0.5 text-[13px] leading-snug opacity-90">
         {formatCapacityWarnToast(warn)}
       </p>
       {ratio != null ? (
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-amber-200/70 dark:bg-amber-900/60">
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-sun/20">
           <div
-            className="h-full bg-amber-500 dark:bg-amber-400"
+            className="h-full bg-sun"
             style={{ width: pct + "%" }}
             data-testid="capacity-soft-warn-bar"
           />

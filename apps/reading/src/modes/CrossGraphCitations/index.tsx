@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import { LemonButton } from "../../components/lemon/LemonButton";
+import LemonCard from "../../components/lemon/LemonCard";
+import { ModePage } from "../../components/lemon/ModePage";
 
 /**
  * Cross-graph citation recording UI (master-spec §13.9 Phase 3).
@@ -94,135 +97,137 @@ export default function CrossGraphCitations() {
   ]);
 
   return (
-    <div className="flex flex-col h-full">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Cross-graph citations
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Record a citation from one user's investigation to
-              another user's public note. Per master-spec §13.9
-              Phase 3: the attribution pipeline picks this up and
-              routes 70% of any attached ad revenue to the
-              referenced user.
-            </p>
-            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-              For federation citations:{" "}
-              <Link to="/federation" className="underline hover:text-ink dark:text-bright">
-                /federation
-              </Link>{" "}
-              must allow-list the partner substrate first.
-            </p>
-          </header>
+    <ModePage
+      header={
+        <header className="space-y-2">
+          <h1 className="text-2xl font-serif text-ink dark:text-bright">
+            Cross-graph citations
+          </h1>
+          <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
+            Record a citation from one user's investigation to
+            another user's public note. Per master-spec §13.9
+            Phase 3: the attribution pipeline picks this up and
+            routes 70% of any attached ad revenue to the
+            referenced user.
+          </p>
+          <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+            For federation citations:{" "}
+            <Link to="/federation" className="underline hover:text-ink dark:text-bright">
+              /federation
+            </Link>{" "}
+            must allow-list the partner substrate first.
+          </p>
+        </header>
+      }
+    >
+      {error && (
+        <ErrorBanner>
+          {error}
+        </ErrorBanner>
+      )}
 
-          {error && (
-            <ErrorBanner>
-              {error}
-            </ErrorBanner>
+      <LemonCard elevation="z1">
+        <div className="space-y-3">
+          <h2 className="text-base font-serif text-ink dark:text-bright">
+            Record citation
+          </h2>
+          <Row label="Referencing user_id" required>
+            <input
+              type="text"
+              value={referencingUserId}
+              onChange={(e) => setReferencingUserId(e.target.value)}
+              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+            />
+          </Row>
+          <Row label="Referencing investigation_id" required>
+            <input
+              type="text"
+              value={referencingInvId}
+              onChange={(e) => setReferencingInvId(e.target.value)}
+              placeholder="inv-..."
+              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+            />
+          </Row>
+          <Row label="Referenced user_id" required>
+            <input
+              type="text"
+              value={referencedUserId}
+              onChange={(e) => setReferencedUserId(e.target.value)}
+              placeholder="user-A"
+              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+            />
+          </Row>
+          <Row label="Referenced note_id" required>
+            <input
+              type="text"
+              value={referencedNoteId}
+              onChange={(e) => setReferencedNoteId(e.target.value)}
+              placeholder="note-7"
+              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+            />
+          </Row>
+          <label className="flex items-center gap-2 text-sm text-ink dark:text-bright">
+            <input
+              type="checkbox"
+              checked={federationToggle}
+              onChange={(e) => setFederationToggle(e.target.checked)}
+              className="accent-ink dark:accent-bright"
+            />
+            <span>This is a federation citation (cross-substrate)</span>
+          </label>
+          {federationToggle && (
+            <Row label="Federated substrate id" required>
+              <input
+                type="text"
+                value={federatedSubstrateId}
+                onChange={(e) => setFederatedSubstrateId(e.target.value)}
+                placeholder="partner-research-coop"
+                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+              />
+            </Row>
           )}
-
-          <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-            <h2 className="text-base font-serif text-ink dark:text-bright">
-              Record citation
-            </h2>
-            <Row label="Referencing user_id" required>
-              <input
-                type="text"
-                value={referencingUserId}
-                onChange={(e) => setReferencingUserId(e.target.value)}
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
-            </Row>
-            <Row label="Referencing investigation_id" required>
-              <input
-                type="text"
-                value={referencingInvId}
-                onChange={(e) => setReferencingInvId(e.target.value)}
-                placeholder="inv-..."
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
-            </Row>
-            <Row label="Referenced user_id" required>
-              <input
-                type="text"
-                value={referencedUserId}
-                onChange={(e) => setReferencedUserId(e.target.value)}
-                placeholder="user-A"
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
-            </Row>
-            <Row label="Referenced note_id" required>
-              <input
-                type="text"
-                value={referencedNoteId}
-                onChange={(e) => setReferencedNoteId(e.target.value)}
-                placeholder="note-7"
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
-            </Row>
-            <label className="flex items-center gap-2 text-sm text-ink dark:text-bright">
-              <input
-                type="checkbox"
-                checked={federationToggle}
-                onChange={(e) => setFederationToggle(e.target.checked)}
-                className="accent-ink dark:accent-bright"
-              />
-              <span>This is a federation citation (cross-substrate)</span>
-            </label>
-            {federationToggle && (
-              <Row label="Federated substrate id" required>
-                <input
-                  type="text"
-                  value={federatedSubstrateId}
-                  onChange={(e) => setFederatedSubstrateId(e.target.value)}
-                  placeholder="partner-research-coop"
-                  className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-                />
-              </Row>
-            )}
-            <button
-              type="button"
-              onClick={() => void submit()}
-              disabled={!canSubmit || submitting}
-              className="px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
-            >
-              {submitting ? "Recording…" : "Record citation"}
-            </button>
-          </section>
-
-          {recorded.length > 0 && (
-            <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-              <h2 className="text-base font-serif text-ink dark:text-bright">
-                Recently recorded
-              </h2>
-              <ul className="space-y-2">
-                {recorded.map((c) => (
-                  <li
-                    key={c.reference_id}
-                    className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2"
-                  >
-                    <p className="text-xs font-mono text-ink dark:text-bright truncate">
-                      {c.referencing_user_id}/{c.referencing_investigation_id}{" "}
-                      → {c.referenced_user_id}/{c.referenced_note_id}
-                    </p>
-                    <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                      {c.reference_id} · {c.cited_at}
-                      {c.federated_substrate_id ? (
-                        <> · federated: {c.federated_substrate_id}</>
-                      ) : (
-                        <> · same-substrate</>
-                      )}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+          <LemonButton
+            variant="primary"
+            size="sm"
+            onClick={() => void submit()}
+            disabled={!canSubmit || submitting}
+          >
+            {submitting ? "Recording…" : "Record citation"}
+          </LemonButton>
         </div>
-      </main>
-    </div>
+      </LemonCard>
+
+      {recorded.length > 0 && (
+        <LemonCard elevation="z1">
+          <div className="space-y-3">
+            <h2 className="text-base font-serif text-ink dark:text-bright">
+              Recently recorded
+            </h2>
+            <ul className="space-y-2">
+              {recorded.map((c) => (
+                <li
+                  key={c.reference_id}
+                  className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2"
+                >
+                  <p className="text-xs font-mono text-ink dark:text-bright truncate">
+                    {c.referencing_user_id}/{c.referencing_investigation_id}{" "}
+                    → {c.referenced_user_id}/{c.referenced_note_id}
+                  </p>
+                  <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                    {c.reference_id} · {c.cited_at}
+                    {c.federated_substrate_id ? (
+                      <> · federated: {c.federated_substrate_id}</>
+                    ) : (
+                      <> · same-substrate</>
+                    )}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </LemonCard>
+      )}
+    </ModePage>
   );
 }
 

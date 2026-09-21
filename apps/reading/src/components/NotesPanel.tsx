@@ -255,8 +255,8 @@ function UserBubble({
       id={`event-row-${eventId}`}
       className="flex flex-col items-end gap-0.5 scroll-mt-4 transition-shadow rounded-md"
     >
-      <div className="max-w-[85%] bg-blue-50 border border-blue-100 rounded-md px-3 py-2">
-        <div className="text-[10px] font-mono text-blue-700 mb-0.5">{label}</div>
+      <div className="max-w-[85%] bg-ice-2 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
+        <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight mb-0.5">{label}</div>
         <p className="text-sm text-ink dark:text-bright whitespace-pre-wrap">{text}</p>
         {subline && (
           <div className="mt-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight italic">
@@ -383,10 +383,10 @@ function StatusBadge({
 }) {
   const color =
     status === "open"
-      ? "bg-emerald-500"
+      ? "bg-success"
       : status === "connecting"
-      ? "bg-sun/100"
-      : "bg-red-500";
+      ? "bg-sun"
+      : "bg-danger";
   return (
     <span className="inline-flex items-center gap-1.5 text-ink dark:text-bright">
       <span className={`inline-block h-2 w-2 rounded-full ${color}`} />

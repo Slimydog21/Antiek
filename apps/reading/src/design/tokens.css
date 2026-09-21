@@ -129,6 +129,14 @@
   --muted:      var(--glacial-2);
   --text:       var(--ink);
   --text-muted: var(--shadow-1);
+
+  /* Media well (Q16; ui-audit 12-modes-c #63) — the ONE deliberate media
+     backdrop (players, candidates, frames), dark in BOTH themes so media
+     recedes. Day = the charcoal card tone; night (redeclared below) = void.
+     Text on a well is always bright #EEF1F6 (13.9:1 day). The KnowledgePanel
+     twin iframe keeps bg-white deliberately (light-authored srcDoc) — see
+     tokens.ts `mediaWell`. */
+  --media-well: #1B202A;
   /* was var(--sun) #F5DF24; toned to neutral --rule for calmer chrome per
      AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
   --border:     var(--rule);
@@ -330,6 +338,10 @@
     --muted:      #6B7585;
     --text:       #EEF1F6;
     --text-muted: #6B7585;
+
+    /* Media well, night — void, deeper than the card face so the well
+       recedes below the night chrome (bright text 17.4:1). */
+    --media-well: #040508;
     /* was var(--sun) #F5DF24; toned to neutral --rule for calmer chrome per
        AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
     --border:     var(--rule);

@@ -48,7 +48,7 @@ export default function HouseSlot({ promo, onOpen }: HouseSlotProps) {
       className="flex items-center gap-3 w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sun rounded-md px-2 py-1"
       aria-label={`Next read from the library: ${promo.title}`}
     >
-      <LemonTag colour="aurora">Next read</LemonTag>
+      <LemonTag colour="sun">Next read</LemonTag>
       <span className="min-w-0">
         <span className="font-serif text-sm text-ink dark:text-bright truncate block">
           {promo.title}

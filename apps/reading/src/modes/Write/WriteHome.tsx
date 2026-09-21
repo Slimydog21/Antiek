@@ -212,7 +212,7 @@ export default function WriteHome() {
           {fromInvestigation ? (
             <p
               data-testid="write-from-notebook-banner"
-              className="rounded border border-aurora/40 bg-ice-1 px-3 py-2 text-xs text-ink dark:bg-charcoal-1 dark:text-bright"
+              className="rounded border border-sun/40 bg-ice-1 px-3 py-2 text-xs text-ink dark:bg-charcoal-1 dark:text-bright"
             >
               Continuing from auto-notebook — title is prefilled when the notebook
               sent one. Connect the highlighted research to import its outline when

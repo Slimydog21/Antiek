@@ -176,7 +176,7 @@ export default function ConnectResearch({
         <>
           {preferredInvestigationId ? (
             <p
-              className="text-xs text-aurora"
+              className="text-xs text-ink-soft"
               data-testid="connect-research-preferred"
             >
               Pre-selected from your notebook — connect to import the research
@@ -197,7 +197,7 @@ export default function ConnectResearch({
                 type="button"
                 onClick={() => void connectExisting(p)}
                 disabled={disabled || spawning}
-                className={`w-full rounded border px-3 py-2 text-left hover:border-sun-deep disabled:opacity-60 dark:bg-charcoal-2 ${preferredInvestigationId === p.investigation_id ? "border-aurora bg-ice-1 dark:border-aurora" : "border-rule bg-ice-0 dark:border-charcoal-1"}`}
+                className={`w-full rounded border px-3 py-2 text-left hover:border-sun-deep disabled:opacity-60 dark:bg-charcoal-2 ${preferredInvestigationId === p.investigation_id ? "border-sun-deep bg-sun/10" : "border-rule bg-ice-0 dark:border-charcoal-1"}`}
               >
                 <span className="block truncate font-serif text-sm text-ink dark:text-bright">
                   {p.question?.trim() || "(untitled research)"}

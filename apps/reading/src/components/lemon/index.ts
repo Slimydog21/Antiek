@@ -32,4 +32,7 @@ export type { LemonColumn } from "./LemonTable";
 
 export { LemonToastViewport, toast } from "./LemonToast";
 
+export { ModePage } from "./ModePage";
+export type { ModePageProps } from "./ModePage";
+
 export { ErrorBanner } from "./ErrorBanner";
