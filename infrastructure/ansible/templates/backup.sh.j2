@@ -181,6 +181,24 @@ fi
 # Lock window is minimal: connect + EXPORT + count capture only; normalize,
 # verify, tar, and upload all run after release.
 echo "${LOG_PREFIX} exporting DuckDB → ${STAGING}/duckdb (single-writer flock, timeout ${LOCK_TIMEOUT_S}s)"
+
+# The substrate holds the DuckDB single-writer flock for its whole lifetime,
+# so the poll below deadlocks while antiek.service is up — this silently
+# broke the nightly backup 2026-09-19→21 (6 aborted runs, RPO breach).
+# Stop the service for the snapshot window; the EXIT trap ALWAYS restarts it.
+ANTIEK_STOPPED_FOR_BACKUP=0
+restart_antiek() {
+    systemctl start antiek \
+        && echo "${LOG_PREFIX} antiek.service restarted after backup" \
+        || echo "${LOG_PREFIX} ERROR: failed to restart antiek"
+}
+trap 'restart_antiek' EXIT
+# Only stop when systemd is available AND the service is actually active —
+# test environments (and non-systemd hosts) have neither.
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet antiek; then
+    systemctl stop antiek
+    ANTIEK_STOPPED_FOR_BACKUP=1
+fi
 sudo -u {{ antiek_user }} {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
 import errno
 import fcntl
@@ -294,6 +312,7 @@ with open("${STAGING}/source_manifest.json", "w") as f:
     json.dump(manifest, f, indent=2)
 print(f"  source row counts: {counts}")
 PY
+restart_antiek; ANTIEK_STOPPED_FOR_BACKUP=0  # service restarts before normalize/upload
 
 # ── 1b. Normalize EXPORT schema.sql (DuckDB self-ref-FK stray-comma bug) ──
 # DuckDB EXPORT drops a self-referential FK but leaves a stray comma in
