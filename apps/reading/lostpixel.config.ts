@@ -86,6 +86,12 @@ export const config: CustomProjectConfig = {
       "unifiedhome",
       "research-house-fill",
       "researchhousefill",
+      "four-workflow-rail",
+      "fourworkflowrail",
+      "rail-with-read-tree",
+      "railwithreadtree",
+      "nav-rail-spr-04",
+      "navrail-spr-04",
     ];
     return !animated.some((needle) => hay.includes(needle));
   },
