@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SPR-03 Decision Tree Settings UI</title></head><body>
+<main>
+<h1>SPR-03 Decision Tree Settings UI</h1>
+<p><a href="./index.html">Back to master spec</a></p>
+<h2>Goal</h2>
+<p>Settings gets a practical decision tree for model choice: manual driver, auto objective, budget bars, and prompt impact preview.</p>
+<h2>UI Requirements</h2>
+<ul>
+  <li>Provider/model table: ready state, primary model, tier bindings, and notes.</li>
+  <li>Budget bar: daily cap, spent, remaining, unknown/no-cap states.</li>
+  <li>Prompt estimator: paste/query prompt, expected output size, task kind, route mode.</li>
+  <li>Recommendation: selected provider/model/tier, estimated cost, why chosen, cache caveat.</li>
+  <li>Override control: choose a model manually and see budget impact before submit.</li>
+</ul>
+<h2>Acceptance Tests</h2>
+<ul>
+  <li>Settings renders no-cap, unknown-spend, and cap-exceeded states without layout overlap.</li>
+  <li>Changing task kind changes the request sent to the estimator.</li>
+  <li>Manual override displays selected model and disables auto recommendation text.</li>
+  <li>Screen-reader labels describe budget and selected route without relying on color.</li>
+</ul>
+</main>
+</body></html>

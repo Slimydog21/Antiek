@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from typing import Any
 
 try:
     from ..loop_3.trajectory_harvest import HarvestedTrajectory
@@ -42,8 +43,8 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.loop_3.trajectory_harvest import HarvestedTrajectory  # type: ignore[no-redef]
-    from substrate.loop_3.unlock_gate import (  # type: ignore[no-redef]
+    from substrate.loop_3.trajectory_harvest import HarvestedTrajectory
+    from substrate.loop_3.unlock_gate import (
         Loop3UnlockRequired,
         check_unlocked,
     )
@@ -55,12 +56,12 @@ from .authoring_trajectory import AuthoringTrajectory
 AuthoringHarvestGated = Loop3UnlockRequired
 
 
-def _triples_from_trajectory(traj: AuthoringTrajectory) -> list[dict]:
+def _triples_from_trajectory(traj: AuthoringTrajectory) -> list[dict[str, Any]]:
     """Build prime-rl (observation, action, reward, info) triples from the
     trajectory's SIGNAL steps (reverted edits excluded). reward is always
     ``None`` here — it is the rubric_verifier's job, post-unlock."""
     signal = traj.signal_steps
-    triples: list[dict] = []
+    triples: list[dict[str, Any]] = []
     for i, step in enumerate(signal):
         prev_payload = signal[i - 1].payload if i > 0 else {}
         info = {

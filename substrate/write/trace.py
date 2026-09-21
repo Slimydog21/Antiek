@@ -36,7 +36,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.books.servability import (  # type: ignore[no-redef]
+    from substrate.books.servability import (
         is_servable_full_text,
         servability_of,
     )

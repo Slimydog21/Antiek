@@ -365,6 +365,12 @@ class InvestigationStartRequest(BaseModel):
     # window closes (Sprint 20 verdict landed), the operator may restore a
     # "deep" default if deep-synthesizer routing is then desired.
     research_tier: Literal["fast", "deep"] | None = None
+    # Metadata-only source-pack intent from the research entry. Recording this
+    # does not launch retrieval or connector calls; runner/source-pack execution
+    # must still be explicitly wired through the approved research path.
+    source_policy: list[
+        Literal["arxiv", "substack", "web", "operator_corpus"]
+    ] = Field(default_factory=list)
     # Parsed manually: validation errors must never reflect provider/model values.
     model_choice: object | None = None
     operation_id: object | None = None
@@ -458,7 +464,9 @@ class IngestSourceRequest(BaseModel):
     when adding evidence to a specific run."""
 
     url: str = Field(..., min_length=8)
-    kind: Literal["arxiv", "youtube", "podcast", "twitter", "url", "inbox"] | None = None
+    kind: Literal[
+        "arxiv", "youtube", "podcast", "twitter", "substack", "url", "inbox"
+    ] | None = None
     investigation_id: str = Field(default="__operator__", min_length=1)
     source_tier: int | None = Field(default=None, ge=1, le=5)
     max_episodes: int = Field(default=10, ge=1, le=50)  # podcast feeds only
@@ -555,6 +563,9 @@ class InvestigationStatusResponse(BaseModel):
     # the start event has no tier (legacy / daemon-spawned runs predate
     # the field); the surface treats null as the default, never fabricates.
     research_tier: str | None = None
+    # Source-pack intent recorded on the start event. Empty for legacy runs
+    # and for requests that did not choose a source pack; never recomputed.
+    source_policy: list[str] = Field(default_factory=list)
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -896,6 +907,8 @@ def _detect_source_kind(
         return "youtube"
     if "twitter.com" in u or "x.com" in u or "://t.co" in u:
         return "twitter"
+    if "substack.com" in u:
+        return "substack"
     # Podcast feeds: heuristic — RSS-ish URL OR explicit feed-like path.
     # The dashboard convention "podcasts.<host>/feed" + ".rss"
     # extensions cover most.
@@ -1861,6 +1874,11 @@ def create_app(
     # cost projection (honest nulls when pricing/spend unknown).
     from .settings_budget import register_settings_budget_routes
     register_settings_budget_routes(app)
+    # Midnight-oil SPR-06 — no-spend preflight for autonomous research swarms:
+    # time box, approved ceiling, route policy, source policy, and HTML/twin-note
+    # artifact obligations. Does not launch agents or reserve budget.
+    from .midnight_oil_routes import register_midnight_oil_routes
+    register_midnight_oil_routes(app)
     # OYM P1 §5 — visible tiers (write half): user-settable chunk tier
     # overrides (POST /settings/tier-overrides) + per-chunk override
     # history (GET /settings/tier-overrides?chunk_id=...).
@@ -2634,6 +2652,8 @@ def create_app(
                     # start event (queryable after the fact). The payload
                     # field is the same CLOSED set.
                     research_tier=req.research_tier,
+
+                    source_policy=req.source_policy,
                     owner_user_id=owner_user_id,
                     owner_operation_id=operation_id,
                     owner_model_choices=parsed_choices,
@@ -2786,6 +2806,7 @@ def create_app(
         # (legacy/daemon runs predate the field) — never fabricated.
         start_action = ActionType.INVESTIGATION_START_REQUESTED.value
         research_tier: str | None = None
+        source_policy: list[str] = []
         for r in rows:
             if r.get("action_type") == start_action:
                 payload = r.get("payload")
@@ -2793,6 +2814,9 @@ def create_app(
                     rt = payload.get("research_tier")
                     if isinstance(rt, str):
                         research_tier = rt
+                    sp = payload.get("source_policy")
+                    if isinstance(sp, list):
+                        source_policy = [x for x in sp if isinstance(x, str)]
                 break
 
         if terminal_row is not None:
@@ -2809,6 +2833,7 @@ def create_app(
                 terminal_payload=terminal_row.get("payload"),
                 rubric_score=rubric_score,
                 research_tier=research_tier,
+                source_policy=source_policy,
             )
 
         return InvestigationStatusResponse(
@@ -2819,6 +2844,7 @@ def create_app(
             terminal_payload=None,
             rubric_score=rubric_score,
             research_tier=research_tier,
+            source_policy=source_policy,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────
@@ -3234,6 +3260,37 @@ def create_app(
                     title=title,
                     episodes_processed=len(results),
                     episodes_ingested=ingested,
+                )
+            if detected == "substack":
+                from acquisition.substack import ingest_publication_feed
+
+                feed_url = req.url.rstrip("/")
+                if "/feed" not in feed_url.lower():
+                    feed_url = f"{feed_url}/feed"
+                substack_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id,
+                    "max_posts": req.max_episodes,
+                }
+                if req.source_tier is not None:
+                    substack_kwargs["source_tier"] = req.source_tier
+                summary = ingest_publication_feed(feed_url, **substack_kwargs)
+                chunks_written = sum(r.chunks_written for r in summary.results)
+                first_result = next(
+                    (r for r in summary.results if r.status == "ingested"),
+                    summary.results[0] if summary.results else None,
+                )
+                return IngestSourceResponse(
+                    status="ingested" if summary.ingested > 0 else "skipped",
+                    detected_kind="substack",
+                    document_id=first_result.document_id if first_result else None,
+                    document_loaded_event_id=(
+                        first_result.document_loaded_event_id if first_result else None
+                    ),
+                    chunks_written=chunks_written,
+                    skipped_reason=None if summary.ingested > 0 else "no_public_posts_ingested",
+                    title=summary.publication_title,
+                    episodes_processed=len(summary.results),
+                    episodes_ingested=summary.ingested,
                 )
             if detected == "twitter":
                 # The URL alone is insufficient for X — the auth wall

@@ -29,13 +29,14 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 try:
-    from ...runtime.db_lock import LockedConnection
+    from runtime.db_lock import LockedConnection
+
     from ..graph.ops import insert_deliverable, insert_section
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.graph.ops import insert_deliverable, insert_section  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
+    from substrate.graph.ops import insert_deliverable, insert_section
 
 from .outline_block import place_block
 

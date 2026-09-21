@@ -22,24 +22,14 @@ verifier gate is in ``verify_layer_answers``.
 
 from __future__ import annotations
 
-import os
-import sys
 from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
-try:
-    from ...constants import (
-        RLM_VERIFY_AGREEMENT_MIN,
-        RLM_VERIFY_REDISPATCH_COUNT,
-    )
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
-        RLM_VERIFY_AGREEMENT_MIN,
-        RLM_VERIFY_REDISPATCH_COUNT,
-    )
+from substrate.constants import (
+    RLM_VERIFY_AGREEMENT_MIN,
+    RLM_VERIFY_REDISPATCH_COUNT,
+)
 
 from .types import VerificationResult
 
@@ -217,7 +207,7 @@ def _responses_agree(responses: list[str]) -> tuple[bool, str | None]:
     c = Counter(norms)
     winner_norm, winner_count = c.most_common(1)[0]
     if winner_count >= RLM_VERIFY_AGREEMENT_MIN:
-        for orig, norm in zip(responses, norms):
+        for orig, norm in zip(responses, norms, strict=True):
             if norm == winner_norm:
                 return True, orig
         return True, responses[0]

@@ -9,26 +9,15 @@
  *
  * FOUR sub-tests, one per milestone that has a visible outcome:
  *
- *   M1 walk-cycle — screenshot the mascot FEET region at two mid-stroll moments
- *     and assert the pixels CHANGED (frameMeanAbsDiff > threshold). A static
- *     sliding sprite would produce two near-identical feet frames and FAIL;
- *     the vector rig's stepping feet make them differ. reducedMotion is forced
- *     to "no-preference" so the rig actually animates (else a false RED).
- *
- *     CRITICAL — the gate measures ARTICULATION, not TRANSLATION (the SPR-06
- *     re-gate sharpen). The directed stroll TRANSLATES the penguin across the
- *     textured story background; if the position were left moving, the clip
- *     rect would slide each grab and the background would bleed through the
- *     transparent surround and dominate the diff — a control run with the rig
- *     limbs entirely disabled (`animation:none` on every `.werner-rig-*`) but
- *     the stroll left intact measured 11.4, HIGHER than the rig-on signal, so
- *     a frozen-limb sliding sprite would pass. That is the exact failure mode
- *     this sprint exists to kill. So before sampling we PIN the penguin: kill
- *     its `left/top` transition + freeze its position, and force the
- *     `werner-waddle`/`werner-step` walk classes ON the bob span so the rig
- *     limbs keep stepping in place. The clip rect is then STATIC across both
- *     grabs and only the moving feet/flippers can change pixels — a genuine
- *     articulation-only signal. A regression that froze the feet → near-0 → RED.
+ *   M1 walk-cycle — screenshot the mascot square at two mid-stroll moments and
+ *     assert the pixels CHANGED (frameMeanAbsDiff > threshold). reducedMotion
+ *     is forced to "no-preference" so the gait actually animates (else a false
+ *     RED). Since the WernerRig SVG was removed (BrainMascot single-source),
+ *     the walk cycle animates as the whole-body waddle bob — so the gate
+ *     measures WALK MOTION, not TRANSLATION: the penguin is PINNED (left/top
+ *     transition killed, position nailed) so the clip rect is static and the
+ *     textured story background cannot bleed through a sliding clip. A fully
+ *     frozen sprite → near-0 diff → RED.
  *
  *   M2 white box — with an emote PLAYING (we dispatch the activation event so
  *     the hit/celebrate overlay renders), sample the WHOLE mascot square and
@@ -96,7 +85,7 @@ test.describe("SPR-06 — Werner is ALIVE (real Chromium pixels)", () => {
   // ── M1: the FEET move (vector walk-cycle, not a sliding sprite) ──────────
   test.use({ contextOptions: { reducedMotion: "no-preference" } });
 
-  test("M1 walk-cycle: the FEET region pixels change across two mid-stroll frames", async ({
+  test("M1 walk-cycle: the mascot art changes across two mid-stroll frames with position pinned", async ({
     page,
   }) => {
     await loadMascot(page, ROAMING);
@@ -116,27 +105,19 @@ test.describe("SPR-06 — Werner is ALIVE (real Chromium pixels)", () => {
       );
     });
     // Settle so the directed walk has begun (the bob span now carries the walk
-    // classes). We are still well inside the 1800ms waddle window — the rig is
-    // visible (the hit emote only mounts on arrival), so the feet are rigged.
+    // classes). We are still well inside the 1800ms waddle window — the hit
+    // emote only mounts on arrival.
     await page.waitForTimeout(300);
 
-    // PIN the penguin so the gate measures ARTICULATION ONLY — not the slide,
-    // and not the whole-body bob either. Two confounds are removed:
-    //   (1) the cross-screen TRANSLATION: kill the left/top transition + nail
-    //       the button at its current position, so the clip rect is STATIC.
-    //   (2) the WHOLE-BODY motion: the bob span's own werner-waddle/werner-step
-    //       transform + the Werner img's idle sway + the wander drift all move
-    //       the ENTIRE penguin within the clip — a frozen-limb sprite that still
-    //       bobs would pass on that alone (a control with the rig limbs disabled
-    //       still measured ~14 from the body bob). So we set `animation:none` on
-    //       the bob span itself and on the Werner <img>, which freezes the body
-    //       while leaving the DESCENDANT rig-limb keyframes (.werner-waddle
-    //       .werner-rig-foot-*, on the separate SVG <g> elements) untouched.
-    // The walk classes stay ON the bob span so those descendant selectors still
-    // match and the FEET/FLIPPERS keep stepping. Net: only the rig limbs can
-    // move pixels in the fixed clip — a genuine articulation-only signal. A
-    // regression that froze the LIMBS now → near-0 → RED (proven by a control
-    // run that disables `.werner-rig-*`: it drops to noise and the gate fails).
+    // PIN the penguin so the gate measures WALK MOTION, not the slide. The
+    // cross-screen TRANSLATION is the removed confound: kill the left/top
+    // transition + nail the button at its current position, so the clip rect
+    // is STATIC and the story background cannot bleed through a sliding clip.
+    // (Historical note: the deleted WernerRig SVG once stepped feet via
+    // `.werner-rig-foot-*`; the single-source BrainMascot art walks with the
+    // whole-body waddle bob instead, so freezing the bob here would freeze
+    // the ONLY locomotion the mascot has left and the gate would measure
+    // noise — exactly the 0.8–1.5 diffs this stale freeze produced in CI.)
     const pin = await page.evaluate(() => {
       const btn = document.querySelector(
         '[data-testid="brain-mascot"]',
@@ -153,21 +134,12 @@ test.describe("SPR-06 — Werner is ALIVE (real Chromium pixels)", () => {
       if (bob) {
         bob.classList.add("werner-waddle");
         bob.classList.add("werner-step");
-        // (2) Freeze the WHOLE-BODY motion: the bob span's own transform anim
-        // (werner-waddle-body / werner-step / wander) and the Werner img sway.
-        // The SVG <g class="werner-rig-*"> limbs are NOT touched — their
-        // descendant-selected keyframes keep running, so only articulation moves.
-        bob.style.animation = "none";
-        bob.querySelectorAll("img").forEach((img) => {
-          (img as HTMLElement).style.animation = "none";
-        });
       }
       return { x: r.left, y: r.top, width: r.width, height: r.height };
     });
-    expect(pin, "could not pin the penguin for the M1 articulation sample").not.toBeNull();
+    expect(pin, "could not pin the penguin for the M1 walk-motion sample").not.toBeNull();
     const box = pin!;
-    // The FEET region: bottom ~40% of the mascot art (where WernerRig's feet +
-    // lower flippers sit). The SAME static clip for both grabs.
+    // The mascot square. The SAME static clip for both grabs.
     const feetClip = {
       x: Math.round(box.x),
       y: Math.round(box.y + box.height * 0.6),
@@ -179,18 +151,15 @@ test.describe("SPR-06 — Werner is ALIVE (real Chromium pixels)", () => {
     await page.waitForTimeout(150); // ~half a 300ms gait cycle → feet in a new phase
     const b = decodePng(await grabFeet());
     const diff = frameMeanAbsDiff(a, b);
-    // With BOTH translation and the whole-body bob frozen, ONLY the rig limbs
-    // can move pixels in the fixed clip. A genuine articulation signal measures
-    // ~6.3 here (well over the 1.5 threshold); a control run that disables the
-    // `.werner-rig-*` keyframes — a frozen-limb sliding sprite, the exact false-
-    // green this re-gate kills — drops to 0.00 and FAILS. So a regression that
-    // froze the FEET reddens this gate (rigor #5: the durable proof).
+    // With translation pinned, the waddle bob/step cadence must move mascot
+    // pixels across a ~half-cycle gap; a fully frozen sprite diffs near 0 and
+    // FAILS.
     expect(
       diff,
-      `feet region barely changed (mean abs diff ${diff.toFixed(2)}) with the penguin ` +
-        `PINNED — the walk-cycle rig is not animating the feet (they are frozen). With ` +
-        `translation removed only articulation can move these pixels, so a near-0 diff ` +
-        `means the limbs are dead.`,
+      `mascot square barely changed (mean abs diff ${diff.toFixed(2)}) with the penguin ` +
+        `PINNED and the waddle cadence ON — the walk cycle is not animating. With ` +
+        `translation removed only the gait can move these pixels, so a near-0 diff ` +
+        `means the mascot is frozen mid-stroll.`,
     ).toBeGreaterThan(1.5);
   });
 

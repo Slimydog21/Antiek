@@ -140,7 +140,7 @@ def _probe(
     return out
 
 
-def _render_summary(s: dict[str, Any], *, out=None) -> None:
+def _render_summary(s: dict[str, Any], *, out: Any = None) -> None:
     out = out or sys.stdout
     print("Legal-gate registry summary", file=out)
     print("=" * 32, file=out)
@@ -153,7 +153,7 @@ def _render_summary(s: dict[str, Any], *, out=None) -> None:
                 print(f"  - {entry}", file=out)
 
 
-def _render_probe(p: dict[str, Any], *, out=None) -> None:
+def _render_probe(p: dict[str, Any], *, out: Any = None) -> None:
     out = out or sys.stdout
     print("\nProbe results", file=out)
     print("=" * 32, file=out)

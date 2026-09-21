@@ -45,7 +45,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from decimal import Decimal, DecimalException
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -138,6 +138,7 @@ cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 
 _SESSIONS: dict[str, CascadeSession] = {}
 _SESSION_TASKS: dict[str, asyncio.Task[None]] = {}
+_SESSION_SOURCE_POLICIES: dict[str, list[SourcePolicy]] = {}
 _HARD_CEILING_RUNS: dict[CascadeSession, tuple[ResearchProviderGateway, RunBinding]] = {}
 _HARD_CEILING_LAUNCHING: set[str] = set()
 
@@ -452,6 +453,9 @@ class ApproveRequest(BaseModel):
     approver: str = "__operator__"
 
 
+SourcePolicy = Literal["arxiv", "substack", "web", "operator_corpus"]
+
+
 class LaunchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -461,6 +465,10 @@ class LaunchRequest(BaseModel):
     hard_ceiling_usd: Decimal | None = Field(default=None, gt=0, allow_inf_nan=False)
     authority_digest: str | None = Field(default=None, min_length=64, max_length=64)
     owner_model_choices: dict[str, UserModelChoice] | None = None
+    # Metadata-only source-pack intent for this DRW launch. The runner does
+    # not consume this yet; it is echoed in launch/session responses so the
+    # operator's checked policy survives the launch boundary.
+    source_policy: list[SourcePolicy] = Field(default_factory=list)
 
 
 class SpendPreviewRequest(BaseModel):
@@ -469,6 +477,31 @@ class SpendPreviewRequest(BaseModel):
     spend_mode: SpendControlMode
     amount_usd: Decimal = Field(gt=0, allow_inf_nan=False)
     per_research_budget_usd: float = Field(default=0.50, gt=0, allow_inf_nan=False)
+
+
+class SourcePolicyPreflightRequest(BaseModel):
+    source_policy: list[SourcePolicy] = Field(min_length=1)
+    root_id: str | None = None
+    problem: str | None = Field(default=None, max_length=2000)
+
+
+class SourcePolicyPreflightEntry(BaseModel):
+    source: SourcePolicy
+    status: Literal["ready", "stub", "gated"]
+    runner_consumes_today: bool
+    external_call_would_be_required: bool
+    note: str
+
+
+class SourcePolicyPreflightResponse(BaseModel):
+    source_receipt_id: str
+    source_policy: list[SourcePolicy]
+    gather_mode: str
+    external_call_performed: bool = False
+    connector_execution_allowed: bool = False
+    budget_reserved_usd: float = 0.0
+    entries: list[SourcePolicyPreflightEntry]
+    notes: list[str] = Field(default_factory=list)
 
 
 class SteerRequest(BaseModel):
@@ -554,6 +587,84 @@ async def suggestions(limit: int = 8) -> SuggestionsResponse:
                 source_investigation_id=s.source_investigation_id,
             )
             for s in items
+        ],
+    )
+
+
+@cascade_router.post(
+    "/source-policy/preflight",
+    response_model=SourcePolicyPreflightResponse,
+)
+async def source_policy_preflight(
+    req: SourcePolicyPreflightRequest,
+) -> SourcePolicyPreflightResponse:
+    """No-spend source-pack receipt for a future DRW launch.
+
+    This endpoint deliberately does not load plans, run connectors, call Exa,
+    reserve budget, or mutate the graph. It reports what the current runner
+    would be allowed to consume today and which requested sources remain
+    execution-gated. The launch path is still separately explicit.
+    """
+    import hashlib
+
+    seen: set[SourcePolicy] = set()
+    ordered: list[SourcePolicy] = []
+    for source in req.source_policy:
+        if source not in seen:
+            seen.add(source)
+            ordered.append(source)
+
+    gather_mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower() or "stub"
+    exa_enabled = gather_mode == "exa"
+    entries: list[SourcePolicyPreflightEntry] = []
+    for source in ordered:
+        if source == "operator_corpus":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="ready",
+                runner_consumes_today=True,
+                external_call_would_be_required=False,
+                note="available through the local corpus/reuse substrate when the runner reads prior knowledge",
+            ))
+        elif source == "web":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="gated" if exa_enabled else "stub",
+                runner_consumes_today=exa_enabled,
+                external_call_would_be_required=exa_enabled,
+                note=(
+                    "ANTIEK_DRW_GATHER=exa would use the env-gated Exa gather loop"
+                    if exa_enabled
+                    else "current gather mode is stub; no public-web call will run"
+                ),
+            ))
+        elif source == "arxiv":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="gated",
+                runner_consumes_today=False,
+                external_call_would_be_required=True,
+                note="paper connector/source-pack execution is not wired into DRW launch yet",
+            ))
+        elif source == "substack":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="gated",
+                runner_consumes_today=False,
+                external_call_would_be_required=True,
+                note="Substack ingestion exists in Sources, but DRW launch does not consume it yet",
+            ))
+
+    basis = "|".join([gather_mode, req.root_id or "", req.problem or "", *ordered])
+    receipt = "srcpf-" + hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+    return SourcePolicyPreflightResponse(
+        source_receipt_id=receipt,
+        source_policy=ordered,
+        gather_mode=gather_mode,
+        entries=entries,
+        notes=[
+            "preflight only: no connector, provider, retrieval, graph write, or budget reservation ran",
+            "launch remains a separate operator action and still uses the existing approved runner path",
         ],
     )
 
@@ -1566,6 +1677,7 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                 _HARD_CEILING_LAUNCHING.discard(session_id)
 
             _SESSIONS[session_id] = session
+            _SESSION_SOURCE_POLICIES[session_id] = req.source_policy
             if owner_manifest is not None and owner_operation_id is not None:
                 _OWNER_CASCADE_LAUNCHES[session_id] = _CascadeOwnerLaunch(
                     manifest=owner_manifest,

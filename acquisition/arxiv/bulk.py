@@ -40,7 +40,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Literal
+from typing import IO, TYPE_CHECKING, Any, Literal
 
 from substrate.schemas.documents import ArxivOaiRecord
 
@@ -51,13 +51,15 @@ if TYPE_CHECKING:
 
     from substrate.source_throttle import SourceThrottle
 
+    from .throttle import ArxivThrottle
+
 # arXiv's PDF host throttle key — see substrate.source_throttle. arXiv PDFs are
 # arxiv.org (not export.arxiv.org), but a burst can still trip an IP ban, so
 # the per-PDF fetch is spaced at the documented 3s ceiling.
 ARXIV_PDF_SOURCE_KEY = "arxiv_pdf"
 
 
-def _parse_versions(record: dict) -> tuple[str, datetime, datetime]:
+def _parse_versions(record: dict[str, Any]) -> tuple[str, datetime, datetime]:
     """Derive (version_suffix, published_at, updated_at) from the snapshot's
     ``versions`` list + ``update_date``.
 
@@ -109,7 +111,7 @@ def _parse_rfc822(value: str) -> datetime | None:
     return dt.astimezone(UTC)
 
 
-def record_to_paper(record: dict) -> ArxivPaper:
+def record_to_paper(record: dict[str, Any]) -> ArxivPaper:
     """Map ONE bulk-snapshot record to an ``ArxivPaper`` — the SAME shape the
     export adapter yields, so downstream logic is unchanged.
 
@@ -158,7 +160,7 @@ def record_to_paper(record: dict) -> ArxivPaper:
     )
 
 
-def _authors(record: dict) -> list[str]:
+def _authors(record: dict[str, Any]) -> list[str]:
     """Rebuild a "First Last" author list. ``authors_parsed`` is
     ``[[last, first, suffix], ...]`` (the structured form); fall back to the
     free-text ``authors`` string split on the " and " arXiv uses."""
@@ -239,7 +241,7 @@ def fetch_bulk_pdf(
     *,
     throttle: SourceThrottle,
     client: httpx.Client | None = None,
-    _arxiv_throttle: object | None = None,
+    _arxiv_throttle: ArxivThrottle | None = None,
 ) -> bytes:
     """Fetch a bulk-discovered paper's PDF, reusing the shared SourceThrottle
     (key ``arxiv_pdf``) for cross-process spacing/ban-safety and the shared

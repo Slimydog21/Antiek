@@ -48,17 +48,17 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.remote_exec.provider import (  # type: ignore[no-redef]
+    from runtime.remote_exec.provider import (
         RemoteExecProvider,
         RemoteExecUnavailable,
     )
-    from runtime.remote_exec.runner import RemoteResearchRunner  # type: ignore[no-redef]
-    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
-    from runtime.research_runner.host_local import (  # type: ignore[no-redef]
+    from runtime.remote_exec.runner import RemoteResearchRunner
+    from runtime.research_runner.budget import BudgetManager
+    from runtime.research_runner.host_local import (
         HostLocalRunner,
         LoopContext,
     )
-    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
+    from runtime.research_runner.protocol import (
         ResearchRunner,
         StepEvent,
     )

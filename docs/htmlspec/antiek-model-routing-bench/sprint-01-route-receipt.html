@@ -1,0 +1,33 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SPR-01 Route Receipt Contract</title></head><body>
+<main>
+<h1>SPR-01 Route Receipt Contract</h1>
+<p><a href="./index.html">Back to master spec</a></p>
+<h2>Goal</h2>
+<p>Every model-routed answer carries a compact route receipt: what was requested, what candidates were considered, what was selected, why, and what it cost.</p>
+<h2>Owners</h2>
+<ul>
+  <li><code>substrate/dispatch/router.py</code> remains the execution owner.</li>
+  <li><code>substrate/schemas/</code> or a dispatch-owned model module owns the receipt schema.</li>
+  <li>Research/Reading UI only renders receipts; it does not infer route state.</li>
+</ul>
+<h2>Required Fields</h2>
+<ul>
+  <li><code>route_receipt_id</code>, <code>dispatch_event_id</code>, <code>role</code>, <code>task_kind</code>.</li>
+  <li><code>objective</code>: quality, cost, latency, balanced, or operator-selected.</li>
+  <li><code>candidate_models</code>: provider/model/tier plus estimated cost range.</li>
+  <li><code>selected</code>: provider/model/tier and reason code.</li>
+  <li><code>budget</code>: cap, remaining before, projected spend, actual spend after.</li>
+  <li><code>cache_state</code>: cache family, warm/cold/unknown, and cache-aware adjustment reason.</li>
+  <li><code>override</code>: manual override, policy override, fallback override, or none.</li>
+</ul>
+<h2>Acceptance Tests</h2>
+<ul>
+  <li>Dispatch success emits a receipt with selected provider/model matching the dispatch result.</li>
+  <li>Fallback success records primary failure and final selected fallback without exposing prompts or keys.</li>
+  <li>Unknown pricing produces <code>pricing_known=false</code> and never fabricates cost.</li>
+  <li>A redaction test proves provider API keys and raw prompts are absent from receipt JSON.</li>
+</ul>
+<h2>Non-Goals</h2>
+<p>No model choice UI and no NotDiamond call in this sprint.</p>
+</main>
+</body></html>

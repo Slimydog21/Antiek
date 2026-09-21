@@ -37,6 +37,7 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -191,7 +192,7 @@ def start_replay_recovery(
 # ---------------------------------------------------------------------------
 
 
-def _format_recent_events_for_prompt(rows: list[dict]) -> str:
+def _format_recent_events_for_prompt(rows: list[dict[str, Any]]) -> str:
     """Compact one-line-per-event rendering of the recent wrestling
     history. The role prompt needs each event identifiable by its
     event_id (for attribution) and its type (for context). Full
@@ -237,7 +238,7 @@ def make_note_taker_handler(
     db_path: str | None = None,
     events_dir: str | None = None,
     replay_service: DurableNoteTakerReplay | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the public async bridge over the durable replay service."""
 
     resolved_threshold = threshold if threshold is not None else _resolve_threshold()
@@ -371,7 +372,7 @@ async def _run_note_synthesis(
                 # Sprint 5 day 1-2: confidence now persists from the
                 # parser into the typed event so the NotesFeed UI can
                 # render the badge.
-                confidence=note.confidence,  # type: ignore[arg-type]
+                confidence=note.confidence,
                 node_id=None,  # graph promotion comes when Sprint 6 wires it
             ),
             parent_event_id=triggering_event.event_id,
