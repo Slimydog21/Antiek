@@ -48,7 +48,7 @@ export function ThreadBreadcrumb({
   if (forked) {
     return (
       <div
-        className="px-4 py-1.5 text-[12.5px] font-mono text-emperor"
+        className="px-4 py-1.5 text-xs font-mono text-emperor"
         data-testid="thread-breadcrumb-integrity-warning"
         role="alert"
       >
@@ -66,7 +66,7 @@ export function ThreadBreadcrumb({
       className="px-4 min-w-0"
       data-testid="thread-breadcrumb"
     >
-      <ol className="flex items-center gap-1.5 text-[12.5px] font-mono text-ink-soft dark:text-moonlight overflow-x-auto whitespace-nowrap">
+      <ol className="flex items-center gap-1.5 text-xs font-mono text-ink-soft dark:text-moonlight overflow-x-auto whitespace-nowrap">
         {thread.hops.map((hop, i) => {
           const meta = WORKFLOWS[hop.workflow];
           // The current-focus segment is the one whose entity is in focus AND

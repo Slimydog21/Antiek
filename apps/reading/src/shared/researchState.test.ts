@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isUnseen,
+  researchRunStateStyle,
   researchStateDotClass,
   researchStateFor,
   researchStateLabel,
@@ -20,6 +21,17 @@ const ALL_STATUSES = [
   "failed",
   "stopped",
   "not_found",
+] as const;
+
+const ALL_RUN_STATES = [
+  "pending",
+  "running",
+  "paused",
+  "stopping",
+  "done",
+  "stopped",
+  "failed",
+  "budget_halted",
 ] as const;
 
 describe("researchStateFor", () => {
@@ -56,7 +68,7 @@ describe("researchStateStyle", () => {
     });
     expect(researchStateStyle("completed")).toMatchObject({
       label: "done",
-      colour: "aurora",
+      colour: "success",
       running: false,
     });
     expect(researchStateStyle("failed")).toMatchObject({
@@ -79,6 +91,58 @@ describe("researchStateStyle", () => {
   it("only 'working' is running", () => {
     for (const status of ALL_STATUSES) {
       expect(researchStateStyle(status).running).toBe(status === "in_progress");
+    }
+  });
+});
+
+describe("researchRunStateStyle — the DRW run-lifecycle facet", () => {
+  it("is total over the run-state union — every run state yields a full style", () => {
+    for (const state of ALL_RUN_STATES) {
+      const style = researchRunStateStyle(state);
+      expect(style.label).toBeTruthy();
+      expect(style.colour).toBeTruthy();
+      expect(style.token).toMatch(/^state-/);
+      expect(style.textClass).toMatch(/text-\[var\(--state-/);
+    }
+  });
+
+  it("resolves running toward the canonical map (working=sun), never aurora", () => {
+    // Aurora is reserved for AI-thinking/completion (adjudication D8); the
+    // old private registry painted a generic running state aurora.
+    expect(researchRunStateStyle("running")).toMatchObject({
+      label: "running",
+      colour: "sun",
+      token: "state-working",
+      running: true,
+    });
+    expect(researchRunStateStyle("running").colour).not.toBe("aurora");
+  });
+
+  it("keeps the monitor's plain run words", () => {
+    expect(researchRunStateStyle("pending").label).toBe("queued");
+    expect(researchRunStateStyle("paused").label).toBe("paused");
+    expect(researchRunStateStyle("stopping").label).toBe("stopping");
+    expect(researchRunStateStyle("done").label).toBe("done");
+    expect(researchRunStateStyle("stopped").label).toBe("stopped");
+    expect(researchRunStateStyle("failed").label).toBe("failed");
+    expect(researchRunStateStyle("budget_halted").label).toBe("budget halted");
+  });
+
+  it("marks failure and budget halt as danger (the operator must see them)", () => {
+    for (const state of ["failed", "budget_halted"] as const) {
+      expect(researchRunStateStyle(state)).toMatchObject({
+        colour: "danger",
+        token: "state-blocked",
+        running: false,
+      });
+    }
+  });
+
+  it("only running and stopping still consume concurrency", () => {
+    for (const state of ALL_RUN_STATES) {
+      expect(researchRunStateStyle(state).running).toBe(
+        state === "running" || state === "stopping",
+      );
     }
   });
 });

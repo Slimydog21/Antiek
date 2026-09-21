@@ -66,7 +66,7 @@ export default function AdBorder({ slotId, position, fill, onOpenHouse }: AdBord
             <span className="font-serif text-sm text-ink dark:text-bright truncate block">
               {fill.ad!.advertiserName}
             </span>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight">
+            <span className="text-xxs font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight">
               Sponsored
             </span>
           </span>
