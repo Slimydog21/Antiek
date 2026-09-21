@@ -519,22 +519,43 @@ def make_document_loaded_handler(
                 prime_agent_backend_from_environment,
             )
 
-            # Supply the backend so the documented flags become the real switch.
+            # THIS IS NOT AN ACTIVATION SWITCH. The backend is threaded through
+            # here and is never invoked on this path.
             #
-            # Every RLM site accepts a ``prime_backend`` and, until now, no non-test
-            # code anywhere constructed one — so `_bridge_executor(None)` returned
-            # "dispatch" unconditionally and the entire Prime lane was unreachable at
-            # runtime while looking wired at the module level. This is the one RLM site
-            # with a live entry point (document.loaded), which makes it the honest place
-            # to close that gap first; the other seven have no route at all and wiring
-            # them without a consumer is what produced eight inert parameters.
+            # What the parameter actually does: `maybe_escalate_to_rlm` hands the
+            # object to `_bridge_executor` (bridge.py:107-110), which uses it only
+            # as a truthiness token. Given a non-None backend plus
+            # ANTIEK_PRIME_AGENT_RLM_ENABLED=1 and ANTIEK_RLM_RATIFIED=1 it returns
+            # the literal string "prime_agent". That string is then consumed twice
+            # and only twice: as `root_executor=` at bridge.py:174 and as the
+            # `prime_goal_brief` condition at bridge.py:177. It is stored on the
+            # session record (session.py:79) and read by no other non-test code.
             #
-            # The default path is unchanged. `_bridge_executor` requires ALL THREE of a
-            # non-None backend, ANTIEK_PRIME_AGENT_RLM_ENABLED=1 and ANTIEK_RLM_RATIFIED=1
-            # (bridge.py:103-110), and the factory itself returns a backend with
-            # enabled=False unless the first flag is set. Neither flag is set anywhere in
-            # the deployment config, so behaviour is byte-identical until the operator
-            # ratifies — which is exactly the gate session.py:36-40 says is deliberate.
+            # So the flags select a LABEL. bridge.py contains no `.run(` and no
+            # `.run_session(`; the object's methods are never called there. The only
+            # non-test `prime_backend.run_session(...)` in the repo is
+            # rlm_investigation.py:220, inside `run_rlm_investigation`, which has no
+            # non-test caller of its own. Flipping both flags with a real binary
+            # installed therefore creates a differently labelled session and spawns
+            # NO Prime process. Re-verified against origin/main 9cd7692a on
+            # 2026-09-21.
+            #
+            # That is a reachability gap, not a judgement on the lane. The substrate
+            # is real and carefully built (prime_agent_backend.py, prime_rpc_evidence.py
+            # with its mutation-tested wire contract, runtime/prime_agent/installation.py,
+            # and a finished dispatch adapter). It is simply not reachable from this
+            # call site. Closing the gap means adding an actual invocation after
+            # `create_session` in bridge.py, and that invocation must cross into a
+            # worker thread: `run()` and `run_session()` both block, and this is
+            # `async def handle_document_loaded`. Follow the `_sync()` /
+            # `asyncio.to_thread` precedent above. Tracked as SPR-01 Task 3 in the
+            # antiek-v1-connect spec.
+            #
+            # Keeping the argument is still correct and safe. The factory returns a
+            # backend with enabled=False unless ANTIEK_PRIME_AGENT_RLM_ENABLED is
+            # set, no deployment config sets either flag, and prod /health lists no
+            # prime_agent provider, so behaviour is unchanged until both the flags
+            # and the missing invocation land.
             decision = maybe_escalate_to_rlm(
                 document_id=event.document_id,
                 investigation_id=event.investigation_id or "__no_investigation__",

@@ -2,14 +2,13 @@
 
 WHY THIS FILE EXISTS
 ────────────────────
-Eight RLM sites accept a ``prime_backend`` parameter. Until this wiring, **no
+Eight RLM sites accept a ``prime_backend`` parameter. Before this wiring, **no
 non-test code anywhere constructed one**, so ``_bridge_executor(None)`` returned
-"dispatch" unconditionally and the whole Prime lane was unreachable at runtime while
-looking fully wired at the module level. Every unit test passed, because every unit
-test passed a backend in by hand.
+"dispatch" unconditionally. Every unit test passed, because every unit test passed a
+backend in by hand.
 
 That is the defect this file pins, and it is a defect about an ARGUMENT NOT BEING
-PASSED — so the honest test is one that reads the call site. A behavioural test here
+PASSED, so the honest test is one that reads the call site. A behavioural test here
 would need a DuckDB fixture and a document.loaded event to reach four lines of glue,
 and would still not fail if someone deleted the keyword, because the deletion restores
 the silently-inert default.
@@ -17,14 +16,28 @@ the silently-inert default.
 WHAT THIS PROVES, AND WHAT IT DOES NOT
 ──────────────────────────────────────
 Proves: the live ``document.loaded`` call site passes ``prime_backend`` with a value
-that is not the literal ``None``, and that the factory honours the documented flag in
-both directions. Does NOT prove that a Prime session runs end to end — that needs the
-operator's ratification plus an installed binary, and
-``tests/test_rlm_bridge.py::test_above_threshold_ratified_prime_backend_switches_root_executor``
-already covers the bridge's own behaviour once a backend is supplied.
+that is not the literal ``None``, and that ``PrimeAgentRLMBackend.run()`` honours
+ANTIEK_PRIME_AGENT_RLM_ENABLED in both directions.
 
-The two together are the chain: the bridge does the right thing with a backend, and
-the call site actually hands it one.
+Does NOT prove that any Prime process is spawned from this path. READ THIS BEFORE
+TREATING THE LANE AS ACTIVATION-READY, BECAUSE IT IS NOT: supplying the backend threads
+an object through, it does not make the flags an execution switch. ``_bridge_executor``
+(bridge.py:107-110) uses the object only as a truthiness token to return the string
+"prime_agent", and that string is consumed twice and only twice, as ``root_executor=``
+at bridge.py:174 and as the ``prime_goal_brief`` condition at bridge.py:177. bridge.py
+contains no ``.run(`` and no ``.run_session(``. The only non-test
+``prime_backend.run_session(...)`` in the repo is rlm_investigation.py:220, inside
+``run_rlm_investigation``, which has no non-test caller. So with both flags set and a
+real binary installed, document.loaded creates a differently labelled session and
+spawns nothing. Re-verified against origin/main 9cd7692a on 2026-09-21.
+
+``tests/test_rlm_bridge.py::test_above_threshold_ratified_prime_backend_switches_root_executor``
+covers exactly what its name says: the root_executor LABEL switches. Neither test, nor
+both together, proves invocation. The missing piece is production code that calls the
+backend after ``create_session``, tracked as SPR-01 Task 3 in the antiek-v1-connect
+spec, whose done-bar is a witness-file spawn count greater than zero.
+
+The substrate itself is real and carefully built. The gap is reachability, not quality.
 """
 
 from __future__ import annotations
@@ -91,7 +104,12 @@ def test_the_factory_is_off_by_default_so_wiring_changes_nothing() -> None:
 
 
 def test_the_factory_honours_the_documented_flag() -> None:
-    """The flag is the switch, and only the documented truthy spellings flip it."""
+    """The flag switches the FACTORY's enabled bit, and only the documented spellings.
+
+    Scope warning: this is about ``PrimeAgentRLMBackend.run()``, a method no production
+    code on the document.loaded path ever calls. The flag does not switch on a Prime
+    process anywhere. See the module docstring.
+    """
     for falsy in ("", "0", "no", "off", "maybe"):
         backend = prime_agent_backend_from_environment(
             environ={"ANTIEK_PRIME_AGENT_RLM_ENABLED": falsy}
