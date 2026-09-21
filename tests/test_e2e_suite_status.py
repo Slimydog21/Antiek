@@ -33,44 +33,29 @@ _WORKFLOWS = _ROOT / ".github" / "workflows"
 #: intent, and the mascot wave's owner should make it.
 _DEAD_SUBJECT = {
     "_ams/penguin.spec.ts",
-    "_werner/rod-in-hand.spec.ts",
 }
 
-#: Every spec currently executed by NO workflow — which is all of them. This
+#: Every spec currently executed by NO workflow. Until e2e_chromium.yml landed
+#: that was ALL of them; the chromium project now runs 14, so those have LEFT
+#: this register — which is the shrink the no-growth rule below demands. This
 #: register exists so the fact is visible in the tree rather than inferable
 #: only by grepping the workflows. It is a NO-GROWTH list: a thirty-first
 #: unwired spec fails the test below instead of joining a silent pile, and a
 #: spec that gets wired in (or deleted) must LEAVE the list, so the register
 #: cannot rot into a stale allowance.
 _UNWIRED_SPECS = {
-    "_ams/penguin.spec.ts",
-    "_ams/scene-motion-fps.spec.ts",
-    "_werner/endless-loop.spec.ts",
-    "_werner/rod-in-hand.spec.ts",
     "ams-shell.spec.ts",
     "ams-v2-experience-matrix.spec.ts",
     "ams-v2-resilience-matrix.spec.ts",
     "feel-experience-matrix.spec.ts",
-    "feel-focus-ring.spec.ts",
-    "feel-panels-cascade.spec.ts",
     "feel-rw-ide-exempt.spec.ts",
-    "flywheel.spec.ts",
     "glass-reduced-motion.spec.ts",
     "glass-surface.spec.ts",
     "hotkeys-command-scheme.spec.ts",
     "login-magic-link.spec.ts",
-    "navigation-ia.spec.ts",
     "navrail-labels.spec.ts",
-    "operator-day.spec.ts",
     "passkey-roundtrip.spec.ts",
-    "popout.spec.ts",
     "research-hard-ceiling.spec.ts",
-    "scene-living.spec.ts",
-    "smoke.spec.ts",
-    "speak-biography.spec.ts",
-    "speak-private-journey.spec.ts",
-    "speak-publish.spec.ts",
-    "thread-navigation.spec.ts",
     "token-retone.spec.ts",
     "windows-default.spec.ts",
 }

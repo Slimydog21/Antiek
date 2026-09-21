@@ -59,6 +59,17 @@ emitted_but_not_required:
     why: >-
       The ansible deploy itself, gated by `gate` above and likewise
       post-merge. Same circularity; see `gate`.
+  e2e-chromium:
+    why: >-
+      New in e2e_chromium.yml. Advisory BY ABSENCE, not by silencing: the job
+      contains no `exit 0`, no `|| true` and no continue-on-error, so a red run
+      shows an honest red X — it simply is not in the ruleset, so it blocks
+      nothing. It is also path-filtered on apps/reading/**, which makes
+      requiring it unsafe today: a required check behind `paths:` is never
+      reported on a PR that misses the filter and stays permanently pending.
+      Flip condition, from the workflow header: add it here under `required`
+      (and to the ruleset) once it is green on main for 10 consecutive pushes,
+      and do NOT reach that bar with `test.fail()` annotations.
   agent-execution-gates:
     why: Advisory per docs/decisions/ci-informational-gates.md.
   test-integrity-floor:
