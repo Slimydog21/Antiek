@@ -53,7 +53,7 @@ def parse_creative_writer_response(
             raise CreativeWriterValidationError(
                 f"prose_provenance keys must be integer paragraph "
                 f"indices, got {k!r}"
-            )
+            ) from None
         if not isinstance(v, list) or not all(isinstance(b, str) for b in v):
             raise CreativeWriterValidationError(
                 f"prose_provenance[{idx}] must be list of block_id strings"

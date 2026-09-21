@@ -171,8 +171,20 @@ def _open_parent_dir(path: Path, *, create: bool) -> tuple[int, str]:
         raise
 
 
+def twin_notes_path_for(investigation_id: str) -> Path:
+    safe = investigation_id.replace("/", "_")
+    return research_artifacts_dir() / f"{safe}.notes.html"
+
+
 def compose_path_for(*investigation_ids: str) -> Path:
     joined = "-".join(i.replace("/", "_") for i in investigation_ids[:8])
     if len(investigation_ids) > 8:
         joined += f"-and{len(investigation_ids) - 8}-more"
     return research_artifacts_dir() / f"compose-{joined}.html"
+
+
+def draft_merge_path_for(*investigation_ids: str) -> Path:
+    joined = "-".join(i.replace("/", "_") for i in investigation_ids[:8])
+    if len(investigation_ids) > 8:
+        joined += f"-and{len(investigation_ids) - 8}-more"
+    return research_artifacts_dir() / f"draft-merge-{joined}.html"

@@ -16,7 +16,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class CampaignStatus(str, enum.Enum):
+class CampaignStatus(enum.StrEnum):
     ACTIVE = "active"
     PAUSED = "paused"
     DRAFT = "draft"

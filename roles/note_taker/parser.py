@@ -12,7 +12,7 @@ import sys
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, cast
 
 # Shared JSON-tolerant decoder. See roles/_json_decode.py for the
 # extraction rationale (avoids import cycles through wrestling.py).
@@ -35,6 +35,8 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 # Confidence vocabulary must match ConfidenceLevel Literal on the
 # Claim/Note payloads. Same set used by the synthesizer's claims.
+ConfidenceLevel = Literal["high", "moderate", "low", "unknown"]
+
 _VALID_CONFIDENCE = {"high", "moderate", "low", "unknown"}
 
 
@@ -46,7 +48,7 @@ class ExtractedNote:
 
     note_id: str
     text: str
-    confidence: str  # one of ConfidenceLevel
+    confidence: ConfidenceLevel
     source_event_ids: tuple[str, ...]
 
 
@@ -54,11 +56,11 @@ def _new_note_id() -> str:
     return "n-" + uuid.uuid4().hex[:12]
 
 
-def _normalize_confidence(raw: Any) -> str:
+def _normalize_confidence(raw: Any) -> ConfidenceLevel:
     """Coerce to one of the 4 ConfidenceLevel values. Unknown input
     → ``"unknown"`` (matches the schema's "I don't know" value)."""
     if isinstance(raw, str) and raw.lower() in _VALID_CONFIDENCE:
-        return raw.lower()
+        return cast(ConfidenceLevel, raw.lower())
     return "unknown"
 
 

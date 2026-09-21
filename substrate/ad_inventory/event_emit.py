@@ -32,7 +32,7 @@ def revshare_to_payload(decision: RevShareDecision) -> RevShareDecidedPayload:
     return RevShareDecidedPayload(
         decision_id=decision.decision_id,
         impression_id=decision.impression_id,
-        kind=decision.kind.value,  # type: ignore[arg-type]
+        kind=decision.kind.value,  # type: ignore[arg-type,unused-ignore]
         recipient_ref=decision.recipient_ref,
         amount_usd_cents=decision.amount_usd_cents,
         document_id_ref=decision.document_id,

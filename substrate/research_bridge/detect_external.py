@@ -24,7 +24,9 @@ try:
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.research_bridge.source_detection import detect_source  # type: ignore[no-redef]
+    from substrate.research_bridge.source_detection import (
+        detect_source,
+    )
 
 
 # The consumer deep-research vendors (subset of KNOWN_SOURCES). "other" and

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 try:
-    from ...runtime.db_lock import LockedConnection
+    from ...runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
     from ..graph.ops import new_random_id
     from .extractor import (
         EXTRACTOR_VERSION,
@@ -23,15 +23,15 @@ try:
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.graph.ops import new_random_id  # type: ignore[no-redef]
-    from substrate.research_bridge.extractor import (  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
+    from substrate.graph.ops import new_random_id
+    from substrate.research_bridge.extractor import (
         EXTRACTOR_VERSION,
         LlmCallable,
         LlmCallResult,
         _extract_json_object,
     )
-    from substrate.research_bridge.source_detection import KNOWN_SOURCES  # type: ignore[no-redef]
+    from substrate.research_bridge.source_detection import KNOWN_SOURCES
 
 
 CLUSTER_VERSION: int = 1
@@ -97,7 +97,7 @@ def _load_cascade_prompt() -> str:
         return f.read()
 
 
-def _render_cluster_input(questions: list[dict]) -> str:
+def _render_cluster_input(questions: list[dict[str, Any]]) -> str:
     lines = [f"Open questions ({len(questions)}):", ""]
     for q in questions:
         lines.append(q["question_id"])
@@ -109,8 +109,8 @@ def _render_cluster_input(questions: list[dict]) -> str:
 
 def _render_cascade_input(
     clusters: list[GapCluster],
-    cluster_questions: dict[str, list[dict]],
-    insights_excerpt: list[dict],
+    cluster_questions: dict[str, list[dict[str, Any]]],
+    insights_excerpt: list[dict[str, Any]],
 ) -> str:
     lines = [f"Clusters ({len(clusters)}):", ""]
     for c in clusters:
@@ -267,11 +267,11 @@ def _parse_cascade_response(
 
 def _collect_scope_questions(
     con: LockedConnection, document_ids: Sequence[str],
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if not document_ids:
         return [], []
-    questions: list[dict] = []
-    insights: list[dict] = []
+    questions: list[dict[str, Any]] = []
+    insights: list[dict[str, Any]] = []
     placeholders = ", ".join("?" for _ in document_ids)
     q_rows = con.execute(
         f"""
@@ -584,7 +584,9 @@ class StoredRun:
     created_at: str
 
 
-def list_gap_runs(con, *, limit: int = 20, session_id: str | None = None) -> list[StoredRun]:
+def list_gap_runs(
+    con: LockedConnection, *, limit: int = 20, session_id: str | None = None,
+) -> list[StoredRun]:
     if session_id is None:
         rows = con.execute(
             "SELECT run_id, operator_label, session_id, scope_block_ids, "
@@ -618,7 +620,7 @@ def list_gap_runs(con, *, limit: int = 20, session_id: str | None = None) -> lis
 
 
 def read_gap_run(
-    con, run_id: str,
+    con: LockedConnection, run_id: str,
 ) -> tuple[StoredRun | None, list[StoredCluster], list[StoredPrompt]]:
     run_row = con.execute(
         "SELECT run_id, operator_label, session_id, scope_block_ids, "
@@ -676,7 +678,9 @@ def read_gap_run(
     return run, clusters, prompts
 
 
-def would_run_percentage(con, *, run_id: str | None = None) -> tuple[int, int, float]:
+def would_run_percentage(
+    con: LockedConnection, *, run_id: str | None = None,
+) -> tuple[int, int, float]:
     base_filter = ""
     params: list[Any] = []
     if run_id is not None:

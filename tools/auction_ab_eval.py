@@ -55,6 +55,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from runtime.db_lock import connect_read  # noqa: E402
 from substrate.ad_inventory.ad_bidding import AdInventoryItem  # noqa: E402
 from substrate.ad_inventory.auction_features import (  # noqa: E402
     AuctionCandidate,
@@ -367,11 +368,11 @@ def _load_recorded_sessions(db_path: str) -> list[EvalSession]:
     fixture-driven number plus the finding 'rule-based leads until feedback
     accrues' (see the handoff / runbook)."""
     try:
-        import duckdb
+        pass
     except Exception:
         return []
     try:
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
     except Exception:
         return []
     try:

@@ -113,8 +113,7 @@ def render_user_template(*, top_k: int, chunks_block: str) -> str:
     ``.format``) so the JSON example block at the tail survives."""
     out = STYLE_EXTRACTOR_USER_TEMPLATE
     out = out.replace("{{top_k}}", str(int(top_k)))
-    out = out.replace("{{chunks_block}}", chunks_block or "(no chunks)")
-    return out
+    return out.replace("{{chunks_block}}", chunks_block or "(no chunks)")
 
 
 def render_full_prompt(

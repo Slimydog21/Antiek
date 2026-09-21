@@ -281,6 +281,7 @@ export async function getHealth(): Promise<{
  * substrate/dispatch/research_tier.py:RESEARCH_TIERS.
  */
 export type ResearchTier = "fast" | "deep";
+export type ResearchSourcePolicy = "arxiv" | "substack" | "web" | "operator_corpus";
 
 export interface UserModelChoice {
   authority: "user_model";
@@ -298,6 +299,13 @@ export interface StartInvestigationRequest {
   investigation_id?: string;
   /** Curated fast/deep tier; defaults server-side to "deep" when omitted. */
   research_tier?: ResearchTier;
+
+  /**
+   * Metadata-only source intent for this run. Recording it does not itself
+   * launch retrieval connectors; the backend start event makes the operator's
+   * requested source pack queryable for later runner/source-pack execution.
+   */
+  source_policy?: ResearchSourcePolicy[];
   /** Owner-selected route. The server requires this and operation_id together. */
   model_choice?: UserModelChoice;
   /** Stable idempotency identity for an owner-selected launch. */
@@ -629,6 +637,8 @@ export interface InvestigationStatus {
   /** The inline-rubric verdict for this research's answer; null when no
    *  score was persisted (the no-synthesis / no-key case). */
   rubric_score: RubricScore | null;
+  /** Metadata-only source-pack intent recorded on the start event. */
+  source_policy: ResearchSourcePolicy[];
 }
 
 /** GET /investigations/{id} — fetch terminal-state status. */
@@ -676,7 +686,7 @@ export interface ChunkResponse {
 
 // ── Sprint 12: source ingest ───────────────────────────────────────
 
-export type SourceKind = "arxiv" | "youtube" | "podcast" | "url";
+export type SourceKind = "arxiv" | "youtube" | "podcast" | "substack" | "url";
 
 export interface IngestSourceRequest {
   url: string;
@@ -1251,9 +1261,112 @@ export interface ResearchArtifactExportResponse {
   artifact_id: string;
   investigation_id: string;
   path: string;
+  twin_notes_path: string;
   content_hash: string;
   size_bytes: number;
   event_id: string | null;
+}
+
+export interface ResearchArtifactComposeMember {
+  investigation_id: string;
+  content_hash: string;
+  artifact_path: string;
+  twin_notes_path: string;
+}
+
+export interface ResearchArtifactComposeResponse {
+  path: string;
+  draft_merge_path: string | null;
+  members: ResearchArtifactComposeMember[];
+  hash_conflicts: string[][];
+}
+
+export interface SourceMergeReviewPacket {
+  kind: "antiek.reader.source_merge_review_packet";
+  document_id: string;
+  title: string | null;
+  parent_reading_thread_id: string;
+  draft_merge_path: string;
+  compose_index_path: string;
+  member_investigation_ids: string[];
+  requested_investigation_ids: string[];
+  hash_conflict_count: number;
+  hash_conflicts: string[][];
+  source_book_mutated: boolean;
+  twin_document_mutated: boolean;
+  no_spend: boolean;
+}
+
+export interface SourceMergeApplyRequest {
+  reviewed_packet: SourceMergeReviewPacket;
+  expected_content_hashes: Record<string, string>;
+  acknowledge_reviewed_draft: boolean;
+  acknowledge_source_book_mutation: boolean;
+  acknowledge_twin_document_mutation: boolean;
+  acknowledge_hash_conflicts?: boolean;
+  operator_reviewer?: string | null;
+}
+
+export interface SourceMergeApplyResponse {
+  status: string;
+  document_id: string;
+  source_revision_id: string;
+  twin_revision_id: string;
+  event_id: string;
+  member_investigation_ids: string[];
+  hash_conflicts_acknowledged: boolean;
+}
+
+export interface SourceMergePreviewResponse {
+  status: string;
+  document_id: string;
+  source_revision_id: string;
+  twin_revision_id: string;
+  member_investigation_ids: string[];
+  before_source_hash: string;
+  after_source_hash: string;
+  before_twin_hash: string;
+  after_twin_hash: string;
+  source_bytes_before: number;
+  source_bytes_after: number;
+  twin_bytes_after: number;
+  writes_performed: boolean;
+}
+
+export interface SourceMergeCommitRequest extends SourceMergeApplyRequest {
+  expected_source_revision_id: string;
+  expected_twin_revision_id: string;
+  expected_before_source_hash: string;
+  expected_after_source_hash: string;
+  expected_before_twin_hash: string;
+  expected_after_twin_hash: string;
+  acknowledge_body_rewrite: boolean;
+}
+
+export interface SourceMergeCommitResponse extends SourceMergePreviewResponse {
+  event_id: string;
+}
+
+export interface SourceMergeRestoreRequest {
+  document_id: string;
+  parent_reading_thread_id: string;
+  source_revision_id: string;
+  twin_revision_id: string;
+  expected_after_source_hash: string;
+  expected_before_source_hash: string;
+  acknowledge_restore: boolean;
+  operator_reviewer?: string | null;
+}
+
+export interface SourceMergeRestoreResponse {
+  status: string;
+  document_id: string;
+  source_revision_id: string;
+  twin_revision_id: string;
+  event_id: string;
+  before_source_hash: string;
+  restored_source_hash: string;
+  writes_performed: boolean;
 }
 
 /** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
@@ -1284,6 +1397,105 @@ export async function exportResearchArtifact(
   if (!resp.ok) {
     throw new ApiError(
       `POST /research/{id}/artifact/export failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /research/artifacts/compose — write a no-mutation draft merge review. */
+export async function composeResearchArtifacts(
+  investigationIds: string[],
+  writeDraftMerge = true,
+): Promise<ResearchArtifactComposeResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/compose`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      investigation_ids: investigationIds,
+      write_draft_merge: writeDraftMerge,
+    }),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/artifacts/compose failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /research/artifacts/source-merge/apply — preflight reviewed source/twin apply. */
+export async function applySourceMerge(
+  request: SourceMergeApplyRequest,
+): Promise<SourceMergeApplyResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/artifacts/source-merge/apply failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /research/artifacts/source-merge/preview — no-write source/twin revision evidence. */
+export async function previewSourceMerge(
+  request: SourceMergeApplyRequest,
+): Promise<SourceMergePreviewResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/artifacts/source-merge/preview failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /research/artifacts/source-merge/commit — rewrite source/twin from a bound preview. */
+export async function commitSourceMerge(
+  request: SourceMergeCommitRequest,
+): Promise<SourceMergeCommitResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/commit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/artifacts/source-merge/commit failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /research/artifacts/source-merge/restore — restore source body from a committed merge. */
+export async function restoreSourceMerge(
+  request: SourceMergeRestoreRequest,
+): Promise<SourceMergeRestoreResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/artifacts/source-merge/restore failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );

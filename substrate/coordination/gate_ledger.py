@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 # ── The canonical source ────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ def canonical_gate_path() -> Path:
 
 # ── Coarse status enum (for filtering/coloring only; nuance lives in raw) ────
 
-class GateStatus(str, Enum):
+class GateStatus(StrEnum):
     """A coarse normalization of the gate's status for filtering and coloring.
 
     The *authoritative* status is :attr:`Gate.status_raw` (verbatim from the
@@ -83,7 +83,7 @@ class GateStatus(str, Enum):
         return self is not GateStatus.CLOSED
 
 
-class Product(str, Enum):
+class Product(StrEnum):
     """The four product workflows the unified vision ships."""
 
     RESEARCH = "research"

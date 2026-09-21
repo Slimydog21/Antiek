@@ -40,6 +40,7 @@ Time + sleep are injectable so CI is deterministic and never sleeps for real.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import random
@@ -47,6 +48,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # Default per-source spacing. A research-batch tool is not latency-sensitive,
 # so a courteous floor keeps us off any rate-limiter's radar. OA polite pools
@@ -127,11 +129,11 @@ class _SourceState:
     @classmethod
     def from_dict(cls, d: Mapping[str, object]) -> _SourceState:
         return cls(
-            last_request_at=float(d.get("last_request_at", 0.0) or 0.0),
-            banned_until=float(d.get("banned_until", 0.0) or 0.0),
+            last_request_at=float(d.get("last_request_at") or 0.0),  # type: ignore[arg-type]
+            banned_until=float(d.get("banned_until") or 0.0),  # type: ignore[arg-type]
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "last_request_at": self.last_request_at,
             "banned_until": self.banned_until,
@@ -154,7 +156,7 @@ class _AllState:
                     sources[str(key)] = _SourceState.from_dict(val)
         return cls(sources=sources)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"sources": {k: v.to_dict() for k, v in self.sources.items()}}
 
 
@@ -274,10 +276,8 @@ class SourceThrottle:
         if headers:
             retry_after = headers.get("Retry-After") or headers.get("retry-after")
             if retry_after:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     backoff = max(backoff, float(int(str(retry_after).strip())))
-                except (ValueError, TypeError):
-                    pass
         all_state = self._read_all()
         state = self._source_state(all_state, source)
         state.banned_until = self._now() + backoff

@@ -161,8 +161,8 @@ class RoadmapResponse(BaseModel):
             ],
             unblocked_now=[s.node_id for s in rm.unblocked_now()],
             substrate_layers=[
-                SubstrateLayerResponse(name=l.name, owner=l.owner, status=l.status)
-                for l in rm.substrate_layers
+                SubstrateLayerResponse(name=layer.name, owner=layer.owner, status=layer.status)
+                for layer in rm.substrate_layers
             ],
         )
 

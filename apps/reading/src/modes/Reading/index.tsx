@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
@@ -41,12 +41,15 @@ import { emitSourceRead, isRead } from "./sourceRead";
 export default function BookReader() {
   const { documentId = "" } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const openTalkOnLoad = searchParams.get("talk") === "1";
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [body, setBody] = useState<FullTextResponse | null>(null);
   const [housePool, setHousePool] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,7 +80,11 @@ export default function BookReader() {
     return () => {
       cancelled = true;
     };
-  }, [documentId]);
+  }, [documentId, reloadToken]);
+
+  const refreshSourceBody = useCallback(() => {
+    setReloadToken((token) => token + 1);
+  }, []);
 
   const pages = useMemo(
     () => paginate(body?.full_text ?? body?.snippet ?? ""),
@@ -167,6 +174,7 @@ export default function BookReader() {
   // (the old inline "Go deeper" affordance) is GENERALIZED through this menu:
   // Deep-research (highlight) used to open ChaseThread without book provenance;
   // that path never hit spin-research / notebook distill. Wire to spin-research.
+
   const articleRef = useRef<HTMLElement>(null);
 
   // §9.0 servability of the open book — the in-book selection's servability.
@@ -222,6 +230,7 @@ export default function BookReader() {
   // Deep-research (highlight) -> spin-research + /inv/:id. Book-bound provenance
   // via POST /books/{id}/spin-research. ChaseThread stays the in-investigation
   // chase path on the Research workstation. Section 9.0: null safeSpawnText = refuse.
+
   const onDeepResearch = useCallback(
     (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
       if (safeSpawnText === null) return;
@@ -234,8 +243,10 @@ export default function BookReader() {
           console.error("spin-research from highlight failed", err);
         }
       })();
+
     },
     [documentId, pageIndex, navigate],
+
   );
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the
@@ -374,6 +385,7 @@ export default function BookReader() {
         investigationId={readingThreadId}
         onDeepResearch={onDeepResearch}
       />
+
 
       {/* Reading column */}
       <main className="flex-1 overflow-y-auto">
@@ -538,14 +550,21 @@ export default function BookReader() {
         documentId={documentId}
         title={book.title}
         readingThreadId={readingThreadId}
+        onSourceBodyChanged={refreshSourceBody}
       />
+
 
       {/* M2 — the floating bookmark: a book-level MULTI-TURN talk-to-book
           conversation that persists across page navigation (session state, the
           usePosition precedent). Answers cite pages → jumpToPage moves the
           SPR-07 reader. The SPR-04 selection FloatMenu Dialogue stays one-shot;
           THIS is the new multi-turn surface. */}
-      <TalkToBook documentId={documentId} title={book.title} onJumpToPage={jumpToPage} />
+      <TalkToBook
+        documentId={documentId}
+        title={book.title}
+        initialOpen={openTalkOnLoad}
+        onJumpToPage={jumpToPage}
+      />
     </div>
   );
 }

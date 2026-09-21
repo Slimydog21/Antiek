@@ -45,9 +45,10 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # The dedup-key set per source is bounded so the checkpoint file cannot grow
 # without limit over a long-running continuous engine (a source with millions
@@ -91,13 +92,16 @@ class SourceCheckpoint:
     @classmethod
     def from_dict(cls, d: Mapping[str, object]) -> SourceCheckpoint:
         seen = d.get("ingested_ids_seen") or []
+        seen_iter: Iterable[object] = seen if isinstance(seen, list) else []
+        last_run_ts_val = d.get("last_run_ts")
+        last_run_ts = float(last_run_ts_val) if isinstance(last_run_ts_val, (int, float, str)) else 0.0
         return cls(
             cursor=(str(d["cursor"]) if d.get("cursor") is not None else None),
-            last_run_ts=float(d.get("last_run_ts", 0.0) or 0.0),
-            ingested_ids_seen=set(str(x) for x in seen if x is not None),
+            last_run_ts=last_run_ts,
+            ingested_ids_seen={str(x) for x in seen_iter if x is not None},
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         # Sort the seen set so the serialized file is deterministic (stable
         # diff, reproducible test assertions) rather than set-iteration-order.
         return {
@@ -123,7 +127,7 @@ class _AllCheckpoints:
                     sources[str(key)] = SourceCheckpoint.from_dict(val)
         return cls(sources=sources)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {"sources": {k: v.to_dict() for k, v in self.sources.items()}}
 
 
@@ -147,13 +151,13 @@ class CheckpointStore:
         *,
         path: str | None = None,
         max_seen_per_source: int = DEFAULT_MAX_SEEN_PER_SOURCE,
-        now: Callable[[], float] = None,  # type: ignore[assignment]
+        now: Callable[[], float] | None = None,
     ) -> None:
         import time as _time
 
         self._path = Path(path or default_checkpoint_path())
         self._max_seen = int(max_seen_per_source)
-        self._now = now or _time.time
+        self._now = now if now is not None else _time.time
 
     # -- file I/O (atomic write; unlocked, last-writer-wins) -----------------
 

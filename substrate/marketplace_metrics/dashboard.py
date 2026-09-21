@@ -22,7 +22,7 @@ from .creator_distribution import CreatorEarningsDistribution
 from .publisher_escrow import PublisherEscrowReport
 
 
-class MarketplaceHealth(str, enum.Enum):
+class MarketplaceHealth(enum.StrEnum):
     HEALTHY = "healthy"
     WATCH = "watch"
     UNHEALTHY = "unhealthy"
@@ -63,7 +63,7 @@ def classify_health(
     watch_signals = 0
 
     # Creator loop.
-    paid_creators = sum(1 for b in creators.buckets if b.lower_cents >= 1_000 for _ in range(b.creator_count))
+    sum(1 for b in creators.buckets if b.lower_cents >= 1_000 for _ in range(b.creator_count))
     # The above generator is awkward; use a direct count:
     paid_creator_count = sum(
         b.creator_count for b in creators.buckets if b.lower_cents >= 1_000

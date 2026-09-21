@@ -21,13 +21,16 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
+from typing import Any
 
 try:
     from ..event_log import trajectory as _read_trajectory
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import trajectory as _read_trajectory  # type: ignore[no-redef]
+    from substrate.event_log import (
+        trajectory as _read_trajectory,  # type: ignore[no-redef,unused-ignore]
+    )
 
 
 # action_type → coarse authoring step kind. Block composition (SPR-01),
@@ -50,7 +53,7 @@ class AuthoringStep:
     action_type: str
     event_id: str | None
     emitted_at: str | None
-    payload: dict
+    payload: dict[str, Any]
     reverted: bool = False
 
 
@@ -72,12 +75,12 @@ class AuthoringTrajectory:
         return [s for s in self.steps if s.kind == "edit"]
 
 
-def _payload_deliverable_id(payload: dict) -> str | None:
+def _payload_deliverable_id(payload: dict[str, Any]) -> str | None:
     return payload.get("deliverable_id") if isinstance(payload, dict) else None
 
 
 def reconstruct_from_events(
-    events: list[dict], deliverable_id: str,
+    events: list[dict[str, Any]], deliverable_id: str,
 ) -> AuthoringTrajectory:
     """Reconstruct the trajectory for ``deliverable_id`` from a pre-read
     list of event dicts. Pure + deterministic; deduplicates by event_id.
@@ -126,7 +129,7 @@ def load_authoring_trajectory(
     Multi-session work that spanned other investigations passes their ids
     in ``investigation_ids`` — the events stitch by deliverable_id."""
     ids = investigation_ids or ["__operator__"]
-    events: list[dict] = []
+    events: list[dict[str, Any]] = []
     for inv in ids:
         events.extend(_read_trajectory(inv, events_dir=events_dir))
     return reconstruct_from_events(events, deliverable_id)

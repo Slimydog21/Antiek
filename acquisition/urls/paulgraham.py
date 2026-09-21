@@ -41,7 +41,11 @@ import urllib.robotparser
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urldefrag, urljoin, urlparse
+
+if TYPE_CHECKING:
+    from processing.embedding.embed import EmbeddingProvider
 
 # Repo root on path for direct invocation (mirrors adapter.py).
 _PKG_ROOT = os.path.dirname(
@@ -58,6 +62,7 @@ from acquisition.urls.adapter import (  # noqa: E402
 )
 from acquisition.urls.client import DEFAULT_USER_AGENT, FetchedHtml, fetch  # noqa: E402
 from acquisition.urls.extract import html_to_markdown  # noqa: E402
+from runtime.db_lock import connect_read  # noqa: E402
 
 # --- constants -------------------------------------------------------------
 
@@ -133,9 +138,7 @@ def _is_essay_url(url: str) -> bool:
         return False
     if not _ESSAY_HREF_RE.match(slug):
         return False
-    if slug in _NON_ESSAY_SLUGS:
-        return False
-    return True
+    return slug not in _NON_ESSAY_SLUGS
 
 
 def parse_article_list(html: bytes | str, *, base_url: str = PG_BASE_URL) -> list[str]:
@@ -260,7 +263,7 @@ class EssayQuality:
     ingested: bool
     skipped_reason: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "url": self.url,
             "document_id": self.document_id,
@@ -350,7 +353,7 @@ class RunSummary:
     # than silently degrading the lawful-acquisition posture.
     warnings: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "discovered": self.discovered,
             "fetched": self.fetched,
@@ -406,7 +409,7 @@ def run(
     *,
     investigation_id: str,
     db_path: str | None = None,
-    embedder: object | None = None,
+    embedder: EmbeddingProvider | None = None,
     # M1 injection seams (tests/offline):
     articles_html: bytes | str | None = None,
     robots_txt: str | None = None,
@@ -589,14 +592,13 @@ def _stored_raw_text(url: str, *, db_path: str | None) -> str | None:
     """Read back the persisted ``documents.raw_text`` (the extracted markdown)
     for this URL's document so the live-path quality verdict inspects the real
     extracted body. Returns None when the doc/DB is absent."""
-    import duckdb
 
     from substrate.graph import default_db_path
 
     resolved = db_path or default_db_path()
     document_id = url_doc_id(url)
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        con = connect_read(resolved)
     except Exception:
         return None
     try:
@@ -657,7 +659,6 @@ def _stored_content_hash(url: str, *, db_path: str | None) -> str | None:
     Returns None when the doc/DB is absent so a first run treats every essay as
     new.
     """
-    import duckdb
 
     from processing.chunking.chunker import content_hash
     from substrate.graph import default_db_path
@@ -665,7 +666,7 @@ def _stored_content_hash(url: str, *, db_path: str | None) -> str | None:
     resolved = db_path or default_db_path()
     document_id = url_doc_id(url)
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        con = connect_read(resolved)
     except Exception:
         return None
     try:

@@ -24,6 +24,9 @@ import hashlib
 import json
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from runtime.db_lock import connect_read
 
 DEFAULT_TTL_SECONDS: int = 24 * 60 * 60
 
@@ -71,18 +74,17 @@ def lookup(
     *,
     db_path: str,
     now: datetime | None = None,
-) -> list[dict] | None:
+) -> list[dict[str, Any]] | None:
     """Return the cached proposals list (as a list of dicts ready to
     re-hydrate into DiscoveryProposed) if the key is present AND
     not expired. None otherwise.
 
     Uses a read-only DuckDB connection; safe to call concurrently with
     other readers."""
-    import duckdb
 
     now = now or _now_utc()
     try:
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
     except Exception:
         # Cache miss when the DB file doesn't exist yet (first-ever
         # discover call). Caller proceeds to the live Exa call.
@@ -107,7 +109,8 @@ def lookup(
     if expires_at <= now:
         return None
     try:
-        return json.loads(proposals_json)
+        parsed: list[dict[str, Any]] | None = json.loads(proposals_json)
+        return parsed
     except (ValueError, TypeError):
         return None
 
@@ -115,7 +118,7 @@ def lookup(
 def store(
     key: str,
     *,
-    proposals: list,
+    proposals: list[Any],
     query: str,
     investigation_id: str,
     provider: str = "exa",
