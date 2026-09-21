@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 import type {
   ChunkPin,
@@ -75,15 +76,15 @@ const KIND_META: Record<ExplainKind, { title: string; lede: string }> = {
 function TierChip({ tier }: { tier: number }) {
   const colorClass =
     tier === 1
-      ? "bg-emerald-100 text-emerald-800"
+      ? "bg-success/15 text-success"
       : tier === 2
-        ? "bg-emerald-50 text-emerald-700"
+        ? "bg-success/10 text-success"
         : tier === 3
           ? "bg-sun/10 text-sun-deep dark:text-sun"
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
-      className={`text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
+      className={`text-xxs font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
     >
       tier {tier}
     </span>
@@ -95,13 +96,13 @@ function ConfidenceChip({ confidence }: { confidence: number }) {
   const pct = Math.round(confidence * 100);
   const colorClass =
     confidence >= 0.8
-      ? "bg-emerald-100 text-emerald-800"
+      ? "bg-success/15 text-success"
       : confidence >= 0.6
         ? "bg-sun/10 text-sun-deep dark:text-sun"
         : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
-      className={`text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
+      className={`text-xxs font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
       title={`extraction confidence ${confidence.toFixed(3)}`}
     >
       {pct}% confidence
@@ -128,7 +129,7 @@ function ChunkBlock({
           </span>
         )}
         {chunk.chunk_index !== null && (
-          <span className="font-mono text-[10px] text-ink-mute dark:text-moonlight">
+          <span className="font-mono text-xxs text-ink-mute dark:text-moonlight">
             chunk {chunk.chunk_index}
           </span>
         )}
@@ -158,12 +159,12 @@ function DocumentLink({ document }: { document: ExplainDocument }) {
         {title}
       </Link>
       {document.author && (
-        <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+        <span className="text-xxs font-mono text-ink-mute dark:text-moonlight">
           {document.author}
         </span>
       )}
       {document.acquired_at && (
-        <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+        <span className="text-xxs font-mono text-ink-mute dark:text-moonlight">
           acquired {new Date(document.acquired_at).toLocaleDateString()}
         </span>
       )}
@@ -240,14 +241,14 @@ function SetTierControl({
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className="text-[10px] font-mono uppercase tracking-wide text-ink-soft dark:text-starlight hover:text-sun-deep dark:hover:text-sun underline decoration-dotted underline-offset-2"
+        className="text-xxs font-mono uppercase tracking-wide text-ink-soft dark:text-starlight hover:text-sun-deep dark:hover:text-sun underline decoration-dotted underline-offset-2"
       >
         {open ? "hide tier history" : "set tier"}
       </button>
       {open && (
         <div className="mt-2 border border-rule dark:border-charcoal-1 rounded-md px-3 py-2.5 space-y-2">
           <div className="flex items-end gap-2 flex-wrap">
-            <label className="flex flex-col gap-1 text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+            <label className="flex flex-col gap-1 text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
               override tier
               <select
                 value={tier}
@@ -267,7 +268,7 @@ function SetTierControl({
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight grow">
+            <label className="flex flex-col gap-1 text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight grow">
               reason (audit trail)
               <input
                 type="text"
@@ -282,21 +283,21 @@ function SetTierControl({
               type="button"
               onClick={() => void submit()}
               disabled={busy || reason.trim() === ""}
-              className="text-[10px] font-mono uppercase tracking-wide px-2 py-1 rounded bg-sun/15 dark:bg-sun/20 text-sun-deep dark:text-sun disabled:opacity-40"
+              className="text-xxs font-mono uppercase tracking-wide px-2 py-1 rounded bg-sun/15 dark:bg-sun/20 text-sun-deep dark:text-sun disabled:opacity-40"
             >
               {busy ? "recording…" : "save override"}
             </button>
           </div>
           {error && (
-            <p className="text-[11px] text-emperor">{error}</p>
+            <p className="text-xs text-emperor">{error}</p>
           )}
           {overrides !== null && (
             <div className="space-y-1.5">
-              <p className="text-[10px] font-mono uppercase tracking-wide text-ink-mute dark:text-moonlight">
+              <p className="text-xxs font-mono uppercase tracking-wide text-ink-mute dark:text-moonlight">
                 Override history ({overrides.length})
               </p>
               {overrides.length === 0 && (
-                <p className="text-[11px] text-ink-soft dark:text-starlight italic">
+                <p className="text-xs text-ink-soft dark:text-starlight italic">
                   No overrides recorded for this chunk yet.
                 </p>
               )}
@@ -329,7 +330,7 @@ function OverrideBadge({ override }: { override: TierOverride }) {
           <span className="text-shadow-1 dark:text-moonlight">set by {override.set_by}</span>
         )}
         {override.set_at && (
-          <span className="text-[10px] text-ink-mute dark:text-moonlight">
+          <span className="text-xxs text-ink-mute dark:text-moonlight">
             {new Date(override.set_at).toLocaleString()}
           </span>
         )}
@@ -345,7 +346,7 @@ function NodeCard({ node }: { node: ExplainNode }) {
       <p className="text-sm text-ink dark:text-bright font-serif leading-snug">
         {node.canonical_label ?? node.node_id}
       </p>
-      <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono uppercase tracking-wide">
+      <div className="flex items-center gap-2 flex-wrap text-xxs font-mono uppercase tracking-wide">
         {node.node_type && (
           <span className="text-shadow-1 dark:text-moonlight">{node.node_type}</span>
         )}
@@ -367,13 +368,13 @@ function EdgeRow({ edge }: { edge: ExplainEdge }) {
       {edge.document_id && (
         <Link
           to={`/read/${encodeURIComponent(edge.document_id)}`}
-          className="font-mono text-[10px] text-ink-mute dark:text-moonlight hover:text-ink dark:hover:text-bright underline decoration-dotted underline-offset-2"
+          className="font-mono text-xxs text-ink-mute dark:text-moonlight hover:text-ink dark:hover:text-bright underline decoration-dotted underline-offset-2"
         >
           source →
         </Link>
       )}
       {edge.chunk_id && (
-        <span className="font-mono text-[10px] text-ink-mute dark:text-moonlight">
+        <span className="font-mono text-xxs text-ink-mute dark:text-moonlight">
           {edge.chunk_id}
         </span>
       )}
@@ -383,7 +384,7 @@ function EdgeRow({ edge }: { edge: ExplainEdge }) {
 
 function SectionHeading({ children }: { children: ReactNode }) {
   return (
-    <h2 className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+    <h2 className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
       {children}
     </h2>
   );
@@ -504,7 +505,7 @@ function PinCard({
   onTierChanged?: () => void;
 }) {
   const meta = (
-    <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono uppercase tracking-wide">
+    <div className="flex items-center gap-2 flex-wrap text-xxs font-mono uppercase tracking-wide">
       <span className="text-shadow-1 dark:text-moonlight">{pin.entity_kind}</span>
       <span className="text-ink-mute dark:text-moonlight">{pin.entity_id}</span>
       <span className="text-ink-mute dark:text-moonlight">
@@ -589,7 +590,7 @@ function SynthesisPanel({
         <p className="text-sm text-ink dark:text-bright font-serif leading-snug">
           Synthesis {data.synthesis_id}
         </p>
-        <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono uppercase tracking-wide">
+        <div className="flex items-center gap-2 flex-wrap text-xxs font-mono uppercase tracking-wide">
           <span className="text-ink-mute dark:text-moonlight">
             {new Date(data.generated_at).toLocaleString()}
           </span>
@@ -617,7 +618,7 @@ function SynthesisPanel({
               "unresolved" in pin && pin.unresolved ? (
                 <div
                   key={`${pin.entity_kind}-${pin.entity_id}`}
-                  className="border border-dashed border-red-300 dark:border-red-900 rounded-md px-3 py-2 text-xs space-y-0.5"
+                  className="border border-dashed border-danger/40 rounded-md px-3 py-2 text-xs space-y-0.5"
                 >
                   <p className="font-mono text-emperor">
                     Unresolved pin — the manifest references a row that no
@@ -714,7 +715,7 @@ function DocumentPanel({
                 )}
                 <ConfidenceChip confidence={edge.extraction_confidence} />
               </div>
-              <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+              <p className="text-xxs font-mono text-ink-mute dark:text-moonlight">
                 {edge.edge_id}
                 {edge.chunk_id ? ` · ${edge.chunk_id}` : ""}
               </p>
@@ -779,7 +780,7 @@ export function Explain() {
     data && "generated_at" in data ? data.generated_at : null;
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -792,7 +793,7 @@ export function Explain() {
               </p>
             )}
             {id && (
-              <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+              <p className="text-xxs font-mono text-ink-mute dark:text-moonlight">
                 {kind ? `${kind} · ${id}` : id}
                 {generatedAt ? ` · generated ${new Date(generatedAt).toLocaleString()}` : ""}
               </p>
@@ -800,16 +801,16 @@ export function Explain() {
           </header>
 
           {!kind && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               Unknown explain kind — expected /explain/claim/:id,
               /explain/synthesis/:id, or /explain/document/:id.
-            </p>
+            </ErrorBanner>
           )}
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (

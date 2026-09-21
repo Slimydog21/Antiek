@@ -82,7 +82,17 @@ emitted_but_not_required:
   resilience-quality-gate:
     why: Path-gated; same reason as substrate-quality-gate.
   write-lock-async-gate:
-    why: Emitted on every push and currently green; a candidate for the fence.
+    why: >-
+      Still advisory AS A CONTEXT, and it cannot become required: its
+      workflow is path-filtered, and a required check behind `paths:` is
+      never reported on a PR that misses the filter, so it would sit
+      permanently pending. It is no longer UNENFORCED, though. Its three
+      assertions (raw_read_only_connect, blocking_write_in_async,
+      indirect_write_in_async) now also run inside the REQUIRED `keystone`
+      job, which carries no path filter — so a new violation reds a required
+      check even on a PR this workflow skips. The two copies are held in sync
+      by tests/test_write_lock_gate_parity.py, which READS both files and
+      fails on any drift in lints, baselines or SCOPE_DIRS.
   npm-audit:
     why: Scheduled dependency audit, not a per-PR gate.
   pip-audit:
