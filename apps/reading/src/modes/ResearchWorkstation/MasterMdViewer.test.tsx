@@ -361,9 +361,9 @@ describe("MasterMdViewer — quality cue (SPR-11 M3)", () => {
 // render (rigor #3).
 
 const SERVABLE_BUTTON_CLASS =
-  "text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors";
+  "text-xs text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors";
 const RESTRICTED_SPAN_CLASS =
-  "text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1";
+  "text-xs text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1";
 
 /** A synthesis with two claims: one cites a SERVABLE source, the other a
  *  NON-servable source — so a single render exercises both §9.0 branches. */
@@ -442,7 +442,7 @@ describe("MasterMdViewer — byte-equivalence of the re-homed §9.0 render (SPR-
     // The inner "· not available to open" span carries its exact class.
     const inner = gatedSpan.querySelector("span");
     expect(inner?.getAttribute("class")).toBe(
-      "text-[10px] text-shadow-1 dark:text-moonlight",
+      "text-xxs text-shadow-1 dark:text-moonlight",
     );
 
     // §9.0: the withheld body never appears; the restricted source exposes

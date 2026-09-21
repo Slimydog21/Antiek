@@ -186,12 +186,12 @@ export default function ArtifactOutlineShelf({
               View HTML
             </a>
             {exportPath ? (
-              <span className="truncate font-mono text-[10px] text-ink-mute" title={exportPath}>
+              <span className="truncate font-mono text-xxs text-ink-mute" title={exportPath}>
                 {exportPath}
               </span>
             ) : null}
             {notesPath ? (
-              <span className="truncate font-mono text-[10px] text-ink-mute" title={notesPath}>
+              <span className="truncate font-mono text-xxs text-ink-mute" title={notesPath}>
                 notes: {notesPath}
               </span>
             ) : null}
@@ -201,7 +201,7 @@ export default function ArtifactOutlineShelf({
               {childOptions.map((child) => (
                 <label
                   key={child.investigation_id}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-xs text-ink dark:bg-charcoal-2 dark:text-bright"
                   title={child.question ?? child.investigation_id}
                 >
                   <input
@@ -217,13 +217,13 @@ export default function ArtifactOutlineShelf({
           ) : null}
           {blocksLoaded && handoffOptions.length > 0 ? (
             <div className="mb-2 flex flex-col gap-1.5">
-              <span className="text-[10px] font-mono uppercase tracking-wide text-ink-mute">
+              <span className="text-xxs font-mono uppercase tracking-wide text-ink-mute">
                 Saved chase handoffs
               </span>
               {handoffOptions.map((handoff) => (
                 <label
                   key={handoff.child_investigation_id}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-xs text-ink dark:bg-charcoal-2 dark:text-bright"
                   title={handoff.source_passage}
                 >
                   <input
@@ -244,7 +244,7 @@ export default function ArtifactOutlineShelf({
               </LemonButton>
               {draftMergePath ? (
                 <>
-                  <span className="truncate font-mono text-[10px] text-ink-mute" title={draftMergePath}>
+                  <span className="truncate font-mono text-xxs text-ink-mute" title={draftMergePath}>
                     {draftMergePath}
                   </span>
                   {draftMergeIds.length >= 2 ? (
@@ -252,7 +252,7 @@ export default function ArtifactOutlineShelf({
                       href={draftMergeHref(draftMergeIds)}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-[12px] font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
+                      className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-xs font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
                     >
                       Open draft
                     </a>
@@ -297,12 +297,12 @@ export default function ArtifactOutlineShelf({
             View HTML
           </a>
           {exportPath ? (
-            <span className="truncate font-mono text-[10px] text-ink-mute" title={exportPath}>
+            <span className="truncate font-mono text-xxs text-ink-mute" title={exportPath}>
               {exportPath}
             </span>
           ) : null}
           {notesPath ? (
-            <span className="truncate font-mono text-[10px] text-ink-mute" title={notesPath}>
+            <span className="truncate font-mono text-xxs text-ink-mute" title={notesPath}>
               notes: {notesPath}
             </span>
           ) : null}
@@ -312,7 +312,7 @@ export default function ArtifactOutlineShelf({
             {childOptions.map((child) => (
               <label
                 key={child.investigation_id}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
+                className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-xs text-ink dark:bg-charcoal-2 dark:text-bright"
                 title={child.question ?? child.investigation_id}
               >
                 <input
@@ -328,13 +328,13 @@ export default function ArtifactOutlineShelf({
         ) : null}
         {handoffOptions.length > 0 ? (
           <div className="mb-2 flex flex-col gap-1.5">
-            <span className="text-[10px] font-mono uppercase tracking-wide text-ink-mute">
+            <span className="text-xxs font-mono uppercase tracking-wide text-ink-mute">
               Saved chase handoffs
             </span>
             {handoffOptions.map((handoff) => (
               <label
                 key={handoff.child_investigation_id}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
+                className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-xs text-ink dark:bg-charcoal-2 dark:text-bright"
                 title={handoff.source_passage}
               >
                 <input
@@ -354,14 +354,14 @@ export default function ArtifactOutlineShelf({
             onChange={(e) => setMergeIds(e.target.value)}
             placeholder="other research ids"
             aria-label="Other research ids"
-            className="min-w-[180px] flex-1 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-[11px] text-ink outline-none placeholder:text-ink-mute focus:border-sun dark:bg-charcoal-2 dark:text-bright"
+            className="min-w-[180px] flex-1 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-xs text-ink outline-none placeholder:text-ink-mute focus:border-sun dark:bg-charcoal-2 dark:text-bright"
           />
           <LemonButton size="sm" disabled={mergeBusy} onClick={() => void onDraftMerge()}>
             Draft merge
           </LemonButton>
           {draftMergePath ? (
             <>
-              <span className="truncate font-mono text-[10px] text-ink-mute" title={draftMergePath}>
+              <span className="truncate font-mono text-xxs text-ink-mute" title={draftMergePath}>
                 {draftMergePath}
               </span>
               {draftMergeIds.length >= 2 ? (
@@ -369,7 +369,7 @@ export default function ArtifactOutlineShelf({
                   href={draftMergeHref(draftMergeIds)}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-[12px] font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
+                  className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-xs font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
                 >
                   Open draft
                 </a>
@@ -387,7 +387,7 @@ export default function ArtifactOutlineShelf({
               className="cursor-grab rounded border border-rule bg-ice-1 px-2 py-1.5 text-sm active:cursor-grabbing"
               title="Drag to Write outline"
             >
-              <span className="text-[10px] uppercase text-ocean">{b.kind}</span>
+              <span className="text-xxs uppercase text-sun-deep">{b.kind}</span>
               <p className="line-clamp-2 text-ink">{b.label}</p>
             </li>
           ))}

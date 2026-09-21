@@ -91,7 +91,7 @@ export function PanelLayout({ mainSlot }: Props) {
   if (tier === "sm") {
     return (
       <div className="h-full w-full flex flex-col bg-ice-2 dark:bg-space-2 overflow-hidden">
-        <div className="px-4 py-3 bg-sun text-ink font-mono text-[12px] flex items-center gap-3">
+        <div className="px-4 py-3 bg-sun text-ink font-mono text-xs flex items-center gap-3">
           <span aria-hidden="true">⚠</span>
           <span className="flex-1">
             Antiek is designed for ≥ 1024 px viewports. Open a larger

@@ -13,12 +13,12 @@ export function FakeSidebar() {
   ];
   const dot: Record<string, string> = {
     running: "bg-sun",
-    done: "bg-aurora",
+    done: "bg-success",
     failed: "bg-emperor",
   };
   return (
-    <div className="p-3 space-y-1 text-[13px]">
-      <div className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight pb-2 px-2">
+    <div className="p-3 space-y-1 text-sm">
+      <div className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight pb-2 px-2">
         Recent
       </div>
       {items.map((it) => (

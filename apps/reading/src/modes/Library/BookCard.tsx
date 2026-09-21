@@ -1,4 +1,5 @@
 import { LemonTag } from "../../components/lemon";
+import { placeholderSpine } from "../../components/library/placeholderSpine";
 import { cardLift } from "../../design/motion";
 import type { BookSummary } from "../../api/books";
 import { servabilityLabel } from "../../api/books";
@@ -17,18 +18,10 @@ export interface BookCardProps {
   onOpen?: (documentId: string) => void;
 }
 
-// Deterministic cover hue from the document id so a placeholder spine is
-// stable across renders (no flicker) without storing a colour.
-function placeholderHue(seed: string): number {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
-  return h;
-}
-
 export default function BookCard({ book, onOpen }: BookCardProps) {
   const { label, colour } = servabilityLabel(book.servability);
   const title = book.title ?? book.document_id;
-  const hue = placeholderHue(book.document_id);
+  const spine = placeholderSpine(book.document_id);
   const unavailable = book.taken_down;
   const action = unavailable ? "Unavailable" : book.servable_full_text ? "Open" : "Preview";
 
@@ -42,11 +35,7 @@ export default function BookCard({ book, onOpen }: BookCardProps) {
     >
       <div
         className={`relative aspect-[2/3] w-full rounded-hog border-edge border-sun overflow-hidden shadow-z1 dark:shadow-z1-night ${cardLift}`}
-        style={
-          book.cover_uri
-            ? undefined
-            : { background: `linear-gradient(160deg, hsl(${hue} 45% 32%), hsl(${(hue + 40) % 360} 50% 22%))` }
-        }
+        style={book.cover_uri ? undefined : { background: spine }}
       >
         {book.cover_uri ? (
           <img
@@ -73,11 +62,11 @@ export default function BookCard({ book, onOpen }: BookCardProps) {
       <p className="mt-2 font-serif text-sm text-ink dark:text-bright truncate" title={title}>
         {title}
       </p>
-      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
         {book.author ?? "Unknown author"}
         {book.page_count > 0 && <> · {book.page_count}p</>}
       </p>
-      <span className="mt-1 text-[11px] font-mono text-shadow-1 dark:text-moonlight">{action}</span>
+      <span className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">{action}</span>
     </button>
   );
 }
