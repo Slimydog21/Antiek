@@ -87,6 +87,15 @@ emitted_but_not_required:
     why: Scheduled dependency audit, not a per-PR gate.
   pip-audit:
     why: Scheduled dependency audit, not a per-PR gate.
+  pip-audit-prod:
+    why: >-
+      Scheduled dependency audit like `pip-audit`, but scoped to the
+      PRODUCTION extras set resolved unconstrained from pyproject.toml rather
+      than to tools/lints/constraints.txt. Advisory for the same structural
+      reason as its sibling: dep_audit runs only on a schedule and on
+      workflow_dispatch, so it can never report on a pull request and
+      therefore could never be required without leaving every PR permanently
+      pending.
   lostpixel:
     why: Visual baselines are environment-sensitive; see PR #3093.
   axe-core:
