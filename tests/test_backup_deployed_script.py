@@ -612,3 +612,53 @@ def test_freshness_tool_rejects_non_finite_or_negative_threshold(tmp_path: Path)
     control = _run_freshness_tool(["--marker", str(marker), "--max-age-hours", "26.0"])
     assert control.returncode == 1
     assert control.stdout.startswith("STALE:")
+
+
+def _systemctl_stub(stub_bin: Path, log: Path, active: bool = True) -> None:
+    """Fake systemd on PATH: `is-active` reflects `active`; every call is logged."""
+    _write_stub(
+        stub_bin / "systemctl",
+        "#!/usr/bin/env bash\n"
+        f"echo \"$*\" >> {log}\n"
+        "case \"$1\" in\n"
+        f"  is-active) exit {0 if active else 3} ;;\n"
+        "  *) exit 0 ;;\n"
+        "esac\n",
+    )
+
+
+def test_free_flock_never_stops_the_service(tmp_path: Path) -> None:
+    """The nightly outage came from an unconditional stop. With the flock free
+    the backup must complete WITHOUT ever calling `systemctl stop`."""
+    harness = _make_harness(tmp_path, lock_timeout_s="5")
+    log = tmp_path / "systemctl.log"
+    _systemctl_stub(tmp_path / "stub-bin", log, active=True)
+    proc = _run_script(harness)
+    assert proc.returncode == 0, f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    calls = log.read_text().splitlines() if log.exists() else []
+    assert not any(c.startswith("stop") for c in calls), calls
+    assert not any(c.startswith("start") for c in calls), calls
+    assert "attempt 1" in proc.stdout and "attempt 2" not in proc.stdout
+    assert harness.marker.exists()
+
+
+def test_held_flock_falls_back_to_stop_then_restarts(tmp_path: Path) -> None:
+    """Last-resort path: attempt 1 times out, the service is stopped ONCE for
+    attempt 2, and it is restarted even though the lock stays held and the
+    backup still fails loudly. Never a silent miss, never a stranded stop."""
+    harness = _make_harness(tmp_path, lock_timeout_s="1")
+    log = tmp_path / "systemctl.log"
+    _systemctl_stub(tmp_path / "stub-bin", log, active=True)
+    fd = os.open(harness.lock_file, os.O_CREAT | os.O_WRONLY, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        proc = _run_script(harness)
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+    assert proc.returncode == 3, f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    calls = log.read_text().splitlines()
+    assert sum(c.startswith("stop antiek") for c in calls) == 1, calls
+    assert sum(c.startswith("start antiek") for c in calls) == 1, calls
+    assert "attempt 2" in proc.stdout
+    assert not harness.marker.exists()
