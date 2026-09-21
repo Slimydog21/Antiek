@@ -16,6 +16,7 @@
 import { type KeyboardEvent, useId, useMemo, useRef, useState } from "react";
 
 import { FORMATION, type BenchModelView, type LineupChoice, type RoleView, tierStrength } from "../api/settingsLineup";
+import { press } from "../design/motion";
 import SketchCanvas from "./sketches/SketchCanvas";
 import { renderLineupPitch, DEFAULT_LINEUP_PITCH_PARAMS, type LineupPitchParams } from "./sketches/lineupPitch";
 
@@ -108,7 +109,7 @@ export default function LineupPitch({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        <span className="text-xs font-semibold uppercase tracking-wide text-shadow-1 dark:text-moonlight">
           Formation — tap a position, then a bench card to substitute
         </span>
         {selection && (
@@ -118,7 +119,7 @@ export default function LineupPitch({
               onSelectRole(null);
               setBenchOpen(false);
             }}
-            className="text-[11px] font-semibold text-sun-deep underline-offset-2 hover:underline dark:text-sun-light"
+            className="text-xs font-semibold text-sun-deep underline-offset-2 hover:underline dark:text-sun-light"
           >
             Clear selection
           </button>
@@ -184,12 +185,12 @@ export default function LineupPitch({
                 }`}
               >
                 <div className="flex items-start justify-between gap-1">
-                  <span className="font-mono text-[9px] font-bold text-white/80">
+                  <span className="font-mono text-xxs font-bold text-white/80">
                     {POSITION_LABEL[role.position] ?? role.position.toUpperCase()}
                   </span>
                   {strength !== null ? (
                     <span
-                      className={`flex h-5 w-5 items-center justify-center rounded-full border border-white/40 font-mono text-[10px] font-bold ${
+                      className={`flex h-5 w-5 items-center justify-center rounded-full border border-white/40 font-mono text-xxs font-bold ${
                         TIER_COLOR[benchModel?.default_tier ?? ""] ?? "bg-ice-2 text-shadow-1"
                       }`}
                       title="Tier strength from the dispatch config — not a model quality measurement"
@@ -197,19 +198,19 @@ export default function LineupPitch({
                       {strength}
                     </span>
                   ) : (
-                    <span className="rounded-full border border-white/40 bg-white/10 px-1 font-mono text-[9px] font-bold text-white/80">
+                    <span className="rounded-full border border-white/40 bg-white/10 px-1 font-mono text-xxs font-bold text-white/80">
                       AUTO
                     </span>
                   )}
                 </div>
-                <div className="mt-1 truncate text-[11px] font-bold leading-tight text-white">
+                <div className="mt-1 truncate text-xs font-bold leading-tight text-white">
                   {role.label}
                 </div>
-                <div className="truncate font-mono text-[9px] text-white/70">
+                <div className="truncate font-mono text-xxs text-white/70">
                   {assigned ? `${assigned.provider_id} / ${assigned.model_id}` : "Auto — platform default"}
                 </div>
                 {role.discovered && (
-                  <div className="mt-0.5 inline-block rounded-sm bg-sun/20 px-1 font-mono text-[8px] font-bold text-white/90">
+                  <div className="mt-0.5 inline-block rounded-sm bg-sun/20 px-1 font-mono text-xxs font-bold text-white/90">
                     NEW SIGNING
                   </div>
                 )}
@@ -223,10 +224,10 @@ export default function LineupPitch({
           <div className="absolute inset-x-0 bottom-0 z-20 border-t-2 border-sun bg-ice-0/95 p-2 dark:bg-charcoal-1/95">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-[11px] font-bold text-ink dark:text-bright">
+                <div className="text-xs font-bold text-ink dark:text-bright">
                   {selection.label}
                 </div>
-                <div className="truncate font-mono text-[9px] text-shadow-1 dark:text-moonlight">
+                <div className="truncate font-mono text-xxs text-shadow-1 dark:text-moonlight">
                   {chosen ? `${chosen.provider_id} / ${chosen.model_id}` : "Auto — platform default"}
                 </div>
               </div>
@@ -238,7 +239,7 @@ export default function LineupPitch({
                     onAssign(selection.role_id, null);
                     setBenchOpen(false);
                   }}
-                  className="rounded-md border-2 border-emperor/40 px-2 py-1 text-[10px] font-bold text-emperor transition-colors hover:bg-emperor/10 dark:text-moonlight"
+                  className="rounded-md border-2 border-emperor/40 px-2 py-1 text-xxs font-bold text-emperor transition-colors hover:bg-emperor/10 dark:text-moonlight"
                 >
                   Auto
                 </button>
@@ -247,7 +248,10 @@ export default function LineupPitch({
                   aria-expanded={benchOpen}
                   aria-controls={listboxId}
                   onClick={() => setBenchOpen((v) => !v)}
-                  className="rounded-md border-2 border-sun bg-sun px-2 py-1 text-[10px] font-bold text-ink shadow-[2px_2px_0_rgba(0,0,0,0.15)] transition-transform hover:-translate-y-px active:translate-y-0 active:shadow-none"
+                  className={
+                    "rounded-md border-2 border-sun bg-sun px-2 py-1 text-xxs font-bold text-ink shadow-z1 dark:shadow-z1-night " +
+                    press
+                  }
                 >
                   {benchOpen ? "Close bench ▲" : "Substitute ▼"}
                 </button>
@@ -261,13 +265,13 @@ export default function LineupPitch({
       {benchOpen && selection && (
         <div id={listboxId} className="rounded-hog border-2 border-sun bg-ice-0 p-3 dark:bg-charcoal-1">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-ink dark:text-bright">
+            <span className="text-xs font-semibold text-ink dark:text-bright">
               Bench — pick the substitute for {selection.label}
             </span>
-            {error && <span className="font-mono text-[10px] text-red-700 dark:text-red-300">{error}</span>}
+            {error && <span className="font-mono text-xxs text-danger">{error}</span>}
           </div>
           {bench.length === 0 ? (
-            <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-[11px] text-emperor">
+            <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-xs text-emperor">
               The bench is empty. Add your own API keys in Settings → Add model, or wire a BYOT
               subscription, to have substitutes available here.
             </p>
@@ -290,14 +294,14 @@ export default function LineupPitch({
                       }`}
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <span className="truncate text-[11px] font-bold text-ink dark:text-bright">
+                        <span className="truncate text-xs font-bold text-ink dark:text-bright">
                           {b.label}
                         </span>
-                        <span className="shrink-0 rounded-sm bg-emperor/10 px-1 font-mono text-[8px] font-bold text-shadow-1 dark:text-moonlight">
+                        <span className="shrink-0 rounded-sm bg-emperor/10 px-1 font-mono text-xxs font-bold text-shadow-1 dark:text-moonlight">
                           {sourceBadge(b)}
                         </span>
                       </div>
-                      <div className="truncate font-mono text-[9px] text-shadow-1 dark:text-moonlight">
+                      <div className="truncate font-mono text-xxs text-shadow-1 dark:text-moonlight">
                         {b.provider_id} / {b.model_id}
                       </div>
                     </button>

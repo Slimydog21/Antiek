@@ -32,7 +32,7 @@ function RegionEmbedNodeView({ node, deleteNode }: NodeViewProps) {
                 <button
                   type="button"
                   onClick={() => openPdfPanel({ documentId, page: page ?? undefined })}
-                  className="text-[11px] text-sun-deep dark:text-sun hover:underline"
+                  className="text-xs text-sun-deep dark:text-sun hover:underline"
                 >
                   Open at page
                 </button>
@@ -41,7 +41,7 @@ function RegionEmbedNodeView({ node, deleteNode }: NodeViewProps) {
                 type="button"
                 onClick={() => deleteNode()}
                 aria-label="Remove block"
-                className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
+                className="text-xs text-ink-mute dark:text-moonlight hover:text-emperor"
               >
                 ✕
               </button>
@@ -50,11 +50,11 @@ function RegionEmbedNodeView({ node, deleteNode }: NodeViewProps) {
         }
       >
         {caption ? (
-          <p className="font-serif italic text-[14px] text-ink-soft dark:text-starlight">
+          <p className="font-serif italic text-sm text-ink-soft dark:text-starlight">
             "{caption}"
           </p>
         ) : (
-          <p className="font-mono text-[12px] text-ink-mute dark:text-moonlight italic">
+          <p className="font-mono text-xs text-ink-mute dark:text-moonlight italic">
             no caption · open the PDF to recapture the region
           </p>
         )}

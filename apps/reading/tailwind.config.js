@@ -74,6 +74,49 @@ export default {
         "shadow-2": "#384858",
         ink: "#0F1419",
 
+        // Stepped muting of the ink ramp (Q1) — the muted-text hierarchy:
+        // ink-soft = lede/secondary, ink-mute = metadata/tertiary. These keys
+        // were REFERENCED (~600 call sites) but DEFINED NOWHERE until Q1, so
+        // Tailwind emitted nothing and muted text silently rendered unstyled.
+        // Values live in tokens.css (--ink-soft/--ink-mute, day + night);
+        // these keys read the *-rgb channel triplets through <alpha-value> so
+        // /opacity modifiers (border-ink-mute/40) resolve and the theme swap
+        // cascades automatically. Mirrors tokens.ts `inkSoft`/`inkMute`:
+        // day #2A3441/#647380, night #C4CCD7/#828C9C.
+        "ink-soft": "rgb(var(--ink-soft-rgb) / <alpha-value>)",
+        "ink-mute": "rgb(var(--ink-mute-rgb) / <alpha-value>)",
+
+        // Semantic danger alias (Q1) — danger IS emperor under the name call
+        // sites use (text-danger / border-danger / bg-danger/10). Reads the
+        // --danger-rgb channels (day 206 54 35 == emperor #CE3623; night
+        // 255 97 85 == #FF6155) so bg-danger/10 resolves. Mirrors tokens.ts
+        // `danger` == accent.emperor + tokens.css --danger.
+        "danger": "rgb(var(--danger-rgb) / <alpha-value>)",
+
+        // Semantic success token (Q3, adjudication D2) — the done/met/passed
+        // green; aurora stays reserved for AI-thinking (D8). Reads the
+        // --success-rgb channels (day 35 114 66 == #237242; night 110 203 143
+        // == #6ECB8F) so bg-success/10 resolves and the theme swap cascades.
+        // Both values clear WCAG AA 4.5:1 as text on their card/page surfaces
+        // (pinned in tokens.contrast.test.ts). Mirrors tokens.ts `success`.
+        "success": "rgb(var(--success-rgb) / <alpha-value>)",
+
+        // Weathered "light" sun family mirrors (Q1, same drift class as
+        // CFEEL-FIX-1): tokens.css/tokens.ts have carried --sun-light* since
+        // AMS-SPR-09 but the Tailwind mirror was never added, so bg-sun-light /
+        // text-sun-light / bg-sun-light-soft rendered unstyled. Var-referenced
+        // (no night redeclaration — the weathered straw is theme-invariant by
+        // design; werner-rod night deliberately reads --sun-light).
+        "sun-light": "var(--sun-light)",
+        "sun-light-soft": "var(--sun-light-soft)",
+        "sun-light-deep": "var(--sun-light-deep)",
+
+        // Media well (Q16; ui-audit 12-modes-c #63) — the ONE deliberate
+        // media backdrop (players, candidates, frames). Reads the CSS var so
+        // the day/night swap cascades (day charcoal-2 tone, night void).
+        // Mirrors tokens.ts `mediaWell` + tokens.css --media-well.
+        "media-well": "var(--media-well)",
+
         // Night surface ramp (off-blacks + dark greys — majestic night sky)
         void: "#040508",
         "space-1": "#080A10",
