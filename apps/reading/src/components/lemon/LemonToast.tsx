@@ -113,7 +113,7 @@ function useToasts(): Item[] {
 }
 
 const kindStyles: Record<Kind, string> = {
-  ok:   "bg-aurora text-ink border-ink",
+  ok:   "bg-success text-ice-0 dark:text-ink border-ink",
   warn: "bg-sun text-ink border-ink",
   err:  "bg-emperor text-ice-1 border-ink",
   info: "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright border-sun",
@@ -137,7 +137,7 @@ export function LemonToastViewport() {
           className={
             "pointer-events-auto min-w-[260px] max-w-[420px] " +
             "border-edge rounded-hog shadow-z2 dark:shadow-z2-night " +
-            "px-3 py-2 flex items-center gap-3 font-sans text-[13.5px] " +
+            "px-3 py-2 flex items-center gap-3 font-sans text-sm " +
             kindStyles[it.kind]
           }
         >

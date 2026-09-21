@@ -108,20 +108,20 @@ export default function VoiceToDraft({
               : "● Speak an idea"}
       </LemonButton>
       {saved && (
-        <span className="text-[11px] text-aurora">Added — your spoken draft (user-sourced).</span>
+        <span className="text-xs text-success">Added — your spoken draft (user-sourced).</span>
       )}
       {voice.recorderState === "denied" && (
-        <span className="text-[11px] text-sun-deep" role="alert">
+        <span className="text-xs text-sun-deep" role="alert">
           Microphone denied — you can still type.
         </span>
       )}
       {voice.error && (
-        <span className="text-[11px] text-emperor" role="alert">
+        <span className="text-xs text-emperor" role="alert">
           {voice.error}
         </span>
       )}
       {error && (
-        <span className="text-[11px] text-emperor" role="alert">
+        <span className="text-xs text-emperor" role="alert">
           {error}
         </span>
       )}

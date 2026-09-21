@@ -14,6 +14,7 @@ export function createDemoCartridge(): Cartridge & {
     meta: {
       title: "Demo",
       blurb: "Lifecycle harness cartridge",
+      instructions: "Focus the demo, then click or press a key to step it.",
       style: "demo",
     },
     log,

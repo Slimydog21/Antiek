@@ -1,10 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import BrainMascot from "../../brand/BrainMascot";
 import WorkflowArt from "../../brand/WorkflowArt";
 import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
 import { LemonButton } from "../../components/lemon";
+import { press } from "../../design/motion";
 import { startInvestigation } from "../../lib/api";
 import {
   createBiography,
@@ -13,6 +14,7 @@ import {
 } from "../../lib/speakApi";
 import { useOwnerModelChoice } from "../../hooks/useOwnerModelChoice";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 
 /**
  * Biography — the dedicated landing for the biography TEMPLATE (SPR-11).
@@ -102,7 +104,7 @@ export default function Biography() {
             <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
               Write someone&rsquo;s biography
             </h1>
-            <p className="mt-2 font-serif text-[15px] leading-relaxed text-shadow-1 dark:text-moonlight">
+            <p className="mt-2 font-serif text-base leading-relaxed text-shadow-1 dark:text-moonlight">
               A biography brings together everything you can find, write, and
               remember about a person — in one place, so each part feeds the
               others. Name someone to begin.
@@ -146,7 +148,7 @@ export default function Biography() {
             onChange={(e) => setName(e.target.value)}
             placeholder="A name — e.g. my grandmother, Dad, Maria"
             aria-label="Whose biography do you want to write?"
-            className="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
+            className="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-base text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
           />
           <ModelUsagePicker
             models={model.models}
@@ -182,14 +184,14 @@ export default function Biography() {
 function Step({ n, title, body }: { n: number; title: string; body: string }) {
   return (
     <li className="flex items-start gap-3 rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
-      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-sun font-mono text-[12px] font-semibold text-ink">
+      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-sun font-mono text-xs font-semibold text-ink">
         {n}
       </span>
       <div>
-        <p className="font-serif text-[15px] font-semibold text-ink dark:text-bright">
+        <p className="font-serif text-base font-semibold text-ink dark:text-bright">
           {title}
         </p>
-        <p className="mt-0.5 font-serif text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
+        <p className="mt-0.5 font-serif text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
           {body}
         </p>
       </div>
@@ -224,6 +226,14 @@ function BiographyOnboarding({
   const [inviteFailed, setInviteFailed] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // The "biography is started" moment is the payoff beat: celebrate once on
+  // first render, then the header brain settles back to idle — celebrate is a
+  // one-shot slot, never a persistent pose (brand/README restraint rule).
+  const { celebrating, celebrate } = useCelebrate();
+  useEffect(() => {
+    celebrate();
+  }, [celebrate]);
+
   const who = subjectName || "this person";
 
   const sendToAFriend = useCallback(async () => {
@@ -253,12 +263,19 @@ function BiographyOnboarding({
     <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
       <div className="mx-auto max-w-2xl px-6 py-12">
         <header className="mb-7 flex items-start gap-3">
-          <BrainMascot mood="celebrate" size={52} label="" />
+          <span className="relative inline-flex shrink-0">
+            <BrainMascot mood="idle" size={52} label="" />
+            <CelebrateBurst
+              active={celebrating}
+              size={52}
+              className="absolute inset-0"
+            />
+          </span>
           <div>
             <h1 className="font-serif text-3xl font-semibold text-ink dark:text-bright">
               {who}&rsquo;s biography is started
             </h1>
-            <p className="mt-2 font-serif text-[15px] leading-relaxed text-shadow-1 dark:text-moonlight">
+            <p className="mt-2 font-serif text-base leading-relaxed text-shadow-1 dark:text-moonlight">
               Everything for {who} now lives in one place. Here&rsquo;s what was
               set up, and where to go next.
             </p>
@@ -306,7 +323,7 @@ function BiographyOnboarding({
           <h2 className="font-serif text-lg font-semibold text-ink dark:text-bright">
             Invite someone to share a memory
           </h2>
-          <p className="mt-1 font-serif text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
+          <p className="mt-1 font-serif text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
             Get a link to send a friend or family member. They tap it, record a
             memory of {who} in their own words, and it joins the story. They
             don&rsquo;t need an account.
@@ -314,11 +331,11 @@ function BiographyOnboarding({
 
           {inviteLink ? (
             <div className="mt-4">
-              <p className="font-serif text-[13px] text-ink dark:text-bright">
+              <p className="font-serif text-sm text-ink dark:text-bright">
                 Share this link with someone who knew {who}:
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <code className="min-w-0 flex-1 truncate rounded border border-rule bg-ice-0 px-2 py-1 text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright">
+                <code className="min-w-0 flex-1 truncate rounded border border-rule bg-ice-0 px-2 py-1 text-xs text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright">
                   {inviteLink}
                 </code>
                 <LemonButton variant="secondary" size="sm" onClick={() => void copyLink()}>
@@ -369,10 +386,10 @@ function SurfaceCard({
   return (
     <div className="flex items-start justify-between gap-3 rounded-md border border-rule bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-1">
       <div className="min-w-0">
-        <p className="font-serif text-[15px] font-semibold text-ink dark:text-bright">
+        <p className="font-serif text-base font-semibold text-ink dark:text-bright">
           {title}
         </p>
-        <p className="mt-0.5 font-serif text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
+        <p className="mt-0.5 font-serif text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
           {body}
         </p>
       </div>
@@ -380,7 +397,10 @@ function SurfaceCard({
         type="button"
         data-testid={testid}
         onClick={onClick}
-        className="mt-0.5 shrink-0 rounded border-2 border-ink bg-ice-0 px-3 py-1.5 font-mono text-[12px] font-semibold text-ink shadow-z1 hover:-translate-y-0.5 dark:bg-charcoal-2 dark:text-bright dark:shadow-z1-night"
+        className={
+          "mt-0.5 shrink-0 rounded border-2 border-ink bg-ice-0 px-3 py-1.5 font-mono text-xs font-semibold text-ink shadow-z1 dark:bg-charcoal-2 dark:text-bright dark:shadow-z1-night " +
+          press
+        }
       >
         {cta}
       </button>

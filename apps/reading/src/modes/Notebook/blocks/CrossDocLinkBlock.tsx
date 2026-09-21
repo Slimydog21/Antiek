@@ -23,14 +23,14 @@ function CrossDocLinkNodeView({ node, deleteNode }: NodeViewProps) {
               type="button"
               onClick={() => deleteNode()}
               aria-label="Remove block"
-              className="font-sans normal-case tracking-normal text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
+              className="font-sans normal-case tracking-normal text-xs text-ink-mute dark:text-moonlight hover:text-emperor"
             >
               ✕
             </button>
           </span>
         }
       >
-        <p className="font-serif text-[14px] leading-relaxed text-ink-soft dark:text-starlight">
+        <p className="font-serif text-sm leading-relaxed text-ink-soft dark:text-starlight">
           {bridge || (
             <span className="italic text-ink-mute dark:text-moonlight">
               (no bridge note)
