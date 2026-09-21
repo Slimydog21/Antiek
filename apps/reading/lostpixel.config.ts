@@ -92,6 +92,10 @@ export const config: CustomProjectConfig = {
       "railwithreadtree",
       "nav-rail-spr-04",
       "navrail-spr-04",
+      "neutral-house-card",
+      "neutralhousecard",
+      "narrow-top-bottom-only",
+      "narrowtopbottomonly",
     ];
     return !animated.some((needle) => hay.includes(needle));
   },
