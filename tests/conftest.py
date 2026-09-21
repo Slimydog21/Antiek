@@ -1,6 +1,6 @@
 """Process-wide test isolation.
 
-Two autouse fixtures, both function-scoped:
+Three autouse fixtures, all function-scoped:
 
 * ``_isolate_default_breaker`` — resets the dispatch circuit-breaker singleton
   between tests (nygard SPR-04), so a chaos test that trips a provider's
@@ -9,6 +9,11 @@ Two autouse fixtures, both function-scoped:
   test at a TMP store so no test can mutate the real ``~/.antiek`` store. This
   is the test/prod firewall that closes the test-residue pollution gap at its
   source.
+* ``_isolate_arxiv_governor`` (SPR-05 Task 1) — the same firewall for the arXiv
+  governor's two files: the throttle JSON state AND the sidecar flock that
+  serializes it. The state was already redirected wherever a test opted in; the
+  lock never was, so test runs took ``fcntl.LOCK_EX`` on the operator's live
+  ``~/.antiek/arxiv_throttle.json.governor.lock``.
 
 ``substrate.dispatch.breaker.default_breaker`` is a process-wide singleton the
 router consults on every dispatch. Without isolation, any test that exercises
@@ -28,6 +33,8 @@ import shutil
 
 import pytest
 
+from acquisition.arxiv.rate_governor import default_lock_path
+from acquisition.arxiv.throttle import default_state_path as arxiv_default_state_path
 from runtime.test_store_guard import real_operator_graph_db_path
 from substrate.dispatch.breaker import default_breaker
 from substrate.graph import default_db_path
@@ -124,3 +131,109 @@ def _isolate_antiek_store(request, monkeypatch, tmp_path, _antiek_schema_templat
     yield
     _check_store_isolated(default_db_path(), real, node_id=request.node.nodeid)
     _check_store_isolated(graph_db_path(), real, node_id=request.node.nodeid)
+
+
+# ── SPR-05 Task 1: the arXiv governor test/prod firewall ───────────────────
+#
+# ``_isolate_antiek_store`` above redirects the graph store. It cannot redirect
+# the arXiv governor, because neither ``acquisition.arxiv.throttle`` nor
+# ``acquisition.arxiv.rate_governor`` consults ``ANTIEK_HOME`` — each has its
+# own env lever. Proven empirically: running ``default_lock_path()`` under
+# ``ANTIEK_HOME=/tmp/FAKEHOME`` returns the operator's real
+# ``~/.antiek/arxiv_throttle.json.governor.lock``.
+
+
+def _real_arxiv_paths() -> tuple[str, str]:
+    """The operator's real arXiv ``(state, lock)`` files, symlinks resolved.
+
+    Resolved from ``~`` directly, NEVER by calling ``arxiv_default_state_path()``
+    / ``default_lock_path()``: those consult the very env vars the fixture
+    overrides, so asking them for the reference would compare tmp against tmp
+    and the guard would pass over an empty set. Each path is realpath'd
+    independently rather than appending ``.governor.lock`` to the resolved state,
+    so a symlinked state file cannot skew the lock's reference.
+    """
+    state = os.path.realpath(os.path.expanduser("~/.antiek/arxiv_throttle.json"))
+    lock = os.path.realpath(os.path.expanduser("~/.antiek/arxiv_throttle.json.governor.lock"))
+    return state, lock
+
+
+def _arxiv_isolation_env(tmp_path) -> dict[str, str]:
+    """The env redirect the fixture installs, as data so it is unit-testable.
+
+    Both levers, always together: redirecting only ``ANTIEK_ARXIV_THROTTLE_PATH``
+    (what fourteen test files do) leaves ``default_lock_path()`` resolving to the
+    real ``~/.antiek`` sidecar, which is the hole this fixture closes.
+    """
+    return {
+        "ANTIEK_ARXIV_THROTTLE_PATH": str(tmp_path / "arxiv_throttle.json"),
+        "ANTIEK_ARXIV_GOVERNOR_LOCK_PATH": str(tmp_path / "arxiv_throttle.json.governor.lock"),
+    }
+
+
+def _check_arxiv_path_isolated(path: str, real: str, *, label: str, node_id: str = "") -> None:
+    """Raise ``AssertionError`` iff ``path`` resolves to the real operator file.
+
+    Resolve-and-compare (``realpath``), never string-compare, so a symlink that
+    aliases the operator's file is still caught — the same discipline as
+    ``_check_store_isolated``.
+    """
+    if os.path.realpath(os.path.expanduser(str(path))) == real:
+        loc = f" for {node_id!r}" if node_id else ""
+        raise AssertionError(
+            f"SPR-05 arXiv isolation guard: the governor {label} resolves to the "
+            f"REAL operator file ({real}){loc} — a test/prod firewall breach. A "
+            "test that flocks that path blocks up to 300s behind a live harvest, "
+            "stalls the harvest for its own length, and lets _stale_pid_check "
+            "unlink the operator's live lock. Set ANTIEK_ARXIV_THROTTLE_PATH and "
+            "ANTIEK_ARXIV_GOVERNOR_LOCK_PATH to tmp paths, or mark "
+            "@pytest.mark.arxiv_governor_contract for a test that deliberately "
+            "probes the default resolution."
+        )
+
+
+def _check_arxiv_governor_isolated(real_state: str, real_lock: str, *, node_id: str = "") -> None:
+    """Resolve BOTH arXiv paths through the production resolvers and reject
+    either landing on the operator's real file. Extracted from the fixture so
+    the detection contract is unit-testable hermetically (see
+    ``tests/test_isolation_guard.py``)."""
+    _check_arxiv_path_isolated(
+        arxiv_default_state_path(), real_state, label="throttle state", node_id=node_id
+    )
+    _check_arxiv_path_isolated(default_lock_path(), real_lock, label="lock path", node_id=node_id)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_arxiv_governor(request, monkeypatch, tmp_path):
+    """SPR-05 Task 1 — hermetic arXiv governor isolation.
+
+    Sibling of ``_isolate_antiek_store``. Fourteen test files already redirect
+    the throttle *state* via ``ANTIEK_ARXIV_THROTTLE_PATH``, but the governor's
+    sidecar flock resolves separately through ``ANTIEK_ARXIV_GOVERNOR_LOCK_PATH``
+    (``rate_governor.default_lock_path``), and passing ``state_path=`` to
+    ``ArxivThrottle`` does not redirect it. Six test files did exactly that, so
+    an ``ArxivRateGovernor(lock_path=None)`` reached from e.g.
+    ``oai_pmh._fetch_page`` took ``fcntl.LOCK_EX`` on the operator's live
+    ``~/.antiek/arxiv_throttle.json.governor.lock``. Measured on 2026-09-21: the
+    six-file arXiv selection moved that file's mtime and stamped the pytest PID
+    into it.
+
+    Autouse so the whole suite inherits isolation without rewrite, and so a test
+    added tomorrow through a *new* arXiv path is covered without anyone
+    remembering to opt in. The setup check proves the redirect took; the teardown
+    check fails any test that re-pointed at the real file mid-body.
+
+    Opt out with ``@pytest.mark.arxiv_governor_contract`` for a test that
+    deliberately probes the default (``~/.antiek``) resolution. The opt-out skips
+    the redirect *and* both checks — such a test must not actually open either
+    file.
+    """
+    if request.node.get_closest_marker("arxiv_governor_contract"):
+        yield
+        return
+    real_state, real_lock = _real_arxiv_paths()
+    for key, value in _arxiv_isolation_env(tmp_path).items():
+        monkeypatch.setenv(key, value)
+    _check_arxiv_governor_isolated(real_state, real_lock, node_id=request.node.nodeid)
+    yield
+    _check_arxiv_governor_isolated(real_state, real_lock, node_id=request.node.nodeid)
