@@ -12,7 +12,7 @@ this module never opens a DuckDB connection.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Literal, cast
 
@@ -31,6 +31,11 @@ from .models import MemoryItem
 
 _GRAPH_SCOPE: Literal["depth"] = "depth"
 _MEMORY_METADATA_SCHEMA = "antiek.account-memory.v1"
+
+# A pathological query would otherwise build an arbitrarily wide SQL
+# expression. Sixteen distinct tokens is far more than any real recall
+# query carries, and the cut is deterministic (first-seen order).
+_LEXICAL_RANK_MAX_TOKENS = 16
 
 
 class MemoryStoreError(RuntimeError):
@@ -220,12 +225,21 @@ def list_memory(
     include_invalidated: bool = False,
     valid_at: datetime | None = None,
     limit: int | None = None,
+    lexical_rank: Sequence[str] | None = None,
 ) -> list[MemoryItem]:
     """List memory for exactly one owner, newest-valid first.
 
     Current items are returned by default. ``include_invalidated=True`` exposes
     the preserved history; ``valid_at`` instead selects the interval that was
     valid at one point in time.
+
+    ``lexical_rank`` supplies query tokens that are pushed into the ORDER BY as
+    a substring-match count, so rows sharing a token with the query sort ahead
+    of the recency ordering. It is a **ranking** input, never a filter: a row
+    matching nothing is still returned, only later. That distinction is what
+    lets a caller bound the scan with ``limit`` without changing the result for
+    any owner whose memory fits inside that bound — the whole set still comes
+    back, and the caller's own rank decides the order.
     """
     _assert_locked(con)
     owner = _required_text(owner_user_id, "owner_user_id")
@@ -250,21 +264,63 @@ def list_memory(
         point = datetime.now(UTC).replace(tzinfo=None)
         conditions.extend(["e.valid_from <= ?", "(e.valid_until IS NULL OR e.valid_until > ?)"])
         params.extend([point, point])
+    order_sql = " ORDER BY e.valid_from DESC, e.extracted_at DESC, e.edge_id"
+    rank_params: list[object] = []
+    rank_tokens = _lexical_rank_tokens(lexical_rank)
+    if rank_tokens:
+        rank_sql, rank_params = _lexical_rank_sql(rank_tokens)
+        order_sql = (
+            f" ORDER BY {rank_sql} DESC,"
+            " e.valid_from DESC, e.extracted_at DESC, e.edge_id"
+        )
     limit_sql = ""
+    limit_params: list[object] = []
     if limit is not None:
         if isinstance(limit, bool) or limit < 1:
             raise ValueError("limit must be a positive integer")
         limit_sql = " LIMIT ?"
-        params.append(limit)
+        limit_params.append(limit)
     rows = con.execute(
         _SELECT_MEMORY
         + " WHERE "
         + " AND ".join(conditions)
-        + " ORDER BY e.valid_from DESC, e.extracted_at DESC, e.edge_id"
+        + order_sql
         + limit_sql,
-        params,
+        [*params, *rank_params, *limit_params],
     ).fetchall()
     return [_row_to_item(row) for row in rows]
+
+
+def _lexical_rank_tokens(values: Sequence[str] | None) -> list[str]:
+    """Normalize caller tokens to the deterministic set used in the ORDER BY."""
+    if values is None:
+        return []
+    if isinstance(values, str):
+        raise TypeError("lexical_rank must be a sequence of tokens, not a string")
+    tokens: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            raise TypeError("lexical_rank tokens must be strings")
+        token = value.strip().casefold()
+        if token and token not in tokens:
+            tokens.append(token)
+        if len(tokens) == _LEXICAL_RANK_MAX_TOKENS:
+            break
+    return tokens
+
+
+def _lexical_rank_sql(tokens: Sequence[str]) -> tuple[str, list[object]]:
+    """Count, in DuckDB, how many query tokens occur in the memory triple.
+
+    Substring containment over-matches relative to the Python tokenizer, which
+    is the safe direction for a ranking prefilter: an extra candidate costs a
+    row inside the cap, a missed candidate would cost recall.
+    """
+    triple_text = (
+        "lower(concat_ws(' ', s.canonical_label, e.relation, m.canonical_label))"
+    )
+    terms = [f"CASE WHEN contains({triple_text}, ?) THEN 1 ELSE 0 END" for _ in tokens]
+    return "(" + " + ".join(terms) + ")", list(tokens)
 
 
 _SELECT_MEMORY = """

@@ -14,6 +14,15 @@ from .store import list_memory
 
 DEFAULT_RECALL_LIMIT = 8
 
+# The scan bound. Recall used to materialise every current memory an owner has
+# ever written before ranking eight of them in Python; this is the number of
+# rows DuckDB is allowed to hand back instead. It is a *candidate* cap, not a
+# result cap: the lexical prefilter and recency ordering run in SQL, so the
+# rows that survive the cap are the ones the Python rank would have chosen
+# from anyway. For any owner whose memory fits inside the cap the candidate
+# set is the whole set, which is why ranking stays byte-identical there.
+RECALL_CANDIDATE_CAP = 200
+
 
 def recall_memory(
     con: LockedConnection,
@@ -27,14 +36,26 @@ def recall_memory(
     Query overlap is deliberately dependency-free and takes precedence when a
     non-blank query is supplied. Within the same lexical score, newer validity
     and extraction timestamps rank first. Stable identities break final ties.
+
+    At most ``max(RECALL_CANDIDATE_CAP, limit)`` rows are materialised: DuckDB
+    applies the same lexical-then-recency preference before the cap, and the
+    Python rank above decides the order among what survives. The rank below is
+    a total order over ``(memory_id, edge_id)``, so the SQL order never leaks
+    into the result — an owner under the cap gets exactly the pre-cap answer.
     """
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError("limit must be a positive integer")
     if query is not None and not isinstance(query, str):
         raise TypeError("query must be a string or None")
 
-    query_tokens = frozenset(lexical_tokens(query or ""))
-    items = list_memory(con, owner_user_id)
+    tokens = lexical_tokens(query or "")
+    query_tokens = frozenset(tokens)
+    items = list_memory(
+        con,
+        owner_user_id,
+        limit=max(RECALL_CANDIDATE_CAP, limit),
+        lexical_rank=tokens or None,
+    )
     ranked = sorted(items, key=lambda item: (item.memory_id, item.edge_id))
     ranked.sort(
         key=lambda item: _salience_key(item, query_tokens=query_tokens),
@@ -130,6 +151,7 @@ def _date_key(value: datetime) -> tuple[int, int, int, int, int, int, int]:
 
 __all__ = [
     "DEFAULT_RECALL_LIMIT",
+    "RECALL_CANDIDATE_CAP",
     "format_memory_for_prompt",
     "recall_memory",
 ]
