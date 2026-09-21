@@ -103,7 +103,7 @@ function advanceFrames(totalMs: number) {
 describe("PenguinMascot — the fixed station (flag on)", () => {
   it("does NOT follow the cursor — a pointermove leaves Werner's position untouched", () => {
     mount();
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
     const startLeft = parseFloat(el.style.left);
     const startTop = parseFloat(el.style.top);
 
@@ -136,7 +136,7 @@ describe("PenguinMascot — the fixed station (flag on)", () => {
 
   it("stays calm for any pointer state (no fishing gag, no bait class)", () => {
     const { container } = mount();
-    const bob = container.querySelector('[data-testid="penguin-mascot"] > span');
+    const bob = container.querySelector('[data-testid="brain-mascot"] > span');
     expect(bob).toBeTruthy();
 
     act(() => {
@@ -163,7 +163,7 @@ describe("PenguinMascot — the fixed station (flag on)", () => {
 
 it("does not wander off on its own (fixed station)", () => {
     mount();
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
     const startLeft = parseFloat(el.style.left);
     const startTop = parseFloat(el.style.top);
     advanceFrames(30000);
@@ -175,7 +175,7 @@ it("does not wander off on its own (fixed station)", () => {
   // break directed choreography (waddle-to-button), because strollTo/restGait
   // were re-homed out of the roam effect. Without this pin, a future ref-scope
   // or effect-order regression would make waddleToEl a silent no-op. We drive the
-  // opt-in data-werner-target click path (a plain document click → stage.
+  // opt-in data-mascot-target click path (a plain document click → stage.
   // waddleToEl) with a mocked on-screen rect, and assert Werner walks TO the
   // control and then RETURNS to his station.
   it("still waddles to an activated control and returns to his station (choreography seam intact)", () => {
@@ -186,7 +186,7 @@ it("does not wander off on its own (fixed station)", () => {
             path="*"
             element={
               <>
-                <button data-werner-target="hit">Bump me</button>
+                <button data-mascot-target="hit">Bump me</button>
                 <PenguinMascot />
               </>
             }
@@ -211,7 +211,7 @@ it("does not wander off on its own (fixed station)", () => {
         toJSON: () => ({}),
       }) as DOMRect;
 
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
     const homeLeft = parseFloat(el.style.left);
     const homeTop = parseFloat(el.style.top);
 

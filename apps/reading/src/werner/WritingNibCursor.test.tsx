@@ -45,7 +45,7 @@ describe("WritingNibCursor", () => {
       /html\.werner-writing-nib-active\.werner-ice-cursor-hidden \*\s*\{[^}]*cursor:\s*none\s*!important/s,
     );
     expect(nibCss).toMatch(
-      /html\.werner-writing-nib-active\.werner-ice-cursor-hidden\s+button\[data-testid="penguin-mascot"\][\s\S]*?cursor:\s*none\s*!important/,
+      /html\.werner-writing-nib-active\.werner-ice-cursor-hidden\s+button\[data-testid="brain-mascot"\][\s\S]*?cursor:\s*none\s*!important/,
     );
   });
 
