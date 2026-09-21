@@ -37,6 +37,14 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+# Defensive SSL bootstrap (SPR-05 task 3) — the endpoint check reaches
+# export.arxiv.org over HTTPS through urllib, which builds its SSLContext at
+# call time, so running here is early enough. A python.org interpreter has no
+# system CA bundle. No-op when SSL_CERT_FILE is already set.
+from runtime.ssl_bootstrap import bootstrap as _ssl_bootstrap  # noqa: E402
+
+_ssl_bootstrap()
+
 
 # ── State path resolution (honors env vars, same convention as oai_sync) ──
 

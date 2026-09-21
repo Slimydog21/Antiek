@@ -22,6 +22,11 @@ WorkingDirectory={{ antiek_install_dir }}
 EnvironmentFile={{ antiek_secrets_file }}
 
 Environment="PATH={{ antiek_install_dir }}/.venv/bin:/usr/bin:/bin"
+# Pin the CA bundle explicitly (SPR-05 task 3). The box's `ca-certificates`
+# package (playbooks/setup.yml) already makes the handshake work, so this is
+# belt-and-braces — but it is also what gives the unit priority over
+# runtime/ssl_bootstrap.py's certifi fallback, which is a no-op once this is set.
+Environment="SSL_CERT_FILE={{ antiek_ssl_cert_file | default('/etc/ssl/certs/ca-certificates.crt') }}"
 Environment="ANTIEK_STATE_DIR={{ antiek_state_dir }}"
 Environment="ANTIEK_DUCKDB_PATH={{ antiek_state_dir }}/antiek.duckdb"
 Environment="ANTIEK_ARXIV_THROTTLE_PATH={{ antiek_state_dir }}/arxiv_throttle.json"
