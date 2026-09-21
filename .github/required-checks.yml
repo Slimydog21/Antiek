@@ -97,6 +97,12 @@ emitted_but_not_required:
     why: Scheduled dependency audit, not a per-PR gate.
   pip-audit:
     why: Scheduled dependency audit, not a per-PR gate.
+  uv-lock-audit:
+    why: >-
+      Scheduled audit of uv.lock against OSV. Advisory for the same structural
+      reason as its dep_audit siblings: the workflow runs only on a schedule
+      and on workflow_dispatch, so it can never report on a pull request and
+      could not be required without leaving every PR permanently pending.
   pip-audit-prod:
     why: >-
       Scheduled dependency audit like `pip-audit`, but scoped to the
