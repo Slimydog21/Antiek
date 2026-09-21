@@ -32,17 +32,16 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class PricingTier(str, Enum):
+class PricingTier(StrEnum):
     """The four consumer billing buckets per master-spec §13.5."""
 
     FREE_PUBLIC = "free_public"
@@ -88,9 +87,9 @@ class TokenUsageRecord:
     raw_token_cost_usd: Decimal  # what the underlying provider charged
     margin_usd: Decimal           # what Antiek adds on top
     billable_to_user_usd: Decimal  # raw + margin
-    investigation_id: Optional[str]
-    notebook_id: Optional[str]
-    chunk_id: Optional[str]       # for attribution flow
+    investigation_id: str | None
+    notebook_id: str | None
+    chunk_id: str | None       # for attribution flow
     idempotency_key: str
     recorded_at: str = field(default_factory=_now_iso)
 
@@ -129,9 +128,9 @@ def record_token_usage(
     user_id: str,
     tier: PricingTier,
     raw_token_cost_usd: Decimal,
-    investigation_id: Optional[str] = None,
-    notebook_id: Optional[str] = None,
-    chunk_id: Optional[str] = None,
+    investigation_id: str | None = None,
+    notebook_id: str | None = None,
+    chunk_id: str | None = None,
 ) -> TokenUsageRecord:
     """Record one token-usage event. Returns the TokenUsageRecord.
 

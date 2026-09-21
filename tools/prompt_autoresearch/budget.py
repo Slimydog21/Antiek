@@ -27,9 +27,7 @@ class BudgetCap:
     def will_breach(self, projected_iteration_cost_usd: Decimal) -> bool:
         if projected_iteration_cost_usd > self.per_iteration_cap_usd:
             return True
-        if self.spent_total_usd + projected_iteration_cost_usd > self.total_cap_usd:
-            return True
-        return False
+        return self.spent_total_usd + projected_iteration_cost_usd > self.total_cap_usd
 
     def record_iteration_cost(self, cost_usd: Decimal) -> None:
         """Record actual iteration cost. Raises BudgetExceeded if the

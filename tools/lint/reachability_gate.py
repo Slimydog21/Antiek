@@ -180,9 +180,7 @@ def _is_augmentation_module(p: Path) -> bool:
         return False
     # Tests (.test.ts) and composition tests (.compose.test.ts) are not
     # augmentations; they are the things that IMPORT augmentations.
-    if ".test." in name or ".compose." in name:
-        return False
-    return True
+    return not (".test." in name or ".compose." in name)
 
 
 def _augmentation_modules() -> list[Path]:
@@ -237,7 +235,7 @@ def _imports_module(importer: Path, importer_text: str, target: Path) -> bool:
             resolved = (importer.parent / spec).resolve()
         except OSError:
             continue
-        if resolved == target_resolved or resolved == target_noext:
+        if resolved in (target_resolved, target_noext):
             return True
         # TS allows importing a directory's index; if the spec resolves to the
         # module's parent dir AND the module is that dir's index, count it.
@@ -492,10 +490,7 @@ def main(argv: list[str] | None = None) -> int:
     except FileNotFoundError:
         baseline = None
 
-    if baseline is None:
-        new_keys = keys
-    else:
-        new_keys = filter_to_new_only(keys, baseline)
+    new_keys = keys if baseline is None else filter_to_new_only(keys, baseline)
 
     # Map NEW keys back to their human-facing finding text (path:line: message).
     key_to_text = {_finding_to_key(f): f[3] for f in findings}

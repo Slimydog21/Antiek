@@ -268,10 +268,7 @@ def analyse_events(
         # in that case the comparison is apples-to-oranges and the
         # §14.4 verdict gate will reject as insufficient_data, which
         # is the honest behaviour.
-        if rubric_outcomes:
-            outcomes = rubric_outcomes
-        else:
-            outcomes = self_grade_outcomes.get(key, [])
+        outcomes = rubric_outcomes or self_grade_outcomes.get(key, [])
         verified_count = len(outcomes)
         passed = sum(1 for s in outcomes if s >= PASS_THRESHOLD)
         scores.append(

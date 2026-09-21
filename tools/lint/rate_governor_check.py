@@ -154,10 +154,13 @@ def _annotation_is_http_client(ann: ast.AST | None) -> bool:
     if ann is None:
         return False
     for node in ast.walk(ann):
-        if isinstance(node, ast.Attribute) and node.attr in _HTTP_CLIENT_ANNOTATIONS:
-            # e.g. httpx.Client / requests.Session
-            if isinstance(node.value, ast.Name) and node.value.id in _HTTP_CLIENT_MODULES:
-                return True
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr in _HTTP_CLIENT_ANNOTATIONS
+            and isinstance(node.value, ast.Name)
+            and node.value.id in _HTTP_CLIENT_MODULES
+        ):
+            return True
     return False
 
 

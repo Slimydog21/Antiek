@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
 
 from substrate.anti_gaming.verdict import FraudVerdict, FraudVerdictKind
 from substrate.rev_share.mixed_attribution import (
@@ -52,7 +51,7 @@ def _idem_key(impression_id: str, recipient_ref: str) -> str:
     Same impression + same recipient → same key, so re-running the
     pipeline never double-pays even if the pipeline upstream is at-
     least-once."""
-    raw = f"{impression_id}|{recipient_ref}".encode("utf-8")
+    raw = f"{impression_id}|{recipient_ref}".encode()
     return f"rsp-{hashlib.sha256(raw).hexdigest()[:24]}"
 
 
@@ -64,7 +63,7 @@ class PayoutOutcome:
     kind: str  # "creator" | "publisher"
     amount_cents: int
     status: str  # "transferred" | "rolled_over" | "escrowed" | "blocked" | "kyc_pending"
-    provider_ref: Optional[str] = None
+    provider_ref: str | None = None
     notes: str = ""
 
 
@@ -155,7 +154,7 @@ def route_impression_revenue(
                 kind=line.kind,
                 amount_cents=line.amount_cents,
                 status="escrowed",
-                notes=f"verdict=REVIEW awaiting operator decision",
+                notes="verdict=REVIEW awaiting operator decision",
             ))
             continue
 
@@ -184,7 +183,7 @@ def route_impression_revenue(
         )
         if state == RolloverState.SETTLED and settled_cents > 0:
             idem = _idem_key(impression_id, line.recipient_ref)
-            entry = router.operations_log.append_intent(
+            router.operations_log.append_intent(
                 op_type=f"{line.kind}_payout",
                 amount_usd_cents=settled_cents,
                 substrate_ref=line.recipient_ref,

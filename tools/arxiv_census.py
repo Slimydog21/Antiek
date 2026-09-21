@@ -65,6 +65,8 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+import contextlib  # noqa: E402 -- direct-script fallback import
+
 from acquisition.arxiv import ArxivThrottle, OaiPmhHarvester  # noqa: E402
 from acquisition.arxiv.oai_records import build_census  # noqa: E402
 from substrate.schemas.documents import (  # noqa: E402
@@ -410,10 +412,8 @@ def seeded_census() -> CensusResult:
     finally:
         client.close()
         for p in (state_path, state_path + ".harvest"):
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(p)
-            except FileNotFoundError:
-                pass
 
     return build_census_result(
         records,

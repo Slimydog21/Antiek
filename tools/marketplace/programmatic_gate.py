@@ -40,7 +40,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class ProgrammaticVerdictKind(str, enum.Enum):
+class ProgrammaticVerdictKind(enum.StrEnum):
     GO = "go"
     DEFER = "defer"
 

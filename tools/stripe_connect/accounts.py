@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Optional
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from .providers import StripeProvider
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class StripeAccountStatus(str, Enum):
+class StripeAccountStatus(StrEnum):
     """The publisher-side Stripe account lifecycle status as observed
     by Antiek's substrate. Stripe's own status enum is richer; this
     maps the subset we act on."""
@@ -64,8 +63,8 @@ class StripeOperationsLog:
         amount_usd_cents: int,
         substrate_ref: str,
         idempotency_key: str,
-        segregated_account_ref: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        segregated_account_ref: str | None = None,
+        metadata: dict | None = None,
     ) -> dict:
         """Record the intent to make a money movement. Returns the
         log entry. Re-appending the same idempotency_key returns the
@@ -103,7 +102,7 @@ class StripeOperationsLog:
         entry["completed_at"] = _now_iso()
         entry["provider_ref"] = provider_ref
 
-    def _find_by_idem(self, key: str) -> Optional[dict]:
+    def _find_by_idem(self, key: str) -> dict | None:
         for e in self.log_entries:
             if e["idempotency_key"] == key:
                 return e
@@ -119,7 +118,7 @@ def create_publisher_account(
     provider: StripeProvider,
     *,
     display_name: str,
-    legal_contact_email: Optional[str],
+    legal_contact_email: str | None,
     ip_holder_id: str,
 ) -> StripeConnectAccount:
     """Create a Stripe Connect account for a publisher. The substrate
@@ -143,8 +142,8 @@ def create_user_creator_account(
     provider: StripeProvider,
     *,
     user_id: str,
-    legal_contact_email: Optional[str] = None,
-    display_name: Optional[str] = None,
+    legal_contact_email: str | None = None,
+    display_name: str | None = None,
 ) -> StripeConnectAccount:
     """Create a Stripe Connect account for a user-creator (the
     user-as-IP-holder framing per §13.9). Same architecture as

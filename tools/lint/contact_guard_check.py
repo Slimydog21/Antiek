@@ -187,10 +187,7 @@ def _is_email_send(node: ast.AST) -> bool:
     ):
         return True
     # Otherwise, only flag when the payload is an inline OutboundEmail(...).
-    for arg in node.args:
-        if _is_payload_construction(arg, frozenset()):
-            return True
-    return False
+    return any(_is_payload_construction(arg, frozenset()) for arg in node.args)
 
 
 def _enclosing_function_names(tree: ast.AST) -> dict[int, str]:

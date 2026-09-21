@@ -32,13 +32,12 @@ class ScoreVector:
         )
         if not ge_all:
             return False
-        gt_any = (
+        return (
             self.rubric_score > other.rubric_score
             or self.verifier_pass_rate > other.verifier_pass_rate
             or self.cost_penalty > other.cost_penalty
             or self.grounding_preserved > other.grounding_preserved
         )
-        return gt_any
 
 
 @dataclass(frozen=True)

@@ -78,12 +78,11 @@ def find_violations() -> list[str]:
                             f"{rel}:{node.lineno}: imports vendor SDK "
                             f"'{alias.name}' outside dispatch/providers/"
                         )
-            elif isinstance(node, ast.ImportFrom):
-                if _is_vendor(node.module):
-                    out.append(
-                        f"{rel}:{node.lineno}: imports from vendor SDK "
-                        f"'{node.module}' outside dispatch/providers/"
-                    )
+            elif isinstance(node, ast.ImportFrom) and _is_vendor(node.module):
+                out.append(
+                    f"{rel}:{node.lineno}: imports from vendor SDK "
+                    f"'{node.module}' outside dispatch/providers/"
+                )
     return out
 
 
