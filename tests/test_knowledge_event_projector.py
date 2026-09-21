@@ -641,25 +641,38 @@ def test_app_startup_does_not_create_missing_db_and_retries_recovery(
 
 
 def test_app_startup_worker_continues_catch_up_batches(monkeypatch, tmp_path: Path) -> None:
+    import threading
+
     import runtime.db_lock as db_lock_module
 
     calls = 0
     call_times: list[float] = []
+    return_times: list[float] = []
     db_path = str(tmp_path / "worker.duckdb")
     handoff_checks = 0
+    # The first recover() call blocks on this gate. The test opens it only
+    # AFTER app startup has returned, so "startup returned while recover() is
+    # provably still in flight" is a statement about ordering that no runner
+    # speed can change. Two earlier shapes of this test were wall-clock in
+    # disguise and red on slow shards: `elapsed < 0.14s` (0.597s / 0.737s on
+    # CI), then `startup_returned < first recover() return`, which still lost
+    # a race against recover()'s 0.15s sleep when the rest of the lifespan
+    # took longer than that (PR #3338 shard 2: returned 68ms after it).
+    first_call_gate = threading.Event()
 
     def handoff_requested(_db_path: str) -> bool:
         nonlocal handoff_checks
         handoff_checks += 1
         return handoff_checks == 2
 
-    return_times: list[float] = []
-
     def fake_recover(**_: object) -> projector.RecoveryReport:
         nonlocal calls
         calls += 1
         call_times.append(time.monotonic())
-        time.sleep(0.15)
+        if calls == 1:
+            first_call_gate.wait(10)
+        else:
+            time.sleep(0.15)
         return_times.append(time.monotonic())
         return projector.RecoveryReport(catching_up=calls == 1, remaining=None)
 
@@ -667,33 +680,49 @@ def test_app_startup_worker_continues_catch_up_batches(monkeypatch, tmp_path: Pa
     monkeypatch.setattr(db_lock_module, "write_handoff_requested", handoff_requested)
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
-    with TestClient(app):
-        startup_returned = time.monotonic()
-        # The property: startup does NOT block on the catch-up worker. It used
-        # to be asserted as `elapsed < 0.14s` wall-clock, which measures runner
-        # speed, not the property — on a starved shared runner it took 0.597s
-        # (PR #3338 CI, 2026-09-21) while the worker was running exactly as
-        # designed, and passed 5/5 locally. Compare two instants in the same
-        # process instead: startup must return BEFORE the first recover() call
-        # has finished its 0.15s sleep. If startup blocked on the worker,
-        # return_times[0] would precede startup_returned. Speed-independent,
-        # and it fails if the worker is ever joined during startup (verified
-        # by mutation: a `time.sleep(0.2)` after `worker.start()` in app.py reds this test).
-        deadline = time.monotonic() + 2
+
+    # Startup runs in a daemon thread and the TEST holds the clock: if the
+    # lifespan is gated on the worker it can never return (the gate opens only
+    # after startup), and a deadlocked daemon thread is simply left behind.
+    # 5s is not a performance budget — a slow startup passes as long as it
+    # never waited on recover(); a blocked one fails here, loudly, with the
+    # gate still closed as proof. (Verified by mutation: `worker.join()`
+    # after `worker.start()` in app.py reds this test in ~5s.)
+    client = TestClient(app)
+    startup_returned = threading.Event()
+    startup_error: list[BaseException] = []
+
+    def _enter() -> None:
+        try:
+            client.__enter__()
+        except BaseException as exc:  # noqa: BLE001 — surfaced below
+            startup_error.append(exc)
+        finally:
+            startup_returned.set()
+
+    threading.Thread(target=_enter, name="test-startup", daemon=True).start()
+    try:
+        assert startup_returned.wait(5.0), (
+            "startup blocked on the catch-up worker: recover() is still gated "
+            "and app startup has not returned"
+        )
+        assert not startup_error, startup_error
+        # The worker is running (recover() was entered) and has NOT returned —
+        # it cannot, the gate is still closed. Startup returned anyway.
+        deadline = time.monotonic() + 5
         while not call_times:
             assert time.monotonic() < deadline, "recover() never invoked"
             time.sleep(0.005)
-        while not return_times:
-            assert time.monotonic() < deadline
-            time.sleep(0.005)
-        assert startup_returned < return_times[0], (
-            "startup blocked on the catch-up worker: it returned at "
-            f"{startup_returned:.3f}, after recover() finished at {return_times[0]:.3f}"
-        )
-        deadline = time.monotonic() + 2
+        assert not return_times, "recover() returned before the gate opened"
+        first_call_gate.set()
+        deadline = time.monotonic() + 5
         while app.state.knowledge_event_recovery["status"] == "catching_up":
             assert time.monotonic() < deadline
             time.sleep(0.01)
+    finally:
+        first_call_gate.set()
+        if startup_returned.is_set() and not startup_error:
+            client.__exit__(None, None, None)
     assert calls == 2
     assert call_times[1] - call_times[0] >= 0.6
     assert app.state.knowledge_event_recovery["status"] == "current"
