@@ -664,7 +664,7 @@ export default function Settings() {
                     className={
                       "min-h-9 rounded border px-2 py-1 text-xs font-mono " +
                       (routeMode === item.value
-                        ? "border-ink bg-ink text-white dark:border-bright dark:bg-bright dark:text-space"
+                        ? "border-ink bg-ink text-white dark:border-bright dark:bg-bright dark:text-space-2"
                         : "border-ink/20 dark:border-bright/20 text-ink dark:text-bright")
                     }
                   >

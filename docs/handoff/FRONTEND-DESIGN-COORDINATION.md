@@ -83,3 +83,45 @@ an untracked inventory keyed to `MODE_TAXONOMY`, which missed four real surfaces
 
 Per-route Open Graph cards. `apps/reading/index.html` carries no OG tags at all; per-route cards
 need SSR or a prerender step the Cloudflare Pages SPA build does not have.
+
+---
+
+## 2026-09-21 — Kimi session (second agent, same goal)
+
+Working branch `ui/posthog-grade-polish` (worktree, rebased on origin/main 2026-09-21 morning).
+
+**#3275 has merged** — the file holds above are released except where #3284 still holds
+`data-werner-*` rename territory. Not touching #3284's files.
+
+**A second, deeper inventory exists: `docs/ui-audit/`** (committed on my branch). Ten audit
+reports against DESIGN_LANGUAGE.md/FEEL_CONTRACT.md + `INVENTORY.md` (master queue Q1–Q17,
+§6 adjudications of cross-report contradictions). Relationship to
+`docs/decisions/mascot-surface-inventory.md` (PR #3286): theirs is router-coverage (61 routes,
+0 uncovered); mine is findings-depth (273 findings, file:line, P0–P2) and is the fix queue.
+They answer different questions; use both.
+
+**Landed on my branch so far:** Q1 — `ink-soft`/`ink-mute`/`danger` are real tokens now
+(AA-verified, three-way synced) and `lint:tokens` gained a referenced-token guard that FAILS
+on any design-token utility resolving to nothing. When my branch merges, main must have zero
+unresolved refs — I already fixed the four that appeared (Library ×3, MidnightOil, Settings:
+`text-charcoal-3`→`charcoal-1`, `text-space`→`space-2`, dark text on `dark:bg-bright`).
+Wave 1 — Q2 ocean→sun-deep codemod (24 files, restores dead focus rings), Q6 contract-doc
+de-staling (penguin→brain, retired hexes, moodboard reads tokens), Q7 dead UI (phantom
+hotkeys, dead Ask wired to toggleAISidecar, Topbar no-ops wired, Write alerts→LemonToast,
+Notebook prompt/confirm→LemonModal, orphan deletions), Q10 arcade (reduced-motion
+hidden→offer, cartridges follow app mode, HUD type on scale), Q11 celebrate→idle +
+one-shot CelebrateBurst, Q12 five h-screen→h-full roots.
+
+**Yielded to the Claude session (do not duplicate):** token-baseline shrink (their branch
+`design/token-baseline-shrink` ≈ my Q13), motion strays (`design/motion-scale-consistency`
+≈ Q15 part), #3284 DOM-contract rename, visualtest baseline tuning on main.
+
+**Claimed by me for wave 2 (in flight):** Q3 state-colour pass + mint `success` token
+(D2 adjudicated: aurora stays reserved for AI-thinking), Q4 shared ErrorBanner replacing
+`border-red-200 bg-red-50` strips, Q8 overlay PR (ProductsLauncher/ChunkModal/FloatMenu z),
+Q9 DRW private registry → shared/researchState.ts, Q17 remaining ~20 h-screen roots.
+Queue after that: Q5 Lemon/ModePage sweep, Q14 type-scale snap.
+
+**Visual note for whoever merges first:** ~630 previously-dead muted-text/danger renderings
+now paint (that was the point), so lostpixel baselines must be regenerated deliberately
+(`npm run visualtest:update`) at merge time — not bypassed, not "fixed" by reverting.

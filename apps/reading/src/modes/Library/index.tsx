@@ -759,7 +759,7 @@ export default function Library() {
               <button
                 type="submit"
                 disabled={purchaseBusy || purchaseTitle.trim().length === 0}
-                className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-1"
               >
                 {purchaseBusy ? "Preparing…" : "Prepare request"}
               </button>
@@ -836,7 +836,7 @@ export default function Library() {
             <button
               type="submit"
               disabled={importBusy || (purchaseReceipt?.title ?? purchaseTitle).trim().length === 0}
-              className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+              className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-1"
             >
               {importBusy ? "Checking…" : "Check import"}
             </button>
@@ -913,7 +913,7 @@ export default function Library() {
                   handoffStorageRef.trim().length === 0 ||
                   (importReceipt.file_name ?? importFileName.trim()).trim().length === 0
                 }
-                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-1"
               >
                 {handoffBusy ? "Recording…" : "Record handoff"}
               </button>
@@ -1002,7 +1002,7 @@ export default function Library() {
               <button
                 type="submit"
                 disabled={conversionBusy}
-                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-1"
               >
                 {conversionBusy ? "Reviewing…" : "Review conversion"}
               </button>
@@ -1088,7 +1088,7 @@ export default function Library() {
               <button
                 type="submit"
                 disabled={outputBusy || outputRef.trim().length === 0}
-                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-1"
               >
                 {outputBusy ? "Recording…" : "Record output"}
               </button>
@@ -1182,7 +1182,7 @@ export default function Library() {
               <button
                 type="submit"
                 disabled={serveBusy}
-                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-1"
               >
                 {serveBusy ? "Reviewing…" : "Review serve gate"}
               </button>
@@ -1261,7 +1261,7 @@ export default function Library() {
               <button
                 type="submit"
                 disabled={publicationBusy || !serveReceipt.publication_allowed_next}
-                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-1"
               >
                 {publicationBusy ? "Preparing…" : "Prepare publication"}
               </button>
@@ -1352,7 +1352,7 @@ export default function Library() {
                   publishHtmlBody.trim().length === 0 ||
                   publishLicenseBasis.trim().length === 0
                 }
-                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-1"
               >
                 {publishBusy ? "Publishing…" : "Publish HTML"}
               </button>
@@ -1394,7 +1394,7 @@ export default function Library() {
               <button
                 type="submit"
                 disabled={indexBusy || !indexComputeAck}
-                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-1"
               >
                 {indexBusy ? "Indexing…" : "Index chunks"}
               </button>

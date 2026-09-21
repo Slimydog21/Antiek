@@ -163,7 +163,7 @@ export default function MidnightOil() {
                       className={
                         "rounded-md border px-3 py-1.5 text-xs font-mono " +
                         (active
-                          ? "border-ink bg-ink text-white dark:border-bright dark:bg-bright dark:text-space"
+                          ? "border-ink bg-ink text-white dark:border-bright dark:bg-bright dark:text-space-2"
                           : "border-rule dark:border-charcoal-1 text-ink dark:text-bright")
                       }
                     >
@@ -187,7 +187,7 @@ export default function MidnightOil() {
               <button
                 type="submit"
                 disabled={busy || goal.trim().length === 0}
-                className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-1"
               >
                 {busy ? "Checking..." : "Preflight"}
               </button>
