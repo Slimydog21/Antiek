@@ -44,6 +44,16 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # merge_group: REQUIRED for the merge queue. A queued PR is tested as a
+  # temporary merge commit of (main + PR) delivered as a `merge_group` event,
+  # NOT as a `pull_request` event. Without this trigger the 8 required checks
+  # would never report for a queue entry and every PR would hang in the queue
+  # forever — so this must land BEFORE the merge_queue rule is enabled.
+  # Concurrency needs no change: for a non-pull_request event the group keys
+  # on github.sha with cancel-in-progress false, so each merge group gets its
+  # own run and nothing cancels it.
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:  # let the operator trigger from the Actions tab
 
 concurrency:
@@ -113,7 +123,7 @@ jobs:
           # don't resolve here are simply not constrained). Provenance +
           # regeneration rule: header of tools/lints/constraints.txt.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
           pip install -c tools/lints/constraints.txt \
             "ruff==${RUFF_VERSION}" "mypy==${MYPY_VERSION}"
           # Surface the resolved set in the job log so a future red can be
