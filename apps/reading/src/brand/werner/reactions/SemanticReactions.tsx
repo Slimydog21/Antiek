@@ -109,8 +109,8 @@ function SemanticReaction({
       role="img"
       aria-label={LABEL[kind]}
       className={`werner-semantic werner-semantic--${kind}`}
-      data-werner-reaction={kind}
-      data-werner-mood={MOOD[kind]}
+      data-mascot-reaction={kind}
+      data-mascot-mood={MOOD[kind]}
       data-duration-ms={DURATION_MS[kind]}
       data-reduced={reduced ? "true" : "false"}
       style={style}
