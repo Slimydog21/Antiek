@@ -7,11 +7,11 @@ import sys
 from dataclasses import dataclass
 
 try:
-    from ...runtime.db_lock import LockedConnection
+    from ...runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
 
 
 @dataclass(frozen=True)
@@ -49,7 +49,7 @@ def log_paste_event(
 
 
 def list_paste_events(
-    con, *, document_id: str | None = None, limit: int = 100,
+    con: LockedConnection, *, document_id: str | None = None, limit: int = 100,
 ) -> list[PasteEvent]:
     if document_id is None:
         rows = con.execute(

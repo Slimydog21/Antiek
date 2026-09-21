@@ -42,9 +42,9 @@ from substrate.constants import PERSONAL_READING_CONTENT_CLASS
 class _ClientLike(Protocol):
     """The slice of XApiClient the runner uses (so a test fake can stand in)."""
 
-    def recent_search(self, query: str) -> list[dict]: ...
-    def user_timeline(self, user_id: str) -> list[dict]: ...
-    def conversation(self, conversation_id: str) -> list[dict]: ...
+    def recent_search(self, query: str) -> list[dict[str, Any]]: ...
+    def user_timeline(self, user_id: str) -> list[dict[str, Any]]: ...
+    def conversation(self, conversation_id: str) -> list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,7 @@ class RunPipelineResult:
     results: tuple[IngestTwitterResult, ...]
 
 
-def _fetch_for_pipeline(client: _ClientLike, pipeline: BYOKPipeline) -> list[dict]:
+def _fetch_for_pipeline(client: _ClientLike, pipeline: BYOKPipeline) -> list[dict[str, Any]]:
     """Pull the raw tweet dicts for a pipeline kind. ``general_feed`` uses
     recent-search over the account handle (or a query seed if present);
     ``thread_specific`` uses a conversation lookup keyed on the seed (a
@@ -131,13 +131,13 @@ def run_pipeline(
     )
 
 
-def _group_into_threads(tweets: list[dict], *, default_handle: str) -> list[Any]:
+def _group_into_threads(tweets: list[dict[str, Any]], *, default_handle: str) -> list[Any]:
     """Group flat tweet dicts into ``TwitterThread`` objects by conversation_id.
 
     The root of each thread is the conversation_id; tweets with no conversation_id
     fall back to grouping by their own tweet_id (a standalone tweet = a one-tweet
     thread)."""
-    by_conv: dict[str, list[dict]] = {}
+    by_conv: dict[str, list[dict[str, Any]]] = {}
     for tw in tweets:
         conv = str(tw.get("conversation_id") or tw.get("tweet_id") or "")
         if not conv:

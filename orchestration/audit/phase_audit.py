@@ -34,29 +34,14 @@ import os
 import sys
 from dataclasses import dataclass
 
-try:
-    from ...constants import AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION
-    from ...event_log import emit_typed
-    from ...schemas import (
-        ActionType,
-        AuditFindingPayload,
-        AuditSeverity,
-        AutoPatchAppliedPayload,
-        Event,
-    )
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
-        AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION,
-    )
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas import (  # type: ignore[no-redef]
-        ActionType,
-        AuditFindingPayload,
-        AutoPatchAppliedPayload,
-        Event,
-    )
+from substrate.constants import AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION
+from substrate.event_log import emit_typed
+from substrate.schemas import (
+    ActionType,
+    AuditFindingPayload,
+    AutoPatchAppliedPayload,
+    Event,
+)
 
 from ..phase_log import PhaseLog
 from ..phase_runner.postconditions import (

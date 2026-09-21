@@ -42,6 +42,7 @@ def main() -> int:
 
     # Defer the daemon import so a `--help` invocation doesn't pay
     # the cost of bringing in the substrate module graph.
+    from orchestration.continuous import DaemonBudget
     from orchestration.continuous.daemon import (
         DaemonConfig,
         DaemonState,
@@ -52,7 +53,11 @@ def main() -> int:
     )
 
     if args.once:
-        run_one_iteration(state=DaemonState(), config=DaemonConfig())
+        run_one_iteration(
+            state=DaemonState(),
+            config=DaemonConfig(),
+            budget=DaemonBudget.from_env(),
+        )
         return 0
     daemon_main()
     return 0

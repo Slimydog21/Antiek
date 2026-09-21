@@ -69,13 +69,13 @@ def _text_score(query: str, label: str) -> float:
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return dot / (na * nb) if na and nb else 0.0
 
 
-def _node_meta(metadata_text: str | None) -> dict:
+def _node_meta(metadata_text: str | None) -> dict[str, Any]:
     if not metadata_text:
         return {}
     try:

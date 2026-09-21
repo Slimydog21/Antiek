@@ -186,5 +186,4 @@ def critical_path() -> list[str]:
     drw_nodes = {e.consumer for e in drw_edges} | {e.provider for e in drw_edges}
     if not drw_nodes:
         return list(CRITICAL_PATH_NODES)
-    overall = max((longest_from(n) for n in drw_nodes), key=len)
-    return overall
+    return max((longest_from(n) for n in drw_nodes), key=len)

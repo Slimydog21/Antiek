@@ -1,8 +1,13 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { startInvestigation } from "../lib/api";
+
 import { CapacityExhaustedError } from "../lib/capacityWarn";
-import type { ResearchTier, UserModelChoice } from "../lib/api";
+import type {
+  ResearchSourcePolicy,
+  ResearchTier,
+  UserModelChoice,
+} from "../lib/api";
 import type { Event } from "../generated/types";
 import { useEventStream } from "./useEventStream";
 
@@ -74,6 +79,9 @@ export interface StartInvestigationState {
     spawnContext?: string;
     /** SPR-01 M3: curated fast/deep tier from the research entry. */
     researchTier?: ResearchTier;
+
+    /** Metadata-only source-pack intent recorded on the start event. */
+    sourcePolicy?: ResearchSourcePolicy[];
     modelChoice?: UserModelChoice;
     operationId?: string;
   }) => Promise<string | null>;
@@ -141,6 +149,8 @@ export function useStartInvestigation(): StartInvestigationState {
       parentInvestigationId?: string;
       spawnContext?: string;
       researchTier?: ResearchTier;
+
+      sourcePolicy?: ResearchSourcePolicy[];
       modelChoice?: UserModelChoice;
       operationId?: string;
     }): Promise<string | null> => {
@@ -158,6 +168,8 @@ export function useStartInvestigation(): StartInvestigationState {
           spawn_context: input.spawnContext,
           // Omitted when undefined → server defaults to "deep".
           research_tier: input.researchTier,
+
+          source_policy: input.sourcePolicy,
           ...(input.modelChoice && input.operationId
             ? { model_choice: input.modelChoice, operation_id: input.operationId }
             : {}),

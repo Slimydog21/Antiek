@@ -117,7 +117,11 @@ export default function AISidecar() {
     try {
       setContextError(null);
       const [u, t] = await Promise.all([
-        apiFetch(`/billing/summary/__operator__/${period}`),
+        // `me` resolves server-side to the authenticated caller. This was
+        // hardcoded to `__operator__`, so every signed-in user's sidecar
+        // requested the OPERATOR's spend — and the endpoint served it,
+        // because `user_id` was an unchecked path parameter.
+        apiFetch(`/billing/summary/me/${period}`),
         apiFetch("/trajectory?limit=8"),
       ]);
       if (u?.ok) {
@@ -259,8 +263,10 @@ export default function AISidecar() {
   //
   // For backward-compat, the legacy ⌘J toggle still works — it
   // routes through the workspace store (open or focus). The
-  // `antiek:aisidecar:toggle` event handler kept above also routes
-  // through the workspace.
+  // `antiek:aisidecar:toggle` dispatch above is kept only for
+  // Storybook listeners; production toggling (⌘/, SceneChrome "Ask",
+  // CommandPalette) goes through `toggleAISidecar` in shortcuts.ts —
+  // the event itself has no production listener.
   return (
     <aside
       className="h-full overflow-hidden flex flex-col"
@@ -269,7 +275,7 @@ export default function AISidecar() {
       <div className="px-3 py-3 flex flex-col h-full gap-4 overflow-y-auto">
           <header className="space-y-1">
             <p className="text-sm font-serif text-ink dark:text-bright">AI sidecar</p>
-            <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
               transparent · scoped to your session
             </p>
           </header>
@@ -284,7 +290,7 @@ export default function AISidecar() {
                 style={{ width: `${freePct}%` }}
               />
             </div>
-            <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
               {usage
                 ? `${usage.free_tokens_consumed.toLocaleString()} / 5,000,000 tokens`
                 : "–"}
@@ -330,7 +336,7 @@ export default function AISidecar() {
                         {thread.messages.length > 0 && (
               <div className="space-y-2" data-testid="thought-partner-thread">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                  <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                     Thread · {thread.messages.length}
                   </p>
                   <div className="flex items-center gap-2">
@@ -341,7 +347,7 @@ export default function AISidecar() {
                           type="button"
                           aria-pressed={replyMode === m}
                           onClick={() => setReplyMode(m)}
-                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                          className={`text-xxs font-mono px-1.5 py-0.5 rounded ${
                             replyMode === m
                               ? "bg-ink text-white"
                               : "text-shadow-1 dark:text-moonlight hover:bg-ice-3 dark:hover:bg-charcoal-1"
@@ -353,7 +359,7 @@ export default function AISidecar() {
                     </div>
                     <button
                       type="button"
-                      className="text-[10px] font-mono underline text-ink-mute"
+                      className="text-xxs font-mono underline text-ink-mute"
                       onClick={() => thread.clear()}
                       data-testid="thought-partner-clear-thread"
                     >
@@ -368,16 +374,16 @@ export default function AISidecar() {
                       className="border border-rule dark:border-charcoal-1 rounded p-2 space-y-1.5 bg-ice-1 dark:bg-charcoal-2"
                       data-testid="thought-partner-turn"
                     >
-                      <p className="text-[11px] text-ink-mute dark:text-moonlight">
+                      <p className="text-xs text-ink-mute dark:text-moonlight">
                         You: {msg.question}
                       </p>
                       {msg.answer == null ? (
-                        <p className="text-[11px] italic" data-testid="thought-partner-pending">
+                        <p className="text-xs italic" data-testid="thought-partner-pending">
                           Thinking…
                         </p>
                       ) : (
                         <>
-                          <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                          <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                             {msg.shape ?? "SYNTHESIS"}
                           </p>
                           <p className="text-xs text-ink dark:text-bright whitespace-pre-wrap">
@@ -406,7 +412,7 @@ export default function AISidecar() {
                 until the assistant actually emits an @@actions block. */}
             {aiLog.length > 0 && (
               <div className="space-y-1.5 pt-1">
-                <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                   AI did
                 </p>
                 <ul className="space-y-1">
@@ -415,7 +421,7 @@ export default function AISidecar() {
                       key={`${rec.at}-${idx}`}
                       className="flex items-center gap-2 border border-rule dark:border-charcoal-1 rounded px-2 py-1 bg-ice-0 dark:bg-charcoal-2"
                     >
-                      <span className="flex-1 text-[11px] text-ink dark:text-bright truncate">
+                      <span className="flex-1 text-xs text-ink dark:text-bright truncate">
                         {rec.label}
                       </span>
                       {rec.undo && (
@@ -427,7 +433,7 @@ export default function AISidecar() {
                               prev.filter((r) => r !== rec),
                             );
                           }}
-                          className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight hover:bg-sun/15"
+                          className="text-xxs font-mono px-1.5 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight hover:bg-sun/15"
                         >
                           undo
                         </button>
@@ -444,11 +450,11 @@ export default function AISidecar() {
               Recent dispatch
             </p>
             {contextError ? (
-              <p className="text-[11px] text-red-700 dark:text-red-300">
+              <p className="text-xs text-danger">
                 {contextError}
               </p>
             ) : recentCalls.length === 0 ? (
-              <p className="text-[11px] italic text-shadow-1 dark:text-moonlight">
+              <p className="text-xs italic text-shadow-1 dark:text-moonlight">
                 No recent calls in this session.
               </p>
             ) : (
@@ -456,7 +462,7 @@ export default function AISidecar() {
                 {recentCalls.map((c) => (
                   <li
                     key={c.call_id}
-                    className="text-[11px] font-mono text-ink dark:text-bright flex items-center justify-between gap-2"
+                    className="text-xs font-mono text-ink dark:text-bright flex items-center justify-between gap-2"
                   >
                     <span className="truncate">
                       {c.tier} · {c.provider}/{c.model}
@@ -471,7 +477,7 @@ export default function AISidecar() {
             )}
           </section>
 
-          <footer className="mt-auto pt-3 border-t border-rule dark:border-charcoal-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+          <footer className="mt-auto pt-3 border-t border-rule dark:border-charcoal-1 text-xxs font-mono text-shadow-1 dark:text-moonlight">
             ⌘/ toggle · Esc close
           </footer>
       </div>

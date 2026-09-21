@@ -106,7 +106,7 @@ export default function VoiceChaseButton({ onTranscript, disabled }: Props) {
         </LemonButton>
       )}
       {recorder.error && (
-        <span className="text-[11px] font-mono text-shadow-1 dark:text-moonlight" role="alert">
+        <span className="text-xs font-mono text-shadow-1 dark:text-moonlight" role="alert">
           {recorder.error}
         </span>
       )}

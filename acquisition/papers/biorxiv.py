@@ -114,7 +114,7 @@ def parse_details_response(payload: dict[str, Any], *, server: str) -> list[Pape
     return out
 
 
-def _http_get(url: str, *, client: httpx.Client | None) -> dict:
+def _http_get(url: str, *, client: httpx.Client | None) -> dict[str, Any]:
     """Fetch a biorxiv ``/details`` page as JSON.
 
     HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``url`` is built from an
@@ -155,7 +155,8 @@ def _http_get(url: str, *, client: httpx.Client | None) -> dict:
 
             r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     r.raise_for_status()
-    return r.json()
+    payload: dict[str, Any] = r.json()
+    return payload
 
 
 def fetch_details(

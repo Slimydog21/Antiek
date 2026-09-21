@@ -31,23 +31,13 @@ Use cases:
 
 from __future__ import annotations
 
-import os
-import sys
 from collections.abc import Callable
 from typing import Any
 
-try:
-    from ...constants import (
-        RLM_VERIFY_AGREEMENT_MIN,
-        RLM_VERIFY_REDISPATCH_COUNT,
-    )
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
-        RLM_VERIFY_AGREEMENT_MIN,
-        RLM_VERIFY_REDISPATCH_COUNT,
-    )
+from substrate.constants import (
+    RLM_VERIFY_AGREEMENT_MIN,
+    RLM_VERIFY_REDISPATCH_COUNT,
+)
 
 from .agreement import default_agreement_strict
 from .types import VerifyResult
@@ -83,13 +73,13 @@ _TIEBREAKER_FRAMING = (
 
 
 def verify_with_redispatch(
-    role_runner: Callable[..., dict],
+    role_runner: Callable[..., dict[str, Any]],
     role: str,
     placeholders: dict[str, str],
-    original_parsed: dict,
+    original_parsed: dict[str, Any],
     *,
     framings: list[str] | None = None,
-    agreement_fn: Callable[[dict, dict], bool] = default_agreement_strict,
+    agreement_fn: Callable[[dict[str, Any], dict[str, Any]], bool] = default_agreement_strict,
     agreement_min: int = RLM_VERIFY_AGREEMENT_MIN,
     redispatch_count: int = RLM_VERIFY_REDISPATCH_COUNT,
     enable_tiebreaker: bool = True,

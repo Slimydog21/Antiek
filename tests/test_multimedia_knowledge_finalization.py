@@ -57,7 +57,7 @@ class _Factory:
         self.calls = 0
         self.distillers: list[_Distiller] = []
 
-    def __call__(self) -> _Distiller:
+    def __call__(self, _inv: str) -> _Distiller:
         self.calls += 1
         distiller = _Distiller()
         self.distillers.append(distiller)
@@ -100,7 +100,7 @@ async def test_finalization_persists_link_and_replay_skips_model(tmp_path, monke
         owner_id="owner-a",
         store=store,
         db_path=db_path,
-        distiller_factory=lambda: first_distiller,
+        distiller_factory=lambda _inv: first_distiller,
         events_dir=events_dir,
         embedding_provider=_Embedding(),
     )
@@ -116,7 +116,7 @@ async def test_finalization_persists_link_and_replay_skips_model(tmp_path, monke
         owner_id="owner-a",
         store=store,
         db_path=db_path,
-        distiller_factory=lambda: replay_distiller,
+        distiller_factory=lambda _inv: replay_distiller,
         events_dir=events_dir,
         embedding_provider=_Embedding(),
     )
@@ -152,7 +152,7 @@ async def test_graph_complete_link_missing_replay_repairs_without_model(
             owner_id="owner-a",
             store=store,
             db_path=db_path,
-            distiller_factory=lambda: first_distiller,
+            distiller_factory=lambda _inv: first_distiller,
             events_dir=events_dir,
             embedding_provider=_Embedding(),
         )
@@ -166,7 +166,7 @@ async def test_graph_complete_link_missing_replay_repairs_without_model(
         owner_id="owner-a",
         store=store,
         db_path=db_path,
-        distiller_factory=lambda: replay_distiller,
+        distiller_factory=lambda _inv: replay_distiller,
         events_dir=events_dir,
         embedding_provider=_Embedding(),
     )
@@ -300,7 +300,7 @@ async def test_concurrent_finalization_invokes_one_distiller(tmp_path, monkeypat
             owner_id="owner-a",
             store=store,
             db_path=db_path,
-            distiller_factory=lambda: first_distiller,
+            distiller_factory=lambda _inv: first_distiller,
             events_dir=events_dir,
             embedding_provider=_Embedding(),
         )
@@ -361,7 +361,7 @@ async def test_uncertain_model_outcome_never_retries_distiller(tmp_path, monkeyp
             owner_id="owner-a",
             store=store,
             db_path=db_path,
-            distiller_factory=lambda: first_distiller,
+            distiller_factory=lambda _inv: first_distiller,
             events_dir=events_dir,
             embedding_provider=_Embedding(),
         )
@@ -402,7 +402,7 @@ def test_authenticated_finalization_route_and_runtime_fail_closed(tmp_path, monk
         multimedia_routes.MultimediaKnowledgeRuntime(
             db_path=str(tmp_path / "graph.duckdb"),
             events_dir=str(tmp_path / "events"),
-            distiller_factory=lambda: distiller,
+            distiller_factory=lambda _inv: distiller,
             embedding_provider=_Embedding(),
         )
     )

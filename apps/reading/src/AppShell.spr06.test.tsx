@@ -72,6 +72,9 @@ vi.mock("./workspace/PanelLayout", () => ({
 // installer is the only thing stubbed.
 vi.mock("./workspace/shortcuts", () => ({
   useWorkspaceShortcuts: () => {},
+  // SceneChrome's "Ask" verb + CommandPalette import the real toggle; stub
+  // it so the mock module still satisfies their imports.
+  toggleAISidecar: () => {},
   SHORTCUT_EVENTS: {
     PALETTE_TOGGLE: "antiek:palette:toggle",
     AISIDECAR_TOGGLE: "antiek:aisidecar:toggle",

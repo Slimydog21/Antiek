@@ -44,30 +44,17 @@ this module never imports an LLM client.
 from __future__ import annotations
 
 import abc
-import os
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-try:
-    from ...constants import (
-        ANTIEK_PARAM_VERSION,
-        DECOMPOSER_PARAPHRASE_COSINE_MAX,
-    )
-    from ...event_log import emit_typed
-    from ...schemas import RubricScoredPayload
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import (  # type: ignore[no-redef]
-        ANTIEK_PARAM_VERSION,
-        DECOMPOSER_PARAPHRASE_COSINE_MAX,
-    )
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas import RubricScoredPayload  # type: ignore[no-redef]
-
+from substrate.constants import (
+    ANTIEK_PARAM_VERSION,
+    DECOMPOSER_PARAPHRASE_COSINE_MAX,
+)
+from substrate.event_log import emit_typed
+from substrate.schemas import RubricScoredPayload
 
 # ---------------------------------------------------------------------------
 # Kinds
@@ -142,7 +129,7 @@ class Rubric(abc.ABC):
     rubric_id: str = "abstract"
     kind: str = VERIFIABLE
 
-    def __init__(self):
+    def __init__(self) -> None:
         if self.kind not in VALID_KINDS:
             raise ValueError(
                 f"Rubric {self.rubric_id!r} has invalid kind "

@@ -33,11 +33,11 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles.note_taker.parser import (  # type: ignore[no-redef]
+    from roles.note_taker.parser import (
         ExtractedNote,
         parse_notes_response,
     )
-    from roles.note_taker.prompt import NOTE_TAKER_SYSTEM_PROMPT  # type: ignore[no-redef]
+    from roles.note_taker.prompt import NOTE_TAKER_SYSTEM_PROMPT
 
 
 @dataclass(frozen=True)
@@ -73,14 +73,15 @@ class DispatchDistiller:
     use it) stay importable without the dispatch stack — tests use a fake.
     """
 
-    def __init__(self, *, role: str = "note_taker", system_prompt: str = NOTE_TAKER_SYSTEM_PROMPT):
+    def __init__(self, *, investigation_id: str, role: str = "note_taker", system_prompt: str = NOTE_TAKER_SYSTEM_PROMPT):
+        self._investigation_id = investigation_id
         self._role = role
         self._system_prompt = system_prompt
 
     def distill(self, text: str, *, source_event_ids: Sequence[str] = (), context: str = "") -> Distillation:
         from substrate.dispatch import dispatch  # lazy
         prompt = self._build_prompt(text, context, source_event_ids)
-        result = dispatch(prompt, role=self._role)
+        result = dispatch(prompt, role=self._role, investigation_id=self._investigation_id)
         response_text = getattr(result, "text", None) or getattr(result, "response_text", "") or str(result)
         return self._parse(response_text, source_event_ids)
 

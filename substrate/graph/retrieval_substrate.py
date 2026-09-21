@@ -69,11 +69,11 @@ except ImportError:  # pragma: no cover — direct-script fallback
     )
 
 try:
-    from ...runtime.db_lock import connect_read
+    from ..runtime.db_lock import connect_read  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_read  # type: ignore[no-redef]
+    from runtime.db_lock import connect_read
 
 
 _log = logging.getLogger("antiek.retrieval_substrate")
@@ -109,7 +109,7 @@ class RetrievalSubstrate(Protocol):
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict: ...
+    ) -> dict[str, Any]: ...
 
 
 # ---------------------------------------------------------------------------

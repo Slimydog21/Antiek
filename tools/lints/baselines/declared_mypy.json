@@ -9649,6 +9649,13 @@
     {
       "col": 0,
       "kind": "mypy:unused-ignore",
+      "line": 60,
+      "path": "substrate/graph/ops.py",
+      "snippet": "from substrate.graph.embedding_meta import (  # type: ignore[no-redef]"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
       "line": 61,
       "path": "substrate/graph/ops.py",
       "snippet": "from substrate.schemas import (  # type: ignore[no-redef]"

@@ -29,17 +29,17 @@ from dataclasses import dataclass, field
 from typing import Any
 
 try:
-    from ...event_log import trajectory
-    from ...graph.insight_question import graph_db_path
-    from ...runtime.db_lock import connect_read
-    from ...schemas.events import ActionType
+    from runtime.db_lock import connect_read
+    from substrate.event_log import trajectory
+    from substrate.graph.insight_question import graph_db_path
+    from substrate.schemas.events import ActionType
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_read  # type: ignore[no-redef]
-    from substrate.event_log import trajectory  # type: ignore[no-redef]
-    from substrate.graph.insight_question import graph_db_path  # type: ignore[no-redef]
-    from substrate.schemas.events import ActionType  # type: ignore[no-redef]
+    from runtime.db_lock import connect_read
+    from substrate.event_log import trajectory
+    from substrate.graph.insight_question import graph_db_path
+    from substrate.schemas.events import ActionType
 
 
 @dataclass(frozen=True)
@@ -68,14 +68,14 @@ class Distillation:
 
 def _node_ids_from_trajectory(
     investigation_id: str, *, events_dir: str | None = None
-) -> tuple[list[str], dict[str, dict]]:
+) -> tuple[list[str], dict[str, dict[str, Any]]]:
     """Collect the insight/question node ids this investigation produced,
     in emission order, plus the per-question escalation (reserved child id)
     keyed by question node id. Order-preserving + de-duplicated so a note
     re-emitted (idempotent promotion) appears once."""
     ordered: list[str] = []
     seen: set[str] = set()
-    escalations: dict[str, dict] = {}
+    escalations: dict[str, dict[str, Any]] = {}
     # promote_question used in the escalation seam stores the challenged
     # note's id; map question_id (payload) → node — handled at read time.
     for row in trajectory(investigation_id, events_dir=events_dir):
@@ -164,12 +164,14 @@ def distillation_for(
     return Distillation(insights=insights, questions=questions)
 
 
-def _load_meta(raw: Any) -> dict:
+def _load_meta(raw: Any) -> dict[str, Any]:
     if not raw:
         return {}
     if isinstance(raw, dict):
         return raw
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
     except (TypeError, ValueError):
         return {}
+    # Metadata blobs are JSON objects by contract; anything else is corrupt.
+    return parsed if isinstance(parsed, dict) else {}

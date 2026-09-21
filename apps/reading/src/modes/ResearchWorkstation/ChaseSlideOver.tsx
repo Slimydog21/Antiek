@@ -81,7 +81,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
   return (
     <div className="flex flex-col p-4 gap-4 h-full text-ink dark:text-bright">
       <div>
-        <label className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
+        <label className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
           Highlighted from parent
         </label>
         <blockquote className="text-sm font-serif text-ink-soft dark:text-starlight italic border-l-edge border-sun pl-3 py-1 leading-relaxed">
@@ -90,7 +90,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
       </div>
 
       <div className="flex-1 flex flex-col min-h-0">
-        <label className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
+        <label className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
           Question to chase
         </label>
         <LemonTextarea

@@ -33,13 +33,31 @@ const ALLOW_FILES = new Set<string>([
   "src/design/tokens.css",
 ]);
 
-// Match real CSS hex colours, not GitHub issue refs. 6/8-digit forms are
-// always flagged; 3/4-digit forms only when they contain an a–f letter, so
-// `#3135` (an issue reference) passes while `#fff` / `#dead` still fail.
-// Known blind spot, accepted: all-numeric 3/4-digit colours like #333 slip
-// through — cheap colours are rare next to the issue-ref false positives.
-const HEX =
-  /#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?\b|#(?=[0-9a-fA-F]{3,4}\b)(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{3,4}\b/g;
+// Match real CSS hex colours, not GitHub issue refs.
+//
+// The discriminator is CONTEXT, not the digit class. An earlier version
+// required an a–f letter in 3/4-digit forms so `#3135` (an issue ref) would
+// pass, and accepted the blind spot in its own comment: "all-numeric 3/4-digit
+// colours like #333 slip through". But "contains a letter" separates neither
+// colours from refs — `#333` is a colour and `#3135` is a ref, and both are
+// all-numeric — so the accepted hole was exactly the most common raw greys
+// (#000, #333, #888) in a gate whose whole job is "no raw hex".
+//
+// Issue refs live in COMMENTS; colours live in code. Stripping comment spans
+// first lets the full `#[0-9a-fA-F]{3,8}` pattern run with no exceptions.
+// Measured on this tree when the change landed: 29 matches before, 28 after —
+// zero new catches (no all-numeric grey exists in src today, so the hole was
+// latent rather than active) and one FEWER false positive, a `#ffffff` inside
+// a comment in LemonTag.tsx.
+const HEX = /#[0-9a-fA-F]{3,8}\b/g;
+
+/** Comment spans, where issue refs live. `(?<!:)` keeps `https://` intact. */
+const BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
+const LINE_COMMENT = /(?<!:)\/\/[^\n]*/g;
+
+function stripComments(source: string): string {
+  return source.replace(BLOCK_COMMENT, "").replace(LINE_COMMENT, "");
+}
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -58,7 +76,7 @@ function collect(): string[] {
   for (const file of walk(SRC)) {
     const rel = relative(ROOT, file).replace(/\\/g, "/");
     if (ALLOW_FILES.has(rel)) continue;
-    const matches = readFileSync(file, "utf8").match(HEX);
+    const matches = stripComments(readFileSync(file, "utf8")).match(HEX);
     if (matches) for (const m of matches) found.push(`${rel}\t${m.toLowerCase()}`);
   }
   return found.sort();

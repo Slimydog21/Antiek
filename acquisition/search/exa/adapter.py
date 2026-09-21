@@ -32,6 +32,7 @@ import os
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Any
 from urllib.parse import urlparse
 
 # Repo root on path for direct invocation (matches the pattern used by
@@ -49,7 +50,7 @@ if _PKG_ROOT not in sys.path:
 from substrate.constants import (  # noqa: E402
     CURATED_NEWS_TIER_3 as _CURATED_NEWS_TIER_3,
 )
-from substrate.constants import (
+from substrate.constants import (  # noqa: E402 -- direct-script fallback import
     RESEARCH_HOSTS_TIER_2 as _RESEARCH_HOSTS_TIER_2,
 )
 from substrate.event_log import emit_typed  # noqa: E402
@@ -101,7 +102,7 @@ class DiscoveryProposed:
     # Defaults to {} on the runtime dataclass for ergonomic
     # construction in tests; the underlying payload's
     # `provider_specific` defaults the same.
-    provider_specific: dict = field(default_factory=dict)
+    provider_specific: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -333,7 +334,7 @@ def _default_db_path_or_none() -> str | None:
         return None
 
 
-def _hydrate_proposed(d: dict) -> DiscoveryProposed:
+def _hydrate_proposed(d: dict[str, Any]) -> DiscoveryProposed:
     """Rebuild a DiscoveryProposed dataclass from a cached dict.
 
     Spec §14.7 read precedence: prefer ``provider_specific["response_id"]``
@@ -436,7 +437,7 @@ def _emit_proposed(
     # (autoprompt_string, subpages, exa_filter, etc.) joins here
     # without bumping the schema. Top-level `provider_response_id`
     # stays for backward-compat reads of v6-v8 events.
-    provider_specific: dict = {}
+    provider_specific: dict[str, Any] = {}
     if r.provider_response_id is not None:
         provider_specific["response_id"] = r.provider_response_id
     payload = DiscoveryProposedPayload(

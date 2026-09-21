@@ -143,6 +143,29 @@ export const barAccent = {
 } as const;
 
 /**
+ * The media well (Q16; ui-audit 12-modes-c #63) — the ONE deliberate backdrop
+ * behind players, candidates, and media frames. Wells were improvising four
+ * answers (charcoal-2 in day mode, raw black, ink, hardcoded white); this is
+ * the single one. A well stays dark in BOTH themes so letterboxed media
+ * recedes: day borrows the charcoal card tone, night steps deeper to void so
+ * the well sits below the card face. Text on a well is `bright` (#EEF1F6) —
+ * 13.9:1 on the day tone, 17.4:1 on night void.
+ *
+ * EXCEPTION, documented: the KnowledgePanel twin iframe keeps `bg-white` on
+ * purpose — its sandboxed srcDoc is light-authored HTML, so a white well
+ * avoids a dark flash before the document paints. It is not a media
+ * backdrop.
+ *
+ * Mirrors tokens.css `--media-well` (day :root + night block) and the
+ * Tailwind `bg-media-well` color, which reads the var so the theme swap
+ * cascades automatically.
+ */
+export const mediaWell = {
+  day: "#1B202A", // charcoal-2 — the tone day playback surfaces already used
+  night: "#040508", // void — deepest night; the well recedes below the card
+} as const;
+
+/**
  * Glass / transparency surfaces (AMS-SPR-01, consumed by SPR-03/04/09).
  *
  * The mountainscape scene (SPR-04) sits behind the working surfaces; these
@@ -255,6 +278,33 @@ export function aliasFor(m: Mode): SurfaceAliases {
   };
 }
 
+/**
+ * Stepped muting of the ink ramp (Q1 — the muted-text hierarchy).
+ *
+ * Two distinct dimming levels below primary `ink`, each with a night
+ * counterpart, exposed as the `text-ink-soft` / `text-ink-mute` utilities:
+ *
+ *   ink-soft — lede / secondary text. Day #2A3441 sits between shadow-2
+ *              (#384858) and ink (#0F1419); night reuses starlight #C4CCD7,
+ *              the night ramp's body-text step.
+ *   ink-mute — metadata / tertiary text. Values are the WCAG-AA-cleared
+ *              versions of the static mock's (public/redesign.html) --ink-soft/
+ *              --ink-mute: the mock's day #6A7785 measures 4.25:1 on the ice-2
+ *              page and night #7C8696 4.44:1 on the charcoal-2 card — both just
+ *              under the AA 4.5:1 floor — so they were stepped toward the ramp
+ *              until they clear it on every usual background:
+ *                day   #647380 → 4.54:1 on ice-2, 4.88:1 on ice-0
+ *                night #828C9C → 4.80:1 on charcoal-2, 5.59:1 on space-2
+ *              (night moonlight #6B7585 is DIMMER than ink-mute and fails AA on
+ *              a card — 3.50:1; ink-mute is the AA-passing tertiary step.)
+ *
+ * Sibling invariant: byte-identical to --ink-soft/--ink-mute in tokens.css
+ * (day :root + night media block). tailwind.config.js exposes them via the
+ * --ink-soft-rgb/--ink-mute-rgb channel vars so /opacity modifiers resolve.
+ */
+export const inkSoft = { day: "#2A3441", night: "#C4CCD7" } as const;
+export const inkMute = { day: "#647380", night: "#828C9C" } as const;
+
 /** Chunky offset shadows: ink-cast on day, sun-deep-glowing on night.
     AMS-SPR-09: night shadows glow with the re-toned weathered `sun.deep.night`
     (#84722F, was #8A7300) — they read `var(--sun-deep)` in tokens.css, so this
@@ -314,17 +364,48 @@ export const accent = {
 } as const;
 
 /**
+ * Semantic danger alias (Q1). Danger IS emperor — the reserved red accent —
+ * under the name danger-call sites already use (`text-danger`, `border-danger`,
+ * `bg-danger/10`). One red, two names; the alias object IS accent.emperor so
+ * the two can never drift. tokens.css mirrors it as --danger: var(--emperor)
+ * plus the --danger-rgb channels (day 206 54 35 / night 255 97 85) that the
+ * Tailwind `danger` color reads so bg-danger/10 resolves.
+ */
+export const danger = accent.emperor;
+
+/**
+ * Semantic success token (Q3, adjudication D2) — the done/met/passed green.
+ *
+ * aurora was carrying these states (`state.done`) but fails WCAG AA as text
+ * (1.9:1 on ice-0) and is RESERVED for AI-thinking (D8), so done/met/passed
+ * gets its own hue: a calm forest green, low-chroma like the rest of the
+ * weathered brand (chroma ~0.31, not a SaaS neon emerald).
+ *
+ * AA pairs (verified in tokens.contrast.test.ts):
+ *   day   #237242 → 5.90:1 on ice-0, 5.49:1 on ice-2 (text); ice-0 white
+ *         text over it 5.90:1 (filled success chips/buttons).
+ *   night #6ECB8F → 9.59:1 on space-2, 8.24:1 on charcoal-2 (text); day-ink
+ *         #0F1419 text over it ~10:1 (filled success chips/buttons at night).
+ *
+ * Sibling invariant: byte-identical to --success in tokens.css (day :root +
+ * night media block). tailwind.config.js exposes it via the --success-rgb
+ * channel vars so /opacity modifiers (bg-success/10) resolve.
+ */
+export const success = { day: "#237242", night: "#6ECB8F" } as const;
+
+/**
  * Research-state family (herdr transfer P0-1). Mirrors tokens.css: semantic
  * ALIASES over the palette constants (var() references), so state colour is
  * a token, never a raw hex in a component. blocked=emperor (needs
- * attention), done=aurora, working=sun, stopped/muted=shadow-1. The
+ * attention), done=success (Q3/D2 — was aurora, which is reserved for
+ * AI-thinking per D8), working=sun, stopped/muted=shadow-1. The
  * canonical dot classes live in shared/researchState.ts and consume these
  * tokens via Tailwind arbitrary values.
  */
 export const state = {
   working: "var(--sun)",
   blocked: "var(--emperor)",
-  done: "var(--aurora)",
+  done: "var(--success)",
   stopped: "var(--shadow-2)",
   muted: "var(--shadow-2)",
 } as const;

@@ -26,7 +26,7 @@ class CandidateNote:
     topic_tags: tuple[str, ...] = ()
 
 
-class CheckResultKind(str, enum.Enum):
+class CheckResultKind(enum.StrEnum):
     PASS = "pass"
     FAIL = "fail"
 
@@ -42,7 +42,7 @@ class CheckResult:
     reasons: tuple[str, ...]
 
 
-class QualityGateVerdict(str, enum.Enum):
+class QualityGateVerdict(enum.StrEnum):
     PASS_PUBLIC = "pass_public"  # eligible for collective graph
     REROUTE_PRIVATE = "reroute_private"  # private-graph only
     REJECT = "reject"  # neither private nor public

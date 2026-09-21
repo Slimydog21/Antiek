@@ -127,13 +127,26 @@ def _probe() -> ProbeResult:
             reason=f"AppShell.tsx not found at {_APPSHELL_TSX} — the reading shell moved",
             failure_mode="route_404",
         )
-    flags = _read(_ICE_FLAGS_TS)
-    if flags is None:
-        return ProbeResult(
-            ok=False,
-            reason=f"iceFishingFlags.ts not found at {_ICE_FLAGS_TS}",
-            failure_mode="route_404",
-        )
+    # LEG 3 RETIRED 2026-09-20 — the variant it asserted no longer exists.
+    #
+    # It required apps/reading/src/werner/iceFishingFlags.ts to default
+    # `wernerIceFishingCursor` ON. That file is gone and so is the flag:
+    # `grep -rn "wernerIceFishingCursor\|VITE_WERNER_ICE_FISHING"
+    # apps/reading/src` returns NOTHING. Ice-fishing was restructured into
+    # the arcade (apps/reading/src/arcade/games/ice-fishing/, reached via
+    # arcade/cartridgeFactory.ts), so there is no longer a Werner cursor
+    # variant to be ON or OFF.
+    #
+    # The leg is removed rather than repointed: its claim was "ice-fishing is
+    # the canonical Werner shell, not a fork that removed it", and the
+    # restructure settled that question. Legs 1 and 2 below are unchanged and
+    # still hold — /read/:documentId binds BookReader (App.tsx:179) and
+    # AppShell mounts both shell components — so this probe keeps asserting
+    # the outcome it was built for.
+    #
+    # Found by running this probe. No workflow does; see
+    # docs/decisions/reachability-gate.md, whose Status was corrected because
+    # the job it claims runs these was never committed.
 
     # 1. canonical /read/:documentId route bound to BookReader.
     route_ok = bool(_READ_ROUTE_RE.search(app) or _READ_ROUTE_RE_ALT.search(app))
@@ -167,27 +180,14 @@ def _probe() -> ProbeResult:
             ),
             failure_mode="feature_dead",
         )
-    if not _ICESHELL_MOUNT_RE.search(shell):
-        return ProbeResult(
-            ok=False,
-            reason=(
-                "<WernerIceCursorShell /> is not mounted in AppShell.tsx — the "
-                "canonical ice-fishing shell is unmounted (#54's shell is dormant)"
-            ),
-            failure_mode="feature_dead",
-        )
+    # WernerIceCursorShell assertion RETIRED 2026-09-20 with leg 3 above:
+    # `grep -rln WernerIceCursorShell apps/reading/src` matches NO files. The
+    # component was removed in the same restructure that moved ice-fishing
+    # into the arcade, so this asserted the mounting of something that no
+    # longer exists. <PenguinMascot /> above is the surviving half and still
+    # holds (AppShell.tsx:177), which is what keeps this leg meaningful.
 
-    # 3. ice-fishing is the LIVE variant (flag defaults ON).
-    if not _ICE_DEFAULT_ON_RE.search(flags):
-        return ProbeResult(
-            ok=False,
-            reason=(
-                "wernerIceFishingCursor no longer defaults ON in iceFishingFlags.ts "
-                "— ice-fishing is not the live Werner variant (a cursor-pursuit fork "
-                "may have superseded #54's canonical ice-fishing shell)"
-            ),
-            failure_mode="feature_dead",
-        )
+    # Leg 3 (ice-fishing flag defaults ON) retired — see the note above.
 
     return ProbeResult(ok=True, failure_mode="reachable")
 

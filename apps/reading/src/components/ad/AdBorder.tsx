@@ -58,6 +58,10 @@ export interface AdBorderProps {
   onTelemetryError?: (err: TelemetryError) => void;
   /** Test/story seam: override the fill fetch. */
   fillFetcher?: typeof fetchFill;
+  /** Test/story seam: fill rendered on FIRST paint, before the (async) fetch
+   *  resolves. Story screenshots are taken on the first stable frame, so
+   *  stories must seed the rails here or they race the fetch and flake. */
+  initialFill?: FillResult;
   /** Test/story seam: disable the 1Hz sampler (e.g. static stories). */
   samplingEnabled?: boolean;
 }
@@ -67,13 +71,14 @@ export function AdBorder({
   windowId,
   onTelemetryError,
   fillFetcher = fetchFill,
+  initialFill,
   samplingEnabled = true,
 }: AdBorderProps) {
   const tier = useViewportTier();
   const reduceMotion = usePrefersReducedMotion();
   const positions = useMemo(() => activePositions(tier), [tier]);
 
-  const [fill, setFill] = useState<FillResult>({ fills: [], served: false });
+  const [fill, setFill] = useState<FillResult>(initialFill ?? { fills: [], served: false });
 
   // The single telemetry emitter for this window. Created once per windowId;
   // the sampler feeds it, lifecycle/interval flushes it (M4).
