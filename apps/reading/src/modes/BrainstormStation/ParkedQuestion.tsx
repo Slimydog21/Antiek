@@ -1,4 +1,5 @@
 import type { ParkedQuestionEntry } from "../../lib/api";
+import { LemonButton } from "../../components/lemon/LemonButton";
 
 interface Props {
   question: ParkedQuestionEntry;
@@ -57,14 +58,13 @@ export default function ParkedQuestion({
       </section>
 
       <section className="pt-2">
-        <button
-          type="button"
+        <LemonButton
+          variant="primary"
           onClick={onLaunch}
           disabled={launching}
-          className="px-4 py-2 rounded-md bg-ink text-white text-sm font-medium hover:bg-shadow-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {launching ? "Launching…" : "Launch investigation"}
-        </button>
+        </LemonButton>
         <p className="mt-2 text-xs text-shadow-1 dark:text-moonlight leading-relaxed">
           Spawns a child investigation seeded by this question and
           marks it sharpened in the source trajectory. You'll be

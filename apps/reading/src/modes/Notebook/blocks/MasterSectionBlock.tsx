@@ -16,7 +16,7 @@ function MasterSectionNodeView({ node, deleteNode }: NodeViewProps) {
     <NodeViewWrapper className="my-3" data-block="master-section">
       <div className="border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 shadow-z1 dark:shadow-z1-night p-4 relative">
         <header className="flex items-center justify-between mb-2">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-ink-soft dark:text-moonlight">
+          <span className="font-mono text-xxs uppercase tracking-wider text-ink-soft dark:text-moonlight">
             Synthesis · {synthesisId.slice(0, 12)}
             {section ? ` · ${section}` : ""}
           </span>
@@ -24,12 +24,12 @@ function MasterSectionNodeView({ node, deleteNode }: NodeViewProps) {
             type="button"
             onClick={() => deleteNode()}
             aria-label="Remove block"
-            className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor"
+            className="text-xs text-ink-mute dark:text-moonlight hover:text-emperor"
           >
             ✕
           </button>
         </header>
-        <p className="font-serif text-[15px] leading-relaxed text-ink dark:text-bright">
+        <p className="font-serif text-base leading-relaxed text-ink dark:text-bright">
           (synthesis fragment rendered here in the full backend; the
           substrate stores the ref + the renderer pulls fresh content
           at render time per architecture_notes §13)

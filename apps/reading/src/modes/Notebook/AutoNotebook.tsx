@@ -197,7 +197,7 @@ function AutoNotebookForInvestigation({
  *  separate, unbannered surface). */
 function AutoNotebookShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col h-screen" data-testid="auto-notebook-shell">
+    <div className="flex flex-col h-full" data-testid="auto-notebook-shell">
       <main className="flex-1 min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
         {children}
       </main>
@@ -260,7 +260,7 @@ function AutoNotebookBody({
           <Link
             to={writeHandoffHref(notebook.investigationId, notebook.title)}
             data-testid="auto-notebook-import-write"
-            className="inline-flex font-mono text-[11px] uppercase tracking-wider text-aurora underline-offset-2 hover:underline"
+            className="inline-flex font-mono text-xs uppercase tracking-wider text-sun-deep dark:text-sun underline-offset-2 hover:underline"
           >
             Import outline into Write →
           </Link>
@@ -275,7 +275,7 @@ function AutoNotebookBody({
         data-testid="auto-notebook-outline"
         className="border-l-2 border-rule dark:border-charcoal-1 pl-3 space-y-1"
       >
-        <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        <p className="font-mono text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Outline
         </p>
         <ul className="space-y-0.5">
@@ -283,7 +283,7 @@ function AutoNotebookBody({
             <li
               key={s.kind}
               data-outline-section={s.kind}
-              className="text-[13px] font-serif text-ink-soft dark:text-starlight"
+              className="text-sm font-serif text-ink-soft dark:text-starlight"
             >
               <a
                 href={`#notebook-section-${s.kind}`}
@@ -336,32 +336,28 @@ function SectionView({
   // Insights / open-questions sections — graph leaves, read-only.
   return (
     <section id={`notebook-section-${section.kind}`} data-section={section.kind}>
-      <h2 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+      <h2 className="mb-2 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
         {section.heading}
       </h2>
       <ul className="space-y-2.5">
         {section.entries.map((e) => (
           <li key={e.nodeId} className="flex items-start gap-2.5">
             <span
-              className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${
-                section.kind === "insights"
-                  ? "bg-aurora"
-                  : "bg-sun-deep dark:bg-sun"
-              }`}
+              className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-aurora"
               aria-hidden="true"
             />
             <div className="min-w-0 flex-1">
-              <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
+              <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright">
                 {e.text}
               </p>
               {e.sourceDocumentId && (
                 <p
-                  className="mt-0.5 font-mono text-[11px] text-shadow-1 dark:text-moonlight"
+                  className="mt-0.5 font-mono text-xs text-shadow-1 dark:text-moonlight"
                   data-testid="auto-notebook-citation"
                 >
                   <Link
                     to={`/read/${encodeURIComponent(e.sourceDocumentId)}`}
-                    className="underline-offset-2 hover:underline text-aurora"
+                    className="underline-offset-2 hover:underline text-sun-deep dark:text-sun"
                     data-testid="auto-notebook-citation-link"
                   >
                     open source in reader →
@@ -369,7 +365,7 @@ function SectionView({
                 </p>
               )}
               {e.escalated && (
-                <p className="mt-0.5 font-mono text-[11px] text-sun-deep dark:text-sun">
+                <p className="mt-0.5 font-mono text-xs text-sun-deep dark:text-sun">
                   this needs more research
                 </p>
               )}
@@ -420,7 +416,7 @@ function PromptTelemetryPanel({ investigationId }: { investigationId: string }) 
         data-telemetry-state="loading"
         className="border-t border-rule dark:border-charcoal-1 pt-6"
       >
-        <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        <p className="font-mono text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Prompts & model calls
         </p>
         <p className="mt-2 text-sm text-ink-soft dark:text-starlight">Loading telemetry…</p>
@@ -434,7 +430,7 @@ function PromptTelemetryPanel({ investigationId }: { investigationId: string }) 
         data-telemetry-state="error"
         className="border-t border-rule dark:border-charcoal-1 pt-6"
       >
-        <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        <p className="font-mono text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Prompts & model calls
         </p>
         <p className="mt-2 text-sm text-ink-soft dark:text-starlight">{state.reason}</p>
@@ -456,10 +452,10 @@ function PromptTelemetryPanel({ investigationId }: { investigationId: string }) 
       className="border-t border-rule dark:border-charcoal-1 pt-6 space-y-3"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        <p className="font-mono text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Prompts & model calls
         </p>
-        <p className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+        <p className="font-mono text-xxs text-shadow-1 dark:text-moonlight">
           {data.call_count} call{data.call_count === 1 ? "" : "s"}
           {data.total_latency_ms > 0
             ? ` · ${(data.total_latency_ms / 1000).toFixed(1)}s model time`
@@ -471,10 +467,10 @@ function PromptTelemetryPanel({ investigationId }: { investigationId: string }) 
       </div>
       {qPreview ? (
         <div className="rounded-md bg-ice-1 dark:bg-charcoal-1 px-3 py-2">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-1">
+          <p className="font-mono text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-1">
             Research question
           </p>
-          <p className="font-serif text-[13px] leading-relaxed text-ink dark:text-bright whitespace-pre-wrap">
+          <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright whitespace-pre-wrap">
             {qPreview}
           </p>
         </div>
@@ -491,9 +487,9 @@ function PromptTelemetryPanel({ investigationId }: { investigationId: string }) 
           {data.calls.map((c, i) => (
             <li
               key={c.event_id ?? `${c.role}-${i}`}
-              className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2 text-[12px]"
+              className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2 text-xs"
             >
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] text-ink dark:text-bright">
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-ink dark:text-bright">
                 <span className="font-semibold">{c.role}</span>
                 <span>
                   {c.provider}/{c.model}
@@ -503,7 +499,7 @@ function PromptTelemetryPanel({ investigationId }: { investigationId: string }) 
                 {c.cost_usd > 0 ? <span>${c.cost_usd.toFixed(4)}</span> : null}
               </div>
               {c.prompt_hash ? (
-                <p className="mt-1 font-mono text-[10px] text-shadow-1 dark:text-moonlight truncate">
+                <p className="mt-1 font-mono text-xxs text-shadow-1 dark:text-moonlight truncate">
                   prompt_hash {c.prompt_hash.slice(0, 16)}…
                 </p>
               ) : null}
@@ -511,7 +507,7 @@ function PromptTelemetryPanel({ investigationId }: { investigationId: string }) 
           ))}
         </ul>
       )}
-      <p className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+      <p className="font-mono text-xxs text-shadow-1 dark:text-moonlight">
         From event log · prompt bodies not stored (hash only)
       </p>
     </section>
