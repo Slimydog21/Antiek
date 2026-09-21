@@ -468,15 +468,25 @@ def _recovery_child(db: str, events: Path, crash_boundary: str | None = None):
     code = textwrap.dedent(
         f"""
         import os
+        from runtime.db_lock import WriteLockTimeout
         from substrate.graph.knowledge_event_projector import recover
         def checkpoint(boundary, event_id):
             if boundary == {crash_boundary!r}:
                 os._exit(73)
-        recover(
-            db_path={db!r},
-            events_dir={str(events)!r},
-            checkpoint=checkpoint,
-        )
+        try:
+            recover(
+                db_path={db!r},
+                events_dir={str(events)!r},
+                checkpoint=checkpoint,
+            )
+        except WriteLockTimeout:
+            # Losing the write-lock race is the EXPECTED outcome for one of two
+            # racers. recover() raises by design rather than hanging — see
+            # test_recovery_wall_time_is_one_deadline_for_snapshot_lock, which
+            # pins that behaviour — so the loser must translate it into a clean
+            # exit. Without this, a child that simply lost the race exits 1 and
+            # reds the suite under CI load (observed on main: [0, 1] != [0, 0]).
+            pass
         """
     )
     env = dict(os.environ)
