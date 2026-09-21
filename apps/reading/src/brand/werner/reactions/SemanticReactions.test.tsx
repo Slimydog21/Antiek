@@ -39,7 +39,7 @@ describe("Werner semantic reactions", () => {
       expect(screen.getAllByRole("img")).toHaveLength(1);
       expect(container.querySelector("img")?.getAttribute("src")).toBeTruthy();
       expect(
-        container.firstElementChild?.getAttribute("data-werner-reaction"),
+        container.firstElementChild?.getAttribute("data-mascot-reaction"),
       ).toBe(kind);
     },
   );
@@ -69,7 +69,7 @@ describe("Werner semantic reactions", () => {
   it("uses the thinking mood for the public curious/thinking semantic", () => {
     const curious = render(<WernerCurious size={64} reduced={false} />);
     const root = curious.container.firstElementChild;
-    expect(root?.getAttribute("data-werner-mood")).toBe("thinking");
+    expect(root?.getAttribute("data-mascot-mood")).toBe("thinking");
     expect(root?.getAttribute("data-duration-ms")).toBe("1200");
     expect(
       curious.container.querySelector("img")?.getAttribute("src"),
@@ -89,7 +89,7 @@ describe("Werner semantic reactions", () => {
         source,
       );
       expect(
-        other.container.querySelector('[data-werner-authored-pose="headTilt"]'),
+        other.container.querySelector('[data-mascot-authored-pose="headTilt"]'),
       ).toBeNull();
       other.unmount();
     }
@@ -117,7 +117,7 @@ describe("Werner semantic reactions", () => {
       "true",
     );
     expect(
-      container.querySelector(`[data-werner-reaction="${kind}"]`),
+      container.querySelector(`[data-mascot-reaction="${kind}"]`),
     ).toBeTruthy();
     const mark = container.querySelector(".werner-semantic__mark");
     const prop = container.querySelector("svg");
