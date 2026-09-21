@@ -25,7 +25,7 @@ import {
   installChoreography,
   installTargetChoreography,
   productSelector,
-  WERNER_TARGET_ATTR,
+  MASCOT_TARGET_ATTR,
 } from "./choreography";
 import type { WernerStageController } from "./WernerStage";
 
@@ -147,15 +147,15 @@ describe("installChoreography — interruption + teardown", () => {
   });
 });
 
-describe("installTargetChoreography — opt-in data-werner-target (SPR-10 M4)", () => {
+describe("installTargetChoreography — opt-in data-mascot-target (SPR-10 M4)", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
   });
 
-  it("clicking a [data-werner-target] element waddles to it (default hit emote)", () => {
+  it("clicking a [data-mascot-target] element waddles to it (default hit emote)", () => {
     const { stage, waddleToEl } = fakeStage();
     const btn = document.createElement("button");
-    btn.setAttribute(WERNER_TARGET_ATTR, "");
+    btn.setAttribute(MASCOT_TARGET_ATTR, "");
     document.body.appendChild(btn);
     teardown = installTargetChoreography(stage, { target: document });
 
@@ -167,7 +167,7 @@ describe("installTargetChoreography — opt-in data-werner-target (SPR-10 M4)", 
   it("a click on a DESCENDANT of an opt-in element resolves the opt-in ancestor + its named emote", () => {
     const { stage, waddleToEl } = fakeStage();
     const wrap = document.createElement("div");
-    wrap.setAttribute(WERNER_TARGET_ATTR, "curious");
+    wrap.setAttribute(MASCOT_TARGET_ATTR, "curious");
     const inner = document.createElement("span");
     wrap.appendChild(inner);
     document.body.appendChild(wrap);
@@ -181,7 +181,7 @@ describe("installTargetChoreography — opt-in data-werner-target (SPR-10 M4)", 
   it("an unknown attribute value falls back to the hit emote", () => {
     const { stage, waddleToEl } = fakeStage();
     const btn = document.createElement("button");
-    btn.setAttribute(WERNER_TARGET_ATTR, "not-an-emote");
+    btn.setAttribute(MASCOT_TARGET_ATTR, "not-an-emote");
     document.body.appendChild(btn);
     teardown = installTargetChoreography(stage, { target: document });
 
@@ -202,7 +202,7 @@ describe("installTargetChoreography — opt-in data-werner-target (SPR-10 M4)", 
   it("teardown removes the click listener", () => {
     const { stage, waddleToEl } = fakeStage();
     const btn = document.createElement("button");
-    btn.setAttribute(WERNER_TARGET_ATTR, "");
+    btn.setAttribute(MASCOT_TARGET_ATTR, "");
     document.body.appendChild(btn);
     const remove = installTargetChoreography(stage, { target: document });
     remove();

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import {
   fetchPrivacySettings,
   setPrivacySurface,
@@ -171,7 +172,7 @@ export default function PrivacyDashboard() {
     : 0;
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
@@ -199,9 +200,9 @@ export default function PrivacyDashboard() {
           </header>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {privacy &&
@@ -273,7 +274,7 @@ function TelemetrySection({
       </p>
       <div className="flex items-center gap-3 pt-1">
         {isForbidden ? (
-          <span className="text-xs font-mono text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
+          <span className="text-xs font-mono text-success bg-success/10 px-2 py-1 rounded">
             never collected (architectural) — locked
           </span>
         ) : (
@@ -288,9 +289,9 @@ function TelemetrySection({
             surface.sensitivity === "low"
               ? "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
               : surface.sensitivity === "medium"
-                ? "bg-sun/10 text-amber-800"
+                ? "bg-sun/10 text-sun-deep dark:text-sun"
                 : surface.sensitivity === "high"
-                  ? "bg-red-50 text-red-800"
+                  ? "bg-danger/10 text-danger"
                   : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
           }`}
         >
@@ -329,7 +330,7 @@ function ToggleSwitch({
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-base ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun disabled:cursor-not-allowed disabled:opacity-disabled ${
         checked
-          ? "bg-emerald-600"
+          ? "bg-success"
           : "bg-ice-3 dark:bg-charcoal-1 border border-rule dark:border-slate-1"
       }`}
     >
@@ -372,9 +373,9 @@ function DeleteEverything({
   onCancel: () => void;
 }) {
   return (
-    <section className="border border-red-200 rounded-md px-5 py-4 space-y-3 bg-red-50">
-      <h2 className="text-base font-serif text-red-900">Delete everything</h2>
-      <p className="text-sm text-red-900 leading-relaxed">
+    <section className="border border-danger/40 rounded-md px-5 py-4 space-y-3 bg-danger/5">
+      <h2 className="text-base font-serif text-danger">Delete everything</h2>
+      <p className="text-sm text-danger leading-relaxed">
         Schedules deletion of your private partition, telemetry, and
         billing records within {deletionSlaDays} days. Public-graph
         contributions you've made stay attributed to your account
@@ -383,11 +384,11 @@ function DeleteEverything({
       </p>
       {pendingDeletion ? (
         <div className="space-y-2">
-          <p className="text-sm font-mono text-red-900">
+          <p className="text-sm font-mono text-danger">
             Pending — request_id = {pendingDeletion.request_id} ·
             requested {pendingDeletion.requested_at}
           </p>
-          <p className="text-sm text-red-900">
+          <p className="text-sm text-danger">
             Cancellation window: {pendingDeletion.cancellation_window_days} days.
             Deletion proceeds {Math.max(
               0,
@@ -398,7 +399,7 @@ function DeleteEverything({
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 rounded-md border border-red-300 text-red-900 text-xs font-medium hover:bg-emperor/20 transition-colors"
+            className="px-3 py-1.5 rounded-md border border-danger/40 text-danger text-xs font-medium hover:bg-danger/15 transition-colors"
           >
             Cancel deletion request
           </button>
@@ -407,7 +408,7 @@ function DeleteEverything({
         <button
           type="button"
           onClick={onRequest}
-          className="px-3 py-1.5 rounded-md bg-red-700 text-white text-xs font-medium hover:bg-red-800 transition-colors"
+          className="px-3 py-1.5 rounded-md bg-emperor text-ice-0 text-xs font-medium hover:bg-emperor/90 transition-colors"
         >
           Request deletion
         </button>

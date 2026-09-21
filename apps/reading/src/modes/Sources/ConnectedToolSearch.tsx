@@ -71,7 +71,7 @@ export default function ConnectedToolSearch() {
             Find source candidates with your own provider account. Results stay outside Antiek until you explicitly ingest them.
           </p>
         </div>
-        <a href="/settings" className="text-xs font-medium text-ocean hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean">Manage tools</a>
+        <a href="/settings" className="text-xs font-medium text-sun-deep hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun">Manage tools</a>
       </div>
 
       {inventoryError ? (
@@ -85,14 +85,14 @@ export default function ConnectedToolSearch() {
           <label className="text-xs font-medium text-ink dark:text-bright sm:w-36">
             Provider
             <select value={vendor} onChange={(event) => { setVendor(event.target.value as SearchToolVendor); setResults([]); setError(null); }} disabled={busy}
-              className="mt-1 min-h-11 w-full rounded border border-rule bg-ice-0 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean dark:border-charcoal-1 dark:bg-charcoal-2">
+              className="mt-1 min-h-11 w-full rounded border border-rule bg-ice-0 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:bg-charcoal-2">
               {available.map((item) => <option key={item} value={item}>{item === "x" ? "X" : "YouTube"}</option>)}
             </select>
           </label>
           <label className="min-w-0 flex-1 text-xs font-medium text-ink dark:text-bright">
             What sources are you looking for?
             <input value={query} onChange={(event) => setQuery(event.target.value)} disabled={busy} maxLength={500}
-              className="mt-1 min-h-11 w-full rounded border border-rule bg-ice-0 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean dark:border-charcoal-1 dark:bg-charcoal-2"
+              className="mt-1 min-h-11 w-full rounded border border-rule bg-ice-0 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:bg-charcoal-2"
               placeholder={vendor === "x" ? "Recent reporting on battery recycling" : "Lectures about solid-state batteries"} />
           </label>
           <LemonButton type="submit" size="md" variant="primary" className="min-h-11" disabled={busy || !query.trim()}>{busy ? "Searching…" : "Search"}</LemonButton>
@@ -114,7 +114,7 @@ export default function ConnectedToolSearch() {
                 {result.published_at && <time dateTime={result.published_at}>{new Date(result.published_at).toLocaleDateString()}</time>}
                 <span>Candidate · not ingested</span>
               </div>
-              <a href={result.url} target="_blank" rel="noreferrer" className="mt-1 block break-words text-sm font-medium leading-6 text-ink hover:text-ocean hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean dark:text-bright">
+              <a href={result.url} target="_blank" rel="noreferrer" className="mt-1 block break-words text-sm font-medium leading-6 text-ink hover:text-sun-deep hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun dark:text-bright">
                 {result.title_or_text || result.url}
               </a>
             </li>
