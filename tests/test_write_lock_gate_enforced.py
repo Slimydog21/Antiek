@@ -41,8 +41,19 @@ _EXPECTED_BASELINES = frozenset(
 # One line per directory the lints scan. A directory dropped here is a blind
 # spot: enforce simply stops looking at it.
 _EXPECTED_SCOPE = frozenset(
-    "acquisition compounding interfaces middleware orchestration processing "
-    "roles runtime services substrate tools".split()
+    [
+        "acquisition",
+        "compounding",
+        "interfaces",
+        "middleware",
+        "orchestration",
+        "processing",
+        "roles",
+        "runtime",
+        "services",
+        "substrate",
+        "tools",
+    ]
 )
 
 
