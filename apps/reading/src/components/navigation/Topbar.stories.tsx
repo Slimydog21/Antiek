@@ -1,11 +1,16 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { MemoryRouter } from "react-router-dom";
 
+import { AuthProvider } from "../../lib/auth";
 import Topbar from "./Topbar";
 
 /**
  * Topbar with route-derived breadcrumbs. Wrap each story in its own
  * MemoryRouter so the breadcrumb output reflects the URL path.
+ *
+ * The account menu's Sign out calls useAuth(), so stories wrap the bar in
+ * AuthProvider; the /auth/me probe fails silently in Storybook and the
+ * provider settles to unauthenticated — the bar still renders.
  */
 const meta = {
   title: "Navigation / Topbar",
@@ -16,6 +21,13 @@ const meta = {
   parameters: { layout: "fullscreen", router: false },
   // `a11y-audit` opts this story into the test-runner axe gate.
   tags: ["autodocs", "a11y-audit"],
+  decorators: [
+    (Story) => (
+      <AuthProvider>
+        <Story />
+      </AuthProvider>
+    ),
+  ],
 } satisfies Meta<typeof Topbar>;
 
 export default meta;

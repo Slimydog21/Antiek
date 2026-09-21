@@ -11,7 +11,7 @@ import type {
   MultimediaKnowledgeFinalizationStatus,
   MultimediaTwinDocument,
 } from "../../api/multimedia";
-import { LemonButton, LemonTag } from "../../components/lemon";
+import { ErrorBanner, LemonButton, LemonTag } from "../../components/lemon";
 
 type Props = {
   asset: MultimediaAssetRecord;
@@ -260,20 +260,20 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p id="multimedia-knowledge-title" className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">
+          <p id="multimedia-knowledge-title" className="font-mono text-xs text-shadow-2 dark:text-moonlight">
             Knowledge twin
           </p>
-          <p className="mt-1 text-[13px] leading-relaxed text-ink dark:text-bright">
+          <p className="mt-1 text-sm leading-relaxed text-ink dark:text-bright">
             Preserve the transcript, insights, and open questions as an HTML information asset.
           </p>
         </div>
-        <LemonTag colour={state === "completed" ? "aurora" : state === "integrity_conflict" ? "danger" : "default"}>
+        <LemonTag colour={state === "completed" ? "success" : state === "integrity_conflict" ? "danger" : "default"}>
           {pending === "inspect" ? "Checking" : STATE_LABELS[state]}
         </LemonTag>
       </div>
 
       {!ready && (
-        <p className="mt-3 text-[12px] text-shadow-1 dark:text-moonlight">
+        <p className="mt-3 text-xs text-shadow-1 dark:text-moonlight">
           Approve and complete this revision before creating its knowledge twin.
         </p>
       )}
@@ -292,14 +292,14 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
       )}
 
       {ready && state === "in_progress" && !recovery && (
-        <p className="mt-3 text-[12px] text-shadow-1 dark:text-moonlight">
+        <p className="mt-3 text-xs text-shadow-1 dark:text-moonlight">
           A note-model run is still reserved. Recovery becomes available after {status?.distillation.recovery_stale_seconds ?? 900} seconds.
         </p>
       )}
 
       {ready && recovery && state !== "completed" && (
         <div className="mt-3 space-y-2">
-          <p className="text-[12px] leading-relaxed text-danger">
+          <p className="text-xs leading-relaxed text-danger">
             The previous outcome is uncertain. Recovery can repeat billable model work.
           </p>
           <Acknowledgement checked={modelAcknowledged} onChange={setModelAcknowledged} label="I approve another note-model call." />
@@ -311,12 +311,12 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
       )}
 
       {state === "integrity_conflict" && !recovery && (
-        <p className="mt-3 text-[12px] text-danger">The checkpoint and claim disagree. Automatic recovery is disabled.</p>
+        <p className="mt-3 text-xs text-danger">The checkpoint and claim disagree. Automatic recovery is disabled.</p>
       )}
 
       {link && state === "completed" && (
         <div className="mt-3">
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12px]" data-testid="multimedia-knowledge-evidence">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs" data-testid="multimedia-knowledge-evidence">
           <dt className="text-shadow-2 dark:text-moonlight">Twin</dt>
           <dd className="truncate text-right font-mono text-ink dark:text-bright" title={link.twin_document_id}>{link.twin_document_id}</dd>
           <dt className="text-shadow-2 dark:text-moonlight">Insights</dt>
@@ -340,6 +340,8 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
             title={viewer.title}
             sandbox=""
             srcDoc={viewer.html}
+            // bg-white is deliberate (not a media well): the sandboxed srcDoc
+            // is light-authored HTML — tokens.ts `mediaWell` documents this.
             className="mt-3 h-[420px] w-full border border-rule bg-white dark:border-charcoal-1"
           />
         </section>
@@ -350,15 +352,15 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
           Refresh status
         </LemonButton>
       )}
-      {error && <p className="mt-3 text-[12px] text-danger" role="alert">{error}</p>}
+      {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
     </section>
   );
 }
 
 function Acknowledgement({ checked, onChange, label }: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
   return (
-    <label className="flex items-start gap-2 text-[12px] leading-relaxed text-ink dark:text-bright">
-      <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    <label className="flex items-start gap-2 text-xs leading-relaxed text-ink dark:text-bright">
+      <input type="checkbox" className="mt-0.5 size-4 accent-sun-deep" checked={checked} onChange={(event) => onChange(event.target.checked)} />
       <span>{label}</span>
     </label>
   );

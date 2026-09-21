@@ -3,7 +3,7 @@ import { useLocation, useNavigate, type NavigateFunction } from "react-router-do
 import type { ReactNode } from "react";
 
 import { createDeliverable } from "../lib/api";
-import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
+import { toggleAISidecar } from "../workspace/shortcuts";
 import {
   WORKFLOWS,
   workflowForPath,
@@ -38,8 +38,10 @@ import type { Thread, ThreadHop } from "./threadModel";
 type Action = {
   id: string;
   label: string;
-  /** Navigate to a route, or dispatch a workspace event. */
+  /** Navigate to a route, fire a synchronous workspace verb, or dispatch a
+   *  workspace event (only where a production listener exists). */
   to?: string;
+  act?: () => void;
   event?: string;
   /** A verb that DOES something (create a record) before/instead of
    *  navigating. Takes precedence over `to`/`event`. The handler owns
@@ -66,7 +68,11 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
   research: {
     actions: [
       { id: "new-investigation", label: "New investigation", to: "/", primary: true },
-      { id: "ask", label: "Ask", event: SHORTCUT_EVENTS.AISIDECAR_TOGGLE },
+      // "Ask" toggles the REAL AI sidecar via the same workspace-store path
+      // as ⌘/ (shortcuts.ts toggleAISidecar). It used to dispatch the bare
+      // AISIDECAR_TOGGLE CustomEvent, which has no production listener — a
+      // dead verb on the primary action bar.
+      { id: "ask", label: "Ask", act: toggleAISidecar },
       { id: "outcomes", label: "Outcomes", to: "/outcomes" },
     ],
     tabs: [
@@ -162,6 +168,8 @@ export function SceneChrome({
       void a
         .run(navigate)
         .finally(() => setRunningAction(null));
+    } else if (a.act) {
+      a.act();
     } else if (a.to) {
       navigate(a.to);
     } else if (a.event) {
@@ -180,7 +188,7 @@ export function SceneChrome({
         data-testid={`scene-chrome-${wf}`}
       >
         <div className="h-10 px-4 flex items-center gap-3">
-          <span className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight shrink-0">
+          <span className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight shrink-0">
             {meta.label}
           </span>
           <div className="flex-1" />
@@ -195,7 +203,7 @@ export function SceneChrome({
                   disabled={busy}
                   aria-busy={busy || undefined}
                   className={
-                    "px-2.5 py-1 rounded text-[12.5px] disabled:opacity-60 " +
+                    "px-2.5 py-1 rounded text-xs disabled:opacity-60 " +
                     (a.primary
                       ? "bg-sun text-ink hover:bg-sun-glow"
                       : "text-ink-soft dark:text-starlight hover:bg-ice-3 dark:hover:bg-charcoal-1")
@@ -222,7 +230,7 @@ export function SceneChrome({
                   onClick={() => navigate(t.to)}
                   aria-current={active ? "page" : undefined}
                   className={
-                    "px-3 py-1.5 text-[12.5px] border-b-2 " +
+                    "px-3 py-1.5 text-xs border-b-2 " +
                     (active
                       ? "border-sun text-ink dark:text-bright font-medium"
                       : "border-transparent text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright")
