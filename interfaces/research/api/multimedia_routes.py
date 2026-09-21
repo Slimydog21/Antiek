@@ -211,7 +211,7 @@ _STORE = MultimediaAssetStore()
 @dataclass(frozen=True)
 class MultimediaKnowledgeRuntime:
     db_path: str
-    distiller_factory: Callable[[], Distiller]
+    distiller_factory: Callable[[str], Distiller]
     events_dir: str | None = None
     embedding_provider: Any = None
 
@@ -271,7 +271,11 @@ def multimedia_knowledge_runtime_from_environment(
     return MultimediaKnowledgeRuntime(
         db_path=db_path,
         events_dir=events_dir or None,
-        distiller_factory=DispatchDistiller,  # type: ignore[arg-type]
+        # The deterministic mm-investigation id is only known once the
+        # asset is projected, so the runtime carries a factory of id → distiller.
+        distiller_factory=lambda investigation_id: DispatchDistiller(
+            investigation_id=investigation_id
+        ),
     )
 
 
