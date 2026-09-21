@@ -82,7 +82,7 @@ MIT `frontend/src/layout/panel-layout/` is a **fixed** shell (left nav + resizab
 
 ## Exemptions
 
-Listed in `elevation.ts` as `ELEVATION_EXEMPT_SURFACES`: ResearchWorkstation dense IDE, GlassSurface landings, the mascot illustration layer (still named "Werner illustration layer" in `elevation.ts` pending the batch rename pass).
+Listed in `elevation.ts` as `ELEVATION_EXEMPT_SURFACES`: ResearchWorkstation dense IDE, GlassSurface landings, the mascot illustration layer (still named "Brain illustration layer" in `elevation.ts` pending the batch rename pass).
 
 ## API
 
