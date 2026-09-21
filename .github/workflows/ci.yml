@@ -133,10 +133,6 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Require every pytest shard
-        env:
-          PYTEST_SUITE_RESULT: ${{ needs.pytest-suite.result }}
-        run: test "$PYTEST_SUITE_RESULT" = success
 
       - name: Checkout
         uses: actions/checkout@v7
@@ -421,6 +417,32 @@ jobs:
         # See docs/decisions/unified-integration-health.md.
         run: |
           python tools/codegen/check_conformance.py
+      # MOVED TO LAST (was the FIRST step of this job).
+      #
+      # This job carries ~17 boundary/invariant gates — substrate/dispatch,
+      # one-owner-per-layer, serve-guard, arXiv egress + serve-invariants,
+      # retrieval-gate drift, owner-privilege, contact-guard, merge-age
+      # (anti-stranding), reachability x2, invariant-registry meta-check,
+      # source-gate, codegen staleness, contract-conformance — plus the
+      # html-projection and previously-uncollected suites.
+      #
+      # As the FIRST step this assertion skipped every one of them whenever a
+      # shard was cancelled, which `concurrency: cancel-in-progress` does
+      # routinely. Measured over 40 recent ci.yml runs: the boundary gates
+      # EXECUTED on 8 and were SKIPPED on 27 (the remaining 5 never reached
+      # this job). So the gates ran on roughly one CI run in five, and of 12
+      # sampled active PRs with a red `pytest`, 12 of 12 failed on THIS step —
+      # not on any gate.
+      #
+      # The job is `if: always()`, so it runs even when the suite is cancelled.
+      # Asserting last means the gates execute every time and their results are
+      # visible in the log, while a failed or cancelled suite still reds the
+      # job exactly as before. Order changed; verdict unchanged.
+      - name: Require every pytest shard
+        if: always()
+        env:
+          PYTEST_SUITE_RESULT: ${{ needs.pytest-suite.result }}
+        run: test "$PYTEST_SUITE_RESULT" = success
 
   keystone:
     name: keystone
