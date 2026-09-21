@@ -307,4 +307,4 @@ Q4/Q5 — verify explicitly when Billing lands.
 
 **D11 adjudication (2026-09-21):** aurora's reserved semantic widens to "AI cognition: thinking AND emergent outputs (questions, insights)" — one role. Components distinguishing questions from insights use label/icon, not a second colour. BlockCard's sun-deep=questions inversion is a bug under D11; fix in Q19. SlashMenu's "Emergent question · aurora bar" is the canonical reading.
 
-| Q22 | SpeakInvite LemonButton swap (15-modes-f prescription); YoursLane hand-rolled lift → press (raced wave 3) | Q15 handoff |
+| Q22  **DONE 2026-09-21 (parent): SpeakInvite 3 hand-rolled buttons → LemonButton primary/secondary fullWidth; YoursLane lift → press; SpeakIndex frozen-shell snapshot re-recorded intentionally**| SpeakInvite LemonButton swap (15-modes-f prescription); YoursLane hand-rolled lift → press (raced wave 3) | Q15 handoff |

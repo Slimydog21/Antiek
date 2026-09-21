@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import { LemonCard } from "../../../components/lemon";
+import { press } from "../../../design/motion";
 import type { RememberedPerson } from "../../../lib/speakApi";
 
 /**
@@ -47,7 +48,7 @@ export default function YoursLane({ loading, people }: YoursLaneProps) {
             <Link to={`/speak/${p.id}`} className="block">
               <LemonCard
                 elevation="z1"
-                className="transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5"
+                className={press}
               >
               <div className="flex items-center justify-between gap-3">
                 <span className="font-serif text-base text-ink dark:text-bright">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import InterviewVoiceCapture from "../../components/InterviewVoiceCapture";
+import { LemonButton } from "../../components/lemon";
 import { apiFetch } from "../../lib/api";
 import { PRIVATE_ECON_COPY } from "../../lib/speakVocab";
 
@@ -277,14 +278,15 @@ export default function SpeakInvite() {
               otherwise, and you can ask to have your words removed at any time.
             </p>
             {/* PRIMARY: record-only. Publish is NOT granted here. */}
-            <button
-              type="button"
+            <LemonButton
+              variant="primary"
+              fullWidth
+              className="mt-5"
               onClick={() => void takePart(false)}
               disabled={busy}
-              className="mt-5 w-full rounded-md border-2 border-ink bg-sun px-4 py-3 font-mono text-sm font-semibold text-ink shadow-z1 hover:-translate-y-0.5 disabled:opacity-50 dark:shadow-z1-night"
             >
               Yes, I'll share a memory
-            </button>
+            </LemonButton>
             {askingToPublish && (
               <>
                 {/* Publish OPT-IN: an affirmative second choice the friend must
@@ -292,14 +294,15 @@ export default function SpeakInvite() {
                     it is a button, never a pre-checked checklist, so "did this
                     friend actually agree to be published?" is always a yes they
                     chose. Grants record + publish. */}
-                <button
-                  type="button"
+                <LemonButton
+                  variant="secondary"
+                  fullWidth
+                  className="mt-3"
                   onClick={() => void takePart(true)}
                   disabled={busy}
-                  className="mt-3 block w-full rounded-md border-2 border-ink bg-ice-0 px-4 py-3 font-mono text-sm font-semibold text-ink hover:-translate-y-0.5 disabled:opacity-50 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
                 >
                   Share — and you can use my words in the public story
-                </button>
+                </LemonButton>
                 <p className="mt-2 font-serif text-xs text-ink-mute dark:text-moonlight">
                   Either way still helps — sharing privately keeps your words
                   out of the public story unless you choose the second option.
@@ -403,14 +406,15 @@ export default function SpeakInvite() {
                   placeholder="Share whatever comes to mind — a story, a detail, a memory."
                   className="w-full rounded border border-rule bg-ice-0 p-3 font-serif text-base text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
                 />
-                <button
-                  type="button"
+                <LemonButton
+                  variant="primary"
+                  fullWidth
+                  className="mt-3"
                   onClick={() => void submitText()}
                   disabled={busy || !answer.trim()}
-                  className="mt-3 w-full rounded-md border-2 border-ink bg-sun px-4 py-3 font-mono text-sm font-semibold text-ink shadow-z1 hover:-translate-y-0.5 disabled:opacity-50 dark:shadow-z1-night"
                 >
                   Send this memory
-                </button>
+                </LemonButton>
                 {!micDenied && (
                   <button
                     type="button"
