@@ -271,13 +271,13 @@ export function VisualReviewPanel({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="font-serif text-base text-ink dark:text-bright">Visual sequence locked</h3>
-            <p className="mt-1 text-[12px] text-shadow-1 dark:text-moonlight">
+            <p className="mt-1 text-xs text-shadow-1 dark:text-moonlight">
               <span>{reviewedSet.scene_ids.length} scenes bound</span>
               <span> and ready for documentary production.</span>
             </p>
-            <p className="mt-1 font-mono text-[10px] text-shadow-2 dark:text-moonlight">{reviewedSet.set_id}</p>
+            <p className="mt-1 font-mono text-xxs text-shadow-2 dark:text-moonlight">{reviewedSet.set_id}</p>
           </div>
-          <LemonTag colour="aurora">Reviewed</LemonTag>
+          <LemonTag colour="success">Reviewed</LemonTag>
         </div>
       </section>
     );
@@ -286,8 +286,8 @@ export function VisualReviewPanel({
   if (record.asset.status !== "ready") {
     return (
       <section className="border-t border-rule pt-4 dark:border-charcoal-1" data-testid="visual-review-awaiting-approval">
-        <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Visual review</p>
-        <p className="mt-1 text-[12px] text-ink dark:text-bright">Approve the plan before authorizing generated images.</p>
+        <p className="font-mono text-xs uppercase text-shadow-2 dark:text-moonlight">Visual review</p>
+        <p className="mt-1 text-xs text-ink dark:text-bright">Approve the plan before authorizing generated images.</p>
       </section>
     );
   }
@@ -295,24 +295,24 @@ export function VisualReviewPanel({
   if (record.asset.route_policy === "cheapest") {
     return (
       <section className="border-t border-rule pt-4 dark:border-charcoal-1" data-testid="visual-review-cheapest">
-        <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Visual review</p>
-        <p className="mt-1 text-[12px] text-ink dark:text-bright">The cheapest route uses local visual fallbacks and does not authorize paid image generation.</p>
+        <p className="font-mono text-xs uppercase text-shadow-2 dark:text-moonlight">Visual review</p>
+        <p className="mt-1 text-xs text-ink dark:text-bright">The cheapest route uses local visual fallbacks and does not authorize paid image generation.</p>
       </section>
     );
   }
 
   if (!projection.ok) {
-    return <p role="alert" className="border-t border-rule pt-4 text-[12px] text-emperor dark:border-charcoal-1">{projection.error}</p>;
+    return <p role="alert" className="border-t border-rule pt-4 text-xs text-emperor dark:border-charcoal-1">{projection.error}</p>;
   }
 
   return (
     <section className="border-t border-rule pt-4 dark:border-charcoal-1" data-testid="visual-review-panel">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Visual review</p>
+          <p className="font-mono text-xs uppercase text-shadow-2 dark:text-moonlight">Visual review</p>
           <h3 className="mt-1 font-serif text-lg text-ink dark:text-bright">Build the evidence sequence</h3>
         </div>
-        <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+        <span className="font-mono text-xs text-shadow-1 dark:text-moonlight">
           {chapters.filter((chapter) => reviews[chapter.id]?.selectedCandidateId).length}/{chapters.length} selected
         </span>
       </div>
@@ -335,10 +335,10 @@ export function VisualReviewPanel({
                         : "border-transparent hover:bg-ice-2 dark:hover:bg-charcoal-1"
                     }`}
                   >
-                    <span className="block font-mono text-[10px] text-shadow-2 dark:text-moonlight">
+                    <span className="block font-mono text-xxs text-shadow-2 dark:text-moonlight">
                       {String(index + 1).padStart(2, "0")} {selected ? "SELECTED" : "OPEN"}
                     </span>
-                    <span className="mt-1 block text-[12px] font-semibold text-ink dark:text-bright">Chapter {String(index + 1).padStart(2, "0")}</span>
+                    <span className="mt-1 block text-xs font-semibold text-ink dark:text-bright">Chapter {String(index + 1).padStart(2, "0")}</span>
                   </button>
                 </li>
               );
@@ -348,7 +348,7 @@ export function VisualReviewPanel({
 
         <div className="min-w-0">
           <div className="flex flex-wrap items-end gap-3">
-            <label className="text-[11px] text-shadow-1 dark:text-moonlight">
+            <label className="text-xs text-shadow-1 dark:text-moonlight">
               Maximum spend (USD)
               <input
                 aria-label="Maximum visual spend in USD"
@@ -360,7 +360,7 @@ export function VisualReviewPanel({
                 className="mt-1 block h-9 w-32 rounded-md border border-rule bg-ice-0 px-2 text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
               />
             </label>
-            <label className="flex min-h-9 items-center gap-2 text-[11px] text-shadow-1 dark:text-moonlight">
+            <label className="flex min-h-9 items-center gap-2 text-xs text-shadow-1 dark:text-moonlight">
               <input type="checkbox" checked={spendAcknowledged} onChange={(event) => setSpendAcknowledged(event.target.checked)} />
               Approve this ceiling
             </label>
@@ -386,7 +386,7 @@ export function VisualReviewPanel({
             )}
           </div>
 
-          {activeReview.error && <p role="alert" className="mt-3 text-[12px] text-emperor">{activeReview.error}</p>}
+          {activeReview.error && <p role="alert" className="mt-3 text-xs text-emperor">{activeReview.error}</p>}
 
           {activeReview.candidates.length > 0 && (
             <>
@@ -403,8 +403,8 @@ export function VisualReviewPanel({
                       </div>
                       <div className="flex min-h-14 items-center justify-between gap-2 bg-ice-0 px-3 py-2 dark:bg-charcoal-2">
                         <div>
-                          <p className="font-mono text-[10px] text-shadow-2 dark:text-moonlight">CANDIDATE {index + 1}</p>
-                          <p className="text-[11px] text-ink dark:text-bright">{Math.ceil(candidate.byte_count / 1024)} KB · generated</p>
+                          <p className="font-mono text-xxs text-shadow-2 dark:text-moonlight">CANDIDATE {index + 1}</p>
+                          <p className="text-xs text-ink dark:text-bright">{Math.ceil(candidate.byte_count / 1024)} KB · generated</p>
                         </div>
                         <LemonButton size="sm" variant={selected ? "primary" : "tertiary"} disabled={!provenanceAcknowledged || activeReview.pending !== null} onClick={() => void attestAndSelect(candidate)}>
                           {selected ? "Selected" : attested ? "Select" : "Attest & select"}
@@ -414,7 +414,7 @@ export function VisualReviewPanel({
                   );
                 })}
               </div>
-              <label className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-shadow-1 dark:text-moonlight">
+              <label className="mt-3 flex items-start gap-2 text-xs leading-relaxed text-shadow-1 dark:text-moonlight">
                 <input className="mt-0.5" type="checkbox" checked={provenanceAcknowledged} onChange={(event) => setProvenanceAcknowledged(event.target.checked)} />
                 I confirm these are generated visuals, not archival evidence.
               </label>
@@ -424,12 +424,12 @@ export function VisualReviewPanel({
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-3 dark:border-charcoal-1">
-        <p className="text-[11px] text-shadow-1 dark:text-moonlight">Every spoken chapter needs one attested selection.</p>
+        <p className="text-xs text-shadow-1 dark:text-moonlight">Every spoken chapter needs one attested selection.</p>
         <LemonButton variant="primary" disabled={!complete || registering} onClick={() => void register()}>
           {registering ? "Locking sequence..." : "Lock visual sequence"}
         </LemonButton>
       </div>
-      {registerError && <p role="alert" className="mt-2 text-[12px] text-emperor">{registerError}</p>}
+      {registerError && <p role="alert" className="mt-2 text-xs text-emperor">{registerError}</p>}
     </section>
   );
 }

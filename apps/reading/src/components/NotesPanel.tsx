@@ -256,15 +256,15 @@ function UserBubble({
       className="flex flex-col items-end gap-0.5 scroll-mt-4 transition-shadow rounded-md"
     >
       <div className="max-w-[85%] bg-ice-2 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
-        <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight mb-0.5">{label}</div>
+        <div className="text-xxs font-mono text-ink-mute dark:text-moonlight mb-0.5">{label}</div>
         <p className="text-sm text-ink dark:text-bright whitespace-pre-wrap">{text}</p>
         {subline && (
-          <div className="mt-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight italic">
+          <div className="mt-1 text-xxs font-mono text-shadow-1 dark:text-moonlight italic">
             {subline}
           </div>
         )}
         {isPending && (
-          <div className="mt-1 text-[10px] font-mono text-sun-deep dark:text-sun">
+          <div className="mt-1 text-xxs font-mono text-sun-deep dark:text-sun">
             ⏳ waiting for synthesizer…
           </div>
         )}
@@ -294,7 +294,7 @@ function AssistantClaimsBubble({
       id={`event-row-${eventId}`}
       className="flex flex-col items-start gap-1 scroll-mt-4 transition-shadow rounded-md"
     >
-      <div className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+      <div className="text-xxs font-mono text-shadow-1 dark:text-moonlight">
         synthesizer · {payload.claims.length} claim
         {payload.claims.length === 1 ? "" : "s"} · {payload.token_count} tok
       </div>
@@ -338,7 +338,7 @@ function SystemRow({
       id={`event-row-${eventId}`}
       className="flex flex-col gap-0.5 scroll-mt-4 transition-shadow rounded-md"
     >
-      <div className={`text-[11px] font-mono ${color} flex gap-1.5`}>
+      <div className={`text-xs font-mono ${color} flex gap-1.5`}>
         <span className="w-3 text-center">{icon}</span>
         <span className="truncate">{text}</span>
       </div>
@@ -360,7 +360,7 @@ function EventMeta({
 }) {
   return (
     <div
-      className={`text-[9px] font-mono text-ink-mute dark:text-moonlight ${
+      className={`text-xxs font-mono text-ink-mute dark:text-moonlight ${
         inline ? "ml-5" : ""
       } ${align === "right" ? "self-end" : "self-start"}`}
     >

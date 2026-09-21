@@ -62,7 +62,7 @@ export default function ChunkModal({
       footer={
         chunk ? (
           <div className="flex items-center justify-between">
-            <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+            <div className="text-xxs font-mono text-ink-mute dark:text-moonlight">
               {chunk.servable ? `${chunk.token_count} tokens` : "not available"}
             </div>
             {chunk.servable && <OpenInDocumentButton chunk={chunk} />}
@@ -130,7 +130,7 @@ function TierChip({ tier }: { tier: number }) {
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
-      className={`text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
+      className={`text-xxs font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
     >
       tier {tier}
     </span>

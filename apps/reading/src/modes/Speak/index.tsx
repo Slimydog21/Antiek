@@ -223,7 +223,7 @@ export default function Speak() {
 
   if (!projectId) {
     return (
-      <div className="p-6 font-serif text-[14px] text-ink dark:text-bright">
+      <div className="p-6 font-serif text-sm text-ink dark:text-bright">
         No one selected.{" "}
         <Link to="/speak" className="text-sun-deep underline dark:text-sun">
           ← everyone you're remembering
@@ -244,7 +244,7 @@ export default function Speak() {
       <div className="mx-auto max-w-2xl px-6 py-8">
         <Link
           to="/speak"
-          className="font-mono text-[10px] text-sun-deep hover:underline dark:text-sun"
+          className="font-mono text-xxs text-sun-deep hover:underline dark:text-sun"
         >
           ← everyone you're remembering
         </Link>
@@ -254,12 +254,12 @@ export default function Speak() {
             <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
               {project?.name ?? "Their story"}
             </h1>
-            <p className="mt-0.5 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+            <p className="mt-0.5 font-serif text-sm text-ink-mute dark:text-moonlight">
               {project?.willBePublic ? "Will be shared publicly" : "Kept private"}
             </p>
             {!project?.willBePublic && (
               <p
-                className="mt-2 max-w-md font-serif text-[12px] font-semibold text-emperor"
+                className="mt-2 max-w-md font-serif text-xs font-semibold text-emperor"
                 data-testid="private-econ-project-notice"
               >
                 {PRIVATE_ECON_COPY.operatorInviteNoEarnings}
@@ -276,7 +276,7 @@ export default function Speak() {
           </LemonButton>
         </header>
 
-        {error && <p className="mb-3 font-mono text-[12px] text-emperor">{error}</p>}
+        {error && <p className="mb-3 font-mono text-xs text-emperor">{error}</p>}
 
         {showSettings ? (
           <SpeakSettings
@@ -297,16 +297,16 @@ export default function Speak() {
           <>
             {/* 1 · Invite by link */}
             <LemonCard elevation="z1" className="mb-5">
-              <h2 className="font-serif text-[16px] text-ink dark:text-bright">
+              <h2 className="font-serif text-base text-ink dark:text-bright">
                 Invite the people who knew them
               </h2>
-              <p className="mt-0.5 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+              <p className="mt-0.5 font-serif text-sm text-ink-mute dark:text-moonlight">
                 Share one link. Anyone who has it can record their memories —
                 in their own voice, on their own time. No account needed.
               </p>
               {shareLink ? (
                 <div className="mt-3 flex items-center gap-2">
-                  <code className="min-w-0 flex-1 truncate rounded border border-rule bg-ice-1 px-2 py-1.5 text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright">
+                  <code className="min-w-0 flex-1 truncate rounded border border-rule bg-ice-1 px-2 py-1.5 text-xs text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright">
                     {shareLink}
                   </code>
                   <LemonButton variant="primary" size="sm" onClick={copyLink}>
@@ -321,7 +321,7 @@ export default function Speak() {
                 </div>
               )}
               <details className="mt-3">
-                <summary className="cursor-pointer font-mono text-[11px] text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright">
+                <summary className="cursor-pointer font-mono text-xs text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright">
                   or invite someone by email
                 </summary>
                 <div className="mt-2">
@@ -355,11 +355,11 @@ export default function Speak() {
 
             {/* 2 · Arriving voices */}
             <section className="mb-5">
-              <h2 className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+              <h2 className="mb-2 font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
                 Voices ({arrived.length})
               </h2>
               {voices.length === 0 ? (
-                <p className="font-serif text-[13px] italic text-ink-mute dark:text-moonlight">
+                <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
                   No voices yet. Share the link above — they'll appear here as
                   people record.
                 </p>
@@ -370,10 +370,10 @@ export default function Speak() {
                       key={v.interviewId}
                       className="flex items-center justify-between gap-3 rounded border border-rule px-3 py-2 dark:border-charcoal-1"
                     >
-                      <span className="min-w-0 truncate font-serif text-[14px] text-ink dark:text-bright">
+                      <span className="min-w-0 truncate font-serif text-sm text-ink dark:text-bright">
                         {v.who}
                       </span>
-                      <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
+                      <span className="shrink-0 font-mono text-xxs uppercase tracking-wider text-ink-mute dark:text-moonlight">
                         {VOICE_STATE_LABELS[v.state]}
                       </span>
                     </li>
@@ -385,7 +385,7 @@ export default function Speak() {
             {/* 3 · What everyone agrees on (corroboration — honest) */}
             <section className="mb-5">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <h2 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+                <h2 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
                   What everyone agrees on
                 </h2>
                 <LemonButton variant="tertiary" size="sm" onClick={() => void seeAgreement()}>
@@ -393,7 +393,7 @@ export default function Speak() {
                 </LemonButton>
               </div>
               {agree.phase === "idle" && (
-                <p className="font-serif text-[13px] italic text-ink-mute dark:text-moonlight">
+                <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
                   Once a few people have shared, see where their memories line
                   up — and where they remember things differently.
                 </p>
@@ -411,7 +411,7 @@ export default function Speak() {
               )}
               {agree.phase === "ready" &&
                 (agree.points.length === 0 ? (
-                  <p className="font-serif text-[13px] italic text-ink-mute dark:text-moonlight">
+                  <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
                     Nothing to compare yet — when two people mention the same
                     thing, it'll show up here.
                   </p>
@@ -422,10 +422,10 @@ export default function Speak() {
                         key={i}
                         className="rounded border border-rule px-3 py-2 dark:border-charcoal-1"
                       >
-                        <p className="font-serif text-[14px] text-ink dark:text-bright">
+                        <p className="font-serif text-sm text-ink dark:text-bright">
                           {pt.text}
                         </p>
-                        <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
+                        <p className="mt-0.5 font-mono text-xxs uppercase tracking-wider text-ink-mute dark:text-moonlight">
                           {pt.kind === "corroborated"
                             ? `Corroborated · ${pt.voices} people independently remember this`
                             : pt.kind === "disagreement"
@@ -441,7 +441,7 @@ export default function Speak() {
             {/* 4 · The assembling story (creator-only) */}
             <section className="mb-2">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <h2 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+                <h2 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
                   Their story, so far
                 </h2>
                 <LemonButton
@@ -453,14 +453,14 @@ export default function Speak() {
                   {draft.phase === "ready" ? "Reassemble" : "Assemble the story"}
                 </LemonButton>
               </div>
-              <p className="mb-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              <p className="mb-2 font-serif text-xs text-ink-mute dark:text-moonlight">
                 Only you see this draft — each contributor only sees what they
                 shared.
               </p>
               {draft.phase === "assembling" && (
                 <div className="rounded-md border border-rule p-4 dark:border-charcoal-1">
                   <WernerThinking size={32} label="Assembling their story" />
-                  <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+                  <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
                     Drawing the story together from what everyone shared…
                   </p>
                 </div>
@@ -474,11 +474,11 @@ export default function Speak() {
               )}
               {draft.phase === "ready" && (
                 <div className="rounded-md border border-rule p-4 dark:border-charcoal-1">
-                  <p className="whitespace-pre-wrap font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
+                  <p className="whitespace-pre-wrap font-serif text-sm leading-relaxed text-ink dark:text-bright">
                     {draft.draft.prose || "It's still thin — invite a few more voices and try again."}
                   </p>
                   {draft.draft.excludedCount > 0 && (
-                    <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                    <p className="mt-2 font-serif text-xs text-ink-mute dark:text-moonlight">
                       {draft.draft.excludedCount} memory
                       {draft.draft.excludedCount === 1 ? " was" : "ies were"} left
                       out — only one person mentioned them, or people disagreed,

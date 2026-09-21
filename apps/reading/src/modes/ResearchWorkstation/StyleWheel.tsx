@@ -440,7 +440,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
             {active.description || "No description provided."}
           </p>
           <div className="style-wheel__chips" aria-label="Style provenance">
-            <LemonTag colour={active.builtin ? "sun" : "aurora"} dot>
+            <LemonTag colour={active.builtin ? "sun" : "default"} dot>
               {active.builtin ? "builtin" : "fork"}
             </LemonTag>
             {active.source_fidelity ? (

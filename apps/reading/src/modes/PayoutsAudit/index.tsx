@@ -134,10 +134,10 @@ export default function PayoutsAudit() {
                 <p className="text-base font-serif text-ink dark:text-bright">
                   {totals[s]?.count ?? 0}
                 </p>
-                <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+                <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
                   {s.replace(/_/g, " ")}
                 </p>
-                <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+                <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight">
                   ${((totals[s]?.amount_cents ?? 0) / 100).toFixed(2)}
                 </p>
               </div>
@@ -168,7 +168,7 @@ export default function PayoutsAudit() {
                   className="px-4 py-3 grid grid-cols-12 gap-3 items-center"
                 >
                   <span
-                    className={`col-span-2 text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded text-center ${
+                    className={`col-span-2 text-xxs uppercase tracking-wider font-mono px-2 py-0.5 rounded text-center ${
                       r.status === "transferred"
                         ? "bg-success/10 text-success"
                         : r.status === "failed"
@@ -182,12 +182,12 @@ export default function PayoutsAudit() {
                     <p className="text-sm font-mono text-ink dark:text-bright truncate">
                       {r.recipient_account_id ?? "—"}
                     </p>
-                    <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                    <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
                       decision={r.decision_id}
                       {r.stripe_transfer_id ? ` · stripe=${r.stripe_transfer_id}` : ""}
                     </p>
                     {r.note && (
-                      <p className="text-[11px] text-shadow-1 dark:text-moonlight italic truncate">
+                      <p className="text-xs text-shadow-1 dark:text-moonlight italic truncate">
                         {r.note}
                       </p>
                     )}
@@ -196,7 +196,7 @@ export default function PayoutsAudit() {
                     <p className="text-sm font-mono text-ink dark:text-bright">
                       ${(r.amount_usd_cents / 100).toFixed(2)}
                     </p>
-                    <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+                    <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight">
                       {r.initiated_at ?? "—"}
                     </p>
                   </div>

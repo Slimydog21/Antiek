@@ -103,14 +103,14 @@ function NoteCard({
       </div>
       {p.source_event_ids.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-0.5">
-          <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight mr-0.5">
+          <span className="text-xxs font-mono text-shadow-1 dark:text-moonlight mr-0.5">
             from:
           </span>
           {p.source_event_ids.map((eid) => (
             <button
               key={eid}
               onClick={() => onCiteJump?.(eid)}
-              className="text-[10px] font-mono text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
+              className="text-xxs font-mono text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
               title={`jump to ${eid}`}
             >
               ↩ {shortenEventId(eid)}
@@ -118,7 +118,7 @@ function NoteCard({
           ))}
         </div>
       )}
-      <div className="text-[9px] font-mono text-ink-mute dark:text-moonlight pt-0.5">
+      <div className="text-xxs font-mono text-ink-mute dark:text-moonlight pt-0.5">
         {shortenEventId(event.event_id)}
         {event.document_id && (
           <>
@@ -140,7 +140,7 @@ function ConfidenceBadge({ level }: { level: ConfidenceLevel }) {
   };
   return (
     <span
-      className={`text-[10px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[level]}`}
+      className={`text-xxs font-mono px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[level]}`}
     >
       {level}
     </span>

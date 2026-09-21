@@ -306,3 +306,5 @@ Q4/Q5 — verify explicitly when Billing lands.
 | Q21 | lemon/README.md: add ModePage entry | Q5 handoff |
 
 **D11 adjudication (2026-09-21):** aurora's reserved semantic widens to "AI cognition: thinking AND emergent outputs (questions, insights)" — one role. Components distinguishing questions from insights use label/icon, not a second colour. BlockCard's sun-deep=questions inversion is a bug under D11; fix in Q19. SlashMenu's "Emergent question · aurora bar" is the canonical reading.
+
+| Q22 | SpeakInvite LemonButton swap (15-modes-f prescription); YoursLane hand-rolled lift → press (raced wave 3) | Q15 handoff |

@@ -145,7 +145,7 @@ export default function Stats() {
                       <p className="text-2xl font-serif text-ink dark:text-bright">
                         {(data.counts[t] ?? 0).toLocaleString()}
                       </p>
-                      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+                      <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
                         {t.replace(/_/g, " ")}
                       </p>
                     </LemonCard>

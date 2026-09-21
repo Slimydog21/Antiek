@@ -105,7 +105,7 @@ export default function ChatInputArea({
           disabled={busy}
           minRows={2}
           maxRows={10}
-          className="font-serif text-[15px] leading-relaxed"
+          className="font-serif text-base leading-relaxed"
         />
         {error && (
           <div className="text-xs font-mono text-emperor mt-2">{error}</div>
@@ -113,7 +113,7 @@ export default function ChatInputArea({
       </div>
       {rootLaunch && (
         <div className="mt-2 flex items-center gap-2">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          <span className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
             Model for this research
           </span>
           <ModelUsagePicker
@@ -127,15 +127,15 @@ export default function ChatInputArea({
             size="sm"
           />
           {model.state === "error" && (
-            <span className="text-[10px] font-mono text-emperor" aria-live="polite">
+            <span className="text-xxs font-mono text-emperor" aria-live="polite">
               Your models couldn’t load. Default is still available.
             </span>
           )}
         </div>
       )}
       <div className="mt-2 flex items-center justify-between gap-3">
-        <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
-          <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-[10px] font-mono bg-ice-0 dark:bg-charcoal-1 shadow-[2px_2px_0_0_#0F1419] dark:shadow-[2px_2px_0_0_#8A7300] mr-1.5">⌘ ↵</kbd>
+        <div className="text-xs font-mono text-ink-mute dark:text-moonlight">
+          <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-xxs font-mono bg-ice-0 dark:bg-charcoal-1 shadow-[2px_2px_0_0_#0F1419] dark:shadow-[2px_2px_0_0_#8A7300] mr-1.5">⌘ ↵</kbd>
           to submit · ~$0.08-$0.16 / investigation
         </div>
         <LemonButton

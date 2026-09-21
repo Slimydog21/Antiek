@@ -35,17 +35,17 @@ function LegoBlockView({ node, deleteNode }: NodeViewProps) {
   return (
     <NodeViewWrapper className="my-2" data-block="lego">
       <div className="border-l-edge border-sun-deep bg-sun-deep/5 pl-3 py-2 pr-4 rounded-r flex items-start gap-2">
-        <span className="text-sun-deep font-mono text-[10px] font-bold uppercase tracking-wider shrink-0 mt-1">
+        <span className="text-sun-deep font-mono text-xxs font-bold uppercase tracking-wider shrink-0 mt-1">
           {blockKind}
         </span>
-        <p className="flex-1 font-serif text-[15px] leading-relaxed text-ink dark:text-bright">
+        <p className="flex-1 font-serif text-base leading-relaxed text-ink dark:text-bright">
           {text || (
             <span className="italic text-ink-mute dark:text-moonlight">(empty block)</span>
           )}
         </p>
         {userOriginated ? (
           <span
-            className="shrink-0 mt-1 px-1 rounded font-mono text-[10px] font-semibold bg-moonlight/30 text-ink-mute"
+            className="shrink-0 mt-1 px-1 rounded font-mono text-xxs font-semibold bg-moonlight/30 text-ink-mute"
             title="User-originated — traces to the session, not an external source"
           >
             yours
@@ -60,7 +60,7 @@ function LegoBlockView({ node, deleteNode }: NodeViewProps) {
               })
             }
             title="Trace to source"
-            className="shrink-0 mt-1 px-1 rounded font-mono text-[10px] font-semibold bg-sun-deep/15 text-sun-deep hover:bg-sun-deep/25"
+            className="shrink-0 mt-1 px-1 rounded font-mono text-xxs font-semibold bg-sun-deep/15 text-sun-deep hover:bg-sun-deep/25"
           >
             trace
           </button>
@@ -69,7 +69,7 @@ function LegoBlockView({ node, deleteNode }: NodeViewProps) {
           type="button"
           onClick={() => deleteNode()}
           aria-label="Remove block"
-          className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor leading-none mt-1"
+          className="text-xs text-ink-mute dark:text-moonlight hover:text-emperor leading-none mt-1"
         >
           ✕
         </button>

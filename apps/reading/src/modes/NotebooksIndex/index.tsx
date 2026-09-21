@@ -127,7 +127,7 @@ export default function NotebooksIndex() {
               TipTap notebooks below are manual. The daily-loop{" "}
               <strong className="font-medium text-ink dark:text-bright">auto-notebook</strong>{" "}
               for a research is a derived view at{" "}
-              <code className="font-mono text-[12px]">/notebook/auto/&lt;research-id&gt;</code>{" "}
+              <code className="font-mono text-xs">/notebook/auto/&lt;research-id&gt;</code>{" "}
               (distill + synthesis → outline; no separate notebook write API). Open it from Distill
               or research, then continue into Write.
             </p>
@@ -178,7 +178,7 @@ export default function NotebooksIndex() {
                 </button>
               ))}
             </div>
-            <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
               {filtered.length} of {rows.length}
             </p>
           </section>
@@ -217,7 +217,7 @@ export default function NotebooksIndex() {
                       <p className="font-serif text-ink dark:text-bright truncate">
                         {r.title}
                       </p>
-                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
                         {r.notebook_id}
                         {r.investigation_id && (
                           <> · inv: {r.investigation_id.slice(0, 8)}</>
@@ -230,7 +230,7 @@ export default function NotebooksIndex() {
                   key: "updated",
                   header: "Updated",
                   render: (r) => (
-                    <span className="font-mono text-[12px] text-ink-soft dark:text-starlight">
+                    <span className="font-mono text-xs text-ink-soft dark:text-starlight">
                       {r.updated_at}
                     </span>
                   ),
@@ -243,7 +243,7 @@ export default function NotebooksIndex() {
                     <LemonTag
                       colour={
                         r.content_class === "user_public_contribution"
-                          ? "aurora"
+                          ? "sun"
                           : "muted"
                       }
                     >

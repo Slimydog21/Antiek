@@ -3,8 +3,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ALLOWLIST = new Set([
-  "feel-focus.css",
-  "feel-focus.test.ts",
+  "focus.guard.test.ts",
 ]);
 
 const FEEL_DIRS = [
@@ -26,17 +25,20 @@ function collectTsFiles(dir: string): string[] {
   return out;
 }
 
-describe("feel-focus — outline-none guard", () => {
+/**
+ * Focus guard (FEEL-S5). The shipped focus ring is the Tailwind idiom —
+ * `focus-visible:ring-2 ring-sun` on controls, `outline-sun` on
+ * panel/window chrome. Any `focus:outline-none` in the Feel dirs must be
+ * paired with a focus-visible ring so keyboard focus never disappears.
+ */
+describe("focus — outline-none guard", () => {
   it("focus:outline-none is paired with focus-visible ring in Feel dirs", () => {
     const violations: string[] = [];
     for (const dir of FEEL_DIRS) {
       for (const file of collectTsFiles(dir)) {
         const src = readFileSync(file, "utf8");
         if (!src.includes("focus:outline-none")) continue;
-        if (
-          !src.includes("focus-visible:ring") &&
-          !src.includes("feel-focusable")
-        ) {
+        if (!src.includes("focus-visible:ring")) {
           violations.push(file);
         }
       }

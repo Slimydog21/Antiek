@@ -134,7 +134,7 @@ export default function ConnectResearch({
       )}
 
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        <span className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Model for the backing research
         </span>
         <ModelUsagePicker
@@ -148,7 +148,7 @@ export default function ConnectResearch({
           size="sm"
         />
         {model.state === "error" && (
-          <span className="text-[10px] font-mono text-emperor" aria-live="polite">
+          <span className="text-xxs font-mono text-emperor" aria-live="polite">
             Your models couldn’t load. Default is still available.
           </span>
         )}
@@ -163,7 +163,7 @@ export default function ConnectResearch({
         <span className="font-medium text-ink dark:text-bright">
           {spawning ? "Opening a research folder…" : "Start without a project"}
         </span>
-        <span className="block text-[11px] text-ink-mute dark:text-moonlight">
+        <span className="block text-xs text-ink-mute dark:text-moonlight">
           We'll auto-spawn a backing research folder and link it.
         </span>
       </button>
@@ -202,7 +202,7 @@ export default function ConnectResearch({
                 <span className="block truncate font-serif text-sm text-ink dark:text-bright">
                   {p.question?.trim() || "(untitled research)"}
                 </span>
-                <span className="text-[10px] uppercase tracking-wide text-ink-mute dark:text-moonlight">
+                <span className="text-xxs uppercase tracking-wide text-ink-mute dark:text-moonlight">
                   {p.status}
                   {p.spawned_by_daemon ? " · found by the loop" : ""}
                 </span>

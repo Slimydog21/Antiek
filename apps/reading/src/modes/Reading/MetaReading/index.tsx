@@ -174,7 +174,7 @@ export default function MetaReading() {
               className="w-full bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-2 text-sm resize-none outline-none border border-rule dark:border-charcoal-1"
             />
             <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2 text-[13px] text-ink dark:text-bright">
+              <label className="flex items-center gap-2 text-sm text-ink dark:text-bright">
                 Length
                 <input
                   type="number"
@@ -195,7 +195,7 @@ export default function MetaReading() {
                     onClick={() => setUnit(u)}
                     className={`px-3 py-1 rounded-md text-xs font-mono ${
                       unit === u
-                        ? "bg-ink text-white"
+                        ? "bg-ink text-white dark:bg-bright dark:text-ink"
                         : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4"
                     }`}
                   >
@@ -207,7 +207,7 @@ export default function MetaReading() {
                 {busy ? "Reading your corpus…" : "Make the reading"}
               </LemonButton>
             </div>
-            <p className="text-[12px] text-shadow-1 dark:text-moonlight">
+            <p className="text-xs text-shadow-1 dark:text-moonlight">
               Built to about {unit === "pages" ? `${amount} page(s)` : `${amount} minute(s)`} up
               front — a hard budget, not a trim afterward.
             </p>
@@ -241,21 +241,21 @@ export default function MetaReading() {
               </div>
 
               {deliverable.truncated && (
-                <p className="text-[13px] text-sun-deep dark:text-sun italic" data-testid="meta-reading-truncated">
+                <p className="text-sm text-sun-deep dark:text-sun italic" data-testid="meta-reading-truncated">
                   This synthesis ran longer than the {deliverable.length_amount}-{deliverable.length_unit.replace(/s$/, "")}
                   {" "}budget and was cut to fit — it’s truncated, not the full synthesis.
                 </p>
               )}
 
               {/* READ-ONLY report (not an editable document — operator decision). */}
-              <article className="font-serif text-[15px] leading-[1.7] text-ink dark:text-bright whitespace-pre-wrap rounded-md border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 px-4 py-3">
+              <article className="font-serif text-base leading-[1.7] text-ink dark:text-bright whitespace-pre-wrap rounded-md border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 px-4 py-3">
                 {deliverable.report}
               </article>
 
               {/* Page-cited links back into the SPR-07 reader. */}
               {deliverable.citations.length > 0 && (
                 <div>
-                  <h3 className="text-[13px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight mb-1.5">
+                  <h3 className="text-sm font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight mb-1.5">
                     Cited in your books
                   </h3>
                   <ul className="flex flex-wrap gap-1.5" aria-label="Citations">
@@ -265,7 +265,7 @@ export default function MetaReading() {
                           type="button"
                           onClick={() => openCitation(c)}
                           title={c.snippet}
-                          className="rounded bg-sun/15 text-sun-deep dark:text-sun px-2 py-0.5 text-[11px] font-mono hover:bg-sun/25"
+                          className="rounded bg-sun/15 text-sun-deep dark:text-sun px-2 py-0.5 text-xs font-mono hover:bg-sun/25"
                         >
                           {c.page_resolved && c.page_index !== null
                             ? `open at p.${c.page_index + 1}`
@@ -281,14 +281,14 @@ export default function MetaReading() {
                   auto-fires; the user must click Accept. */}
               {suggestion && !promoted && (
                 <div className="rounded-md border border-sun/40 bg-sun/10 px-4 py-3 space-y-2" data-testid="promote-suggestion">
-                  <p className="text-[13px] font-serif text-ink dark:text-bright">{suggestion.rationale}</p>
+                  <p className="text-sm font-serif text-ink dark:text-bright">{suggestion.rationale}</p>
                   <LemonButton type="button" variant="secondary" size="sm" disabled={promoting} onClick={() => void onAcceptPromotion()}>
                     {promoting ? "Promoting…" : "Chase it as a research →"}
                   </LemonButton>
                 </div>
               )}
               {promoted && (
-                <p className="text-[13px] text-success" data-testid="promote-done">
+                <p className="text-sm text-success" data-testid="promote-done">
                   Promoted to a research.{" "}
                   <button
                     type="button"
@@ -316,9 +316,9 @@ function ProposedBanner() {
       role="note"
       aria-label="Proposed feature — sign-off pending"
       data-testid="meta-reading-proposed-banner"
-      className="flex items-start gap-2 border-b border-sun/40 bg-sun/15 px-6 py-2.5 text-[13px] leading-relaxed text-ink dark:text-bright"
+      className="flex items-start gap-2 border-b border-sun/40 bg-sun/15 px-6 py-2.5 text-sm leading-relaxed text-ink dark:text-bright"
     >
-      <span className="mt-[2px] font-mono text-[10px] font-bold uppercase tracking-wider text-sun-deep dark:text-sun shrink-0">
+      <span className="mt-[2px] font-mono text-xxs font-bold uppercase tracking-wider text-sun-deep dark:text-sun shrink-0">
         proposed
       </span>
       <p className="font-serif">{PROPOSED_BANNER_TEXT}</p>

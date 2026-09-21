@@ -145,7 +145,7 @@ export default function Xray({
 
   return (
     <div data-testid="xray" className="space-y-2">
-      <p className="text-[11px] uppercase tracking-wide text-ink-mute dark:text-moonlight">
+      <p className="text-xs uppercase tracking-wide text-ink-mute dark:text-moonlight">
         X-ray — every paragraph traced to its blocks
       </p>
 
@@ -202,9 +202,9 @@ export default function Xray({
                   setSelectedParagraph(open ? null : idx);
                   setSelectedBlock(null);
                 }}
-                className="w-full text-left font-serif text-[13px] leading-relaxed text-ink dark:text-bright"
+                className="w-full text-left font-serif text-sm leading-relaxed text-ink dark:text-bright"
               >
-                <span className="mr-1 font-mono text-[10px] text-ink-mute">¶{idx + 1}</span>
+                <span className="mr-1 font-mono text-xxs text-ink-mute">¶{idx + 1}</span>
                 {para}
               </button>
 
@@ -212,7 +212,7 @@ export default function Xray({
               {open && (
                 <div data-testid={`xray-paragraph-blocks-${idx}`} className="mt-1.5 space-y-1">
                   {ids.length === 0 ? (
-                    <p className="text-[11px] italic text-emperor">
+                    <p className="text-xs italic text-emperor">
                       No blocks recorded for this paragraph — unsupported, verify before keeping.
                     </p>
                   ) : (
@@ -231,7 +231,7 @@ export default function Xray({
                             draggable={!!onRegenerateParagraph}
                             onDragEnd={() => void onRegenerateParagraph?.(idx)}
                             onClick={() => void openTrace(bid)}
-                            className="flex-1 cursor-grab rounded border-l-2 border-sun-deep/50 bg-sun-deep/5 px-2 py-1 text-left text-[12px] text-ink dark:text-bright active:cursor-grabbing"
+                            className="flex-1 cursor-grab rounded border-l-2 border-sun-deep/50 bg-sun-deep/5 px-2 py-1 text-left text-xs text-ink dark:text-bright active:cursor-grabbing"
                             title="Click to trace to source · drag to re-draft this section"
                           >
                             {label}
@@ -244,7 +244,7 @@ export default function Xray({
                     <button
                       type="button"
                       onClick={() => void onRegenerateParagraph(idx)}
-                      className="text-[11px] text-sun-deep underline"
+                      className="text-xs text-sun-deep underline"
                     >
                       regenerate this section
                     </button>

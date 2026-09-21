@@ -149,7 +149,7 @@ export default function InvestigationsIndex() {
             />
             <div className="grid grid-cols-3 gap-2 items-end">
               <div className="space-y-1 col-span-2">
-                <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+                <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
                   Topic slug (optional)
                 </label>
                 <input
@@ -161,7 +161,7 @@ export default function InvestigationsIndex() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+                <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
                   Max sub-questions (1-20)
                 </label>
                 <input
@@ -204,7 +204,7 @@ export default function InvestigationsIndex() {
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                 {rows.length} shown · ${totalCost.toFixed(2)} total cost
               </p>
             </div>
@@ -241,7 +241,7 @@ export default function InvestigationsIndex() {
                       <p className="text-sm font-serif text-ink dark:text-bright truncate">
                         {r.question ?? r.investigation_id}
                       </p>
-                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
                         {r.investigation_id}
                         {r.parent_investigation_id ? (
                           <> · parent: {r.parent_investigation_id.slice(0, 12)}</>
@@ -250,7 +250,7 @@ export default function InvestigationsIndex() {
                     </Link>
                     <div className="text-right shrink-0 space-y-0.5">
                       <span
-                        className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded ${
+                        className={`text-xxs uppercase tracking-wider font-mono px-2 py-0.5 rounded ${
                           r.status === "completed"
                             ? "bg-success/10 text-success"
                             : r.status === "failed"
@@ -260,12 +260,12 @@ export default function InvestigationsIndex() {
                       >
                         {r.status}
                       </span>
-                      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+                      <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight">
                         ${r.cost_usd_total.toFixed(4)}
                       </p>
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center gap-3 text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                  <div className="mt-2 flex items-center gap-3 text-xs font-mono text-shadow-1 dark:text-moonlight">
                     <Link
                       to={`/replay/${encodeURIComponent(r.investigation_id)}`}
                       className="hover:underline hover:text-ink dark:text-bright"

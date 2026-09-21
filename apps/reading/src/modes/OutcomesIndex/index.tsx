@@ -78,7 +78,7 @@ export default function OutcomesIndex() {
           </header>
 
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-4">
-            <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight block mb-1">
+            <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight block mb-1">
               Filter by observer
             </label>
             <input
@@ -140,7 +140,7 @@ export default function OutcomesIndex() {
                   key: "observed",
                   header: "Observed",
                   render: (r) => (
-                    <span className="font-mono text-[12px] text-ink-soft dark:text-starlight">
+                    <span className="font-mono text-xs text-ink-soft dark:text-starlight">
                       {r.observed_at} · {r.observer}
                     </span>
                   ),
@@ -150,7 +150,7 @@ export default function OutcomesIndex() {
                   header: "Outcome id",
                   align: "right",
                   render: (r) => (
-                    <span className="font-mono text-[11px] text-ink-mute dark:text-moonlight">
+                    <span className="font-mono text-xs text-ink-mute dark:text-moonlight">
                       {r.outcome_id.slice(0, 12)}
                     </span>
                   ),

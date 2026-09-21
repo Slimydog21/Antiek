@@ -89,7 +89,7 @@ export default function MidnightOil() {
         <LemonCard title="Preflight" elevation="z1">
           <form className="p-4 space-y-4" onSubmit={onSubmit}>
             <label className="block space-y-1">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <span className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 Goal
               </span>
               <textarea
@@ -104,7 +104,7 @@ export default function MidnightOil() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <label className="space-y-1">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <span className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   Work minutes
                 </span>
                 <input
@@ -117,7 +117,7 @@ export default function MidnightOil() {
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <span className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   Price ceiling USD
                 </span>
                 <input
@@ -130,7 +130,7 @@ export default function MidnightOil() {
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <span className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   Route mode
                 </span>
                 <select
@@ -148,7 +148,7 @@ export default function MidnightOil() {
             </div>
 
             <fieldset className="space-y-2">
-              <legend className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <legend className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 Source policy
               </legend>
               <div className="flex flex-wrap gap-2">
@@ -176,7 +176,7 @@ export default function MidnightOil() {
             </fieldset>
 
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+              <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                 <input
                   type="checkbox"
                   checked={ack}
@@ -205,7 +205,7 @@ export default function MidnightOil() {
         {preflight && (
           <LemonCard title="Run contract" elevation="z1">
             <div className="p-4 space-y-4" aria-live="polite">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 font-mono text-[13px]">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 font-mono text-sm">
                 <Metric label="Accepted" value={preflight.accepted ? "yes" : "no"} />
                 <Metric label="Run id" value={preflight.run_id ?? "not issued"} />
                 <Metric
@@ -221,14 +221,14 @@ export default function MidnightOil() {
 
               {preflight.role_plans.length > 0 && (
                 <div>
-                  <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  <p className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                     Role allocation
                   </p>
                   <ul className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
                     {preflight.role_plans.map((plan) => (
                       <li
                         key={plan.role}
-                        className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2 font-mono text-[12px]"
+                        className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2 font-mono text-xs"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-semibold text-ink dark:text-bright">{plan.role}</span>
@@ -245,7 +245,7 @@ export default function MidnightOil() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-[12px]">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 font-mono text-xs">
                 <Metric
                   label="Twin notes"
                   value={preflight.artifact_contract.twin_note_document_required ? "required" : "not required"}
@@ -261,7 +261,7 @@ export default function MidnightOil() {
               </div>
 
               {preflight.notes.map((note) => (
-                <p key={note} className="text-[11px] text-ink-soft dark:text-starlight">
+                <p key={note} className="text-xs text-ink-soft dark:text-starlight">
                   {note}
                 </p>
               ))}
@@ -276,7 +276,7 @@ export default function MidnightOil() {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
-      <p className="text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+      <p className="text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
         {label}
       </p>
       <p className="mt-1 text-ink dark:text-bright">{value}</p>

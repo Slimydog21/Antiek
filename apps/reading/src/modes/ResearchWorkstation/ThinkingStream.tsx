@@ -179,7 +179,7 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
                     className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${TONE_STYLE[l.tone].dot}`}
                     aria-hidden="true"
                   />
-                  <span className={`font-serif text-[14px] leading-relaxed ${TONE_STYLE[l.tone].text}`}>
+                  <span className={`font-serif text-sm leading-relaxed ${TONE_STYLE[l.tone].text}`}>
                     {l.line}
                   </span>
                 </li>
@@ -200,7 +200,7 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
           )}
 
           {sealed && (
-            <p className="mt-4 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+            <p className="mt-4 font-mono text-xs text-shadow-1 dark:text-moonlight">
               the answer is below
             </p>
           )}
@@ -287,7 +287,7 @@ function StreamHeader({
 export function SteerRefusal({ reason }: { reason: string | null | undefined }) {
   if (!reason) return null;
   return (
-    <p className="px-4 py-1 font-mono text-[11px] text-sun-deep dark:text-sun" role="status">
+    <p className="px-4 py-1 font-mono text-xs text-sun-deep dark:text-sun" role="status">
       {reason}
     </p>
   );
@@ -310,7 +310,7 @@ function ConnectingBeat({ status }: { status: InvestigationState["streamStatus"]
       <p className="font-serif text-sm text-ink dark:text-bright">
         {reconnecting ? "Connecting…" : "Getting started…"}
       </p>
-      <p className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+      <p className="font-mono text-xs text-shadow-1 dark:text-moonlight">
         the first step will appear here
       </p>
     </div>

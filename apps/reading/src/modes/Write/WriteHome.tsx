@@ -310,7 +310,7 @@ export default function WriteHome() {
             {detail && (
               <p
                 data-testid="active-connection"
-                className="mt-0.5 text-[11px] text-ink-mute dark:text-moonlight"
+                className="mt-0.5 text-xs text-ink-mute dark:text-moonlight"
               >
                 {detail.investigation_root_id ? (
                   <>Connected to research · backing folder linked</>

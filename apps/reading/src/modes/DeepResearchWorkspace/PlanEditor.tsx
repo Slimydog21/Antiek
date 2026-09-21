@@ -34,7 +34,7 @@ export default function PlanEditor({ tree, launchable, busy, onEdit, onApprove, 
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-ink dark:text-bright">Cascade plan</h2>
-          <p className="text-[11px] text-shadow-1 dark:text-moonlight">
+          <p className="text-xs text-shadow-1 dark:text-moonlight">
             {leafCount} focused {leafCount === 1 ? "research" : "researches"} ·{" "}
             {tree.approval.state === "approved" ? "approved" : "draft (edit, then approve)"}
           </p>
@@ -106,14 +106,14 @@ function PlanNodeRow({
             </p>
             <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
               <button
-                className="text-[11px] text-shadow-1 hover:text-sun-deep dark:text-moonlight"
+                className="text-xs text-shadow-1 hover:text-sun-deep dark:text-moonlight"
                 disabled={busy}
                 onClick={() => { setDraft(node.question); setEditing(true); }}
               >
                 edit
               </button>
               <button
-                className="text-[11px] text-shadow-1 hover:text-sun-deep dark:text-moonlight"
+                className="text-xs text-shadow-1 hover:text-sun-deep dark:text-moonlight"
                 disabled={busy}
                 onClick={() => onEdit({ op: "add_child", target_local_id: node.local_id, question: "New sub-question" })}
               >
@@ -121,7 +121,7 @@ function PlanNodeRow({
               </button>
               {!isRoot && (
                 <button
-                  className="text-[11px] text-shadow-1 hover:text-emperor dark:text-moonlight"
+                  className="text-xs text-shadow-1 hover:text-emperor dark:text-moonlight"
                   disabled={busy}
                   onClick={() => onEdit({ op: "remove", target_local_id: node.local_id })}
                 >

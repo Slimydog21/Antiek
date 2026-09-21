@@ -373,7 +373,7 @@ export default function UsagePanel() {
                   </p>
 
                   <div className="space-y-1">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-ink-soft dark:text-starlight">
+                    <p className="text-xs uppercase tracking-[0.14em] text-ink-soft dark:text-starlight">
                       Models
                     </p>
                     {row.models.length > 0 ? (

@@ -300,7 +300,7 @@ export default function AddModelPanel() {
             {models.map((m) => (
               <li
                 key={m.id}
-                className="flex min-w-0 flex-col gap-2 border-b border-ink/10 pb-2 font-mono text-[13px] dark:border-bright/10 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between"
+                className="flex min-w-0 flex-col gap-2 border-b border-ink/10 pb-2 font-mono text-sm dark:border-bright/10 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between"
               >
                 <span className="min-w-0 break-words text-ink dark:text-bright font-semibold">
                   {m.display_name}
@@ -332,7 +332,7 @@ export default function AddModelPanel() {
                     {EXECUTION_LABELS[m.execution_status]}
                   </span>
                   {usageByKey[m.id]?.remaining_cents != null && (
-                    <span className="text-[11px] text-success">
+                    <span className="text-xs text-success">
                       remaining {formatCents(usageByKey[m.id].remaining_cents!)}
                     </span>
                   )}
@@ -371,7 +371,7 @@ export default function AddModelPanel() {
             Add a provider model
           </h3>
           <fieldset className="space-y-2">
-            <legend className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+            <legend className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
               Provider
             </legend>
             {catalogLoading && (
@@ -409,7 +409,7 @@ export default function AddModelPanel() {
               ].map(({ value, label }) => (
                 <label
                   key={value}
-                  className="min-h-11 flex items-center gap-2 px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 font-mono text-[13px] cursor-pointer"
+                  className="min-h-11 flex items-center gap-2 px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 font-mono text-sm cursor-pointer"
                 >
                   <input
                     type="radio"
@@ -435,7 +435,7 @@ export default function AddModelPanel() {
               className="flex flex-col gap-1"
               htmlFor="custom-provider-kind"
             >
-              <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+              <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                 Adapter
               </span>
               <select
@@ -446,7 +446,7 @@ export default function AddModelPanel() {
                   setKind(event.target.value as ProviderKind);
                   setBaseUrl("");
                 }}
-                className="h-11 w-full px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright font-mono text-[13px]"
+                className="h-11 w-full px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright font-mono text-sm"
               >
                 <option value="openai_compat">OpenAI-compatible</option>
                 <option value="anthropic">Anthropic</option>
@@ -456,14 +456,14 @@ export default function AddModelPanel() {
 
           {preset && (
             <label className="flex flex-col gap-1" htmlFor="preset-model">
-              <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+              <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                 Model
               </span>
               <select
                 id="preset-model"
                 value={modelId}
                 onChange={(event) => selectModel(event.target.value)}
-                className="h-11 w-full px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright font-mono text-[13px]"
+                className="h-11 w-full px-3 border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright font-mono text-sm"
               >
                 {preset.models.map((model) => (
                   <option key={model.id} value={model.id}>
@@ -478,7 +478,7 @@ export default function AddModelPanel() {
             <div className="flex flex-col gap-1">
               <label
                 htmlFor="model-display-name"
-                className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight"
+                className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight"
               >
                 Display name
               </label>
@@ -495,7 +495,7 @@ export default function AddModelPanel() {
               <div className="flex flex-col gap-1">
                 <label
                   htmlFor="custom-model-id"
-                  className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight"
+                  className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight"
                 >
                   Model id
                 </label>
@@ -513,7 +513,7 @@ export default function AddModelPanel() {
               <div className="flex flex-col gap-1">
                 <label
                   htmlFor="custom-base-url"
-                  className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight"
+                  className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight"
                 >
                   Base URL (full, including version prefix)
                 </label>
@@ -531,7 +531,7 @@ export default function AddModelPanel() {
             <div className="flex flex-col gap-1">
               <label
                 htmlFor="provider-api-key"
-                className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight"
+                className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight"
               >
                 API key (write-only)
               </label>

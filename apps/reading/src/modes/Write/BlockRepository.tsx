@@ -90,7 +90,7 @@ export default function BlockRepository({
         <h2 className="text-xs font-semibold uppercase tracking-wide text-ink dark:text-bright">
           Your blocks
         </h2>
-        {loading && <span className="text-[11px] text-ink-mute dark:text-moonlight">searching…</span>}
+        {loading && <span className="text-xs text-ink-mute dark:text-moonlight">searching…</span>}
       </div>
 
       <input
@@ -144,7 +144,7 @@ export default function BlockRepository({
             >
               <p className="truncate font-serif text-ink dark:text-bright">{hit.label}</p>
               {(hit.document_title || hit.source_tier != null) && (
-                <p className="truncate text-[10px] text-ink-mute dark:text-moonlight">
+                <p className="truncate text-xxs text-ink-mute dark:text-moonlight">
                   {hit.document_title ?? "your note"}
                   {hit.source_tier != null ? ` · tier ${hit.source_tier}` : ""}
                 </p>
@@ -178,7 +178,7 @@ function FolderChip({
       type="button"
       onClick={onClick}
       className={
-        "rounded-full border px-2 py-0.5 text-[11px] " +
+        "rounded-full border px-2 py-0.5 text-xs " +
         (active
           ? "border-sun-deep bg-sun-deep/15 text-sun-deep"
           : "border-rule text-ink-soft hover:border-sun-deep dark:border-charcoal-1")

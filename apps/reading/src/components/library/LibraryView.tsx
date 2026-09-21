@@ -124,7 +124,7 @@ export default function LibraryView({
       </div>
 
       {routeAbsent && (
-        <div className="text-[13px] border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright flex items-center justify-between gap-3">
+        <div className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright flex items-center justify-between gap-3">
           <span>
             The catalog isn’t available yet — the library service hasn’t come up.
             This is an honest “not ready”, not an empty shelf.
@@ -185,7 +185,7 @@ export default function LibraryView({
           >
             ← Previous
           </LemonButton>
-          <span className="text-[12px] font-mono text-shadow-1 dark:text-moonlight">
+          <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
             Page {page} of {lastPage}
           </span>
           <LemonButton

@@ -685,9 +685,9 @@ export default function Library() {
               re-openable, length-boxed Read asset. PROPOSED boundary (sign-off
               pending) — the surface itself carries the banner. */}
           <div className="flex items-center justify-between gap-3 rounded-md border border-sun/40 bg-sun/10 px-3 py-2">
-            <p className="text-[13px] font-serif text-ink dark:text-bright">
+            <p className="text-sm font-serif text-ink dark:text-bright">
               Make a reading asset from your corpus
-              <span className="ml-2 text-[11px] font-mono uppercase tracking-wider text-sun-deep dark:text-sun">
+              <span className="ml-2 text-xs font-mono uppercase tracking-wider text-sun-deep dark:text-sun">
                 proposed
               </span>
             </p>
@@ -708,26 +708,26 @@ export default function Library() {
             }}
           >
             <div className="flex flex-col gap-3 md:flex-row md:items-end">
-              <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="flex-1 min-w-0 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 Title
                 <input
                   value={purchaseTitle}
                   onChange={(event) => setPurchaseTitle(event.target.value)}
                   required
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   placeholder="Book to acquire"
                 />
               </label>
-              <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="flex-1 min-w-0 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 Author
                 <input
                   value={purchaseAuthor}
                   onChange={(event) => setPurchaseAuthor(event.target.value)}
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   placeholder="Optional"
                 />
               </label>
-              <label className="w-full md:w-28 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="w-full md:w-28 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 Max USD
                 <input
                   value={purchaseMaxUsd}
@@ -735,21 +735,21 @@ export default function Library() {
                   min="0"
                   step="0.01"
                   type="number"
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                 />
               </label>
             </div>
-            <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+            <label className="block text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
               Source URL
               <input
                 value={purchaseUrl}
                 onChange={(event) => setPurchaseUrl(event.target.value)}
-                className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                 placeholder="Optional store or publisher page"
               />
             </label>
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+              <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                 <input
                   type="checkbox"
                   checked={purchaseAck}
@@ -767,7 +767,7 @@ export default function Library() {
               </button>
             </div>
             {purchaseReceipt && (
-              <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+              <p className="text-sm font-serif text-ink dark:text-bright" role="status">
                 Request {purchaseReceipt.request_id} is ready for manual purchase; Antiek reserved $
                 {(purchaseReceipt.spend_reserved_usd_cents / 100).toFixed(2)} and performed no external call.
               </p>
@@ -782,30 +782,30 @@ export default function Library() {
             }}
           >
             <div>
-              <p className="text-[13px] font-serif text-ink dark:text-bright">
+              <p className="text-sm font-serif text-ink dark:text-bright">
                 HTML import preflight
               </p>
-              <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                 Checks legal-access and HTML-hosting posture only; no upload,
                 file read, conversion, ingest, or graph write runs here.
               </p>
             </div>
             <div className="flex flex-col gap-3 md:flex-row md:items-end">
-              <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="flex-1 min-w-0 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 File name
                 <input
                   value={importFileName}
                   onChange={(event) => setImportFileName(event.target.value)}
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   placeholder="Optional filename"
                 />
               </label>
-              <label className="w-full md:w-36 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="w-full md:w-36 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 Format
                 <select
                   value={importFileFormat}
                   onChange={(event) => setImportFileFormat(event.target.value as typeof importFileFormat)}
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                 >
                   <option value="epub">EPUB</option>
                   <option value="html">HTML</option>
@@ -816,7 +816,7 @@ export default function Library() {
               </label>
             </div>
             <div className="flex flex-col gap-2">
-              <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+              <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                 <input
                   type="checkbox"
                   checked={importHasLegalAccess}
@@ -825,7 +825,7 @@ export default function Library() {
                 />
                 <span>I have legal access to this file or receipt-backed copy.</span>
               </label>
-              <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+              <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                 <input
                   type="checkbox"
                   checked={importAck}
@@ -843,7 +843,7 @@ export default function Library() {
               {importBusy ? "Checking…" : "Check import"}
             </button>
             {importReceipt && (
-              <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+              <p className="text-sm font-serif text-ink dark:text-bright" role="status">
                 Import {importReceipt.import_preflight_id} is ready for operator file handoff; uploaded{" "}
                 {importReceipt.file_uploaded ? "yes" : "no"}, ingested{" "}
                 {importReceipt.ingest_attempted ? "yes" : "no"}, HTML hosting required{" "}
@@ -861,35 +861,35 @@ export default function Library() {
               }}
             >
               <div>
-                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                <p className="text-sm font-serif text-ink dark:text-bright">
                   File handoff metadata
                 </p>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                   Records the operator storage reference only; Antiek does not upload,
                   open, read, convert, ingest, or serve the file here.
                 </p>
               </div>
-              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="block text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 Storage reference
                 <input
                   value={handoffStorageRef}
                   onChange={(event) => setHandoffStorageRef(event.target.value)}
                   required
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   placeholder="operator-vault://books/title.epub"
                 />
               </label>
-              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="block text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 SHA-256
                 <input
                   value={handoffChecksum}
                   onChange={(event) => setHandoffChecksum(event.target.value)}
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   placeholder="Optional 64-character checksum"
                 />
               </label>
               <div className="flex flex-col gap-2">
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={handoffManualAck}
@@ -898,7 +898,7 @@ export default function Library() {
                   />
                   <span>This is a manual storage reference, not a file upload.</span>
                 </label>
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={handoffNoReadAck}
@@ -920,7 +920,7 @@ export default function Library() {
                 {handoffBusy ? "Recording…" : "Record handoff"}
               </button>
               {handoffReceipt && (
-                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                <p className="text-sm font-serif text-ink dark:text-bright" role="status">
                   Handoff {handoffReceipt.handoff_id} is ready for conversion review; file read{" "}
                   {handoffReceipt.file_read_attempted ? "yes" : "no"}, converted{" "}
                   {handoffReceipt.conversion_attempted ? "yes" : "no"}, uploaded{" "}
@@ -939,16 +939,16 @@ export default function Library() {
               }}
             >
               <div>
-                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                <p className="text-sm font-serif text-ink dark:text-bright">
                   Conversion review
                 </p>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                   Approves the converter plan only; no storage reference is read,
                   no converter runs, and no HTML output is written here.
                 </p>
               </div>
               <div className="flex flex-col gap-3 md:flex-row md:items-end">
-                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <label className="flex-1 min-w-0 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   Converter
                   <select
                     value={conversionConverter}
@@ -957,7 +957,7 @@ export default function Library() {
                         event.target.value as "pandoc" | "calibre" | "native_html" | "manual_review" | "unknown",
                       )
                     }
-                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   >
                     <option value="pandoc">Pandoc</option>
                     <option value="calibre">Calibre</option>
@@ -966,14 +966,14 @@ export default function Library() {
                     <option value="unknown">Unknown</option>
                   </select>
                 </label>
-                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <label className="flex-1 min-w-0 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   Sandbox
                   <select
                     value={conversionSandbox}
                     onChange={(event) =>
                       setConversionSandbox(event.target.value as "locked_down" | "network_disabled" | "manual_only")
                     }
-                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   >
                     <option value="locked_down">Locked down</option>
                     <option value="network_disabled">Network disabled</option>
@@ -982,7 +982,7 @@ export default function Library() {
                 </label>
               </div>
               <div className="flex flex-col gap-2">
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={conversionSandboxAck}
@@ -991,7 +991,7 @@ export default function Library() {
                   />
                   <span>The converter must run later inside the approved sandbox.</span>
                 </label>
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={conversionNoRunAck}
@@ -1009,7 +1009,7 @@ export default function Library() {
                 {conversionBusy ? "Reviewing…" : "Review conversion"}
               </button>
               {conversionReceipt && (
-                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                <p className="text-sm font-serif text-ink dark:text-bright" role="status">
                   Conversion {conversionReceipt.conversion_review_id} is ready for an explicit job; read{" "}
                   {conversionReceipt.file_read_attempted ? "yes" : "no"}, converted{" "}
                   {conversionReceipt.conversion_attempted ? "yes" : "no"}, output written{" "}
@@ -1028,47 +1028,47 @@ export default function Library() {
               }}
             >
               <div>
-                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                <p className="text-sm font-serif text-ink dark:text-bright">
                   Converted HTML metadata
                 </p>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                   Records the converted HTML output reference only; no output is
                   fetched, ingested, published, or served here.
                 </p>
               </div>
-              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="block text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 HTML output reference
                 <input
                   value={outputRef}
                   onChange={(event) => setOutputRef(event.target.value)}
                   required
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   placeholder="operator-vault://books/title/index.html"
                 />
               </label>
               <div className="flex flex-col gap-3 md:flex-row md:items-end">
-                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <label className="flex-1 min-w-0 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   HTML SHA-256
                   <input
                     value={outputChecksum}
                     onChange={(event) => setOutputChecksum(event.target.value)}
-                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                     placeholder="Optional 64-character checksum"
                   />
                 </label>
-                <label className="w-full md:w-32 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <label className="w-full md:w-32 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   Pages
                   <input
                     value={outputPageCount}
                     onChange={(event) => setOutputPageCount(event.target.value)}
                     min="0"
                     type="number"
-                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   />
                 </label>
               </div>
               <div className="flex flex-col gap-2">
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={outputMetadataAck}
@@ -1077,7 +1077,7 @@ export default function Library() {
                   />
                   <span>This records converted-output metadata only.</span>
                 </label>
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={outputNoPublishAck}
@@ -1095,7 +1095,7 @@ export default function Library() {
                 {outputBusy ? "Recording…" : "Record output"}
               </button>
               {outputReceipt && (
-                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                <p className="text-sm font-serif text-ink dark:text-bright" role="status">
                   Output {outputReceipt.conversion_result_id} is ready for serve-gate review; fetched{" "}
                   {outputReceipt.output_ref_fetched ? "yes" : "no"}, ingested{" "}
                   {outputReceipt.ingest_attempted ? "yes" : "no"}, served{" "}
@@ -1114,16 +1114,16 @@ export default function Library() {
               }}
             >
               <div>
-                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                <p className="text-sm font-serif text-ink dark:text-bright">
                   Serve-gate review
                 </p>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                   Records rights and servability metadata only; no HTML is read,
                   no graph state changes, and nothing is published here.
                 </p>
               </div>
               <div className="flex flex-col gap-3 md:flex-row md:items-end">
-                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <label className="flex-1 min-w-0 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   Rights basis
                   <select
                     value={serveRightsBasis}
@@ -1137,7 +1137,7 @@ export default function Library() {
                           | "unknown",
                       )
                     }
-                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   >
                     <option value="personal_license">Personal license</option>
                     <option value="public_domain">Public domain</option>
@@ -1146,14 +1146,14 @@ export default function Library() {
                     <option value="unknown">Unknown</option>
                   </select>
                 </label>
-                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <label className="flex-1 min-w-0 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   Servability
                   <select
                     value={serveDecision}
                     onChange={(event) =>
                       setServeDecision(event.target.value as "servable_full_text" | "gated_metadata_only" | "blocked")
                     }
-                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   >
                     <option value="servable_full_text">Servable full text</option>
                     <option value="gated_metadata_only">Gated metadata only</option>
@@ -1162,7 +1162,7 @@ export default function Library() {
                 </label>
               </div>
               <div className="flex flex-col gap-2">
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={serveRightsAck}
@@ -1171,7 +1171,7 @@ export default function Library() {
                   />
                   <span>I reviewed rights and servability evidence for this converted HTML.</span>
                 </label>
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={serveNoPublishAck}
@@ -1189,7 +1189,7 @@ export default function Library() {
                 {serveBusy ? "Reviewing…" : "Review serve gate"}
               </button>
               {serveReceipt && (
-                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                <p className="text-sm font-serif text-ink dark:text-bright" role="status">
                   Serve gate {serveReceipt.serve_gate_review_id} is{" "}
                   {serveReceipt.publication_allowed_next ? "ready for publication request" : "blocked"}; published{" "}
                   {serveReceipt.shelf_publication_attempted ? "yes" : "no"}, served{" "}
@@ -1208,32 +1208,32 @@ export default function Library() {
               }}
             >
               <div>
-                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                <p className="text-sm font-serif text-ink dark:text-bright">
                   Publication request
                 </p>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                   Records intent to publish the approved HTML later; no ingest,
                   graph write, shelf update, reader route, or full-text serve runs here.
                 </p>
               </div>
               <div className="flex flex-col gap-3 md:flex-row md:items-end">
-                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <label className="flex-1 min-w-0 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   Document id hint
                   <input
                     value={publicationDocHint}
                     onChange={(event) => setPublicationDocHint(event.target.value)}
-                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                     placeholder="Optional slug for later publish job"
                   />
                 </label>
-                <label className="w-full md:w-44 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                <label className="w-full md:w-44 text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                   Visibility
                   <select
                     value={publicationVisibility}
                     onChange={(event) =>
                       setPublicationVisibility(event.target.value as "private_library" | "workspace_only")
                     }
-                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   >
                     <option value="private_library">Private library</option>
                     <option value="workspace_only">Workspace only</option>
@@ -1241,7 +1241,7 @@ export default function Library() {
                 </label>
               </div>
               <div className="flex flex-col gap-2">
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={publicationIntentAck}
@@ -1250,7 +1250,7 @@ export default function Library() {
                   />
                   <span>I intend to publish this reviewed Antiek HTML in a later explicit job.</span>
                 </label>
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={publicationNoIngestAck}
@@ -1268,7 +1268,7 @@ export default function Library() {
                 {publicationBusy ? "Preparing…" : "Prepare publication"}
               </button>
               {publicationReceipt && (
-                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                <p className="text-sm font-serif text-ink dark:text-bright" role="status">
                   Publication {publicationReceipt.publication_request_id} is ready for an explicit publish job; ingested{" "}
                   {publicationReceipt.ingest_attempted ? "yes" : "no"}, published{" "}
                   {publicationReceipt.shelf_publication_attempted ? "yes" : "no"}, served{" "}
@@ -1287,47 +1287,47 @@ export default function Library() {
               }}
             >
               <div>
-                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                <p className="text-sm font-serif text-ink dark:text-bright">
                   Publish inline HTML
                 </p>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                   Writes the provided Antiek HTML body into the local library;
                   no external file, storage reference, provider, checkout, or spend is touched.
                 </p>
               </div>
-              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="block text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 Document id
                 <input
                   value={publishDocumentId}
                   onChange={(event) => setPublishDocumentId(event.target.value)}
                   required
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   placeholder="book-dream-machine"
                 />
               </label>
-              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="block text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 Antiek HTML body
                 <textarea
                   value={publishHtmlBody}
                   onChange={(event) => setPublishHtmlBody(event.target.value)}
                   required
                   rows={4}
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   placeholder="<article><h1>Title</h1><p>Body…</p></article>"
                 />
               </label>
-              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <label className="block text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 License basis
                 <input
                   value={publishLicenseBasis}
                   onChange={(event) => setPublishLicenseBasis(event.target.value)}
                   required
-                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-2 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
                   placeholder="Operator-owned copy for private Antiek library"
                 />
               </label>
               <div className="flex flex-col gap-2">
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={publishWriteAck}
@@ -1336,7 +1336,7 @@ export default function Library() {
                   />
                   <span>Write this inline HTML into my local Antiek library.</span>
                 </label>
-                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                   <input
                     type="checkbox"
                     checked={publishServableAck}
@@ -1359,7 +1359,7 @@ export default function Library() {
                 {publishBusy ? "Publishing…" : "Publish HTML"}
               </button>
               {publishReceipt && (
-                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                <p className="text-sm font-serif text-ink dark:text-bright" role="status">
                   Published {publishReceipt.document_id} through {publishReceipt.publish_job_id}; servable{" "}
                   {publishReceipt.servable_full_text ? "yes" : "no"}, chunks{" "}
                   {publishReceipt.chunks_indexed}, route {publishReceipt.open_route}.
@@ -1377,14 +1377,14 @@ export default function Library() {
               }}
             >
               <div>
-                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                <p className="text-sm font-serif text-ink dark:text-bright">
                   Index book chunks
                 </p>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                   Embeds this published book&apos;s chunks for corpus search and talk-to-book ranking.
                 </p>
               </div>
-              <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+              <label className="flex items-start gap-2 text-xs font-serif text-ink-soft dark:text-starlight">
                 <input
                   type="checkbox"
                   checked={indexComputeAck}
@@ -1402,7 +1402,7 @@ export default function Library() {
               </button>
               {indexReceipt && (
                 <div className="space-y-2" role="status">
-                  <p className="text-[13px] font-serif text-ink dark:text-bright">
+                  <p className="text-sm font-serif text-ink dark:text-bright">
                     Indexed {indexReceipt.document_id} through {indexReceipt.index_job_id}; vectors{" "}
                     {indexReceipt.vectors_rewritten}, provider {indexReceipt.provider ?? "unresolved"}.
                   </p>
@@ -1437,7 +1437,7 @@ export default function Library() {
           )}
 
           {curatedOrder !== null && (
-            <p className="text-[13px] font-serif text-ink dark:text-bright">
+            <p className="text-sm font-serif text-ink dark:text-bright">
               Curated for “<span className="italic">{curatePrompt}</span>” —{" "}
               {displayed.length} {displayed.length === 1 ? "book" : "books"}, best match first.
             </p>
@@ -1448,7 +1448,7 @@ export default function Library() {
               is showing recency, never dressing it up as relevance. Only on the
               default servable shelf, and never while a curate prompt overrides. */}
           {curatedOrder === null && !loading && displayed.length > 0 && ordering === "theme" && (
-            <p className="text-[13px] font-serif text-ink dark:text-bright" data-feed-ordering="theme">
+            <p className="text-sm font-serif text-ink dark:text-bright" data-feed-ordering="theme">
               Ranked to your active research
               {themeTerms.length > 0 && (
                 <>
@@ -1460,7 +1460,7 @@ export default function Library() {
             </p>
           )}
           {curatedOrder === null && !loading && displayed.length > 0 && ordering === "recency" && (
-            <p className="text-[13px] font-serif text-shadow-1 dark:text-moonlight" data-feed-ordering="recency">
+            <p className="text-sm font-serif text-shadow-1 dark:text-moonlight" data-feed-ordering="recency">
               No active research to rank to yet — showing the most recently added first.
             </p>
           )}

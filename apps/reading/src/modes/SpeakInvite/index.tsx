@@ -181,10 +181,10 @@ export default function SpeakInvite() {
   if (phase === "invalid") {
     return (
       <Centered>
-        <p className="font-serif text-[16px]">
+        <p className="font-serif text-base">
           This invitation link is invalid or has expired.
         </p>
-        <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+        <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
           Ask whoever invited you to send a fresh link.
         </p>
       </Centered>
@@ -197,8 +197,8 @@ export default function SpeakInvite() {
   if (declined) {
     return (
       <Centered>
-        <p className="font-serif text-[18px] text-ink dark:text-bright">Thank you.</p>
-        <p className="mt-2 font-serif text-[14px] text-ink-mute dark:text-moonlight">
+        <p className="font-serif text-lg text-ink dark:text-bright">Thank you.</p>
+        <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
           No problem at all — nothing's been shared. You can close this page. If
           you change your mind, just open the same link again.
         </p>
@@ -214,13 +214,13 @@ export default function SpeakInvite() {
     <div className="min-h-screen bg-ice-0 px-4 py-10 dark:bg-charcoal-2">
       <div className="mx-auto max-w-md">
         <header className="mb-7 text-center">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-sun-deep dark:text-sun">
+          <p className="font-mono text-xxs uppercase tracking-[0.18em] text-sun-deep dark:text-sun">
             You've been asked to help
           </p>
           <h1 className="mt-1 font-serif text-2xl text-ink dark:text-bright">
             Remember {landing.subject_ref ?? landing.project_title}
           </h1>
-          <p className="mt-2 font-serif text-[14px] text-ink-mute dark:text-moonlight">
+          <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
             Share a memory in your own words. There's no right answer and no
             rush — anything you remember helps.
           </p>
@@ -236,13 +236,13 @@ export default function SpeakInvite() {
             className="mb-5 rounded-md border-2 border-emperor bg-ice-0 p-4 text-left shadow-z1 dark:border-emperor dark:bg-charcoal-1 dark:shadow-z1-night"
             data-testid="private-econ-notice"
           >
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-emperor">
+            <p className="font-mono text-xxs font-semibold uppercase tracking-[0.14em] text-emperor">
               No earnings
             </p>
-            <p className="mt-1 font-serif text-[14px] font-semibold text-ink dark:text-bright">
+            <p className="mt-1 font-serif text-sm font-semibold text-ink dark:text-bright">
               {PRIVATE_ECON_COPY.inviteeNoEarnings}
             </p>
-            <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+            <p className="mt-2 font-serif text-xs text-ink-mute dark:text-moonlight">
               {PRIVATE_ECON_COPY.inviteeNoEarningsDetail}
             </p>
           </aside>
@@ -253,14 +253,14 @@ export default function SpeakInvite() {
             className="mb-5 rounded-md border-2 border-ink bg-ice-0 p-4 text-left shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
             data-testid="public-econ-notice"
           >
-            <p className="font-serif text-[13px] text-ink dark:text-bright">
+            <p className="font-serif text-sm text-ink dark:text-bright">
               {PRIVATE_ECON_COPY.publicCanEarn}
             </p>
           </aside>
         )}
 
 
-        {error && <p className="mb-3 text-center font-serif text-[13px] text-emperor">{error}</p>}
+        {error && <p className="mb-3 text-center font-serif text-sm text-emperor">{error}</p>}
 
         {!consented ? (
           // ── Warm consent: one honest sentence + a safe (private) default ──
@@ -268,11 +268,11 @@ export default function SpeakInvite() {
           // default. Public use is a separate, affirmative opt-IN button below,
           // offered only when the invite asks for publish.
           <section className="rounded-md border-2 border-ink bg-ice-0 p-5 text-center shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
-            <p className="font-serif text-[15px] text-ink dark:text-bright">
+            <p className="font-serif text-base text-ink dark:text-bright">
               We'll record and write down what you share, to help tell{" "}
               {landing.subject_ref ? `${landing.subject_ref}'s` : "this"} story.
             </p>
-            <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+            <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
               Either way, what you share is kept private unless you choose
               otherwise, and you can ask to have your words removed at any time.
             </p>
@@ -281,7 +281,7 @@ export default function SpeakInvite() {
               type="button"
               onClick={() => void takePart(false)}
               disabled={busy}
-              className="mt-5 w-full rounded-md border-2 border-ink bg-sun px-4 py-3 font-mono text-[14px] font-semibold text-ink shadow-z1 hover:-translate-y-0.5 disabled:opacity-50 dark:shadow-z1-night"
+              className="mt-5 w-full rounded-md border-2 border-ink bg-sun px-4 py-3 font-mono text-sm font-semibold text-ink shadow-z1 hover:-translate-y-0.5 disabled:opacity-50 dark:shadow-z1-night"
             >
               Yes, I'll share a memory
             </button>
@@ -296,11 +296,11 @@ export default function SpeakInvite() {
                   type="button"
                   onClick={() => void takePart(true)}
                   disabled={busy}
-                  className="mt-3 block w-full rounded-md border-2 border-ink bg-ice-0 px-4 py-3 font-mono text-[13px] font-semibold text-ink hover:-translate-y-0.5 disabled:opacity-50 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+                  className="mt-3 block w-full rounded-md border-2 border-ink bg-ice-0 px-4 py-3 font-mono text-sm font-semibold text-ink hover:-translate-y-0.5 disabled:opacity-50 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
                 >
                   Share — and you can use my words in the public story
                 </button>
-                <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                <p className="mt-2 font-serif text-xs text-ink-mute dark:text-moonlight">
                   Either way still helps — sharing privately keeps your words
                   out of the public story unless you choose the second option.
                 </p>
@@ -310,7 +310,7 @@ export default function SpeakInvite() {
               type="button"
               onClick={() => void declineInvite()}
               disabled={busy}
-              className="mt-3 font-serif text-[13px] text-ink-mute underline hover:text-ink disabled:opacity-50 dark:text-moonlight dark:hover:text-bright"
+              className="mt-3 font-serif text-sm text-ink-mute underline hover:text-ink disabled:opacity-50 dark:text-moonlight dark:hover:text-bright"
             >
               Not right now
             </button>
@@ -318,8 +318,8 @@ export default function SpeakInvite() {
         ) : pending.length === 0 ? (
           // ── Done: warm, resumable, no dead end ──
           <section className="rounded-md border-2 border-ink bg-ice-0 p-5 text-center shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
-            <p className="font-serif text-[18px] text-ink dark:text-bright">Thank you.</p>
-            <p className="mt-2 font-serif text-[14px] text-ink-mute dark:text-moonlight">
+            <p className="font-serif text-lg text-ink dark:text-bright">Thank you.</p>
+            <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
               What you shared is saved. You can close this page and come back to
               the same link anytime to add more — there's no rush.
             </p>
@@ -329,7 +329,7 @@ export default function SpeakInvite() {
           <section className="rounded-md border-2 border-ink bg-ice-0 p-5 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
             {landing.transcript.filter((t) => t.role === "informant").length > 0 && (
               <details className="mb-4">
-                <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
+                <summary className="cursor-pointer font-mono text-xxs uppercase tracking-wider text-ink-mute dark:text-moonlight">
                   what you've shared so far (
                   {landing.transcript.filter((t) => t.role === "informant").length})
                 </summary>
@@ -339,7 +339,7 @@ export default function SpeakInvite() {
                     .map((t, i) => (
                       <li
                         key={i}
-                        className="border-l-2 border-rule pl-2 font-serif text-[13px] text-ink dark:border-charcoal-1 dark:text-bright"
+                        className="border-l-2 border-rule pl-2 font-serif text-sm text-ink dark:border-charcoal-1 dark:text-bright"
                       >
                         {t.text}
                       </li>
@@ -348,7 +348,7 @@ export default function SpeakInvite() {
               </details>
             )}
 
-            <p className="text-center font-serif text-[18px] leading-snug text-ink dark:text-bright">
+            <p className="text-center font-serif text-lg leading-snug text-ink dark:text-bright">
               {active?.text}
             </p>
 
@@ -368,7 +368,7 @@ export default function SpeakInvite() {
                   onVoiceError={(detail) => setVoiceError(detail)}
                 />
                 {voiceError && (
-                  <p className="mt-3 text-center font-serif text-[13px] text-ink-mute dark:text-moonlight">
+                  <p className="mt-3 text-center font-serif text-sm text-ink-mute dark:text-moonlight">
                     We couldn't turn that recording into words just now. You can
                     try again, or{" "}
                     <button
@@ -384,7 +384,7 @@ export default function SpeakInvite() {
                 <button
                   type="button"
                   onClick={() => setMode("text")}
-                  className="mt-4 block w-full text-center font-serif text-[13px] text-ink-mute underline hover:text-ink dark:text-moonlight dark:hover:text-bright"
+                  className="mt-4 block w-full text-center font-serif text-sm text-ink-mute underline hover:text-ink dark:text-moonlight dark:hover:text-bright"
                 >
                   I'd rather type
                 </button>
@@ -392,7 +392,7 @@ export default function SpeakInvite() {
             ) : (
               <div className="mt-5">
                 {micDenied && (
-                  <p className="mb-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                  <p className="mb-2 font-serif text-xs text-ink-mute dark:text-moonlight">
                     No microphone — no problem. Type your memory below.
                   </p>
                 )}
@@ -401,13 +401,13 @@ export default function SpeakInvite() {
                   onChange={(e) => setAnswer(e.target.value)}
                   rows={5}
                   placeholder="Share whatever comes to mind — a story, a detail, a memory."
-                  className="w-full rounded border border-rule bg-ice-0 p-3 font-serif text-[15px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+                  className="w-full rounded border border-rule bg-ice-0 p-3 font-serif text-base text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
                 />
                 <button
                   type="button"
                   onClick={() => void submitText()}
                   disabled={busy || !answer.trim()}
-                  className="mt-3 w-full rounded-md border-2 border-ink bg-sun px-4 py-3 font-mono text-[14px] font-semibold text-ink shadow-z1 hover:-translate-y-0.5 disabled:opacity-50 dark:shadow-z1-night"
+                  className="mt-3 w-full rounded-md border-2 border-ink bg-sun px-4 py-3 font-mono text-sm font-semibold text-ink shadow-z1 hover:-translate-y-0.5 disabled:opacity-50 dark:shadow-z1-night"
                 >
                   Send this memory
                 </button>
@@ -415,7 +415,7 @@ export default function SpeakInvite() {
                   <button
                     type="button"
                     onClick={() => setMode("voice")}
-                    className="mt-3 block w-full text-center font-serif text-[13px] text-ink-mute underline hover:text-ink dark:text-moonlight dark:hover:text-bright"
+                    className="mt-3 block w-full text-center font-serif text-sm text-ink-mute underline hover:text-ink dark:text-moonlight dark:hover:text-bright"
                   >
                     or talk instead
                   </button>
@@ -423,13 +423,13 @@ export default function SpeakInvite() {
               </div>
             )}
 
-            <p className="mt-5 text-center font-mono text-[10px] text-ink-mute dark:text-moonlight">
+            <p className="mt-5 text-center font-mono text-xxs text-ink-mute dark:text-moonlight">
               {pending.length} {pending.length === 1 ? "question" : "questions"} waiting · saved as you go
             </p>
           </section>
         )}
 
-        <footer className="mt-6 text-center font-serif text-[11px] text-ink-mute dark:text-moonlight">
+        <footer className="mt-6 text-center font-serif text-xs text-ink-mute dark:text-moonlight">
           Your words are used only as you agreed. Reach out to whoever invited
           you to have anything removed.
         </footer>
@@ -458,7 +458,7 @@ function PhoneVoiceCapture({
 }) {
   return (
     <div className="rounded-md border border-rule p-4 dark:border-charcoal-1">
-      <p className="mb-3 text-center font-serif text-[13px] text-ink-mute dark:text-moonlight">
+      <p className="mb-3 text-center font-serif text-sm text-ink-mute dark:text-moonlight">
         Tap to talk — say it however it comes out.
       </p>
       <InterviewVoiceCapture
@@ -473,7 +473,7 @@ function PhoneVoiceCapture({
           onVoiceError(detail);
         }}
       />
-      <p className="mt-2 text-center font-mono text-[10px] text-ink-mute dark:text-moonlight">
+      <p className="mt-2 text-center font-mono text-xxs text-ink-mute dark:text-moonlight">
         Trouble with the mic?{" "}
         <button type="button" className="underline" onClick={onMicDenied}>
           Type instead
@@ -486,7 +486,7 @@ function PhoneVoiceCapture({
 function Centered({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-ice-0 px-4 dark:bg-charcoal-2">
-      <div className="max-w-md text-center font-serif text-[14px] text-ink dark:text-bright">
+      <div className="max-w-md text-center font-serif text-sm text-ink dark:text-bright">
         {children}
       </div>
     </div>

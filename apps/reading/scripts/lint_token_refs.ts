@@ -21,8 +21,8 @@
  * border-radius) match no design root, so both stay out of scope — the guard
  * is deliberately scoped to the design-token families, not all of Tailwind.
  *
- * GRANDFATHERED: four pre-existing unresolved references whose fixes are
- * owned by other queue items (see INVENTORY.md); the set only ever shrinks.
+ * GRANDFATHERED: pre-existing unresolved references whose fixes are owned by
+ * other queue items (see INVENTORY.md); the set only ever shrinks.
  *
  *   npx tsx scripts/lint_token_refs.ts   # exit 1 on any unresolvable token ref
  */
@@ -120,11 +120,8 @@ const BORDER_NONCOLOR = new Set([
  *  big-bang refactor; this set only ever shrinks. Never add to it to silence
  *  a NEW reference — define the token instead. */
 const GRANDFATHERED = new Set([
-  "bg-card", // ResearchLensCursor.stories — card alias mirror; Q13 lint hardening
-  "bg-card-soft", // ResearchLensCursor.stories — same
-  "border-border", // ModelDecisionBar — shadcn-era idiom; Q7/Q13
-  "text-aurora-deep", // MetaReading — aurora has no deep step yet; Q2/Q3 state-colour pass
-  "bg-charcoal-3", // ModelUsagePicker — night ramp stops at charcoal-2; Q7 dead-class sweep
+  "bg-card", // ResearchLensCursor.stories + werner stories — card alias mirror; Q13 lint hardening
+  "bg-card-soft", // ResearchLensCursor.stories + werner stories — same
 ]);
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -195,5 +192,5 @@ if (violations.size) {
 }
 console.log(
   `token-refs OK — every design-token utility reference resolves ` +
-    `(${roots.size} token families; ${GRANDFATHERED.size} grandfathered, owned by Q2/Q3/Q7/Q13).`,
+    `(${roots.size} token families; ${GRANDFATHERED.size} grandfathered, owned by Q7/Q13).`,
 );

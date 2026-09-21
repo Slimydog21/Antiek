@@ -168,7 +168,7 @@ export function ContextWindow({ className }: ContextWindowProps) {
                 {result.prose_text}
               </p>
               {result.unsupported_paragraphs && result.unsupported_paragraphs.length > 0 && (
-                <p className="mt-2 text-[11px] text-shadow-1">
+                <p className="mt-2 text-xs text-shadow-1">
                   {result.unsupported_paragraphs.length} paragraph(s) flagged unsupported —
                   verify before keeping.
                 </p>

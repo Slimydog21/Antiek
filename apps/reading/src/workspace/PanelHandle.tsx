@@ -152,7 +152,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
         )}
 
         {/* Title — flex-1 so the action cluster pins right */}
-        <span className="flex-1 text-[12.5px] font-mono font-semibold truncate text-ink dark:text-bright">
+        <span className="flex-1 text-xs font-mono font-semibold truncate text-ink dark:text-bright">
           {panel.title}
         </span>
 
@@ -164,7 +164,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
           onClick={() => (panel.pinned ? actions().unpin(id) : actions().pin(id))}
           aria-label={panel.pinned ? "Unpin" : "Pin"}
           className={
-            "px-1.5 leading-none text-[13px] " +
+            "px-1.5 leading-none text-sm " +
             (panel.pinned
               ? "text-sun-deep dark:text-sun"
               : "text-ink-mute dark:text-moonlight hover:text-ink dark:hover:text-bright")
@@ -263,7 +263,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => actions().close(id)}
           aria-label="Close panel"
-          className="px-1.5 leading-none text-[13px] text-ink-mute dark:text-moonlight hover:text-emperor"
+          className="px-1.5 leading-none text-sm text-ink-mute dark:text-moonlight hover:text-emperor"
         >
           ✕
         </button>

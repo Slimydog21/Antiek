@@ -41,7 +41,7 @@ function fallbackChain(tier: DispatchTierView | RawDispatchTier | null): string 
 
 function SectionHeader({ children }: { children: string }) {
   return (
-    <div className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+    <div className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
       {children}
     </div>
   );
@@ -102,7 +102,7 @@ function DispatchSection({ dispatch }: { dispatch: ObjectiveCardResponse["dispat
                     key: "fallback",
                     header: "Fallback chain",
                     render: (t) => (
-                      <span className="font-mono text-[11px] text-ink-soft dark:text-starlight">
+                      <span className="font-mono text-xs text-ink-soft dark:text-starlight">
                         {fallbackChain(t) ?? "—"}
                       </span>
                     ),
@@ -112,7 +112,7 @@ function DispatchSection({ dispatch }: { dispatch: ObjectiveCardResponse["dispat
                     header: "$/mtok in/out",
                     render: (t) =>
                       t.pricing ? (
-                        <span className="font-mono text-[11px]">
+                        <span className="font-mono text-xs">
                           {t.pricing.input_per_mtok} / {t.pricing.output_per_mtok}
                         </span>
                       ) : (
@@ -140,7 +140,7 @@ function DispatchSection({ dispatch }: { dispatch: ObjectiveCardResponse["dispat
               {Object.entries(defaults).map(([tier, vals]) => (
                 <div key={tier} className="text-xs space-y-0.5">
                   <span className="font-mono text-ink dark:text-bright uppercase">{tier}</span>
-                  <div className="pl-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                  <div className="pl-2 font-mono text-xs text-ink-soft dark:text-starlight">
                     {Object.entries(vals ?? {})
                       .map(([k, v]) => `${k}=${v}`)
                       .join(" · ")}
@@ -262,7 +262,7 @@ function QualityGateSection({ gate }: { gate: ObjectiveCardResponse["quality_gat
           <p className="text-xs text-ink-soft dark:text-starlight">{checks.verification.rule}</p>
         )}
         {gate.source && (
-          <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight">{gate.source}</p>
+          <p className="text-xxs font-mono text-ink-mute dark:text-moonlight">{gate.source}</p>
         )}
       </div>
     </LemonCard>
@@ -308,7 +308,7 @@ function ReuseGateSection({ reuse }: { reuse: ObjectiveCardResponse["reuse_gate"
           <span className="font-mono text-ink dark:text-bright">groundedness_threshold</span>
           <LemonTag colour="sun">{reuse.groundedness_threshold}</LemonTag>
           {reuse.env_override && (
-            <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+            <span className="text-xxs font-mono text-ink-mute dark:text-moonlight">
               env override {reuse.env_override}
             </span>
           )}
@@ -361,7 +361,7 @@ export function ObjectiveCard() {
               this page.
             </p>
             {data?.generated_at && (
-              <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+              <p className="text-xxs font-mono text-ink-mute dark:text-moonlight">
                 generated {new Date(data.generated_at).toLocaleString()}
               </p>
             )}

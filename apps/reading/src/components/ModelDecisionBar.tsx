@@ -215,7 +215,7 @@ export default function ModelDecisionBar({
       aria-label="per-prompt model decision"
     >
       <div className="flex items-center gap-2">
-        <span className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+        <span className="text-xs uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
           model
         </span>
         <select
@@ -250,7 +250,7 @@ export default function ModelDecisionBar({
         {selectedProviderBalance && (
           <span
             data-testid="selected-provider-balance"
-            className="rounded-full bg-ice-2 px-2 py-0.5 text-[11px] text-success dark:bg-charcoal-1"
+            className="rounded-full bg-ice-2 px-2 py-0.5 text-xs text-success dark:bg-charcoal-1"
           >
             key remaining {selectedProviderBalance}
           </span>
@@ -260,7 +260,7 @@ export default function ModelDecisionBar({
       {projection.pricing_status === "unknown" && (
         <span
           data-testid="pricing-unknown"
-          className="text-[11px] text-sun"
+          className="text-xs text-sun"
           role="status"
         >
           pricing unknown for the chosen model
@@ -273,7 +273,7 @@ export default function ModelDecisionBar({
         aria-label="budget bar"
       >
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+          <span className="text-xs uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
             budget
           </span>
           {budgetPct == null ? (
@@ -341,7 +341,7 @@ export default function ModelDecisionBar({
           aria-label="fallback plan"
         >
           <div className="mb-1 flex items-baseline justify-between gap-3">
-            <span className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+            <span className="text-xs uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
               fallback plan
             </span>
             <span
@@ -373,7 +373,7 @@ export default function ModelDecisionBar({
                 <span className="font-mono text-ink dark:text-bright">
                   {fallbackProjectionLabel(route.projection)}
                 </span>
-                <span className="col-span-2 mt-0.5 text-[11px] text-shadow-1 dark:text-moonlight">
+                <span className="col-span-2 mt-0.5 text-xs text-shadow-1 dark:text-moonlight">
                   {route.registered ? "registered" : "not registered"} ·{" "}
                   {executionLabel(route.execution_status)}
                 </span>
@@ -386,7 +386,7 @@ export default function ModelDecisionBar({
       {projection.notes.length > 0 && (
         <ul
           data-testid="projection-notes"
-          className="text-[11px] text-shadow-1 dark:text-moonlight"
+          className="text-xs text-shadow-1 dark:text-moonlight"
         >
           {projection.notes.slice(0, 2).map((note, index) => (
             <li key={`${index}:${note}`}>{note}</li>

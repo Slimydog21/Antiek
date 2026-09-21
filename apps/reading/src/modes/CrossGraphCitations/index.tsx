@@ -213,7 +213,7 @@ export default function CrossGraphCitations() {
                     {c.referencing_user_id}/{c.referencing_investigation_id}{" "}
                     → {c.referenced_user_id}/{c.referenced_note_id}
                   </p>
-                  <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                  <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                     {c.reference_id} · {c.cited_at}
                     {c.federated_substrate_id ? (
                       <> · federated: {c.federated_substrate_id}</>
@@ -238,7 +238,7 @@ function Row({
 }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+      <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
         {label}
         {required && <span className="text-emperor ml-0.5">*</span>}
       </label>

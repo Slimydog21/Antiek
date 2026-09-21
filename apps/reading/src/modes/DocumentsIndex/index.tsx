@@ -101,7 +101,7 @@ export default function DocumentsIndex() {
                 <p className="text-base font-serif text-ink dark:text-bright">
                   {counts[t - 1]}
                 </p>
-                <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+                <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
                   Tier {t}
                 </p>
               </div>
@@ -168,13 +168,13 @@ export default function DocumentsIndex() {
                       <p className="font-serif text-ink dark:text-bright truncate">
                         {r.title ?? r.document_id}
                       </p>
-                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
                         {r.document_id}
                         {r.document_type && <> · {r.document_type}</>}
                         {r.content_class && <> · {r.content_class}</>}
                       </p>
                       {r.source_uri && (
-                        <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight truncate">
+                        <p className="text-xxs font-mono text-ink-mute dark:text-moonlight truncate">
                           {r.source_uri}
                         </p>
                       )}
@@ -186,11 +186,11 @@ export default function DocumentsIndex() {
                   header: "Investigation",
                   render: (r) =>
                     r.investigation_id ? (
-                      <span className="font-mono text-[12px] text-ink-soft dark:text-starlight">
+                      <span className="font-mono text-xs text-ink-soft dark:text-starlight">
                         {r.investigation_id.slice(0, 12)}
                       </span>
                     ) : (
-                      <span className="font-mono text-[11px] text-ink-mute dark:text-moonlight italic">
+                      <span className="font-mono text-xs text-ink-mute dark:text-moonlight italic">
                         unassigned
                       </span>
                     ),
@@ -203,7 +203,7 @@ export default function DocumentsIndex() {
                     <LemonTag
                       colour={
                         r.source_tier <= 2
-                          ? "aurora"
+                          ? "success"
                           : r.source_tier <= 4
                             ? "muted"
                             : "sun"

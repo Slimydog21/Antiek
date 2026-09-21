@@ -259,7 +259,7 @@ export default function TalkToBook({
       >
         Thought partner
         {turnCount > 0 && (
-          <span className="rounded-full bg-white/25 px-1.5 text-[11px] font-mono dark:bg-ink/15" data-testid="talk-turn-count">
+          <span className="rounded-full bg-white/25 px-1.5 text-xs font-mono dark:bg-ink/15" data-testid="talk-turn-count">
             {turnCount}
           </span>
         )}
@@ -274,7 +274,7 @@ export default function TalkToBook({
       aria-label="Thought partner for this book"
     >
       <header className="flex items-center justify-between gap-2 border-b border-rule dark:border-charcoal-1 px-3 py-2">
-        <span className="text-[13px] font-serif text-ink dark:text-bright truncate">
+        <span className="text-sm font-serif text-ink dark:text-bright truncate">
           Thought partner · “{title ?? "this book"}”
         </span>
         <div className="flex items-center gap-2 shrink-0">
@@ -283,7 +283,7 @@ export default function TalkToBook({
               type="button"
               onClick={thread.reset}
               disabled={selectedDispatchBlocked}
-              className="min-h-11 px-2 text-[11px] font-mono text-shadow-1 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-moonlight sm:min-h-0 sm:px-0"
+              className="min-h-11 px-2 text-xs font-mono text-shadow-1 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-moonlight sm:min-h-0 sm:px-0"
               title={selectedDispatchBlocked
                 ? "Resolve the pending model operation before clearing"
                 : "Clear the conversation"}
@@ -295,7 +295,7 @@ export default function TalkToBook({
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Close"
-            className="min-h-11 min-w-11 text-[13px] font-mono text-ink hover:opacity-70 dark:text-bright sm:min-h-0 sm:min-w-0"
+            className="min-h-11 min-w-11 text-sm font-mono text-ink hover:opacity-70 dark:text-bright sm:min-h-0 sm:min-w-0"
           >
             ✕
           </button>
@@ -312,7 +312,7 @@ export default function TalkToBook({
               type="button"
               onClick={() => thread.setActiveBranch(b.branch_id)}
               aria-pressed={b.branch_id === thread.activeBranchId}
-              className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-mono ${
+              className={`shrink-0 rounded px-2 py-0.5 text-xs font-mono ${
                 b.branch_id === thread.activeBranchId
                   ? "bg-ink text-white dark:bg-bright dark:text-ink"
                   : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4"
@@ -326,7 +326,7 @@ export default function TalkToBook({
 
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 flex flex-col gap-3">
         {thread.messages.length === 0 && (
-          <p className="text-[13px] text-shadow-1 dark:text-moonlight italic">
+          <p className="text-sm text-shadow-1 dark:text-moonlight italic">
             Same thought partner as Surface E — grounded on this book's passages. Answers cite pages; click a citation to jump there.</p>
         )}
         {thread.messages.map((m) => (
@@ -341,7 +341,7 @@ export default function TalkToBook({
             />
             {m.answer === null && m.operation_id && m.model_operation_state && (
               <div className="mt-2 rounded-md border border-sun-deep/40 bg-sun/10 p-2" role="status" aria-live="polite">
-                <p className="text-[12px] text-ink dark:text-bright">
+                <p className="text-xs text-ink dark:text-bright">
                   {m.model_operation_state === "prepared"
                     ? "This model request is reserved but not sent. Release it before retrying."
                     : m.model_operation_state === "settlement_pending"
@@ -380,17 +380,17 @@ export default function TalkToBook({
           </div>
         ))}
         {pending && (
-          <p className="text-[12px] text-shadow-1 dark:text-moonlight italic" role="status">
+          <p className="text-xs text-shadow-1 dark:text-moonlight italic" role="status">
             Reading the book…
           </p>
         )}
         {error && (
-          <p className="text-[13px] text-emperor" role="alert">
+          <p className="text-sm text-emperor" role="alert">
             {error}
           </p>
         )}
         {operationError && (
-          <p className="text-[13px] text-emperor" role="alert">{operationError}</p>
+          <p className="text-sm text-emperor" role="alert">{operationError}</p>
         )}
       </div>
 
@@ -402,7 +402,7 @@ export default function TalkToBook({
         className="flex flex-col gap-2 border-t border-rule px-3 py-2 dark:border-charcoal-1"
       >
         <div ref={selectorRef}>
-          <label className="mb-1 block text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          <label className="mb-1 block text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
             Model for this answer
           </label>
           <ModelUsagePicker
@@ -439,7 +439,7 @@ export default function TalkToBook({
             size="sm"
             className="[&_button]:min-h-11 sm:[&_button]:min-h-7"
           />
-          <p className="mt-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight" aria-live="polite">
+          <p className="mt-1 text-xxs font-mono text-shadow-1 dark:text-moonlight" aria-live="polite">
             {modelsState === "loading" && "Loading your models…"}
             {modelsState === "failed" && "Your models couldn’t load. Default is still available."}
             {modelChoice && selectedModelEligible && `Requested: ${selectedModel?.display_name} · ${modelChoice.model_id}`}
@@ -456,7 +456,7 @@ export default function TalkToBook({
             placeholder="Ask about this book…"
             aria-label="Question for this book"
             rows={2}
-            className="min-w-0 flex-1 resize-none rounded-md border border-rule bg-ice-1 px-2 py-1.5 text-[13px] text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+            className="min-w-0 flex-1 resize-none rounded-md border border-rule bg-ice-1 px-2 py-1.5 text-sm text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -508,8 +508,8 @@ function TalkMessageView({
   return (
     <div className="flex flex-col gap-1.5">
       {/* The reader's question — visibly user-sourced. */}
-      <p className="text-[13px] font-serif text-ink dark:text-bright">
-        <span className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-0.5">
+      <p className="text-sm font-serif text-ink dark:text-bright">
+        <span className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-0.5">
           you
         </span>
         {message.question}
@@ -517,19 +517,19 @@ function TalkMessageView({
       {message.answer !== null && (
         <div className="rounded-md bg-ice-2 dark:bg-charcoal-1 px-2.5 py-2">
           <span
-            className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-0.5"
+            className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-0.5"
             data-testid="talk-to-book-shape"
           >
             {message.shape
               ? `thought partner · ${message.shape}`
               : "thought partner · this book"}
           </span>
-          <p className="text-[13px] text-ink dark:text-bright whitespace-pre-wrap leading-relaxed">
+          <p className="text-sm text-ink dark:text-bright whitespace-pre-wrap leading-relaxed">
             {message.answer}
           </p>
 
           {modelReceipt?.actual_provider_id && modelReceipt.actual_model_id && (
-            <p className="mt-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight" data-testid="talk-model-receipt">
+            <p className="mt-1 text-xxs font-mono text-shadow-1 dark:text-moonlight" data-testid="talk-model-receipt">
               Used {modelReceipt.actual_provider_id} · {modelReceipt.actual_model_id}
             </p>
           )}
@@ -537,7 +537,7 @@ function TalkMessageView({
           {message.answer_id && (
             <div className="mt-2 flex items-center gap-2" aria-label="Rate this answer">
               {message.judgment ? (
-                <span className="text-[11px] font-mono text-shadow-1 dark:text-moonlight" role="status">
+                <span className="text-xs font-mono text-shadow-1 dark:text-moonlight" role="status">
                   Marked {message.judgment}
                 </span>
               ) : (
@@ -546,7 +546,7 @@ function TalkMessageView({
                     type="button"
                     onClick={() => void judge("good")}
                     disabled={judging !== null}
-                    className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright disabled:opacity-50"
+                    className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright disabled:opacity-50"
                     aria-label="Mark answer good"
                   >
                     {judging === "good" ? "Saving…" : "Good"}
@@ -555,7 +555,7 @@ function TalkMessageView({
                     type="button"
                     onClick={() => void judge("bad")}
                     disabled={judging !== null}
-                    className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:text-emperor disabled:opacity-50"
+                    className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-emperor disabled:opacity-50"
                     aria-label="Mark answer bad"
                   >
                     {judging === "bad" ? "Saving…" : "Bad"}
@@ -563,18 +563,18 @@ function TalkMessageView({
                 </>
               )}
               {judgmentError && (
-                <span className="text-[11px] text-emperor" role="alert">Couldn’t save judgment.</span>
+                <span className="text-xs text-emperor" role="alert">Couldn’t save judgment.</span>
               )}
             </div>
           )}
           {message.capture_unavailable && (
-            <p className="mt-2 text-[11px] text-sun-deep dark:text-sun" role="status">
+            <p className="mt-2 text-xs text-sun-deep dark:text-sun" role="status">
               Answer delivered, but rating is unavailable because its evidence record could not be saved.
             </p>
           )}
 
           {!message.grounded && (
-            <p className="mt-1 text-[12px] text-sun-deep dark:text-sun italic">
+            <p className="mt-1 text-xs text-sun-deep dark:text-sun italic">
               No readable passages backed this — it isn’t grounded in the book’s text.
             </p>
           )}
@@ -598,7 +598,7 @@ function TalkMessageView({
             <button
               type="button"
               onClick={onBranch}
-              className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+              className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:underline"
               title="Explore a tangent from here"
             >
               ↳ what about that?
@@ -625,7 +625,7 @@ function CitationChip({
           type="button"
           onClick={() => onJumpToPage(citation.page_index as number)}
           title={citation.snippet}
-          className="rounded bg-sun/15 text-sun-deep dark:text-sun px-1.5 py-0.5 text-[11px] font-mono hover:bg-sun/25"
+          className="rounded bg-sun/15 text-sun-deep dark:text-sun px-1.5 py-0.5 text-xs font-mono hover:bg-sun/25"
         >
           p.{(citation.page_index as number) + 1}
         </button>
@@ -637,7 +637,7 @@ function CitationChip({
     <li>
       <span
         title={citation.snippet}
-        className="rounded bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight px-1.5 py-0.5 text-[11px] font-mono italic"
+        className="rounded bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight px-1.5 py-0.5 text-xs font-mono italic"
       >
         in the book (page not pinpointed)
       </span>

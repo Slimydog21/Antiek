@@ -150,7 +150,7 @@ function DriverColumn({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-semibold text-ink-soft">{label}</span>
+      <span className="text-xs font-semibold text-ink-soft">{label}</span>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -158,7 +158,7 @@ function DriverColumn({
         placeholder="one per line"
         className="px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded font-serif focus:outline-none focus:ring-2 focus:ring-sun"
       />
-      {hint && <span className="text-[10px] text-ink-mute leading-tight">{hint}</span>}
+      {hint && <span className="text-xxs text-ink-mute leading-tight">{hint}</span>}
     </div>
   );
 }

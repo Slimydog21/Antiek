@@ -359,7 +359,7 @@ export default function BookReader() {
         <p className="font-serif text-sm text-ink dark:text-bright mb-1 truncate">
           {book.title ?? documentId}
         </p>
-        <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight mb-3 truncate">
+        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-3 truncate">
           {book.author ?? "Unknown author"}
         </p>
         <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={setPageIndex} />
@@ -424,7 +424,7 @@ export default function BookReader() {
                falling through to an empty hosted-body view. */
             <div
               data-arxiv-link-unavailable
-              className="text-[13px] border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright"
+              className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright"
             >
               This paper is read on arXiv, but its arXiv link isn’t available
               right now. Try again later or search arXiv for the title above.
@@ -432,7 +432,7 @@ export default function BookReader() {
           ) : (
             <>
               {!ownerReadable && (
-                <div className="text-[13px] border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
+                <div className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
                   {book.servability === "taken_down"
                     ? "This title has been removed and is no longer available to read."
                     : "Preview only — this title isn’t licensed for full reading. You’re seeing a short snippet and its metadata."}
@@ -527,7 +527,7 @@ export default function BookReader() {
               >
                 ← Previous
               </LemonButton>
-              <span className="text-[12px] font-mono text-shadow-1 dark:text-moonlight">
+              <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                 {page ? `Page ${page.pageNumber}` : "—"} of {pages.length}
               </span>
               <LemonButton

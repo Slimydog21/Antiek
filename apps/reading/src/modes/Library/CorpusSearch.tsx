@@ -171,14 +171,14 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
 
       {/* Honest signal: SAY what biased these results. */}
       {signal && (
-        <p className="mt-2 text-[12px] font-serif text-shadow-1 dark:text-moonlight" data-testid="corpus-search-signal">
+        <p className="mt-2 text-xs font-serif text-shadow-1 dark:text-moonlight" data-testid="corpus-search-signal">
           Showing {signal}
           {themeContext && themeContext.length > 0 ? ", leaning on your active research" : ""}.
         </p>
       )}
 
       {error && (
-        <p className="mt-2 text-[13px] text-emperor" role="alert">
+        <p className="mt-2 text-sm text-emperor" role="alert">
           {error}
         </p>
       )}
@@ -186,7 +186,7 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
       {hits !== null && (
         <div className="mt-2">
           {hits.length === 0 ? (
-            <p className="text-[13px] text-shadow-1 dark:text-moonlight italic">
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
               Nothing in your corpus matched. Try different words.
             </p>
           ) : (
@@ -198,19 +198,19 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
                     onClick={() => onOpen(h.document_id, h.page_resolved ? h.page_index : null)}
                     className="w-full text-left rounded px-2 py-1.5 hover:bg-ice-3 dark:hover:bg-charcoal-1"
                   >
-                    <span className="block text-[13px] font-serif text-ink dark:text-bright truncate">
+                    <span className="block text-sm font-serif text-ink dark:text-bright truncate">
                       {h.document_title ?? h.document_id}
                       {h.page_resolved && h.page_index !== null ? (
-                        <span className="ml-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                        <span className="ml-2 text-xs font-mono text-shadow-1 dark:text-moonlight">
                           p.{h.page_index + 1}
                         </span>
                       ) : (
-                        <span className="ml-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight italic">
+                        <span className="ml-2 text-xs font-mono text-shadow-1 dark:text-moonlight italic">
                           open the book
                         </span>
                       )}
                     </span>
-                    <span className="block text-[12px] text-shadow-1 dark:text-moonlight line-clamp-2">
+                    <span className="block text-xs text-shadow-1 dark:text-moonlight line-clamp-2">
                       {h.snippet}
                     </span>
                   </button>
@@ -221,7 +221,7 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
           <button
             type="button"
             onClick={clear}
-            className="mt-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+            className="mt-2 text-xs font-mono text-shadow-1 dark:text-moonlight hover:underline"
           >
             clear search
           </button>

@@ -89,7 +89,7 @@ export function ProjectTypeField({ value, onChange, disabled }: ProjectTypeField
             disabled={disabled}
             onClick={() => commit(p.label)}
             className={
-              "rounded-full border px-2 py-0.5 text-[11px] disabled:opacity-60 " +
+              "rounded-full border px-2 py-0.5 text-xs disabled:opacity-60 " +
               (resolveKind(text) === p.kind && text.trim()
                 ? "border-sun-deep bg-sun-deep/15 text-sun-deep"
                 : "border-rule text-ink-soft hover:border-sun-deep dark:border-charcoal-1")

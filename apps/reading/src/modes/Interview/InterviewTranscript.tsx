@@ -101,7 +101,7 @@ export default function InterviewTranscript({
 
   if (!interviewId && !seedTurns) {
     return (
-      <div className="h-full p-3 bg-ice-0 dark:bg-charcoal-2 text-[12px] font-mono italic text-ink-mute dark:text-moonlight">
+      <div className="h-full p-3 bg-ice-0 dark:bg-charcoal-2 text-xs font-mono italic text-ink-mute dark:text-moonlight">
         No interview loaded.
       </div>
     );
@@ -117,17 +117,17 @@ export default function InterviewTranscript({
           <button
             type="button"
             onClick={() => void reload()}
-            className="text-[10px] font-mono text-sun-deep dark:text-sun hover:underline"
+            className="text-xxs font-mono text-sun-deep dark:text-sun hover:underline"
           >
             refresh
           </button>
         )}
       </header>
       {error && (
-        <p className="text-[12px] text-emperor font-mono mb-2">{error}</p>
+        <p className="text-xs text-emperor font-mono mb-2">{error}</p>
       )}
       {turns.length === 0 ? (
-        <p className="text-[12px] italic text-ink-mute dark:text-moonlight font-serif">
+        <p className="text-xs italic text-ink-mute dark:text-moonlight font-serif">
           No turns recorded yet.
         </p>
       ) : (
@@ -136,10 +136,10 @@ export default function InterviewTranscript({
             const correctable = t.role === "informant" && t.pending === true;
             const isEditing = editingIndex === i;
             return (
-              <li key={i} className="font-serif text-[14px] leading-relaxed">
+              <li key={i} className="font-serif text-sm leading-relaxed">
                 <span
                   className={
-                    "block font-mono text-[10px] uppercase tracking-wider " +
+                    "block font-mono text-xxs uppercase tracking-wider " +
                     (t.role === "interviewer"
                       ? "text-sun-deep dark:text-sun"
                       : "text-ink-soft")
@@ -163,20 +163,20 @@ export default function InterviewTranscript({
                       value={draft}
                       onChange={(e) => setDraft(e.target.value)}
                       rows={3}
-                      className="w-full font-serif text-[14px] p-2 border border-ink-mute rounded bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright"
+                      className="w-full font-serif text-sm p-2 border border-ink-mute rounded bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright"
                     />
                     <div className="mt-1 flex gap-2">
                       <button
                         type="button"
                         onClick={() => void saveEdit(i)}
-                        className="text-[10px] font-mono text-sun-deep dark:text-sun hover:underline"
+                        className="text-xxs font-mono text-sun-deep dark:text-sun hover:underline"
                       >
                         save correction
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditingIndex(null)}
-                        className="text-[10px] font-mono text-ink-mute hover:underline"
+                        className="text-xxs font-mono text-ink-mute hover:underline"
                       >
                         cancel
                       </button>
@@ -189,7 +189,7 @@ export default function InterviewTranscript({
                       <button
                         type="button"
                         onClick={() => beginEdit(i, t.text)}
-                        className="ml-2 text-[10px] font-mono text-sun-deep dark:text-sun hover:underline align-middle"
+                        className="ml-2 text-xxs font-mono text-sun-deep dark:text-sun hover:underline align-middle"
                       >
                         correct
                       </button>

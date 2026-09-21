@@ -200,14 +200,14 @@ export function ProductsLauncher({
       title="More"
       size="md"
       footer={
-        <div className="flex items-center justify-between text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+        <div className="flex items-center justify-between text-xs font-mono text-shadow-1 dark:text-moonlight">
           <span>Esc to close · ⌘K for deep search</span>
           <span>{MODE_TAXONOMY.length} surfaces</span>
         </div>
       }
     >
       <div className="flex flex-col gap-3">
-        <p className="text-[12px] text-shadow-1 dark:text-moonlight -mt-1">
+        <p className="text-xs text-shadow-1 dark:text-moonlight -mt-1">
           Deep modes for each workflow and the operator, trust, and settings
           surfaces. Greyed entries are not built yet and are shown honestly.
         </p>
@@ -234,7 +234,7 @@ export function ProductsLauncher({
               mode). Always shown, never filtered, so the front door is
               never buried. */}
           <div>
-            <div className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
+            <div className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
               Home
             </div>
             <button
@@ -246,7 +246,7 @@ export function ProductsLauncher({
               }}
               className="w-full text-left px-2 py-1.5 rounded flex items-center gap-2 hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
             >
-              <span className="flex-1 min-w-0 truncate text-[13px]">
+              <span className="flex-1 min-w-0 truncate text-sm">
                 Antiek home — what you can do, and where to start
               </span>
             </button>
@@ -260,7 +260,7 @@ export function ProductsLauncher({
             <>
               {wfGroups.length > 0 && (
                 <div>
-                  <div className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
+                  <div className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
                     Open a product — or go deeper
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
@@ -292,7 +292,7 @@ export function ProductsLauncher({
                             // workflow in a window"; an eligible mode is "Open <Mode>
                             // in a window" with no "workflow" token).
                             aria-label={`Open ${g.label} workflow in a window`}
-                            className="w-full text-left font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright cursor-pointer flex items-center gap-1.5"
+                            className="w-full text-left font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright cursor-pointer flex items-center gap-1.5"
                           >
                             <span className="flex-1 min-w-0 truncate">{g.label}</span>
                             <span aria-hidden="true" className="shrink-0 normal-case tracking-normal opacity-70">
@@ -317,11 +317,11 @@ export function ProductsLauncher({
                                   (isActive(m.id) ? " bg-sun/10 dark:bg-sun/5" : "")
                                 }
                               >
-                                <span className="flex-1 min-w-0 truncate text-[13px]">
+                                <span className="flex-1 min-w-0 truncate text-sm">
                                   {m.label}
                                 </span>
                                 {!m.built && (
-                                  <LemonTag colour="muted" className="shrink-0 text-[10px]">
+                                  <LemonTag colour="muted" className="shrink-0 text-xxs">
                                     not yet
                                   </LemonTag>
                                 )}
@@ -333,7 +333,7 @@ export function ProductsLauncher({
                                   onClick={() => openModeInWindow(m)}
                                   title={`Open ${m.label} in a floating window over the scene`}
                                   aria-label={`Open ${m.label} in a window`}
-                                  className="shrink-0 px-1.5 py-1 rounded text-[12px] text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
+                                  className="shrink-0 px-1.5 py-1 rounded text-xs text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
                                 >
                                   ⊞
                                 </button>
@@ -349,7 +349,7 @@ export function ProductsLauncher({
 
               {runModes.length > 0 && (
                 <div>
-                  <div className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
+                  <div className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
                     Run & settings
                   </div>
                   <ul className="space-y-0.5 grid grid-cols-1 sm:grid-cols-2 gap-x-8">
@@ -369,11 +369,11 @@ export function ProductsLauncher({
                             (isActive(m.id) ? " bg-sun/10 dark:bg-sun/5" : "")
                           }
                         >
-                          <span className="flex-1 min-w-0 truncate text-[13px]">
+                          <span className="flex-1 min-w-0 truncate text-sm">
                             {m.label}
                           </span>
                           {!m.built && (
-                            <LemonTag colour="muted" className="shrink-0 text-[10px]">
+                            <LemonTag colour="muted" className="shrink-0 text-xxs">
                               not yet
                             </LemonTag>
                           )}
@@ -385,7 +385,7 @@ export function ProductsLauncher({
                             onClick={() => openModeInWindow(m)}
                             title={`Open ${m.label} in a floating window over the scene`}
                             aria-label={`Open ${m.label} in a window`}
-                            className="shrink-0 px-1.5 py-1 rounded text-[12px] text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
+                            className="shrink-0 px-1.5 py-1 rounded text-xs text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
                           >
                             ⊞
                           </button>

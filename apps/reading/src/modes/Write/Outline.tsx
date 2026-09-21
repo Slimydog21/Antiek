@@ -477,7 +477,7 @@ function SectionCard({
           <span className="mr-2 text-xs text-ink-mute dark:text-moonlight">{sectionNumber}.</span>
           {section.title || "(untitled section)"}
         </h3>
-        {busy && <span className="text-[11px] text-ink-mute dark:text-moonlight">working…</span>}
+        {busy && <span className="text-xs text-ink-mute dark:text-moonlight">working…</span>}
       </header>
 
       {/* Blocks — text + provenance only, never an id (SPR-07 M2 no-UUID gate). */}
@@ -501,10 +501,10 @@ function SectionCard({
               className="flex cursor-grab items-start gap-2 rounded border-l-2 border-sun-deep/50 bg-sun-deep/5 py-1.5 pl-2 pr-2 active:cursor-grabbing"
               title="Drag to reorder"
             >
-              <span className="mt-1 shrink-0 font-mono text-[10px] font-bold uppercase tracking-wider text-sun-deep">
+              <span className="mt-1 shrink-0 font-mono text-xxs font-bold uppercase tracking-wider text-sun-deep">
                 {provenanceLabel(b)}
               </span>
-              <p className="min-w-0 flex-1 font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
+              <p className="min-w-0 flex-1 font-serif text-sm leading-relaxed text-ink dark:text-bright">
                 {blockDisplayText(b)}
               </p>
             </li>
@@ -636,7 +636,7 @@ function SectionCard({
           {genResult?.status === "generated" &&
             genResult.unsupported_paragraphs &&
             genResult.unsupported_paragraphs.length > 0 && (
-              <p className="mb-2 text-[11px] text-shadow-1 dark:text-moonlight">
+              <p className="mb-2 text-xs text-shadow-1 dark:text-moonlight">
                 {genResult.unsupported_paragraphs.length} paragraph(s) flagged
                 unsupported — verify before keeping.
               </p>
@@ -650,7 +650,7 @@ function SectionCard({
               // SPR-02: persist coarse prose_text on edit (mirrors the shape
               // CreationStudio uses), debounced, with an honest save indicator.
               onContentChange={handleContentChange}
-              className="font-serif text-[15px] leading-relaxed text-ink dark:text-bright"
+              className="font-serif text-base leading-relaxed text-ink dark:text-bright"
             />
           </div>
           {/* The SHARED FloatMenu (imported), extended with Write's rewrite
@@ -675,7 +675,7 @@ function SectionCard({
               edits and trains NO model; that is gated in EditCapture.ts.) */}
           {EDIT_CAPTURE_POLICY.capture && (
             <div
-              className="mt-2 flex items-center gap-2 text-[10px]"
+              className="mt-2 flex items-center gap-2 text-xxs"
               role="status"
               aria-live="polite"
             >

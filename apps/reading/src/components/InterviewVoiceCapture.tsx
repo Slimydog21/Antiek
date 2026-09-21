@@ -203,7 +203,7 @@ export default function InterviewVoiceCapture({
     <div className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-serif text-ink dark:text-bright">Voice capture</p>
-        <span className="text-[11px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+        <span className="text-xs font-mono text-shadow-1 dark:text-moonlight uppercase">
           {state.replace(/_/g, " ")}
         </span>
       </div>

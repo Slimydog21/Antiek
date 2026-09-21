@@ -42,14 +42,14 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
       <header className="flex items-start justify-between gap-2">
         <p className="line-clamp-3 text-sm text-ink dark:text-bright">{research.sub_question}</p>
         <span
-          className={`shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] ${runStyle.textClass}`}
+          className={`shrink-0 text-xxs font-semibold uppercase tracking-[0.12em] ${runStyle.textClass}`}
           aria-label="research state"
         >
           {runStyle.label}
         </span>
       </header>
 
-      <div className="flex items-center justify-between text-[11px] text-shadow-1 dark:text-moonlight">
+      <div className="flex items-center justify-between text-xs text-shadow-1 dark:text-moonlight">
         <span className="font-mono">${costUsd.toFixed(4)}</span>
         <span className="truncate font-mono opacity-60">{research.investigation_id.slice(-12)}</span>
       </div>

@@ -26,7 +26,7 @@ export default function HouseSlot({ promo, onOpen }: HouseSlotProps) {
     // The "From the library" tag is the SINGLE provenance label here (and the
     // text the AdBorder / WindowAdBorder never-blank guards assert against).
     return (
-      <div className="flex items-center justify-center text-[11px] font-mono text-ink-mute dark:text-moonlight">
+      <div className="flex items-center justify-center text-xs font-mono text-ink-mute dark:text-moonlight">
         <LemonTag colour="muted">From the library</LemonTag>
       </div>
     );
@@ -53,7 +53,7 @@ export default function HouseSlot({ promo, onOpen }: HouseSlotProps) {
         <span className="font-serif text-sm text-ink dark:text-bright truncate block">
           {promo.title}
         </span>
-        <span className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate block">
+        <span className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate block">
           {promo.author ?? "Unknown author"}
         </span>
       </span>

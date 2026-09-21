@@ -57,7 +57,7 @@ export default function ResearchArtifactReceipt({
           <h2 className="font-serif text-lg text-ink dark:text-bright">
             Research artifact
           </h2>
-          <p className="mt-0.5 text-[12px] leading-relaxed text-shadow-1 dark:text-moonlight">
+          <p className="mt-0.5 text-xs leading-relaxed text-shadow-1 dark:text-moonlight">
             {documentId ? `From ${documentId}` : "From reading"}
             {typeof pageIndex === "number" ? `, page ${pageIndex + 1}` : ""}
           </p>
@@ -72,10 +72,10 @@ export default function ResearchArtifactReceipt({
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">
+                    <p className="font-mono text-xs uppercase text-shadow-2 dark:text-moonlight">
                       {path.label}
                     </p>
-                    <p className="truncate font-mono text-[12px] text-ink dark:text-bright" title={path.value}>
+                    <p className="truncate font-mono text-xs text-ink dark:text-bright" title={path.value}>
                       {basename(path.value)}
                     </p>
                   </div>
@@ -88,7 +88,7 @@ export default function ResearchArtifactReceipt({
                         )}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-[12px] font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
+                        className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-xs font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
                       >
                         Open
                       </a>

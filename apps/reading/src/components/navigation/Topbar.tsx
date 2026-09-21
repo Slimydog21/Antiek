@@ -86,7 +86,7 @@ export function Topbar() {
     >
       {/* breadcrumbs */}
       <nav aria-label="Breadcrumb" className="flex-1 min-w-0">
-        <ol className="flex items-center gap-1.5 text-[12.5px] font-mono text-ink-soft dark:text-moonlight overflow-x-auto whitespace-nowrap">
+        <ol className="flex items-center gap-1.5 text-xs font-mono text-ink-soft dark:text-moonlight overflow-x-auto whitespace-nowrap">
           {crumbs.map((c, i) => (
             <li key={i} className="flex items-center gap-1.5">
               {i > 0 && (

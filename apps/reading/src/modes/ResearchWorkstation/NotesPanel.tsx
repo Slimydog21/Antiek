@@ -243,17 +243,15 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
     <li className="flex flex-col gap-1.5 border-b border-rule pb-2.5 last:border-b-0 dark:border-charcoal-1">
       <div className="flex items-start gap-2.5">
         <span
-          className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${
-            note.kind === "question" ? "bg-sun-deep dark:bg-sun" : "bg-aurora"
-          }`}
+          className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-aurora"
           aria-hidden="true"
         />
         <div className="min-w-0 flex-1">
-          <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
+          <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright">
             {note.kind === "question" ? <span className="italic">Open question: </span> : null}
             {text}
           </p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-shadow-1 dark:text-moonlight">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-shadow-1 dark:text-moonlight">
             {note.confidence && note.kind === "insight" && (
               <span className="font-mono">{confidenceWord(note.confidence)}</span>
             )}
@@ -281,7 +279,7 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
           </div>
 
           {showChange && note.previousText && (
-            <p className="mt-1.5 border-l-2 border-rule pl-2 font-serif text-[12px] italic leading-relaxed text-ink-mute dark:border-charcoal-1 dark:text-moonlight">
+            <p className="mt-1.5 border-l-2 border-rule pl-2 font-serif text-xs italic leading-relaxed text-ink-mute dark:border-charcoal-1 dark:text-moonlight">
               was: {note.previousText}
             </p>
           )}
@@ -297,21 +295,21 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
 function ChallengeOutcome({ state, onRetry }: { state: ChallengeState; onRetry: () => void }) {
   if (state.kind === "changed") {
     return (
-      <p className="mt-1.5 font-mono text-[11px] text-success" role="status">
+      <p className="mt-1.5 font-mono text-xs text-success" role="status">
         the note changed in light of your challenge
       </p>
     );
   }
   if (state.kind === "unchanged") {
     return (
-      <p className="mt-1.5 font-mono text-[11px] text-shadow-1 dark:text-moonlight" role="status">
+      <p className="mt-1.5 font-mono text-xs text-shadow-1 dark:text-moonlight" role="status">
         a newer revision already settled this — the note is unchanged
       </p>
     );
   }
   if (state.kind === "escalated") {
     return (
-      <p className="mt-1.5 font-mono text-[11px] text-sun-deep dark:text-sun" role="status">
+      <p className="mt-1.5 font-mono text-xs text-sun-deep dark:text-sun" role="status">
         this needs more research — saved as an open question to chase
       </p>
     );

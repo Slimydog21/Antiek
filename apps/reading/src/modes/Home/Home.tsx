@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 
 import BrainMascot from "../../brand/BrainMascot";
 import WorkflowArt from "../../brand/WorkflowArt";
+import { press } from "../../design/motion";
 import GlassSurface from "../../shell/GlassSurface";
 import {
   WORKFLOWS,
@@ -67,7 +68,7 @@ export function Home() {
           <h1 className="mt-4 font-serif text-3xl font-semibold text-ink dark:text-bright">
             One workspace for everything you read, research, and write.
           </h1>
-          <p className="mt-3 max-w-xl font-serif text-[15px] leading-relaxed text-shadow-1 dark:text-moonlight">
+          <p className="mt-3 max-w-xl font-serif text-base leading-relaxed text-shadow-1 dark:text-moonlight">
             Antiek keeps every book, note, and finding on one substrate, so a
             question you ask in research can pull from a book you read last
             month and land in a draft you are writing now. Pick where you want
@@ -91,9 +92,9 @@ export function Home() {
                 onClick={() => navigate(meta.defaultRoute)}
                 className={
                   "group flex flex-col items-start rounded-hog border-edge border-sun " +
-                  "bg-ice-0 p-5 text-left shadow-z1 transition " +
-                  "hover:shadow-z2 hover:-translate-y-0.5 " +
-                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun " +
+                  "bg-ice-0 p-5 text-left shadow-z1 dark:shadow-z1-night " +
+                  press +
+                  " focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun " +
                   "dark:bg-charcoal-2"
                 }
               >
@@ -107,7 +108,7 @@ export function Home() {
                 <span className="font-serif text-lg font-semibold text-ink dark:text-bright">
                   {meta.label}
                 </span>
-                <span className="mt-1 text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
+                <span className="mt-1 text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
                   {DOOR_VERB[wf]}
                 </span>
               </button>
@@ -130,7 +131,7 @@ export function Home() {
               <h2 className="font-serif text-lg font-semibold text-ink dark:text-bright">
                 Write someone&rsquo;s biography
               </h2>
-              <p className="mt-1 text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
+              <p className="mt-1 text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
                 Start with a person you want to remember, invite the people who
                 knew them, and gather their voices. The research you do, the
                 draft you write, and the voices you collect all live together
@@ -142,8 +143,9 @@ export function Home() {
                 onClick={() => navigate("/biography")}
                 className={
                   "mt-3 inline-flex items-center rounded-hog border-edge border-sun " +
-                  "bg-sun px-3 py-1.5 text-[13px] font-semibold text-ink shadow-z1 transition " +
-                  "hover:shadow-z2 focus-visible:outline focus-visible:outline-2 " +
+                  "bg-sun px-3 py-1.5 text-sm font-semibold text-ink shadow-z1 dark:shadow-z1-night " +
+                  press +
+                  " focus-visible:outline focus-visible:outline-2 " +
                   "focus-visible:outline-offset-2 focus-visible:outline-ink"
                 }
               >

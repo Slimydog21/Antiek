@@ -113,7 +113,7 @@ function ContributionInviteCta({
         {busy ? PUBLIC_LANE_LABELS.ctaMintBusy : "Add your memory"}
       </LemonButton>
       {err && (
-        <p className="mt-1 font-serif text-[11px] text-emperor" role="alert">
+        <p className="mt-1 font-serif text-xs text-emperor" role="alert">
           {err}
         </p>
       )}
@@ -211,12 +211,12 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
           className="rounded border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
           data-testid="share-browse-link"
         >
-          <p className="font-serif text-[12px] text-ink-mute dark:text-moonlight">
+          <p className="font-serif text-xs text-ink-mute dark:text-moonlight">
             {PUBLIC_LANE_LABELS.shareBrowseHint}
           </p>
           <Link
             to="/speak/browse"
-            className="mt-1 inline-block font-mono text-[11px] text-sun-deep underline dark:text-sun"
+            className="mt-1 inline-block font-mono text-xs text-sun-deep underline dark:text-sun"
           >
             {PUBLIC_LANE_LABELS.shareBrowseLink}
           </Link>
@@ -247,18 +247,18 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
               <LemonCard elevation="z1">
               <div className="flex items-center justify-between gap-3">
                 {visitorMode ? (
-                  <span className="font-serif text-[16px] text-ink dark:text-bright">
+                  <span className="font-serif text-base text-ink dark:text-bright">
                     {f.name}
                   </span>
                 ) : (
                   <Link
                     to={`/speak/${f.id}`}
-                    className="font-serif text-[16px] text-ink hover:underline dark:text-bright"
+                    className="font-serif text-base text-ink hover:underline dark:text-bright"
                   >
                     {f.name}
                   </Link>
                 )}
-                <span className="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight">
+                <span className="shrink-0 font-mono text-xxs text-ink-mute dark:text-moonlight">
                   {f.voiceCount === 0
                     ? "no voices yet"
                     : `${f.voiceCount} voice${f.voiceCount === 1 ? "" : "s"}`}
@@ -268,7 +268,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
               {/* M5 — lifecycle honesty. The feed lists public-INTENT projects;
                   FeedItem carries NO "published" flag, so we NEVER claim a
                   project is published. We label it as intended-public only. */}
-              <p className="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              <p className="mt-0.5 font-serif text-xs text-ink-mute dark:text-moonlight">
                 {PUBLIC_LANE_LABELS.intendedPublic}
               </p>
 
@@ -283,7 +283,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
                     <>
                       <ContributionInviteCta projectId={f.id} mode="open" />
                       <p
-                        className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight"
+                        className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight"
                         data-testid={`visitor-cta-note-${f.id}`}
                       >
                         {PUBLIC_LANE_LABELS.visitorCtaNoteLive}
@@ -291,7 +291,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
                     </>
                   ) : (
                     <p
-                      className="font-serif text-[11px] text-ink-mute dark:text-moonlight"
+                      className="font-serif text-xs text-ink-mute dark:text-moonlight"
                       data-testid={`visitor-cta-note-${f.id}`}
                     >
                       {PUBLIC_LANE_LABELS.visitorCtaNote}
@@ -300,7 +300,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
                 ) : (
                   <>
                     <ContributionInviteCta projectId={f.id} />
-                    <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
+                    <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
                       {PUBLIC_LANE_LABELS.ctaOperatorOnly}
                     </p>
                   </>
@@ -321,10 +321,10 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
         role="note"
         aria-label={GATE_PHRASES.publicEcosystem.label}
       >
-        <h3 className="font-serif text-[15px] font-semibold text-ink dark:text-bright">
+        <h3 className="font-serif text-base font-semibold text-ink dark:text-bright">
           {GATE_PHRASES.publicEcosystem.label}
         </h3>
-        <p className="mt-1 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+        <p className="mt-1 font-serif text-sm text-ink-mute dark:text-moonlight">
           {g7Live
             ? PUBLIC_LANE_LABELS.openContributionLive
             : GATE_PHRASES.publicEcosystem.whenGated}
@@ -340,33 +340,33 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
           Option-B — corroboration × source quality, NOT an airtime/ad-duration
           model (see the guard at speakApi.ts releasePayout). */}
       <LemonCard elevation="z1">
-        <h3 className="font-serif text-[15px] font-semibold text-ink dark:text-bright">
+        <h3 className="font-serif text-base font-semibold text-ink dark:text-bright">
           {PUBLIC_LANE_LABELS.explainerHeading}
         </h3>
         <ol className="mt-2 space-y-2">
-          <li className="font-serif text-[13px] text-ink dark:text-bright">
+          <li className="font-serif text-sm text-ink dark:text-bright">
             {PUBLIC_LANE_LABELS.explainerStepFind}
           </li>
           {/* G7 — static, no FE read; distinct from the M2 panel above. */}
-          <li className="font-serif text-[13px] text-ink dark:text-bright">
+          <li className="font-serif text-sm text-ink dark:text-bright">
             {g7Live
               ? PUBLIC_LANE_LABELS.explainerStepOpenContributionLive
               : PUBLIC_LANE_LABELS.explainerStepOpenContribution}
           </li>
           {/* G2 — LIVE: gated future-tense copy vs honest open-state copy. */}
-          <li className="font-serif text-[13px] text-ink dark:text-bright">
+          <li className="font-serif text-sm text-ink dark:text-bright">
             {publishingOpen || (visitorMode && publishingLive)
               ? PUBLIC_LANE_LABELS.publishingOpen
               : GATE_PHRASES.publicSharing.whenGated}
           </li>
           {/* G3 — LIVE: gated future-tense copy vs honest open-state copy. */}
-          <li className="font-serif text-[13px] text-ink dark:text-bright">
+          <li className="font-serif text-sm text-ink dark:text-bright">
             {payoutsOpen || (visitorMode && disbursementLive)
               ? PUBLIC_LANE_LABELS.payoutsOpen
               : GATE_PHRASES.disbursement.whenGated}
           </li>
           <li
-            className="font-serif text-[13px] text-ink dark:text-bright"
+            className="font-serif text-sm text-ink dark:text-bright"
             data-testid="public-lane-synquery-gate"
           >
             {synqueryLive
@@ -374,7 +374,7 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
               : GATE_PHRASES.synquery.whenGated}
           </li>
         </ol>
-        <p className="mt-2 font-serif text-[12px] italic text-ink-mute dark:text-moonlight">
+        <p className="mt-2 font-serif text-xs italic text-ink-mute dark:text-moonlight">
           {PUBLIC_LANE_LABELS.explainerPayoutBasis}
         </p>
       </LemonCard>

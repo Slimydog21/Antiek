@@ -85,7 +85,7 @@ export default function Map() {
               {KEYBOARD_HINTS.map((h) => (
                 <span
                   key={h.label}
-                  className="text-[11px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded"
+                  className="text-xs font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded"
                 >
                   {h.label}: <kbd className="font-mono">{h.key}</kbd>
                 </span>
@@ -111,7 +111,7 @@ export default function Map() {
                       <p className="text-sm font-serif text-ink dark:text-bright">
                         {r.title}
                       </p>
-                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
                         {r.path}
                       </p>
                       <p className="text-xs text-ink-soft dark:text-starlight mt-1">

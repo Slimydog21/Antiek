@@ -169,7 +169,7 @@ export default function Federation() {
                         <button
                           type="button"
                           onClick={() => removePartner(p)}
-                          className="text-[10px] uppercase tracking-wider font-mono text-emperor hover:bg-danger/10 px-1.5 py-0.5 rounded"
+                          className="text-xxs uppercase tracking-wider font-mono text-emperor hover:bg-danger/10 px-1.5 py-0.5 rounded"
                         >
                           remove
                         </button>

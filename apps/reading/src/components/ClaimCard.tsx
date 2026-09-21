@@ -102,7 +102,7 @@ export default function ClaimCard({
           {claim.attribution_region_ids.map((rid) => (
             <span
               key={rid}
-              className="text-[10px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded"
+              className="text-xxs font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded"
               title={rid}
             >
               ↳ {shortenRegionId(rid)}
@@ -114,7 +114,7 @@ export default function ClaimCard({
         <button
           onClick={onChallenge}
           disabled={busy || challenged}
-          className="text-[11px] px-2 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-ice-3 dark:bg-charcoal-1 disabled:text-ink-mute dark:text-moonlight disabled:cursor-not-allowed transition-colors"
+          className="text-xs px-2 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-ice-3 dark:bg-charcoal-1 disabled:text-ink-mute dark:text-moonlight disabled:cursor-not-allowed transition-colors"
         >
           {challenged ? "challenged" : busy ? "…" : "challenge this claim"}
         </button>
@@ -133,7 +133,7 @@ export default function ClaimCard({
               });
             });
           }}
-          className="text-[11px] px-2 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-sun/15 dark:hover:bg-sun/10 transition-colors"
+          className="text-xs px-2 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-sun/15 dark:hover:bg-sun/10 transition-colors"
         >
           add to notebook
         </button>
@@ -151,13 +151,13 @@ export default function ClaimCard({
               });
             });
           }}
-          className="text-[11px] px-2 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-sun/15 dark:hover:bg-sun/10 transition-colors"
+          className="text-xs px-2 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-sun/15 dark:hover:bg-sun/10 transition-colors"
           title="Open as floating inspector panel"
         >
           inspect
         </button>
         {error && (
-          <span className="text-[10px] font-mono text-emperor">{error}</span>
+          <span className="text-xxs font-mono text-emperor">{error}</span>
         )}
       </div>
       {grounding && (
@@ -186,7 +186,7 @@ function GroundingBadge({
 }) {
   if (grounding.result === "pending") {
     return (
-      <div className="text-[11px] font-mono text-shadow-1 dark:text-moonlight italic flex items-center gap-1.5 mt-0.5">
+      <div className="text-xs font-mono text-shadow-1 dark:text-moonlight italic flex items-center gap-1.5 mt-0.5">
         <span className="inline-block h-2 w-2 rounded-full bg-sun animate-pulse" />
         grounding check in flight…
       </div>
@@ -196,7 +196,7 @@ function GroundingBadge({
   if (grounding.result === "passed") {
     const conf = Math.round(grounding.confidence * 100);
     return (
-      <div className="text-[11px] font-mono flex items-center gap-1.5 mt-0.5 text-success">
+      <div className="text-xs font-mono flex items-center gap-1.5 mt-0.5 text-success">
         <span>✓ grounded</span>
         <span className="text-shadow-1 dark:text-moonlight">·</span>
         <button
@@ -224,7 +224,7 @@ function GroundingBadge({
     ambiguous: "ambiguous",
   };
   return (
-    <div className="text-[11px] font-mono flex items-center gap-1.5 mt-0.5">
+    <div className="text-xs font-mono flex items-center gap-1.5 mt-0.5">
       <span className={tone === "red" ? "text-emperor" : "text-sun-deep dark:text-sun"}>⚠ not located</span>
       <span className="text-shadow-1 dark:text-moonlight">·</span>
       <span className={`px-1.5 py-0.5 rounded border ${reasonStyles[tone]}`}>
@@ -247,7 +247,7 @@ function ConfidenceBadge({ level }: { level: ConfidenceLevel }) {
   };
   return (
     <span
-      className={`text-[10px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[level]}`}
+      className={`text-xxs font-mono px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[level]}`}
     >
       {level}
     </span>

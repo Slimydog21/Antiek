@@ -106,7 +106,7 @@ export default function Backtest() {
               <p className="text-sm text-ink dark:text-bright">
                 {report.target_question}
               </p>
-              <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                 {report.synthesis_timestamp} · status={report.status}
                 {report.implicit_recommendation
                   ? ` · ${report.implicit_recommendation}`
@@ -198,7 +198,7 @@ function Metric({
       >
         {value}
       </p>
-      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+      <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
         {label}
       </p>
     </LemonCard>
@@ -221,7 +221,7 @@ function DetailList({
       title={
         <span className="flex items-baseline justify-between gap-3">
           <span>{title}</span>
-          <span className="font-sans normal-case tracking-normal text-[10px] text-shadow-1 dark:text-moonlight">
+          <span className="font-sans normal-case tracking-normal text-xxs text-shadow-1 dark:text-moonlight">
             {rows.length}
           </span>
         </span>
@@ -232,7 +232,7 @@ function DetailList({
         {rows.length === 0 ? (
           <p className="text-xs italic text-shadow-1 dark:text-moonlight">None.</p>
         ) : (
-          <ul className="space-y-1 text-[11px] font-mono text-ink dark:text-bright">
+          <ul className="space-y-1 text-xs font-mono text-ink dark:text-bright">
             {rows.slice(0, 50).map((r, i) => (
               <li
                 key={i}

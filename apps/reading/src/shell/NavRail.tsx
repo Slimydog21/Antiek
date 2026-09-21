@@ -221,7 +221,7 @@ function RailButton({
       {badge !== undefined && badge > 0 && (
         <span
           aria-label={`${badge} need attention`}
-          className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-emperor text-ice-1 text-[9px] font-mono font-bold flex items-center justify-center"
+          className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-emperor text-ice-1 text-xxs font-mono font-bold flex items-center justify-center"
         >
           {badge > 99 ? "99+" : badge}
         </span>
@@ -230,7 +230,7 @@ function RailButton({
           workflow-only). aria-hidden so the `.sr-only` span stays the single
           announced name. */}
       <span
-        className="text-[10px] leading-[11px] mt-0.5 font-medium tracking-tight text-center w-full"
+        className="text-xxs leading-[11px] mt-0.5 font-medium tracking-tight text-center w-full"
         aria-hidden="true"
       >
         {label}
@@ -364,7 +364,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     >
       <BrainMark size={24} />
       <span
-        className="text-[10px] leading-[11px] font-medium tracking-tight"
+        className="text-xxs leading-[11px] font-medium tracking-tight"
         aria-hidden="true"
       >
         Home
@@ -504,7 +504,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
             title="Close navigation"
             aria-label="Close navigation"
             onClick={() => setCollapsed(true)}
-            className="absolute -right-8 top-1 w-8 h-8 flex items-center justify-center bg-ink text-sun border-edge border-sun rounded text-[13px]"
+            className="absolute -right-8 top-1 w-8 h-8 flex items-center justify-center bg-ink text-sun border-edge border-sun rounded text-sm"
           >
             ✕
           </button>

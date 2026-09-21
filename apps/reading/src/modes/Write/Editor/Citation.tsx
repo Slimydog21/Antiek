@@ -43,7 +43,7 @@ function CitationView({ node }: NodeViewProps) {
             : `Trace to source: ${label}`
         }
         className={
-          "align-baseline mx-0.5 px-1 rounded font-mono text-[10px] font-semibold " +
+          "align-baseline mx-0.5 px-1 rounded font-mono text-xxs font-semibold " +
           (userOriginated
             ? "bg-moonlight/30 text-ink-mute"
             : "bg-sun-deep/15 text-sun-deep hover:bg-sun-deep/25")

@@ -62,11 +62,11 @@ export default function BookCard({ book, onOpen }: BookCardProps) {
       <p className="mt-2 font-serif text-sm text-ink dark:text-bright truncate" title={title}>
         {title}
       </p>
-      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
         {book.author ?? "Unknown author"}
         {book.page_count > 0 && <> · {book.page_count}p</>}
       </p>
-      <span className="mt-1 text-[11px] font-mono text-shadow-1 dark:text-moonlight">{action}</span>
+      <span className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">{action}</span>
     </button>
   );
 }

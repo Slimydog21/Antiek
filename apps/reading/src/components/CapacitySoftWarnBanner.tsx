@@ -39,7 +39,7 @@ export default function CapacitySoftWarnBanner({
       className="mx-3 mt-3 rounded-md border border-sun/60 bg-sun/10 px-3 py-2 text-sm text-ink dark:text-bright"
     >
       <div className="font-medium">Agent compute capacity</div>
-      <p className="mt-0.5 text-[13px] leading-snug opacity-90">
+      <p className="mt-0.5 text-sm leading-snug opacity-90">
         {formatCapacityWarnToast(warn)}
       </p>
       {ratio != null ? (
@@ -53,7 +53,7 @@ export default function CapacitySoftWarnBanner({
       ) : null}
       <button
         type="button"
-        className="mt-2 text-[11px] font-mono uppercase tracking-wider underline opacity-70 hover:opacity-100"
+        className="mt-2 text-xs font-mono uppercase tracking-wider underline opacity-70 hover:opacity-100"
         onClick={() => setWarn(null)}
       >
         Dismiss

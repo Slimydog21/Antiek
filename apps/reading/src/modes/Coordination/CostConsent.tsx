@@ -168,7 +168,7 @@ export function CostSection({ cost }: { cost: CostView }) {
             <span className="font-mono text-sm text-ink dark:text-bright">
               {usd(w.margined_cost_usd)}
             </span>
-            <span className="text-[11px] text-shadow-1 dark:text-moonlight">
+            <span className="text-xs text-shadow-1 dark:text-moonlight">
               {w.margin_rate !== null
                 ? `+${(Number(w.margin_rate) * 100).toFixed(0)}%`
                 : "applied"}
@@ -177,7 +177,7 @@ export function CostSection({ cost }: { cost: CostView }) {
         ) : (
           <span className="flex items-center gap-2">
             <LemonTag colour="sun">stubbed</LemonTag>
-            <span className="text-[11px] italic text-shadow-1 dark:text-moonlight">
+            <span className="text-xs italic text-shadow-1 dark:text-moonlight">
               raw cost only
             </span>
           </span>
@@ -204,7 +204,7 @@ export function CostSection({ cost }: { cost: CostView }) {
       <LemonCard colour="glacial" elevation="z1">
         <div className="p-4 flex flex-wrap items-baseline gap-x-8 gap-y-2">
           <div className="space-y-0.5">
-            <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+            <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
               Aggregate realized cost
             </p>
             <p className="text-xl font-mono text-ink dark:text-bright">
@@ -212,7 +212,7 @@ export function CostSection({ cost }: { cost: CostView }) {
             </p>
           </div>
           <div className="space-y-0.5">
-            <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+            <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
               Dispatch calls
             </p>
             <p className="text-sm font-mono text-ink dark:text-bright">
@@ -220,7 +220,7 @@ export function CostSection({ cost }: { cost: CostView }) {
             </p>
           </div>
           <div className="space-y-0.5">
-            <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+            <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
               of which remote-exec
             </p>
             <p className="text-sm font-mono text-ink dark:text-bright">
@@ -274,7 +274,7 @@ export function ConsentSection({ consent }: { consent: ConsentView }) {
       header: "Opt-in state",
       width: "16%",
       render: (h) => (
-        <LemonTag colour={h.status === "claimed" ? "aurora" : "muted"}>
+        <LemonTag colour={h.status === "claimed" ? "success" : "muted"}>
           {h.status.replace(/_/g, " ")}
         </LemonTag>
       ),
@@ -297,7 +297,7 @@ export function ConsentSection({ consent }: { consent: ConsentView }) {
           <LemonTag colour={h.gate.fully_unlocked ? "sun" : "muted"} dot>
             {h.gate.disbursable ? "disbursable" : "not disbursable"}
           </LemonTag>
-          <span className="text-[11px] text-shadow-2 dark:text-moonlight leading-snug">
+          <span className="text-xs text-shadow-2 dark:text-moonlight leading-snug">
             {h.gate.label}
           </span>
         </span>
@@ -309,16 +309,16 @@ export function ConsentSection({ consent }: { consent: ConsentView }) {
       width: "18%",
       render: (h) =>
         h.serves_full_text === null ? (
-          <span className="text-[11px] italic text-shadow-1 dark:text-moonlight">
+          <span className="text-xs italic text-shadow-1 dark:text-moonlight">
             not surfaced here
           </span>
         ) : (
           <span className="flex flex-col gap-0.5">
-            <LemonTag colour={h.serves_full_text ? "aurora" : "muted"}>
+            <LemonTag colour={h.serves_full_text ? "success" : "muted"}>
               {h.serves_full_text ? "serves full text" : "gated"}
             </LemonTag>
             {h.servability_note && (
-              <span className="text-[11px] text-shadow-2 dark:text-moonlight leading-snug">
+              <span className="text-xs text-shadow-2 dark:text-moonlight leading-snug">
                 {h.servability_note}
               </span>
             )}
@@ -359,7 +359,7 @@ export function ConsentSection({ consent }: { consent: ConsentView }) {
           </div>
           <div className="flex flex-wrap items-baseline gap-x-8 gap-y-1">
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+              <span className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                 Total accruing
               </span>
               <p className="font-mono text-lg text-ink dark:text-bright">
@@ -367,7 +367,7 @@ export function ConsentSection({ consent }: { consent: ConsentView }) {
               </p>
             </div>
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+              <span className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                 Disbursed
               </span>
               <p className="font-mono text-lg text-ink dark:text-bright">
@@ -375,7 +375,7 @@ export function ConsentSection({ consent }: { consent: ConsentView }) {
               </p>
             </div>
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+              <span className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                 Claim rate
               </span>
               <p className="font-mono text-sm text-ink dark:text-bright">
@@ -383,7 +383,7 @@ export function ConsentSection({ consent }: { consent: ConsentView }) {
               </p>
             </div>
           </div>
-          <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+          <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
             gate state from {consent.gate_source_path}
           </p>
         </div>

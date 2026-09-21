@@ -567,7 +567,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             disabled={busy}
             minRows={3}
             maxRows={10}
-            className="font-serif text-[15px] leading-relaxed"
+            className="font-serif text-base leading-relaxed"
             aria-label="Research question"
           />
 
@@ -576,7 +576,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               editable above; this only labels its provenance. */}
           {promptDerived && (
             <p
-              className="text-[11px] font-mono text-ink-mute dark:text-moonlight"
+              className="text-xs font-mono text-ink-mute dark:text-moonlight"
               role="status"
             >
               Prompt suggested from your attachment — edit it or ask as is.
@@ -616,7 +616,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               placeholder="…or paste a link"
               aria-label="Attach a link"
               disabled={busy || attach.kind === "absorbing"}
-              className="min-w-0 flex-1 rounded-hog border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-2 py-1 text-[12px] font-mono text-ink dark:text-bright disabled:opacity-50"
+              className="min-w-0 flex-1 rounded-hog border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-2 py-1 text-xs font-mono text-ink dark:text-bright disabled:opacity-50"
               onKeyDown={(e) => {
                 if (e.key !== "Enter") return;
                 const v = (e.target as HTMLInputElement).value.trim();
@@ -631,13 +631,13 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           {/* Attach result — absorbed / rejected / failed, surfaced not silent
               (rigor #3). A failed ingest reuses the shared AIActionFailure. */}
           {attach.kind === "absorbed" && (
-            <p className="text-[11px] font-mono text-aurora" role="status">
+            <p className="text-xs font-mono text-success" role="status">
               Added “{attach.title}” to your corpus.
             </p>
           )}
           {attach.kind === "rejected" && (
             <p
-              className="text-[11px] font-mono text-shadow-1 dark:text-moonlight"
+              className="text-xs font-mono text-shadow-1 dark:text-moonlight"
               role="status"
             >
               {attach.why}
@@ -671,7 +671,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
 
           <div className="rounded-hog border border-rule dark:border-charcoal-1 bg-ice-1/80 dark:bg-charcoal-1/40 p-3 space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <label className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight" id="research-model-label">
+              <label className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight" id="research-model-label">
                 Model for Ask
               </label>
               <LemonSelect
@@ -696,20 +696,20 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               />
             </div>
             {modelsState === "error" ? (
-              <p className="text-[11px] font-mono text-emperor" role="alert">
+              <p className="text-xs font-mono text-emperor" role="alert">
                 Can’t load executable models. Check Settings, then retry inventory.
               </p>
             ) : selectedModel ? (
               <div className="space-y-1" aria-live="polite">
-                <p className="text-[11px] font-serif text-ink dark:text-bright">
+                <p className="text-xs font-serif text-ink dark:text-bright">
                   Ask uses this model for the root investigation’s paid Loop One roles. Later chases choose their own route.
                 </p>
-                <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight break-all">
+                <p className="text-xxs font-mono text-ink-mute dark:text-moonlight break-all">
                   Pricing authority: {selectedModel.rate_snapshot ?? "server-verified executable route"}
                 </p>
               </div>
             ) : (
-              <p className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
+              <p className="text-xs font-serif text-ink-mute dark:text-moonlight">
                 Only routes the server reports as eligible and executable appear here.
               </p>
             )}
@@ -718,14 +718,14 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 {RESEARCH_TIER_OPTIONS.map((option) => (
                   <button key={option.value} type="button" role="radio" aria-checked={tier === option.value}
                     title={option.hint} onClick={() => setTier(option.value)}
-                    className={`px-3 py-1 rounded-hog text-[11px] font-mono border border-rule ${tier === option.value ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
+                    className={`px-3 py-1 rounded-hog text-xs font-mono border border-rule ${tier === option.value ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
                     {option.label}
                   </button>
                 ))}
               </div>
             )}
             {modelsState !== "loading" && (
-              <button type="button" onClick={() => void refreshModels()} className="text-[11px] font-mono underline text-ink dark:text-bright">
+              <button type="button" onClick={() => void refreshModels()} className="text-xs font-mono underline text-ink dark:text-bright">
                 Retry inventory
               </button>
             )}
@@ -737,7 +737,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             aria-label="Source policy"
           >
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <span className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                 Sources
               </span>
               {SOURCE_POLICY_OPTIONS.map((opt) => {
@@ -751,7 +751,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                     disabled={busy}
                     title={opt.hint}
                     className={
-                      "rounded-hog border px-2.5 py-1 text-[12px] font-mono transition-colors disabled:opacity-50 disabled:pointer-events-none " +
+                      "rounded-hog border px-2.5 py-1 text-xs font-mono transition-colors disabled:opacity-50 disabled:pointer-events-none " +
                       (active
                         ? "border-sun-deep bg-sun/15 text-ink dark:text-bright"
                         : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 text-ink-mute dark:text-moonlight hover:bg-sun/10")
@@ -762,15 +762,15 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 );
               })}
             </div>
-            <p className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
+            <p className="text-xs font-serif text-ink-mute dark:text-moonlight">
               Recorded as source-pack intent for this research; connector
               execution still happens only inside the approved runner path.
             </p>
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
-              <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-[10px] font-mono bg-ice-0 dark:bg-charcoal-1 shadow-z1 dark:shadow-z1-night mr-1.5">
+            <div className="text-xs font-mono text-ink-mute dark:text-moonlight">
+              <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-xxs font-mono bg-ice-0 dark:bg-charcoal-1 shadow-z1 dark:shadow-z1-night mr-1.5">
                 ⌘ ↵
               </kbd>
               to ask · charges follow the selected model’s server pricing authority
@@ -804,7 +804,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
         </div>
 
         <div className="mt-7">
-          <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2 text-center">
+          <p className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2 text-center">
             Try one of these
           </p>
           <div className="flex flex-col gap-2">
@@ -815,7 +815,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                   onClick={() => fillExample(prompt)}
                   disabled={busy}
                   className={
-                    "w-full text-left text-[13px] font-serif text-ink dark:text-bright px-3 py-2 rounded-hog " +
+                    "w-full text-left text-sm font-serif text-ink dark:text-bright px-3 py-2 rounded-hog " +
                     "border-edge border-sun bg-ice-0 dark:bg-charcoal-2 shadow-z1 dark:shadow-z1-night " +
                     "hover:border-sun dark:hover:border-sun hover:bg-sun/10 disabled:opacity-50 disabled:pointer-events-none " +
                     cardLift

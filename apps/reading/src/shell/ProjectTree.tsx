@@ -192,15 +192,15 @@ export function ProjectTree({
 
   return (
     <div
-      className="text-[13px] text-ink dark:text-bright"
+      className="text-sm text-ink dark:text-bright"
       data-testid={`project-tree-${workflow}`}
     >
       {/* Workflow header — names the active workflow + its nouns. */}
       <div className="px-3 pt-2.5 pb-2 border-b border-rule dark:border-charcoal-1">
-        <p className="font-serif text-[15px] text-ink dark:text-bright">
+        <p className="font-serif text-base text-ink dark:text-bright">
           {meta.label}
         </p>
-        <p className="font-mono text-[10.5px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mt-0.5">
+        <p className="font-mono text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight mt-0.5">
           {meta.nouns.join(" · ")}
         </p>
       </div>
@@ -213,7 +213,7 @@ export function ProjectTree({
         count={pinnedNodes.length}
       >
         {pinnedNodes.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] italic text-ink-mute dark:text-moonlight">
+          <p className="px-3 py-2 text-xs italic text-ink-mute dark:text-moonlight">
             Pin an item from Recent to keep it close.
           </p>
         ) : (
@@ -237,15 +237,15 @@ export function ProjectTree({
         count={recentNodes.length}
       >
         {recentLoading ? (
-          <p className="px-3 py-2 text-[12px] text-ink-mute dark:text-moonlight">
+          <p className="px-3 py-2 text-xs text-ink-mute dark:text-moonlight">
             Loading recent items...
           </p>
         ) : recentError ? (
-          <p className="px-3 py-2 text-[12px] text-danger">
+          <p className="px-3 py-2 text-xs text-danger">
             Could not load recent items: {recentError}
           </p>
         ) : recentNodes.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] italic text-ink-mute dark:text-moonlight">
+          <p className="px-3 py-2 text-xs italic text-ink-mute dark:text-moonlight">
             No recent items yet.
           </p>
         ) : (
@@ -303,7 +303,7 @@ function Section({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="w-full flex items-center gap-1.5 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
+        className="w-full flex items-center gap-1.5 px-3 py-2 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
       >
         <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
         <span>{label}</span>
@@ -354,7 +354,7 @@ function NodeRow({
         </span>
         <span className="truncate flex-1">{node.title}</span>
         {node.status && (
-          <LemonTag dot colour={dot[node.status]} className="shrink-0 text-[10px]">
+          <LemonTag dot colour={dot[node.status]} className="shrink-0 text-xxs">
             {node.status}
           </LemonTag>
         )}
@@ -367,7 +367,7 @@ function NodeRow({
         }}
         aria-label={pinned ? "Unpin" : "Pin"}
         className={
-          "px-2 py-1.5 shrink-0 text-[13px] " +
+          "px-2 py-1.5 shrink-0 text-sm " +
           (pinned
             ? "text-sun-deep dark:text-sun"
             : "text-ink-mute dark:text-moonlight opacity-0 group-hover:opacity-100 hover:text-ink dark:hover:text-bright")

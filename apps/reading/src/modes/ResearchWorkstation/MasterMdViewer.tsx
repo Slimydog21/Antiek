@@ -513,7 +513,7 @@ export function ClaimBlock({
         />
         <NamedSources chunkIds={claim.chunkIds} onPreview={onChunkClick} />
         {claim.supportingPathIndices.length > 0 && (
-          <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+          <span className="text-xxs font-mono text-shadow-1 dark:text-moonlight">
             + {claim.supportingPathIndices.length} cross-domain path
             {claim.supportingPathIndices.length === 1 ? "" : "s"}
           </span>
@@ -621,7 +621,7 @@ function NamedSources({
   if (chunkIds.length === 0) return null;
   if (sources === null) {
     return (
-      <span className="text-[11px] text-shadow-1 dark:text-moonlight italic">
+      <span className="text-xs text-shadow-1 dark:text-moonlight italic">
         resolving sources…
       </span>
     );
@@ -630,7 +630,7 @@ function NamedSources({
     // Resolved, but no source could be named (all fetches failed / no
     // titles). Honest, not a fabricated citation.
     return (
-      <span className="text-[11px] text-shadow-1 dark:text-moonlight italic">
+      <span className="text-xs text-shadow-1 dark:text-moonlight italic">
         source unavailable
       </span>
     );
@@ -763,12 +763,12 @@ function SourceCitation({
     // honest "not available to open" state — never the content.
     return (
       <span
-        className="text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1"
+        className="text-xs text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1"
         title={decoration?.title ?? RESTRICTED_TITLE}
       >
         from {label}
         {locator}
-        <span className="text-[10px] text-shadow-1 dark:text-moonlight">
+        <span className="text-xxs text-shadow-1 dark:text-moonlight">
           · not available to open
         </span>
       </span>
@@ -809,7 +809,7 @@ function SourceCitation({
         }
         onPreview(source.representativeChunkId);
       }}
-      className="text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors"
+      className="text-xs text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors"
       title={decoration?.title ?? SERVABLE_TITLE}
     >
       from {label}
@@ -836,7 +836,7 @@ function ConfidenceChip({
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
-      className={`text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
+      className={`text-xxs font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
     >
       {confidence}
       {tier !== null && ` · tier ${tier}`}
@@ -855,7 +855,7 @@ function RecommendationBadge({ rec }: { rec: Recommendation }) {
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
-      className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded ${color}`}
+      className={`text-xxs font-mono uppercase tracking-wider px-2 py-0.5 rounded ${color}`}
     >
       {rec.replace(/_/g, " ")}
     </span>

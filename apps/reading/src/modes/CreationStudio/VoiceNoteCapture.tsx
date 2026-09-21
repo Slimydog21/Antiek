@@ -60,7 +60,7 @@ export function VoiceNoteCapture() {
         </LemonButton>
         {state === "ingested" && lastDocId && (
           <span
-            className="text-xs text-aurora truncate"
+            className="text-xs text-success truncate"
             title={lastDocId}
           >
             ✓ {lastDocId.slice(0, 16)}…

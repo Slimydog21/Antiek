@@ -280,7 +280,7 @@ function ProjectRow({
             </p>
           )}
         </div>
-        <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight shrink-0">
+        <span className="text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight shrink-0">
           {project.completed_count}/{project.interview_count} done
         </span>
       </button>
@@ -289,7 +289,7 @@ function ProjectRow({
         <div className="pt-2 space-y-3 border-t border-rule dark:border-charcoal-1">
           {project.must_cover.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+              <p className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
                 Must-cover
               </p>
               <ul className="text-xs text-ink dark:text-bright list-disc pl-5 space-y-0.5">
@@ -301,7 +301,7 @@ function ProjectRow({
           )}
 
           <div className="space-y-1">
-            <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+            <p className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
               Invited informants
             </p>
             {interviews.length === 0 ? (
@@ -323,7 +323,7 @@ function ProjectRow({
                         i.informant_email ||
                         i.interview_id}
                     </Link>
-                    <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight shrink-0">
+                    <span className="text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight shrink-0">
                       {i.status} · {i.turn_count} turns
                     </span>
                   </li>
@@ -333,7 +333,7 @@ function ProjectRow({
           </div>
 
           <div className="space-y-2 pt-2 border-t border-rule dark:border-charcoal-1">
-            <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+            <p className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
               Invite informant
             </p>
             <div className="grid grid-cols-2 gap-2">

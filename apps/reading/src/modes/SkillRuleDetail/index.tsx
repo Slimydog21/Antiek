@@ -137,7 +137,7 @@ export default function SkillRuleDetail() {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
-      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+      <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
         {label}
       </p>
       <p className="text-sm font-mono text-ink dark:text-bright truncate">

@@ -355,7 +355,7 @@ export default function Settings() {
             className="space-y-6"
           >
         <LemonCard title="Environment" elevation="z1">
-          <div className="p-4 space-y-3 font-mono text-[13px]">
+          <div className="p-4 space-y-3 font-mono text-sm">
             <Row label="Viewport tier" value={tier} />
             <Row label="OS theme" value={isDark ? "dark" : "light"} />
             <Row
@@ -396,7 +396,7 @@ export default function Settings() {
                 {models.map((m) => (
                   <li
                     key={m.provider_id}
-                    className="flex flex-wrap items-baseline justify-between gap-2 border-b border-ink/10 dark:border-bright/10 pb-2 font-mono text-[13px]"
+                    className="flex flex-wrap items-baseline justify-between gap-2 border-b border-ink/10 dark:border-bright/10 pb-2 font-mono text-sm"
                   >
                     <span className="text-ink dark:text-bright font-semibold">
                       {m.provider_id}
@@ -417,12 +417,12 @@ export default function Settings() {
                       {m.ready ? "ready" : m.registered ? "registered" : "not registered"}
                     </span>
                     {m.tier_bindings.length > 0 && (
-                      <span className="w-full text-[11px] text-ink-soft dark:text-starlight">
+                      <span className="w-full text-xs text-ink-soft dark:text-starlight">
                         tiers: {m.tier_bindings.join(", ")}
                       </span>
                     )}
                     {m.notes && (
-                      <span className="w-full text-[11px] text-ink-soft dark:text-starlight">
+                      <span className="w-full text-xs text-ink-soft dark:text-starlight">
                         {m.notes}
                       </span>
                     )}
@@ -430,7 +430,7 @@ export default function Settings() {
                 ))}
               </ul>
             )}
-            <p className="text-[11px] text-ink-soft dark:text-starlight font-serif italic">
+            <p className="text-xs text-ink-soft dark:text-starlight font-serif italic">
               Add your own models with the card below. Decision-tree
               per-prompt override lands in SPR-03.
             </p>
@@ -446,7 +446,7 @@ export default function Settings() {
             )}
             {budget && (
               <>
-                <div className="font-mono text-[13px] space-y-2">
+                <div className="font-mono text-sm space-y-2">
                   <Row
                     label="Daily cap"
                     value={
@@ -503,18 +503,18 @@ export default function Settings() {
                   )}
                 </div>
                 {spendPct == null && (
-                  <p className="text-[11px] text-ink-soft dark:text-starlight">
+                  <p className="text-xs text-ink-soft dark:text-starlight">
                     Usage bar empty when spend is unknown or cap is unset.
                   </p>
                 )}
                 <p
-                  className="text-[11px] text-ink-soft dark:text-starlight"
+                  className="text-xs text-ink-soft dark:text-starlight"
                   aria-live="polite"
                 >
                   Budget status: {budgetStatus}.
                 </p>
                 {budget.notes.length > 0 && (
-                  <ul className="text-[11px] text-ink-soft dark:text-starlight list-disc list-inside space-y-1">
+                  <ul className="text-xs text-ink-soft dark:text-starlight list-disc list-inside space-y-1">
                     {budget.notes.map((n) => (
                       <li key={n}>{n}</li>
                     ))}
@@ -545,7 +545,7 @@ export default function Settings() {
                 {bench.notes.map((note) => (
                   <p
                     key={note}
-                    className="text-[11px] text-ink-soft dark:text-starlight"
+                    className="text-xs text-ink-soft dark:text-starlight"
                   >
                     {note}
                   </p>
@@ -553,7 +553,7 @@ export default function Settings() {
               </div>
             )}
             {bench && bench.available && (
-              <div className="space-y-3 font-mono text-[13px]">
+              <div className="space-y-3 font-mono text-sm">
                 <Row label="Week" value={bench.week_id ?? "unknown"} />
                 <Row
                   label="Run"
@@ -573,7 +573,7 @@ export default function Settings() {
                           {row.provider} / {row.model}
                         </span>
                       </div>
-                      <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                      <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-1 text-xs text-ink-soft dark:text-starlight">
                         <span>quality {row.quality_score.toFixed(2)}</span>
                         <span>
                           cost{" "}
@@ -592,7 +592,7 @@ export default function Settings() {
                 {bench.notes.map((note) => (
                   <p
                     key={note}
-                    className="text-[11px] text-ink-soft dark:text-starlight"
+                    className="text-xs text-ink-soft dark:text-starlight"
                   >
                     {note}
                   </p>
@@ -604,9 +604,9 @@ export default function Settings() {
 
         <LemonCard title="Prompt cost projection" elevation="z1" colour="glacial">
           <div className="p-4 space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-[13px]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-sm">
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                   Task kind
                 </span>
                 <select
@@ -622,7 +622,7 @@ export default function Settings() {
                 </select>
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                   Expected output tokens
                 </span>
                 <input
@@ -634,8 +634,8 @@ export default function Settings() {
                 />
               </label>
             </div>
-            <label className="flex flex-col gap-1 font-mono text-[13px]">
-              <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+            <label className="flex flex-col gap-1 font-mono text-sm">
+              <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                 Prompt
               </span>
               <textarea
@@ -645,12 +645,12 @@ export default function Settings() {
                 className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded resize-y min-h-28"
                 placeholder="Paste the prompt or question to project."
               />
-              <span className="text-[11px] text-ink-soft dark:text-starlight">
+              <span className="text-xs text-ink-soft dark:text-starlight">
                 {promptChars} characters
               </span>
             </label>
             <fieldset className="space-y-2">
-              <legend className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight font-mono">
+              <legend className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight font-mono">
                 Route mode
               </legend>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2" role="radiogroup">
@@ -673,9 +673,9 @@ export default function Settings() {
                 ))}
               </div>
             </fieldset>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-[13px]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-sm">
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                   Manual model
                 </span>
                 <select
@@ -697,7 +697,7 @@ export default function Settings() {
                 </select>
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                   Cache key
                 </span>
                 <input
@@ -738,7 +738,7 @@ export default function Settings() {
             )}
             {estimate && (
               <div
-                className="font-mono text-[13px] space-y-1"
+                className="font-mono text-sm space-y-1"
                 aria-live="polite"
                 aria-label={`Selected route: ${selectedLabel}`}
               >
@@ -790,7 +790,7 @@ export default function Settings() {
                 />
                 {estimate.candidates != null && estimate.candidates.length > 0 && (
                   <div className="pt-2">
-                    <p className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                    <p className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                       Candidates
                     </p>
                     <ul className="mt-1 space-y-1">
@@ -815,7 +815,7 @@ export default function Settings() {
                 {estimate.notes.map((n) => (
                   <p
                     key={n}
-                    className="text-[11px] text-ink-soft dark:text-starlight"
+                    className="text-xs text-ink-soft dark:text-starlight"
                   >
                     {n}
                   </p>
@@ -824,7 +824,7 @@ export default function Settings() {
             )}
             {advisor && (
               <div
-                className="font-mono text-[13px] space-y-1 border-t border-ink/10 dark:border-bright/10 pt-3"
+                className="font-mono text-sm space-y-1 border-t border-ink/10 dark:border-bright/10 pt-3"
                 aria-live="polite"
                 aria-label={`NotDiamond advisor: ${advisor.recommendation.provider ?? "none"} / ${
                   advisor.recommendation.model ?? "none"
@@ -852,21 +852,21 @@ export default function Settings() {
                   label="Promotion eligible"
                   value={advisor.recommendation.promotion_gate.eligible ? "yes" : "no"}
                 />
-                <p className="text-[11px] text-ink-soft dark:text-starlight">
+                <p className="text-xs text-ink-soft dark:text-starlight">
                   {advisor.recommendation.reason}
                 </p>
                 {advisor.recommendation.cache_caveat && (
-                  <p className="text-[11px] text-ink-soft dark:text-starlight">
+                  <p className="text-xs text-ink-soft dark:text-starlight">
                     {advisor.recommendation.cache_caveat}
                   </p>
                 )}
-                <p className="text-[11px] text-ink-soft dark:text-starlight">
+                <p className="text-xs text-ink-soft dark:text-starlight">
                   {advisor.recommendation.promotion_gate.reason}
                 </p>
                 {(advisor.recommendation.notes ?? []).map((n) => (
                   <p
                     key={n}
-                    className="text-[11px] text-ink-soft dark:text-starlight"
+                    className="text-xs text-ink-soft dark:text-starlight"
                   >
                     {n}
                   </p>
@@ -1252,7 +1252,7 @@ function FallbackReceiptHistory({
     <section aria-labelledby="fallback-receipt-history-title" className="border-t border-ink/15 pt-5 dark:border-bright/15">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="fallback-receipt-history-title" className="font-serif text-lg text-ink dark:text-bright">Recent fallback executions</h3>
-        <span className="font-mono text-[11px] uppercase text-ink-soft dark:text-starlight">Read only</span>
+        <span className="font-mono text-xs uppercase text-ink-soft dark:text-starlight">Read only</span>
       </div>
       {loading && chains.length === 0 && <p role="status" className="mt-3 text-sm text-ink-soft dark:text-starlight">Loading execution receipts...</p>}
       {unavailable && <p role="status" className="mt-3 text-sm text-ink-soft dark:text-starlight">Execution receipts are unavailable.</p>}
@@ -1265,9 +1265,9 @@ function FallbackReceiptHistory({
                 <time className="text-ink-soft dark:text-starlight" dateTime={chain.created_at}>{new Date(chain.created_at).toLocaleString()}</time>
                 <span className="font-mono font-semibold text-ink dark:text-bright">{chain.outcome.replace("_", " ")}</span>
               </div>
-              <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">Manifest {chain.manifest_sha256.slice(0, 10)}</p>
+              <p className="mt-1 font-mono text-xs text-ink-soft dark:text-starlight">Manifest {chain.manifest_sha256.slice(0, 10)}</p>
               {chain.approval_id && chain.approved_at && (
-                <p ref={reviewingChainId === chain.chain_id ? approvalResultRef : undefined} tabIndex={reviewingChainId === chain.chain_id ? -1 : undefined} className="mt-1 font-mono text-[11px] text-ink-soft outline-none dark:text-starlight">
+                <p ref={reviewingChainId === chain.chain_id ? approvalResultRef : undefined} tabIndex={reviewingChainId === chain.chain_id ? -1 : undefined} className="mt-1 font-mono text-xs text-ink-soft outline-none dark:text-starlight">
                   Approved {new Date(chain.approved_at).toLocaleString()} · {chain.approval_id.slice(-10)}
                 </p>
               )}
@@ -1277,7 +1277,7 @@ function FallbackReceiptHistory({
                     <span className="font-mono text-ink-soft dark:text-starlight">#{route.fallback_index + 1}</span>
                     <span className="min-w-0 text-ink dark:text-bright"><strong className="break-words">{route.model}</strong><span className="block break-words text-ink-soft dark:text-starlight">{route.provider}</span></span>
                     <span className="font-mono text-right text-ink-soft dark:text-starlight">{route.state.replace("_", " ")} · cap ${(route.projected_max_cents / 100).toFixed(2)}{route.actual_cents === null ? "" : ` · actual $${(route.actual_cents / 100).toFixed(2)}`}</span>
-                    {route.settlement_evidence_sha256 && <span className="col-start-2 font-mono text-[11px] text-ink-soft dark:text-starlight">Receipt {route.settlement_evidence_sha256.slice(0, 10)}</span>}
+                    {route.settlement_evidence_sha256 && <span className="col-start-2 font-mono text-xs text-ink-soft dark:text-starlight">Receipt {route.settlement_evidence_sha256.slice(0, 10)}</span>}
                   </li>
                 ))}
               </ol>
@@ -1287,7 +1287,7 @@ function FallbackReceiptHistory({
               {chain.approval_eligible && chain.approval_id === null && reviewingChainId === chain.chain_id && (
                 <div ref={reviewRegionRef} role="region" aria-label="Fallback approval review" tabIndex={-1} className="mt-3 border-l-2 border-sun pl-3 text-sm text-ink outline-none dark:text-bright">
                   <p className="font-semibold">Approve this exact prepared chain</p>
-                  <dl className="mt-2 grid gap-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                  <dl className="mt-2 grid gap-1 font-mono text-xs text-ink-soft dark:text-starlight">
                     <div><dt className="inline font-semibold text-ink dark:text-bright">Chain </dt><dd className="inline break-all">{chain.chain_id}</dd></div>
                     <div><dt className="inline font-semibold text-ink dark:text-bright">Manifest </dt><dd className="inline break-all">{chain.manifest_sha256}</dd></div>
                   </dl>
@@ -1375,7 +1375,7 @@ function PasskeySettings() {
               <li key={passkey.id} className="flex items-center justify-between gap-3 rounded-hog border border-rule dark:border-slate-2 bg-ice-0 dark:bg-charcoal-2 px-3 py-2">
                 <span>
                   <strong className="block text-sm text-ink dark:text-bright">{passkey.label}</strong>
-                  <small className="text-[11px] text-ink-soft dark:text-starlight">
+                  <small className="text-xs text-ink-soft dark:text-starlight">
                     {passkey.backed_up ? "Synced passkey" : "This-device passkey"}
                     {passkey.last_used_at ? ` · used ${new Date(passkey.last_used_at * 1000).toLocaleDateString()}` : ""}
                   </small>
@@ -1401,7 +1401,7 @@ function PasskeySettings() {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-ink-soft dark:text-starlight uppercase tracking-wider text-[11px]">
+      <span className="text-ink-soft dark:text-starlight uppercase tracking-wider text-xs">
         {label}
       </span>
       <span className="text-ink dark:text-bright">{value}</span>

@@ -18,6 +18,7 @@ S0 leaves this directory empty. S1 lands the primitives:
 - `LemonTable.tsx`    list/table component, generic over row type
 - `LemonToast.tsx`    top-right toast queue
 - `ErrorBanner.tsx`   shared error callout (danger/emperor, Login.css:54 recipe)
+- `ModePage.tsx`      shared mode page shell (D5 page ramp + width tiers)
 - `index.ts`          barrel export
 
 ## Rules

@@ -137,7 +137,7 @@ export function LemonToastViewport() {
           className={
             "pointer-events-auto min-w-[260px] max-w-[420px] " +
             "border-edge rounded-hog shadow-z2 dark:shadow-z2-night " +
-            "px-3 py-2 flex items-center gap-3 font-sans text-[13.5px] " +
+            "px-3 py-2 flex items-center gap-3 font-sans text-sm " +
             kindStyles[it.kind]
           }
         >

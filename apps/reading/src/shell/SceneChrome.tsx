@@ -188,7 +188,7 @@ export function SceneChrome({
         data-testid={`scene-chrome-${wf}`}
       >
         <div className="h-10 px-4 flex items-center gap-3">
-          <span className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight shrink-0">
+          <span className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight shrink-0">
             {meta.label}
           </span>
           <div className="flex-1" />
@@ -203,7 +203,7 @@ export function SceneChrome({
                   disabled={busy}
                   aria-busy={busy || undefined}
                   className={
-                    "px-2.5 py-1 rounded text-[12.5px] disabled:opacity-60 " +
+                    "px-2.5 py-1 rounded text-xs disabled:opacity-60 " +
                     (a.primary
                       ? "bg-sun text-ink hover:bg-sun-glow"
                       : "text-ink-soft dark:text-starlight hover:bg-ice-3 dark:hover:bg-charcoal-1")
@@ -230,7 +230,7 @@ export function SceneChrome({
                   onClick={() => navigate(t.to)}
                   aria-current={active ? "page" : undefined}
                   className={
-                    "px-3 py-1.5 text-[12.5px] border-b-2 " +
+                    "px-3 py-1.5 text-xs border-b-2 " +
                     (active
                       ? "border-sun text-ink dark:text-bright font-medium"
                       : "border-transparent text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright")

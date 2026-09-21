@@ -15,7 +15,10 @@ motion breaks a flow, the flow is wrong, not the motion.
   `ease-standard/ease-enter`). No magic motion numbers in components.
 - **Base primitives** — `src/design/motion.ts`: `press` (the offset-shadow
   hover-lift + active snap on a fill-variant Lemon surface), `cardLift` (the
-  gentler group-hover nudge for a card), `enter` (a panel/modal fade-rise).
+  gentler group-hover nudge for a card), `enter` (a panel/modal fade-rise,
+  wired in LemonModal), `surfaceSpring` (the one framer-motion spring for
+  the floating panel / workspace window arrive gesture — consumed by
+  PanelLayoutPanel and WorkspaceWindow so the physics can't diverge).
   These systematize what LemonButton + BookCard already did; they are the
   canonical vocabulary, not re-improvised per surface.
 - **Signature beats** — `src/shared/delight/` (`useCelebrate` + `CelebrateBurst`):

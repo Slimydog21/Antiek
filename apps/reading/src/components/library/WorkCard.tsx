@@ -108,18 +108,18 @@ export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
         {/* The servable-vs-gated affordance, surfaced on the cover so it reads
             before the click: a servable work invites a Read, a gated one offers
             metadata + claim, a removed one shows nothing actionable. */}
-        <span className="absolute bottom-0 inset-x-0 bg-ink/70 px-2 py-1 text-[11px] font-mono text-ice-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
+        <span className="absolute bottom-0 inset-x-0 bg-ink/70 px-2 py-1 text-xs font-mono text-ice-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity">
           {actionLabel}
         </span>
       </div>
       <p className="mt-2 font-serif text-sm text-ink dark:text-bright truncate" title={title}>
         {title}
       </p>
-      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
         {work.author ?? "Unknown author"}
         {work.page_count > 0 && <> · {work.page_count}p</>}
       </p>
-      <p className="text-[10.5px] font-mono text-shadow-2 dark:text-moonlight truncate">
+      <p className="text-xxs font-mono text-shadow-2 dark:text-moonlight truncate">
         {sourceLine(work)}
       </p>
     </button>

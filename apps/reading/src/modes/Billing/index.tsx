@@ -93,7 +93,7 @@ export default function Billing() {
       <LemonCard elevation="z1">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+            <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
               User
             </label>
             <input
@@ -104,7 +104,7 @@ export default function Billing() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+            <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
               Period (YYYY-MM)
             </label>
             <input
@@ -148,7 +148,7 @@ export default function Billing() {
                 {data.free_tokens_consumed.toLocaleString()} /{" "}
                 {FREE_TIER_CAP.toLocaleString()} tokens · {pctConsumed}%
               </p>
-              <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                 remaining: {data.free_tokens_remaining.toLocaleString()}
               </p>
             </div>
@@ -181,7 +181,7 @@ export default function Billing() {
                 value={data.total_billable_usd}
                 emphasize
               />
-              <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                 {data.record_count} usage records aggregated this period
               </p>
             </div>
@@ -202,7 +202,7 @@ function CostCard({
     <LemonCard elevation="z1">
       <div className="flex items-baseline justify-between">
         <h3 className="text-sm font-serif text-ink dark:text-bright">{title}</h3>
-        <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
+        <span className="text-xxs font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
           {margin} margin
         </span>
       </div>

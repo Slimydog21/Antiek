@@ -152,7 +152,7 @@ export default function Loop3() {
                           {c}
                         </h3>
                         <span
-                          className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded ${
+                          className={`text-xxs uppercase tracking-wider font-mono px-2 py-0.5 rounded ${
                             met
                               ? "bg-success/10 text-success"
                               : "bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight"
@@ -226,7 +226,7 @@ function Tile({
       >
         {value ? "YES" : "NO"}
       </p>
-      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">{label}</p>
+      <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">{label}</p>
     </div>
   );
 }

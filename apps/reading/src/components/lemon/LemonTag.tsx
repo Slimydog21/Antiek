@@ -41,7 +41,7 @@ export function LemonTag({
     <span
       className={
         "inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full " +
-        "font-mono text-[11.5px] font-semibold " +
+        "font-mono text-xs font-semibold " +
         "border-edge border-sun shadow-z1 dark:shadow-z1-night " +
         `${colourMap[colour]} ${className}`
       }

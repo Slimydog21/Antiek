@@ -350,7 +350,7 @@ function NotePanel({
   if (saved) {
     return (
       <Panel title="Noted" onClose={onClose}>
-        <p className="text-aurora">Saved — user-sourced, anchored to your selection.</p>
+        <p className="text-success">Saved — user-sourced, anchored to your selection.</p>
       </Panel>
     );
   }
@@ -480,12 +480,12 @@ function DialoguePanel({
       {reply && (
         // The MODEL reply — labelled, never conflated with the user's words.
         <div className="bg-shadow-2 rounded p-1.5 mb-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-moonlight block mb-0.5">
+          <span className="text-xxs uppercase tracking-wider text-moonlight block mb-0.5">
             AI reply
           </span>
           <p className="text-bright whitespace-pre-wrap leading-relaxed">{reply.reply}</p>
           {reply.shape ? (
-            <p className="text-[10px] uppercase tracking-wide text-moonlight font-mono" data-testid="dialogue-shape">
+            <p className="text-xxs uppercase tracking-wide text-moonlight font-mono" data-testid="dialogue-shape">
               {reply.shape}
             </p>
           ) : null}
@@ -522,7 +522,7 @@ function DialoguePanel({
           {voice.phase === "recording" ? "■ Stop" : "● Speak it"}
         </LemonButton>
       </div>
-      <p className="text-[10px] text-moonlight mt-1.5">One-shot reply (not a full chat) this sprint.</p>
+      <p className="text-xxs text-moonlight mt-1.5">One-shot reply (not a full chat) this sprint.</p>
     </Panel>
   );
 }
@@ -610,7 +610,7 @@ function Panel({
   return (
     <div className="p-2 w-[300px]">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] uppercase tracking-wider text-moonlight">{title}</span>
+        <span className="text-xxs uppercase tracking-wider text-moonlight">{title}</span>
         <button
           type="button"
           onClick={onClose}

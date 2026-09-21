@@ -90,7 +90,7 @@ export function Signals() {
               and domain. Generated from the schema itself at request time,
               never a hand-maintained duplicate.
             </p>
-            <div className="flex items-center gap-2 flex-wrap text-[10px] font-mono text-ink-mute dark:text-moonlight">
+            <div className="flex items-center gap-2 flex-wrap text-xxs font-mono text-ink-mute dark:text-moonlight">
               {data?.schema_version !== undefined && (
                 <span>schema v{data.schema_version}</span>
               )}
@@ -140,7 +140,7 @@ export function Signals() {
                     key: "domain",
                     header: "Domain",
                     render: (r) => (
-                      <span className="font-mono text-[11px] uppercase text-shadow-1 dark:text-moonlight">
+                      <span className="font-mono text-xs uppercase text-shadow-1 dark:text-moonlight">
                         {r.domain}
                       </span>
                     ),
@@ -160,7 +160,7 @@ export function Signals() {
                     header: "Payload class",
                     render: (r) =>
                       r.payload_class ? (
-                        <span className="font-mono text-[11px] text-ink-soft dark:text-starlight">
+                        <span className="font-mono text-xs text-ink-soft dark:text-starlight">
                           {r.payload_class}
                           {!r.typed && (
                             <span className="ml-1 text-ink-mute dark:text-moonlight italic">
@@ -180,7 +180,7 @@ export function Signals() {
                           header: "Emitted by",
                           render: (r: SignalActionView) =>
                             r.emitted_by ? (
-                              <span className="font-mono text-[11px] text-ink-soft dark:text-starlight">
+                              <span className="font-mono text-xs text-ink-soft dark:text-starlight">
                                 {r.emitted_by}
                               </span>
                             ) : (
