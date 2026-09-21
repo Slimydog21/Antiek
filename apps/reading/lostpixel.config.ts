@@ -96,6 +96,11 @@ export const config: CustomProjectConfig = {
       "neutralhousecard",
       "narrow-top-bottom-only",
       "narrowtopbottomonly",
+      // Same contradiction as narrow-top-bottom-only: this story pins its own
+      // viewport globals, which fight the breakpoint matrix at w768 (the tier
+      // hook reads md there and drops the side rails the story exists to show).
+      "wide-all-four-edges",
+      "wideallfouredges",
       // The semantic-motion proof sheet freezes animation tracks with
       // negative delays, but Ubuntu CI still renders the mascot at
       // run-variable subpixel offsets (> 0.4% ceiling on two consecutive
