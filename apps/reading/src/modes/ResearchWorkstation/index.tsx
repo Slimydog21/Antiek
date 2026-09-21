@@ -30,14 +30,14 @@ const SOURCE_POLICY_LABELS: Record<ResearchSourcePolicy, string> = {
 export function SourceIntentReceipt({ policy }: { policy: ResearchSourcePolicy[] }) {
   if (policy.length === 0) return null;
   return (
-    <div className="border-b border-rule bg-ice-1 px-4 py-2 text-[11px] font-mono text-ink-mute dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
+    <div className="border-b border-rule bg-ice-1 px-4 py-2 text-xs font-mono text-ink-mute dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
       <span className="uppercase tracking-wider text-shadow-1 dark:text-moonlight">
         Source intent
       </span>
       <span className="ml-2 text-ink dark:text-bright">
         {policy.map((item) => SOURCE_POLICY_LABELS[item] ?? item).join(" · ")}
       </span>
-      <span className="ml-2 font-serif text-[12px]">
+      <span className="ml-2 font-serif text-xs">
         recorded at start; execution receipts arrive separately
       </span>
     </div>

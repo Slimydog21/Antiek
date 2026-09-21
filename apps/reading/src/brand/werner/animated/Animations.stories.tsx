@@ -39,7 +39,7 @@ const Cell = ({
     <div className="text-xs font-mono uppercase tracking-wider text-ink-soft dark:text-starlight">
       {label}
     </div>
-    <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight text-center">
+    <div className="text-xxs font-mono text-ink-mute dark:text-moonlight text-center">
       {hint}
     </div>
   </div>
@@ -201,14 +201,14 @@ export const CanonicalMoods: Story = {
       <div className="space-y-8">
         {moods.map((m) => (
           <div key={m}>
-            <div className="uppercase text-[10px] tracking-[1.5px] text-shadow-1 dark:text-moonlight mb-2">
+            <div className="uppercase text-xxs tracking-[1.5px] text-shadow-1 dark:text-moonlight mb-2">
               {m}
             </div>
             <div className="flex items-end gap-8">
               {sizes.map((s) => (
                 <div key={s} className="flex flex-col items-center gap-1.5">
                   <BrainMascot mood={m} size={s} />
-                  <div className="font-mono text-[10px] text-ink-mute">
+                  <div className="font-mono text-xxs text-ink-mute">
                     {s}px
                   </div>
                 </div>

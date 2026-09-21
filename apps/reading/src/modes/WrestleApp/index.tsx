@@ -1,5 +1,5 @@
 import WorkflowArt from "../../brand/WorkflowArt";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import LemonButton from "../../components/lemon/LemonButton";
@@ -146,7 +146,6 @@ export default function WrestleApp() {
         <EmptyState
           onFileSelected={onFileSelected}
           loadError={loadError}
-          investigationId={investigationId}
         />
       )}
     </PanelHost>
@@ -156,12 +155,11 @@ export default function WrestleApp() {
 function EmptyState({
   onFileSelected,
   loadError,
-  investigationId,
 }: {
   onFileSelected: (file: File) => void;
   loadError: string | null;
-  investigationId: string;
 }) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   return (
     <div className="h-full flex items-center justify-center bg-ice-2 dark:bg-space-2">
       <div className="max-w-md text-center px-6 text-ink dark:text-bright">
@@ -171,27 +169,34 @@ function EmptyState({
           The trajectory feed will appear as a docked panel; cross-document
           bridges appear on the right.
         </p>
-        <label className="inline-flex">
-          <LemonButton variant="primary" size="lg" type="button" tabIndex={-1}>
-            Choose PDF…
-          </LemonButton>
-          <input
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onFileSelected(f);
-            }}
-          />
-        </label>
+        {/* Real focusable button that delegates to the input — the previous
+            label-wrapped tabIndex={-1} button + hidden input was unreachable
+            by keyboard and screen reader (ui-audit 15-modes-f). */}
+        <LemonButton
+          variant="primary"
+          size="lg"
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          Choose PDF…
+        </LemonButton>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onFileSelected(f);
+          }}
+        />
         {loadError && (
           <div className="text-xs font-mono text-emperor mt-4">{loadError}</div>
         )}
-        <p className="mt-6 text-[11px] font-mono text-ink-mute dark:text-moonlight">
-          investigation:{" "}
-          <span className="text-ink dark:text-bright">{investigationId}</span>
-        </p>
+        {/* No investigation id is rendered — the house no-id posture (Speak,
+            Write). The id stays in console.info for debugging. */}
       </div>
     </div>
   );
