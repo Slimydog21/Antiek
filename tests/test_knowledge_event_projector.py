@@ -714,7 +714,15 @@ def test_app_startup_worker_continues_catch_up_batches(monkeypatch, tmp_path: Pa
         if startup_returned.is_set() and not startup_error:
             client.__exit__(None, None, None)
     assert calls == 2
-    assert call_times[1] - call_times[0] >= 0.6
+    # The worker waits `stop_recovery.wait(0.5)` between catch-up batches
+    # (app.py, run_recovery). Measure THAT: from the first call's RETURN to
+    # the second call's START. The old `call_times[1] - call_times[0] >= 0.6`
+    # was 0.15 (the fake's sleep) + 0.5 (the wait) with slack — a composite
+    # that broke the moment the fake stopped sleeping (CI: 0.50). 0.45 is
+    # clock granularity on Event.wait, not a performance budget.
+    assert call_times[1] - return_times[0] >= 0.45, (
+        f"worker did not wait between batches: {call_times[1] - return_times[0]:.3f}s"
+    )
     assert app.state.knowledge_event_recovery["status"] == "current"
 
 
