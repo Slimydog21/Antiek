@@ -75,10 +75,36 @@
         state: present
       tags: [base]
 
-    - name: install rclone for R2 uploads
-      ansible.builtin.apt:
-        name: rclone
-        state: present
+    # Pinned upstream binary, NOT apt: Ubuntu 24.04's rclone (1.60.x, 2022)
+    # sends X-Amz-Acl: private, which Cloudflare R2 rejects with 501
+    # NotImplemented — every backup's first upload attempt failed and only
+    # the retry absorbed it (root-caused 2026-09-21 via --dump headers).
+    # ≥1.75 drops the canned ACL for provider=Cloudflare. Checksum-pinned so
+    # the supply chain is identical on every reprovision.
+    - name: fetch pinned rclone zip (checksum-verified)
+      ansible.builtin.get_url:
+        url: https://downloads.rclone.org/v1.75.1/rclone-v1.75.1-linux-amd64.zip
+        dest: /tmp/rclone-v1.75.1-linux-amd64.zip
+        checksum: sha256:982b5aa772841168f8e380f139e9e787b2a105403e32b94da8676a0e1c0a13ab
+        mode: "0644"
+      tags: [base, backup]
+
+    - name: unpack pinned rclone
+      ansible.builtin.unarchive:
+        src: /tmp/rclone-v1.75.1-linux-amd64.zip
+        dest: /tmp
+        remote_src: true
+        creates: /tmp/rclone-v1.75.1-linux-amd64/rclone
+      tags: [base, backup]
+
+    - name: install pinned rclone binary
+      ansible.builtin.copy:
+        src: /tmp/rclone-v1.75.1-linux-amd64/rclone
+        dest: /usr/bin/rclone
+        owner: root
+        group: root
+        mode: "0755"
+        remote_src: true
       tags: [base, backup]
 
     # OCR fallback for scanned/thin PDF→reader-HTML (#3190). DeepSeek prefer

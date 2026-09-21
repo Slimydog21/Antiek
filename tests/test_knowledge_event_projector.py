@@ -468,15 +468,25 @@ def _recovery_child(db: str, events: Path, crash_boundary: str | None = None):
     code = textwrap.dedent(
         f"""
         import os
+        from runtime.db_lock import WriteLockTimeout
         from substrate.graph.knowledge_event_projector import recover
         def checkpoint(boundary, event_id):
             if boundary == {crash_boundary!r}:
                 os._exit(73)
-        recover(
-            db_path={db!r},
-            events_dir={str(events)!r},
-            checkpoint=checkpoint,
-        )
+        try:
+            recover(
+                db_path={db!r},
+                events_dir={str(events)!r},
+                checkpoint=checkpoint,
+            )
+        except WriteLockTimeout:
+            # Losing the write-lock race is the EXPECTED outcome for one of two
+            # racers. recover() raises by design rather than hanging — see
+            # test_recovery_wall_time_is_one_deadline_for_snapshot_lock, which
+            # pins that behaviour — so the loser must translate it into a clean
+            # exit. Without this, a child that simply lost the race exits 1 and
+            # reds the suite under CI load (observed on main: [0, 1] != [0, 0]).
+            pass
         """
     )
     env = dict(os.environ)
@@ -643,20 +653,43 @@ def test_app_startup_worker_continues_catch_up_batches(monkeypatch, tmp_path: Pa
         handoff_checks += 1
         return handoff_checks == 2
 
+    return_times: list[float] = []
+
     def fake_recover(**_: object) -> projector.RecoveryReport:
         nonlocal calls
         calls += 1
         call_times.append(time.monotonic())
         time.sleep(0.15)
+        return_times.append(time.monotonic())
         return projector.RecoveryReport(catching_up=calls == 1, remaining=None)
 
     monkeypatch.setattr(projector, "recover", fake_recover)
     monkeypatch.setattr(db_lock_module, "write_handoff_requested", handoff_requested)
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
-    started = time.monotonic()
     with TestClient(app):
-        assert time.monotonic() - started < 0.14
+        startup_returned = time.monotonic()
+        # The property: startup does NOT block on the catch-up worker. It used
+        # to be asserted as `elapsed < 0.14s` wall-clock, which measures runner
+        # speed, not the property — on a starved shared runner it took 0.597s
+        # (PR #3338 CI, 2026-09-21) while the worker was running exactly as
+        # designed, and passed 5/5 locally. Compare two instants in the same
+        # process instead: startup must return BEFORE the first recover() call
+        # has finished its 0.15s sleep. If startup blocked on the worker,
+        # return_times[0] would precede startup_returned. Speed-independent,
+        # and it fails if the worker is ever joined during startup (verified
+        # by mutation: a `time.sleep(0.2)` after `worker.start()` in app.py reds this test).
+        deadline = time.monotonic() + 2
+        while not call_times:
+            assert time.monotonic() < deadline, "recover() never invoked"
+            time.sleep(0.005)
+        while not return_times:
+            assert time.monotonic() < deadline
+            time.sleep(0.005)
+        assert startup_returned < return_times[0], (
+            "startup blocked on the catch-up worker: it returned at "
+            f"{startup_returned:.3f}, after recover() finished at {return_times[0]:.3f}"
+        )
         deadline = time.monotonic() + 2
         while app.state.knowledge_event_recovery["status"] == "catching_up":
             assert time.monotonic() < deadline
