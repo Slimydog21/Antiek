@@ -106,7 +106,7 @@ class XApiClient(PasteKeyConnector):
             kwargs["sleeper"] = sleeper
         self._governor = governor or VendorRateGovernor("x", X_RATE, **kwargs)
 
-    def _http_get(self, path: str, params: dict[str, Any]) -> dict:
+    def _http_get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         """LIVE, fixture-validated-only edge. Issues a GET with the BYOK bearer.
 
         The bearer is read from the SecretStr ONLY to build the header dict; it is
@@ -180,14 +180,14 @@ class XApiClient(PasteKeyConnector):
             result_limit=max_results,
         )
 
-    def user_timeline(self, user_id: str) -> list[dict]:
+    def user_timeline(self, user_id: str) -> list[dict[str, Any]]:
         """A user's recent tweets (the general-feed source)."""
         return self._paged(
             f"/users/{user_id}/tweets",
             {"max_results": self.page_size},
         )
 
-    def conversation(self, conversation_id: str) -> list[dict]:
+    def conversation(self, conversation_id: str) -> list[dict[str, Any]]:
         """All tweets in one conversation/thread (the thread-specific source)."""
         return self._paged(
             "/tweets/search/recent",
@@ -228,17 +228,17 @@ class XApiClient(PasteKeyConnector):
 # ───────────────────────────────────────────────────────────────────────────
 
 
-def parse_search_response(page: dict) -> list[dict]:
+def parse_search_response(page: dict[str, Any]) -> list[dict[str, Any]]:
     """Flatten one X API v2 page into a list of tweet dicts enriched with the
     author username/verified from the ``includes.users`` expansion.
 
     Pure: takes a parsed JSON page (a fixture in tests), returns plain dicts. No
     network, no key, deterministic."""
     data = page.get("data") or []
-    users_by_id: dict[str, dict] = {}
+    users_by_id: dict[str, dict[str, Any]] = {}
     for u in (page.get("includes") or {}).get("users") or []:
         users_by_id[str(u.get("id"))] = u
-    enriched: list[dict] = []
+    enriched: list[dict[str, Any]] = []
     for tw in data:
         author = users_by_id.get(str(tw.get("author_id")), {})
         enriched.append(
@@ -256,7 +256,7 @@ def parse_search_response(page: dict) -> list[dict]:
 
 
 def to_thread(
-    tweets: list[dict],
+    tweets: list[dict[str, Any]],
     *,
     thread_url: str,
     root_tweet_id: str,

@@ -41,9 +41,8 @@ is not invoked here — that's a separate signal layer.
 from __future__ import annotations
 
 import enum
-import re
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 # Master-spec §5.4 — at most 2 em-dashes per thesis-shaped artifact.
 # Note-level threshold is more permissive (4) since notes can chain.
@@ -74,7 +73,7 @@ MIN_WORDS_PER_NOTE: int = 50
 MAX_SOURCE_TIER_FOR_HARD_CLAIM: int = 3
 
 
-class QualityGateOutcome(str, enum.Enum):
+class QualityGateOutcome(enum.StrEnum):
     """Three-way outcome. PASS lets attribution flow; REJECT and
     SOFT_REJECT block it. SOFT_REJECT permits operator override."""
 
@@ -83,7 +82,7 @@ class QualityGateOutcome(str, enum.Enum):
     REJECT = "reject"
 
 
-class QualityFailureReason(str, enum.Enum):
+class QualityFailureReason(enum.StrEnum):
     """Why a note failed. Exposed in audit events so the operator
     can see which discipline is being violated."""
 

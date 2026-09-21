@@ -43,7 +43,7 @@ from __future__ import annotations
 import math
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 
 # Direct import — interfaces/research/api/ depends on substrate + processing.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -64,7 +64,7 @@ from substrate.schemas import (  # noqa: E402
     QuestionResolvedByDocPayload,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402 -- lazy export after path fix
 
 # Default similarity threshold. Tuned for the sentence-transformers
 # production embedder. For the HashEmbedding fallback used in dev/tests,
@@ -91,7 +91,7 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     degenerate case shouldn't fire a cross-doc link anyway."""
     if not a or not b:
         return 0.0
-    num = sum(x * y for x, y in zip(a, b))
+    num = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(x * x for x in b))
     if na == 0.0 or nb == 0.0:
@@ -120,7 +120,7 @@ def make_cross_doc_handler(
     *,
     embedder: EmbeddingProvider | None = None,
     threshold: float | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the async handler closed over the broadcaster + embedder
     + threshold. Same handler is registered for question.identified,
     note.emerged, and question.resolved_by_doc — it dispatches on

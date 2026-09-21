@@ -27,6 +27,7 @@ turn and have their own smoke tests against real endpoints.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -242,6 +243,77 @@ def test_dispatch_emits_dispatch_call_event(_events_dir):
     assert event.policy_id == "mock-anthropic/claude-opus-4-7"
 
 
+def test_dispatch_emits_route_receipt_on_success(_events_dir):
+    register_provider(_MockAnthropicProvider())
+    register_provider(_MockOpenAICompatProvider())
+    result = dispatch(
+        "do not leak this raw prompt", "synthesizer",
+        investigation_id="inv-route-receipt",
+        config=_two_tier_config(),
+    )
+
+    rows = trajectory("inv-route-receipt")
+    event = Event.model_validate(rows[0])
+    receipt = event.payload.route_receipt
+    assert receipt is not None
+    assert result.route_receipt == receipt
+    assert receipt.selected.provider == "mock-anthropic"
+    assert receipt.selected.model == "claude-opus-4-7"
+    assert receipt.selected.reason_code == "primary"
+    assert receipt.selected.pricing_known is True
+    assert receipt.override == "none"
+    assert receipt.task_kind == "synthesizer"
+    assert receipt.candidate_models[0].provider == "mock-anthropic"
+    assert receipt.candidate_models[1].provider == "mock-openai-compat"
+
+
+def test_route_receipt_redacts_prompt_and_provider_secrets(_events_dir):
+    register_provider(_MockAnthropicProvider())
+    register_provider(_MockOpenAICompatProvider())
+    secret_prompt = "operator raw prompt with sk-test-secret-never-store"
+    dispatch(
+        secret_prompt, "synthesizer",
+        investigation_id="inv-route-redaction",
+        config=_two_tier_config(),
+    )
+
+    receipt_json = json.dumps(
+        trajectory("inv-route-redaction")[0]["payload"]["route_receipt"],
+        sort_keys=True,
+    )
+    assert secret_prompt not in receipt_json
+    assert "sk-test-secret-never-store" not in receipt_json
+    assert "operator raw prompt" not in receipt_json
+    assert "prompt_hash" not in receipt_json
+
+
+def test_unknown_pricing_route_receipt_marks_pricing_unknown(_events_dir):
+    cfg = _two_tier_config()
+    unknown = TierConfig(
+        name="flash",
+        provider="mock-openai-compat",
+        model="mimo-flash",
+        max_tokens=4096,
+        temperature=0.2,
+        context_budget_tokens=32000,
+        pricing=TierPricing(),
+        fallback=None,
+    )
+    cfg = DispatchConfig(role_tiers={"decomposer": "flash"}, tiers={"flash": unknown})
+    register_provider(_MockOpenAICompatProvider())
+
+    result = dispatch(
+        "hi", "decomposer", investigation_id="inv-unknown-pricing", config=cfg,
+    )
+
+    assert result.cost_usd == 0.0
+    rows = trajectory("inv-unknown-pricing")
+    receipt = Event.model_validate(rows[0]).payload.route_receipt
+    assert receipt is not None
+    assert receipt.selected.pricing_known is False
+    assert receipt.candidate_models[0].pricing_known is False
+
+
 def test_anthropic_usage_normalization(_events_dir):
     """Watch-item: Anthropic's raw ``input_tokens`` is the cache-EXCLUSIVE
     remainder; cache_read / cache_creation are reported separately. The
@@ -320,6 +392,13 @@ def test_fallback_chain_triggers_on_primary_failure(_events_dir):
     assert primary.payload.cost_usd == 0.0
     assert fb.payload.fallback_chain_index == 1
     assert fb.payload.provider == "mock-openai-compat"
+    assert primary.payload.route_receipt is not None
+    assert primary.payload.route_receipt.selected.reason_code == "provider_error"
+    assert primary.payload.route_receipt.selected.provider == "mock-anthropic"
+    assert fb.payload.route_receipt is not None
+    assert fb.payload.route_receipt.selected.reason_code == "fallback_after_error"
+    assert fb.payload.route_receipt.override == "fallback"
+    assert fb.payload.route_receipt.selected.provider == "mock-openai-compat"
 
 
 def test_dispatch_raises_when_all_tiers_fail(_events_dir):

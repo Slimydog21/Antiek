@@ -42,6 +42,12 @@ from substrate.multimedia.listening_progress import (
     ListeningProgressError,
     ListeningProgressStore,
 )
+from substrate.multimedia.live_worker import (
+    evaluate_public_export_gate,
+    plan_public_export,
+    preview_next_live_execution,
+    record_public_export_review,
+)
 from substrate.multimedia.local_audible_coordinator import LocalAudibleCoordinator
 from substrate.multimedia.local_production_coordinator import (
     LocalVideoProductionCoordinator,
@@ -72,6 +78,8 @@ from substrate.multimedia.read_model import (
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaJobList,
+    MultimediaPublicExportReviewRequest,
+    MultimediaPublicExportStatus,
     SteeringPreviewConflict,
     SteeringPreviewRequest,
     SteeringPreviewResponse,
@@ -263,7 +271,7 @@ def multimedia_knowledge_runtime_from_environment(
     return MultimediaKnowledgeRuntime(
         db_path=db_path,
         events_dir=events_dir or None,
-        distiller_factory=DispatchDistiller,
+        distiller_factory=DispatchDistiller,  # type: ignore[arg-type]
     )
 
 
@@ -341,6 +349,20 @@ def search_multimedia_asset_evidence(
     if current.asset.revision_id != payload.expected_revision_id:
         raise HTTPException(status_code=409, detail="multimedia evidence parent revision is stale")
     return result
+
+
+@multimedia_router.get(
+    "/assets/{asset_id}/public-export-status",
+    response_model=MultimediaPublicExportStatus,
+)
+def get_multimedia_public_export_status(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaPublicExportStatus:
+    try:
+        return get_store().get(asset_id, owner_id=operator_id).public_export_status()
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
 
 
 @multimedia_router.post(
@@ -715,6 +737,53 @@ def _resolve_research_audio_authority(
     ):
         raise ValueError("research intent audio registration conflicts")
     return metadata
+
+
+@multimedia_router.post("/assets/{asset_id}/evaluate-public-export-gate", response_model=MultimediaAssetRecord)
+def evaluate_multimedia_public_export_gate(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaAssetRecord:
+    try:
+        return evaluate_public_export_gate(get_store(), asset_id, owner_id=operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.post("/assets/{asset_id}/public-export-review", response_model=MultimediaAssetRecord)
+def record_multimedia_public_export_review(
+    asset_id: str,
+    request: MultimediaPublicExportReviewRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaAssetRecord:
+    try:
+        return record_public_export_review(get_store(), asset_id, request, owner_id=operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.post("/assets/{asset_id}/plan-public-export", response_model=MultimediaAssetRecord)
+def plan_multimedia_public_export(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaAssetRecord:
+    try:
+        return plan_public_export(get_store(), asset_id, owner_id=operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.post("/assets/{asset_id}/live-execution-preview", response_model=MultimediaAssetRecord)
+def preview_multimedia_live_execution(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaAssetRecord:
+    """No-spend worker preview for the latest queued live execution plan."""
+    try:
+        return preview_next_live_execution(get_store(), asset_id, owner_id=operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
 
 
 def register_multimedia_routes(app: FastAPI) -> None:

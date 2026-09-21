@@ -43,7 +43,7 @@ from .events import (
 from .schema import ensure_speak_schema
 
 
-class ConsentScope(str, enum.Enum):
+class ConsentScope(enum.StrEnum):
     """The three independent consent scopes. Values are stored in the
     ``speak_consent.scope`` column — stable strings."""
 

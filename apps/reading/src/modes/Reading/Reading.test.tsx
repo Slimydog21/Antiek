@@ -246,11 +246,11 @@ function makeBody(over: Partial<FullTextResponse> = {}): FullTextResponse {
   };
 }
 
-async function renderReader() {
+async function renderReader(initialEntry = "/read/doc-1") {
   listBooksMock.mockResolvedValue({ books: [], count: 0 });
   const { default: BookReader } = await import("./index");
   return render(
-    <MemoryRouter initialEntries={["/read/doc-1"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path="/read/:documentId" element={<BookReader />} />
       </Routes>
@@ -288,6 +288,16 @@ describe("BookReader", () => {
     expect(screen.getByText(/Page 1 of 2/)).toBeTruthy(); // pager text (matcher spans nodes)
     fireEvent.click(screen.getByRole("button", { name: /Next/ }));
     await waitFor(() => expect(screen.getByText("The second page.")).toBeTruthy());
+  });
+
+  it("opens talk-to-book from a reader deep link", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+
+    await renderReader("/read/doc-1?talk=1");
+
+    await waitFor(() => expect(screen.getByTestId("talk-to-book")).toBeTruthy());
+    expect(screen.getByText("Thought partner · “A Servable Book”")).toBeTruthy();
   });
 
   it("shows the preview banner and snippet for a gated book", async () => {
@@ -332,6 +342,8 @@ describe("BookReader", () => {
       gated: false,
       servability: "public_domain",
       seed_preview: "From the book…",
+      artifact_path: "/tmp/antiek/inv-child-xyz.html",
+      twin_notes_path: "/tmp/antiek/inv-child-xyz.notes.html",
     });
     navigateMock.mockReset();
     await renderReader();
@@ -339,7 +351,7 @@ describe("BookReader", () => {
     fireEvent.click(screen.getByRole("button", { name: /Research this page/ }));
     await waitFor(() => expect(spinResearchMock).toHaveBeenCalled());
     // Seeds from the current page index (0) and hands off to the research.
-    expect(spinResearchMock).toHaveBeenCalledWith("doc-1", 0, expect.stringContaining("opening"));
+    expect(spinResearchMock).toHaveBeenCalledWith("doc-1", 0, expect.stringContaining("opening"), true);
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-child-xyz"));
   });
 

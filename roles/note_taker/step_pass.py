@@ -22,11 +22,11 @@ from collections.abc import Sequence
 from typing import Any
 
 try:
-    from ...graph.insight_question import canonical_text
+    from substrate.graph.insight_question import canonical_text
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.graph.insight_question import canonical_text  # type: ignore[no-redef]
+    from substrate.graph.insight_question import canonical_text
 
 # StepEvent is defined by SPR-02; import lazily so this module does not hard-
 # depend on the runner package being importable in every context.

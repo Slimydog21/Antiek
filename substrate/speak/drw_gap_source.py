@@ -65,7 +65,7 @@ class DRWGapSource:
     def __init__(self, con: Any):
         self.con = con
 
-    def _project_node_ids(self, project_id: str) -> set:
+    def _project_node_ids(self, project_id: str) -> set[str]:
         """Shared-graph nodes attributable to this Speak project. Empty until a
         sanctioned promotion stamps ``SPEAK_PROJECT_NODE_KEY`` — DRWGapSource
         then returns [] and the composite is exactly SpeakGraphGapSource."""

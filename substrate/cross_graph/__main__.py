@@ -39,6 +39,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
+from typing import Any
 
 from runtime.db_lock import connect_read
 from substrate.cross_graph.federation import FederationConfig
@@ -50,6 +52,7 @@ from substrate.cross_graph.federation_config_store import (
 )
 from substrate.cross_graph.partner_identity import (
     PartnerIdentityError,
+    PartnerRegistry,
     PartnerSubstrate,
     generate_shared_secret,
     load_registry,
@@ -72,7 +75,7 @@ def _resolve_db_path(override: str | None) -> str:
     return path
 
 
-def _record_to_dict(rec: PartnerSubstrate) -> dict:
+def _record_to_dict(rec: PartnerSubstrate) -> dict[str, Any]:
     """Audit-friendly dict shape. NEVER includes shared_secret_hex."""
     return {
         "partner_id": rec.partner_id,
@@ -101,7 +104,9 @@ def _print_record(rec: PartnerSubstrate, *, as_json: bool) -> None:
     print(f"  last_change_at  {rec.last_state_change_at}")
 
 
-def _with_write(db_path: str, purpose: str, fn) -> PartnerSubstrate:
+def _with_write(
+    db_path: str, purpose: str, fn: Callable[[PartnerRegistry], PartnerSubstrate]
+) -> PartnerSubstrate:
     from runtime.db_lock import connect_write
 
     with connect_write(db_path, purpose=purpose) as con:
@@ -336,7 +341,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    return int(args.func(args))
 
 
 if __name__ == "__main__":

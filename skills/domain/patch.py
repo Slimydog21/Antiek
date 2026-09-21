@@ -29,6 +29,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 
 def default_skills_root() -> Path:
@@ -156,7 +157,7 @@ def apply_finding_to_section(
 
 def patch_skill(
     skill_name: str,
-    findings: dict,
+    findings: dict[str, Any],
     *,
     skills_root: Path | None = None,
 ) -> list[str]:

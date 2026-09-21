@@ -38,7 +38,7 @@ from .slice import (
 )
 
 
-class QualityGateResult(str, enum.Enum):
+class QualityGateResult(enum.StrEnum):
     PASS = "pass"
     FAIL = "fail"
 

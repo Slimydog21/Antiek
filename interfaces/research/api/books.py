@@ -28,10 +28,12 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
+from html.parser import HTMLParser
 from typing import Any, Literal, cast
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -39,6 +41,11 @@ from pydantic import BaseModel, Field, ValidationError
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
 from substrate.books.serve import ServeResult
+from substrate.research_bridge.ingest import (
+    CHUNK_TARGET_CHARS,
+    _chunk_paragraphs,
+    _split_paragraphs,
+)
 
 from .operator_allowlist import operator_allowlist_from_env
 from .serve_guard import serve_full_text_guarded
@@ -374,12 +381,517 @@ class CurateResponse(BaseModel):
     books: list[CuratedBookResponse]
 
 
+class BookPurchaseRequestIn(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    author: str | None = Field(default=None, max_length=200)
+    source_url: str | None = Field(default=None, max_length=1000)
+    store: Literal["publisher", "amazon", "bookshop", "google_books", "apple_books", "other"] = (
+        "other"
+    )
+    max_price_usd_cents: int = Field(ge=0, le=50_000)
+    desired_format: Literal["epub", "html", "pdf", "kindle", "unknown"] = "unknown"
+    import_target: Literal["antiek_html"] = "antiek_html"
+    acknowledge_manual_purchase_only: bool = False
+
+
+class BookPurchaseRequestOut(BaseModel):
+    request_id: str
+    status: Literal["needs_operator_purchase"]
+    title: str
+    author: str | None
+    store: str
+    source_url: str | None
+    max_price_usd_cents: int
+    desired_format: str
+    import_target: Literal["antiek_html"]
+    purchase_allowed: bool
+    external_call_performed: bool
+    spend_reserved_usd_cents: int
+    charge_attempted: bool
+    ingest_attempted: bool
+    html_hosting_required: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
+class BookHtmlImportPreflightIn(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    author: str | None = Field(default=None, max_length=200)
+    source_request_id: str | None = Field(default=None, max_length=80)
+    file_name: str | None = Field(default=None, max_length=300)
+    file_format: Literal["epub", "html", "pdf", "kindle", "unknown"] = "unknown"
+    has_legal_access: bool = False
+    acknowledge_no_upload_or_ingest: bool = False
+
+
+class BookHtmlImportPreflightOut(BaseModel):
+    import_preflight_id: str
+    status: Literal["ready_for_operator_file", "blocked"]
+    title: str
+    author: str | None
+    source_request_id: str | None
+    file_name: str | None
+    file_format: str
+    import_target: Literal["antiek_html"]
+    external_call_performed: bool
+    file_uploaded: bool
+    file_read_attempted: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    html_conversion_required: bool
+    html_hosting_required: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
+class BookHtmlFileHandoffIn(BaseModel):
+    import_preflight_id: str = Field(min_length=1, max_length=80)
+    file_name: str = Field(min_length=1, max_length=300)
+    file_format: Literal["epub", "html", "pdf", "kindle", "unknown"] = "unknown"
+    storage_ref: str = Field(min_length=1, max_length=500)
+    checksum_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    acknowledge_manual_storage_only: bool = False
+    acknowledge_no_file_read_or_conversion: bool = False
+
+
+class BookHtmlFileHandoffOut(BaseModel):
+    handoff_id: str
+    status: Literal["ready_for_conversion_review"]
+    import_preflight_id: str
+    file_name: str
+    file_format: str
+    storage_ref: str
+    checksum_sha256: str | None
+    import_target: Literal["antiek_html"]
+    storage_ref_recorded: bool
+    upload_accepted: bool
+    external_call_performed: bool
+    file_read_attempted: bool
+    conversion_attempted: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    html_conversion_required: bool
+    html_hosting_required: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
+class BookHtmlConversionReviewIn(BaseModel):
+    handoff_id: str = Field(min_length=1, max_length=80)
+    import_preflight_id: str = Field(min_length=1, max_length=80)
+    converter: Literal["pandoc", "calibre", "native_html", "manual_review", "unknown"] = "unknown"
+    sandbox_profile: Literal["locked_down", "network_disabled", "manual_only"] = "locked_down"
+    output_format: Literal["antiek_html"] = "antiek_html"
+    acknowledge_sandbox_required: bool = False
+    acknowledge_no_conversion_run: bool = False
+
+
+class BookHtmlConversionReviewOut(BaseModel):
+    conversion_review_id: str
+    status: Literal["ready_for_explicit_conversion_job"]
+    handoff_id: str
+    import_preflight_id: str
+    converter: str
+    sandbox_profile: str
+    output_format: Literal["antiek_html"]
+    storage_ref_read: bool
+    file_read_attempted: bool
+    conversion_attempted: bool
+    output_written: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    html_hosting_required: bool
+    serve_gate_required: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
+class BookHtmlConversionResultIn(BaseModel):
+    conversion_review_id: str = Field(min_length=1, max_length=80)
+    handoff_id: str = Field(min_length=1, max_length=80)
+    html_output_ref: str = Field(min_length=1, max_length=500)
+    html_checksum_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    page_count_estimate: int | None = Field(default=None, ge=0, le=100_000)
+    acknowledge_output_metadata_only: bool = False
+    acknowledge_no_publish_or_serve: bool = False
+
+
+class BookHtmlConversionResultOut(BaseModel):
+    conversion_result_id: str
+    status: Literal["ready_for_serve_gate_review"]
+    conversion_review_id: str
+    handoff_id: str
+    html_output_ref: str
+    html_checksum_sha256: str | None
+    page_count_estimate: int | None
+    import_target: Literal["antiek_html"]
+    output_metadata_recorded: bool
+    output_ref_fetched: bool
+    html_output_read: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    shelf_publication_attempted: bool
+    full_text_served: bool
+    serve_gate_required: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
+class BookHtmlServeGateReviewIn(BaseModel):
+    conversion_result_id: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=300)
+    author: str | None = Field(default=None, max_length=200)
+    rights_basis: Literal[
+        "public_domain",
+        "publisher_opt_in",
+        "platform_authored",
+        "personal_license",
+        "unknown",
+    ] = "unknown"
+    servability_decision: Literal["servable_full_text", "gated_metadata_only", "blocked"] = (
+        "gated_metadata_only"
+    )
+    acknowledge_rights_reviewed: bool = False
+    acknowledge_no_publication: bool = False
+
+
+class BookHtmlServeGateReviewOut(BaseModel):
+    serve_gate_review_id: str
+    status: Literal["ready_for_publication_request", "blocked"]
+    conversion_result_id: str
+    title: str
+    author: str | None
+    rights_basis: str
+    servability_decision: str
+    import_target: Literal["antiek_html"]
+    rights_review_recorded: bool
+    html_output_read: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    shelf_publication_attempted: bool
+    full_text_served: bool
+    publication_allowed_next: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
+class BookHtmlPublicationRequestIn(BaseModel):
+    serve_gate_review_id: str = Field(min_length=1, max_length=80)
+    conversion_result_id: str = Field(min_length=1, max_length=80)
+    document_id_hint: str | None = Field(default=None, max_length=160)
+    shelf_visibility: Literal["private_library", "workspace_only"] = "private_library"
+    acknowledge_publication_intent: bool = False
+    acknowledge_no_ingest_or_serve: bool = False
+
+
+class BookHtmlPublicationRequestOut(BaseModel):
+    publication_request_id: str
+    status: Literal["ready_for_explicit_publish_job"]
+    serve_gate_review_id: str
+    conversion_result_id: str
+    document_id_hint: str | None
+    shelf_visibility: str
+    import_target: Literal["antiek_html"]
+    publication_intent_recorded: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    shelf_publication_attempted: bool
+    full_text_served: bool
+    reader_route_created: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
+class BookHtmlPublishJobIn(BaseModel):
+    publication_request_id: str = Field(min_length=1, max_length=80)
+    serve_gate_review_id: str = Field(min_length=1, max_length=80)
+    document_id: str = Field(min_length=1, max_length=160)
+    title: str = Field(min_length=1, max_length=300)
+    author: str | None = Field(default=None, max_length=200)
+    html_body: str = Field(min_length=1, max_length=2_000_000)
+    rights_basis: Literal[
+        "public_domain",
+        "publisher_opt_in",
+        "platform_authored",
+        "personal_license",
+    ]
+    page_count: int = Field(default=0, ge=0, le=100_000)
+    license_basis: str = Field(min_length=1, max_length=1000)
+    acknowledge_write_to_library: bool = False
+    acknowledge_full_text_servable: bool = False
+
+
+class BookHtmlPublishJobOut(BaseModel):
+    publish_job_id: str
+    status: Literal["published_to_private_library"]
+    publication_request_id: str
+    serve_gate_review_id: str
+    document_id: str
+    title: str
+    author: str | None
+    import_target: Literal["antiek_html"]
+    content_class: str
+    servability: str
+    servable_full_text: bool
+    document_inserted: bool
+    book_asset_registered: bool
+    chunks_indexed: int
+    chunked_for_research: bool
+    graph_mutation_performed: bool
+    shelf_publication_attempted: bool
+    reader_route_created: bool
+    full_text_served: bool
+    open_route: str
+    policy_notes: list[str]
+
+
+class BookHtmlIndexJobIn(BaseModel):
+    document_id: str = Field(min_length=1, max_length=160)
+    publish_job_id: str | None = Field(default=None, max_length=80)
+    apply: bool = False
+    acknowledge_embedding_compute: bool = False
+    allow_hash_provider: bool = False
+
+
+class BookHtmlIndexJobOut(BaseModel):
+    index_job_id: str
+    status: Literal["dry_run_ready", "indexed_for_vector_search"]
+    document_id: str
+    publish_job_id: str | None
+    provider: str | None
+    model_name: str | None
+    provider_is_hash: bool | None
+    applied: bool
+    chunks_found: int
+    chunks_embedded_before: int
+    vectors_rewritten: int
+    graph_mutation_performed: bool
+    count_preserved: bool
+    searchable_after_apply: bool
+    policy_notes: list[str]
+
+
+_PUBLISH_CONTENT_CLASS_BY_RIGHTS: dict[str, str] = {
+    "public_domain": "public_domain",
+    "publisher_opt_in": "opt_in_licensed",
+    "platform_authored": "user_owned",
+    "personal_license": "user_owned",
+}
+
+
+def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
+    normalized = "|".join(
+        [
+            req.title.strip().casefold(),
+            (req.author or "").strip().casefold(),
+            (req.source_url or "").strip(),
+            req.store,
+            str(req.max_price_usd_cents),
+            req.desired_format,
+            req.import_target,
+        ]
+    )
+    return f"bookreq-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_import_preflight_id(req: BookHtmlImportPreflightIn) -> str:
+    normalized = "|".join(
+        [
+            req.title.strip().casefold(),
+            (req.author or "").strip().casefold(),
+            (req.source_request_id or "").strip(),
+            (req.file_name or "").strip(),
+            req.file_format,
+            str(req.has_legal_access),
+        ]
+    )
+    return f"bookimp-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_file_handoff_id(req: BookHtmlFileHandoffIn) -> str:
+    normalized = "|".join(
+        [
+            req.import_preflight_id.strip(),
+            req.file_name.strip(),
+            req.file_format,
+            req.storage_ref.strip(),
+            (req.checksum_sha256 or "").strip().casefold(),
+        ]
+    )
+    return f"bookhand-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_conversion_review_id(req: BookHtmlConversionReviewIn) -> str:
+    normalized = "|".join(
+        [
+            req.handoff_id.strip(),
+            req.import_preflight_id.strip(),
+            req.converter,
+            req.sandbox_profile,
+            req.output_format,
+        ]
+    )
+    return f"bookconv-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_conversion_result_id(req: BookHtmlConversionResultIn) -> str:
+    normalized = "|".join(
+        [
+            req.conversion_review_id.strip(),
+            req.handoff_id.strip(),
+            req.html_output_ref.strip(),
+            (req.html_checksum_sha256 or "").strip().casefold(),
+            str(req.page_count_estimate),
+        ]
+    )
+    return f"bookout-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_serve_gate_review_id(req: BookHtmlServeGateReviewIn) -> str:
+    normalized = "|".join(
+        [
+            req.conversion_result_id.strip(),
+            req.title.strip().casefold(),
+            (req.author or "").strip().casefold(),
+            req.rights_basis,
+            req.servability_decision,
+        ]
+    )
+    return f"bookserve-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_publication_request_id(req: BookHtmlPublicationRequestIn) -> str:
+    normalized = "|".join(
+        [
+            req.serve_gate_review_id.strip(),
+            req.conversion_result_id.strip(),
+            (req.document_id_hint or "").strip(),
+            req.shelf_visibility,
+        ]
+    )
+    return f"bookpub-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_publish_job_id(req: BookHtmlPublishJobIn) -> str:
+    normalized = "|".join(
+        [
+            req.publication_request_id.strip(),
+            req.serve_gate_review_id.strip(),
+            req.document_id.strip(),
+            req.title.strip().casefold(),
+            req.rights_basis,
+        ]
+    )
+    return f"bookjob-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_index_job_id(req: BookHtmlIndexJobIn) -> str:
+    normalized = "|".join(
+        [
+            req.document_id.strip(),
+            (req.publish_job_id or "").strip(),
+            str(req.apply),
+        ]
+    )
+    return f"bookidx-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+class _BookHtmlTextExtractor(HTMLParser):
+    _BLOCK_TAGS = {
+        "article",
+        "aside",
+        "blockquote",
+        "br",
+        "dd",
+        "div",
+        "dl",
+        "dt",
+        "figcaption",
+        "figure",
+        "footer",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "hr",
+        "li",
+        "main",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "section",
+        "table",
+        "td",
+        "th",
+        "tr",
+        "ul",
+    }
+    _SKIP_TAGS = {"script", "style", "noscript", "template"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, _attrs: list[tuple[str, str | None]]) -> None:
+        lowered = tag.lower()
+        if lowered in self._SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if self._skip_depth == 0 and lowered in self._BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        lowered = tag.lower()
+        if lowered in self._SKIP_TAGS and self._skip_depth:
+            self._skip_depth -= 1
+            return
+        if self._skip_depth == 0 and lowered in self._BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0:
+            self.parts.append(data)
+
+    def text(self) -> str:
+        text = "".join(self.parts)
+        text = re.sub(r"[ \t\r\f\v]+", " ", text)
+        text = re.sub(r" *\n *", "\n", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+
+def _extract_text_from_book_html(html_body: str) -> str:
+    parser = _BookHtmlTextExtractor()
+    parser.feed(html_body)
+    parser.close()
+    return parser.text()
+
+
+def _chunk_book_html_for_research(html_body: str) -> list[str]:
+    text = _extract_text_from_book_html(html_body)
+    if not text:
+        return []
+    return [
+        re.sub(r"\n{3,}", "\n\n", chunk.strip())
+        for chunk in _chunk_paragraphs(_split_paragraphs(text), CHUNK_TARGET_CHARS)
+    ]
+
+
 class SpinResearchRequest(BaseModel):
     page_index: int = Field(ge=0)
     # The reader's selected text. For a gated book it is IGNORED server-
     # side and replaced by the bounded snippet — the seed can never carry
     # gated full text, even if the client sends it (defense in depth).
     passage_text: str | None = None
+    # Optional HTML-first bridge: immediately export the spawned research shell
+    # and twin notes so the reader/workstation can open it without waiting for
+    # any provider-backed research work.
+    export_artifact: bool = False
 
 
 class SpinResearchResponse(BaseModel):
@@ -389,6 +901,8 @@ class SpinResearchResponse(BaseModel):
     gated: bool
     servability: str
     seed_preview: str
+    artifact_path: str | None = None
+    twin_notes_path: str | None = None
     capacity_warning: dict[str, object] | None = None
 
 
@@ -792,6 +1306,619 @@ def register_book_routes(app: FastAPI) -> None:
             ],
         )
 
+
+    @app.post(
+        "/books/marketplace/purchase-request",
+        response_model=BookPurchaseRequestOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def request_book_purchase(req: BookPurchaseRequestIn) -> BookPurchaseRequestOut:
+        """Prepare a no-spend book acquisition/import request.
+
+        This endpoint is deliberately a PRE-CHECKOUT contract: it records the
+        operator's desired title, budget ceiling, and target HTML import posture
+        without fetching the source URL, calling a store, reserving budget,
+        charging a card, or ingesting the work. A later, explicit operator
+        purchase/import action can consume this envelope once rights and file
+        access are clear.
+        """
+        if not req.acknowledge_manual_purchase_only:
+            raise HTTPException(
+                status_code=400,
+                detail="manual_purchase_ack_required",
+            )
+
+        return BookPurchaseRequestOut(
+            request_id=_book_purchase_request_id(req),
+            status="needs_operator_purchase",
+            title=req.title.strip(),
+            author=req.author.strip() if req.author else None,
+            store=req.store,
+            source_url=req.source_url.strip() if req.source_url else None,
+            max_price_usd_cents=req.max_price_usd_cents,
+            desired_format=req.desired_format,
+            import_target=req.import_target,
+            purchase_allowed=False,
+            external_call_performed=False,
+            spend_reserved_usd_cents=0,
+            charge_attempted=False,
+            ingest_attempted=False,
+            html_hosting_required=True,
+            required_operator_steps=[
+                "Buy or obtain the book outside Antiek using the approved price ceiling.",
+                "Provide the legally obtained file or receipt-backed access in a later import step.",
+                "Convert and host the readable copy as an Antiek HTML asset after the import gate approves it.",
+            ],
+            policy_notes=[
+                "No checkout, store lookup, provider call, URL fetch, budget reservation, charge, or ingest was performed.",
+                "The future reader surface must continue to render HTML-first and keep gated/source material behind the serve gate.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/html-preflight",
+        response_model=BookHtmlImportPreflightOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_import_preflight(
+        req: BookHtmlImportPreflightIn,
+    ) -> BookHtmlImportPreflightOut:
+        """Prepare the HTML-first import gate without touching the file.
+
+        This records that the operator claims legal access and wants Antiek
+        HTML hosting, but it does not accept an upload, read a local path, fetch
+        a URL, convert content, ingest into the graph, or serve the book.
+        """
+        if not req.acknowledge_no_upload_or_ingest:
+            raise HTTPException(
+                status_code=400,
+                detail="html_import_preflight_ack_required",
+            )
+        if not req.has_legal_access:
+            raise HTTPException(
+                status_code=400,
+                detail="legal_access_required",
+            )
+
+        fmt = req.file_format
+        return BookHtmlImportPreflightOut(
+            import_preflight_id=_book_html_import_preflight_id(req),
+            status="ready_for_operator_file",
+            title=req.title.strip(),
+            author=req.author.strip() if req.author else None,
+            source_request_id=req.source_request_id.strip() if req.source_request_id else None,
+            file_name=req.file_name.strip() if req.file_name else None,
+            file_format=fmt,
+            import_target="antiek_html",
+            external_call_performed=False,
+            file_uploaded=False,
+            file_read_attempted=False,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            html_conversion_required=fmt != "html",
+            html_hosting_required=True,
+            required_operator_steps=[
+                "Attach or upload the legally obtained file in a later explicit import step.",
+                "Run conversion into Antiek HTML after the file gate validates format and rights.",
+                "Host the readable copy behind the existing book serve gate before it appears on the shelf.",
+            ],
+            policy_notes=[
+                "No upload, file read, URL fetch, conversion, graph write, or full-text serve happened in this preflight.",
+                "The readable asset remains HTML-first and must pass the serve gate before Library/Reader access.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/file-handoff",
+        response_model=BookHtmlFileHandoffOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_file_handoff(
+        req: BookHtmlFileHandoffIn,
+    ) -> BookHtmlFileHandoffOut:
+        """Record operator file handoff metadata without accepting the file.
+
+        This is the seam between "I legally obtained the file" and a later
+        sandboxed converter. The endpoint stores no bytes, reads no path, fetches
+        no storage reference, converts nothing, and does not mutate the graph.
+        """
+        preflight_id = req.import_preflight_id.strip()
+        if not preflight_id.startswith("bookimp-"):
+            raise HTTPException(status_code=400, detail="invalid_import_preflight_id")
+        if not req.acknowledge_manual_storage_only:
+            raise HTTPException(status_code=400, detail="manual_storage_ack_required")
+        if not req.acknowledge_no_file_read_or_conversion:
+            raise HTTPException(
+                status_code=400,
+                detail="file_handoff_no_read_ack_required",
+            )
+
+        checksum = req.checksum_sha256.strip().casefold() if req.checksum_sha256 else None
+        if checksum is not None and any(ch not in "0123456789abcdef" for ch in checksum):
+            raise HTTPException(status_code=400, detail="invalid_sha256_checksum")
+
+        fmt = req.file_format
+        return BookHtmlFileHandoffOut(
+            handoff_id=_book_html_file_handoff_id(req),
+            status="ready_for_conversion_review",
+            import_preflight_id=preflight_id,
+            file_name=req.file_name.strip(),
+            file_format=fmt,
+            storage_ref=req.storage_ref.strip(),
+            checksum_sha256=checksum,
+            import_target="antiek_html",
+            storage_ref_recorded=True,
+            upload_accepted=False,
+            external_call_performed=False,
+            file_read_attempted=False,
+            conversion_attempted=False,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            html_conversion_required=fmt != "html",
+            html_hosting_required=True,
+            required_operator_steps=[
+                "Review the recorded storage reference and checksum before any converter receives access.",
+                "Run a later sandboxed conversion job that reads the file only after explicit operator approval.",
+                "Publish the converted HTML only after the serve gate validates rights and servability.",
+            ],
+            policy_notes=[
+                "No upload bytes were accepted; only operator-supplied storage metadata was recorded.",
+                "No file path, storage reference, or URL was opened, fetched, converted, ingested, or served.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/conversion-review",
+        response_model=BookHtmlConversionReviewOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_conversion_review(
+        req: BookHtmlConversionReviewIn,
+    ) -> BookHtmlConversionReviewOut:
+        """Approve the next converter shape without running the converter.
+
+        This is a no-side-effect review receipt. The converter itself remains a
+        later, explicit job that may read the handed-off file only inside the
+        stated sandbox after operator approval.
+        """
+        handoff_id = req.handoff_id.strip()
+        preflight_id = req.import_preflight_id.strip()
+        if not handoff_id.startswith("bookhand-"):
+            raise HTTPException(status_code=400, detail="invalid_handoff_id")
+        if not preflight_id.startswith("bookimp-"):
+            raise HTTPException(status_code=400, detail="invalid_import_preflight_id")
+        if not req.acknowledge_sandbox_required:
+            raise HTTPException(status_code=400, detail="conversion_sandbox_ack_required")
+        if not req.acknowledge_no_conversion_run:
+            raise HTTPException(status_code=400, detail="conversion_no_run_ack_required")
+
+        return BookHtmlConversionReviewOut(
+            conversion_review_id=_book_html_conversion_review_id(req),
+            status="ready_for_explicit_conversion_job",
+            handoff_id=handoff_id,
+            import_preflight_id=preflight_id,
+            converter=req.converter,
+            sandbox_profile=req.sandbox_profile,
+            output_format=req.output_format,
+            storage_ref_read=False,
+            file_read_attempted=False,
+            conversion_attempted=False,
+            output_written=False,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            html_hosting_required=True,
+            serve_gate_required=True,
+            required_operator_steps=[
+                "Run the converter only as a separate explicit job with the approved sandbox profile.",
+                "Write Antiek HTML output to a review location before any graph ingest or shelf publication.",
+                "Pass the converted HTML through the book serve gate before Reader or Library availability.",
+            ],
+            policy_notes=[
+                "No storage reference or file bytes were read during conversion review.",
+                "No converter ran, no HTML output was written, and no graph or shelf state changed.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/conversion-result",
+        response_model=BookHtmlConversionResultOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_conversion_result(
+        req: BookHtmlConversionResultIn,
+    ) -> BookHtmlConversionResultOut:
+        """Record converted HTML output metadata without reading or publishing it."""
+        conversion_review_id = req.conversion_review_id.strip()
+        handoff_id = req.handoff_id.strip()
+        if not conversion_review_id.startswith("bookconv-"):
+            raise HTTPException(status_code=400, detail="invalid_conversion_review_id")
+        if not handoff_id.startswith("bookhand-"):
+            raise HTTPException(status_code=400, detail="invalid_handoff_id")
+        if not req.acknowledge_output_metadata_only:
+            raise HTTPException(status_code=400, detail="output_metadata_ack_required")
+        if not req.acknowledge_no_publish_or_serve:
+            raise HTTPException(status_code=400, detail="no_publish_or_serve_ack_required")
+
+        checksum = (
+            req.html_checksum_sha256.strip().casefold() if req.html_checksum_sha256 else None
+        )
+        if checksum is not None and any(ch not in "0123456789abcdef" for ch in checksum):
+            raise HTTPException(status_code=400, detail="invalid_sha256_checksum")
+
+        return BookHtmlConversionResultOut(
+            conversion_result_id=_book_html_conversion_result_id(req),
+            status="ready_for_serve_gate_review",
+            conversion_review_id=conversion_review_id,
+            handoff_id=handoff_id,
+            html_output_ref=req.html_output_ref.strip(),
+            html_checksum_sha256=checksum,
+            page_count_estimate=req.page_count_estimate,
+            import_target="antiek_html",
+            output_metadata_recorded=True,
+            output_ref_fetched=False,
+            html_output_read=False,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            shelf_publication_attempted=False,
+            full_text_served=False,
+            serve_gate_required=True,
+            required_operator_steps=[
+                "Review the converted HTML output in a later explicit serve-gate step.",
+                "Validate rights, structure, and checksum before any graph ingest or shelf publication.",
+                "Publish to Library/Reader only after the serve gate approves full-text servability.",
+            ],
+            policy_notes=[
+                "Only converted-output metadata was recorded; the HTML output reference was not opened or fetched.",
+                "No ingest, graph mutation, shelf publication, or full-text serving happened.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/serve-gate-review",
+        response_model=BookHtmlServeGateReviewOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_serve_gate_review(
+        req: BookHtmlServeGateReviewIn,
+    ) -> BookHtmlServeGateReviewOut:
+        """Record rights/servability review without publishing to the shelf."""
+        conversion_result_id = req.conversion_result_id.strip()
+        if not conversion_result_id.startswith("bookout-"):
+            raise HTTPException(status_code=400, detail="invalid_conversion_result_id")
+        if not req.acknowledge_rights_reviewed:
+            raise HTTPException(status_code=400, detail="rights_review_ack_required")
+        if not req.acknowledge_no_publication:
+            raise HTTPException(status_code=400, detail="no_publication_ack_required")
+
+        publication_allowed = req.servability_decision == "servable_full_text"
+        return BookHtmlServeGateReviewOut(
+            serve_gate_review_id=_book_html_serve_gate_review_id(req),
+            status="ready_for_publication_request" if publication_allowed else "blocked",
+            conversion_result_id=conversion_result_id,
+            title=req.title.strip(),
+            author=req.author.strip() if req.author else None,
+            rights_basis=req.rights_basis,
+            servability_decision=req.servability_decision,
+            import_target="antiek_html",
+            rights_review_recorded=True,
+            html_output_read=False,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            shelf_publication_attempted=False,
+            full_text_served=False,
+            publication_allowed_next=publication_allowed,
+            required_operator_steps=[
+                "Submit a separate publication request only if the servability decision allows full-text publication.",
+                "Persist the converted HTML through the book ingest path only after publication approval.",
+                "Expose the book in Library/Reader only after substrate servability state is written.",
+            ],
+            policy_notes=[
+                "Rights and servability review metadata was recorded; converted HTML was not read.",
+                "No ingest, graph mutation, shelf publication, or full-text serving happened in this review.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/publication-request",
+        response_model=BookHtmlPublicationRequestOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_publication_request(
+        req: BookHtmlPublicationRequestIn,
+    ) -> BookHtmlPublicationRequestOut:
+        """Record publication intent without writing substrate/shelf state."""
+        serve_gate_review_id = req.serve_gate_review_id.strip()
+        conversion_result_id = req.conversion_result_id.strip()
+        if not serve_gate_review_id.startswith("bookserve-"):
+            raise HTTPException(status_code=400, detail="invalid_serve_gate_review_id")
+        if not conversion_result_id.startswith("bookout-"):
+            raise HTTPException(status_code=400, detail="invalid_conversion_result_id")
+        if not req.acknowledge_publication_intent:
+            raise HTTPException(status_code=400, detail="publication_intent_ack_required")
+        if not req.acknowledge_no_ingest_or_serve:
+            raise HTTPException(status_code=400, detail="no_ingest_or_serve_ack_required")
+
+        return BookHtmlPublicationRequestOut(
+            publication_request_id=_book_html_publication_request_id(req),
+            status="ready_for_explicit_publish_job",
+            serve_gate_review_id=serve_gate_review_id,
+            conversion_result_id=conversion_result_id,
+            document_id_hint=req.document_id_hint.strip() if req.document_id_hint else None,
+            shelf_visibility=req.shelf_visibility,
+            import_target="antiek_html",
+            publication_intent_recorded=True,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            shelf_publication_attempted=False,
+            full_text_served=False,
+            reader_route_created=False,
+            required_operator_steps=[
+                "Run a separate publish job that writes the Antiek HTML asset into substrate.",
+                "Verify the resulting document id through the existing book serve gate.",
+                "Expose the Reader route only after substrate servability state confirms full-text access.",
+            ],
+            policy_notes=[
+                "Publication intent was recorded only; no graph, shelf, or reader state was written.",
+                "No full text was served and no Reader route was created by this request.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/publish-job",
+        response_model=BookHtmlPublishJobOut,
+        status_code=201,
+        tags=["books"],
+    )
+    async def book_html_publish_job(req: BookHtmlPublishJobIn) -> BookHtmlPublishJobOut:
+        """Explicitly publish inline Antiek HTML through the existing book gate.
+
+        This is the first write in the staged import chain. It still does not
+        read any external file or output reference: the caller must provide the
+        HTML body inline, and the resulting Reader availability is governed by
+        the existing documents/content_class + book_assets serve gate.
+        """
+        publication_request_id = req.publication_request_id.strip()
+        serve_gate_review_id = req.serve_gate_review_id.strip()
+        document_id = req.document_id.strip()
+        if not publication_request_id.startswith("bookpub-"):
+            raise HTTPException(status_code=400, detail="invalid_publication_request_id")
+        if not serve_gate_review_id.startswith("bookserve-"):
+            raise HTTPException(status_code=400, detail="invalid_serve_gate_review_id")
+        if not req.acknowledge_write_to_library:
+            raise HTTPException(status_code=400, detail="write_to_library_ack_required")
+        if not req.acknowledge_full_text_servable:
+            raise HTTPException(status_code=400, detail="full_text_servable_ack_required")
+
+        content_class = _PUBLISH_CONTENT_CLASS_BY_RIGHTS[req.rights_basis]
+        db = _resolve_db_path()
+        from runtime.db_lock import connect_write
+        from substrate.books.ingest import register_book
+        from substrate.graph.ops import insert_chunk, insert_document
+
+        chunks = _chunk_book_html_for_research(req.html_body)
+
+        def _publish_write() -> tuple[int, Any]:
+            con = connect_write(db, purpose="books:html_publish_job")
+            try:
+                exists = con.execute(
+                    "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1",
+                    [document_id],
+                ).fetchone()
+                if exists:
+                    raise HTTPException(status_code=409, detail="document_id_exists")
+                insert_document(
+                    con,
+                    document_id=document_id,
+                    source_tier=2,
+                    document_type="book",
+                    source_uri=f"antiek://book-import/{publication_request_id}",
+                    title=req.title.strip(),
+                    author=req.author.strip() if req.author else None,
+                    raw_text=req.html_body,
+                    metadata={
+                        "import_target": "antiek_html",
+                        "publication_request_id": publication_request_id,
+                        "serve_gate_review_id": serve_gate_review_id,
+                        "rights_basis": req.rights_basis,
+                    },
+                    content_class=content_class,
+                )
+                chunk_count = 0
+                for index, chunk_text in enumerate(chunks):
+                    insert_chunk(
+                        con,
+                        document_id=document_id,
+                        chunk_index=index,
+                        section_path=f"HTML section {index + 1}",
+                        text=chunk_text,
+                        token_count=len(chunk_text.split()),
+                    )
+                    chunk_count += 1
+                asset = register_book(
+                    con,
+                    document_id=document_id,
+                    content_class=content_class,
+                    page_count=req.page_count,
+                    pagination_scheme="html_section",
+                    provenance=f"Antiek HTML import publication request {publication_request_id}",
+                    license_basis=req.license_basis.strip(),
+                )
+            finally:
+                con.close()
+            return chunk_count, asset
+
+        chunk_count, asset = await asyncio.to_thread(_publish_write)
+
+        return BookHtmlPublishJobOut(
+            publish_job_id=_book_html_publish_job_id(req),
+            status="published_to_private_library",
+            publication_request_id=publication_request_id,
+            serve_gate_review_id=serve_gate_review_id,
+            document_id=document_id,
+            title=req.title.strip(),
+            author=req.author.strip() if req.author else None,
+            import_target="antiek_html",
+            content_class=content_class,
+            servability=asset.servability.value,
+            servable_full_text=asset.servable_full_text,
+            document_inserted=True,
+            book_asset_registered=True,
+            chunks_indexed=chunk_count,
+            chunked_for_research=chunk_count > 0,
+            graph_mutation_performed=True,
+            shelf_publication_attempted=True,
+            reader_route_created=True,
+            full_text_served=False,
+            open_route=f"/read/{document_id}",
+            policy_notes=[
+                "Inline Antiek HTML was written through the existing document/book substrate path.",
+                "Readable HTML text was chunked into the corpus for search, notes, and talk-to-book grounding.",
+                "No external file, storage reference, URL, provider, checkout, or spend path was touched.",
+                "This endpoint did not serve full text; subsequent reads still pass through the serve gate.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/index-job",
+        response_model=BookHtmlIndexJobOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_index_job(req: BookHtmlIndexJobIn) -> BookHtmlIndexJobOut:
+        """Embed one published book's chunks for vector search.
+
+        This is deliberately document-scoped. The whole-corpus maintenance tool
+        remains ``tools/reembed_chunks.py``; the import chain needs a smaller
+        explicit post-publish job so a newly imported HTML book can enter
+        search/talk-to-book ranking without rewriting unrelated corpus rows.
+        """
+        document_id = req.document_id.strip()
+        publish_job_id = req.publish_job_id.strip() if req.publish_job_id else None
+        if publish_job_id is not None and not publish_job_id.startswith("bookjob-"):
+            raise HTTPException(status_code=400, detail="invalid_publish_job_id")
+        if req.apply and not req.acknowledge_embedding_compute:
+            raise HTTPException(status_code=400, detail="embedding_compute_ack_required")
+
+        db = _resolve_db_path()
+        from processing.embedding import (
+            HashEmbedding,
+            default_embedding_provider,
+            embedding_model_name,
+            embedding_provider_name,
+        )
+        from runtime.db_lock import connect_read, connect_write
+        from substrate.graph.embedding_meta import record_chunk_embedding_meta
+
+        con = connect_read(db)
+        try:
+            asset = get_book_asset(con, document_id)
+            if asset is None:
+                raise HTTPException(status_code=404, detail="book_not_found")
+            counts = con.execute(
+                "SELECT count(*), count(embedding) FROM chunks WHERE document_id = ?",
+                [document_id],
+            ).fetchone()
+        finally:
+            con.close()
+        chunks_found = int(counts[0] if counts else 0)
+        chunks_embedded_before = int(counts[1] if counts else 0)
+
+        if not req.apply:
+            return BookHtmlIndexJobOut(
+                index_job_id=_book_html_index_job_id(req),
+                status="dry_run_ready",
+                document_id=document_id,
+                publish_job_id=publish_job_id,
+                provider=None,
+                model_name=None,
+                provider_is_hash=None,
+                applied=False,
+                chunks_found=chunks_found,
+                chunks_embedded_before=chunks_embedded_before,
+                vectors_rewritten=0,
+                graph_mutation_performed=False,
+                count_preserved=True,
+                searchable_after_apply=chunks_found > 0,
+                policy_notes=[
+                    "Dry run only: no chunk embeddings were written.",
+                    "Apply this job explicitly after approving local embedding compute.",
+                    "The job is scoped to this document id and will not re-embed unrelated corpus chunks.",
+                ],
+            )
+
+        provider = default_embedding_provider()
+        provider_is_hash = isinstance(provider, HashEmbedding)
+        if provider_is_hash and not req.allow_hash_provider:
+            raise HTTPException(status_code=400, detail="hash_provider_refused")
+
+        rows: list[tuple[str, str]] = []
+        con = connect_read(db)
+        try:
+            rows = [
+                (str(chunk_id), str(text or ""))
+                for chunk_id, text in con.execute(
+                    "SELECT chunk_id, text FROM chunks WHERE document_id = ? ORDER BY chunk_index",
+                    [document_id],
+                ).fetchall()
+            ]
+        finally:
+            con.close()
+
+        def _index_write() -> tuple[int, int, int]:
+            vectors_rewritten = 0
+            con_w = connect_write(db, purpose="books:html_index_job")
+            try:
+                before_total = con_w.execute(
+                    "SELECT count(*) FROM chunks WHERE document_id = ?",
+                    [document_id],
+                ).fetchone()[0]
+                for chunk_id, text in rows:
+                    con_w.execute(
+                        "UPDATE chunks SET embedding = ? WHERE chunk_id = ?",
+                        [list(provider.encode(text)), chunk_id],
+                    )
+                    record_chunk_embedding_meta(con_w, chunk_id=chunk_id, provider=provider)
+                    vectors_rewritten += 1
+                after_total = con_w.execute(
+                    "SELECT count(*) FROM chunks WHERE document_id = ?",
+                    [document_id],
+                ).fetchone()[0]
+            finally:
+                con_w.close()
+            return vectors_rewritten, before_total, after_total
+
+        vectors_rewritten, before_total, after_total = await asyncio.to_thread(_index_write)
+
+        count_preserved = int(before_total) == int(after_total) == chunks_found
+        return BookHtmlIndexJobOut(
+            index_job_id=_book_html_index_job_id(req),
+            status="indexed_for_vector_search",
+            document_id=document_id,
+            publish_job_id=publish_job_id,
+            provider=embedding_provider_name(provider),
+            model_name=embedding_model_name(provider),
+            provider_is_hash=provider_is_hash,
+            applied=True,
+            chunks_found=chunks_found,
+            chunks_embedded_before=chunks_embedded_before,
+            vectors_rewritten=vectors_rewritten,
+            graph_mutation_performed=vectors_rewritten > 0,
+            count_preserved=count_preserved,
+            searchable_after_apply=vectors_rewritten > 0 and count_preserved,
+            policy_notes=[
+                "Only chunk embeddings for this document id were updated.",
+                "No external file, storage reference, URL, provider checkout, media render, or spend path was touched.",
+                "Embedding metadata was pinned so future vector search can reject incompatible query providers.",
+            ],
+        )
+
     @app.post(
         "/books/import/epub",
         response_model=BookImportResponse,
@@ -1017,6 +2144,7 @@ def register_book_routes(app: FastAPI) -> None:
             link_passage_to_research,
         )
         from substrate.event_log import emit_typed
+        from substrate.research_artifact import export_research_artifact
         from substrate.schemas import InvestigationStartRequestedPayload
 
         db = _resolve_db_path()
@@ -1099,6 +2227,17 @@ def register_book_routes(app: FastAPI) -> None:
             page_index=req.page_index,
             investigation_id=investigation_id,
         )
+        artifact_path: str | None = None
+        twin_notes_path: str | None = None
+        if req.export_artifact:
+            exported = export_research_artifact(
+                investigation_id,
+                db_path=db,
+                emit_event=False,
+                generating_role="read/spin_research",
+            )
+            artifact_path = str(exported.path)
+            twin_notes_path = str(exported.twin_notes_path)
         post_gate = commit_start_acu(
             request,
             investigation_id=investigation_id,
@@ -1106,7 +2245,6 @@ def register_book_routes(app: FastAPI) -> None:
         )
         warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
         attach_capacity_warn_header(response, warn_gate)
-
         return SpinResearchResponse(
             investigation_id=investigation_id,
             document_id=document_id,
@@ -1114,6 +2252,8 @@ def register_book_routes(app: FastAPI) -> None:
             gated=seed.gated,
             servability=seed.servability,
             seed_preview=seed.seed_text[:240] + ("…" if len(seed.seed_text) > 240 else ""),
+            artifact_path=artifact_path,
+            twin_notes_path=twin_notes_path,
             capacity_warning=warning_body(warn_gate),
         )
 

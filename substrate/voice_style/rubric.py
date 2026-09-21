@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import enum
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 
-class ViolationKind(str, enum.Enum):
+class ViolationKind(enum.StrEnum):
     BULLET_ABUSE = "bullet_abuse"
     EM_DASH_OVERUSE = "em_dash_overuse"
     SLOP_BOILERPLATE = "slop_boilerplate"
@@ -79,13 +80,13 @@ _GENERIC_TRANSITIONS = {
 
 
 def _bullet_abuse(text: str) -> tuple[bool, str]:
-    lines = [l for l in text.splitlines() if l.strip()]
+    lines = [line for line in text.splitlines() if line.strip()]
     if len(lines) < 6:
         # Too few lines to make a bullet judgement.
         return (False, "")
     bullets = sum(
-        1 for l in lines
-        if l.lstrip().startswith(("- ", "* ", "• ")) or re.match(r"^\d+\.\s", l.lstrip())
+        1 for line in lines
+        if line.lstrip().startswith(("- ", "* ", "• ")) or re.match(r"^\d+\.\s", line.lstrip())
     )
     share = bullets / len(lines)
     if share > 0.30:
@@ -140,7 +141,7 @@ def _numbered_list_as_prose(text: str) -> tuple[bool, str]:
 
 
 def _trailing_summary(text: str) -> tuple[bool, str]:
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) < 4:
         return (False, "")
     first = lines[0].lower()
@@ -158,7 +159,8 @@ def _trailing_summary(text: str) -> tuple[bool, str]:
     return (False, "")
 
 
-_DETECTORS: tuple[tuple[ViolationKind, callable, float], ...] = (  # type: ignore[type-arg]
+Detector = Callable[[str], tuple[bool, str]]
+_DETECTORS: tuple[tuple[ViolationKind, Detector, float], ...] = (
     (ViolationKind.BULLET_ABUSE, _bullet_abuse, _WEIGHT_HEAVY),
     (ViolationKind.EM_DASH_OVERUSE, _em_dash_overuse, _WEIGHT_LIGHT),
     (ViolationKind.SLOP_BOILERPLATE, _slop_boilerplate, _WEIGHT_HEAVY),

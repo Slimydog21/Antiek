@@ -39,13 +39,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 try:
-    from ...schemas import ConstraintSpec
+    from substrate.schemas import ConstraintSpec
 except ImportError:  # pragma: no cover — direct-script fallback
     import os
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.schemas import ConstraintSpec  # type: ignore[no-redef]
+    from substrate.schemas import ConstraintSpec
 
 from .parser import ParsedParameter
 

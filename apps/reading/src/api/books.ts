@@ -207,6 +207,9 @@ export interface SpinResearchResponse {
   gated: boolean;
   servability: Servability | string;
   seed_preview: string;
+
+  artifact_path: string | null;
+  twin_notes_path: string | null;
   /** Present when enforcement is soft/hard and used >= 80% monthly ACU. */
   capacity_warning?: import("../lib/capacityWarn").CapacityWarning | null;
 }
@@ -219,11 +222,16 @@ export async function spinResearch(
   documentId: string,
   pageIndex: number,
   passageText?: string,
+  exportArtifact = false,
 ): Promise<SpinResearchResponse> {
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/spin-research`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ page_index: pageIndex, passage_text: passageText ?? null }),
+    body: JSON.stringify({
+      page_index: pageIndex,
+      passage_text: passageText ?? null,
+      export_artifact: exportArtifact,
+    }),
   });
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) {
@@ -247,6 +255,8 @@ export async function spinResearch(
     gated: Boolean(raw.gated),
     servability: raw.servability as Servability | string,
     seed_preview: String(raw.seed_preview ?? ""),
+    artifact_path: raw.artifact_path == null ? null : String(raw.artifact_path),
+    twin_notes_path: raw.twin_notes_path == null ? null : String(raw.twin_notes_path),
     capacity_warning,
   };
   if (capacity_warning) {
@@ -271,6 +281,286 @@ export interface CurateResponse {
   books: CuratedBook[];
 }
 
+export interface BookPurchaseRequestInput {
+  title: string;
+  author?: string | null;
+  source_url?: string | null;
+  store?: "publisher" | "amazon" | "bookshop" | "google_books" | "apple_books" | "other";
+  max_price_usd_cents: number;
+  desired_format?: "epub" | "html" | "pdf" | "kindle" | "unknown";
+  import_target?: "antiek_html";
+  acknowledge_manual_purchase_only: boolean;
+}
+
+export interface BookPurchaseRequestResponse {
+  request_id: string;
+  status: "needs_operator_purchase";
+  title: string;
+  author: string | null;
+  store: string;
+  source_url: string | null;
+  max_price_usd_cents: number;
+  desired_format: string;
+  import_target: "antiek_html";
+  purchase_allowed: boolean;
+  external_call_performed: boolean;
+  spend_reserved_usd_cents: number;
+  charge_attempted: boolean;
+  ingest_attempted: boolean;
+  html_hosting_required: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
+export interface BookHtmlImportPreflightInput {
+  title: string;
+  author?: string | null;
+  source_request_id?: string | null;
+  file_name?: string | null;
+  file_format?: "epub" | "html" | "pdf" | "kindle" | "unknown";
+  has_legal_access: boolean;
+  acknowledge_no_upload_or_ingest: boolean;
+}
+
+export interface BookHtmlImportPreflightResponse {
+  import_preflight_id: string;
+  status: "ready_for_operator_file" | "blocked";
+  title: string;
+  author: string | null;
+  source_request_id: string | null;
+  file_name: string | null;
+  file_format: string;
+  import_target: "antiek_html";
+  external_call_performed: boolean;
+  file_uploaded: boolean;
+  file_read_attempted: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  html_conversion_required: boolean;
+  html_hosting_required: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
+export interface BookHtmlFileHandoffInput {
+  import_preflight_id: string;
+  file_name: string;
+  file_format?: "epub" | "html" | "pdf" | "kindle" | "unknown";
+  storage_ref: string;
+  checksum_sha256?: string | null;
+  acknowledge_manual_storage_only: boolean;
+  acknowledge_no_file_read_or_conversion: boolean;
+}
+
+export interface BookHtmlFileHandoffResponse {
+  handoff_id: string;
+  status: "ready_for_conversion_review";
+  import_preflight_id: string;
+  file_name: string;
+  file_format: string;
+  storage_ref: string;
+  checksum_sha256: string | null;
+  import_target: "antiek_html";
+  storage_ref_recorded: boolean;
+  upload_accepted: boolean;
+  external_call_performed: boolean;
+  file_read_attempted: boolean;
+  conversion_attempted: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  html_conversion_required: boolean;
+  html_hosting_required: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
+export interface BookHtmlConversionReviewInput {
+  handoff_id: string;
+  import_preflight_id: string;
+  converter?: "pandoc" | "calibre" | "native_html" | "manual_review" | "unknown";
+  sandbox_profile?: "locked_down" | "network_disabled" | "manual_only";
+  output_format?: "antiek_html";
+  acknowledge_sandbox_required: boolean;
+  acknowledge_no_conversion_run: boolean;
+}
+
+export interface BookHtmlConversionReviewResponse {
+  conversion_review_id: string;
+  status: "ready_for_explicit_conversion_job";
+  handoff_id: string;
+  import_preflight_id: string;
+  converter: string;
+  sandbox_profile: string;
+  output_format: "antiek_html";
+  storage_ref_read: boolean;
+  file_read_attempted: boolean;
+  conversion_attempted: boolean;
+  output_written: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  html_hosting_required: boolean;
+  serve_gate_required: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
+export interface BookHtmlConversionResultInput {
+  conversion_review_id: string;
+  handoff_id: string;
+  html_output_ref: string;
+  html_checksum_sha256?: string | null;
+  page_count_estimate?: number | null;
+  acknowledge_output_metadata_only: boolean;
+  acknowledge_no_publish_or_serve: boolean;
+}
+
+export interface BookHtmlConversionResultResponse {
+  conversion_result_id: string;
+  status: "ready_for_serve_gate_review";
+  conversion_review_id: string;
+  handoff_id: string;
+  html_output_ref: string;
+  html_checksum_sha256: string | null;
+  page_count_estimate: number | null;
+  import_target: "antiek_html";
+  output_metadata_recorded: boolean;
+  output_ref_fetched: boolean;
+  html_output_read: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  shelf_publication_attempted: boolean;
+  full_text_served: boolean;
+  serve_gate_required: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
+export interface BookHtmlServeGateReviewInput {
+  conversion_result_id: string;
+  title: string;
+  author?: string | null;
+  rights_basis?:
+    | "public_domain"
+    | "publisher_opt_in"
+    | "platform_authored"
+    | "personal_license"
+    | "unknown";
+  servability_decision?: "servable_full_text" | "gated_metadata_only" | "blocked";
+  acknowledge_rights_reviewed: boolean;
+  acknowledge_no_publication: boolean;
+}
+
+export interface BookHtmlServeGateReviewResponse {
+  serve_gate_review_id: string;
+  status: "ready_for_publication_request" | "blocked";
+  conversion_result_id: string;
+  title: string;
+  author: string | null;
+  rights_basis: string;
+  servability_decision: string;
+  import_target: "antiek_html";
+  rights_review_recorded: boolean;
+  html_output_read: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  shelf_publication_attempted: boolean;
+  full_text_served: boolean;
+  publication_allowed_next: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
+export interface BookHtmlPublicationRequestInput {
+  serve_gate_review_id: string;
+  conversion_result_id: string;
+  document_id_hint?: string | null;
+  shelf_visibility?: "private_library" | "workspace_only";
+  acknowledge_publication_intent: boolean;
+  acknowledge_no_ingest_or_serve: boolean;
+}
+
+export interface BookHtmlPublicationRequestResponse {
+  publication_request_id: string;
+  status: "ready_for_explicit_publish_job";
+  serve_gate_review_id: string;
+  conversion_result_id: string;
+  document_id_hint: string | null;
+  shelf_visibility: string;
+  import_target: "antiek_html";
+  publication_intent_recorded: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  shelf_publication_attempted: boolean;
+  full_text_served: boolean;
+  reader_route_created: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
+export interface BookHtmlPublishJobInput {
+  publication_request_id: string;
+  serve_gate_review_id: string;
+  document_id: string;
+  title: string;
+  author?: string | null;
+  html_body: string;
+  rights_basis: "public_domain" | "publisher_opt_in" | "platform_authored" | "personal_license";
+  page_count?: number;
+  license_basis: string;
+  acknowledge_write_to_library: boolean;
+  acknowledge_full_text_servable: boolean;
+}
+
+export interface BookHtmlPublishJobResponse {
+  publish_job_id: string;
+  status: "published_to_private_library";
+  publication_request_id: string;
+  serve_gate_review_id: string;
+  document_id: string;
+  title: string;
+  author: string | null;
+  import_target: "antiek_html";
+  content_class: string;
+  servability: string;
+  servable_full_text: boolean;
+  document_inserted: boolean;
+  book_asset_registered: boolean;
+  chunks_indexed: number;
+  chunked_for_research: boolean;
+  graph_mutation_performed: boolean;
+  shelf_publication_attempted: boolean;
+  reader_route_created: boolean;
+  full_text_served: boolean;
+  open_route: string;
+  policy_notes: string[];
+}
+
+export interface BookHtmlIndexJobInput {
+  document_id: string;
+  publish_job_id?: string | null;
+  apply?: boolean;
+  acknowledge_embedding_compute?: boolean;
+  allow_hash_provider?: boolean;
+}
+
+export interface BookHtmlIndexJobResponse {
+  index_job_id: string;
+  status: "dry_run_ready" | "indexed_for_vector_search";
+  document_id: string;
+  publish_job_id: string | null;
+  provider: string | null;
+  model_name: string | null;
+  provider_is_hash: boolean | null;
+  applied: boolean;
+  chunks_found: number;
+  chunks_embedded_before: number;
+  vectors_rewritten: number;
+  graph_mutation_performed: boolean;
+  count_preserved: boolean;
+  searchable_after_apply: boolean;
+  policy_notes: string[];
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -280,6 +570,142 @@ export async function curateBooks(prompt: string, limit = 20): Promise<CurateRes
   if (resp.status === 503) throw new Error("Curation is temporarily unavailable.");
   if (!resp.ok) throw new Error(`GET /books/curate: HTTP ${resp.status}`);
   return (await resp.json()) as CurateResponse;
+}
+
+/** Prepare a no-spend acquisition/import request. This is not checkout:
+ * the backend returns a receipt proving no external call, charge, budget
+ * reservation, URL fetch, or ingest happened. */
+export async function requestBookPurchase(
+  request: BookPurchaseRequestInput,
+): Promise<BookPurchaseRequestResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/marketplace/purchase-request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) throw new Error("Confirm manual purchase before preparing the request.");
+  if (!resp.ok) throw new Error(`POST /books/marketplace/purchase-request: HTTP ${resp.status}`);
+  return (await resp.json()) as BookPurchaseRequestResponse;
+}
+
+export async function preflightBookHtmlImport(
+  request: BookHtmlImportPreflightInput,
+): Promise<BookHtmlImportPreflightResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/html-preflight`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) throw new Error("Confirm legal access and the no-upload preflight boundary.");
+  if (!resp.ok) throw new Error(`POST /books/import/html-preflight: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlImportPreflightResponse;
+}
+
+export async function handoffBookHtmlFile(
+  request: BookHtmlFileHandoffInput,
+): Promise<BookHtmlFileHandoffResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/file-handoff`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm the preflight receipt and no-read file handoff boundary.");
+  }
+  if (!resp.ok) throw new Error(`POST /books/import/file-handoff: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlFileHandoffResponse;
+}
+
+export async function reviewBookHtmlConversion(
+  request: BookHtmlConversionReviewInput,
+): Promise<BookHtmlConversionReviewResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/conversion-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ output_format: "antiek_html", ...request }),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm the sandbox and no-conversion review boundary.");
+  }
+  if (!resp.ok) throw new Error(`POST /books/import/conversion-review: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlConversionReviewResponse;
+}
+
+export async function recordBookHtmlConversionResult(
+  request: BookHtmlConversionResultInput,
+): Promise<BookHtmlConversionResultResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/conversion-result`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm output metadata and no-publish review boundary.");
+  }
+  if (!resp.ok) throw new Error(`POST /books/import/conversion-result: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlConversionResultResponse;
+}
+
+export async function reviewBookHtmlServeGate(
+  request: BookHtmlServeGateReviewInput,
+): Promise<BookHtmlServeGateReviewResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/serve-gate-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm rights review and no-publication boundary.");
+  }
+  if (!resp.ok) throw new Error(`POST /books/import/serve-gate-review: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlServeGateReviewResponse;
+}
+
+export async function requestBookHtmlPublication(
+  request: BookHtmlPublicationRequestInput,
+): Promise<BookHtmlPublicationRequestResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/publication-request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ shelf_visibility: "private_library", ...request }),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm publication intent and no-ingest boundary.");
+  }
+  if (!resp.ok) throw new Error(`POST /books/import/publication-request: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlPublicationRequestResponse;
+}
+
+export async function runBookHtmlPublishJob(
+  request: BookHtmlPublishJobInput,
+): Promise<BookHtmlPublishJobResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/publish-job`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm final library write and full-text servability.");
+  }
+  if (resp.status === 409) throw new Error("That document id already exists.");
+  if (!resp.ok) throw new Error(`POST /books/import/publish-job: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlPublishJobResponse;
+}
+
+export async function runBookHtmlIndexJob(
+  request: BookHtmlIndexJobInput,
+): Promise<BookHtmlIndexJobResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/index-job`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm embedding compute and use a semantic embedding provider.");
+  }
+  if (resp.status === 404) throw new Error("book_not_found");
+  if (!resp.ok) throw new Error(`POST /books/import/index-job: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlIndexJobResponse;
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────

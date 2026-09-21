@@ -24,12 +24,14 @@ prevents partial-day summaries that would lose data on re-rollup.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from runtime.db_lock import connect_read
 
@@ -49,7 +51,7 @@ def _events_dir(events_dir: str | None) -> Path:
     return Path(default_discovery_events_dir())
 
 
-def _parse_event_ts(raw: dict) -> datetime | None:
+def _parse_event_ts(raw: dict[str, Any]) -> datetime | None:
     """Best-effort parse of the event's emitted_at ISO timestamp.
     None means the event will be conservatively kept (not rolled
     up) — same posture as `runtime/weekly_report.py`'s parser."""
@@ -116,7 +118,7 @@ def rollup_expired(
 
     # Per (provider, day_utc, query_hash) aggregate buckets accumulated
     # across all expired files, then upserted in one transaction.
-    buckets: dict[tuple[str, str, str], dict] = defaultdict(
+    buckets: dict[tuple[str, str, str], dict[str, Any]] = defaultdict(
         lambda: {
             "query_preview": None,
             "proposal_count": 0,
@@ -140,7 +142,7 @@ def rollup_expired(
         # event is newer than the cutoff, skip the whole file —
         # partial rollups would lose data.
         most_recent: datetime | None = None
-        parsed_events: list[dict] = []
+        parsed_events: list[dict[str, Any]] = []
         for line in lines:
             line = line.strip()
             if not line:
@@ -180,10 +182,8 @@ def rollup_expired(
                 if url:
                     b["distinct_urls"].add(url)
                 cost = payload.get("cost_usd_estimate") or 0.0
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     b["total_cost_usd"] += float(cost)
-                except (TypeError, ValueError):
-                    pass
             elif action_type == "discovery.selected":
                 decision = payload.get("decision", "")
                 if decision == "ingested":
@@ -196,10 +196,8 @@ def rollup_expired(
                     b["fetch_failed"] += 1
             elif action_type == "verifier.lookup":
                 cost = payload.get("cost_usd_estimate") or 0.0
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     b["total_cost_usd"] += float(cost)
-                except (TypeError, ValueError):
-                    pass
             raw_events_rolled_up += 1
 
         files_to_truncate.append(f)
@@ -283,7 +281,7 @@ def recent_summary(
     *,
     days: int = 7,
     db_path: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Read the most-recent `days` of discovery_summary rows.
     Operator-facing helper; the audit CLI consumes this."""
 
@@ -318,7 +316,7 @@ def recent_summary(
         "rejected_by_op", "fetch_failed", "distinct_urls",
         "total_cost_usd", "summarized_at",
     ]
-    return [dict(zip(cols, row)) for row in rows]
+    return [dict(zip(cols, row, strict=True)) for row in rows]
 
 
 __all__ = [

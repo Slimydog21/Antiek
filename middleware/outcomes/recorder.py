@@ -115,10 +115,7 @@ def build_outcome_record(
 def record_outcome_via_db(con: Any, record: OutcomeRecord) -> str:
     """Persist an ``OutcomeRecord`` to the ``outcomes`` table. Returns
     the outcome_id. Requires a ``LockedConnection``."""
-    try:
-        from ...runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
-    except ImportError:
-        from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
     if not isinstance(con, LockedConnection):
         raise TypeError(
             "record_outcome_via_db requires a LockedConnection."
