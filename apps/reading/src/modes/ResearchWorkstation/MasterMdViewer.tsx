@@ -828,11 +828,11 @@ function ConfidenceChip({
 }) {
   const colorClass =
     confidence === "high"
-      ? "bg-emerald-100 text-emerald-800"
+      ? "bg-success/15 text-success"
       : confidence === "moderate"
-        ? "bg-sun/20 text-amber-800"
+        ? "bg-sun/20 text-sun-deep dark:text-sun"
         : confidence === "low"
-          ? "bg-orange-100 text-orange-800"
+          ? "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight"
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
@@ -847,11 +847,11 @@ function ConfidenceChip({
 function RecommendationBadge({ rec }: { rec: Recommendation }) {
   const color =
     rec === "proceed"
-      ? "bg-emerald-100 text-emerald-800"
+      ? "bg-success/15 text-success"
       : rec === "pass"
-        ? "bg-red-100 text-red-800"
+        ? "bg-danger/10 text-danger"
         : rec === "conditional"
-          ? "bg-sun/20 text-amber-800"
+          ? "bg-sun/20 text-sun-deep dark:text-sun"
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
@@ -988,7 +988,7 @@ function Appendix({ synthesis }: { synthesis: ParsedSynthesis }) {
             <p className="text-ink dark:text-bright">
               Hard constraints:{" "}
               {synthesis.hardConstraintsSatisfied ? (
-                <span className="text-emerald-700">satisfied</span>
+                <span className="text-success">satisfied</span>
               ) : (
                 <span className="text-emperor">violated</span>
               )}

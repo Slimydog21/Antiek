@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 /**
  * Investigations index — operator-facing list of past + in-flight
@@ -114,7 +115,7 @@ export default function InvestigationsIndex() {
   );
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -210,9 +211,9 @@ export default function InvestigationsIndex() {
           </section>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (
@@ -251,9 +252,9 @@ export default function InvestigationsIndex() {
                       <span
                         className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded ${
                           r.status === "completed"
-                            ? "bg-emerald-100 text-emerald-700"
+                            ? "bg-success/10 text-success"
                             : r.status === "failed"
-                              ? "bg-red-50 text-emperor"
+                              ? "bg-danger/10 text-danger"
                               : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
                         }`}
                       >

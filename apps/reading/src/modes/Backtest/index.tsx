@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonCard from "../../components/lemon/LemonCard";
 import { apiFetch } from "../../lib/api";
 
@@ -65,7 +66,7 @@ export default function Backtest() {
   }, [reload]);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -87,9 +88,9 @@ export default function Backtest() {
           )}
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {report && (
@@ -188,12 +189,12 @@ function Metric({
   return (
     <div
       className={`border rounded-md px-3 py-2 ${
-        highlight ? "border-amber-300 bg-sun/10" : "border-rule dark:border-charcoal-1"
+        highlight ? "border-sun-deep bg-sun/10 dark:bg-sun/5" : "border-rule dark:border-charcoal-1"
       }`}
     >
       <p
         className={`text-2xl font-serif ${
-          highlight ? "text-amber-800" : "text-ink dark:text-bright"
+          highlight ? "text-sun-deep dark:text-sun" : "text-ink dark:text-bright"
         }`}
       >
         {value}

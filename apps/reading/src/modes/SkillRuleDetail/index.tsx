@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 /**
  * Skill rule detail page (master-spec §13.2 + §13.9).
@@ -82,9 +83,9 @@ export default function SkillRuleDetail() {
           )}
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {rule && (

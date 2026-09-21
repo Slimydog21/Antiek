@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import LemonButton from "../../../components/lemon/LemonButton";
 import AIActionFailure from "../../../shared/AIActionFailure";
+import { zIndex } from "../../../design/zIndex";
 import { ApiError, editSelection } from "../../../lib/api";
 import { useVoiceCapture } from "../../../hooks/useVoiceCapture";
 import {
@@ -177,7 +178,7 @@ export default function FloatMenu({
         position: "fixed",
         top: pos.top,
         left: pos.left,
-        zIndex: 50,
+        zIndex: zIndex.popover,
         maxWidth: MENU_W,
       }}
       // Don't blur the selection when interacting with the menu — the same

@@ -353,7 +353,7 @@ export default function BookReader() {
   const adEligible = body.ad_eligible && pages.length > 0;
 
   return (
-    <div className="flex h-screen bg-ice-0 dark:bg-charcoal-2">
+    <div className="flex h-full bg-ice-0 dark:bg-charcoal-2">
       {/* TOC sidebar */}
       <aside className="w-64 flex-shrink-0 border-r border-rule dark:border-charcoal-1 overflow-y-auto p-3 hidden md:block">
         <p className="font-serif text-sm text-ink dark:text-bright mb-1 truncate">
@@ -571,7 +571,7 @@ export default function BookReader() {
 
 function CenterNote({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
   return (
-    <div className="h-screen flex items-center justify-center bg-ice-0 dark:bg-charcoal-2">
+    <div className="h-full flex items-center justify-center bg-ice-0 dark:bg-charcoal-2">
       <p
         className={`text-sm font-serif ${
           tone === "error" ? "text-emperor" : "text-shadow-1 dark:text-moonlight italic"

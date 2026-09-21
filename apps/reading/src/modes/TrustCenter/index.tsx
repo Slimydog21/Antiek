@@ -1,6 +1,7 @@
 import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 import { apiFetch } from "../../lib/api";
 import { PUBLIC_LANE_LABELS } from "../../lib/speakVocab";
@@ -132,9 +133,9 @@ export default function TrustCenter() {
           </aside>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {data && (
@@ -374,7 +375,7 @@ export default function TrustCenter() {
                         <span
                           className={`text-xs font-mono px-2 py-0.5 rounded ${
                             met
-                              ? "bg-emerald-100 text-emerald-700"
+                              ? "bg-success/10 text-success"
                               : "bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight"
                           }`}
                         >

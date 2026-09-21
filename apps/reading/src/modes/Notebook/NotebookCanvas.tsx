@@ -186,7 +186,7 @@ function BlockControls({
             type="button"
             title="Delete block"
             onClick={() => setConfirmingDelete(true)}
-            className="w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-emperor hover:bg-red-50"
+            className="w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-emperor"
           >
             ×
           </button>
@@ -319,7 +319,7 @@ function ClaimReferenceBlock({ claimId, text }: { claimId: string | null; text: 
     );
   }
   return (
-    <div className="border-l-2 border-emerald-300 pl-3 py-1">
+    <div className="border-l-2 border-sun-deep pl-3 py-1">
       <p className="text-sm text-ink dark:text-bright font-serif">{text || `(claim ${claimId})`}</p>
       <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">claim: {claimId}</p>
     </div>
@@ -335,7 +335,7 @@ function NoteReferenceBlock({ noteId, text }: { noteId: string | null; text: str
     );
   }
   return (
-    <div className="border-l-2 border-amber-300 pl-3 py-1">
+    <div className="border-l-2 border-sun pl-3 py-1">
       <p className="text-sm text-ink dark:text-bright font-serif">{text || `(note ${noteId})`}</p>
       <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">note: {noteId}</p>
     </div>
@@ -357,7 +357,7 @@ function RegionEmbedBlock({ regionId, excerpt }: { regionId: string | null; exce
 
 function QuestionCardBlock({ questionId, text }: { questionId: string | null; text: string }) {
   return (
-    <div className="border-l-2 border-blue-300 pl-3 py-1">
+    <div className="border-l-2 border-aurora pl-3 py-1">
       <p className="text-sm text-ink dark:text-bright font-serif">{text || `(question ${questionId})`}</p>
       <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">open: {questionId}</p>
     </div>

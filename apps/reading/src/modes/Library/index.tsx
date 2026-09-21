@@ -1,6 +1,7 @@
 import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 import type {
   BookHtmlConversionResultResponse,
@@ -66,9 +67,10 @@ const PAGE_SIZE = 20;
 
 export default function Library() {
   const navigate = useNavigate();
-  // SPR-09 window-adaptation contract: in a WorkspaceWindow, fill the
-  // container (h-full) and drop the opaque full-bleed bg so the glass shows
-  // through. Gated on this flag → the full-page route is unchanged.
+  // SPR-09 window-adaptation contract: the root fills its container (h-full —
+  // AppShell's main slot on the full-page route, the WorkspaceWindow when
+  // popped out), and in a window the opaque full-bleed bg drops so the glass
+  // shows through. The bg swap stays gated on this flag.
   const inWindow = useInWindow();
   const [status, setStatus] = useState<CorpusStatus>("servable");
   const [books, setBooks] = useState<BookSummary[]>([]);
@@ -1465,9 +1467,9 @@ export default function Library() {
 
           <div id="library-catalog-panel" role="tabpanel" aria-labelledby={`library-tab-${status}`}>
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (
@@ -1518,7 +1520,7 @@ export default function Library() {
   );
 
   return (
-    <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
+    <div className="flex flex-col h-full">
       {inWindow ? (
         // SPR-09 contract preserved: the host WorkspaceWindow owns the glass;
         // the body stays bg-transparent and is NOT re-glassed.

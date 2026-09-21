@@ -351,17 +351,38 @@ export const accent = {
 export const danger = accent.emperor;
 
 /**
+ * Semantic success token (Q3, adjudication D2) — the done/met/passed green.
+ *
+ * aurora was carrying these states (`state.done`) but fails WCAG AA as text
+ * (1.9:1 on ice-0) and is RESERVED for AI-thinking (D8), so done/met/passed
+ * gets its own hue: a calm forest green, low-chroma like the rest of the
+ * weathered brand (chroma ~0.31, not a SaaS neon emerald).
+ *
+ * AA pairs (verified in tokens.contrast.test.ts):
+ *   day   #237242 → 5.90:1 on ice-0, 5.49:1 on ice-2 (text); ice-0 white
+ *         text over it 5.90:1 (filled success chips/buttons).
+ *   night #6ECB8F → 9.59:1 on space-2, 8.24:1 on charcoal-2 (text); day-ink
+ *         #0F1419 text over it ~10:1 (filled success chips/buttons at night).
+ *
+ * Sibling invariant: byte-identical to --success in tokens.css (day :root +
+ * night media block). tailwind.config.js exposes it via the --success-rgb
+ * channel vars so /opacity modifiers (bg-success/10) resolve.
+ */
+export const success = { day: "#237242", night: "#6ECB8F" } as const;
+
+/**
  * Research-state family (herdr transfer P0-1). Mirrors tokens.css: semantic
  * ALIASES over the palette constants (var() references), so state colour is
  * a token, never a raw hex in a component. blocked=emperor (needs
- * attention), done=aurora, working=sun, stopped/muted=shadow-1. The
+ * attention), done=success (Q3/D2 — was aurora, which is reserved for
+ * AI-thinking per D8), working=sun, stopped/muted=shadow-1. The
  * canonical dot classes live in shared/researchState.ts and consume these
  * tokens via Tailwind arbitrary values.
  */
 export const state = {
   working: "var(--sun)",
   blocked: "var(--emperor)",
-  done: "var(--aurora)",
+  done: "var(--success)",
   stopped: "var(--shadow-2)",
   muted: "var(--shadow-2)",
 } as const;

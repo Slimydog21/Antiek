@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { LemonButton, LemonTag } from "../../../components/lemon";
+import { ErrorBanner, LemonButton, LemonTag } from "../../../components/lemon";
 import {
   getFileSuggestion,
   listPersonalSpace,
@@ -117,7 +117,7 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
   );
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -144,9 +144,9 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
           </header>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded" role="alert">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (

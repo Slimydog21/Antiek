@@ -57,6 +57,7 @@ utilities. **These three must agree** — drift is a bug.
 - **Type:** sans `Inter`, mono `JetBrains Mono`, **serif `Charter`** (prose — the notebook register).
 - **Brain mascot (shipped):** the mark is the coral brain — warm coral-pink body, soft-black eyes/stick limbs, rosy cheeks; full palette + hard rules in `src/brand/mascot-brain/PROFILE.md` (the Krea character bible). `BrainMascot.tsx` renders the four moods (`idle`/`thinking`/`empty`/`celebrate`); `BrainMark.tsx` is the geometric line-brain rail mark. The `werner` palette still exported from tokens.ts is legacy penguin chrome, pending the batch rename pass.
 - **Reserved accents (sparingly, never substituting for sun):** `aurora #16C2C2` (day) / `#3FE0DC` (night) (AI-thinking only, adjudication D8), `emperor #CE3623` (day) / `#FF6155` (night) (danger only — also exposed under its semantic alias `danger`, same values day + night).
+- **State colours (Q3, adjudication D2):** `success #237242` (day) / `#6ECB8F` (night) — the done/met/passed green, AA-cleared as text on ice-0/ice-2 and space-2/charcoal-2 (aurora fails that floor and stays reserved for AI-thinking); the research-state family aliases it (`--state-done` = `var(--success)`), with `working` = sun, `blocked` = emperor, `stopped/muted` = shadow-2.
 
 ### SPR-01 reconciliation (2026-05-25)
 `tokens.css` lagged the a11y-darkening that `tokens.ts` + `tailwind.config.js`

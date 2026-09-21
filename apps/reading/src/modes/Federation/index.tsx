@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 /**
  * Federation config UI (master-spec §13.9 Phase 3).
@@ -109,7 +110,7 @@ export default function Federation() {
         draft.require_attribution_for_outbound_citations);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -127,13 +128,13 @@ export default function Federation() {
           </header>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {savedAt && !error && (
-            <p className="text-sm text-emerald-700 border border-emerald-200 bg-emerald-50 px-3 py-2 rounded">
+            <p className="text-sm text-success border border-success/40 bg-success/10 px-3 py-2 rounded">
               Saved at {savedAt}
             </p>
           )}
@@ -168,7 +169,7 @@ export default function Federation() {
                         <button
                           type="button"
                           onClick={() => removePartner(p)}
-                          className="text-[10px] uppercase tracking-wider font-mono text-emperor hover:bg-red-50 px-1.5 py-0.5 rounded"
+                          className="text-[10px] uppercase tracking-wider font-mono text-emperor hover:bg-danger/10 px-1.5 py-0.5 rounded"
                         >
                           remove
                         </button>

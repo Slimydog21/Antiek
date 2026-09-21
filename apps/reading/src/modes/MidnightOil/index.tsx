@@ -6,6 +6,7 @@ import {
   type MidnightOilRouteMode,
   type MidnightOilSourcePolicy,
 } from "../../api/midnightOil";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonCard from "../../components/lemon/LemonCard";
 
 const ROUTE_MODES: Array<{ value: MidnightOilRouteMode; label: string }> = [
@@ -196,9 +197,9 @@ export default function MidnightOil() {
         </LemonCard>
 
         {error && (
-          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+          <ErrorBanner>
             {error}
-          </p>
+          </ErrorBanner>
         )}
 
         {preflight && (

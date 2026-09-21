@@ -63,7 +63,7 @@ function StatusBadge({ row }: { row: IngestRow }) {
   const s = row.result.status;
   if (s === "ingested") {
     return (
-      <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">
+      <span className="px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">
         ingested
       </span>
     );

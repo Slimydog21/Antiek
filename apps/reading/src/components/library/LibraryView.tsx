@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { LemonButton, LemonInput } from "../lemon";
+import { ErrorBanner, LemonButton, LemonInput } from "../lemon";
 import { useLibrary, type LibraryFilter } from "./useLibrary";
 import WorkCard from "./WorkCard";
 
@@ -136,9 +136,9 @@ export default function LibraryView({
       )}
 
       {error && (
-        <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+        <ErrorBanner>
           {error}
-        </p>
+        </ErrorBanner>
       )}
 
       {loading && (

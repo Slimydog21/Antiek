@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SignalActionView, SignalInventoryResponse } from "../../api/ownYourMind";
 import { getSignalInventory } from "../../api/ownYourMind";
 import { useServedImpression } from "../../lib/servedImpression";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import { LemonTable } from "../../components/lemon/LemonTable";
 import { LemonTag } from "../../components/lemon/LemonTag";
 
@@ -102,9 +103,9 @@ export function Signals() {
           </header>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (

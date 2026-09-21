@@ -87,7 +87,7 @@ function TrajectoryHeader({
             investigation.status === "in_progress"
               ? "text-sun-deep dark:text-sun"
               : investigation.status === "completed"
-                ? "text-emerald-700"
+                ? "text-success"
                 : investigation.status === "failed"
                   ? "text-emperor"
                   : "text-shadow-1 dark:text-moonlight"

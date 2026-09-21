@@ -41,12 +41,13 @@ The ladder is a catalogue + drift tripwire; these call sites currently sit
 off it and are being fixed separately (work-queue Q8) — do not "fix" them by
 editing the diagram:
 
-- `FloatMenu.tsx` — inline `zIndex: 50`, value-colliding with
-  `floatingPanelCeiling`; a menu belongs at `zIndex.popover` (120).
-- `ChunkModal.tsx` — `z-50` scrim, so a modal paints *under* the mascot rung;
-  it belongs on the modal rung (`zIndex.modal`, 100) via LemonModal.
 - `BrainPresence.tsx` — inline `zIndex: 1`, uncatalogued; gets a named
   `scenePresence` rung in the same pass.
+
+Fixed by the Q8 overlay pass (2026-09-21): `FloatMenu.tsx` now consumes
+`zIndex.popover` (120); `ChunkModal.tsx`, `ProductsLauncher.tsx` and the
+LinkMonster detail modal are rebuilt on LemonModal (the `modal` rung, z=100,
+with Esc, scrim dismissal and the focus trap).
 
 ## Motion — the ambience slot (adjudication D9)
 

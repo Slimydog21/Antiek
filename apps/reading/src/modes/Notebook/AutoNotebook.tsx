@@ -197,7 +197,7 @@ function AutoNotebookForInvestigation({
  *  separate, unbannered surface). */
 function AutoNotebookShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col h-screen" data-testid="auto-notebook-shell">
+    <div className="flex flex-col h-full" data-testid="auto-notebook-shell">
       <main className="flex-1 min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
         {children}
       </main>

@@ -54,6 +54,14 @@
  *     weathered family tokens.css/tokens.ts carried since AMS-SPR-09 with no
  *     Tailwind mirror. The keys must reference the CSS vars (theme-invariant).
  *
+ * Q3 EXTENSION — one more family, same drift class:
+ *
+ *   SUCCESS family — `success`: the done/met/passed green (adjudication D2;
+ *     aurora stays reserved for AI-thinking per D8). tokens.css --success
+ *     must carry the AA-cleared value per theme and --success-rgb its
+ *     channels; the Tailwind key reads `rgb(var(--success-rgb) / <alpha-value>)`
+ *     so bg-success/10 resolves.
+ *
  * Out of scope (other FEEL-FIX passes own these): spacing/density, type scale,
  * z-index, modal enter wiring. Brand constant `--sun` (#F5DF24) is intentionally
  * a static hex in both files and is NOT a parity target.
@@ -90,6 +98,12 @@ const EXPECTED_CSS = {
   nightInkMute: "#828C9C", // AA-cleared: 4.80:1 on charcoal-2 (mock's #7C8696 failed at 4.44)
   dayDangerRgb: "206 54 35", // == emperor day #CE3623 channels
   nightDangerRgb: "255 97 85", // == emperor night #FF6155 channels
+  // Q3 success token (adjudication D2 — done/met/passed green; aurora stays
+  // reserved for AI-thinking per D8). Byte-identical to tokens.ts `success`.
+  daySuccess: "#237242", // AA: 5.90:1 on ice-0, 5.49:1 on ice-2
+  nightSuccess: "#6ECB8F", // AA: 9.59:1 on space-2, 8.24:1 on charcoal-2
+  daySuccessRgb: "35 114 66", // == #237242 channels
+  nightSuccessRgb: "110 203 143", // == #6ECB8F channels
 } as const;
 
 /** Drop `/* … *\/` comments so a commented-out declaration (e.g. a left-behind
@@ -139,6 +153,12 @@ const cssChecks: Array<[string, string | null, string]> = [
   ["night --danger", cssVar(night, "danger"), "var(--emperor)"],
   ["day :root --danger-rgb", cssVar(day, "danger-rgb"), EXPECTED_CSS.dayDangerRgb],
   ["night --danger-rgb", cssVar(night, "danger-rgb"), EXPECTED_CSS.nightDangerRgb],
+  // Q3 success token: --success carries the AA-cleared green per theme and
+  // --success-rgb carries its channels for the Tailwind `success` color.
+  ["day :root --success", cssVar(day, "success"), EXPECTED_CSS.daySuccess],
+  ["night --success", cssVar(night, "success"), EXPECTED_CSS.nightSuccess],
+  ["day :root --success-rgb", cssVar(day, "success-rgb"), EXPECTED_CSS.daySuccessRgb],
+  ["night --success-rgb", cssVar(night, "success-rgb"), EXPECTED_CSS.nightSuccessRgb],
 ];
 for (const [label, got, want] of cssChecks) {
   const norm = got?.toLowerCase() ?? null;
@@ -198,7 +218,7 @@ for (const key of SHADOW_KEYS) {
 // resolve AND lets the night block swap the value by redeclaring the var. A
 // hardcoded hex is the Q1 drift; a plain var(--key) would silently break the
 // /opacity call sites.
-const CHANNEL_KEYS = ["ink-soft", "ink-mute", "danger"] as const;
+const CHANNEL_KEYS = ["ink-soft", "ink-mute", "danger", "success"] as const;
 for (const key of CHANNEL_KEYS) {
   const val = twColorValue(key);
   if (val === null) {
@@ -239,7 +259,7 @@ if (failures.length) {
   );
   for (const f of failures) console.error("  • " + f);
   console.error(
-    "\nThe sun accent/shadow, muted-ink (ink-soft/ink-mute), danger, and sun-light " +
+    "\nThe sun accent/shadow, muted-ink (ink-soft/ink-mute), danger, success, and sun-light " +
       "families must agree across tokens.css and tailwind.config.js, or 'lived feel' ≠ " +
       "'designed feel'. See this file's header for the parity rule.\n",
   );
@@ -248,8 +268,9 @@ if (failures.length) {
 
 console.log(
   "token-parity OK — sun accent (sun-deep/sun-glow), *-night shadows, muted-ink " +
-    "(ink-soft/ink-mute), danger, and sun-light mirrors agree across tokens.css and " +
+    "(ink-soft/ink-mute), danger, success, and sun-light mirrors agree across tokens.css and " +
     `tailwind.config.js (day ${EXPECTED_CSS.daySunDeep}/${EXPECTED_CSS.daySunGlow}, ` +
     `night ${EXPECTED_CSS.nightSunDeep}/${EXPECTED_CSS.nightSunGlow}; ` +
-    `ink-mute day ${EXPECTED_CSS.dayInkMute} / night ${EXPECTED_CSS.nightInkMute}).`,
+    `ink-mute day ${EXPECTED_CSS.dayInkMute} / night ${EXPECTED_CSS.nightInkMute}; ` +
+    `success day ${EXPECTED_CSS.daySuccess} / night ${EXPECTED_CSS.nightSuccess}).`,
 );

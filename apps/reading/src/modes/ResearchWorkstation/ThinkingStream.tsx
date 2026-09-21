@@ -243,7 +243,7 @@ function StreamHeader({
             investigation.status === "in_progress"
               ? "text-aurora"
               : investigation.status === "completed"
-                ? "text-emerald-700"
+                ? "text-success"
                 : "text-shadow-1 dark:text-moonlight"
           }`}
         >

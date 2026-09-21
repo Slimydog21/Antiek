@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { LemonButton } from "../../../components/lemon";
+import { ErrorBanner, LemonButton } from "../../../components/lemon";
 import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import ReadAloud from "../../../components/voice/ReadAloud";
@@ -151,7 +151,7 @@ export default function MetaReading() {
   }, [deliverable, prompt, promoting]);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <ProposedBanner />
       <main className="flex-1 min-h-0 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-8 space-y-5">
@@ -214,9 +214,9 @@ export default function MetaReading() {
           </section>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded" role="alert">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {deliverable && deliverable.empty && (

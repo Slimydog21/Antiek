@@ -104,6 +104,15 @@
   --danger:     var(--emperor);
   --danger-rgb: 206 54 35;
 
+  /* Semantic success token (Q3, adjudication D2) — the done/met/passed
+     green, minted because aurora fails AA as text (1.9:1 on ice-0) and is
+     reserved for AI-thinking (D8). A calm low-chroma forest green. AA:
+     5.90:1 on ice-0, 5.49:1 on ice-2 (text); ice-0 white text over it
+     5.90:1 (filled chips/buttons). The channel triplet feeds the Tailwind
+     `success` color so bg-success/10 resolves. Mirrors tokens.ts `success`. */
+  --success:     #237242;
+  --success-rgb: 35 114 66;
+
   /* Neutral "light" chrome border (AMS-SPR-01). A calm blue-grey — the
      lightest neutral that still clears WCAG 1.4.11 3:1 on white cards
      (#788596 on #FFFFFF = 3.75:1; on the #F4F7FA page = 3.49:1). A paler
@@ -172,11 +181,12 @@
   /* Research-state family (herdr transfer P0-1) — SEMANTIC ALIASES, not new
      hues. Each state token points at an existing palette constant, so state
      colour can never drift from the brand palette: working=sun, blocked=
-     emperor, done=aurora, stopped/muted=shadow-1. Night values resolve
-     automatically because the night block re-declares the referenced vars. */
+     emperor, done=success (Q3/D2 — was aurora, reserved for AI-thinking per
+     D8), stopped/muted=shadow-1. Night values resolve automatically because
+     the night block re-declares the referenced vars. */
   --state-working: var(--sun);
   --state-blocked: var(--emperor);
-  --state-done:    var(--aurora);
+  --state-done:    var(--success);
   --state-stopped: var(--shadow-2);
   --state-muted:   var(--shadow-2);
 
@@ -297,6 +307,12 @@
     --danger:     var(--emperor);
     --danger-rgb: 255 97 85;
 
+    /* Success, night (Q3/D2) — a soft sage that keeps AA on the night ramp:
+       9.59:1 on space-2, 8.24:1 on charcoal-2 (text); day-ink #0F1419 text
+       over it ~10:1 (filled chips/buttons). Mirrors tokens.ts success.night. */
+    --success:     #6ECB8F;
+    --success-rgb: 110 203 143;
+
     /* Neutral "light" chrome border, night. A calm slate — the lightest
        neutral that still clears 3:1 on the night card (#606C7E on #1B202A =
        3.07:1; on the #0D1019 page = 3.57:1). Mirrors tokens.ts `rule.night`.
@@ -373,11 +389,11 @@
 
     /* Research-state family (herdr transfer P0-1) — night aliases. Same
        semantic targets as day; the values resolve through the night
-       redeclarations above (aurora/emperor/shadow-2), so state colours
+       redeclarations above (success/emperor/shadow-2), so state colours
        track the night palette automatically. */
     --state-working: var(--sun);
     --state-blocked: var(--emperor);
-    --state-done:    var(--aurora);
+    --state-done:    var(--success);
     --state-stopped: var(--shadow-2);
     --state-muted:   var(--shadow-2);
 

@@ -35,7 +35,7 @@ import type {
   MultimediaSteeringPreview,
   MultimediaSteeringRequest,
 } from "../../api/multimedia";
-import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
+import { ErrorBanner, LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 import { ReconciliationPanel } from "./ReconciliationPanel";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
 import { LocalProductionPanel } from "./LocalProductionPanel";
@@ -1011,9 +1011,9 @@ export default function Multimedia() {
             </div>
 
             {apiError && (
-              <div className="rounded-md border border-danger bg-danger/10 p-3 text-[13px] text-ink dark:text-bright" role="alert">
+              <ErrorBanner>
                 {apiError}
-              </div>
+              </ErrorBanner>
             )}
 
             {assets.length > 0 && (
@@ -1053,9 +1053,9 @@ export default function Multimedia() {
             ) : (
               <>
                 {planProjectionError ? (
-                  <div className="rounded-md border border-danger bg-danger/10 p-3 text-[13px] text-ink dark:text-bright" role="alert">
+                  <ErrorBanner>
                     Persisted plan cannot be reviewed: {planProjectionError}
-                  </div>
+                  </ErrorBanner>
                 ) : (
                 <>
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">

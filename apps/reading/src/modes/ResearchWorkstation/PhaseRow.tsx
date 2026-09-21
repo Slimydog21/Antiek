@@ -112,7 +112,7 @@ function EvidenceRow({ event }: { event: Event }) {
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <div className="text-[10px] font-mono uppercase text-emerald-700 mb-1">
+          <div className="text-[10px] font-mono uppercase text-success mb-1">
             insights ({claims.length})
           </div>
           <ul className="space-y-1.5 text-sm text-ink dark:text-bright font-serif">

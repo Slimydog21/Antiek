@@ -376,7 +376,7 @@ export default function Settings() {
         <LemonCard title="Models & providers" elevation="z1">
           <div className="p-4 space-y-3">
             {modelsError && (
-              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+              <p className="text-sm text-danger font-mono">
                 {modelsError}
               </p>
             )}
@@ -410,8 +410,8 @@ export default function Settings() {
                     <span
                       className={
                         m.ready
-                          ? "text-emerald-700 dark:text-emerald-300"
-                          : "text-amber-700 dark:text-amber-300"
+                          ? "text-success"
+                          : "text-sun-deep dark:text-sun"
                       }
                     >
                       {m.ready ? "ready" : m.registered ? "registered" : "not registered"}
@@ -440,7 +440,7 @@ export default function Settings() {
         <LemonCard title="Budget" elevation="z1">
           <div className="p-4 space-y-3">
             {budgetError && (
-              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+              <p className="text-sm text-danger font-mono">
                 {budgetError}
               </p>
             )}
@@ -528,7 +528,7 @@ export default function Settings() {
         <LemonCard title="Antiek-bench" elevation="z1">
           <div className="p-4 space-y-3">
             {benchError && (
-              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+              <p className="text-sm text-danger font-mono">
                 {benchError}
               </p>
             )}
@@ -727,12 +727,12 @@ export default function Settings() {
               </button>
             </div>
             {estimateError && (
-              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+              <p className="text-sm text-danger font-mono">
                 {estimateError}
               </p>
             )}
             {advisorError && (
-              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+              <p className="text-sm text-danger font-mono">
                 {advisorError}
               </p>
             )}
@@ -1155,7 +1155,7 @@ function DecisionTreePanel({
       <LemonButton type="button" variant="primary" size="md" disabled={loading || !usageValid} onClick={() => void compare()}>
         {loading ? "Comparing..." : "Compare models"}
       </LemonButton>
-      {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <ModelDecisionBar
         projection={projection}
         loading={loading && decision !== null}
@@ -1298,7 +1298,7 @@ function FallbackReceiptHistory({
                   </div>
                 </div>
               )}
-              {approvalError?.chainId === chain.chain_id && <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{approvalError.message}</p>}
+              {approvalError?.chainId === chain.chain_id && <p role="alert" className="mt-2 text-xs text-danger">{approvalError.message}</p>}
             </li>
           ))}
         </ol>

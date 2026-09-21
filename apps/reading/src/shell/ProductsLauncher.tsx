@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { LemonModal } from "../components/lemon/LemonModal";
 import { LemonTag } from "../components/lemon/LemonTag";
 import { openWindow, windowKindForRoute } from "../components/windows/openWindow";
 import {
@@ -55,10 +56,11 @@ const RUN_LABELS: Record<string, string> = {
  * here supplies the calm human surface names without touching the single
  * source used by rail, tree, stubs and palette.
  *
- * Presentation note (post M4 sharpen): rendered as a fixed centered overlay
- * (inset-0 z-50 pt-20 w-[760px] card, role=dialog aria-modal). The "drawer"
- * language in the broader spec is aspirational; the implementation is a
- * modal/overlay for immediate accessibility and keyboard parity with ⌘K.
+ * Presentation note (post M4 sharpen, Q8 overlay pass): rendered as a
+ * LemonModal — the house modal rung (z=100, chunky sun-edge chrome, focus
+ * trap, Esc + scrim dismissal). The "drawer" language in the broader spec is
+ * aspirational; the implementation is a modal/overlay for immediate
+ * accessibility and keyboard parity with ⌘K.
  */
 export function ProductsLauncher({
   open,
@@ -70,6 +72,7 @@ export function ProductsLauncher({
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) {
@@ -77,12 +80,11 @@ export function ProductsLauncher({
       setActiveIndex(0);
       return;
     }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    // LemonModal's focus trap claims initial focus (the header ✕); hand it
+    // back to the filter input so the ⌘K-parity "type immediately" action
+    // survives the modal rung. Child effects run before this parent effect.
+    inputRef.current?.focus();
+  }, [open]);
 
   // Two top-level groups only: workflow deep modes (the four workflows'
   // power surfaces, presented under their own human labels) vs the run
@@ -119,8 +121,6 @@ export function ProductsLauncher({
       setActiveIndex(0);
     }
   }, [flatItems.length]);
-
-  if (!open) return null;
 
   /** Built modes navigate. A bare route navigates directly. A param route
    *  resolves to its index (everything before "/:") when that index is a
@@ -194,40 +194,38 @@ export function ProductsLauncher({
   const isActive = (id: string) => flatItems[activeIndex]?.id === id;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-ink/40 flex items-start justify-center pt-20"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="More"
-    >
-      <div
-        className="w-[760px] max-w-[92vw] max-h-[80vh] bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-lg shadow-2xl overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 pt-4 pb-3 border-b border-rule dark:border-charcoal-1">
-          <h2 className="font-serif text-lg text-ink dark:text-bright">
-            More
-          </h2>
-          <p className="text-[12px] text-shadow-1 dark:text-moonlight mt-0.5">
-            Deep modes for each workflow and the operator, trust, and settings
-            surfaces. Greyed entries are not built yet and are shown honestly.
-          </p>
-          <input
-            type="text"
-            autoFocus
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setActiveIndex(0);
-            }}
-            onKeyDown={onSearchKeyDown}
-            placeholder="Filter…"
-            className="mt-3 w-full px-3 py-2 text-sm bg-ice-2 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded text-ink dark:text-bright placeholder:text-ink-mute dark:placeholder:text-moonlight outline-none focus:border-sun"
-          />
+    <LemonModal
+      open={open}
+      onClose={onClose}
+      title="More"
+      size="md"
+      footer={
+        <div className="flex items-center justify-between text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+          <span>Esc to close · ⌘K for deep search</span>
+          <span>{MODE_TAXONOMY.length} surfaces</span>
         </div>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <p className="text-[12px] text-shadow-1 dark:text-moonlight -mt-1">
+          Deep modes for each workflow and the operator, trust, and settings
+          surfaces. Greyed entries are not built yet and are shown honestly.
+        </p>
+        <input
+          ref={inputRef}
+          type="text"
+          autoFocus
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setActiveIndex(0);
+          }}
+          onKeyDown={onSearchKeyDown}
+          placeholder="Filter…"
+          className="w-full px-3 py-2 text-sm bg-ice-2 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded text-ink dark:text-bright placeholder:text-ink-mute dark:placeholder:text-moonlight outline-none focus:border-sun"
+        />
 
-        <div className="overflow-y-auto p-5 space-y-6">
+        <div className="overflow-y-auto max-h-[55vh] space-y-6 pt-2">
           {/* SPR-12 M1 — the unified branded home, featured at the top of
               the launcher so it is one click away from anywhere (the rail
               logo is the other path). Not a MODE_TAXONOMY entry (Home is
@@ -400,13 +398,8 @@ export function ProductsLauncher({
             </>
           )}
         </div>
-
-        <footer className="px-5 py-2.5 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between">
-          <span>Esc to close · ⌘K for deep search</span>
-          <span>{MODE_TAXONOMY.length} surfaces</span>
-        </footer>
       </div>
-    </div>
+    </LemonModal>
   );
 }
 

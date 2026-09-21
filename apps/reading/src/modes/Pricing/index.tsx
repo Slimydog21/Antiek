@@ -43,7 +43,7 @@ export default function PricingPage() {
   const totalUsd = rawPrivateUsd + privateMargin + rawPublicAboveCapUsd + publicMargin;
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-10">
           <header className="space-y-3">

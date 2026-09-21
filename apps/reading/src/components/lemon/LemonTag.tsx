@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
  * project-tree node decorations. Brand: sun-yellow outline, ink offset shadow
  * (day) / sun-deep shadow (night).
  */
-type Colour = "default" | "sun" | "aurora" | "danger" | "muted";
+type Colour = "default" | "sun" | "aurora" | "success" | "danger" | "muted";
 
 type Props = {
   colour?: Colour;
@@ -19,6 +19,11 @@ const colourMap: Record<Colour, string> = {
   default: "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright",
   sun:     "bg-sun text-ink",
   aurora:  "bg-aurora text-ink",
+  // success (Q3/D2) — the done/met/passed green; aurora stays reserved for
+  // AI-thinking. Filled like sun/aurora/danger. AA pairs (pinned in
+  // tokens.contrast.test.ts): ice-0 white on the day green 5.90:1; day-ink
+  // #0F1419 on the night sage ~10:1.
+  success: "bg-success text-ice-0 dark:text-ink",
   // text-ice-0 (#FFFFFF) → 4.69:1 contrast against bg-emperor — above
   // WCAG AA 4.5 floor. text-ice-1 was 4.12 (a11y_audit flagged this
   // as a serious contrast violation in S11).

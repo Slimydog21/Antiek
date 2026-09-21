@@ -93,6 +93,14 @@ export default {
         // `danger` == accent.emperor + tokens.css --danger.
         "danger": "rgb(var(--danger-rgb) / <alpha-value>)",
 
+        // Semantic success token (Q3, adjudication D2) — the done/met/passed
+        // green; aurora stays reserved for AI-thinking (D8). Reads the
+        // --success-rgb channels (day 35 114 66 == #237242; night 110 203 143
+        // == #6ECB8F) so bg-success/10 resolves and the theme swap cascades.
+        // Both values clear WCAG AA 4.5:1 as text on their card/page surfaces
+        // (pinned in tokens.contrast.test.ts). Mirrors tokens.ts `success`.
+        "success": "rgb(var(--success-rgb) / <alpha-value>)",
+
         // Weathered "light" sun family mirrors (Q1, same drift class as
         // CFEEL-FIX-1): tokens.css/tokens.ts have carried --sun-light* since
         // AMS-SPR-09 but the Tailwind mirror was never added, so bg-sun-light /

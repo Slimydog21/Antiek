@@ -231,7 +231,7 @@ function InsightRow({
             {outcome === "busy" && <span className="font-mono italic" role="status">weighing…</span>}
           </div>
           {outcome === "changed" && (
-            <p className="mt-1 font-mono text-[11px] text-emerald-700" role="status">
+            <p className="mt-1 font-mono text-[11px] text-success" role="status">
               the note changed in light of your challenge
             </p>
           )}

@@ -297,7 +297,7 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
 function ChallengeOutcome({ state, onRetry }: { state: ChallengeState; onRetry: () => void }) {
   if (state.kind === "changed") {
     return (
-      <p className="mt-1.5 font-mono text-[11px] text-emerald-700" role="status">
+      <p className="mt-1.5 font-mono text-[11px] text-success" role="status">
         the note changed in light of your challenge
       </p>
     );

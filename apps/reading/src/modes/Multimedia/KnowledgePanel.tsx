@@ -11,7 +11,7 @@ import type {
   MultimediaKnowledgeFinalizationStatus,
   MultimediaTwinDocument,
 } from "../../api/multimedia";
-import { LemonButton, LemonTag } from "../../components/lemon";
+import { ErrorBanner, LemonButton, LemonTag } from "../../components/lemon";
 
 type Props = {
   asset: MultimediaAssetRecord;
@@ -267,7 +267,7 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
             Preserve the transcript, insights, and open questions as an HTML information asset.
           </p>
         </div>
-        <LemonTag colour={state === "completed" ? "aurora" : state === "integrity_conflict" ? "danger" : "default"}>
+        <LemonTag colour={state === "completed" ? "success" : state === "integrity_conflict" ? "danger" : "default"}>
           {pending === "inspect" ? "Checking" : STATE_LABELS[state]}
         </LemonTag>
       </div>
@@ -350,7 +350,7 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
           Refresh status
         </LemonButton>
       )}
-      {error && <p className="mt-3 text-[12px] text-danger" role="alert">{error}</p>}
+      {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
     </section>
   );
 }

@@ -31,3 +31,5 @@ export { LemonTable } from "./LemonTable";
 export type { LemonColumn } from "./LemonTable";
 
 export { LemonToastViewport, toast } from "./LemonToast";
+
+export { ErrorBanner } from "./ErrorBanner";

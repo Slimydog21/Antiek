@@ -147,7 +147,7 @@ export default function LineupPanel() {
                   : "No changes saved yet"}
             </span>
             {saveError && (
-              <span className="font-mono text-[10px] text-red-700 dark:text-red-300" role="alert">
+              <span className="font-mono text-[10px] text-danger" role="alert">
                 Save failed · {saveError}
               </span>
             )}

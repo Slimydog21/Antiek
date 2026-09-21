@@ -44,7 +44,7 @@ import { describe, expect, it } from "vitest";
 
 import { contrastRatio, over, relativeLuminance, type Rgb, type Rgba } from "../../e2e/_ams/visible";
 
-import { barAccent, danger, inkMute, inkSoft, shadow, sun, sunLight, surface } from "./tokens";
+import { accent, barAccent, danger, inkMute, inkSoft, shadow, success, sun, sunLight, surface } from "./tokens";
 
 // ── colour parsing (local, tiny; visible.ts's parseRgba is rgb()-string only) ──
 // NOTE: this file holds ZERO raw hex literals — every colour is read FROM the
@@ -235,5 +235,31 @@ describe("Q1 — the muted-ink hierarchy + danger alias clear AA on their usual 
     for (const s of [CARD_NIGHT, PAGE_NIGHT]) {
       expect(contrastRatio(hex(danger.night), s)).toBeGreaterThanOrEqual(AA_TEXT);
     }
+  });
+});
+
+describe("Q3 — the success token (D2: done/met/passed; aurora stays AI-thinking) clears AA", () => {
+  it("success clears 4.5:1 as text on day card+page and night card+page", () => {
+    // The D2 floor: ≥4.5:1 on ice-0 AND space-2, both modes (aurora failed
+    // this at 1.9:1 on ice-0, which is why success exists).
+    for (const s of [ICE_0, ICE_2]) {
+      expect(contrastRatio(hex(success.day), s)).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+    for (const s of [CARD_NIGHT, PAGE_NIGHT]) {
+      expect(contrastRatio(hex(success.night), s)).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  it("the filled success chip/button pairs clear 4.5:1 in both modes", () => {
+    // Filled idiom (LemonTag colour="success", grade/flip buttons): ice-0
+    // white text on the day green; day-ink text on the night sage.
+    expect(contrastRatio(ICE_0, hex(success.day))).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(INK_DAY, hex(success.night))).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("success is genuinely distinct from aurora (the reserved AI-thinking hue)", () => {
+    expect(success.day).not.toBe(accent.aurora.day);
+    expect(success.night).not.toBe(accent.aurora.night);
+    expect(chroma(hex(success.day))).toBeLessThan(0.5); // weathered, not neon emerald
   });
 });

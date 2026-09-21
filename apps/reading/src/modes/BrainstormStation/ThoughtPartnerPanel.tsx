@@ -276,7 +276,7 @@ export default function ThoughtPartnerPanel() {
       </button>
 
       {error ? (
-        <p className="text-[11px] text-red-700 dark:text-red-300" role="alert">
+        <p className="text-[11px] text-danger" role="alert">
           {error}
         </p>
       ) : null}

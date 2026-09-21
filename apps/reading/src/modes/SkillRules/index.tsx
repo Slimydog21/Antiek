@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 /**
  * Shared-substrate skill rules surface (master-spec §13.2 + §13.9).
@@ -152,9 +153,9 @@ export default function SkillRules() {
           </section>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (
@@ -183,7 +184,7 @@ export default function SkillRules() {
                   <span
                     className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded shrink-0 ${
                       r.confidence === "high"
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-success/10 text-success"
                         : r.confidence === "moderate"
                         ? "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
                         : "bg-ice-1 dark:bg-charcoal-2 text-shadow-1 dark:text-moonlight"

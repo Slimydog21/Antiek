@@ -272,7 +272,7 @@ export default function AddModelPanel() {
 
         {loadError && (
           <p
-            className="text-sm text-red-700 dark:text-red-300 font-mono"
+            className="text-sm text-danger font-mono"
             role="alert"
           >
             {loadError}
@@ -289,7 +289,7 @@ export default function AddModelPanel() {
           </p>
         )}
         {staleRegistered.length > 0 && (
-          <p className="text-xs text-amber-700 dark:text-amber-300 font-mono">
+          <p className="text-xs text-sun-deep dark:text-sun font-mono">
             Stale registrations (registry record lost):{" "}
             {staleRegistered.join(", ")} — they cannot resolve keys and clear at
             the next restart.
@@ -313,8 +313,8 @@ export default function AddModelPanel() {
                   <span
                     className={
                       m.key_present
-                        ? "text-emerald-700 dark:text-emerald-300"
-                        : "text-amber-700 dark:text-amber-300"
+                        ? "text-success"
+                        : "text-sun-deep dark:text-sun"
                     }
                   >
                     {m.key_present ? "key stored" : "no key"}
@@ -322,8 +322,8 @@ export default function AddModelPanel() {
                   <span
                     className={
                       m.registered
-                        ? "text-emerald-700 dark:text-emerald-300"
-                        : "text-amber-700 dark:text-amber-300"
+                        ? "text-success"
+                        : "text-sun-deep dark:text-sun"
                     }
                   >
                     {m.registered ? "registered" : "not registered"}
@@ -332,7 +332,7 @@ export default function AddModelPanel() {
                     {EXECUTION_LABELS[m.execution_status]}
                   </span>
                   {usageByKey[m.id]?.remaining_cents != null && (
-                    <span className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                    <span className="text-[11px] text-success">
                       remaining {formatCents(usageByKey[m.id].remaining_cents!)}
                     </span>
                   )}
@@ -386,7 +386,7 @@ export default function AddModelPanel() {
             {catalogError && (
               <div
                 role="alert"
-                className="flex flex-wrap items-center gap-2 text-xs text-red-700 dark:text-red-300"
+                className="flex flex-wrap items-center gap-2 text-xs text-danger"
               >
                 <span>{catalogError}</span>
                 <LemonButton
@@ -591,7 +591,7 @@ export default function AddModelPanel() {
           <p
             className={
               messageKind === "error"
-                ? "text-xs text-red-700 dark:text-red-300"
+                ? "text-xs text-danger"
                 : "text-xs text-ink-soft dark:text-starlight"
             }
             role={messageKind === "error" ? "alert" : "status"}

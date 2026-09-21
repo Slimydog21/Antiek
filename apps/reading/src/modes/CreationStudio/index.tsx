@@ -301,7 +301,7 @@ function SectionCard({
       onDrop={handleDrop}
       className={`bg-ice-0 dark:bg-charcoal-2 border rounded-md p-4 transition-colors ${
         dropHover
-          ? "border-emerald-500 ring-2 ring-emerald-300"
+          ? "border-sun-deep ring-2 ring-sun"
           : "border-rule dark:border-charcoal-1"
       }`}
     >
@@ -391,7 +391,7 @@ function ProseEditor({
             <span
               className={`text-xs ${
                 lastStatus === "saved_and_promoted"
-                  ? "text-emerald-700"
+                  ? "text-success"
                   : "text-shadow-1 dark:text-moonlight"
               }`}
             >

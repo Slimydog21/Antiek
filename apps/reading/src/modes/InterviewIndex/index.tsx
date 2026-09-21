@@ -1,6 +1,7 @@
 import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 import { apiFetch } from "../../lib/api";
 
@@ -107,7 +108,7 @@ export default function InterviewIndex() {
   };
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
@@ -126,9 +127,9 @@ export default function InterviewIndex() {
           </header>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
@@ -355,7 +356,7 @@ function ProjectRow({
               type="button"
               onClick={() => void invite()}
               disabled={submitting}
-              className="px-3 py-1 rounded-md bg-emerald-700 text-white text-xs font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50"
+              className="px-3 py-1 rounded-md bg-ink text-ice-0 dark:bg-bright dark:text-ink text-xs font-medium hover:bg-shadow-2 dark:hover:bg-starlight transition-colors disabled:opacity-50"
             >
               Invite
             </button>

@@ -12,7 +12,7 @@ import type {
   NarrationRunReconciliation,
   TtsReconciliationAction,
 } from "../../api/multimedia";
-import { LemonButton, LemonTag } from "../../components/lemon";
+import { ErrorBanner, LemonButton, LemonTag } from "../../components/lemon";
 
 const ACTION_LABELS: Record<TtsReconciliationAction, string> = {
   quarantine_send: "Quarantine stale send",
@@ -220,7 +220,7 @@ export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
           </ol>
         </div>
       )}
-      {error && <p className="mt-3 text-[12px] text-danger" role="alert">{error}</p>}
+      {error && <ErrorBanner className="mt-3">{error}</ErrorBanner>}
     </section>
   );
 }

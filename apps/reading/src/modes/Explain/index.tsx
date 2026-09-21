@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 import type {
   ChunkPin,
@@ -75,9 +76,9 @@ const KIND_META: Record<ExplainKind, { title: string; lede: string }> = {
 function TierChip({ tier }: { tier: number }) {
   const colorClass =
     tier === 1
-      ? "bg-emerald-100 text-emerald-800"
+      ? "bg-success/15 text-success"
       : tier === 2
-        ? "bg-emerald-50 text-emerald-700"
+        ? "bg-success/10 text-success"
         : tier === 3
           ? "bg-sun/10 text-sun-deep dark:text-sun"
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
@@ -95,7 +96,7 @@ function ConfidenceChip({ confidence }: { confidence: number }) {
   const pct = Math.round(confidence * 100);
   const colorClass =
     confidence >= 0.8
-      ? "bg-emerald-100 text-emerald-800"
+      ? "bg-success/15 text-success"
       : confidence >= 0.6
         ? "bg-sun/10 text-sun-deep dark:text-sun"
         : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
@@ -617,7 +618,7 @@ function SynthesisPanel({
               "unresolved" in pin && pin.unresolved ? (
                 <div
                   key={`${pin.entity_kind}-${pin.entity_id}`}
-                  className="border border-dashed border-red-300 dark:border-red-900 rounded-md px-3 py-2 text-xs space-y-0.5"
+                  className="border border-dashed border-danger/40 rounded-md px-3 py-2 text-xs space-y-0.5"
                 >
                   <p className="font-mono text-emperor">
                     Unresolved pin — the manifest references a row that no
@@ -779,7 +780,7 @@ export function Explain() {
     data && "generated_at" in data ? data.generated_at : null;
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -800,16 +801,16 @@ export function Explain() {
           </header>
 
           {!kind && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               Unknown explain kind — expected /explain/claim/:id,
               /explain/synthesis/:id, or /explain/document/:id.
-            </p>
+            </ErrorBanner>
           )}
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (
