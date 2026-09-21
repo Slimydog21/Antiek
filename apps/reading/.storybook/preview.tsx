@@ -4,30 +4,6 @@ import { MemoryRouter } from "react-router-dom";
 // Pull in the Tailwind base styles so Storybook renders components
 // with the same typography + spacing scale as the production app.
 import "../src/index.css";
-// Visual-test determinism: the scene honours prefers-reduced-motion end-to-end
-// (Scene.tsx frozen flag → one static frame per layer), so Storybook always
-// reports "reduce". Lost-Pixel screenshots and human storybook sessions both
-// get the deterministic frozen scene; the production app is untouched.
-const boundMatchMedia = window.matchMedia.bind(window);
-const reducedMotionQuery = boundMatchMedia("(prefers-reduced-motion: reduce)");
-if (!reducedMotionQuery.matches) {
-  window.matchMedia = ((query: string) => {
-    if (query === "(prefers-reduced-motion: reduce)") {
-      return {
-        matches: true,
-        media: query,
-        addEventListener: () => () => {},
-        removeEventListener: () => {},
-        addListener: () => {},
-        removeListener: () => {},
-        onchange: null,
-        dispatchEvent: () => false,
-      } as unknown as MediaQueryList;
-    }
-    return boundMatchMedia(query);
-  }) as typeof window.matchMedia;
-}
-
 // Werner brand tokens — sun-yellow outlining, day/night surface ramps.
 // Loaded here so every story has --sun, --ink, --ice-2 etc. available.
 import "../src/design/tokens.css";
