@@ -20,6 +20,8 @@ from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
 from substrate.speak import (
     consent as consent_mod,
+)
+from substrate.speak import (
     contributor,
     payout_verifier,
     project,
@@ -28,9 +30,9 @@ from substrate.speak.consent import ConsentScope
 from substrate.speak.contributor import DisbursementBlocked, attempt_disbursement
 from substrate.speak.payout_verifier import (
     InterviewGoal,
+    get_grade,
     grade_interview,
     release_payout,
-    get_grade,
 )
 from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.third_party import record_claim

@@ -33,7 +33,7 @@ from .detector import AntiGamingDetector, run_full_check
 from .verdict import FraudVerdictKind
 
 
-class AttackClass(str, enum.Enum):
+class AttackClass(enum.StrEnum):
     A_BOTNET_VIEW_INFLATION = "A_botnet_view_inflation"
     B_ATTRIBUTION_GRAPH_INJECTION = "B_attribution_graph_injection"
     C_MULTI_ACCOUNT_SELF_ATTRIBUTION = "C_multi_account_self_attribution"

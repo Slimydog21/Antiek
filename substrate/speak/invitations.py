@@ -147,7 +147,7 @@ def resolve_token(con: Any, token: str) -> Invite | None:
     return _row_to_invite(con, row) if row else None
 
 
-def lifecycle(con: Any, project_id: str) -> list[dict]:
+def lifecycle(con: Any, project_id: str) -> list[dict[str, Any]]:
     """Each invitee's lifecycle status for a project (the operator's
     invite-tracking view), with the invite link + the consent scopes the
     invite captures. LEFT JOIN so an interview without a speak_invite row
@@ -161,7 +161,7 @@ def lifecycle(con: Any, project_id: str) -> list[dict]:
         "WHERE i.project_id = ? ORDER BY i.invited_at",
         [project_id],
     ).fetchall()
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     for r in rows:
         token = r[4]
         out.append({
@@ -252,7 +252,7 @@ def mint_open_contribution(con: Any, project_id: str) -> Invite:
 # ---------------------------------------------------------------------------
 
 
-def _invite_row(con: Any, by_col: str, value: str, *, optional: bool = False):
+def _invite_row(con: Any, by_col: str, value: str, *, optional: bool = False) -> Any:
     row = con.execute(
         f"SELECT s.invite_id, s.interview_id, s.project_id, s.token, "
         f"s.required_consent_scopes, i.informant_email, i.status "
@@ -265,7 +265,7 @@ def _invite_row(con: Any, by_col: str, value: str, *, optional: bool = False):
     return row
 
 
-def _row_to_invite(con: Any, row) -> Invite:
+def _row_to_invite(con: Any, row: Any) -> Invite:
     import json
     scopes = tuple(ConsentScope(s) for s in json.loads(row[4]))
     return Invite(

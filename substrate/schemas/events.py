@@ -766,7 +766,11 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v31: Phase-8 operator reviews become immutable events linked to a prior
 #     skill.patch_gate_decided event. Calibration status can now compute
 #     operator-reviewed count and agreement without mutating old trajectory rows.
-# v32: Talk-to-book outputs and their operator judgments become immutable,
+# v32: DispatchCallPayload gains an optional route_receipt object (model
+#     routing / Antiek-bench SPR-01) AND talk-to-book outputs become immutable,
+#     owner-scoped events; the answer event carries the actual dispatch receipt;
+#     the judgment links it without mutating the original output.
+# v33: NotDiamond outputs and their operator judgments become immutable,
 #     owner-scoped events. The answer event carries the actual dispatch receipt;
 #     the judgment links it without mutating the original output.
 # v33: NotDiamond Wave 1 SPR-02 — DISPATCH_CALL gains seven additive nd_*
@@ -829,6 +833,75 @@ class _PayloadBase(BaseModel):
 # ── Dispatch + context pack ─────────────────────────────────────────
 
 
+class RouteReceiptCandidate(_PayloadBase):
+    """One model route considered by the dispatch router."""
+
+    provider: str
+    model: str
+    tier: str
+    fallback_chain_index: int = Field(ge=0)
+    pricing_known: bool
+    estimated_cost_usd_low: float | None = Field(default=None, ge=0.0)
+    estimated_cost_usd_high: float | None = Field(default=None, ge=0.0)
+
+
+class RouteReceiptSelection(_PayloadBase):
+    """The provider/model attempt represented by this DispatchCall."""
+
+    provider: str
+    model: str
+    tier: str
+    fallback_chain_index: int = Field(ge=0)
+    reason_code: Literal[
+        "primary",
+        "operator_override",
+        "fallback_after_error",
+        "provider_unregistered",
+        "circuit_breaker_open",
+        "provider_error",
+    ]
+    pricing_known: bool
+
+
+class RouteReceiptBudget(_PayloadBase):
+    """Optional budget projection fields for settings/workstation surfaces."""
+
+    cap_usd: float | None = Field(default=None, ge=0.0)
+    remaining_before_usd: float | None = Field(default=None, ge=0.0)
+    projected_cost_usd_low: float | None = Field(default=None, ge=0.0)
+    projected_cost_usd_high: float | None = Field(default=None, ge=0.0)
+    actual_cost_usd: float | None = Field(default=None, ge=0.0)
+    would_exceed_budget: bool | None = None
+
+
+class RouteReceiptCacheState(_PayloadBase):
+    """Optional cache-routing state for future cache-aware routers."""
+
+    status: Literal["warm", "cold", "unknown"] = "unknown"
+    cache_family: str | None = None
+    adjustment_reason: str | None = None
+
+
+class RouteReceipt(_PayloadBase):
+    """Audit object explaining why a DispatchCall used a given model.
+
+    The receipt deliberately stores only model-routing metadata. It must not
+    carry raw prompts, provider request bodies, API keys, or provider-native
+    secrets. The containing DispatchCall envelope is the canonical
+    ``dispatch_event_id``; ``route_receipt_id`` is a stable local receipt key
+    derived from non-secret routing metadata and the existing prompt hash.
+    """
+
+    route_receipt_id: str
+    task_kind: str
+    objective: Literal["quality", "cost", "latency", "balanced", "operator_selected"] = "balanced"
+    override: Literal["none", "manual", "fallback"] = "none"
+    candidate_models: tuple[RouteReceiptCandidate, ...] = Field(default_factory=tuple)
+    selected: RouteReceiptSelection
+    budget: RouteReceiptBudget | None = None
+    cache_state: RouteReceiptCacheState | None = None
+
+
 class DispatchCallPayload(_PayloadBase):
     """Emitted by ``substrate/dispatch/`` on every LLM provider call.
 
@@ -869,6 +942,9 @@ class DispatchCallPayload(_PayloadBase):
     parent_run_id: str | None = None
     feature_label: str | None = None
     session_id: str | None = None
+    # Model-routing/Antiek-bench SPR-01 (2026-07-09): route audit receipt.
+    # Optional so legacy emitters and historical events remain valid.
+    route_receipt: RouteReceipt | None = None
     # ── NotDiamond advisory-routing attribution (ANT-ND Wave 1 SPR-02) ──
     # Written by substrate.dispatch.nd_attribution staging when SPR-03's hook
     # ships; read by observability/training waves. Optional/defaulted so pre-v32
@@ -2340,6 +2416,12 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # meaning for the research-runner lane is UNCHANGED — see
     # substrate/dispatch/research_tier.py.
     research_tier: Literal["fast", "deep"] | None = None
+    # Metadata-only source-pack intent from the research entry. This makes a
+    # run's desired discovery surface queryable without implying connector
+    # execution, spend, or retrieval at event-record time.
+    source_policy: list[
+        Literal["arxiv", "substack", "web", "operator_corpus"]
+    ] = Field(default_factory=list)
     owner_user_id: str | None = None
     owner_operation_id: str | None = None
     owner_model_choices: dict[str, dict[str, str]] | None = None
@@ -4559,6 +4641,11 @@ __all__ = [
     "ArtifactKind",
     # Dispatch + context pack
     "DispatchCallPayload",
+    "RouteReceipt",
+    "RouteReceiptBudget",
+    "RouteReceiptCacheState",
+    "RouteReceiptCandidate",
+    "RouteReceiptSelection",
     "ContextPackAssembledPayload",
     # AFF SPR-06 — flywheel reuse half
     "KnowledgeReusedPayload",

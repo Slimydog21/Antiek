@@ -4,16 +4,11 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
-
 from tools.stripe_connect import (
-    BillingEvent,
     MockStripeProvider,
     PricingTier,
     StripeAccountStatus,
-    StripeConnectAccount,
     StripeOperationsLog,
-    TokenUsageRecord,
     apply_margin,
     create_publisher_account,
     create_user_creator_account,
@@ -26,7 +21,6 @@ from tools.stripe_connect.pricing import (
     MARGIN_RATES,
     PUBLISHER_AD_REV_SHARE,
 )
-
 
 # ── Pricing-model invariants (operator-decided 2026-05-17) ───────────
 
@@ -53,8 +47,8 @@ def test_creator_and_publisher_ad_rev_share_at_70_percent():
     """Master-spec §13.5 + §13.9: 70% of ad revenue routes to the
     contributing user (creator) OR to the IP holder (publisher).
     Same architecture, different population (§13.9 user-as-IP-holder)."""
-    assert CREATOR_AD_REV_SHARE == Decimal("0.70")
-    assert PUBLISHER_AD_REV_SHARE == Decimal("0.70")
+    assert Decimal("0.70") == CREATOR_AD_REV_SHARE
+    assert Decimal("0.70") == PUBLISHER_AD_REV_SHARE
     assert CREATOR_AD_REV_SHARE == PUBLISHER_AD_REV_SHARE  # same architecture
 
 

@@ -44,7 +44,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.voice_style.rubric import score_voice_style  # type: ignore[no-redef]
+    from substrate.voice_style.rubric import score_voice_style
 
 from roles.creative_writer.parser import (
     CreativeWriterResult,

@@ -28,7 +28,7 @@ safe state per the master-spec legal posture.
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 
@@ -56,16 +56,16 @@ def _normalize_host(uri: str | None) -> str | None:
     return host or None
 
 
-def _load_holder_metadata(con: Any) -> list[tuple[str, dict, str]]:
+def _load_holder_metadata(con: Any) -> list[tuple[str, dict[str, Any], str]]:
     """Return [(ip_holder_id, metadata_dict, display_name), ...] for
     every IP holder, parsed defensively. Empty metadata = empty dict.
     Skip rows whose metadata is unparseable rather than blowing up."""
     rows = con.execute(
         "SELECT ip_holder_id, metadata, display_name FROM ip_holders"
     ).fetchall()
-    out: list[tuple[str, dict, str]] = []
+    out: list[tuple[str, dict[str, Any], str]] = []
     for ip_holder_id, raw, display_name in rows:
-        md: dict = {}
+        md: dict[str, Any] = {}
         if raw:
             try:
                 parsed = json.loads(raw)
@@ -78,7 +78,7 @@ def _load_holder_metadata(con: Any) -> list[tuple[str, dict, str]]:
 
 
 def _resolve_by_isbn(
-    holders: list[tuple[str, dict, str]], target_isbn: str,
+    holders: list[tuple[str, dict[str, Any], str]], target_isbn: str,
 ) -> str | None:
     for ip_holder_id, md, _display in holders:
         isbns = md.get("isbns") or []
@@ -91,7 +91,7 @@ def _resolve_by_isbn(
 
 
 def _resolve_by_host(
-    holders: list[tuple[str, dict, str]], target_host: str,
+    holders: list[tuple[str, dict[str, Any], str]], target_host: str,
 ) -> str | None:
     for ip_holder_id, md, _display in holders:
         domains = md.get("domains") or []
@@ -112,7 +112,7 @@ def _resolve_by_host(
 
 
 def _resolve_by_author(
-    holders: list[tuple[str, dict, str]], target_author: str,
+    holders: list[tuple[str, dict[str, Any], str]], target_author: str,
 ) -> str | None:
     target = target_author.strip().lower()
     if not target:

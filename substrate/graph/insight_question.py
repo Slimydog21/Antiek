@@ -51,26 +51,31 @@ import os
 import sys
 from collections.abc import Callable, Sequence
 from contextlib import suppress
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 T = TypeVar("T")
 
+if TYPE_CHECKING:
+    from substrate.contracts.nodes import KnowledgeUnitContract, ServabilityTag
+    from substrate.contracts.servable import ContentClass
+    from substrate.unit_dedup import DuplicateMatch, ExistingUnit
+
 try:
-    from ...constants import (
+    from ..constants import (
         DUCKDB_PATH,
         validate_insight_question_edge,
     )
-    from ...runtime.db_lock import LockedConnection, connect_write
+    from ..runtime.db_lock import LockedConnection, connect_write  # type: ignore[import-untyped]
     from .ops import content_addressed_id, insert_edge, insert_node
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection, connect_write  # type: ignore[no-redef]
-    from substrate.constants import (  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection, connect_write
+    from substrate.constants import (
         DUCKDB_PATH,
         validate_insight_question_edge,
     )
-    from substrate.graph.ops import (  # type: ignore[no-redef]
+    from substrate.graph.ops import (
         content_addressed_id,
         insert_edge,
         insert_node,
@@ -79,6 +84,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 # insight/question live in the primary in-domain ("depth") graph — not
 # the cross_domain connector layer nor the constraint layer.
+
 _PROMOTION_GRAPH_SCOPE = "depth"
 
 # Map the note-taker's ConfidenceLevel string onto an edge
@@ -185,13 +191,13 @@ def _add_provenance_edges(
     extraction_confidence: float,
     source_document_id: str | None,
     chunk_id: str | None,
-) -> tuple[list, list]:
+) -> tuple[list[str], list[str]]:
     """Create ``relation`` edges from ``source_node_id`` to each target
     node, validating against the controlled vocabulary. Returns
     ``(written_edge_ids, skipped_dangling_targets)``. A target that does
     not exist is skipped (tombstone policy), not an error."""
-    written: list = []
-    dangling: list = []
+    written: list[str] = []
+    dangling: list[str] = []
     for target_id in targets:
         ttype = _node_type_of(con, target_id)
         if ttype is None:
@@ -225,7 +231,7 @@ def _add_provenance_edges(
 def _node_type_of_source(relation: str) -> str:
     """The source node_type a relation originates from (insight or
     question), per the vocabulary."""
-    from ..constants import _INSIGHT_QUESTION_RELATION_BY_NAME  # type: ignore
+    from ..constants import _INSIGHT_QUESTION_RELATION_BY_NAME
     spec = _INSIGHT_QUESTION_RELATION_BY_NAME.get(relation)
     if spec is None:
         raise ValueError(f"unknown insight/question relation {relation!r}")
@@ -573,7 +579,7 @@ def _dedup_check(
     extraction_confidence: float,
     provider: Any,
     dedup_rate: Any,
-):
+) -> DuplicateMatch | None:
     """Run the candidate through the SPR-07 detector against scoped existing
     units; on a match, record the ``duplicate_of`` edge + count it; return the
     ``DuplicateMatch`` (or None). Increments ``dedup_rate`` once per attempt
@@ -619,7 +625,7 @@ def _scoped_existing_units(
     node_type: str,
     investigation_id: str,
     source_document_id: str | None,
-):
+) -> list[ExistingUnit]:
     """Read the already-deposited units in the candidate's provenance SCOPE
     (same investigation, or the same grounding document) and project them onto
     ``substrate.unit_dedup.ExistingUnit``. The detector's scope guard also
@@ -640,9 +646,9 @@ def _scoped_existing_units(
         "WHERE node_type = ?",
         [node_type],
     ).fetchall()
-    out = []
+    out: list[ExistingUnit] = []
     for nid, label, meta_raw in rows:
-        meta = {}
+        meta: dict[str, Any] = {}
         if meta_raw:
             try:
                 meta = _json.loads(meta_raw)
@@ -689,7 +695,7 @@ def _link_duplicate(
     extraction_confidence: float,
     source_document_id: str | None,
     chunk_id: str | None,
-    match,
+    match: DuplicateMatch,
 ) -> str:
     """Record a ``duplicate_of`` edge candidate -> survivor and return the
     edge id. The edge carries the candidate's PRIMARY grounding
@@ -753,7 +759,9 @@ def _link_duplicate(
     )
 
 
-def _record_dangling(con: LockedConnection, node_id: str, relation: str, targets: list) -> None:
+def _record_dangling(
+    con: LockedConnection, node_id: str, relation: str, targets: list[str]
+) -> None:
     """Append skipped dangling targets into the node's metadata so the
     skip is auditable. Best-effort; failure here never fails promotion."""
     try:
@@ -1343,7 +1351,9 @@ def promote_from_marginalia_event(
 # ---------------------------------------------------------------------------
 
 
-def servability_tag_for(content_class: str | None, *, taken_down: bool = False):
+def servability_tag_for(
+    content_class: str | None, *, taken_down: bool = False
+) -> ServabilityTag:
     """Read the §9.0 classifier's answer for a unit grounded on a source of
     this ``content_class`` and return a ``ServabilityTag``. This does NOT
     re-derive deny-by-default — it asks ``substrate.books.servability`` (the
@@ -1361,7 +1371,14 @@ def servability_tag_for(content_class: str | None, *, taken_down: bool = False):
     # Type the recorded class against the contract Literal: only surface a
     # content_class the contract recognizes AND that is servable; anything
     # else (None, unknown, gated, taken_down) records None ⇒ non-servable.
-    tag_class = status.value if (serves and status.value in FULL_TEXT_SERVABLE) else None
+    tag_class: ContentClass | None
+    if serves and status.value in FULL_TEXT_SERVABLE:
+        # Safe: FULL_TEXT_SERVABLE is asserted equal to the servable subset of
+        # the ContentClass Literal (contracts/servable.py), so membership here
+        # guarantees status.value is a valid full-text ContentClass value.
+        tag_class = cast("ContentClass", status.value)
+    else:
+        tag_class = None
     return ServabilityTag(content_class=tag_class, serves_full_text=serves)
 
 
@@ -1372,7 +1389,7 @@ def knowledge_unit_of(
     content_class: str | None = None,
     taken_down: bool = False,
     score_groundedness: bool = False,
-):
+) -> KnowledgeUnitContract:
     """Project a deposited insight/question node (already written by
     ``promote_insight``/``promote_question``) onto a ``KnowledgeUnitContract``.
 
@@ -1527,7 +1544,7 @@ def _score_unit_groundedness(
 # ---------------------------------------------------------------------------
 
 
-def _default_provider():
+def _default_provider() -> Any:
     """The same provider claims use. Imported lazily so a test can install
     a hash provider via ANTIEK_EMBEDDING_PROVIDER=hash without paying the
     sentence-transformers import at module load."""

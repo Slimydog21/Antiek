@@ -66,11 +66,11 @@ import os
 import sys
 
 try:
-    from ...runtime.db_lock import LockedConnection, connect_write
+    from ..runtime.db_lock import LockedConnection, connect_write  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection, connect_write  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection, connect_write
 
 
 # The node-type list AFTER this migration. Must stay in lock-step with

@@ -9,21 +9,35 @@ so a wrong sum is caught here regardless of what any loop produces.
 
 from __future__ import annotations
 
+from typing import Any
+
 from compounding.benchmark.measure import measure_trajectory
 
 
-def _row(action_type, *, payload=None, emitted_at="2026-05-31T10:00:00Z"):
+def _row(
+    action_type: str,
+    *,
+    payload: dict[str, Any] | None = None,
+    emitted_at: str = "2026-05-31T10:00:00Z",
+) -> dict[str, Any]:
     return {"action_type": action_type, "payload": payload or {}, "emitted_at": emitted_at,
             "event_id": "evt-x"}
 
 
-def _dispatch(cost, *, inp=100, out=50, latency=200, at="2026-05-31T10:00:00Z"):
+def _dispatch(
+    cost: float,
+    *,
+    inp: int = 100,
+    out: int = 50,
+    latency: int = 200,
+    at: str = "2026-05-31T10:00:00Z",
+) -> dict[str, Any]:
     return _row("dispatch.call", payload={
         "cost_usd": cost, "input_tokens": inp, "output_tokens": out, "latency_ms": latency,
     }, emitted_at=at)
 
 
-def test_exact_counts_from_known_trajectory():
+def test_exact_counts_from_known_trajectory() -> None:
     """M3 acceptance: the six fields are summed/counted exactly off the rows."""
     rows = [
         _dispatch(0.10, inp=100, out=50, latency=200, at="2026-05-31T10:00:00Z"),
@@ -49,7 +63,7 @@ def test_exact_counts_from_known_trajectory():
     assert m.wall_ms == 3000.0
 
 
-def test_redundant_rederivation_against_seed():
+def test_redundant_rederivation_against_seed() -> None:
     """A graph.node.inserted whose node_id is already SEEDED is a re-derivation
     the warm graph should have short-circuited — content-addressed id collision.
     Counted as redundant, NOT as novel yield."""
@@ -63,7 +77,7 @@ def test_redundant_rederivation_against_seed():
     assert m.redundant_rederivations == 2        # seeded-A, seeded-C
 
 
-def test_no_cost_when_no_dispatch_calls():
+def test_no_cost_when_no_dispatch_calls() -> None:
     """The honest mock-path shape: a trajectory with NO dispatch.call events has
     token_cost_usd == 0 (the demo loop makes no provider calls). This is the
     keystone null, surfaced at the measurement layer."""
@@ -78,7 +92,7 @@ def test_no_cost_when_no_dispatch_calls():
     assert m.sources_fetched == 0
 
 
-def test_empty_trajectory_is_all_zero():
+def test_empty_trajectory_is_all_zero() -> None:
     m = measure_trajectory([])
     assert m.token_cost_usd == 0.0
     assert m.wall_ms == 0.0

@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from .catalog import DuckLakeCatalog
 from .routing import HashPrefixSharding, NoSharding, ShardingStrategy
 
+_DEFAULT_FROM_STRATEGY = NoSharding()
+
 
 @dataclass(frozen=True)
 class MigrationStep:
@@ -41,7 +43,7 @@ def plan_stage1_to_stage2(
     catalog: DuckLakeCatalog,
     root_dir: str,
     to_strategy: HashPrefixSharding,
-    from_strategy: ShardingStrategy = NoSharding(),
+    from_strategy: ShardingStrategy = _DEFAULT_FROM_STRATEGY,
 ) -> MigrationPlan:
     """Produce a deterministic migration plan from the current catalog.
 

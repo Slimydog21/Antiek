@@ -53,12 +53,19 @@ def test_export_writes_html_and_insight(art_env):
     )
     res = export_research_artifact("inv-ra", db_path=art_env["db"], events_dir=art_env["events"])
     assert res.path.is_file()
+
+    assert res.twin_notes_path.is_file()
     assert res.artifact_id == "inv-ra"
     text = res.path.read_text(encoding="utf-8")
+    twin = res.twin_notes_path.read_text(encoding="utf-8")
     assert "Finding one." in text
+    assert "Finding one." in twin
+    assert "ResearchArtifact twin notes" in twin
+    assert 'id="antiek-artifact-v1"' in twin
     assert res.size_bytes > 0
     rows = trajectory("inv-ra", events_dir=art_env["events"])
     kinds = [r.get("action_type") for r in rows]
+
     assert ActionType.ARTIFACT_GENERATED.value in kinds
     generated = next(r for r in rows if r.get("action_type") == ActionType.ARTIFACT_GENERATED.value)
     assert generated["payload"]["artifact_id"] == res.artifact_id
@@ -75,6 +82,28 @@ def test_export_writes_html_and_insight(art_env):
     styled = render(island, RenderContext())
     assert f'data-antiek-node-id="{insight["node_id"]}"' in styled
     assert 'data-antiek-source-document-id="doc-1"' in styled
+
+
+def test_export_writes_sibling_twin_note_document(art_env):
+    promote_insight(
+        text="Twin note finding.",
+        investigation_id="inv-twin",
+        confidence="high",
+        source_document_id="doc-2",
+    )
+    res = export_research_artifact(
+        "inv-twin", db_path=art_env["db"], events_dir=art_env["events"]
+    )
+
+    assert res.twin_notes_path.name == "inv-twin.notes.html"
+    twin = res.twin_notes_path.read_text(encoding="utf-8")
+    assert "Open research artifact" in twin
+    assert "Finding prompts" in twin
+    assert "Open question prompts" in twin
+    assert "Agent notes" in twin
+    rows = trajectory("inv-twin", events_dir=art_env["events"])
+    kinds = [r.get("action_type") for r in rows]
+    assert ActionType.ARTIFACT_GENERATED.value in kinds
 
 
 

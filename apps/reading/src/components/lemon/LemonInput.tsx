@@ -37,7 +37,7 @@ export const LemonInput = forwardRef<HTMLInputElement, LemonInputProps>(
       <input
         ref={ref}
         className={
-          "flex-1 bg-transparent outline-none font-sans text-[13px] " +
+          "flex-1 bg-transparent outline-none font-sans text-sm " +
           "text-ink dark:text-bright placeholder:text-ink-mute dark:placeholder:text-moonlight " +
           className
         }
@@ -47,7 +47,7 @@ export const LemonInput = forwardRef<HTMLInputElement, LemonInputProps>(
       {kbdHint && (
         <kbd
           className={
-            "border-2 border-ink dark:border-bright rounded px-1.5 text-[10.5px] font-mono " +
+            "border-2 border-ink dark:border-bright rounded px-1.5 text-xxs font-mono " +
             "bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright " +
             "shadow-z1 dark:shadow-z1-night"
           }

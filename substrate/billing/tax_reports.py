@@ -32,6 +32,7 @@ What is OUT of substrate scope:
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import io
 import os
@@ -174,7 +175,7 @@ def write_csv(aggregates: list[AnnualPayoutAggregate], path: str) -> str:
 def ensure_table(con: Any) -> None:
     """Defensive table-creation. Canonical schema in
     ``substrate/graph/schema.py`` V5 chunk."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS tax_reports (
@@ -188,8 +189,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def record_emission(

@@ -37,7 +37,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from roles._json_decode import (
-        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+        extract_json_object as _extract_json_object,
     )
 
 
@@ -77,7 +77,7 @@ class StyleGuide:
     sentence_rhythm: str
     forbidden_in_this_register: tuple[str, ...]
     voice_summary: str
-    raw: dict
+    raw: dict[str, Any]
 
     def as_layer_content(self) -> str:
         """Render the guide into the context-pack layer body.

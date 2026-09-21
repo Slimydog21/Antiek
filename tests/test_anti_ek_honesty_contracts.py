@@ -132,3 +132,82 @@ def test_html_projection_response_headers_helper():
     assert 'inline; filename="research-inv-1.html"' in h["Content-Disposition"]
     with pytest.raises(HonestyContractError):
         html_projection_response_headers(filename="../x.html", disposition="inline")
+
+
+# ── paid_today must not outlive its evidence ────────────────────────────────
+
+
+def _live_disbursement(monkeypatch):
+    """Flip the gate the way an operator would, without touching real state."""
+    from substrate.speak import g2_synquery_honesty as mod
+
+    class _Allowed:
+        allowed = True
+
+    # Both gates move together — the module notes "same operator flip post
+    # G2+G3". Flipping only disbursement leaves g2_counsel_gated True, and the
+    # contract then (correctly) demands paid_today be False.
+    monkeypatch.setattr(mod._gs, "disbursement_allowed", lambda: _Allowed())
+    monkeypatch.setattr(mod._gs, "public_publishing_allowed", lambda: _Allowed())
+    return mod
+
+
+def test_paid_today_is_false_only_while_disbursement_is_gated():
+    from substrate.speak.g2_synquery_honesty import g2_synquery_honesty
+
+    h = g2_synquery_honesty()
+    assert h["disbursement"] == "gated_G2_G3_accrue_escrow_only"
+    assert h["paid_today"] is False, (
+        "while gated, no money can move — False is provable here"
+    )
+
+
+def test_paid_today_becomes_unknown_once_disbursement_goes_live(monkeypatch):
+    """The bug: a bare False survived the operator flipping the gate.
+
+    This envelope is deliberately DB-free, so once disbursement is live it
+    cannot see whether anything was paid — that lives in
+    substrate/payouts/ledger.py. Emitting False there tells a contributor
+    they were not paid when they may have been.
+    """
+    mod = _live_disbursement(monkeypatch)
+
+    h = mod.g2_synquery_honesty()
+
+    assert h["disbursement"] == "live", "fixture must actually flip the gate"
+    assert h["paid_today"] is None, (
+        "paid_today stayed False after disbursement went live — a claim this "
+        "DB-free envelope has no standing to make"
+    )
+
+
+def test_contract_rejects_a_payload_claiming_a_payment_it_cannot_see():
+    """True is not an available value: the envelope cannot observe the ledger."""
+    from substrate.contracts.anti_ek_honesty import (
+        HonestyContractError,
+        assert_g2_synquery_honesty_shape,
+    )
+    from substrate.speak.g2_synquery_honesty import g2_synquery_honesty
+
+    payload = dict(g2_synquery_honesty())
+    payload["g2_counsel_gated"] = False
+    payload["paid_today"] = True
+
+    with pytest.raises(HonestyContractError, match="cannot be True"):
+        assert_g2_synquery_honesty_shape(payload)
+
+
+def test_contract_still_rejects_paid_today_not_false_while_gated():
+    """The original invariant, now reachable because the value is derived."""
+    from substrate.contracts.anti_ek_honesty import (
+        HonestyContractError,
+        assert_g2_synquery_honesty_shape,
+    )
+    from substrate.speak.g2_synquery_honesty import g2_synquery_honesty
+
+    payload = dict(g2_synquery_honesty())
+    assert payload["g2_counsel_gated"] is True, "fixture assumes the gated default"
+    payload["paid_today"] = None  # unknown is wrong while gated: it IS knowable
+
+    with pytest.raises(HonestyContractError, match="must be False while G2"):
+        assert_g2_synquery_honesty_shape(payload)

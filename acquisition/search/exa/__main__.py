@@ -21,14 +21,14 @@ import argparse
 import json
 import sys
 from datetime import UTC
-from typing import Any
+from typing import Any, TextIO
 
 from .adapter import (
     DiscoveryBudgetExceeded,
     DiscoveryProposed,
     discover,
 )
-from .budget import read_state
+from .budget import BudgetState, read_state
 from .client import ExaClientError
 from .lookup import exa_lookup_claim
 
@@ -43,7 +43,7 @@ def _truncate(s: str | None, n: int) -> str:
 
 
 def _render_proposals_table(
-    proposals: list[DiscoveryProposed], *, out=sys.stdout
+    proposals: list[DiscoveryProposed], *, out: TextIO = sys.stdout
 ) -> None:
     if not proposals:
         print("(no results)", file=out)
@@ -69,7 +69,7 @@ def _render_proposals_table(
         print(fmt.format(*r), file=out)
 
 
-def _render_lookup_table(results: list[Any], *, out=sys.stdout) -> None:
+def _render_lookup_table(results: list[Any], *, out: TextIO = sys.stdout) -> None:
     if not results:
         print("(no results)", file=out)
         return
@@ -94,7 +94,7 @@ def _render_lookup_table(results: list[Any], *, out=sys.stdout) -> None:
         print(fmt.format(*r), file=out)
 
 
-def _render_budget(state, *, out=sys.stdout) -> None:
+def _render_budget(state: BudgetState, *, out: TextIO = sys.stdout) -> None:
     print(f"date:       {state.date_stamp}", file=out)
     print(f"calls:      {state.call_count}", file=out)
     print(f"spent_usd:  ${state.spent_usd:.4f}", file=out)
@@ -106,7 +106,7 @@ def _render_budget(state, *, out=sys.stdout) -> None:
 # ── Subcommand implementations ───────────────────────────────────
 
 
-def _cmd_discover(args: argparse.Namespace, *, out=sys.stdout) -> int:
+def _cmd_discover(args: argparse.Namespace, *, out: TextIO = sys.stdout) -> int:
     try:
         proposals = discover(
             query=args.query,
@@ -132,7 +132,7 @@ def _cmd_discover(args: argparse.Namespace, *, out=sys.stdout) -> int:
     return 0
 
 
-def _cmd_lookup(args: argparse.Namespace, *, out=sys.stdout) -> int:
+def _cmd_lookup(args: argparse.Namespace, *, out: TextIO = sys.stdout) -> int:
     try:
         results = exa_lookup_claim(
             claim_text=args.claim,
@@ -159,7 +159,7 @@ def _cmd_lookup(args: argparse.Namespace, *, out=sys.stdout) -> int:
     return 0
 
 
-def _cmd_budget(args: argparse.Namespace, *, out=sys.stdout) -> int:
+def _cmd_budget(args: argparse.Namespace, *, out: TextIO = sys.stdout) -> int:
     state = read_state()
     if args.json:
         print(
@@ -179,7 +179,7 @@ def _cmd_budget(args: argparse.Namespace, *, out=sys.stdout) -> int:
     return 0
 
 
-def _cmd_retention_rollup(args: argparse.Namespace, *, out=sys.stdout) -> int:
+def _cmd_retention_rollup(args: argparse.Namespace, *, out: TextIO = sys.stdout) -> int:
     """Roll up expired discovery events into the discovery_summary
     table and truncate source JSONL files. Per spec §14.1.
 
@@ -269,7 +269,7 @@ def _cmd_retention_rollup(args: argparse.Namespace, *, out=sys.stdout) -> int:
     return 0
 
 
-def _cmd_retention_summary(args: argparse.Namespace, *, out=sys.stdout) -> int:
+def _cmd_retention_summary(args: argparse.Namespace, *, out: TextIO = sys.stdout) -> int:
     """Read the most recent `days` of discovery_summary rows.
     Operator-facing read helper."""
     from acquisition.search.retention import recent_summary
@@ -278,7 +278,7 @@ def _cmd_retention_summary(args: argparse.Namespace, *, out=sys.stdout) -> int:
     if args.json:
         # `day_utc` and `summarized_at` are datetime objects from
         # DuckDB; coerce to ISO strings so JSON serializes cleanly.
-        def _coerce(v):
+        def _coerce(v: Any) -> Any:
             if hasattr(v, "isoformat"):
                 return v.isoformat()
             return v
@@ -426,7 +426,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
-    return args.func(args)
+    status: int = args.func(args)
+    return status
 
 
 if __name__ == "__main__":

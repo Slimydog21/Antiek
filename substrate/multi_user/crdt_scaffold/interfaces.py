@@ -189,7 +189,7 @@ class ConvergenceTrace:
         """Human-readable diff of where replicas disagree."""
         if self.all_converged():
             return "all replicas converged"
-        labels = list(self.replica_snapshots)
+        list(self.replica_snapshots)
         lines = ["replicas did NOT converge:"]
         for label, snap in self.replica_snapshots.items():
             lines.append(f"  {label}: {snap!r}")

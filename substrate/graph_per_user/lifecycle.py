@@ -31,6 +31,7 @@ This is the spec's `per_user_storage.py` deliverable.
 
 from __future__ import annotations
 
+import contextlib
 import enum
 import os
 from dataclasses import dataclass, field
@@ -46,7 +47,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class PerUserStorageEventKind(str, enum.Enum):
+class PerUserStorageEventKind(enum.StrEnum):
     CREATED = "created"
     OPENED = "opened"
     CLOSED = "closed"
@@ -214,12 +215,10 @@ def delete_user_graph(
             db_path="",
             key_id=None,
         )
-    try:
-        key_provider.revoke(graph_id=safe)
-    except KeyProviderError:
+    with contextlib.suppress(KeyProviderError):
         # Revocation failure shouldn't block the catalog deregister;
-        # the deletion worker re-tries. We just record the path.
-        pass
+        # the deletion worker re-tries.
+        key_provider.revoke(graph_id=safe)
     catalog.deregister(safe)
     return PerUserStorageEvent(
         kind=PerUserStorageEventKind.DELETE_SCHEDULED,

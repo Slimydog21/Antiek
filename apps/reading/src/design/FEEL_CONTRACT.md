@@ -12,17 +12,69 @@
 
 ## Layer diagram
 
+Canonical source: `zIndex.ts` (`Z_LADDER_ORDER`, pinned by `zIndex.test.ts`).
+Read top-to-bottom = top-of-stack to bottom-of-stack.
+
 ```
-z=200  LemonToast
-z=100  LemonModal
+z=200  toast            LemonToast — nothing occludes a toast
+z=150  adOverlay        AdBorder full-bleed overlay (pointer-events-none)
+z=120  popover          SlashMenu / command popovers — above an open modal
+z=100  modal            LemonModal scrim + dialog
+z=60   mascot           floating mascot — above panels/windows, below modals
 ─────────────────────────────────────────
 LAYER B  WorkspaceStore — opaque when floating
-         z=2…50   PanelLayoutPanel
-         z=0–1    docked (flat)
+         z=2…50  PanelLayoutPanel (floatingPanelBase=2 → floatingPanelCeiling=50;
+                 the store's zCounter walks up on focus)
+         z=50    mobileRailToggle — the collapsed mobile nav hamburger, at the
+                 floating-band ceiling so it stays tappable
+         z=5     sceneBadge — SceneStatusBadge over the scene floor
+         z=0–1   docked (flat); raised=1 lifts a docked panel over dock chrome
 ─────────────────────────────────────────
 LAYER A  windowsStore — glass over scene
-         z≥40   WorkspaceWindow (WINDOW_Z_BASE=40)
+         z≥40   WorkspaceWindow (windowBase=40; interleaves the floating
+                band but always under the modal/popover/toast stack)
+         z=40   mobileRail — the mobile NavRail as an absolute overlay, at
+                the window-band base (was a z-40 literal)
+─────────────────────────────────────────
+z=1     scenePresence    BrainPresence ambience — one notch over the scene
+z≈0     the living scene (mountainscape)
 ```
+
+Ties the ladder records (same value, no real collision — each rung's doc
+comment in `zIndex.ts` says why): `scenePresence`=`raised` (1, disjoint local
+z=0 floors), `mobileRail`=`windowBase` (40), `mobileRailToggle`=
+`floatingPanelCeiling` (50). `zIndex.test.ts` pins this exact tie set.
+
+### Known off-ladder call sites (documented, owned by the overlay pass)
+
+The ladder is a catalogue + drift tripwire; call sites found off it are fixed
+by the overlay pass (work-queue Q8/Q8b) rather than by editing the diagram.
+None are currently known.
+
+Fixed by the Q8 overlay pass (2026-09-21): `FloatMenu.tsx` now consumes
+`zIndex.popover` (120); `ChunkModal.tsx`, `ProductsLauncher.tsx` and the
+LinkMonster detail modal are rebuilt on LemonModal (the `modal` rung, z=100,
+with Esc, scrim dismissal and the focus trap).
+
+Fixed by the Q8b layering pass (2026-09-21): `BrainPresence.tsx` consumes
+`zIndex.scenePresence` (1, one notch over the scene floor); the NavRail
+mobile overlay rail and its collapsed hamburger consume `zIndex.mobileRail`
+(40) and `zIndex.mobileRailToggle` (50) — the exact values the `z-40`/`z-50`
+literals carried.
+
+## Motion — the ambience slot (adjudication D9)
+
+The 80/150/800 ms token scale governs *interaction feedback*; its 800 ms
+`slow` value is the longest sanctioned interaction flourish. Scene ambience
+is a separate category and lives in its own — fifth — motion slot:
+`motion/sceneMotion.ts`'s 1200 ms painted-art crossfade
+(`CROSSFADE.durationMs`) and the 31–67 s ambient drift loops (`DRIFT`) are
+**ambience, not interaction**, and are exempt from the 800 ms ceiling.
+Bounds on the slot: ambience must be non-blocking, must never gate or
+accompany a user action's feedback, must stay behind content (z≈0), and must
+collapse to a static frame under `prefers-reduced-motion`. Everything that
+*is* interaction feedback obeys the token ceiling; the interaction slots are
+enumerated in `motion/README.md`.
 
 ## PostHog OSS (honest)
 
@@ -30,7 +82,7 @@ MIT `frontend/src/layout/panel-layout/` is a **fixed** shell (left nav + resizab
 
 ## Exemptions
 
-Listed in `elevation.ts` as `ELEVATION_EXEMPT_SURFACES`: ResearchWorkstation dense IDE, GlassSurface landings, Werner layer.
+Listed in `elevation.ts` as `ELEVATION_EXEMPT_SURFACES`: ResearchWorkstation dense IDE, GlassSurface landings, the mascot illustration layer (still named "Werner illustration layer" in `elevation.ts` pending the batch rename pass).
 
 ## API
 

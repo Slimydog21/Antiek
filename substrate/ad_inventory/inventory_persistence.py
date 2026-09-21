@@ -24,6 +24,7 @@ and would replace this with a bid-store; explicitly out of scope.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
@@ -81,7 +82,7 @@ class PersistedInventoryItem:
 def ensure_table(con: Any) -> None:
     """Defensive table create. Canonical schema in
     ``substrate/graph/schema.py`` V6 chunk."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS ad_inventory_items (
@@ -100,8 +101,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def _csv(values: tuple[str, ...]) -> str:

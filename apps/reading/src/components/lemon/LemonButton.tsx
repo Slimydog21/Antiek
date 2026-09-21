@@ -53,9 +53,9 @@ const variants: Record<Variant, string> = {
 };
 
 const sizes: Record<Size, string> = {
-  sm: "h-7  px-2.5 text-[12px]",
-  md: "h-9  px-3.5 text-[13px]",
-  lg: "h-11 px-5   text-[14px]",
+  sm: "h-7  px-2.5 text-xs",
+  md: "h-9  px-3.5 text-sm",
+  lg: "h-11 px-5   text-sm",
 };
 
 export const LemonButton = forwardRef<HTMLButtonElement, LemonButtonProps>(

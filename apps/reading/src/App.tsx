@@ -26,6 +26,7 @@ import LibraryView from "./components/library/LibraryView";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
+import MidnightOil from "./modes/MidnightOil";
 import Multimedia from "./modes/Multimedia";
 import Notebook from "./modes/Notebook";
 import AutoNotebook from "./modes/Notebook/AutoNotebook";
@@ -80,7 +81,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (state.status === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-ice-2 dark:bg-space-2 text-shadow-1 dark:text-moonlight text-[12px] tracking-[0.18em] uppercase font-sans">
+      <div className="min-h-screen flex items-center justify-center bg-ice-2 dark:bg-space-2 text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
         Loading…
       </div>
     );
@@ -116,7 +117,14 @@ function AuthenticatedRoutes() {
         <Route
           path="/link-monster"
           element={
-            <Suspense fallback={<div className="lm-loading">summoning the Monster…</div>}>
+            <Suspense fallback={
+              // Styled like the RequireAuth veil (App.tsx RequireAuth loading
+              // branch) — the old `lm-loading` class had no CSS definition
+              // anywhere, so the fallback rendered unstyled.
+              <div className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
+                summoning the Monster…
+              </div>
+            }>
               <LinkMonster />
             </Suspense>
           }
@@ -128,6 +136,7 @@ function AuthenticatedRoutes() {
             (the Research-entry cascade navigates here after launch). */}
         <Route path="/deep-research" element={<DeepResearchWorkspace />} />
         <Route path="/deep-research/:sessionId" element={<DeepResearchWorkspace />} />
+        <Route path="/midnight-oil" element={<MidnightOil />} />
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />

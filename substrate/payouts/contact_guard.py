@@ -39,7 +39,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 from substrate.auth.email_provider import EmailProvider, EmailRecord, OutboundEmail
 
@@ -67,7 +66,7 @@ class AuthorContactResult:
     author_ref: str
     to: str
     reason: str
-    record: Optional[EmailRecord] = None
+    record: EmailRecord | None = None
 
 
 def is_author_claimed(author_ref: str) -> bool:

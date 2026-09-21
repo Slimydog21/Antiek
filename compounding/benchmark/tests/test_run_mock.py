@@ -10,6 +10,7 @@ suite; the committed artifact at ``results/spr09_run.json`` is its output.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -19,11 +20,11 @@ from compounding.benchmark.validity import HEADLINE_METRIC, VALIDITY_VALID
 
 
 @pytest.fixture
-def dirs(tmp_path):
+def dirs(tmp_path: Path) -> tuple[str, str]:
     return os.path.join(tmp_path, "events"), os.path.join(tmp_path, "graphs")
 
 
-def test_mock_run_reports_honest_null(dirs):
+def test_mock_run_reports_honest_null(dirs: tuple[str, str]) -> None:
     """The demo loop is reuse-blind, so the headline token_cost_usd delta is 0
     (no dispatch.call cost differs) — the honest null, reported verbatim. The
     artifact carries a signed delta + finite CI for every metric."""
@@ -39,11 +40,12 @@ def test_mock_run_reports_honest_null(dirs):
     for m in result.headline.metrics:
         assert m.ci_low <= m.ci_high
     token = result.headline.metric(HEADLINE_METRIC)
+    assert token is not None
     assert token.delta == 0.0, "the reuse-blind demo loop must report a 0 token-cost delta"
     assert token.ci_low == 0.0 and token.ci_high == 0.0
 
 
-def test_mock_run_validity_and_comparisons(dirs):
+def test_mock_run_validity_and_comparisons(dirs: tuple[str, str]) -> None:
     """The mock run carries a validity verdict and all four §2 comparisons
     (headline, internal-probe-separate, partial, control)."""
     events_dir, graphs_dir = dirs
@@ -59,7 +61,7 @@ def test_mock_run_validity_and_comparisons(dirs):
     assert result.validity == VALIDITY_VALID
 
 
-def test_committed_artifact_is_honest():
+def test_committed_artifact_is_honest() -> None:
     """The committed artifact (results/spr09_run.json) is the mock-run output:
     mock_run true, a validity verdict, the frozen sha, and an honest (≈0)
     headline delta. git_sha is a documented placeholder until the orchestrator's
@@ -78,13 +80,13 @@ def test_committed_artifact_is_honest():
     assert headline_cost["delta"] == 0.0  # the honest demo-loop null
 
 
-def test_read_git_sha_returns_string():
+def test_read_git_sha_returns_string() -> None:
     sha = read_git_sha()
     assert isinstance(sha, str) and sha
 
 
 @pytest.mark.slow
-def test_full_mock_run_n20(tmp_path):
+def test_full_mock_run_n20(tmp_path: Path) -> None:
     """The full n=20 / 10k-resample run over the whole frozen set. Slow (≈2 min);
     excluded from the fast CI suite. This is the command that produces the
     committed artifact."""
@@ -96,4 +98,6 @@ def test_full_mock_run_n20(tmp_path):
         n=20,
     )
     assert result.n == 20
-    assert result.headline.metric(HEADLINE_METRIC).delta == 0.0
+    token = result.headline.metric(HEADLINE_METRIC)
+    assert token is not None
+    assert token.delta == 0.0

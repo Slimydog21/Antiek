@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from collections.abc import Awaitable, Callable
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -146,7 +147,7 @@ def make_decomposer_handler(
     broadcaster: EventBroadcaster,
     *,
     embedder: EmbeddingModel | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the handler closed over a broadcaster + embedder.
     Registered against ``ActionType.DECOMPOSE_QUESTION_REQUESTED``.
 

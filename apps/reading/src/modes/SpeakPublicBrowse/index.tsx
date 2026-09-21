@@ -64,18 +64,18 @@ export default function SpeakPublicBrowse() {
     >
       <div className="mx-auto max-w-2xl space-y-6">
         <header>
-          <p className="font-mono text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
+          <p className="font-mono text-xxs uppercase tracking-wider text-ink-mute dark:text-moonlight">
             Antiek Speak
           </p>
-          <h1 className="mt-1 font-serif text-[24px] font-semibold text-ink dark:text-bright">
+          <h1 className="mt-1 font-serif text-2xl font-semibold text-ink dark:text-bright">
             {PUBLIC_LANE_LABELS.browseHeading}
           </h1>
-          <p className="mt-2 font-serif text-[14px] text-ink-mute dark:text-moonlight">
+          <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
             {g7Live
               ? PUBLIC_LANE_LABELS.browseSubheadLive
               : PUBLIC_LANE_LABELS.browseSubhead}
           </p>
-          <p className="mt-3 font-serif text-[12px]">
+          <p className="mt-3 font-serif text-xs">
             <Link to="/login" className="text-sun-deep underline dark:text-sun">
               Sign in
             </Link>
@@ -91,7 +91,7 @@ export default function SpeakPublicBrowse() {
           className="rounded border-2 border-ink bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
           data-testid="browse-g7-banner"
         >
-          <p className="font-serif text-[12px] text-ink dark:text-bright">
+          <p className="font-serif text-xs text-ink dark:text-bright">
             {g7Live
               ? PUBLIC_LANE_LABELS.openContributionLive
               : GATE_PHRASES.publicEcosystem.whenGated}
@@ -99,7 +99,7 @@ export default function SpeakPublicBrowse() {
         </aside>
 
         {error && (
-          <p className="font-mono text-[12px] text-emperor" role="alert">
+          <p className="font-mono text-xs text-emperor" role="alert">
             {error}
           </p>
         )}
@@ -110,24 +110,24 @@ export default function SpeakPublicBrowse() {
           className="rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1"
           data-testid="browse-opportunities"
         >
-          <h2 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+          <h2 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
             {PUSHES_COPY.publicHeading}
           </h2>
-          <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
+          <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
             {PUSHES_COPY.rankingSignals}
           </p>
           {opps.length === 0 ? (
-            <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+            <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
               {PUSHES_COPY.publicEmpty}
             </p>
           ) : (
             <ul className="mt-2 space-y-2">
               {opps.map((o) => (
                 <li key={o.projectId} className="border-b border-rule pb-2 dark:border-charcoal-1">
-                  <p className="font-serif text-[15px] text-ink dark:text-bright">
+                  <p className="font-serif text-base text-ink dark:text-bright">
                     {o.subjectRef ?? o.title}
                   </p>
-                  <p className="font-serif text-[11px] text-ink-mute dark:text-moonlight">
+                  <p className="font-serif text-xs text-ink-mute dark:text-moonlight">
                     {o.rankReason}
                   </p>
                 </li>

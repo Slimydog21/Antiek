@@ -14,15 +14,20 @@ import {
 import {
   approveFallbackReceipt,
   estimatePromptCost,
+  fetchLatestAntiekBench,
   fetchFallbackReceiptHistory,
   fetchModelDecision,
+  estimateNotDiamondAdvisor,
   fetchSettingsBudget,
   fetchSettingsModels,
+  type AntiekBenchLatestResponse,
   type BudgetResponse,
   type FallbackReceiptChain,
   type ModelDecisionResponse,
   type ModelDecisionTask,
   type ModelRow,
+  type NotDiamondAdvisorResponse,
+  type PromptCostEstimateRequest,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
 import {
@@ -42,12 +47,31 @@ import ComputeCapacityPanel from "./ComputeCapacityPanel";
 import LineupPanel from "./LineupPanel";
 
 /**
- * Operator Settings — model inventory + budget + prompt projection (SPR-01).
+ * Operator Settings — model inventory + budget + prompt projection.
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
  * ledger or rate table is unset. Add-model securely registers BYOK providers;
  * granting one dispatch-route authority remains a separate, explicit sprint.
  */
+type TaskKind = NonNullable<PromptCostEstimateRequest["task_kind"]>;
+type RouteMode = NonNullable<PromptCostEstimateRequest["route_mode"]>;
+
+const TASK_KINDS: Array<{ value: TaskKind; label: string }> = [
+  { value: "research_question", label: "Research question" },
+  { value: "reading_highlight", label: "Reading highlight" },
+  { value: "midnight_oil", label: "Midnight oil" },
+  { value: "synthesis", label: "Synthesis" },
+  { value: "verification", label: "Verification" },
+];
+
+const ROUTE_MODES: Array<{ value: RouteMode; label: string }> = [
+  { value: "auto_balanced", label: "Balanced" },
+  { value: "auto_quality", label: "Quality" },
+  { value: "auto_cost", label: "Cost" },
+  { value: "auto_latency", label: "Latency" },
+  { value: "manual", label: "Manual" },
+];
+
 function formatCents(value: number): string {
   return `$${(value / 100).toFixed(2)}`;
 }
@@ -57,7 +81,6 @@ function usageBalanceChip(usage: SettingsUsageKeyEntry): string {
   if (usage.available_cents != null) return formatCents(usage.available_cents);
   return "";
 }
-
 export default function Settings() {
   const tier = useViewportTier();
   const isDark =
@@ -73,13 +96,23 @@ export default function Settings() {
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
   const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [bench, setBench] = useState<AntiekBenchLatestResponse | null>(null);
+  const [benchError, setBenchError] = useState<string | null>(null);
+  const [promptText, setPromptText] = useState("");
   const [inputChars, setInputChars] = useState(2000);
   const [outTokens, setOutTokens] = useState(500);
+  const [taskKind, setTaskKind] = useState<TaskKind>("research_question");
+  const [routeMode, setRouteMode] = useState<RouteMode>("auto_balanced");
+  const [manualRoute, setManualRoute] = useState("");
+  const [sessionCacheKey, setSessionCacheKey] = useState("");
   const [estimate, setEstimate] = useState<PromptCostEstimateResponse | null>(
     null,
   );
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
+  const [advisor, setAdvisor] = useState<NotDiamondAdvisorResponse | null>(null);
+  const [advisorError, setAdvisorError] = useState<string | null>(null);
+  const [advising, setAdvising] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "lineup" | "decision">("overview");
   const [usageByProvider, setUsageByProvider] = useState<
     Record<string, SettingsUsageKeyEntry>
@@ -157,6 +190,13 @@ export default function Settings() {
           setModelsError(e instanceof Error ? e.message : String(e));
         }
       }
+      try {
+        const latestBench = await fetchLatestAntiekBench();
+        if (!cancelled) setBench(latestBench);
+      } catch (e) {
+        if (!cancelled)
+          setBenchError(e instanceof Error ? e.message : String(e));
+      }
     })();
     return () => {
       cancelled = true;
@@ -178,20 +218,77 @@ export default function Settings() {
     );
   }, [budget]);
 
+  const modelOptions = useMemo(() => {
+    return (models ?? [])
+      .filter((m) => m.primary_model)
+      .map((m) => ({
+        value: `${m.provider_id}::${m.primary_model}`,
+        label: `${m.provider_id} / ${m.primary_model}`,
+        provider: m.provider_id,
+        model: m.primary_model as string,
+      }));
+  }, [models]);
+
+  const promptChars = promptText.length;
+  const effectiveManualRoute =
+    manualRoute || (modelOptions.length > 0 ? modelOptions[0].value : "");
+  const [manualProvider, manualModel] = effectiveManualRoute.split("::");
+  const selectedLabel = estimate?.selected_candidate
+    ? `${estimate.selected_candidate.provider} / ${estimate.selected_candidate.model} (${estimate.selected_candidate.tier})`
+    : "not projected";
+  const budgetStatus =
+    budget?.daily_cap_usd == null
+      ? "no cap configured"
+      : budget.spent_status !== "known"
+        ? "spend unknown"
+        : budget.remaining_usd != null && budget.remaining_usd < 0
+          ? "cap exceeded"
+          : "within cap";
+
+  function promptEstimateRequest(): PromptCostEstimateRequest {
+    return {
+      task_kind: taskKind,
+      role:
+        taskKind === "verification"
+          ? "verifier"
+          : taskKind === "research_question" || taskKind === "synthesis"
+            ? "synthesizer"
+            : "decomposer",
+      route_mode: routeMode,
+      manual_provider: routeMode === "manual" ? manualProvider || null : null,
+      manual_model: routeMode === "manual" ? manualModel || null : null,
+      session_cache_key: sessionCacheKey.trim() || null,
+      tier: "pro",
+      prompt_chars: promptChars,
+      input_chars: promptChars,
+      expected_output_tokens: outTokens,
+    };
+  }
+
   async function onEstimate() {
     setEstimating(true);
     setEstimateError(null);
     try {
-      const res = await estimatePromptCost({
-        tier: "pro",
-        input_chars: inputChars,
-        expected_output_tokens: outTokens,
-      });
+      const res = await estimatePromptCost(promptEstimateRequest());
       setEstimate(res);
     } catch (e) {
       setEstimateError(e instanceof Error ? e.message : String(e));
     } finally {
       setEstimating(false);
+    }
+  }
+
+  async function onAdvisor() {
+    setAdvising(true);
+    setAdvisorError(null);
+    try {
+      const res = await estimateNotDiamondAdvisor(promptEstimateRequest());
+      setAdvisor(res);
+      setEstimate(res.estimate);
+    } catch (e) {
+      setAdvisorError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAdvising(false);
     }
   }
 
@@ -258,7 +355,7 @@ export default function Settings() {
             className="space-y-6"
           >
         <LemonCard title="Environment" elevation="z1">
-          <div className="p-4 space-y-3 font-mono text-[13px]">
+          <div className="p-4 space-y-3 font-mono text-sm">
             <Row label="Viewport tier" value={tier} />
             <Row label="OS theme" value={isDark ? "dark" : "light"} />
             <Row
@@ -279,7 +376,7 @@ export default function Settings() {
         <LemonCard title="Models & providers" elevation="z1">
           <div className="p-4 space-y-3">
             {modelsError && (
-              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+              <p className="text-sm text-danger font-mono">
                 {modelsError}
               </p>
             )}
@@ -299,7 +396,7 @@ export default function Settings() {
                 {models.map((m) => (
                   <li
                     key={m.provider_id}
-                    className="flex flex-wrap items-baseline justify-between gap-2 border-b border-ink/10 dark:border-bright/10 pb-2 font-mono text-[13px]"
+                    className="flex flex-wrap items-baseline justify-between gap-2 border-b border-ink/10 dark:border-bright/10 pb-2 font-mono text-sm"
                   >
                     <span className="text-ink dark:text-bright font-semibold">
                       {m.provider_id}
@@ -313,19 +410,19 @@ export default function Settings() {
                     <span
                       className={
                         m.ready
-                          ? "text-emerald-700 dark:text-emerald-300"
-                          : "text-amber-700 dark:text-amber-300"
+                          ? "text-success"
+                          : "text-sun-deep dark:text-sun"
                       }
                     >
                       {m.ready ? "ready" : m.registered ? "registered" : "not registered"}
                     </span>
                     {m.tier_bindings.length > 0 && (
-                      <span className="w-full text-[11px] text-ink-soft dark:text-starlight">
+                      <span className="w-full text-xs text-ink-soft dark:text-starlight">
                         tiers: {m.tier_bindings.join(", ")}
                       </span>
                     )}
                     {m.notes && (
-                      <span className="w-full text-[11px] text-ink-soft dark:text-starlight">
+                      <span className="w-full text-xs text-ink-soft dark:text-starlight">
                         {m.notes}
                       </span>
                     )}
@@ -333,7 +430,7 @@ export default function Settings() {
                 ))}
               </ul>
             )}
-            <p className="text-[11px] text-ink-soft dark:text-starlight font-serif italic">
+            <p className="text-xs text-ink-soft dark:text-starlight font-serif italic">
               Add your own models with the card below. Decision-tree
               per-prompt override lands in SPR-03.
             </p>
@@ -343,13 +440,13 @@ export default function Settings() {
         <LemonCard title="Budget" elevation="z1">
           <div className="p-4 space-y-3">
             {budgetError && (
-              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+              <p className="text-sm text-danger font-mono">
                 {budgetError}
               </p>
             )}
             {budget && (
               <>
-                <div className="font-mono text-[13px] space-y-2">
+                <div className="font-mono text-sm space-y-2">
                   <Row
                     label="Daily cap"
                     value={
@@ -391,7 +488,7 @@ export default function Settings() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={spendPct ?? 0}
-                  aria-label="Budget usage"
+                  aria-label={`Budget usage: ${budgetStatus}`}
                 >
                   {spendPct != null ? (
                     <div
@@ -399,16 +496,25 @@ export default function Settings() {
                       style={{ width: `${spendPct}%` }}
                     />
                   ) : (
-                    <div className="h-full w-full bg-dashed opacity-30" />
+                    // Unknown spend (cap unset / no reading): an honest empty
+                    // state — a dashed token-colour outline, not the dead
+                    // `bg-dashed` class (undefined → rendered invisible).
+                    <div className="h-full w-full rounded-full border border-dashed border-ink/25 dark:border-bright/25" />
                   )}
                 </div>
                 {spendPct == null && (
-                  <p className="text-[11px] text-ink-soft dark:text-starlight">
+                  <p className="text-xs text-ink-soft dark:text-starlight">
                     Usage bar empty when spend is unknown or cap is unset.
                   </p>
                 )}
+                <p
+                  className="text-xs text-ink-soft dark:text-starlight"
+                  aria-live="polite"
+                >
+                  Budget status: {budgetStatus}.
+                </p>
                 {budget.notes.length > 0 && (
-                  <ul className="text-[11px] text-ink-soft dark:text-starlight list-disc list-inside space-y-1">
+                  <ul className="text-xs text-ink-soft dark:text-starlight list-disc list-inside space-y-1">
                     {budget.notes.map((n) => (
                       <li key={n}>{n}</li>
                     ))}
@@ -419,28 +525,104 @@ export default function Settings() {
           </div>
         </LemonCard>
 
+        <LemonCard title="Antiek-bench" elevation="z1">
+          <div className="p-4 space-y-3">
+            {benchError && (
+              <p className="text-sm text-danger font-mono">
+                {benchError}
+              </p>
+            )}
+            {bench === null && !benchError && (
+              <p className="text-sm text-ink-soft dark:text-starlight">
+                Loading scorecard…
+              </p>
+            )}
+            {bench && !bench.available && (
+              <div className="space-y-2">
+                <p className="text-sm text-ink-soft dark:text-starlight">
+                  No Antiek-bench scorecard available yet.
+                </p>
+                {bench.notes.map((note) => (
+                  <p
+                    key={note}
+                    className="text-xs text-ink-soft dark:text-starlight"
+                  >
+                    {note}
+                  </p>
+                ))}
+              </div>
+            )}
+            {bench && bench.available && (
+              <div className="space-y-3 font-mono text-sm">
+                <Row label="Week" value={bench.week_id ?? "unknown"} />
+                <Row
+                  label="Run"
+                  value={bench.mock_run ? "mock scorecard" : "ratified scorecard"}
+                />
+                <ul className="space-y-2" aria-label="Best model by task class">
+                  {bench.best_by_task_class.map((row) => (
+                    <li
+                      key={row.task_class}
+                      className="border-t border-ink/10 dark:border-bright/10 pt-2"
+                    >
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <span className="font-semibold text-ink dark:text-bright">
+                          {row.task_class}
+                        </span>
+                        <span>
+                          {row.provider} / {row.model}
+                        </span>
+                      </div>
+                      <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-1 text-xs text-ink-soft dark:text-starlight">
+                        <span>quality {row.quality_score.toFixed(2)}</span>
+                        <span>
+                          cost{" "}
+                          {row.cost_per_acceptable_answer == null
+                            ? "unknown"
+                            : `$${row.cost_per_acceptable_answer.toFixed(6)}`}
+                        </span>
+                        <span>
+                          latency{" "}
+                          {row.latency_ms == null ? "unknown" : `${row.latency_ms} ms`}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {bench.notes.map((note) => (
+                  <p
+                    key={note}
+                    className="text-xs text-ink-soft dark:text-starlight"
+                  >
+                    {note}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        </LemonCard>
+
         <LemonCard title="Prompt cost projection" elevation="z1" colour="glacial">
           <div className="p-4 space-y-3">
-            <p className="text-sm text-ink dark:text-bright">
-              Estimate how a proposed pro-tier prompt would hit today&apos;s
-              remaining budget. Projection uses dispatch config rates —
-              placeholder 0.0 rates yield an honest null, not a fake price.
-            </p>
-            <div className="grid grid-cols-2 gap-3 font-mono text-[13px]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-sm">
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
-                  Input chars
+                <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
+                  Task kind
                 </span>
-                <input
-                  type="number"
-                  min={0}
-                  value={inputChars}
-                  onChange={(e) => setInputChars(Number(e.target.value) || 0)}
+                <select
+                  value={taskKind}
+                  onChange={(e) => setTaskKind(e.target.value as TaskKind)}
                   className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
-                />
+                >
+                  {TASK_KINDS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight">
+                <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
                   Expected output tokens
                 </span>
                 <input
@@ -452,21 +634,130 @@ export default function Settings() {
                 />
               </label>
             </div>
-            <button
-              type="button"
-              onClick={onEstimate}
-              disabled={estimating}
-              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
-            >
-              {estimating ? "Estimating…" : "Project cost"}
-            </button>
+            <label className="flex flex-col gap-1 font-mono text-sm">
+              <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
+                Prompt
+              </span>
+              <textarea
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                rows={5}
+                className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded resize-y min-h-28"
+                placeholder="Paste the prompt or question to project."
+              />
+              <span className="text-xs text-ink-soft dark:text-starlight">
+                {promptChars} characters
+              </span>
+            </label>
+            <fieldset className="space-y-2">
+              <legend className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight font-mono">
+                Route mode
+              </legend>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2" role="radiogroup">
+                {ROUTE_MODES.map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={routeMode === item.value}
+                    onClick={() => setRouteMode(item.value)}
+                    className={
+                      "min-h-9 rounded border px-2 py-1 text-xs font-mono " +
+                      (routeMode === item.value
+                        ? "border-ink bg-ink text-white dark:border-bright dark:bg-bright dark:text-space-2"
+                        : "border-ink/20 dark:border-bright/20 text-ink dark:text-bright")
+                    }
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-sm">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
+                  Manual model
+                </span>
+                <select
+                  value={effectiveManualRoute}
+                  disabled={routeMode !== "manual" || modelOptions.length === 0}
+                  onChange={(e) => setManualRoute(e.target.value)}
+                  className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded disabled:opacity-50"
+                  aria-label="Manual provider and model override"
+                >
+                  {modelOptions.length === 0 ? (
+                    <option value="">No configured model</option>
+                  ) : (
+                    modelOptions.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
+                  Cache key
+                </span>
+                <input
+                  type="text"
+                  value={sessionCacheKey}
+                  onChange={(e) => setSessionCacheKey(e.target.value)}
+                  className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onEstimate}
+                disabled={estimating}
+                className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                {estimating ? "Estimating…" : "Project cost"}
+              </button>
+              <button
+                type="button"
+                onClick={onAdvisor}
+                disabled={advising}
+                className="px-3 py-1.5 rounded border border-ink/30 dark:border-bright/30 text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                {advising ? "Checking…" : "Check NotDiamond"}
+              </button>
+            </div>
             {estimateError && (
-              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+              <p className="text-sm text-danger font-mono">
                 {estimateError}
               </p>
             )}
+            {advisorError && (
+              <p className="text-sm text-danger font-mono">
+                {advisorError}
+              </p>
+            )}
             {estimate && (
-              <div className="font-mono text-[13px] space-y-1">
+              <div
+                className="font-mono text-sm space-y-1"
+                aria-live="polite"
+                aria-label={`Selected route: ${selectedLabel}`}
+              >
+                <Row
+                  label={routeMode === "manual" ? "Manual override" : "Selected route"}
+                  value={selectedLabel}
+                />
+                {estimate.selected_candidate && routeMode !== "manual" && (
+                  <Row
+                    label="Recommendation"
+                    value={estimate.selected_candidate.selection_reason}
+                  />
+                )}
+                {estimate.selected_candidate && (
+                  <Row
+                    label="Cache"
+                    value={estimate.selected_candidate.cache_status}
+                  />
+                )}
                 <Row
                   label="Pricing known"
                   value={estimate.pricing_known ? "yes" : "no"}
@@ -497,10 +788,85 @@ export default function Settings() {
                         : "no"
                   }
                 />
+                {estimate.candidates != null && estimate.candidates.length > 0 && (
+                  <div className="pt-2">
+                    <p className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
+                      Candidates
+                    </p>
+                    <ul className="mt-1 space-y-1">
+                      {estimate.candidates.map((candidate) => (
+                        <li
+                          key={`${candidate.provider}-${candidate.model}-${candidate.fallback_chain_index}`}
+                          className="flex flex-wrap justify-between gap-2 border-t border-ink/10 dark:border-bright/10 pt-1"
+                        >
+                          <span>
+                            {candidate.provider} / {candidate.model}
+                          </span>
+                          <span>
+                            {candidate.estimated_usd_high == null
+                              ? "unknown"
+                              : `$${candidate.estimated_usd_high.toFixed(6)}`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {estimate.notes.map((n) => (
                   <p
                     key={n}
-                    className="text-[11px] text-ink-soft dark:text-starlight"
+                    className="text-xs text-ink-soft dark:text-starlight"
+                  >
+                    {n}
+                  </p>
+                ))}
+              </div>
+            )}
+            {advisor && (
+              <div
+                className="font-mono text-sm space-y-1 border-t border-ink/10 dark:border-bright/10 pt-3"
+                aria-live="polite"
+                aria-label={`NotDiamond advisor: ${advisor.recommendation.provider ?? "none"} / ${
+                  advisor.recommendation.model ?? "none"
+                }`}
+              >
+                <Row label="Advisor mode" value={advisor.recommendation.mode} />
+                <Row label="Advisor source" value={advisor.recommendation.source} />
+                <Row
+                  label="Advisor route"
+                  value={
+                    advisor.recommendation.provider && advisor.recommendation.model
+                      ? `${advisor.recommendation.provider} / ${advisor.recommendation.model}`
+                      : "none"
+                  }
+                />
+                <Row
+                  label="External call"
+                  value={advisor.recommendation.external_call_performed ? "yes" : "no"}
+                />
+                <Row
+                  label="Would call"
+                  value={advisor.recommendation.notdiamond_would_call ? "yes" : "no"}
+                />
+                <Row
+                  label="Promotion eligible"
+                  value={advisor.recommendation.promotion_gate.eligible ? "yes" : "no"}
+                />
+                <p className="text-xs text-ink-soft dark:text-starlight">
+                  {advisor.recommendation.reason}
+                </p>
+                {advisor.recommendation.cache_caveat && (
+                  <p className="text-xs text-ink-soft dark:text-starlight">
+                    {advisor.recommendation.cache_caveat}
+                  </p>
+                )}
+                <p className="text-xs text-ink-soft dark:text-starlight">
+                  {advisor.recommendation.promotion_gate.reason}
+                </p>
+                {(advisor.recommendation.notes ?? []).map((n) => (
+                  <p
+                    key={n}
+                    className="text-xs text-ink-soft dark:text-starlight"
                   >
                     {n}
                   </p>
@@ -789,7 +1155,7 @@ function DecisionTreePanel({
       <LemonButton type="button" variant="primary" size="md" disabled={loading || !usageValid} onClick={() => void compare()}>
         {loading ? "Comparing..." : "Compare models"}
       </LemonButton>
-      {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <ModelDecisionBar
         projection={projection}
         loading={loading && decision !== null}
@@ -886,7 +1252,7 @@ function FallbackReceiptHistory({
     <section aria-labelledby="fallback-receipt-history-title" className="border-t border-ink/15 pt-5 dark:border-bright/15">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="fallback-receipt-history-title" className="font-serif text-lg text-ink dark:text-bright">Recent fallback executions</h3>
-        <span className="font-mono text-[11px] uppercase text-ink-soft dark:text-starlight">Read only</span>
+        <span className="font-mono text-xs uppercase text-ink-soft dark:text-starlight">Read only</span>
       </div>
       {loading && chains.length === 0 && <p role="status" className="mt-3 text-sm text-ink-soft dark:text-starlight">Loading execution receipts...</p>}
       {unavailable && <p role="status" className="mt-3 text-sm text-ink-soft dark:text-starlight">Execution receipts are unavailable.</p>}
@@ -899,9 +1265,9 @@ function FallbackReceiptHistory({
                 <time className="text-ink-soft dark:text-starlight" dateTime={chain.created_at}>{new Date(chain.created_at).toLocaleString()}</time>
                 <span className="font-mono font-semibold text-ink dark:text-bright">{chain.outcome.replace("_", " ")}</span>
               </div>
-              <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">Manifest {chain.manifest_sha256.slice(0, 10)}</p>
+              <p className="mt-1 font-mono text-xs text-ink-soft dark:text-starlight">Manifest {chain.manifest_sha256.slice(0, 10)}</p>
               {chain.approval_id && chain.approved_at && (
-                <p ref={reviewingChainId === chain.chain_id ? approvalResultRef : undefined} tabIndex={reviewingChainId === chain.chain_id ? -1 : undefined} className="mt-1 font-mono text-[11px] text-ink-soft outline-none dark:text-starlight">
+                <p ref={reviewingChainId === chain.chain_id ? approvalResultRef : undefined} tabIndex={reviewingChainId === chain.chain_id ? -1 : undefined} className="mt-1 font-mono text-xs text-ink-soft outline-none dark:text-starlight">
                   Approved {new Date(chain.approved_at).toLocaleString()} · {chain.approval_id.slice(-10)}
                 </p>
               )}
@@ -911,7 +1277,7 @@ function FallbackReceiptHistory({
                     <span className="font-mono text-ink-soft dark:text-starlight">#{route.fallback_index + 1}</span>
                     <span className="min-w-0 text-ink dark:text-bright"><strong className="break-words">{route.model}</strong><span className="block break-words text-ink-soft dark:text-starlight">{route.provider}</span></span>
                     <span className="font-mono text-right text-ink-soft dark:text-starlight">{route.state.replace("_", " ")} · cap ${(route.projected_max_cents / 100).toFixed(2)}{route.actual_cents === null ? "" : ` · actual $${(route.actual_cents / 100).toFixed(2)}`}</span>
-                    {route.settlement_evidence_sha256 && <span className="col-start-2 font-mono text-[11px] text-ink-soft dark:text-starlight">Receipt {route.settlement_evidence_sha256.slice(0, 10)}</span>}
+                    {route.settlement_evidence_sha256 && <span className="col-start-2 font-mono text-xs text-ink-soft dark:text-starlight">Receipt {route.settlement_evidence_sha256.slice(0, 10)}</span>}
                   </li>
                 ))}
               </ol>
@@ -921,7 +1287,7 @@ function FallbackReceiptHistory({
               {chain.approval_eligible && chain.approval_id === null && reviewingChainId === chain.chain_id && (
                 <div ref={reviewRegionRef} role="region" aria-label="Fallback approval review" tabIndex={-1} className="mt-3 border-l-2 border-sun pl-3 text-sm text-ink outline-none dark:text-bright">
                   <p className="font-semibold">Approve this exact prepared chain</p>
-                  <dl className="mt-2 grid gap-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                  <dl className="mt-2 grid gap-1 font-mono text-xs text-ink-soft dark:text-starlight">
                     <div><dt className="inline font-semibold text-ink dark:text-bright">Chain </dt><dd className="inline break-all">{chain.chain_id}</dd></div>
                     <div><dt className="inline font-semibold text-ink dark:text-bright">Manifest </dt><dd className="inline break-all">{chain.manifest_sha256}</dd></div>
                   </dl>
@@ -932,7 +1298,7 @@ function FallbackReceiptHistory({
                   </div>
                 </div>
               )}
-              {approvalError?.chainId === chain.chain_id && <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{approvalError.message}</p>}
+              {approvalError?.chainId === chain.chain_id && <p role="alert" className="mt-2 text-xs text-danger">{approvalError.message}</p>}
             </li>
           ))}
         </ol>
@@ -1009,7 +1375,7 @@ function PasskeySettings() {
               <li key={passkey.id} className="flex items-center justify-between gap-3 rounded-hog border border-rule dark:border-slate-2 bg-ice-0 dark:bg-charcoal-2 px-3 py-2">
                 <span>
                   <strong className="block text-sm text-ink dark:text-bright">{passkey.label}</strong>
-                  <small className="text-[11px] text-ink-soft dark:text-starlight">
+                  <small className="text-xs text-ink-soft dark:text-starlight">
                     {passkey.backed_up ? "Synced passkey" : "This-device passkey"}
                     {passkey.last_used_at ? ` · used ${new Date(passkey.last_used_at * 1000).toLocaleDateString()}` : ""}
                   </small>
@@ -1035,7 +1401,7 @@ function PasskeySettings() {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-ink-soft dark:text-starlight uppercase tracking-wider text-[11px]">
+      <span className="text-ink-soft dark:text-starlight uppercase tracking-wider text-xs">
         {label}
       </span>
       <span className="text-ink dark:text-bright">{value}</span>

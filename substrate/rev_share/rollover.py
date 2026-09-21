@@ -22,7 +22,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class RolloverState(str, enum.Enum):
+class RolloverState(enum.StrEnum):
     ACCRUING = "accruing"
     NOTICE_SENT = "notice_sent"
     SETTLED = "settled"

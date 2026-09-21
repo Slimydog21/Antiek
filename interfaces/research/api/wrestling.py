@@ -29,6 +29,7 @@ import hashlib
 import os
 import sys
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate.
@@ -42,7 +43,10 @@ from processing.embedding import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import (  # noqa: E402
+    connect_read,
+    connect_write,  # noqa: E402
+)
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import (  # noqa: E402
     LayerSource,
@@ -125,7 +129,7 @@ def _new_claim_id() -> str:
     return "c-" + uuid.uuid4().hex[:12]
 
 
-def _extract_json_object(text: str) -> dict | None:
+def _extract_json_object(text: str) -> dict[str, Any] | None:
     """Back-compat alias for ``roles._json_decode.extract_json_object``.
     The body moved to a shared module in Sprint 4 day 4-5 because
     three role-side parsers needed it and importing from wrestling.py
@@ -216,8 +220,8 @@ def _resolve_region_text_from_db(
     init the DB)."""
     chunk_id = _region_to_chunk_id(region_id)
     try:
-        import duckdb
-        con = duckdb.connect(db_path, read_only=True)
+
+        con = connect_read(db_path)
     except Exception:
         return None
     try:
@@ -291,7 +295,7 @@ def make_distillation_handler(
     broadcaster: EventBroadcaster,
     *,
     db_path: str | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the async handler closed over a broadcaster. The handler
     is registered against ``ActionType.DISTILLATION_REQUESTED``; on
     fire it dispatches a synthesizer call and emits the delivered
@@ -440,7 +444,7 @@ def make_document_loaded_handler(
     *,
     db_path: str | None = None,
     broadcaster: EventBroadcaster | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the handler that mirrors ``document.loaded`` events into a
     row in the documents table. Sprint 3 Day 2-3: the wrestling bridge
     populates the graph organically as the user works.
@@ -600,7 +604,7 @@ def make_region_selected_handler(
     broadcaster: EventBroadcaster,
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the handler that mirrors ``document.region_selected``
     events into the graph: writes a chunks row (with embedding for the
     text excerpt) and a nodes row anchored to that chunk. Emits
