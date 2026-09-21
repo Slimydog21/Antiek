@@ -160,15 +160,15 @@
  * never as motion the operator has to track. The mascot component ALSO
  * removes this class entirely when prefers-reduced-motion matches (a JS
  * guard), so reduced-motion is honoured on both the CSS and JS paths. */
-@keyframes penguin-mascot-wander {
+@keyframes mascot-wander {
   0%   { transform: translate(0, 0); }
   25%  { transform: translate(4px, -3px); }
   50%  { transform: translate(0, -5px); }
   75%  { transform: translate(-4px, -2px); }
   100% { transform: translate(0, 0); }
 }
-.penguin-mascot-wander {
-  animation: penguin-mascot-wander 9000ms ease-in-out infinite;
+.mascot-wander {
+  animation: mascot-wander 9000ms ease-in-out infinite;
 }
 
 /* ─── Reduced-motion guard ────────────────────────────────────────── */
@@ -186,11 +186,11 @@
   .werner-thinking-dot-4,
   .werner-fish-flipper,
   .werner-fish-sparkle,
-  .penguin-mascot-wander,
+  .mascot-wander,
   .werner-idle {
     animation: none !important;
   }
-  .penguin-mascot-wander { transform: translate(0, 0); }
+  .mascot-wander { transform: translate(0, 0); }
   /* Static fallback frames — slight rotation so the operator can still
      tell a Werner is animating in spirit, just without motion. */
   .werner-toboggan { transform: rotate(0deg); }

@@ -63,7 +63,7 @@ const REDUCED = "shell-penguinmascot-spr-06--reduced-motion-note";
 async function loadMascot(page: Page, id: string): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(storyUrl(id), { waitUntil: "domcontentloaded" });
-  const mascot = page.locator('[data-testid="penguin-mascot"]');
+  const mascot = page.locator('[data-testid="brain-mascot"]');
   await expect(mascot, "penguin mascot not found in the story").toBeVisible({
     timeout: 10_000,
   });
@@ -76,7 +76,7 @@ async function mascotBox(page: Page): Promise<{
   width: number;
   height: number;
 }> {
-  const box = await page.locator('[data-testid="penguin-mascot"]').boundingBox();
+  const box = await page.locator('[data-testid="brain-mascot"]').boundingBox();
   expect(box, "no mascot bounding box").not.toBeNull();
   return box!;
 }
@@ -120,7 +120,7 @@ test.describe("SPR-06 — Werner is ALIVE (real Chromium pixels)", () => {
     // noise — exactly the 0.8–1.5 diffs this stale freeze produced in CI.)
     const pin = await page.evaluate(() => {
       const btn = document.querySelector(
-        '[data-testid="penguin-mascot"]',
+        '[data-testid="brain-mascot"]',
       ) as HTMLElement | null;
       if (!btn) return null;
       const r = btn.getBoundingClientRect();
@@ -258,7 +258,7 @@ test.describe("SPR-06 — Werner is ALIVE (real Chromium pixels)", () => {
     // (b) A hit emote mounted (the bump rides on it). The emote overlay carries
     //     the werner-hit-bump wrapper on the hit kind.
     await expect(
-      page.locator('[data-testid="penguin-mascot"] .werner-hit-bump'),
+      page.locator('[data-testid="brain-mascot"] .werner-hit-bump'),
       "no hit-emote bump played on arrival (the Tom-&-Jerry button bump)",
     ).toHaveCount(1, { timeout: 2_000 });
   });
