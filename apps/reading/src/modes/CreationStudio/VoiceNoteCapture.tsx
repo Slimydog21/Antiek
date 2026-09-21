@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { track } from "../../lib/analytics";
 import { ingestVoiceNote } from "../../lib/api";
+import { LemonButton } from "../../components/lemon/LemonButton";
 
 type RecordingState = "idle" | "recording" | "transcribing" | "ingested";
 
@@ -49,16 +50,17 @@ export function VoiceNoteCapture() {
         className="mt-2 w-full px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
       />
       <div className="mt-2 flex items-center justify-between gap-2">
-        <button
+        <LemonButton
+          variant="primary"
+          size="sm"
           onClick={handleIngest}
           disabled={state === "transcribing" || !transcript.trim()}
-          className="px-3 py-1.5 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-xs rounded"
         >
           {state === "transcribing" ? "Ingesting…" : "Add voice note"}
-        </button>
+        </LemonButton>
         {state === "ingested" && lastDocId && (
           <span
-            className="text-xs text-aurora truncate"
+            className="text-xs text-success truncate"
             title={lastDocId}
           >
             ✓ {lastDocId.slice(0, 16)}…

@@ -18,6 +18,7 @@ full chain: impression → decision (this table) → transfer attempt
 
 from __future__ import annotations
 
+import contextlib
 import enum
 from dataclasses import dataclass
 from typing import Any
@@ -25,7 +26,7 @@ from typing import Any
 from .payout import RevShareDecision
 
 
-class DecisionGate(str, enum.Enum):
+class DecisionGate(enum.StrEnum):
     """Why the substrate let (or didn't let) a decision through.
 
     Persisted as the ``gate_result`` column on ``payout_decisions``;
@@ -72,7 +73,7 @@ class PersistedDecisionRow:
 def ensure_table(con: Any) -> None:
     """Defensive table create. Canonical schema in
     ``substrate/graph/schema.py`` V6 chunk."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS payout_decisions (
@@ -94,8 +95,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def persist_decision(
@@ -205,7 +204,7 @@ def load_for_recipient(
     return [_row_to_decision(r) for r in rows]
 
 
-def _row_to_decision(r: tuple) -> PersistedDecisionRow:
+def _row_to_decision(r: tuple[Any, ...]) -> PersistedDecisionRow:
     return PersistedDecisionRow(
         decision_id=r[0],
         impression_id=r[1],

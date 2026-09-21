@@ -1,8 +1,26 @@
 # Ratified-scoring gate — blocking, pre-merge, structural pre-registration
 
 **Decision date:** 2026-06-04
-**Status:** ✅ Active (blocking on `pull_request:[main]` + `push:[main]` via the
-`Ratified-scoring gate` step in the `pytest` job of `.github/workflows/ci.yml`)
+**Status:** ⚠️ NOT WIRED — the tool exists, the CI step does not.
+
+> Corrected 2026-09-20. This line previously read
+> "✅ Active (blocking on `pull_request:[main]` + `push:[main]` via the
+> `Ratified-scoring gate` step in the `pytest` job of
+> `.github/workflows/ci.yml`)". That step does not exist and never did:
+> `git log -S ratified_gate -- .github/workflows/` returns **zero** commits,
+> and a repo-wide `git grep -F ratified_gate` outside `docs/` returns nothing.
+> The self-test this record names as the tripwire —
+> `tests/test_ratified_gate.py::test_ci_step_is_blocking`, described below as
+> asserting "the workflow does not swallow the gate's exit code" — was never
+> written either, which is why the absence went unnoticed for three months.
+>
+> `tools/ratified_gate.py` itself is real and is left in place unchanged. What
+> is false is only the claim that CI runs it. Nothing today prevents an
+> un-ratified `mock_run=false` artifact from landing, which is precisely the
+> failure this record was written to make structurally impossible.
+>
+> Wiring it is a separate decision, not a doc fix: the gate has never run
+> against the real tree, so its pass/fail on main is unknown.
 **Owner:** Antiek — Convergence SPR-06 (reuse-consuming loop / compounding made measurable)
 **Scope:** a new `tools/ratified_gate.py` scanner + a blocking CI step + a
 `--ratified` / `--ratification-ref` flag on `compounding.benchmark.run`. Does

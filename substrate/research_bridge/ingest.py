@@ -20,7 +20,7 @@ import sys
 from dataclasses import dataclass
 
 try:
-    from ...runtime.db_lock import LockedConnection
+    from ...runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
     from ..graph.ops import (
         content_addressed_id,
         insert_chunk,
@@ -36,15 +36,17 @@ try:
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.graph.ops import (  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
+    from substrate.graph.ops import (
         content_addressed_id,
         insert_chunk,
         insert_document,
         new_random_id,
     )
-    from substrate.research_bridge.paste_log import log_paste_event  # type: ignore[no-redef]
-    from substrate.research_bridge.source_detection import (  # type: ignore[no-redef]
+    from substrate.research_bridge.paste_log import (
+        log_paste_event,
+    )
+    from substrate.research_bridge.source_detection import (
         KNOWN_SOURCES,
         SourceDetectionResult,
         detect_source,

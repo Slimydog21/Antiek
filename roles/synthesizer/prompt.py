@@ -26,6 +26,8 @@ flags.
 
 from __future__ import annotations
 
+from typing import Any
+
 from substrate.voice_style.constructions import render_voice_addendum
 
 SYNTHESIZER_PROMPT_VERSION = "1.0.0"
@@ -197,8 +199,7 @@ def render_user_template(
     out = out.replace("{{decomposition_block}}", decomposition_block or "(no decomposition)")
     out = out.replace("{{evidence_block}}", evidence_block or "(no evidence)")
     out = out.replace("{{parameters_block}}", parameters_block or "(no parameters)")
-    out = out.replace("{{substrate_block}}", substrate_block or "(no substrate)")
-    return out
+    return out.replace("{{substrate_block}}", substrate_block or "(no substrate)")
 
 
 def render_full_prompt(
@@ -226,7 +227,7 @@ def render_full_prompt(
     return SYNTHESIZER_SYSTEM_PROMPT + "\n\n" + user
 
 
-def build_revision_prefix(violations: list) -> str:
+def build_revision_prefix(violations: list[Any]) -> str:
     """Build the user-prompt prefix the bridge prepends when re-
     invoking the synthesizer inside the constraint loop. Violations
     are surfaced concretely so the next pass addresses specific

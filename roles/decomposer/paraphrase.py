@@ -19,15 +19,16 @@ import os
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 try:
-    from ...constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
-    from ...graph.search import EmbeddingModel
+    from substrate.constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
+    from substrate.graph.search import EmbeddingModel
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import DECOMPOSER_PARAPHRASE_COSINE_MAX  # type: ignore[no-redef]
-    from substrate.graph.search import EmbeddingModel  # type: ignore[no-redef]
+    from substrate.constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
+    from substrate.graph.search import EmbeddingModel
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class ParaphraseFlag:
     sub_question: str
     cosine: float
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "index": self.index,
             "sub_question": self.sub_question,
@@ -50,7 +51,7 @@ class ParaphraseFlag:
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     """Plain Python cosine — keeps the module dependency-free for the
     test path that injects deterministic stub embeddings."""
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = sum(x * x for x in a) ** 0.5
     nb = sum(y * y for y in b) ** 0.5
     if na == 0.0 or nb == 0.0:

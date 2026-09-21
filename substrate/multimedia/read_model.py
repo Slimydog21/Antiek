@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from substrate.contracts.multimedia import (
     AssetKind,
+    GeneratedFile,
     MultimediaAssetContract,
     MultimediaStatus,
     RoutePolicy,
@@ -78,8 +79,18 @@ from substrate.multimedia.video import (
 )
 
 PlanMode = Literal["video", "audio", "hybrid"]
-JobKind = Literal["render", "steering", "hardening", "provider_execution"]
+JobKind = Literal["render", "steering", "hardening", "provider_execution", "export_gate"]
 JobStatus = Literal["queued", "running", "succeeded", "failed", "canceled", "partial"]
+
+PublicExportNextAction = Literal[
+    "attach_provider_artifacts",
+    "run_hardening",
+    "manual_publication_review",
+    "stage_export_plan",
+    "record_publish_blocker",
+    "publisher_implementation",
+]
+
 _DEFAULT_OWNER_ID = "__operator__"
 _OWNER_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _ASSET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -183,6 +194,226 @@ class SteeringPreviewConflict(ValueError):
         super().__init__(code)
 
 
+class LiveProviderExecutionRequest(_ReadModelBase):
+    """Operator request to transition a dry-run asset toward live spend.
+
+    The gate checks budget, acknowledgement, and provider readiness BEFORE
+    any queued state is recorded, and makes NO provider/network calls. A
+    missing provider key records ``provider_unconfigured`` without echoing
+    the secret value.
+    """
+
+    max_budget_usd: float = Field(gt=0, le=500)
+    route_policy: RoutePolicy
+    operator_acknowledged_spend: bool = False
+    provider_families: tuple[str, ...] = Field(default=("krea",), min_length=1)
+    dry_run_revision_id: str | None = None
+
+
+class LiveProviderExecutionPlan(_ReadModelBase):
+    """Worker handoff snapshot for a queued live-provider attempt.
+
+    The read model is still no-spend: this plan is deterministic metadata for a
+    later worker, not permission to call Krea. Persisting it with the queued job
+    prevents future workers from re-reading mutable UI state after approval.
+    """
+
+    execution_id: str
+    asset_id: str
+    revision_id: str
+    route_policy: RoutePolicy
+    max_budget_usd: float = Field(gt=0, le=500)
+    provider_families: tuple[str, ...]
+    idempotency_key: str
+
+
+class LiveProviderRoutePreview(_ReadModelBase):
+    """No-spend provider route resolved from a queued execution plan."""
+
+    provider: str
+    model: str
+    route_policy: RoutePolicy
+    quality_label: str
+    estimated_cost_usd: float = Field(ge=0)
+    resolution: tuple[int, int] | None = None
+    duration_seconds: float | None = Field(default=None, ge=0)
+    status: str
+    reason: str
+
+
+class LiveProviderArtifactReceipt(_ReadModelBase):
+    """No-spend provider artifact status observed by polling or webhook.
+
+    This receipt records immutable provider metadata only. It does not attach
+    files to the asset manifest and does not imply publish readiness.
+    """
+
+    provider_job_id: str
+    provider: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    files: tuple[GeneratedFile, ...] = Field(default_factory=tuple)
+    error_code: str | None = None
+    message: str | None = None
+
+    @field_validator("provider")
+    @classmethod
+    def provider_is_not_secret(cls, value: str) -> str:
+        lowered = value.lower()
+        if "key" in lowered or "secret" in lowered or "token" in lowered:
+            raise ValueError("provider must name a provider, not carry a secret")
+        return value
+
+    @model_validator(mode="after")
+    def terminal_receipts_are_complete(self) -> LiveProviderArtifactReceipt:
+        if self.status == "succeeded" and not self.files:
+            raise ValueError("succeeded artifact receipts require at least one generated file")
+        if self.status == "failed" and not self.error_code:
+            raise ValueError("failed artifact receipts require error_code")
+        return self
+
+
+class LiveProviderAttachmentPlan(_ReadModelBase):
+    """Validated files ready for a later manifest-attach mutation."""
+
+    provider_job_id: str
+    route_provider: str
+    route_model: str
+    files: tuple[GeneratedFile, ...] = Field(min_length=1)
+    manifest_revision_id: str
+    attach_reason: str
+
+
+class MultimediaPublicExportGate(_ReadModelBase):
+    """No-spend public export decision for attached provider artifacts."""
+
+    status: Literal["blocked", "manual_review", "ready"]
+    public_export_enabled: bool = False
+    hardening_status: str | None = None
+    attached_file_ids: tuple[str, ...] = Field(default_factory=tuple)
+    required_gate_ids: tuple[str, ...] = Field(default_factory=tuple)
+    reason: str
+
+    @model_validator(mode="after")
+    def public_export_requires_ready_status(self) -> MultimediaPublicExportGate:
+        if self.public_export_enabled and self.status != "ready":
+            raise ValueError("public export can only be enabled when gate status is ready")
+        return self
+
+
+class MultimediaPublicExportReviewRequest(_ReadModelBase):
+    """Operator review input for future public multimedia export.
+
+    Approval records readiness only. It is not a publish command and must not
+    flip ``public_export_enabled`` or create public URLs.
+    """
+
+    decision: Literal["approved", "rejected"]
+    gate_ids: tuple[str, ...] = Field(min_length=1)
+    operator_acknowledged_public_distribution: bool = False
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def approval_requires_distribution_ack(self) -> MultimediaPublicExportReviewRequest:
+        if self.decision == "approved" and not self.operator_acknowledged_public_distribution:
+            raise ValueError("approved public export review requires explicit operator acknowledgement")
+        return self
+
+
+class MultimediaPublicExportReview(_ReadModelBase):
+    """Persisted manual review receipt for public multimedia export."""
+
+    decision: Literal["approved", "rejected"]
+    gate_ids: tuple[str, ...] = Field(min_length=1)
+    attached_file_ids: tuple[str, ...] = Field(min_length=1)
+    operator_acknowledged_public_distribution: bool
+    notes: str | None = None
+
+
+class MultimediaPublicExportPlan(_ReadModelBase):
+    """No-spend publication plan for a reviewed multimedia asset.
+
+    This is an audit handoff for a future publisher. It deliberately carries
+    no public URL and cannot enable publication.
+    """
+
+    export_id: str
+    attached_file_ids: tuple[str, ...] = Field(min_length=1)
+    review_gate_ids: tuple[str, ...] = Field(min_length=1)
+    storage_backend: Literal["pending"] = "pending"
+    public_url: None = None
+    publish_enabled: bool = False
+
+    @model_validator(mode="after")
+    def export_plan_must_not_publish(self) -> MultimediaPublicExportPlan:
+        if self.publish_enabled or self.public_url is not None:
+            raise ValueError("public export plans cannot publish or include public URLs")
+        return self
+
+
+class MultimediaPublicPublishBlocker(_ReadModelBase):
+    """Explicit no-publish boundary for a staged export plan."""
+
+    status: Literal["blocked"] = "blocked"
+    export_id: str
+    attached_file_ids: tuple[str, ...] = Field(min_length=1)
+    required_next_step: Literal["publisher_implementation"] = "publisher_implementation"
+    public_url: None = None
+    reason: str
+
+    @model_validator(mode="after")
+    def blocker_must_not_publish(self) -> MultimediaPublicPublishBlocker:
+        if self.public_url is not None:
+            raise ValueError("publish blockers cannot include public URLs")
+        return self
+
+
+class MultimediaPublicPublishRequest(_ReadModelBase):
+    """Operator request shape for future public publication."""
+
+    export_id: str
+    requested_destination: Literal["public_web"] = "public_web"
+    operator_acknowledged_public_distribution: bool = False
+
+
+class MultimediaPublicPublishDenial(_ReadModelBase):
+    """Structured refusal for public publishing while publisher support is absent."""
+
+    status: Literal["blocked"] = "blocked"
+    export_id: str
+    requested_destination: Literal["public_web"]
+    reason_code: Literal[
+        "public_distribution_not_acknowledged",
+        "public_export_plan_missing",
+        "public_publish_blocker_missing",
+        "public_publish_export_mismatch",
+        "publisher_unimplemented",
+    ]
+    public_url: None = None
+    reason: str
+
+    @model_validator(mode="after")
+    def denial_must_not_publish(self) -> MultimediaPublicPublishDenial:
+        if self.public_url is not None:
+            raise ValueError("publish denials cannot include public URLs")
+        return self
+
+
+class MultimediaPublicExportStatus(_ReadModelBase):
+    """Latest public-export/publish audit projection for UI and API callers."""
+
+    asset_id: str
+    revision_id: str
+    gate_status: str | None = None
+    review_decision: str | None = None
+    export_id: str | None = None
+    publish_blocked: bool = True
+    publish_denial_code: str | None = None
+    public_url: None = None
+    latest_job_status: JobStatus | None = None
+    latest_error_code: str | None = None
+    next_required_action: PublicExportNextAction
+
+
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -202,6 +433,15 @@ class MultimediaJobRecord(_ReadModelBase):
     message: str
     error_code: str | None = None
     retryable: bool | None = None
+    execution_plan: LiveProviderExecutionPlan | None = None
+    route_preview: LiveProviderRoutePreview | None = None
+    artifact_receipt: LiveProviderArtifactReceipt | None = None
+    attachment_plan: LiveProviderAttachmentPlan | None = None
+    public_export_gate: MultimediaPublicExportGate | None = None
+    public_export_review: MultimediaPublicExportReview | None = None
+    public_export_plan: MultimediaPublicExportPlan | None = None
+    public_publish_blocker: MultimediaPublicPublishBlocker | None = None
+    public_publish_denial: MultimediaPublicPublishDenial | None = None
 
 
 class MultimediaKnowledgeLink(_ReadModelBase):
@@ -307,6 +547,33 @@ class MultimediaAssetRecord(_ReadModelBase):
             ),
         )
 
+    def public_export_status(self) -> MultimediaPublicExportStatus:
+        latest_job = self.jobs[-1] if self.jobs else None
+        gate = _latest_public_export_gate(self.jobs)
+        review = _latest_public_export_review(self.jobs)
+        export_plan = _latest_public_export_plan(self.jobs)
+        blocker = _latest_public_publish_blocker(self.jobs)
+        denial = _latest_public_publish_denial(self.jobs)
+        return MultimediaPublicExportStatus(
+            asset_id=self.asset.asset_id,
+            revision_id=self.asset.revision_id,
+            gate_status=gate.status if gate else None,
+            review_decision=review.decision if review else None,
+            export_id=export_plan.export_id if export_plan else None,
+            publish_blocked=True,
+            publish_denial_code=denial.reason_code if denial else None,
+            public_url=None,
+            latest_job_status=latest_job.status if latest_job else None,
+            latest_error_code=latest_job.error_code if latest_job else None,
+            next_required_action=_public_export_next_action(
+                self,
+                gate=gate,
+                review=review,
+                export_plan=export_plan,
+                blocker=blocker,
+            ),
+        )
+
 
 class MultimediaAssetList(_ReadModelBase):
     assets: tuple[MultimediaAssetSummary, ...]
@@ -316,6 +583,65 @@ class MultimediaAssetList(_ReadModelBase):
 class MultimediaJobList(_ReadModelBase):
     jobs: tuple[MultimediaJobRecord, ...]
     count: int
+
+
+
+def _latest_public_export_gate(jobs: tuple[MultimediaJobRecord, ...]) -> MultimediaPublicExportGate | None:
+    for job in reversed(jobs):
+        if job.kind == "export_gate" and job.public_export_gate:
+            return job.public_export_gate
+    return None
+
+
+def _latest_public_export_review(jobs: tuple[MultimediaJobRecord, ...]) -> MultimediaPublicExportReview | None:
+    for job in reversed(jobs):
+        if job.kind == "export_gate" and job.public_export_review:
+            return job.public_export_review
+    return None
+
+
+def _latest_public_export_plan(jobs: tuple[MultimediaJobRecord, ...]) -> MultimediaPublicExportPlan | None:
+    for job in reversed(jobs):
+        if job.kind == "export_gate" and job.public_export_plan:
+            return job.public_export_plan
+    return None
+
+
+def _latest_public_publish_blocker(jobs: tuple[MultimediaJobRecord, ...]) -> MultimediaPublicPublishBlocker | None:
+    for job in reversed(jobs):
+        if job.kind == "export_gate" and job.public_publish_blocker:
+            return job.public_publish_blocker
+    return None
+
+
+def _latest_public_publish_denial(jobs: tuple[MultimediaJobRecord, ...]) -> MultimediaPublicPublishDenial | None:
+    for job in reversed(jobs):
+        if job.kind == "export_gate" and job.public_publish_denial:
+            return job.public_publish_denial
+    return None
+
+
+def _public_export_next_action(
+    record: MultimediaAssetRecord,
+    *,
+    gate: MultimediaPublicExportGate | None,
+    review: MultimediaPublicExportReview | None,
+    export_plan: MultimediaPublicExportPlan | None,
+    blocker: MultimediaPublicPublishBlocker | None,
+) -> PublicExportNextAction:
+    if not record.asset.manifest.files:
+        return "attach_provider_artifacts"
+    if gate is None:
+        return "run_hardening"
+    if gate.status == "blocked":
+        return "run_hardening"
+    if review is None or review.decision != "approved":
+        return "manual_publication_review"
+    if export_plan is None:
+        return "stage_export_plan"
+    if blocker is None:
+        return "record_publish_blocker"
+    return "publisher_implementation"
 
 
 class _AccountAssetEnvelope(_ReadModelBase):
@@ -817,6 +1143,16 @@ class MultimediaAssetStore:
         message: str,
         error_code: str | None = None,
         retryable: bool | None = None,
+
+        execution_plan: LiveProviderExecutionPlan | None = None,
+        route_preview: LiveProviderRoutePreview | None = None,
+        artifact_receipt: LiveProviderArtifactReceipt | None = None,
+        attachment_plan: LiveProviderAttachmentPlan | None = None,
+        public_export_gate: MultimediaPublicExportGate | None = None,
+        public_export_review: MultimediaPublicExportReview | None = None,
+        public_export_plan: MultimediaPublicExportPlan | None = None,
+        public_publish_blocker: MultimediaPublicPublishBlocker | None = None,
+        public_publish_denial: MultimediaPublicPublishDenial | None = None,
         owner_id: str = _DEFAULT_OWNER_ID,
     ) -> MultimediaAssetRecord:
         """Append an arbitrary job row (failed/partial provider jobs, retries).
@@ -837,6 +1173,79 @@ class MultimediaAssetStore:
                 message=message,
                 error_code=error_code,
                 retryable=retryable,
+                execution_plan=execution_plan,
+                route_preview=route_preview,
+                artifact_receipt=artifact_receipt,
+                attachment_plan=attachment_plan,
+                public_export_gate=public_export_gate,
+                public_export_review=public_export_review,
+                public_export_plan=public_export_plan,
+                public_publish_blocker=public_publish_blocker,
+                public_publish_denial=public_publish_denial,
+            )
+
+    def prepare_live_execution(
+        self,
+        asset_id: str,
+        request: LiveProviderExecutionRequest,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> MultimediaAssetRecord:
+        """Gate and enqueue a live-provider attempt WITHOUT spending.
+
+        The gate checks acknowledgement, revision freshness, and provider
+        readiness BEFORE any queued state is recorded; a missing provider
+        key records ``provider_unconfigured`` without echoing the secret
+        value. The queued job carries the deterministic execution plan a
+        later worker previews via ``preview_next_live_execution``.
+        """
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            record = self._load_unlocked(asset_id, owner_digest)
+            if (
+                request.dry_run_revision_id is not None
+                and request.dry_run_revision_id != record.asset.revision_id
+            ):
+                raise ValueError("multimedia asset revision is stale")
+            if not request.operator_acknowledged_spend:
+                raise ValueError("live provider spend requires operator acknowledgement")
+            unknown = tuple(
+                family
+                for family in request.provider_families
+                if family.strip().lower() not in _KNOWN_PROVIDER_FAMILIES
+            )
+            if unknown:
+                raise ValueError(
+                    "unknown provider families requested: " + ", ".join(unknown)
+                )
+            missing_keys = tuple(
+                family
+                for family in request.provider_families
+                if not os.environ.get(_PROVIDER_KEY_ENV.get(family.strip().lower(), ""))
+            )
+            if missing_keys:
+                return self._record_job_unlocked(
+                    record,
+                    owner_digest=owner_digest,
+                    kind="provider_execution",
+                    status="failed",
+                    progress_percent=0,
+                    message="Provider API key is not configured; no spend was attempted.",
+                    error_code="provider_unconfigured",
+                    retryable=True,
+                )
+            plan = _live_execution_plan(record, request)
+            return self._record_job_unlocked(
+                record,
+                owner_digest=owner_digest,
+                kind="provider_execution",
+                status="queued",
+                progress_percent=0,
+                message=(
+                    f"Live execution queued for {', '.join(plan.provider_families)} "
+                    f"with budget ${plan.max_budget_usd:.2f}; awaiting no-spend worker preview."
+                ),
+                execution_plan=plan,
             )
 
     def attach_knowledge_link(
@@ -982,6 +1391,15 @@ class MultimediaAssetStore:
         message: str,
         error_code: str | None = None,
         retryable: bool | None = None,
+        execution_plan: LiveProviderExecutionPlan | None = None,
+        route_preview: LiveProviderRoutePreview | None = None,
+        artifact_receipt: LiveProviderArtifactReceipt | None = None,
+        attachment_plan: LiveProviderAttachmentPlan | None = None,
+        public_export_gate: MultimediaPublicExportGate | None = None,
+        public_export_review: MultimediaPublicExportReview | None = None,
+        public_export_plan: MultimediaPublicExportPlan | None = None,
+        public_publish_blocker: MultimediaPublicPublishBlocker | None = None,
+        public_publish_denial: MultimediaPublicPublishDenial | None = None,
     ) -> MultimediaAssetRecord:
         updated = self._with_job(
             record,
@@ -991,6 +1409,15 @@ class MultimediaAssetStore:
             message=message,
             error_code=error_code,
             retryable=retryable,
+            execution_plan=execution_plan,
+            route_preview=route_preview,
+            artifact_receipt=artifact_receipt,
+            attachment_plan=attachment_plan,
+            public_export_gate=public_export_gate,
+            public_export_review=public_export_review,
+            public_export_plan=public_export_plan,
+            public_publish_blocker=public_publish_blocker,
+            public_publish_denial=public_publish_denial,
         )
         self._save_unlocked(updated, owner_digest)
         return updated
@@ -1010,6 +1437,15 @@ class MultimediaAssetStore:
         message: str,
         error_code: str | None = None,
         retryable: bool | None = None,
+        execution_plan: LiveProviderExecutionPlan | None = None,
+        route_preview: LiveProviderRoutePreview | None = None,
+        artifact_receipt: LiveProviderArtifactReceipt | None = None,
+        attachment_plan: LiveProviderAttachmentPlan | None = None,
+        public_export_gate: MultimediaPublicExportGate | None = None,
+        public_export_review: MultimediaPublicExportReview | None = None,
+        public_export_plan: MultimediaPublicExportPlan | None = None,
+        public_publish_blocker: MultimediaPublicPublishBlocker | None = None,
+        public_publish_denial: MultimediaPublicPublishDenial | None = None,
     ) -> MultimediaAssetRecord:
         sequence = max((job.sequence for job in record.jobs), default=0) + 1
         job = MultimediaJobRecord(
@@ -1023,6 +1459,15 @@ class MultimediaAssetStore:
             message=message,
             error_code=error_code,
             retryable=retryable,
+            execution_plan=execution_plan,
+            route_preview=route_preview,
+            artifact_receipt=artifact_receipt,
+            attachment_plan=attachment_plan,
+            public_export_gate=public_export_gate,
+            public_export_review=public_export_review,
+            public_export_plan=public_export_plan,
+            public_publish_blocker=public_publish_blocker,
+            public_publish_denial=public_publish_denial,
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 
@@ -1380,15 +1825,93 @@ def _title(topic: str) -> str:
     return trimmed[:80] + ("..." if len(trimmed) > 80 else "")
 
 
+
+def _estimated_live_budget_floor(record: MultimediaAssetRecord) -> float:
+    """Conservative floor for live spend.
+
+    The floor is the MAX of the persisted ledger total and a duration/mode
+    estimate. Taking the max means a dust-positive ledger (a fraction of a
+    cent) can never satisfy an arbitrarily tiny budget — the exact SPR-08
+    low-cost-mask failure mode. A real priced ledger that exceeds the
+    estimate still wins.
+    """
+    ledger_total = round(sum(row.cost_usd for row in record.asset.manifest.cost_rows), 4)
+    mode_floor = 0.2 if record.mode == "audio" else 1.0
+    duration_estimate = round(max(0.01, record.asset.requested_duration_minutes * mode_floor), 2)
+    return max(ledger_total, duration_estimate)
+
+
+def _live_execution_plan(
+    record: MultimediaAssetRecord,
+    request: LiveProviderExecutionRequest,
+) -> LiveProviderExecutionPlan:
+    families = tuple(family.strip().lower() for family in request.provider_families)
+    fingerprint = _stable_fingerprint(
+        record.asset.asset_id,
+        record.asset.revision_id,
+        request.route_policy,
+        f"{request.max_budget_usd:.2f}",
+        ",".join(families),
+    )
+    return LiveProviderExecutionPlan(
+        execution_id=f"exec-{fingerprint[:16]}",
+        asset_id=record.asset.asset_id,
+        revision_id=record.asset.revision_id,
+        route_policy=request.route_policy,
+        max_budget_usd=round(request.max_budget_usd, 2),
+        provider_families=families,
+        idempotency_key=f"multimedia-live:{fingerprint}",
+    )
+
+
+def _stable_fingerprint(*parts: str) -> str:
+    return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
+
+
+_KNOWN_PROVIDER_FAMILIES = frozenset({"krea"})
+_PROVIDER_KEY_ENV = {"krea": "KREA_API_KEY"}
+
+
+def _missing_provider_families(provider_families: tuple[str, ...]) -> tuple[str, ...]:
+    """Return provider families that are unconfigured.
+
+    Fail-closed: an UNKNOWN family name (typo, not-yet-supported) is treated
+    as unconfigured so the gate never queues live execution for a provider
+    whose readiness was never checked. Checks env PRESENCE only — never
+    reads or logs the secret value.
+    """
+    missing: list[str] = []
+    for family in provider_families:
+        normalized = family.strip().lower()
+        if normalized not in _KNOWN_PROVIDER_FAMILIES:
+            missing.append(family)
+        elif normalized == "krea" and not os.environ.get("KREA_API_KEY"):
+            missing.append("krea")
+    return tuple(missing)
+
+
 __all__ = [
     "ApplySteeringPreviewRequest",
     "CreateMultimediaDraftRequest",
+    "LiveProviderArtifactReceipt",
+    "LiveProviderAttachmentPlan",
+    "LiveProviderExecutionPlan",
+    "LiveProviderExecutionRequest",
+    "LiveProviderRoutePreview",
     "MultimediaAssetList",
     "MultimediaAssetRecord",
     "MultimediaAssetStore",
     "MultimediaAssetSummary",
     "MultimediaJobList",
     "MultimediaJobRecord",
+    "MultimediaPublicExportGate",
+    "MultimediaPublicExportPlan",
+    "MultimediaPublicExportReview",
+    "MultimediaPublicExportReviewRequest",
+    "MultimediaPublicExportStatus",
+    "MultimediaPublicPublishBlocker",
+    "MultimediaPublicPublishDenial",
+    "MultimediaPublicPublishRequest",
     "SteeringPreviewClarification",
     "SteeringPreviewConflict",
     "SteeringPreviewReady",

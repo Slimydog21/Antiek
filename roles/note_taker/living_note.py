@@ -39,20 +39,20 @@ from dataclasses import dataclass
 from typing import Any
 
 try:
-    from ...event_log import emit_typed
-    from ...graph.insight_question import graph_db_path, promote_question
-    from ...runtime.db_lock import connect_write
-    from ...schemas.events import NoteRefinedPayload, QuestionEscalatedToResearchPayload
+    from runtime.db_lock import connect_write
+    from substrate.event_log import emit_typed
+    from substrate.graph.insight_question import graph_db_path, promote_question
+    from substrate.schemas.events import NoteRefinedPayload, QuestionEscalatedToResearchPayload
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_write  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.graph.insight_question import (  # type: ignore[no-redef]
+    from runtime.db_lock import connect_write
+    from substrate.event_log import emit_typed
+    from substrate.graph.insight_question import (
         graph_db_path,
         promote_question,
     )
-    from substrate.schemas.events import (  # type: ignore[no-redef]
+    from substrate.schemas.events import (
         NoteRefinedPayload,
         QuestionEscalatedToResearchPayload,
     )
@@ -75,17 +75,17 @@ class ChallengeResult:
     reserved_child_investigation_id: str | None = None
 
 
-def _open(con):
+def _open(con: Any) -> Any:
     return con if con is not None else connect_write(graph_db_path(), purpose="living_note")
 
 
-def _read_node(con, node_id: str) -> tuple[str | None, dict]:
+def _read_node(con: Any, node_id: str) -> tuple[str | None, dict[str, Any]]:
     row = con.execute(
         "SELECT canonical_label, metadata FROM nodes WHERE node_id = ?", [node_id]
     ).fetchone()
     if row is None:
         return None, {}
-    meta = {}
+    meta: dict[str, Any] = {}
     if row[1]:
         try:
             meta = json.loads(row[1])

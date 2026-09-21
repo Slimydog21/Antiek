@@ -15,11 +15,14 @@ import {
   authorizeMultimediaNarration,
   authorizeMultimediaVisual,
   createMultimediaDraft,
+  evaluateMultimediaPublicExportGate,
   failedGateIds,
   getAssetReconciliationLinks,
   getMultimediaReviewedVisualSet,
   getChapterTtsReconciliation,
   getMultimediaAsset,
+
+  getMultimediaPublicExportStatus,
   getMultimediaLocalCapability,
   getMultimediaLocalAudibleCapability,
   getMultimediaLocalAudiblePlayback,
@@ -43,6 +46,9 @@ import {
   previewMultimediaSteering,
   previewMultimediaVisualCandidate,
   manualGateIds,
+
+  planMultimediaPublicExport,
+  recordMultimediaPublicExportReview,
   putListeningProgress,
   runMultimediaHardening,
   registerMultimediaProduction,
@@ -53,7 +59,7 @@ import {
   steerMultimediaAsset,
   submitMultimediaVisualGeneration,
 } from "./multimedia";
-import type { MultimediaAssetRecord } from "./multimedia";
+import type { MultimediaAssetRecord, MultimediaPublicExportStatus } from "./multimedia";
 
 const record: MultimediaAssetRecord = {
   asset: {
@@ -98,9 +104,113 @@ const record: MultimediaAssetRecord = {
   ],
 };
 
+const exportGateRecord: MultimediaAssetRecord = {
+  ...record,
+  jobs: [
+    ...record.jobs,
+    {
+      job_id: "job-mm-1-0002",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 2,
+      kind: "export_gate",
+      status: "partial",
+      progress_percent: 95,
+      message: "Manual publication review required before public export.",
+      error_code: null,
+      retryable: true,
+      public_export_gate: {
+        status: "manual_review",
+        public_export_enabled: false,
+        hardening_status: "manual_review",
+        attached_file_ids: ["file-mm-1-transcript"],
+        required_gate_ids: ["rights_and_publication"],
+        reason: "Manual publication review required before public export.",
+      },
+    },
+  ],
+};
+
+const exportReviewRecord: MultimediaAssetRecord = {
+  ...record,
+  jobs: [
+    ...exportGateRecord.jobs,
+    {
+      job_id: "job-mm-1-0003",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 3,
+      kind: "export_gate",
+      status: "partial",
+      progress_percent: 98,
+      message: "Manual publication review approved; public export remains disabled.",
+      error_code: null,
+      retryable: false,
+      public_export_gate: {
+        status: "ready",
+        public_export_enabled: false,
+        hardening_status: "manual_review",
+        attached_file_ids: ["file-mm-1-transcript"],
+        required_gate_ids: [],
+        reason: "Manual publication review approved; public export remains disabled.",
+      },
+      public_export_review: {
+        decision: "approved",
+        gate_ids: ["rights_and_publication"],
+        attached_file_ids: ["file-mm-1-transcript"],
+        operator_acknowledged_public_distribution: true,
+        notes: "Approved for future public export staging; do not publish yet.",
+      },
+    },
+  ],
+};
+
+const exportPlanRecord: MultimediaAssetRecord = {
+  ...record,
+  jobs: [
+    ...exportReviewRecord.jobs,
+    {
+      job_id: "job-mm-1-0004",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 4,
+      kind: "export_gate",
+      status: "partial",
+      progress_percent: 99,
+      message: "Public export plan staged; no public URL has been minted.",
+      error_code: null,
+      retryable: false,
+      public_export_gate: exportReviewRecord.jobs.at(-1)?.public_export_gate,
+      public_export_review: exportReviewRecord.jobs.at(-1)?.public_export_review,
+      public_export_plan: {
+        export_id: "export-mm-1-rev-1",
+        attached_file_ids: ["file-mm-1-transcript"],
+        review_gate_ids: ["rights_and_publication"],
+        storage_backend: "pending",
+        public_url: null,
+        publish_enabled: false,
+      },
+    },
+  ],
+};
+
 const jobs = {
   jobs: record.jobs,
   count: 1,
+};
+
+const publicExportStatus: MultimediaPublicExportStatus = {
+  asset_id: "mm-1",
+  revision_id: "rev-1",
+  gate_status: "ready",
+  review_decision: "approved",
+  export_id: "export-mm-1-rev-1",
+  publish_blocked: true,
+  publish_denial_code: "publisher_unimplemented",
+  public_url: null,
+  latest_job_status: "failed",
+  latest_error_code: "publisher_unimplemented",
+  next_required_action: "publisher_implementation",
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -377,6 +487,18 @@ describe("multimedia API client", () => {
     expect(record.jobs.at(-1)?.status).toBe("succeeded");
   });
 
+
+  it("gets public export status without parsing job rows", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, publicExportStatus));
+    const result = await getMultimediaPublicExportStatus("mm-1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/public-export-status",
+      expect.anything(),
+    );
+    expect(result.publish_blocked).toBe(true);
+    expect(result.public_url).toBeNull();
+    expect(result.next_required_action).toBe("publisher_implementation");
+  });
   it("cross-binds playback identity and canonical media paths", async () => {
     const playback = {
       asset_id: "mm-1",
@@ -624,10 +746,26 @@ describe("multimedia API client", () => {
       { chapter_id: "chapter-1", authorization: authority },
     ])).rejects.toThrow("missing_link");
   });
-
   it("surfaces a typed not-found error for a 404 job list", async () => {
     mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
     await expect(listMultimediaJobs("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
+  });
+
+
+  it("surfaces a typed not-found error for a 404 public export status", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
+    await expect(getMultimediaPublicExportStatus("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
+  });
+
+  it("surfaces the typed steering-clarification error on 409", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(409, { detail: "ambiguous" }));
+    await expect(steerMultimediaAsset("mm-1", {
+      prompt: "x",
+      expected_parent_revision_id: "rev-1",
+      preview_token: "signed",
+    })).rejects.toThrow(
+      "ambiguous",
+    );
   });
 
   it("produces and reopens owner-bound paid audio", async () => {
@@ -719,6 +857,49 @@ describe("multimedia API client", () => {
       "/multimedia/narration-runs/run%201/reconciliation",
       expect.anything(),
     );
+  });
+
+
+  it("posts public export gate evaluation to the no-spend endpoint", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, exportGateRecord));
+    const result = await evaluateMultimediaPublicExportGate("mm-1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/evaluate-public-export-gate",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result.jobs.at(-1)?.kind).toBe("export_gate");
+    expect(result.jobs.at(-1)?.public_export_gate?.public_export_enabled).toBe(false);
+  });
+
+  it("posts public export review to the no-spend endpoint", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, exportReviewRecord));
+    const request = {
+      decision: "approved" as const,
+      gate_ids: ["rights_and_publication"],
+      operator_acknowledged_public_distribution: true,
+      notes: "Approved for future public export staging; do not publish yet.",
+    };
+    const result = await recordMultimediaPublicExportReview("mm-1", request);
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/public-export-review",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    );
+    expect(result.jobs.at(-1)?.public_export_review?.decision).toBe("approved");
+    expect(result.jobs.at(-1)?.public_export_gate?.public_export_enabled).toBe(false);
+  });
+
+  it("posts public export planning to the no-spend endpoint", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, exportPlanRecord));
+    const result = await planMultimediaPublicExport("mm-1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/plan-public-export",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result.jobs.at(-1)?.public_export_plan?.publish_enabled).toBe(false);
+    expect(result.jobs.at(-1)?.public_export_plan?.public_url).toBeNull();
   });
 
   it("prepares research only from the exact receipt-bound claim snapshot", async () => {
@@ -911,5 +1092,26 @@ describe("multimedia API client", () => {
         sequence: 1,
       }, "a".repeat(64), 120),
     ).rejects.toThrow("multimedia_listening_progress_conflict");
+  });
+
+  it("surfaces a typed not-found error for a 404 public export gate evaluation", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
+    await expect(evaluateMultimediaPublicExportGate("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
+  });
+
+  it("surfaces a typed not-found error for a 404 public export review", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
+    await expect(
+      recordMultimediaPublicExportReview("mm-missing", {
+        decision: "approved",
+        gate_ids: ["rights_and_publication"],
+        operator_acknowledged_public_distribution: true,
+      }),
+    ).rejects.toThrow("multimedia_asset_not_found");
+  });
+
+  it("surfaces a typed not-found error for a 404 public export plan", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
+    await expect(planMultimediaPublicExport("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
   });
 });

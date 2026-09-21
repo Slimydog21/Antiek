@@ -44,14 +44,16 @@ import sys
 
 import duckdb
 
+from runtime.db_lock import ReadConnection, connect_read
+
 # Import the canonical write-locker from Sprint 1 day-2. Same flock
 # discipline; this is the Quack v2.0 swap point.
 try:
-    from ...runtime.db_lock import LockedConnection, connect_write
+    from ..runtime.db_lock import LockedConnection, connect_write  # type: ignore[import-untyped]
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection, connect_write  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection, connect_write
 
 
 # The schema script. Idempotent — every CREATE uses IF NOT EXISTS so
@@ -2180,7 +2182,7 @@ def _schema_is_present(db_path: str) -> bool:
     if db_path in _INITIALIZED_PATHS:
         return True
     try:
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
     except Exception:
         return False
     try:
@@ -2280,7 +2282,7 @@ def init_database_at_path(db_path: str, *, timeout_s: float | None = None) -> No
     _INITIALIZED_PATHS.add(db_path)
 
 
-def list_tables(con: duckdb.DuckDBPyConnection) -> list[str]:
+def list_tables(con: ReadConnection) -> list[str]:
     """Return the table names in main schema. Read-only diagnostic."""
     rows = con.execute(
         "SELECT table_name FROM information_schema.tables "
@@ -2303,7 +2305,7 @@ if __name__ == "__main__":
     # "different configuration than existing connections". Flush first.
     # Cite: docs/decisions/anti-ek-composite-rollup-2026-09-19.md
     flush_warm_writers(args.db_path)
-    con = duckdb.connect(args.db_path, read_only=True)
+    con = connect_read(args.db_path)
     try:
         for t in list_tables(con):
             print(f"  {t}")

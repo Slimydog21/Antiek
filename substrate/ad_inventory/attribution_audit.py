@@ -177,7 +177,7 @@ def record_attribution(
     return audit_id
 
 
-def _row_to_record(r: tuple) -> AttributionAuditRecord:
+def _row_to_record(r: tuple[Any, ...]) -> AttributionAuditRecord:
     return AttributionAuditRecord(
         audit_id=r[0],
         impression_set_ref=r[1],

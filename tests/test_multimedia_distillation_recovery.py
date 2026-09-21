@@ -38,7 +38,7 @@ class _Embedding:
 
 
 class _Distiller:
-    def __init__(self) -> None:
+    def __init__(self, _inv: str = "") -> None:
         self.calls = 0
 
     def distill(self, text: str, *, source_event_ids=(), context="") -> Distillation:
@@ -59,7 +59,7 @@ class _Factory:
     def __init__(self) -> None:
         self.distillers: list[_Distiller] = []
 
-    def __call__(self) -> _Distiller:
+    def __call__(self, _inv: str) -> _Distiller:
         value = _Distiller()
         self.distillers.append(value)
         return value

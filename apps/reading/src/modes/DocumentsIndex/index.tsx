@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
@@ -76,7 +77,7 @@ export default function DocumentsIndex() {
   }, [rows]);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -100,7 +101,7 @@ export default function DocumentsIndex() {
                 <p className="text-base font-serif text-ink dark:text-bright">
                   {counts[t - 1]}
                 </p>
-                <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+                <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
                   Tier {t}
                 </p>
               </div>
@@ -134,9 +135,9 @@ export default function DocumentsIndex() {
           </section>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (
@@ -167,13 +168,13 @@ export default function DocumentsIndex() {
                       <p className="font-serif text-ink dark:text-bright truncate">
                         {r.title ?? r.document_id}
                       </p>
-                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
                         {r.document_id}
                         {r.document_type && <> · {r.document_type}</>}
                         {r.content_class && <> · {r.content_class}</>}
                       </p>
                       {r.source_uri && (
-                        <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight truncate">
+                        <p className="text-xxs font-mono text-ink-mute dark:text-moonlight truncate">
                           {r.source_uri}
                         </p>
                       )}
@@ -185,11 +186,11 @@ export default function DocumentsIndex() {
                   header: "Investigation",
                   render: (r) =>
                     r.investigation_id ? (
-                      <span className="font-mono text-[12px] text-ink-soft dark:text-starlight">
+                      <span className="font-mono text-xs text-ink-soft dark:text-starlight">
                         {r.investigation_id.slice(0, 12)}
                       </span>
                     ) : (
-                      <span className="font-mono text-[11px] text-ink-mute dark:text-moonlight italic">
+                      <span className="font-mono text-xs text-ink-mute dark:text-moonlight italic">
                         unassigned
                       </span>
                     ),
@@ -202,7 +203,7 @@ export default function DocumentsIndex() {
                     <LemonTag
                       colour={
                         r.source_tier <= 2
-                          ? "aurora"
+                          ? "success"
                           : r.source_tier <= 4
                             ? "muted"
                             : "sun"

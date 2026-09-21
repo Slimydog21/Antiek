@@ -9,6 +9,10 @@ import { startInvestigation, ApiError } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import {
+  buildChaseDraftHandoff,
+  recordChaseDraftHandoff,
+} from "./chaseHandoffs";
 import ThinkingStream from "./ThinkingStream";
 import VoiceChaseButton from "./VoiceChaseButton";
 
@@ -104,6 +108,13 @@ export default function ChaseThread({
       });
       setLaunchedId(resp.investigation_id);
       recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
+      recordChaseDraftHandoff(
+        buildChaseDraftHandoff({
+          childInvestigationId: resp.investigation_id,
+          parentInvestigationId,
+          sourcePassage: spawnContext,
+        }),
+      );
       // The payoff is already in hand (the id is back); the beat just
       // decorates it — non-blocking, fires once.
       celebrate();
@@ -123,6 +134,8 @@ export default function ChaseThread({
     return (
       <LaunchedThread
         childId={launchedId}
+        parentInvestigationId={parentInvestigationId}
+        spawnContext={spawnContext}
         onOpenInMain={() => navigate(`/inv/${launchedId}`)}
       />
     );
@@ -131,7 +144,7 @@ export default function ChaseThread({
   return (
     <div className="flex flex-col p-4 gap-4 h-full text-ink dark:text-bright">
       <div>
-        <label className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
+        <label className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
           Following from this passage
         </label>
         <blockquote className="text-sm font-serif text-ink-soft dark:text-starlight italic border-l-edge border-sun pl-3 py-1 leading-relaxed">
@@ -140,7 +153,7 @@ export default function ChaseThread({
       </div>
 
       <div className="flex-1 flex flex-col min-h-0">
-        <label className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
+        <label className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
           What do you want to find out?
         </label>
         <LemonTextarea
@@ -192,34 +205,60 @@ export default function ChaseThread({
  *  but without the "spawn" vocabulary. */
 function LaunchedThread({
   childId,
+  parentInvestigationId,
+  spawnContext,
   onOpenInMain,
 }: {
   childId: string;
+  parentInvestigationId: string;
+  spawnContext: string;
   onOpenInMain: () => void;
 }) {
   const inv = useInvestigation(childId);
   const getState = useWorkspace.getState;
+  const [copiedHandoff, setCopiedHandoff] = useState(false);
+
+  async function copyDraftHandoff() {
+    const payload = buildChaseDraftHandoff({
+      childInvestigationId: childId,
+      parentInvestigationId,
+      sourcePassage: spawnContext,
+    });
+    await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
+    setCopiedHandoff(true);
+  }
+
   return (
     <div className="flex flex-col h-full text-ink dark:text-bright">
       <div className="px-3 py-2 border-b border-rule dark:border-charcoal-1 flex items-center justify-between text-xs font-mono">
         <span className="text-shadow-1 dark:text-moonlight">following the thread…</span>
-        <button
-          type="button"
-          onClick={() => {
-            onOpenInMain();
-            // Close THIS chase panel after navigating away.
-            const ws = getState();
-            const me = Object.values(ws.panels).find(
-              (p) =>
-                p.kind === "ChaseThread" &&
-                (p.props as { parentInvestigationId?: string }).parentInvestigationId,
-            );
-            if (me) getState().close(me.id);
-          }}
-          className="text-ink dark:text-bright hover:underline shrink-0 ml-2"
-        >
-          open in main view →
-        </button>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          <button
+            type="button"
+            onClick={copyDraftHandoff}
+            className="text-ink dark:text-bright hover:underline"
+            title="Copy a no-spend handoff for later draft merge"
+          >
+            {copiedHandoff ? "copied" : "copy handoff"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onOpenInMain();
+              // Close THIS chase panel after navigating away.
+              const ws = getState();
+              const me = Object.values(ws.panels).find(
+                (p) =>
+                  p.kind === "ChaseThread" &&
+                  (p.props as { parentInvestigationId?: string }).parentInvestigationId,
+              );
+              if (me) getState().close(me.id);
+            }}
+            className="text-ink dark:text-bright hover:underline"
+          >
+            open in main view →
+          </button>
+        </div>
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         {/* The child IS a running research — narrate it (SPR-02), raw log

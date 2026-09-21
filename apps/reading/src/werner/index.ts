@@ -12,7 +12,7 @@
  *                  bait + line their `live`/`pointerIdle`/`tabHidden` signals)
  *   emotes       — the emote vocabulary mapped onto existing animated marks
  *   choreography — the PRODUCT_ACTIVATE → waddle-to-control listener (SPR-10),
- *                  plus the opt-in `data-werner-target` click path (SPR-10 M4)
+ *                  plus the opt-in `data-mascot-target` click path (SPR-10 M4)
  *   (the walk-cycle rig and the cursor-bait line were removed 2026-08-13)
 tegrator + reel/roam constants) was removed
  * with the 2026-07-02 fixed-station rework — Werner no longer chases the cursor;
@@ -69,7 +69,7 @@ export {
   installChoreography,
   installTargetChoreography,
   productSelector,
-  WERNER_TARGET_ATTR,
+  MASCOT_TARGET_ATTR,
   type ChoreographyOptions,
   type TargetChoreographyOptions,
 } from "./choreography";

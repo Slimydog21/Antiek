@@ -8,11 +8,17 @@ import sys
 import duckdb
 
 try:
-    from ...runtime.db_lock import LockedConnection, connect_write
+    from ...runtime.db_lock import (  # type: ignore[import-not-found]
+        LockedConnection,
+        connect_write,
+    )
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection, connect_write  # type: ignore[no-redef]
+    from runtime.db_lock import (
+        LockedConnection,
+        connect_write,
+    )
 
 
 _KNOWN_SOURCES_SQL_LIST = "'chatgpt', 'anthropic', 'grok', 'alphasense', 'other'"

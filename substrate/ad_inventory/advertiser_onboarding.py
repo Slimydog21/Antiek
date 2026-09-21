@@ -31,6 +31,7 @@ legal-gate review.
 
 from __future__ import annotations
 
+import contextlib
 import enum
 import uuid
 from dataclasses import dataclass, field
@@ -42,7 +43,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class AdvertiserStatus(str, enum.Enum):
+class AdvertiserStatus(enum.StrEnum):
     """Lifecycle states for a lead-gen advertiser admission record."""
 
     PENDING_REVIEW = "pending_review"
@@ -359,7 +360,7 @@ def ensure_table(con: Any) -> None:
     ``substrate/graph/schema.py`` and runs at boot via ``init_database``;
     this is a no-op on a fully-initialized DB. Read-only connections
     fail silently."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS advertisers (
@@ -382,8 +383,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def _serialize_csv(tup: tuple[str, ...]) -> str:
@@ -415,7 +414,7 @@ def save_record(con: Any, record: AdvertiserRecord) -> str:
         ],
     ).fetchone()
     if existing is not None:
-        return existing[0]
+        return str(existing[0])
 
     attempt_id = f"advrec-{uuid.uuid4().hex[:12]}"
     con.execute(

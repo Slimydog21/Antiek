@@ -19,24 +19,25 @@ import sys
 from typing import Any
 
 try:
-    from ...graph.insight_question import graph_db_path, promote_question
-    from ...graph.ops import insert_edge
-    from ...runtime.db_lock import connect_read, connect_write
+    from runtime.db_lock import connect_read, connect_write
+    from substrate.graph.insight_question import graph_db_path, promote_question
+    from substrate.graph.ops import insert_edge
+
     from .tree_contract import ApprovalState, PlanNode, PlanTree
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles.cascade_planner.tree_contract import (  # type: ignore[no-redef]
+    from roles.cascade_planner.tree_contract import (
         ApprovalState,
         PlanNode,
         PlanTree,
     )
-    from runtime.db_lock import connect_read, connect_write  # type: ignore[no-redef]
-    from substrate.graph.insight_question import (  # type: ignore[no-redef]
+    from runtime.db_lock import connect_read, connect_write
+    from substrate.graph.insight_question import (
         graph_db_path,
         promote_question,
     )
-    from substrate.graph.ops import insert_edge  # type: ignore[no-redef]
+    from substrate.graph.ops import insert_edge
 
 
 # The tree-structure relation (free-form on edges.relation; not part of the
@@ -87,7 +88,7 @@ def persist_tree(
             c.close()
 
 
-def _node_metadata(node: PlanNode, extra_meta=None) -> dict:
+def _node_metadata(node: PlanNode, extra_meta: dict[str, Any] | None = None) -> dict[str, Any]:
     meta = {"focus_boundary": node.focus_boundary, "rationale": node.rationale,
             "budget_usd": node.budget_usd, "max_depth": node.max_depth,
             "plan_local_id": node.local_id}
@@ -96,14 +97,14 @@ def _node_metadata(node: PlanNode, extra_meta=None) -> dict:
     return meta
 
 
-def _write_node_metadata(c, node_id: str, node: PlanNode, extra_meta=None) -> None:
+def _write_node_metadata(c: Any, node_id: str, node: PlanNode, extra_meta: dict[str, Any] | None = None) -> None:
     """Authoritatively (re)write a node's metadata — used for the root so the
     approval state reflects the current tree on every persist."""
     c.execute("UPDATE nodes SET metadata = ? WHERE node_id = ?",
               [json.dumps(_node_metadata(node, extra_meta), default=str), node_id])
 
 
-def _persist_node(c, node: PlanNode, investigation_id, provider, extra_meta=None) -> str:
+def _persist_node(c: Any, node: PlanNode, investigation_id: str, provider: Any, extra_meta: dict[str, Any] | None = None) -> str:
     meta = {"focus_boundary": node.focus_boundary, "rationale": node.rationale,
             "budget_usd": node.budget_usd, "max_depth": node.max_depth,
             "plan_local_id": node.local_id}
@@ -113,15 +114,21 @@ def _persist_node(c, node: PlanNode, investigation_id, provider, extra_meta=None
         text=node.question, investigation_id=investigation_id,
         metadata=meta, embedding_provider=provider, con=c,
     )
+    if nid is None:
+        raise RuntimeError(
+            f"promote_question returned no node id for {node.local_id!r}"
+        )
     node.graph_node_id = nid
     return nid
 
 
-def _persist_children(c, parent: PlanNode, investigation_id, provider) -> None:
+def _persist_children(c: Any, parent: PlanNode, investigation_id: str, provider: Any) -> None:
     for child in parent.children:
-        _persist_node(c, child, investigation_id, provider)
+        child_id = _persist_node(c, child, investigation_id, provider)
+        if parent.graph_node_id is None:
+            continue
         insert_edge(
-            c, source_node_id=parent.graph_node_id, target_node_id=child.graph_node_id,
+            c, source_node_id=parent.graph_node_id, target_node_id=child_id,
             relation=TREE_RELATION, source_tier=3, extraction_confidence=1.0,
             graph_scope="depth", investigation_id=investigation_id, on_conflict="ignore",
         )
@@ -151,7 +158,7 @@ def load_tree(root_node_id: str, *, db_path: str | None = None, con: Any = None)
             c.close()
 
 
-def _load_node(c, node_id, label, metadata_json, visited: set) -> PlanNode:
+def _load_node(c: Any, node_id: str, label: Any, metadata_json: Any, visited: set[str]) -> PlanNode:
     meta = _json(metadata_json)
     node = PlanNode(
         question=label, rationale=meta.get("rationale", ""),
@@ -174,10 +181,12 @@ def _load_node(c, node_id, label, metadata_json, visited: set) -> PlanNode:
     return node
 
 
-def _json(s) -> dict:
+def _json(s: Any) -> dict[str, Any]:
     if not s:
         return {}
     try:
-        return json.loads(s)
+        parsed = json.loads(s)
     except (TypeError, ValueError):
         return {}
+    # Node metadata is stored as JSON objects by contract.
+    return parsed if isinstance(parsed, dict) else {}

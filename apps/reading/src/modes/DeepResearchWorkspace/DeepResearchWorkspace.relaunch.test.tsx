@@ -185,6 +185,9 @@ describe("DeepResearchWorkspace deterministic session relaunch", () => {
     expect(api.launchPlan).toHaveBeenCalledTimes(2);
     const launchPayload = api.launchPlan.mock.calls[0]?.[1];
     expect(launchPayload).toEqual({
+      // The merged workspace also carries the branch's source-policy
+      // selection alongside main's owner model choices.
+      source_policy: ["operator_corpus", "web"],
       owner_model_choices: {
         decomposer: {
           authority: "user_model",

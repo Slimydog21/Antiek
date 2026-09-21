@@ -155,7 +155,7 @@ def _body_for(fetcher: ThrottledFetcher, pagename: str) -> str:
             main = slots.get("main") or {}
             content = main.get("*") or rev.get("*")
             if content:
-                return content
+                return str(content)
     return ""
 
 

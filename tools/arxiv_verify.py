@@ -31,6 +31,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from runtime.db_lock import connect_read
+
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
@@ -357,8 +359,7 @@ def _check_coverage(db_path: str | None) -> Check:
         )
 
     try:
-        import duckdb
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
         try:
             row = con.execute(
                 "SELECT COUNT(*) FROM documents WHERE document_id LIKE 'doc-arxiv-%'"

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from substrate.contracts import dependency_map, drw_sprint_lock
@@ -68,7 +68,7 @@ def _specs_root() -> Path:
 _SPRINT_FILE_RE = re.compile(r"^sprint-(\d{2})-(.+)\.html$")
 
 
-class SprintStatus(str, Enum):
+class SprintStatus(StrEnum):
     """Coarse build state of a sprint, derived from the DRW sprint-lock where
     the sprint is a DRW sprint, else ``UNKNOWN`` (the products own their own
     internal status; this roadmap does not invent one)."""

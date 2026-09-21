@@ -113,7 +113,7 @@ export default function ComputeCapacityPanel() {
       </div>
 
       {error ? (
-        <p className="text-sm text-rose-700 dark:text-rose-300" role="alert">
+        <p className="text-sm text-danger" role="alert">
           {error}
         </p>
       ) : null}
@@ -138,10 +138,10 @@ export default function ComputeCapacityPanel() {
                   data-testid="compute-capacity-used-bar"
                   className={
                     wouldHardBlock
-                      ? "h-full bg-rose-500"
+                      ? "h-full bg-emperor"
                       : softOver || usedPct >= 80
-                        ? "h-full bg-amber-500"
-                        : "h-full bg-accent"
+                        ? "h-full bg-sun"
+                        : "h-full bg-success"
                   }
                   style={{ width: usedPct + "%" }}
                 />
@@ -151,7 +151,7 @@ export default function ComputeCapacityPanel() {
               <p
                 role="alert"
                 data-testid="compute-capacity-hard-block"
-                className="text-xs text-rose-800 dark:text-rose-200"
+                className="text-xs text-danger"
               >
                 At or over monthly capacity with hard enforcement — new
                 research starts are refused (HTTP 429) until you raise the ACU
@@ -161,7 +161,7 @@ export default function ComputeCapacityPanel() {
               <p
                 role="status"
                 data-testid="compute-capacity-soft-over"
-                className="text-xs text-amber-800 dark:text-amber-200"
+                className="text-xs text-sun-deep dark:text-sun"
               >
                 Near or over monthly capacity — soft warn on new research starts.
                 {enforcement === "hard"

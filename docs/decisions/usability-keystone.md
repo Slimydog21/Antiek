@@ -1,7 +1,19 @@
 # The usability keystone — an executable definition of "usable"
 
 **Date:** 2026-06-04
-**Status:** INSTALLED (the probe IS the definition) + verify-live WIRED + live run OPERATOR-GATED
+**Status:** ⚠️ NOT INSTALLED — the probe is written; nothing runs it.
+
+> Corrected 2026-09-20. This read "INSTALLED (the probe IS the definition) +
+> verify-live WIRED". None of the four artifacts cited below exists:
+> `tests/test_usability_keystone.py`, the "REQUIRED verify-live task" in
+> `infrastructure/ansible/playbooks/deploy.yml` (`grep -c keystone` over that
+> file returns **0**), `antiek_keystone_verify_live` in `group_vars/all.yml`
+> (it appears repo-wide only inside this document), and
+> `infrastructure/runbooks/usability-keystone-verify-live.md`.
+>
+> So the executable definition of "is Antiek usable" is not run by CI, not run
+> by deploy, and has no test. An operator reading the old Status would believe
+> a five-leg journey check gates every deploy. It gates nothing. + live run OPERATOR-GATED
 **Owner:** Antiek — Convergence SPR-08 (end-to-end usability keystone, the capstone)
 **Surfaces:**
 `tools/reachability/probes/usability_keystone.py` (the probe — the executable

@@ -9,6 +9,7 @@ import LemonButton from "./LemonButton";
 import { LemonModal } from "./LemonModal";
 import { LemonSelect } from "./LemonSelect";
 import { LemonToastViewport, toast } from "./LemonToast";
+import { ErrorBanner } from "./ErrorBanner";
 
 /**
  * S1 acceptance criterion: "RTL unit tests for the four primitives
@@ -198,5 +199,28 @@ describe("LemonToast — navigation targets (herdr transfer P0-4)", () => {
       toast.ok("legacy", 5000);
     });
     expect(screen.getByText("legacy")).toBeTruthy();
+  });
+});
+
+
+describe("ErrorBanner — the shared error callout (Q4)", () => {
+  it("defaults to role=\"alert\" (a load/mutation failure is a genuine alert)", () => {
+    render(<ErrorBanner>Couldn&rsquo;t load.</ErrorBanner>);
+    expect(screen.getByRole("alert").textContent).toContain("Couldn’t load.");
+  });
+
+  it("accepts role=\"status\" for quiet, non-urgent contexts", () => {
+    render(<ErrorBanner role="status">Some rows were skipped.</ErrorBanner>);
+    expect(screen.getByRole("status").textContent).toContain("Some rows were skipped.");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("is painted with the danger/emperor token, not the raw red palette", () => {
+    render(<ErrorBanner>token check</ErrorBanner>);
+    const el = screen.getByRole("alert");
+    expect(el.className).toContain("border-danger");
+    expect(el.className).toContain("bg-danger/10");
+    expect(el.className).toContain("text-danger");
+    expect(el.className).not.toContain("red-");
   });
 });

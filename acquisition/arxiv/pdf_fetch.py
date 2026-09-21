@@ -57,12 +57,18 @@ import httpx
 
 logger = logging.getLogger("antiek.acquisition.arxiv.pdf_fetch")
 
-from acquisition.arxiv.client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
-from acquisition.arxiv.throttle import (  # noqa: F401  (re-export for callers)
+from acquisition.arxiv.client import (  # noqa: E402 -- direct-script fallback import
+    DEFAULT_TIMEOUT_S,
+    DEFAULT_USER_AGENT,
+)
+from acquisition.arxiv.throttle import (  # noqa: E402,F401  (re-export for callers)
     ArxivBanned,
     ArxivThrottle,
 )
-from acquisition.openaccess.unpaywall import NotAPdf, _looks_like_pdf
+from acquisition.openaccess.unpaywall import (  # noqa: E402 -- direct-script fallback import
+    NotAPdf,
+    _looks_like_pdf,
+)
 
 # Conservative byte bounds for a single arXiv paper PDF. The lower bound rejects a
 # truncated / error body that still starts with the magic bytes; the upper bound
@@ -195,7 +201,7 @@ def fetch_pdf(
     )
 
     owns_client = client is None
-    if owns_client:
+    if client is None:
         # REDIRECT-SAFE (SPR-09 round-5): arxiv.org/pdf 302-redirects (versioned
         # /pdf/<id>vN, .pdf) — still arXiv hosts. The hook-carrying client governs
         # each arXiv redirect hop; the outer governor governs the initial hop. The

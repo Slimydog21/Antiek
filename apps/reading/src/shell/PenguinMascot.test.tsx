@@ -101,7 +101,7 @@ describe("PenguinMascot (SPR-12 M3)", () => {
   it("lone single-click floats the project tab AFTER the ~250ms window (one floating ProjectTree panel)", () => {
     mount();
     expect(s().panels[PROJECT_TREE_PANEL_ID]).toBeUndefined();
-    fireEvent.click(screen.getByTestId("penguin-mascot"));
+    fireEvent.click(screen.getByTestId("brain-mascot"));
     // Float is DEFERRED: nothing yet (a double-click could still cancel it).
     expect(
       s().panels[PROJECT_TREE_PANEL_ID],
@@ -123,7 +123,7 @@ describe("PenguinMascot (SPR-12 M3)", () => {
     s().open("ProjectTree", {}, { mode: "docked-left", id: PROJECT_TREE_PANEL_ID });
     expect(s().panels[PROJECT_TREE_PANEL_ID].mode).toBe("docked-left");
     mount();
-    fireEvent.click(screen.getByTestId("penguin-mascot"));
+    fireEvent.click(screen.getByTestId("brain-mascot"));
     act(() => {
       vi.advanceTimersByTime(300);
     });
@@ -137,7 +137,7 @@ describe("PenguinMascot (SPR-12 M3)", () => {
 
   it("REAL double-click opens the project AND leaves no stray floating panel (click+click+dblclick)", () => {
     mount();
-    const el = screen.getByTestId("penguin-mascot");
+    const el = screen.getByTestId("brain-mascot");
     // A real browser double-click dispatches click, click, THEN dblclick.
     // The two clicks each (re)arm the deferred float; dblclick must cancel
     // the pending timer before it can fire, so we land on /home with NO
@@ -163,7 +163,7 @@ describe("PenguinMascot (SPR-12 M3)", () => {
 
   it("drag moves the mascot and an off-screen drag CLAMPS (stays reachable)", () => {
     mount();
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
     // Drag far past the right + bottom edges.
     fireEvent.pointerDown(el, { pointerId: 1, clientX: 88, clientY: 700 });
     fireEvent.pointerMove(el, { pointerId: 1, clientX: 100000, clientY: 100000 });
@@ -182,7 +182,7 @@ describe("PenguinMascot (SPR-12 M3)", () => {
 
   it("drag past the top-left also clamps (never negative off-screen)", () => {
     mount();
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
     fireEvent.pointerDown(el, { pointerId: 1, clientX: 88, clientY: 700 });
     fireEvent.pointerMove(el, { pointerId: 1, clientX: -100000, clientY: -100000 });
     fireEvent.pointerUp(el, { pointerId: 1 });
@@ -196,7 +196,7 @@ describe("PenguinMascot (SPR-12 M3)", () => {
 
   it("a drag does NOT also float the tab (click suppressed after a move)", () => {
     mount();
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
     fireEvent.pointerDown(el, { pointerId: 1, clientX: 88, clientY: 700 });
     fireEvent.pointerMove(el, { pointerId: 1, clientX: 300, clientY: 400 });
     fireEvent.pointerUp(el, { pointerId: 1 });
@@ -209,7 +209,7 @@ describe("PenguinMascot (SPR-12 M3)", () => {
     // Default: the wander class is present (the mascot is alive).
     const { container: live } = mountReduced(false);
     expect(
-      live.querySelector(".penguin-mascot-wander"),
+      live.querySelector(".mascot-wander"),
       "the wander class should be present when motion is allowed",
     ).toBeTruthy();
     cleanup();
@@ -217,7 +217,7 @@ describe("PenguinMascot (SPR-12 M3)", () => {
     // guard (animations.css) zeroes any residual animation.
     const { container: still } = mountReduced(true);
     expect(
-      still.querySelector(".penguin-mascot-wander"),
+      still.querySelector(".mascot-wander"),
       "the wander class must be removed under prefers-reduced-motion",
     ).toBeNull();
   });
@@ -245,7 +245,7 @@ describe("PenguinMascot — the fixed station", () => {
 
   it("does NOT walk off to a new spot on its own (fixed — no autonomous roam)", () => {
     mount();
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
     const startLeft = parseFloat(el.style.left);
     const startTop = parseFloat(el.style.top);
     // Elapse well past what several old roam cycles would have been — the
@@ -271,7 +271,7 @@ describe("PenguinMascot — the fixed station", () => {
 
   it("is fully still under prefers-reduced-motion and stays clickable", () => {
     const { container } = mountReduced(true);
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
     const startLeft = parseFloat(el.style.left);
     const startTop = parseFloat(el.style.top);
     act(() => {
@@ -296,7 +296,7 @@ describe("PenguinMascot — the fixed station", () => {
 
   it("a drag re-stations him and never leaves a stroll transition fighting the pointer", () => {
     mount();
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
     const startLeft = parseFloat(el.style.left);
     fireEvent.pointerDown(el, { pointerId: 1, clientX: 88, clientY: 700 });
     // pointerDown clears any transition so the drag tracks 1:1.
@@ -327,7 +327,7 @@ describe("PenguinMascot — the fixed station", () => {
   // tab stop (no nested focusables → focus can move past it, no trap).
   it("M5 non-interference: the mascot is a single self-sized control, not a click-swallowing / focus-trapping overlay", () => {
     mount();
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
     // (a) Pointer isolation — sized to itself (MASCOT_SIZE = 64px), never the
     //     viewport. A regression to 100vw/100vh / 100% would swallow clicks.
     expect(el.style.width).toBe("64px");

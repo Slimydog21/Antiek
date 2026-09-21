@@ -40,6 +40,9 @@ class _Embedding:
 
 
 class _Distiller:
+    def __init__(self, _inv: str = "") -> None:
+        pass
+
     def distill(self, text: str, *, source_event_ids=(), context="") -> Distillation:
         return Distillation(
             insights=[

@@ -31,6 +31,9 @@
  *
  *   name              value   today's source (unchanged)
  *   ──────────────    ─────   ─────────────────────────────────────────────
+ *   scenePresence        1    BrainPresence.tsx inline `zIndex: 1` — one notch
+ *                             over the scene floor; ties with `raised` (see
+ *                             the rung's doc comment for why the tie is safe)
  *   raised               1    docked panel raised over dock chrome (z=0→1)
  *   floatingPanelBase    2    elevation.ts `FLOATING_Z_BASE`; WorkspaceStore
  *                             "Floating panels: z = 2…50 (via zCounter)"
@@ -38,6 +41,10 @@
  *                             bare `zIndex: 5`, now catalogued here
  *   floatingPanelCeiling 50   WorkspaceStore / README "z = 2…50" upper edge
  *   windowBase          40    windowsStore.ts `WINDOW_Z_BASE`
+ *   mobileRail          40    NavRail mobile overlay rail — was a `z-40`
+ *                             Tailwind literal; ties with `windowBase`
+ *   mobileRailToggle    50    NavRail collapsed hamburger — was a `z-50`
+ *                             literal; ties with `floatingPanelCeiling`
  *   mascot              60    PenguinMascot.tsx `z-[60]`
  *   modal              100    LemonModal.tsx `z-[100]`
  *   popover            120    Notebook/SlashMenu.tsx `z-[120]`
@@ -60,6 +67,15 @@
  * the layering contract (see `FEEL_CONTRACT.md` layer diagram).
  */
 export const zIndex = Object.freeze({
+  /**
+   * BrainPresence — the ambient low-opacity brain drifting behind app content.
+   * One notch over the living scene floor (Scene is `z-0`), below every piece
+   * of chrome. The value ties with `raised` because both rungs mean "one above
+   * a local z=0 floor" — and the tie is safe: BrainPresence is `aria-hidden` +
+   * `pointer-events: none`, mounted in AppShell BEFORE the content column, so
+   * on equal z the DOM order still paints docked chrome above it.
+   */
+  scenePresence: 1,
   /** A docked panel raised one notch over the dock chrome (dock chrome = 0). */
   raised: 1,
   /**
@@ -84,6 +100,22 @@ export const zIndex = Object.freeze({
    * as `WINDOW_Z_BASE` from windowsStore.ts for back-compat.
    */
   windowBase: 40,
+  /**
+   * Mobile (sm/md tier) NavRail as an absolute overlay over the working
+   * region — was a `z-40` Tailwind literal on the rail `<aside>`. The value
+   * ties with `windowBase` deliberately: the pre-consolidation `z-40` put the
+   * rail at the window-band base, so a mobile window and the rail interleave
+   * exactly as they did before (same z → DOM order decides). Conditionally
+   * applied (mobile only); the desktop rail is in-flow and carries no z.
+   */
+  mobileRail: 40,
+  /**
+   * The collapsed-state mobile nav toggle (the hamburger that reopens the
+   * rail) — was a `z-50` Tailwind literal. It must stay tappable above the
+   * whole floating-panel band, so it sits at the band's ceiling; the value
+   * ties with `floatingPanelCeiling`.
+   */
+  mobileRailToggle: 50,
   /** Draggable Penguin mascot — floats above panels/windows, below modals. */
   mascot: 60,
   /** LemonModal scrim + dialog — above all in-page surfaces. */
@@ -99,16 +131,22 @@ export const zIndex = Object.freeze({
 export type ZIndexLayer = keyof typeof zIndex;
 
 /**
- * The ladder in strict bottom-to-top stacking order. This is the canonical
+ * The ladder in bottom-to-top stacking order. This is the canonical
  * ordering used by `zIndex.test.ts` to assert monotonicity. Keep this array
  * in sync with the visual stack, NOT with declaration order of `zIndex`.
+ * Adjacent rungs may TIE in value only where the rungs' doc comments record
+ * why the tie is safe (disjoint stacking contexts / a documented band edge);
+ * the test pins the exact set of ties so no new one can sneak in.
  */
 export const Z_LADDER_ORDER = [
+  "scenePresence",
   "raised",
   "floatingPanelBase",
   "sceneBadge",
   "windowBase",
+  "mobileRail",
   "floatingPanelCeiling",
+  "mobileRailToggle",
   "mascot",
   "modal",
   "popover",

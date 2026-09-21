@@ -36,43 +36,22 @@ What's deferred:
 
 from __future__ import annotations
 
-import os
-import sys
 from dataclasses import dataclass, field
 from typing import Any
 
-try:
-    from ...interfaces.research.api.wrestling import _extract_json_object  # JSON helper
-    from ...processing.embedding import (
-        EmbeddingProvider,
-        default_embedding_provider,
-    )
-    from ...runtime.db_lock import connect_read, connect_write
-    from ...substrate.dispatch import ProviderError, dispatch
-    from ...substrate.event_log import emit_typed
-    from ...substrate.graph import (
-        default_db_path,
-        ensure_initialized,
-        insert_edge,
-        insert_node,
-    )
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))  # project root
-    from interfaces.research.api.wrestling import _extract_json_object  # type: ignore[no-redef]
-    from processing.embedding import (  # type: ignore[no-redef]
-        EmbeddingProvider,
-        default_embedding_provider,
-    )
-    from runtime.db_lock import connect_read, connect_write  # type: ignore[no-redef]
-    from substrate.dispatch import ProviderError, dispatch  # type: ignore[no-redef]
-    from substrate.graph import (  # type: ignore[no-redef]
-        default_db_path,
-        ensure_initialized,
-        insert_edge,
-        insert_node,
-    )
-
+from interfaces.research.api.wrestling import _extract_json_object  # JSON helper
+from processing.embedding import (
+    EmbeddingProvider,
+    default_embedding_provider,
+)
+from runtime.db_lock import connect_read, connect_write
+from substrate.dispatch import ProviderError, dispatch
+from substrate.graph import (
+    default_db_path,
+    ensure_initialized,
+    insert_edge,
+    insert_node,
+)
 
 # ---------------------------------------------------------------------------
 # Vocabulary
