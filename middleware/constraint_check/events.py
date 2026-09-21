@@ -16,8 +16,8 @@ import sys
 from collections.abc import Iterable
 
 try:
-    from ...event_log import emit_typed
-    from ...schemas import (
+    from substrate.event_log import emit_typed
+    from substrate.schemas import (
         ConstraintLoopResolvedPayload,
         ConstraintRevisionTriggeredPayload,
         ConstraintViolationFoundPayload,
@@ -25,8 +25,8 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas import (  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed
+    from substrate.schemas import (
         ConstraintLoopResolvedPayload,
         ConstraintRevisionTriggeredPayload,
         ConstraintViolationFoundPayload,

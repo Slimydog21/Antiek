@@ -119,9 +119,9 @@ export default function ArxivFrame({
           {title ?? "This paper"}
         </h2>
         {author && (
-          <p className="text-[12px] font-mono text-shadow-1 dark:text-moonlight">{author}</p>
+          <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">{author}</p>
         )}
-        <p className="text-[13px] text-ink dark:text-bright">{noticeText}</p>
+        <p className="text-sm text-ink dark:text-bright">{noticeText}</p>
         {/* The single surfaced link to arXiv from this frame: the "Read on
             arXiv" CTA (Attribution's "via arXiv" provenance link is the other —
             two, not three, links to the same URL; the redundant bare full-URL

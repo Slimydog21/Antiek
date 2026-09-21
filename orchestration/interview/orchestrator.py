@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # State machine types
@@ -48,13 +50,13 @@ class InterviewState:
     interview_id: str
     project_id: str
     informant_handle: str | None
-    interview_guide: dict
+    interview_guide: dict[str, Any]
     turns: list[InterviewTurn] = field(default_factory=list)
     must_cover_asked: set[str] = field(default_factory=set)
     status: str = "in_progress"  # | "completed" | "declined" | "incomplete"
     consent_recorded: bool = False
 
-    def remaining_must_cover(self) -> list[dict]:
+    def remaining_must_cover(self) -> list[dict[str, Any]]:
         """Must-cover questions from the guide that haven't been asked."""
         all_questions = self.interview_guide.get("must_cover", [])
         return [q for q in all_questions if q.get("id") not in self.must_cover_asked]
@@ -62,7 +64,7 @@ class InterviewState:
 
 def start_interview(
     project_id: str,
-    interview_guide: dict,
+    interview_guide: dict[str, Any],
     informant_handle: str | None = None,
 ) -> InterviewState:
     """Initialize a new interview state. Caller is responsible for
@@ -89,7 +91,7 @@ def advance_interview(
     state: InterviewState,
     informant_response: str | None = None,
     *,
-    dispatch_fn=None,  # injection point for substrate.dispatch.dispatch
+    dispatch_fn: Callable[..., Any] | None = None,  # injection point for substrate.dispatch.dispatch
 ) -> InterviewState:
     """Advance the interview by one turn.
 

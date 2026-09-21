@@ -148,7 +148,7 @@ test.describe("AMS-v2 regression anchors — the v1 failures, encoded as red lig
   // not a white box). Pre-fix this fraction was large (a solid white box).
   test("anchor[penguin]: the penguin emote has no white background", async ({ page }) => {
     await loginAndGotoApp(page, DEFAULT_ROUTE);
-    const mascot = page.locator('[data-testid="penguin-mascot"], [data-penguin-mascot]').first();
+    const mascot = page.locator('[data-testid="brain-mascot"]').first();
     await expect(
       mascot,
       "penguin mascot not found (SPR-06 owns its rigging + transparent emotes)",

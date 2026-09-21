@@ -58,6 +58,17 @@ from .knowledge_registration import (
     get_multimedia_distillation_state,
     register_multimedia_with_twin,
 )
+from .live_worker import (
+    attach_provider_artifacts_to_manifest,
+    deny_public_publish_request,
+    evaluate_public_export_gate,
+    evaluate_public_publish_blocker,
+    plan_provider_artifact_attachment,
+    plan_public_export,
+    preview_next_live_execution,
+    record_provider_artifact_receipt,
+    record_public_export_review,
+)
 from .local_provider_exclusion import (
     LocalZeroEvidenceConflict,
     LocalZeroEvidenceUnavailable,
@@ -127,11 +138,23 @@ from .provider_router import (
 )
 from .read_model import (
     CreateMultimediaDraftRequest,
+    LiveProviderArtifactReceipt,
+    LiveProviderAttachmentPlan,
+    LiveProviderExecutionRequest,
+    LiveProviderRoutePreview,
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaAssetSummary,
     MultimediaKnowledgeLink,
+    MultimediaPublicExportGate,
+    MultimediaPublicExportPlan,
+    MultimediaPublicExportReview,
+    MultimediaPublicExportReviewRequest,
+    MultimediaPublicExportStatus,
+    MultimediaPublicPublishBlocker,
+    MultimediaPublicPublishDenial,
+    MultimediaPublicPublishRequest,
     SteeringRequest,
 )
 from .reviewed_visual_registry import (
@@ -254,8 +277,21 @@ __all__ = [
     # SPR-08 evaluation + hardening
     "GateFinding",
     "GateResult",
+
+    "LiveProviderArtifactReceipt",
+    "LiveProviderAttachmentPlan",
+    "LiveProviderExecutionRequest",
+    "LiveProviderRoutePreview",
     "GateStatus",
     "MultimediaHardeningReport",
+    "MultimediaPublicExportGate",
+    "MultimediaPublicExportPlan",
+    "MultimediaPublicExportReview",
+    "MultimediaPublicExportReviewRequest",
+    "MultimediaPublicExportStatus",
+    "MultimediaPublicPublishBlocker",
+    "MultimediaPublicPublishDenial",
+    "MultimediaPublicPublishRequest",
     "ShipStatus",
     "evaluate_multimedia_asset",
     "MultimediaShipCostEvidenceConflict",
@@ -317,6 +353,16 @@ __all__ = [
     "MultimediaAssetSummary",
     "MultimediaKnowledgeLink",
     "SteeringRequest",
+
+    "attach_provider_artifacts_to_manifest",
+    "deny_public_publish_request",
+    "evaluate_public_export_gate",
+    "evaluate_public_publish_blocker",
+    "plan_public_export",
+    "plan_provider_artifact_attachment",
+    "preview_next_live_execution",
+    "record_provider_artifact_receipt",
+    "record_public_export_review",
     # Receipt-verified browser delivery
     "MediaByteRange",
     "PlaybackMediaMetadata",

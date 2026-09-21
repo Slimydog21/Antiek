@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 
-class PartitionKind(str, enum.Enum):
+class PartitionKind(enum.StrEnum):
     """The two partitions inside a user's personal graph (§13.2)."""
 
     PRIVATE = "private"
@@ -112,12 +112,11 @@ def validate_partition(
 
     Raises PartitionInvariantViolation on disallowed access.
     """
-    if partition == PartitionKind.PRIVATE:
-        if item_owner_user_id != accessing_user_id:
-            raise PartitionInvariantViolation(
-                f"user {accessing_user_id!r} cannot access private item "
-                f"owned by {item_owner_user_id!r} — physical-separation "
-                f"invariant per master-spec §13.2"
-            )
+    if partition == PartitionKind.PRIVATE and item_owner_user_id != accessing_user_id:
+        raise PartitionInvariantViolation(
+            f"user {accessing_user_id!r} cannot access private item "
+            f"owned by {item_owner_user_id!r} — physical-separation "
+            f"invariant per master-spec §13.2"
+        )
     # PUBLIC reads are unrestricted; writes are checked separately by
     # caller (the API layer's authorization check).

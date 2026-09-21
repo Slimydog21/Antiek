@@ -27,7 +27,6 @@ from __future__ import annotations
 import os
 import sys
 
-import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -36,7 +35,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from interfaces.research.api import create_app  # noqa: E402
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from substrate.auth.magic_link import mint_session_cookie  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.graph.ops import insert_chunk, insert_document, insert_node  # noqa: E402
@@ -73,7 +72,7 @@ def client(monkeypatch) -> TestClient:
 
 
 def _read():
-    return duckdb.connect(default_db_path(), read_only=True)
+    return connect_read(default_db_path())
 
 
 def _seed_synthesis(

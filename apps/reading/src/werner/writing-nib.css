@@ -5,9 +5,9 @@ html.werner-writing-nib-active.werner-ice-cursor-hidden * {
 }
 
 html.werner-writing-nib-active.werner-ice-cursor-hidden
-  button[data-testid="penguin-mascot"],
+  button[data-testid="brain-mascot"],
 html.werner-writing-nib-active.werner-ice-cursor-hidden
-  button[data-testid="penguin-mascot"]:active {
+  button[data-testid="brain-mascot"]:active {
   /* Fishing deliberately restores Werner's grab cursor. Writing keeps the nib
      singular, so its activity marker wins that higher-specificity exception. */
   cursor: none !important;

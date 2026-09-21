@@ -224,6 +224,14 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/backtest/:synthesisId",
   },
+  {
+    id: "MidnightOil",
+    workflow: "research",
+    label: "Midnight oil",
+    blurb: "Autonomous research-swarm preflight with time, budget, source, and route policy.",
+    built: true,
+    route: "/midnight-oil",
+  },
 
   // ── READ ──────────────────────────────────────────────────────────
   // Document-wrestling, the library/document index, sources, and the

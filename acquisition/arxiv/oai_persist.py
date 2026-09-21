@@ -45,6 +45,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
@@ -87,7 +88,7 @@ class OaiPersistResult:
         return self.inserted + self.updated
 
 
-def _record_metadata(record: ArxivOaiRecord) -> dict:
+def _record_metadata(record: ArxivOaiRecord) -> dict[str, Any]:
     """The provenance + rights payload stamped into ``documents.metadata``.
 
     Carries the AUTHORITATIVE OAI ``<license>`` URI, the resolved census tier,

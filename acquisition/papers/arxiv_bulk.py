@@ -27,6 +27,7 @@ with the same paper from CORE/S2 on a shared DOI.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import IO, Any
 
 from acquisition.arxiv.bulk import (
@@ -68,7 +69,14 @@ def paper_to_record(paper: ArxivPaper) -> PaperRecord:
         pdf_url=paper.pdf_url,
         has_servable_body=True,  # the PDF host serves the body (export-free fetch)
         legitimate_source=True,  # the open bulk dump is a legitimate source
-        metadata={"categories": list(paper.categories), "version": paper.version},
+        metadata={
+            "categories": list(paper.categories),
+            "version": paper.version,
+            "published_at": (
+                paper.published_at.isoformat() if paper.published_at else None
+            ),
+            "updated_at": paper.updated_at.isoformat() if paper.updated_at else None,
+        },
     )
 
 
@@ -106,16 +114,32 @@ def fetch_record_pdf(record: PaperRecord, *, throttle: Any, client: Any = None) 
     touches the export API — the PDF host is arxiv.org/pdf."""
     from acquisition.arxiv.bulk import fetch_bulk_pdf
 
+    md = record.metadata or {}
+    # Round-trip fidelity: paper_to_record stamps the ISO dates into metadata;
+    # records built elsewhere (or legacy rows) fall back to the bulk reader's
+    # epoch convention (acquisition.arxiv.bulk._EPOCH) rather than fabricating
+    # "now". fetch_bulk_pdf itself only reads pdf_url.
+    _epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    raw_published = md.get("published_at")
+    raw_updated = md.get("updated_at")
     paper = ArxivPaper(
         arxiv_id=record.arxiv_id or record.source_id,
-        version=str((record.metadata or {}).get("version") or ""),
+        version=str(md.get("version") or ""),
         title=record.title,
         authors=list(record.authors),
         abstract=record.abstract or "",
-        categories=list((record.metadata or {}).get("categories") or []),
+        categories=list(md.get("categories") or []),
         primary_category=None,
-        published_at=None,
-        updated_at=None,
+        published_at=(
+            datetime.fromisoformat(str(raw_published))
+            if isinstance(raw_published, str)
+            else _epoch
+        ),
+        updated_at=(
+            datetime.fromisoformat(str(raw_updated))
+            if isinstance(raw_updated, str)
+            else _epoch
+        ),
         abs_url=f"https://arxiv.org/abs/{record.arxiv_id or record.source_id}",
         pdf_url=record.pdf_url or f"https://arxiv.org/pdf/{record.arxiv_id or record.source_id}",
         license_uri=record.license,

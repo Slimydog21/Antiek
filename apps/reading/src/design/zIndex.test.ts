@@ -4,7 +4,7 @@ import { EMPTY_SNAPSHOT } from "../workspace/panel.types";
 import { nextZ } from "../workspace/panelLayoutLogic";
 import { WINDOW_Z_BASE } from "../workspace/windowsStore";
 import { FLOATING_Z_BASE } from "./elevation";
-import { Z_LADDER_ORDER, forceAbove, zIndex } from "./zIndex";
+import { Z_LADDER_ORDER, forceAbove, zIndex, type ZIndexLayer } from "./zIndex";
 
 /**
  * These tests PIN the z-index ladder. Each `toBe(<number>)` below is the exact
@@ -15,11 +15,14 @@ import { Z_LADDER_ORDER, forceAbove, zIndex } from "./zIndex";
 describe("zIndex ladder — pinned values (no behaviour change)", () => {
   it("pins each named layer to its prior magic number", () => {
     // Re-exported numbers, value-for-value from the pre-consolidation sources:
+    expect(zIndex.scenePresence).toBe(1); //        BrainPresence inline zIndex: 1
     expect(zIndex.raised).toBe(1); //                docked-over-dock-chrome
     expect(zIndex.floatingPanelBase).toBe(2); //     elevation.ts FLOATING_Z_BASE
     expect(zIndex.sceneBadge).toBe(5); //            SceneStatusBadge.tsx (PR 144)
     expect(zIndex.windowBase).toBe(40); //           windowsStore WINDOW_Z_BASE
+    expect(zIndex.mobileRail).toBe(40); //           NavRail mobile rail (was z-40)
     expect(zIndex.floatingPanelCeiling).toBe(50); // WorkspaceStore "z = 2…50"
+    expect(zIndex.mobileRailToggle).toBe(50); //     NavRail hamburger (was z-50)
     expect(zIndex.mascot).toBe(60); //               PenguinMascot z-[60]
     expect(zIndex.modal).toBe(100); //               LemonModal z-[100]
     expect(zIndex.popover).toBe(120); //             SlashMenu z-[120]
@@ -41,15 +44,36 @@ describe("zIndex ladder — pinned values (no behaviour change)", () => {
     expect(nextZ(EMPTY_SNAPSHOT.zCounter)).toBe(zIndex.floatingPanelBase);
   });
 
-  it("is strictly monotonic in stacking order (bottom → top)", () => {
+  it("is monotonic in stacking order, with exactly the documented ties (bottom → top)", () => {
     const values = Z_LADDER_ORDER.map((name) => zIndex[name]);
     for (let i = 1; i < values.length; i++) {
-      expect(values[i]).toBeGreaterThan(values[i - 1]);
+      expect(values[i]).toBeGreaterThanOrEqual(values[i - 1]);
     }
+    // The ladder used to be strictly increasing; Q8b catalogued three rungs
+    // whose truthful pre-consolidation values TIE an existing rung (each tie
+    // is documented on the rung in zIndex.ts — disjoint stacking contexts or
+    // a shared band edge, never a real collision). Pinning the exact tie set
+    // keeps the tripwire at full strength: any NEW accidental tie, and any
+    // strict inversion, fails here.
+    const ties: Array<readonly [ZIndexLayer, ZIndexLayer]> = [];
+    for (let i = 1; i < Z_LADDER_ORDER.length; i++) {
+      if (values[i] === values[i - 1]) {
+        ties.push([Z_LADDER_ORDER[i - 1], Z_LADDER_ORDER[i]]);
+      }
+    }
+    expect(ties).toEqual([
+      ["scenePresence", "raised"], //           1 — one notch over a local z=0 floor
+      ["windowBase", "mobileRail"], //          40 — the mobile rail at the window-band base
+      ["floatingPanelCeiling", "mobileRailToggle"], // 50 — the toggle at the band ceiling
+    ]);
     // Spot-check the load-bearing layering: a toast never sits under a modal,
-    // a window always sits over a floating panel's base, etc.
+    // a window always sits over a floating panel's base, the scene ambience
+    // never covers chrome, etc.
+    expect(zIndex.scenePresence).toBeLessThan(zIndex.floatingPanelBase);
     expect(zIndex.raised).toBeLessThan(zIndex.floatingPanelBase);
     expect(zIndex.floatingPanelBase).toBeLessThan(zIndex.windowBase);
+    expect(zIndex.mobileRail).toBeLessThan(zIndex.mascot);
+    expect(zIndex.mobileRailToggle).toBeLessThan(zIndex.mascot);
     expect(zIndex.windowBase).toBeLessThan(zIndex.modal);
     expect(zIndex.modal).toBeLessThan(zIndex.toast);
   });

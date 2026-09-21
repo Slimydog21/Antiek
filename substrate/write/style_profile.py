@@ -35,13 +35,14 @@ import re
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 try:
-    from ..graph.ops import content_addressed_id, new_random_id
+    from ..graph.ops import content_addressed_id
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.graph.ops import content_addressed_id  # type: ignore[no-redef]
+    from substrate.graph.ops import content_addressed_id
 
 from substrate.voice_style.rubric import score_voice_style
 
@@ -67,7 +68,7 @@ def _sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
 
 
-def extract_style_features(text: str) -> dict:
+def extract_style_features(text: str) -> dict[str, float]:
     """Extract a small, deterministic feature vector from prose. These are
     descriptive statistics + the voice_style score — NOT trained
     parameters. Same text → same features."""
@@ -98,7 +99,7 @@ _FEATURE_SCALE = {
 }
 
 
-def _aggregate(features_list: Sequence[dict]) -> dict:
+def _aggregate(features_list: Sequence[dict[str, float]]) -> dict[str, float]:
     if not features_list:
         return {k: 0.0 for k in _FEATURE_SCALE}
     keys = _FEATURE_SCALE.keys()
@@ -108,7 +109,7 @@ def _aggregate(features_list: Sequence[dict]) -> dict:
     }
 
 
-def _heuristic_similarity(a: dict, b: dict) -> float:
+def _heuristic_similarity(a: dict[str, float], b: dict[str, float]) -> float:
     """1 - mean normalized absolute feature difference, clamped to [0,1].
     A bounded, deterministic heuristic — explicitly NOT ground truth."""
     diffs = []
@@ -131,7 +132,7 @@ class StyleProfile:
     profile_id: str
     name: str
     exemplars: tuple[str, ...]
-    features: dict
+    features: dict[str, float]
     source: str  # 'accepted_edits' | 'prior_prose'
     weak_signal: bool
     notes: str = ""
@@ -181,7 +182,7 @@ def assemble_style_profile(
     )
 
 
-def assemble_from_authoring_trajectory(traj, *, name: str) -> StyleProfile:
+def assemble_from_authoring_trajectory(traj: Any, *, name: str) -> StyleProfile:
     """Assemble a profile from a writer's *accepted edits* — the after-text
     of non-reverted replace/insert edits in an authoring trajectory
     (SPR-02). These are what the writer settled on, hence exemplary of
@@ -245,7 +246,7 @@ def build_conditioning_prompt(
     return "\n".join(parts)
 
 
-def condition_context(ctx, profile: StyleProfile, **kwargs):
+def condition_context(ctx: Any, profile: StyleProfile, **kwargs: Any) -> Any:
     """Return a COPY of a ``CreativeWriterContext`` with its ``style_guide``
     set to the conditioning prompt. The context's blocks and the model are
     unchanged — this is purely prompt-level. (Typed loosely to avoid a

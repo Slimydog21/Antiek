@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 try:
-    from bs4 import BeautifulSoup, Tag  # type: ignore[import-not-found]
+    from bs4 import BeautifulSoup, Tag
 except ImportError as e:  # pragma: no cover
     raise ImportError(
         "acquisition.urls.extract requires beautifulsoup4. "
@@ -35,7 +35,7 @@ except ImportError as e:  # pragma: no cover
     ) from e
 
 try:
-    import html2text  # type: ignore[import-not-found]
+    import html2text
 except ImportError as e:  # pragma: no cover
     raise ImportError(
         "acquisition.urls.extract requires html2text. "
@@ -114,8 +114,9 @@ def _pick_main(soup: BeautifulSoup) -> Tag:
 def _resolve_title(soup: BeautifulSoup) -> str | None:
     og = soup.find("meta", property="og:title")
     if og and og.get("content"):
-        content = og["content"]
-        return content.strip() if isinstance(content, str) else None
+        og_content = og.get("content")
+        if isinstance(og_content, str) and og_content.strip():
+            return str(og_content).strip()
     title = soup.find("title")
     if title and title.get_text(strip=True):
         text = title.get_text(strip=True)
@@ -134,15 +135,16 @@ def _resolve_author(soup: BeautifulSoup) -> str | None:
         soup.find("meta", attrs={"name": "byl"}),  # NYT
     ):
         if meta and meta.get("content"):
-            content = meta["content"]
-            return content.strip() if isinstance(content, str) else None
+            meta_content = meta.get("content")
+            if isinstance(meta_content, str) and meta_content.strip():
+                return str(meta_content).strip()
     sch = soup.find(itemprop="author")
     if sch:
         name = sch.find(itemprop="name")
-        if name and name.get_text(strip=True):
-            text = name.get_text(strip=True)
-            return text if isinstance(text, str) else None
-        txt = sch.get_text(strip=True)
+        name_text = str(name.get_text(strip=True)) if name else ""
+        if name_text:
+            return name_text
+        txt = str(sch.get_text(strip=True))
         if txt:
             return txt if isinstance(txt, str) else None
     return None

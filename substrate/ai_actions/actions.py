@@ -24,7 +24,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal, cast
 
 from substrate.ai_actions.handlers import HANDLERS
 
@@ -58,7 +58,18 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def _hash_prev(target_kind: str, target_id: str, prev_state: dict) -> str:
+AIActionTargetKind = Literal[
+    "notebook_block",
+    "notebook",
+    "master_md_section",
+    "claim",
+    "watch_for_later_question",
+    "investigation_chase",
+    "ui_layout",
+]
+
+
+def _hash_prev(target_kind: str, target_id: str, prev_state: dict[str, Any]) -> str:
     """Deterministic hash for the optimistic-concurrency check."""
     canonical = json.dumps(
         {"k": target_kind, "i": target_id, "s": prev_state},
@@ -75,8 +86,8 @@ def apply_ai_action(
     target_kind: str,
     target_id: str,
     operator_prompt: str,
-    prev_state: dict,
-    next_state: dict,
+    prev_state: dict[str, Any],
+    next_state: dict[str, Any],
     summary: str = "",
     emit_event_fn: Any | None = None,
 ) -> ApplyResult:
@@ -97,6 +108,9 @@ def apply_ai_action(
             "add a handler in substrate/ai_actions/handlers.py before "
             "emitting AI actions of this kind"
         )
+    # HANDLERS registration is the single source of truth for the valid kinds;
+    # surviving the membership check proves target_kind is one of them.
+    applied_kind = cast(AIActionTargetKind, target_kind)
 
     prev_hash = _hash_prev(target_kind, target_id, prev_state)
     event_id = f"evt-{uuid.uuid4().hex[:12]}"
@@ -104,7 +118,7 @@ def apply_ai_action(
     from substrate.schemas.events import AIActionAppliedPayload
 
     payload = AIActionAppliedPayload(
-        target_kind=target_kind,  # type: ignore[arg-type]
+        target_kind=applied_kind,
         target_id=target_id,
         operator_prompt=operator_prompt,
         prev_state=prev_state,
@@ -134,12 +148,12 @@ def apply_ai_action(
 def undo_ai_action(
     con: Any,
     *,
-    applied_event: dict,
+    applied_event: dict[str, Any],
     emit_event_fn: Any | None = None,
 ) -> str:
     """Invert an ``ai.action.applied`` event.
 
-    ``applied_event`` is the typed event row (as a dict, the shape
+    ``applied_event`` is the typed event row (as a dict[str, Any], the shape
     the trajectory log returns). Returns the new ``ai.action.undone``
     event_id.
 
@@ -194,7 +208,7 @@ def undo_ai_action(
 
     payload_out = AIActionUndonePayload(
         inverted_event_id=inverted_event_id,
-        target_kind=target_kind,  # type: ignore[arg-type]
+        target_kind=target_kind,
         target_id=target_id,
         reason="operator_undo",
     )

@@ -117,8 +117,7 @@ def render_user_template(
     out = DECOMPOSER_USER_TEMPLATE
     out = out.replace("{{investigation_id}}", investigation_id)
     out = out.replace("{{question}}", question)
-    out = out.replace("{{context}}", context or "(none)")
-    return out
+    return out.replace("{{context}}", context or "(none)")
 
 
 def render_full_prompt(
