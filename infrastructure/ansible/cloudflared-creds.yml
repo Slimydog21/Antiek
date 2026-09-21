@@ -1,0 +1,2 @@
+cloudflared_tunnel_id: "41fc328b-36ed-46c8-80b1-523db2e31eaa"
+cloudflared_tunnel_credentials_json: '{"AccountTag":"57d82c12c0f63751734ea3fed082c0a9","TunnelSecret":"iF5qoCoodqA6MdMMk/rb2+kbvM9vG0Ga/nbUN0+1fvE=","TunnelID":"41fc328b-36ed-46c8-80b1-523db2e31eaa","Endpoint":""}'
