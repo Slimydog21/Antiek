@@ -20,6 +20,15 @@
  * design-system-sanctioned size and is intentionally NOT scanned here — it is
  * not an ad-hoc escape; it is the scale. The lint is about the escape hatch.
  *
+ * SUB-CEILING SNAP (Q14, 2026-09-21): the ceiling alone left the bottom of
+ * the scale unguarded — 1,157 arbitrary `text-[Npx]` sat off the named scale,
+ * concentrated at 10–13px. The codemod snapped every one to the nearest named
+ * step (8/9px floored UP to xxs; ties round up; 12.5px settled to xs). This
+ * lint now also fails on any NEW sub-ceiling (≤24px) `text-[Npx]`, integer or
+ * decimal: every size at or under the ceiling has a named step, so an
+ * arbitrary px there is always an escape hatch. The content exemption does
+ * NOT apply sub-ceiling — reading-body prose uses the same named scale.
+ *
  * Known residual (accepted): the named keys ABOVE the 2xl ceiling (`text-3xl`+
  * = 30px+) still resolve via Tailwind's own defaults — no `text-3xl`+ key is
  * defined in our `fontSize` config — so chrome reaching for them bypasses the
@@ -69,10 +78,11 @@ const ALLOW_DIRS = [
   "src/reading-physics/", // the Physics-of-Reading augmentation/content layer
 ];
 
-/** Raw CSS `font-size: NNpx` and Tailwind arbitrary `text-[NNpx]`. The two
- *  scale-bypass escape hatches. The capture group is the pixel integer. */
+/** Raw CSS `font-size: NNpx` and Tailwind arbitrary `text-[NNpx]` (integer or
+ *  decimal). The two scale-bypass escape hatches. The capture group is the px
+ *  value as written. */
 const RAW_FONT_SIZE = /font-size:\s*(\d+)px/g;
-const ARBITRARY_TEXT = /text-\[(\d+)px\]/g;
+const ARBITRARY_TEXT = /text-\[(\d+(?:\.\d+)?)px\]/g;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -90,24 +100,30 @@ function isContent(rel: string): boolean {
   return ALLOW_DIRS.some((d) => rel.startsWith(d));
 }
 
-/** Sorted `relpath\ttext-[NNpx]` / `relpath\tfont-size:NNpx` entries for every
- *  chrome (non-content) font size strictly above the 24px ceiling. The entry
- *  records the offending token verbatim so the baseline reads like the source.*/
+/** Sorted entries for the two enforced rules. The entry records the offending
+ *  token verbatim so the baseline reads like the source:
+ *    `relpath\tfont-size:NNpx`  — raw CSS size above the ceiling (chrome only)
+ *    `relpath\ttext-[NNpx]`     — arbitrary size above the ceiling (chrome only),
+ *                                 OR any arbitrary size at/under the ceiling
+ *                                 (off-scale; applies to content too — every
+ *                                 size ≤ 24px has a named step). */
 function collect(): string[] {
   const found: string[] = [];
   for (const file of walk(SRC)) {
     const rel = relative(ROOT, file).replace(/\\/g, "/");
-    if (isContent(rel)) continue; // reading-body content is exempt
+    const content = isContent(rel); // reading-body content is ceiling-exempt
     const text = readFileSync(file, "utf8");
 
     let m: RegExpExecArray | null;
     RAW_FONT_SIZE.lastIndex = 0;
     while ((m = RAW_FONT_SIZE.exec(text)) !== null) {
-      if (Number(m[1]) > CEILING_PX) found.push(`${rel}\tfont-size:${m[1]}px`);
+      if (!content && Number(m[1]) > CEILING_PX)
+        found.push(`${rel}\tfont-size:${m[1]}px`);
     }
     ARBITRARY_TEXT.lastIndex = 0;
     while ((m = ARBITRARY_TEXT.exec(text)) !== null) {
-      if (Number(m[1]) > CEILING_PX) found.push(`${rel}\ttext-[${m[1]}px]`);
+      const px = Number(m[1]);
+      if (px <= CEILING_PX || !content) found.push(`${rel}\ttext-[${m[1]}px]`);
     }
   }
   return found.sort();
@@ -120,7 +136,7 @@ if (update) {
   writeFileSync(BASELINE, JSON.stringify(current, null, 2) + "\n");
   console.log(
     `type-scale lint: baseline re-minted — ${current.length} grandfathered ` +
-      `chrome font-size(s) above the ${CEILING_PX}px ceiling.`,
+      `off-scale / above-ceiling font-size(s).`,
   );
   process.exit(0);
 }
@@ -133,15 +149,17 @@ const fresh = current.filter((e) => !baseSet.has(e));
 
 if (fresh.length) {
   console.error(
-    `\ntype-scale lint FAILED: ${fresh.length} new chrome font-size(s) above ` +
-      `the ${CEILING_PX}px ceiling (PostHog's app type scale tops out at ` +
-      `2xl == 24px).`,
+    `\ntype-scale lint FAILED: ${fresh.length} new off-scale font-size(s) — ` +
+      `either above the ${CEILING_PX}px chrome ceiling (2xl == 24px) or an ` +
+      `arbitrary text-[NNpx] at/under it (Q14: the named scale covers every ` +
+      `size ≤ 24px).`,
   );
   console.error(
-    "Use a named fontSize token (Tailwind: text-2xl / text-xl / text-lg …) " +
-      "instead of a raw px or text-[NNpx]. If this is genuinely reading-body " +
-      "CONTENT (not chrome), it belongs under a reading-content subtree — see " +
-      "ALLOW_DIRS in this file.",
+    "Use a named fontSize token (Tailwind: text-xxs / text-xs / text-sm / " +
+      "text-base / text-lg / text-xl / text-2xl) instead of a raw px or " +
+      "text-[NNpx]. If this is genuinely reading-body CONTENT (not chrome) " +
+      "AND above the ceiling, it belongs under a reading-content subtree — " +
+      "see ALLOW_DIRS in this file.",
   );
   console.error("New violations:");
   for (const e of fresh) console.error("  " + e.replace("\t", "   →   "));
@@ -152,6 +170,6 @@ if (fresh.length) {
   process.exit(1);
 }
 console.log(
-  `type-scale lint OK — no new chrome font-size above the ${CEILING_PX}px ` +
-    `ceiling (${current.length} grandfathered; baseline has ${baseline.length}).`,
+  `type-scale lint OK — no new off-scale font-size ` +
+    `(${current.length} grandfathered; baseline has ${baseline.length}).`,
 );

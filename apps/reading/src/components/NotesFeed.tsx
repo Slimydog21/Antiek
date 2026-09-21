@@ -90,7 +90,7 @@ function NoteCard({
 }) {
   const p = event.payload;
   return (
-    <li className="border border-amber-200 rounded-md bg-sun/10/30 px-3 py-2.5 flex flex-col gap-1.5">
+    <li className="border border-sun/40 rounded-md bg-sun/10 px-3 py-2.5 flex flex-col gap-1.5">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm text-ink dark:text-bright leading-snug flex-1">
           {p.note_text}
@@ -103,14 +103,14 @@ function NoteCard({
       </div>
       {p.source_event_ids.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-0.5">
-          <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight mr-0.5">
+          <span className="text-xxs font-mono text-shadow-1 dark:text-moonlight mr-0.5">
             from:
           </span>
           {p.source_event_ids.map((eid) => (
             <button
               key={eid}
               onClick={() => onCiteJump?.(eid)}
-              className="text-[10px] font-mono text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
+              className="text-xxs font-mono text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
               title={`jump to ${eid}`}
             >
               ↩ {shortenEventId(eid)}
@@ -118,7 +118,7 @@ function NoteCard({
           ))}
         </div>
       )}
-      <div className="text-[9px] font-mono text-ink-mute dark:text-moonlight pt-0.5">
+      <div className="text-xxs font-mono text-ink-mute dark:text-moonlight pt-0.5">
         {shortenEventId(event.event_id)}
         {event.document_id && (
           <>
@@ -133,14 +133,14 @@ function NoteCard({
 
 function ConfidenceBadge({ level }: { level: ConfidenceLevel }) {
   const styles: Record<ConfidenceLevel, string> = {
-    high: "bg-emerald-100 text-emerald-800",
-    moderate: "bg-sun/20 text-amber-800",
-    low: "bg-orange-100 text-orange-800",
+    high: "bg-success/10 text-success",
+    moderate: "bg-sun/20 text-sun-deep dark:text-sun",
+    low: "bg-danger/10 text-danger",
     unknown: "bg-ice-4 dark:bg-charcoal-1 text-ink-soft dark:text-starlight",
   };
   return (
     <span
-      className={`text-[10px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[level]}`}
+      className={`text-xxs font-mono px-1.5 py-0.5 rounded uppercase tracking-wide ${styles[level]}`}
     >
       {level}
     </span>

@@ -80,6 +80,39 @@
   --shadow-2:   #384858;
   --ink:        #0F1419;
 
+  /* Stepped muting of the ink ramp (Q1) — the muted-text hierarchy the
+     text-ink-soft / text-ink-mute utilities (~600 call sites) render.
+     ink-soft = lede/secondary (between shadow-2 and ink); ink-mute =
+     metadata/tertiary. ink-mute is the AA-cleared version of the static
+     mock's --ink-mute (public/redesign.html #6A7785 → 4.25:1 on ice-2, under
+     the 4.5:1 floor): stepped darker to #647380 → 4.54:1 on ice-2, 4.88:1 on
+     ice-0. Byte-identical to tokens.ts `inkSoft`/`inkMute`.
+     The *-rgb channel triplets exist so tailwind.config.js can expose the
+     tokens as `rgb(var(--ink-mute-rgb) / <alpha-value>)` — that is what lets
+     /opacity modifiers (border-ink-mute/40) resolve, which a plain var()
+     color cannot do. */
+  --ink-soft:     #2A3441;
+  --ink-mute:     #647380;
+  --ink-soft-rgb: 42 52 65;
+  --ink-mute-rgb: 100 115 128;
+
+  /* Semantic danger alias (Q1) — danger IS emperor under the name call sites
+     use (text-danger / border-danger / bg-danger/10). The hex var aliases the
+     palette constant; the channel triplet mirrors emperor day #CE3623 so the
+     Tailwind `danger` color can carry /opacity modifiers (bg-danger/10).
+     Mirrors tokens.ts `danger` (== accent.emperor). */
+  --danger:     var(--emperor);
+  --danger-rgb: 206 54 35;
+
+  /* Semantic success token (Q3, adjudication D2) — the done/met/passed
+     green, minted because aurora fails AA as text (1.9:1 on ice-0) and is
+     reserved for AI-thinking (D8). A calm low-chroma forest green. AA:
+     5.90:1 on ice-0, 5.49:1 on ice-2 (text); ice-0 white text over it
+     5.90:1 (filled chips/buttons). The channel triplet feeds the Tailwind
+     `success` color so bg-success/10 resolves. Mirrors tokens.ts `success`. */
+  --success:     #237242;
+  --success-rgb: 35 114 66;
+
   /* Neutral "light" chrome border (AMS-SPR-01). A calm blue-grey — the
      lightest neutral that still clears WCAG 1.4.11 3:1 on white cards
      (#788596 on #FFFFFF = 3.75:1; on the #F4F7FA page = 3.49:1). A paler
@@ -96,6 +129,14 @@
   --muted:      var(--glacial-2);
   --text:       var(--ink);
   --text-muted: var(--shadow-1);
+
+  /* Media well (Q16; ui-audit 12-modes-c #63) — the ONE deliberate media
+     backdrop (players, candidates, frames), dark in BOTH themes so media
+     recedes. Day = the charcoal card tone; night (redeclared below) = void.
+     Text on a well is always bright #EEF1F6 (13.9:1 day). The KnowledgePanel
+     twin iframe keeps bg-white deliberately (light-authored srcDoc) — see
+     tokens.ts `mediaWell`. */
+  --media-well: #1B202A;
   /* was var(--sun) #F5DF24; toned to neutral --rule for calmer chrome per
      AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
   --border:     var(--rule);
@@ -135,11 +176,12 @@
   /* Research-state family (herdr transfer P0-1) — SEMANTIC ALIASES, not new
      hues. Each state token points at an existing palette constant, so state
      colour can never drift from the brand palette: working=sun, blocked=
-     emperor, done=aurora, stopped/muted=shadow-1. Night values resolve
-     automatically because the night block re-declares the referenced vars. */
+     emperor, done=success (Q3/D2 — was aurora, reserved for AI-thinking per
+     D8), stopped/muted=shadow-1. Night values resolve automatically because
+     the night block re-declares the referenced vars. */
   --state-working: var(--sun);
   --state-blocked: var(--emperor);
-  --state-done:    var(--aurora);
+  --state-done:    var(--success);
   --state-stopped: var(--shadow-2);
   --state-muted:   var(--shadow-2);
 
@@ -242,6 +284,30 @@
     --shadow-2:   #A0AAB8;
     --ink:        #EEF1F6;
 
+    /* Stepped muting of the ink ramp, night (Q1). ink-soft reuses starlight
+       #C4CCD7 (the night ramp's body-text step). ink-mute is the AA-cleared
+       version of the mock's night --ink-mute (#7C8696 → 4.44:1 on the
+       charcoal-2 card, under the floor): stepped lighter to #828C9C → 4.80:1
+       on charcoal-2, 5.59:1 on space-2. Deliberately BRIGHTER than night
+       --shadow-1/moonlight #6B7585 (3.50:1 on a card — fails AA); ink-mute is
+       the AA-passing tertiary step. Byte-identical to tokens.ts inkSoft/
+       inkMute .night. Channel triplets feed the Tailwind utilities. */
+    --ink-soft:     #C4CCD7;
+    --ink-mute:     #828C9C;
+    --ink-soft-rgb: 196 204 215;
+    --ink-mute-rgb: 130 140 156;
+
+    /* Danger alias, night — emperor night #FF6155 (mirrors tokens.ts `danger`
+       == accent.emperor.night). */
+    --danger:     var(--emperor);
+    --danger-rgb: 255 97 85;
+
+    /* Success, night (Q3/D2) — a soft sage that keeps AA on the night ramp:
+       9.59:1 on space-2, 8.24:1 on charcoal-2 (text); day-ink #0F1419 text
+       over it ~10:1 (filled chips/buttons). Mirrors tokens.ts success.night. */
+    --success:     #6ECB8F;
+    --success-rgb: 110 203 143;
+
     /* Neutral "light" chrome border, night. A calm slate — the lightest
        neutral that still clears 3:1 on the night card (#606C7E on #1B202A =
        3.07:1; on the #0D1019 page = 3.57:1). Mirrors tokens.ts `rule.night`.
@@ -259,6 +325,10 @@
     --muted:      #6B7585;
     --text:       #EEF1F6;
     --text-muted: #6B7585;
+
+    /* Media well, night — void, deeper than the card face so the well
+       recedes below the night chrome (bright text 17.4:1). */
+    --media-well: #040508;
     /* was var(--sun) #F5DF24; toned to neutral --rule for calmer chrome per
        AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
     --border:     var(--rule);
@@ -307,11 +377,11 @@
 
     /* Research-state family (herdr transfer P0-1) — night aliases. Same
        semantic targets as day; the values resolve through the night
-       redeclarations above (aurora/emperor/shadow-2), so state colours
+       redeclarations above (success/emperor/shadow-2), so state colours
        track the night palette automatically. */
     --state-working: var(--sun);
     --state-blocked: var(--emperor);
-    --state-done:    var(--aurora);
+    --state-done:    var(--success);
     --state-stopped: var(--shadow-2);
     --state-muted:   var(--shadow-2);
 

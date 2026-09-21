@@ -55,7 +55,7 @@ export default function ThemeRegion({ region }: ThemeRegionProps) {
         zIndex: 0,
       }}
     >
-      <span className="absolute -top-2 left-2 bg-ice-0 px-1 font-mono text-[10px] uppercase tracking-wider text-aurora dark:bg-charcoal-2">
+      <span className="absolute -top-2 left-2 bg-ice-0 px-1 font-mono text-xxs uppercase tracking-wider text-aurora dark:bg-charcoal-2">
         {region.label || region.regionId}
       </span>
     </div>

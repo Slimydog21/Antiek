@@ -122,7 +122,7 @@ export const SpawnAndStack: Story = {
             <LemonButton onClick={() => open("library", {}, { title: "Library" })}>
               Open a window
             </LemonButton>
-            <span className="font-mono text-[12px] text-ink dark:text-bright self-center">
+            <span className="font-mono text-xs text-ink dark:text-bright self-center">
               {order.length} open (cap 8)
             </span>
           </div>

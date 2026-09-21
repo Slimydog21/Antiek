@@ -289,10 +289,10 @@ export function SlashMenu({ editor, query, onClose }: Props) {
               : "hover:bg-sun/15 dark:hover:bg-sun/10")
           }
         >
-          <span className="font-sans text-[13px] text-ink dark:text-bright">
+          <span className="font-sans text-sm text-ink dark:text-bright">
             {entry.label}
           </span>
-          <span className="font-mono text-[11px] text-ink-mute dark:text-moonlight shrink-0">
+          <span className="font-mono text-xs text-ink-mute dark:text-moonlight shrink-0">
             {entry.hint}
           </span>
         </button>

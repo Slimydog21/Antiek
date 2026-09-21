@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 
+import { LemonCard } from "../../../components/lemon";
+import { press } from "../../../design/motion";
 import type { RememberedPerson } from "../../../lib/speakApi";
 
 /**
@@ -43,21 +45,22 @@ export default function YoursLane({ loading, people }: YoursLaneProps) {
       <ul className="space-y-2">
         {people.map((p) => (
           <li key={p.id}>
-            <Link
-              to={`/speak/${p.id}`}
-              className="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
-            >
+            <Link to={`/speak/${p.id}`} className="block">
+              <LemonCard
+                elevation="z1"
+                className={press}
+              >
               <div className="flex items-center justify-between gap-3">
-                <span className="font-serif text-[16px] text-ink dark:text-bright">
+                <span className="font-serif text-base text-ink dark:text-bright">
                   {p.name}
                 </span>
-                <span className="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight">
+                <span className="shrink-0 font-mono text-xxs text-ink-mute dark:text-moonlight">
                   {p.voiceCount === 0
                     ? "no voices yet"
                     : `${p.voiceCount} voice${p.voiceCount === 1 ? "" : "s"}`}
                 </span>
               </div>
-              <p className="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              <p className="mt-0.5 font-serif text-xs text-ink-mute dark:text-moonlight">
                 {p.willBePublic ? "Will be shared publicly" : "Kept private"}
               </p>
               {/*
@@ -70,12 +73,13 @@ export default function YoursLane({ loading, people }: YoursLaneProps) {
                 no one has shared yet, warm once a voice has.
               */}
               {p.voiceCount > 0 ? (
-                <p className="mt-1 font-serif text-[12px] italic text-ink-soft dark:text-moonlight">
+                <p className="mt-1 font-serif text-xs italic text-ink-soft dark:text-moonlight">
                   {`Their story is coming together — ${p.voiceCount} ${
                     p.voiceCount === 1 ? "voice has" : "voices have"
                   } added a memory.`}
                 </p>
               ) : null}
+              </LemonCard>
             </Link>
           </li>
         ))}

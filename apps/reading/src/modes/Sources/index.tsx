@@ -63,7 +63,7 @@ function StatusBadge({ row }: { row: IngestRow }) {
   const s = row.result.status;
   if (s === "ingested") {
     return (
-      <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">
+      <span className="px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">
         ingested
       </span>
     );
@@ -218,7 +218,7 @@ export default function Sources() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-ice-1 dark:bg-charcoal-2">
+    <div className="flex flex-col h-full bg-ice-1 dark:bg-charcoal-2">
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-8">
           <div className="flex items-center gap-3">
@@ -263,7 +263,7 @@ export default function Sources() {
                   if (uploadState === "uploading") return;
                   chooseFile(event.dataTransfer.files[0] ?? null);
                 }}
-                className={`flex min-h-32 w-full flex-col items-center justify-center rounded-md border-2 border-dashed px-5 py-6 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-sun disabled:cursor-wait disabled:opacity-60 ${dragActive ? "border-sun bg-sun/10" : "border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-3"}`}
+                className={`flex min-h-32 w-full flex-col items-center justify-center rounded-md border-2 border-dashed px-5 py-6 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-sun disabled:cursor-wait disabled:opacity-60 ${dragActive ? "border-sun bg-sun/10" : "border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-2"}`}
                 aria-describedby="upload-types"
               >
                 <span className="text-sm font-semibold text-ink dark:text-bright">
@@ -323,7 +323,7 @@ export default function Sources() {
               </div>
 
               {uploadResult && (
-                <div className="mt-5 flex flex-col gap-3 rounded-md border border-rule bg-ice-1 p-4 dark:border-charcoal-1 dark:bg-charcoal-3" role="status">
+                <div className="mt-5 flex flex-col gap-3 rounded-md border border-rule bg-ice-1 p-4 dark:border-charcoal-1 dark:bg-charcoal-2" role="status">
                   <p className="text-sm text-ink dark:text-bright">Converted from {uploadResult.detected_kind.toUpperCase()} to sanitized reader HTML.</p>
                   <button type="button" onClick={() => navigate(`/read/${encodeURIComponent(uploadResult.document_id)}`)} className="self-start rounded bg-ink px-4 py-2 text-sm font-medium text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sun dark:bg-slate-1">Open in reader</button>
                 </div>

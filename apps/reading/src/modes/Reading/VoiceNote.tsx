@@ -119,7 +119,7 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
 
   return (
     <div className="border border-rule dark:border-charcoal-1 rounded-md p-3 space-y-2 bg-ice-1 dark:bg-charcoal-2">
-      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+      <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
         Voice note · page {pageIndex + 1}
       </p>
 
@@ -135,7 +135,7 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
             </LemonButton>
           )}
           {recorder.error && (
-            <span className="text-[11px] font-mono text-emperor" role="alert">
+            <span className="text-xs font-mono text-emperor" role="alert">
               {recorder.error}
             </span>
           )}
@@ -148,7 +148,7 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
 
       {phase === "correcting" && (
         <div className="space-y-2">
-          <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+          <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
             Check the transcript before saving — fix any misheard words.
           </p>
           <LemonTextarea
@@ -159,7 +159,7 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
             aria-label="Voice note transcript (editable)"
           />
           {error && (
-            <span className="text-[11px] font-mono text-emperor" role="alert">
+            <span className="text-xs font-mono text-emperor" role="alert">
               {error}
             </span>
           )}
@@ -201,7 +201,7 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
               >
                 Discuss in Thought Partner
               </LemonButton>
-              <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+              <span className="text-xxs font-mono text-shadow-1 dark:text-moonlight">
                 Seeds Surface E / sidecar with this page&apos;s reading mount
               </span>
             </div>
