@@ -983,6 +983,10 @@ def _extract_arxiv_id(url: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+class PublisherClaimRequest(BaseModel):
+    stripe_connect_account_id: str | None = None
+
+
 class PublisherCreateRequest(BaseModel):
     display_name: str
     legal_contact_email: str | None = None
@@ -4880,9 +4884,6 @@ def create_app(
         if h is None:
             raise HTTPException(status_code=404, detail="publisher not found")
         return _holder_to_response(h)
-
-    class PublisherClaimRequest(BaseModel):
-        stripe_connect_account_id: str | None = None
 
     @app.post("/publishers/{ip_holder_id}/claim", response_model=PublisherResponse)
     async def claim_publisher(
