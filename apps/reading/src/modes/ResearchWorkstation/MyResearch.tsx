@@ -206,7 +206,7 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
               <h1
                 className={
                   embedded
-                    ? "text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight"
+                    ? "text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight"
                     : "text-2xl font-serif text-ink dark:text-bright"
                 }
               >
@@ -311,7 +311,7 @@ function ConcurrencyBar({
   cap: number | null;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 font-mono text-[12px] text-shadow-1 dark:text-moonlight">
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 font-mono text-xs text-shadow-1 dark:text-moonlight">
       <span aria-live="polite" data-testid="concurrency-line">
         <span className="text-ink dark:text-bright">{running}</span> running
         {queued > 0 && (
@@ -363,7 +363,7 @@ function LaunchBar({
         Launch several at once
       </LemonButton>
       {disabled && (
-        <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+        <span className="font-mono text-xs text-shadow-1 dark:text-moonlight">
           Sign in to start a research.
         </span>
       )}
@@ -406,7 +406,7 @@ function GroupCard({ group }: { group: Group }) {
                 className={`w-2 h-2 rounded-full ${researchStateDotClass(aggregateState, aggregateUnseen)}`}
               />
             )}
-            <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+            <span className="font-mono text-xs text-shadow-1 dark:text-moonlight">
               {group.members.length} researches
             </span>
           </span>
@@ -455,7 +455,7 @@ function ResearchRow({
               the id is never shown), so the user can tell what the loop did on
               its own from what they launched. */}
           {summary.spawned_by_daemon && (
-            <LemonTag colour="muted" className="text-[10px]">
+            <LemonTag colour="muted" className="text-xxs">
               found by the loop
             </LemonTag>
           )}
@@ -463,15 +463,15 @@ function ResearchRow({
             aria-label={`${style.label}${unseen ? " · unseen" : ""}`}
             className={`w-2 h-2 rounded-full shrink-0 ${researchStateDotClass(style.state, unseen)}`}
           />
-          <LemonTag colour={style.colour} className="text-[10px]">
+          <LemonTag colour={style.colour} className="text-xxs">
             {style.label}
           </LemonTag>
-          <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight tabular-nums">
+          <span className="font-mono text-xxs text-shadow-1 dark:text-moonlight tabular-nums">
             ${(summary.cost_usd_total ?? 0).toFixed(4)}
           </span>
         </div>
       </div>
-      <div className="mt-1.5 flex items-center gap-3 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+      <div className="mt-1.5 flex items-center gap-3 font-mono text-xs text-shadow-1 dark:text-moonlight">
         <Link
           to={`/replay/${encodeURIComponent(summary.investigation_id)}`}
           className="hover:text-ink hover:underline dark:hover:text-bright"

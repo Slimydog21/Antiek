@@ -55,7 +55,7 @@ export const ContactSheet: Story = {
           (label) => (
             <div
               key={label}
-              className="text-center font-mono text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight"
+              className="text-center font-mono text-xxs uppercase tracking-wider text-ink-mute dark:text-moonlight"
             >
               {label}
             </div>
