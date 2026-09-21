@@ -316,6 +316,61 @@ jobs:
             --url https://api.antiek.ai \
             --expected-sha "$SHA"
 
+      # ── the live venv, which nothing else measures ──────────────────────
+      # dep_audit's `pip-audit` job scans tools/lints/constraints.txt (a lock
+      # installed by 7 CI workflows and ZERO production paths) and its
+      # `pip-audit-prod` job resolves the production extras FRESH. Neither
+      # reads what /opt/antiek/.venv actually holds — and the ansible pip task
+      # leaves `state` unset, so it never passes --upgrade and an
+      # already-satisfied `cryptography>=42.0` is never bumped. The live set
+      # can therefore lag both. /health reports 30 keys and none is a
+      # dependency version, so it was unreadable from outside.
+      #
+      # This reads it. `pip freeze` is read-only and changes nothing on the
+      # host; it runs over the inventory that already deployed, so it reuses
+      # the pinned host key. continue-on-error, because a reporting step must
+      # never be able to fail a deploy that already passed its gates.
+      - name: Capture and audit the LIVE production dependency set
+        if: always()
+        continue-on-error: true
+        working-directory: infrastructure/ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "True"
+        run: |
+          set -uo pipefail
+          # ansible prefixes one "host | CHANGED | rc=0 >>" line; drop it.
+          ansible -i inventory.ini antiek_prod -m shell \
+            -a "/opt/antiek/.venv/bin/pip freeze --exclude-editable" \
+            2>/dev/null | sed '1d' > prod-live-freeze.txt || true
+          n=$(grep -cE '^[A-Za-z0-9._-]+==' prod-live-freeze.txt || true)
+          echo "live production venv: ${n} pinned packages"
+          # Anti-vacuity: pip-audit over an empty file exits 0 and reads as
+          # "no vulnerabilities". A failed ssh, a moved venv or a renamed flag
+          # would each manufacture that false green. Production installs 20
+          # core deps plus 5 extras plus transitives, so <30 means the capture
+          # did not happen rather than that production is lean.
+          if [ "${n}" -lt 30 ]; then
+            echo "::warning::captured only ${n} packages — the live venv was NOT read; not reporting an audit over nothing"
+            exit 0
+          fi
+          python -m pip install --quiet pip-audit
+          # --no-deps is valid because `pip freeze` output is a complete,
+          # fully-pinned closure needing no further resolution.
+          if pip-audit --no-deps -r prod-live-freeze.txt; then
+            echo "LIVE production venv: no known vulnerabilities across ${n} packages"
+          else
+            echo "::warning::the LIVE production venv has known vulnerabilities (see above). A deploy does NOT bump an already-satisfied requirement, so this will not clear itself."
+          fi
+
+      - name: Publish the live production dependency set
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-live-freeze
+          path: infrastructure/ansible/prod-live-freeze.txt
+          if-no-files-found: ignore
+
       - name: Summary
         if: always()
         env:
