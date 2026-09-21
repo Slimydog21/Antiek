@@ -44,7 +44,9 @@ const NEUTRAL_HOUSE: (opts: { positions: BorderPosition[] }) => Promise<FillResu
   served: false,
 });
 
-const AD: (opts: { positions: BorderPosition[] }) => Promise<FillResult> = async ({ positions }) => ({
+type FillFn = (opts: { positions: BorderPosition[] }) => Promise<FillResult>;
+
+const AD: FillFn = async ({ positions }) => ({
   fills: positions.map((position) => ({
     position,
     kind: "ad",
@@ -58,6 +60,46 @@ const AD: (opts: { positions: BorderPosition[] }) => Promise<FillResult> = async
   })),
   served: true,
 });
+
+const ALL_POSITIONS: BorderPosition[] = ["top", "bottom", "left", "right"];
+
+/** The same fill its story's fetcher resolves to, synchronously. Lost-pixel
+ *  captures on the first stable frame, so the rails must paint on FIRST
+ *  render; waiting for the fetch effect leaves a blank-rail window and flakes
+ *  the CI screenshot (seen on SpeakHouseFill w768: side rails missing). */
+function firstPaintFill(fetcher: FillFn): FillResult {
+  if (fetcher === NEUTRAL_HOUSE) {
+    return {
+      fills: ALL_POSITIONS.map((position) => ({ position, kind: "house", house: null, revenue_usd_cents: 0 })),
+      served: false,
+    };
+  }
+  if (fetcher === AD) {
+    return {
+      fills: ALL_POSITIONS.map((position) => ({
+        position,
+        kind: "ad",
+        ad: {
+          inventory_id: "inv-1",
+          advertiser_display_name: "Vertical SaaS Inc.",
+          creative_url: "https://example.com/c.png",
+          landing_url: "https://example.com/?ref=antiek",
+        },
+        revenue_usd_cents: 120,
+      })),
+      served: true,
+    };
+  }
+  return {
+    fills: ALL_POSITIONS.map((position) => ({
+      position,
+      kind: "house",
+      house: { promoted_document_id: "doc-99", title: "The Order of Time", author: "Carlo Rovelli" },
+      revenue_usd_cents: 0,
+    })),
+    served: false,
+  };
+}
 
 /** A stand-in working surface the border wraps, so the reserved-inset band is
  *  legible against real content (the border sets the seam vars; this surface
@@ -93,10 +135,11 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 function withSurface(args: Parameters<typeof AdBorder>[0]) {
+  const initialFill = args.fillFetcher ? firstPaintFill(args.fillFetcher) : undefined;
   return (
     <>
       <MockWorkingRegion />
-      <AdBorder {...args} />
+      <AdBorder {...args} initialFill={initialFill} />
     </>
   );
 }

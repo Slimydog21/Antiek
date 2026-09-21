@@ -96,6 +96,12 @@ export const config: CustomProjectConfig = {
       "neutralhousecard",
       "narrow-top-bottom-only",
       "narrowtopbottomonly",
+      // The semantic-motion proof sheet freezes animation tracks with
+      // negative delays, but Ubuntu CI still renders the mascot at
+      // run-variable subpixel offsets (> 0.4% ceiling on two consecutive
+      // runs, w1024 only). Skip until the freeze is pixel-stable.
+      "semantic-motion-proof",
+      "semanticmotionproof",
     ];
     return !animated.some((needle) => hay.includes(needle));
   },
