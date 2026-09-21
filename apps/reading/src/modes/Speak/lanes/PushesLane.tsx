@@ -19,9 +19,9 @@ import { PUSHES_COPY } from "../../../lib/speakVocab";
  * (b) Private re-pings — prepare followups + SpeakInvite door.
  * No second notification stack; no ML. Optional AgentMail/Resend when env gate on.
  */
-const PANEL =
-  "rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 " +
-  "dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night";
+const STATIC_PANEL =
+  "rounded-hog border-edge border-rule bg-ice-0 p-4 shadow-z1 " +
+  "dark:border-charcoal-1 dark:bg-charcoal-2 dark:shadow-z1-night";
 
 export default function PushesLane() {
   const navigate = useNavigate();
@@ -93,7 +93,7 @@ export default function PushesLane() {
 
   if (loading && !view) {
     return (
-      <p className="font-serif text-[13px] text-ink-mute dark:text-moonlight">
+      <p className="font-serif text-sm text-ink-mute dark:text-moonlight">
         Loading pushes…
       </p>
     );
@@ -105,40 +105,40 @@ export default function PushesLane() {
   return (
     <section className="space-y-4" data-testid="pushes-lane">
       <header>
-        <h2 className="font-serif text-[18px] font-semibold text-ink dark:text-bright">
+        <h2 className="font-serif text-lg font-semibold text-ink dark:text-bright">
           {PUSHES_COPY.heading}
         </h2>
         <aside
           role="note"
-          className="mt-2 rounded border-2 border-ink bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
+          className="mt-2 rounded-hog border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-2"
           data-testid="pushes-honesty-banner"
         >
-          <p className="font-serif text-[12px] text-ink dark:text-bright">
+          <p className="font-serif text-xs text-ink dark:text-bright">
             {PUSHES_COPY.honestyBanner}
           </p>
         </aside>
       </header>
 
       {error && (
-        <p className="font-mono text-[12px] text-emperor" role="alert">
+        <p className="font-mono text-xs text-emperor" role="alert">
           {error}
         </p>
       )}
       {note && (
-        <p className="font-serif text-[12px] text-ink-mute dark:text-moonlight" role="status">
+        <p className="font-serif text-xs text-ink-mute dark:text-moonlight" role="status">
           {note}
         </p>
       )}
 
-      <div className={PANEL} data-testid="pushes-public-panel">
-        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+      <div className={STATIC_PANEL} data-testid="pushes-public-panel">
+        <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           {PUSHES_COPY.publicHeading}
         </h3>
-          <p className="mt-1 font-serif text-[11px] text-ink-mute dark:text-moonlight">
+          <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
             {PUSHES_COPY.rankingSignals}
           </p>
         {pubs.length === 0 ? (
-          <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+          <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
             {PUSHES_COPY.publicEmpty}
           </p>
         ) : (
@@ -151,11 +151,11 @@ export default function PushesLane() {
                 <div className="min-w-0">
                   <Link
                     to={`/speak/${o.projectId}`}
-                    className="font-serif text-[15px] text-ink hover:underline dark:text-bright"
+                    className="font-serif text-base text-ink hover:underline dark:text-bright"
                   >
                     {o.subjectRef ?? o.title}
                   </Link>
-                  <p className="font-serif text-[11px] text-ink-mute dark:text-moonlight">
+                  <p className="font-serif text-xs text-ink-mute dark:text-moonlight">
                     {o.rankReason}
                   </p>
                 </div>
@@ -173,12 +173,12 @@ export default function PushesLane() {
         )}
       </div>
 
-      <div className={PANEL} data-testid="pushes-private-panel">
-        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+      <div className={STATIC_PANEL} data-testid="pushes-private-panel">
+        <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           {PUSHES_COPY.privateHeading}
         </h3>
         {privs.length === 0 ? (
-          <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+          <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
             {PUSHES_COPY.privateEmpty}
           </p>
         ) : (
@@ -189,13 +189,13 @@ export default function PushesLane() {
                 className="flex flex-wrap items-start justify-between gap-2 border-b border-rule pb-2 dark:border-charcoal-1"
               >
                 <div className="min-w-0">
-                  <p className="font-serif text-[15px] text-ink dark:text-bright">
+                  <p className="font-serif text-base text-ink dark:text-bright">
                     {r.who}
-                    <span className="ml-2 font-mono text-[10px] uppercase text-ink-mute dark:text-moonlight">
+                    <span className="ml-2 font-mono text-xxs uppercase text-ink-mute dark:text-moonlight">
                       {r.status}
                     </span>
                   </p>
-                  <p className="font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                  <p className="font-serif text-xs text-ink-mute dark:text-moonlight">
                     {r.projectTitle}
                     {r.pendingQuestionCount > 0
                       ? ` · ${r.pendingQuestionCount} pending question` +
@@ -217,7 +217,7 @@ export default function PushesLane() {
                   </LemonButton>
                   <Link
                     to={r.invitePath}
-                    className="inline-flex items-center font-mono text-[11px] text-sun-deep underline dark:text-sun"
+                    className="inline-flex items-center font-mono text-xs text-sun-deep underline dark:text-sun"
                   >
                     {PUSHES_COPY.openInvite}
                   </Link>

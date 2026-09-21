@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 /**
  * Loop 3 unlock checklist (master-spec §14.2 + §13.7).
@@ -99,7 +100,7 @@ export default function Loop3() {
   };
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
@@ -117,9 +118,9 @@ export default function Loop3() {
           </header>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {status && (
@@ -151,9 +152,9 @@ export default function Loop3() {
                           {c}
                         </h3>
                         <span
-                          className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded ${
+                          className={`text-xxs uppercase tracking-wider font-mono px-2 py-0.5 rounded ${
                             met
-                              ? "bg-emerald-100 text-emerald-700"
+                              ? "bg-success/10 text-success"
                               : "bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight"
                           }`}
                         >
@@ -183,7 +184,7 @@ export default function Loop3() {
                           className={`px-3 py-1 rounded-md text-white text-xs font-medium transition-colors disabled:opacity-50 ${
                             met
                               ? "bg-shadow-2 hover:bg-shadow-1"
-                              : "bg-emerald-700 hover:bg-emerald-600"
+                              : "bg-success hover:bg-success/90 dark:text-ink"
                           }`}
                         >
                           {met ? "Mark not met" : "Mark met"}
@@ -214,18 +215,18 @@ function Tile({
     <div
       className={`border rounded-md px-4 py-3 text-center ${
         highlight
-          ? "border-emerald-500 bg-emerald-50"
+          ? "border-success bg-success/10"
           : "border-rule dark:border-charcoal-1"
       }`}
     >
       <p
         className={`text-base font-serif ${
-          value ? "text-emerald-700" : "text-shadow-1 dark:text-moonlight"
+          value ? "text-success" : "text-shadow-1 dark:text-moonlight"
         }`}
       >
         {value ? "YES" : "NO"}
       </p>
-      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">{label}</p>
+      <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">{label}</p>
     </div>
   );
 }

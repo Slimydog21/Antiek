@@ -180,7 +180,7 @@ export default function ToolConnectionsPanel() {
           mean the provider has been reached yet.
         </p>
 
-        {loadError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{loadError}</p>}
+        {loadError && <p role="alert" className="text-sm text-danger">{loadError}</p>}
         {rows === null && !loadError && <p role="status" className="text-sm text-ink-soft dark:text-starlight">Loading tool connections…</p>}
 
         {rows && (
@@ -195,7 +195,7 @@ export default function ToolConnectionsPanel() {
                 <li key={row.vendor} className="relative border-b border-ink/10 py-5 last:border-b-0 dark:border-bright/10">
                   <span
                     aria-hidden="true"
-                    className={`absolute -left-[1.72rem] top-7 h-3 w-3 rounded-full border-2 ${row.credential_present ? "border-emerald-700 bg-ice-2 dark:border-emerald-300 dark:bg-space-2" : row.status === "degraded" ? "border-red-700 bg-red-100 dark:border-red-300 dark:bg-red-950" : "border-ink/30 bg-ice-2 dark:border-bright/30 dark:bg-space-2"}`}
+                    className={`absolute -left-[1.72rem] top-7 h-3 w-3 rounded-full border-2 ${row.credential_present ? "border-success bg-ice-2 dark:bg-space-2" : row.status === "degraded" ? "border-danger bg-danger/15" : "border-ink/30 bg-ice-2 dark:border-bright/30 dark:bg-space-2"}`}
                   />
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                     <div className="min-w-0">
@@ -222,7 +222,7 @@ export default function ToolConnectionsPanel() {
                           {costText(row)}
                         </p>
                       )}
-                      {row.status_note && <p className="mt-1 text-xs text-red-700 dark:text-red-300">{row.status_note}</p>}
+                      {row.status_note && <p className="mt-1 text-xs text-danger">{row.status_note}</p>}
                       <a className="mt-2 block w-fit text-xs font-semibold underline underline-offset-4" href={row.docs_url} target="_blank" rel="noreferrer">Provider setup guide</a>
                     </div>
                     <div className="flex flex-wrap gap-2 sm:justify-end">
@@ -307,7 +307,7 @@ export default function ToolConnectionsPanel() {
                           }
                         }
                       }}
-                      className="mt-4 border border-red-700/40 p-3 dark:border-red-300/40"
+                      className="mt-4 border border-danger/40 p-3"
                     >
                       <p id={`disconnect-${row.vendor}-title`} className="font-semibold">Disconnect {row.display_name}?</p>
                       <p id={`disconnect-${row.vendor}-description`} className="mt-1 text-sm">Antiek will delete the stored value and stop resolving this tool.</p>
@@ -321,7 +321,7 @@ export default function ToolConnectionsPanel() {
                     <p
                       role={message.kind === "error" ? "alert" : "status"}
                       aria-live={message.kind === "error" ? "assertive" : "polite"}
-                      className={`mt-3 ${message.kind === "error" ? "text-sm text-red-700 dark:text-red-300" : "text-sm text-ink-soft dark:text-starlight"}`}
+                      className={`mt-3 ${message.kind === "error" ? "text-sm text-danger" : "text-sm text-ink-soft dark:text-starlight"}`}
                     >
                       {message.text}
                     </p>
