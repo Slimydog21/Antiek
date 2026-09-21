@@ -36,9 +36,12 @@ from runtime.connectors.registry import (  # noqa: E402
     resolve_tool_connection,
 )
 from runtime.connectors.x_twitter import (  # noqa: E402
+    SEARCH_MAX_RESULTS,
+    X_POST_READ_USD,
     XTwitterConnector,
     XTwitterError,
     XTwitterKeyRequired,
+    estimated_search_cost_usd,
 )
 from runtime.connectors.youtube import (  # noqa: E402
     YouTubeDataConnector,
@@ -483,3 +486,49 @@ def test_youtube_hit_without_a_kind_takes_the_one_its_id_field_implies(
         ("PL_no_kind", "playlist"),
     ]
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# (f) X cost model — pay-per-use credits, not a retired flat tier
+# ---------------------------------------------------------------------------
+
+def test_x_tool_quota_estimate_is_the_published_per_post_rate_times_the_page() -> None:
+    """The estimate is arithmetic over a sourced rate, so pin the arithmetic.
+
+    Asserted against literals rather than against ``X_POST_READ_USD`` itself:
+    a test that recomputes the production constant moves with it and would
+    stay green if someone changed the price, which is the one change this
+    number must never absorb silently.
+    """
+    assert SEARCH_MAX_RESULTS == 25
+    assert estimated_search_cost_usd(25) == 0.125
+    assert estimated_search_cost_usd(1) == 0.005
+    assert estimated_search_cost_usd(10) == 0.05
+    # The default is the full page, because that is what the settings surface
+    # quotes and the number a user needs is the worst case.
+    assert estimated_search_cost_usd() == 0.125
+
+
+def test_x_tool_quota_estimate_refuses_counts_the_connector_would_refuse() -> None:
+    """An estimate for a call that cannot be made is a number with no meaning."""
+    for bad in (0, -1, SEARCH_MAX_RESULTS + 1):
+        with pytest.raises(ValueError):
+            estimated_search_cost_usd(bad)
+
+
+def test_x_tool_quota_source_carries_no_retired_flat_tier_reasoning() -> None:
+    """X closed the flat 200-USD Basic tier to new signups on 2026-02-06.
+
+    The connector reasoned in that tier's request-allowance terms, which is why
+    the settings surface showed a ceiling where a price belonged. Guard the
+    source text so the retired framing cannot creep back in a later edit.
+    """
+    import runtime.connectors.x_twitter as module
+
+    source = Path(str(module.__file__)).read_text(encoding="utf-8")
+    assert "450 req" not in source
+    assert "app-rate budget" not in source
+    assert "pay-per-use" in source
+    # The rate must be stated with a source and a date it was read.
+    assert "https://docs.x.com/x-api/getting-started/pricing" in source
+    assert X_POST_READ_USD == 0.005

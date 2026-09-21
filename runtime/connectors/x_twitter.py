@@ -5,8 +5,15 @@ connects their own X API v2 Bearer token (BYOK), and this connector (a)
 validates it live against ``GET /2/users/me`` and (b) exposes a recent-search
 wrapper. Both surfaces route through the host-global
 :class:`~runtime.connectors.rate_governor.VendorRateGovernor` exactly like
-``acquisition/twitter/api_client.py``, honoring X's documented 25-req/15-min
-app-rate budget.
+``acquisition/twitter/api_client.py``, at Antiek's own conservative
+25-req/15-min brake.
+
+COST — since 2026-02-06 X sells API access as pay-per-use credits rather than a
+flat tier, and read calls are billed per post returned. The brake above is
+therefore not the number a connected user needs; the number they need is
+:func:`estimated_search_cost_usd`, derived from the dated published per-read
+rate in ``X_POST_READ_USD``. This connector does NOT read a credit balance,
+because X publishes no endpoint that exposes one.
 
 SECRETS — same posture as every ``PasteKeyConnector``: the bearer is held ONLY
 as a non-secret ``cred_id`` into the encrypted byok store, decrypted lazily at
@@ -41,14 +48,52 @@ from runtime.connectors.rate_governor import VendorRateGovernor
 # The X API v2 base (documented public endpoint host).
 _API_BASE = "https://api.twitter.com/2"
 
-# X API v2 app-rate limit: 450 req / 15 min for search at the app level; the
-# connector uses the conservative 25 req / 15 min ceiling (same as the registry
-# catalog and the existing ``acquisition`` connector).
+# Antiek's OWN throttle, not a vendor allowance. X retired flat-rate Basic
+# (200 USD/month) and Pro (5,000 USD/month) to new signups on 2026-02-06 and
+# migrated the remaining Basic subscribers onto pay-per-use credits on
+# 2026-06-01, so a connected key no longer carries a monthly request quota that
+# a ceiling could be a fraction of. This 25-call window is a conservative
+# host-side brake matching the registry catalog and the existing
+# ``acquisition`` connector; describing it to a user as their quota would be a
+# lie about what X now bills. What X bills is ``X_POST_READ_USD``, below.
 _X_RATE = RateSpec(max_calls=25, window_s=900.0)
 
 # Product-level bounds for the settings surface.
 _DEFAULT_MAX_RESULTS = 25
 _MAX_RESULTS = 25
+
+#: The page ceiling, public so a caller that must quote the cost of one
+#: full-size search does not have to reach into a private name.
+SEARCH_MAX_RESULTS = _MAX_RESULTS
+
+#: USD charged for one Post read under pay-per-use credits. Source:
+#: https://docs.x.com/x-api/getting-started/pricing, read 2026-09-21, which
+#: lists "Posts: Read" at "$0.005 per resource" and states that reads are
+#: billed PER RESOURCE RETURNED rather than per request. That distinction is
+#: the whole point: one search that returns a full page is 25 billed reads, not
+#: one. The figure is vendor-published and can change without a version this
+#: repo can pin, so every surface must present it as an estimate from a dated
+#: published rate and never as a charge Antiek has observed.
+X_POST_READ_USD = 0.005
+X_PRICING_SOURCE_URL = "https://docs.x.com/x-api/getting-started/pricing"
+X_PRICING_CHECKED_ON = "2026-09-21"
+
+
+def estimated_search_cost_usd(max_results: int = _DEFAULT_MAX_RESULTS) -> float:
+    """Upper bound, in USD, on what one recent-search spends of the owner's credit.
+
+    Pure and offline: a count in, a number out, no key and no network, so the
+    settings surface can quote a cost without holding a connector open.
+
+    It is an UPPER bound, not a prediction. X bills per post returned, so a call
+    asking for ``max_results`` posts that comes back with fewer costs
+    proportionally less. There is deliberately no lower bound and no balance
+    read here: X publishes no endpoint from which a credit balance could be
+    fetched, and a fabricated balance would be worse than the silence.
+    """
+    if not 1 <= max_results <= _MAX_RESULTS:
+        raise ValueError(f"max_results must be 1-{_MAX_RESULTS}")
+    return round(max_results * X_POST_READ_USD, 4)
 
 
 class XTwitterError(ConnectorError):
@@ -194,11 +239,17 @@ class XTwitterConnector(PasteKeyConnector):
         and every caller gets a record it can render.
 
         ``max_results`` is a hard ceiling of 25 (the product-level bound for
-        the settings surface); the key's own tier may impose a lower effective
-        limit (a 429 pauses the governor). X's documented rate limit for
-        recent-search is 450 req / 15 min at the app level (75 req / 15 min
-        per-user); the governor enforces the conservative 25 req / 15 min
-        host-global ceiling.
+        the settings surface); the key's own configuration may impose a lower
+        effective limit (a 429 pauses the governor).
+
+        COST — this call spends the owner's money, and how much is a function
+        of ``max_results``. Under pay-per-use credits X bills one Post read per
+        post RETURNED, so a full page is 25 billed reads rather than one;
+        :func:`estimated_search_cost_usd` turns that into the figure the
+        settings surface quotes. The governor's 25 req / 15 min window is
+        Antiek's own brake and is not a vendor allowance, so it must never be
+        shown in place of the cost. Antiek cannot check the balance before
+        spending it: X exposes no billing endpoint to the connector.
         """
         if not query or not query.strip():
             raise ValueError("query must be a non-empty string")
