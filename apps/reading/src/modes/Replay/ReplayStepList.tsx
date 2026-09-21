@@ -85,7 +85,7 @@ export default function ReplayStepList({ investigationId }: Props) {
 
   if (!investigationId) {
     return (
-      <div className="h-full p-3 bg-ice-0 dark:bg-charcoal-2 text-[12px] font-mono italic text-ink-mute dark:text-moonlight">
+      <div className="h-full p-3 bg-ice-0 dark:bg-charcoal-2 text-xs font-mono italic text-ink-mute dark:text-moonlight">
         No investigation in URL.
       </div>
     );
@@ -98,17 +98,17 @@ export default function ReplayStepList({ investigationId }: Props) {
           Steps · {steps.length}
         </h3>
         {loading && (
-          <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+          <span className="text-xxs font-mono text-ink-mute dark:text-moonlight">
             polling…
           </span>
         )}
       </header>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {error && (
-          <p className="text-[11px] font-mono text-emperor">{error}</p>
+          <p className="text-xs font-mono text-emperor">{error}</p>
         )}
         {!error && steps.length === 0 && !loading && (
-          <p className="text-[11px] font-mono italic text-ink-mute dark:text-moonlight">
+          <p className="text-xs font-mono italic text-ink-mute dark:text-moonlight">
             No significant steps yet.
           </p>
         )}
@@ -127,7 +127,7 @@ export default function ReplayStepList({ investigationId }: Props) {
               );
             }}
             className={
-              "block w-full text-left px-2 py-1.5 rounded text-[12px] font-mono " +
+              "block w-full text-left px-2 py-1.5 rounded text-xs font-mono " +
               "border border-rule dark:border-charcoal-1 " +
               "bg-ice-1 dark:bg-charcoal-2 " +
               "hover:bg-sun/15 dark:hover:bg-sun/10 transition-colors"
@@ -139,13 +139,13 @@ export default function ReplayStepList({ investigationId }: Props) {
                 {prettifyAction(s.action_type)}
               </span>
               {s.phase !== null && (
-                <span className="text-[10px] text-shadow-1 dark:text-moonlight shrink-0">
+                <span className="text-xxs text-shadow-1 dark:text-moonlight shrink-0">
                   ph {s.phase}
                 </span>
               )}
             </div>
             {s.emitted_at && (
-              <div className="text-[10px] text-ink-mute dark:text-moonlight truncate">
+              <div className="text-xxs text-ink-mute dark:text-moonlight truncate">
                 {s.emitted_at}
               </div>
             )}

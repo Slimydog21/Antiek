@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { useViewportTier } from "../workspace/useViewportTier";
 import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
+import { zIndex } from "../design/zIndex";
 import {
   WORKFLOWS,
   WORKFLOW_ORDER,
@@ -220,7 +221,7 @@ function RailButton({
       {badge !== undefined && badge > 0 && (
         <span
           aria-label={`${badge} need attention`}
-          className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-emperor text-ice-1 text-[9px] font-mono font-bold flex items-center justify-center"
+          className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-emperor text-ice-1 text-xxs font-mono font-bold flex items-center justify-center"
         >
           {badge > 99 ? "99+" : badge}
         </span>
@@ -229,7 +230,7 @@ function RailButton({
           workflow-only). aria-hidden so the `.sr-only` span stays the single
           announced name. */}
       <span
-        className="text-[10px] leading-[11px] mt-0.5 font-medium tracking-tight text-center w-full"
+        className="text-xxs leading-[11px] mt-0.5 font-medium tracking-tight text-center w-full"
         aria-hidden="true"
       >
         {label}
@@ -317,7 +318,10 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         title="Open navigation"
         aria-label="Open navigation"
         onClick={() => setCollapsed(false)}
-        className="absolute top-2 left-2 z-50 w-9 h-9 flex flex-col items-center justify-center gap-1 bg-ink text-sun border-edge border-sun rounded shadow-z2"
+        className="absolute top-2 left-2 w-9 h-9 flex flex-col items-center justify-center gap-1 bg-ink text-sun border-edge border-sun rounded shadow-z2"
+        // Above the whole floating-panel band so it stays tappable — the
+        // named `mobileRailToggle` rung (was a z-50 literal).
+        style={{ zIndex: zIndex.mobileRailToggle }}
       >
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
@@ -360,7 +364,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     >
       <BrainMark size={24} />
       <span
-        className="text-[10px] leading-[11px] font-medium tracking-tight"
+        className="text-xxs leading-[11px] font-medium tracking-tight"
         aria-hidden="true"
       >
         Home
@@ -452,9 +456,13 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         <aside
           className={
             "h-14 w-full shrink-0 flex items-stretch bg-ink dark:bg-void border-t-edge border-sun " +
-            (isMobile ? "absolute bottom-0 left-0 z-40 shadow-z3" : "") +
+            (isMobile ? "absolute bottom-0 left-0 shadow-z3" : "") +
             (showRail ? "" : " hidden")
           }
+          // Mobile-only overlay elevation (was a z-40 literal): the named
+          // `mobileRail` rung, at the window-band base. Desktop stays in-flow
+          // with no z, exactly as before.
+          style={isMobile ? { zIndex: zIndex.mobileRail } : undefined}
           aria-label="Primary navigation"
         >
           {homeButton}
@@ -482,9 +490,12 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       <aside
         className={
           "w-[72px] shrink-0 h-full flex flex-col bg-ink dark:bg-void border-r-edge border-sun " +
-          (isMobile ? "absolute top-0 left-0 z-40 shadow-z3" : "") +
+          (isMobile ? "absolute top-0 left-0 shadow-z3" : "") +
           (showRail ? "" : " hidden")
         }
+        // Mobile-only overlay elevation (was a z-40 literal): the named
+        // `mobileRail` rung. Desktop stays in-flow with no z, as before.
+        style={isMobile ? { zIndex: zIndex.mobileRail } : undefined}
         aria-label="Primary navigation"
       >
         {isMobile && (
@@ -493,7 +504,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
             title="Close navigation"
             aria-label="Close navigation"
             onClick={() => setCollapsed(true)}
-            className="absolute -right-8 top-1 w-8 h-8 flex items-center justify-center bg-ink text-sun border-edge border-sun rounded text-[13px]"
+            className="absolute -right-8 top-1 w-8 h-8 flex items-center justify-center bg-ink text-sun border-edge border-sun rounded text-sm"
           >
             ✕
           </button>

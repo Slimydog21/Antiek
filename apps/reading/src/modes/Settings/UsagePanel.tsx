@@ -307,7 +307,7 @@ export default function UsagePanel() {
         </p>
 
         {loadError && (
-          <div role="alert" className="space-y-2 text-sm text-red-700 dark:text-red-300">
+          <div role="alert" className="space-y-2 text-sm text-danger">
             <p>{loadError}</p>
             <LemonButton size="sm" variant="tertiary" onClick={() => void refresh()}>
               Retry
@@ -360,7 +360,7 @@ export default function UsagePanel() {
                     <span
                       className={`text-xs ${
                         label.tone === "ok"
-                          ? "text-emerald-700 dark:text-emerald-300"
+                          ? "text-success"
                           : "text-ink-soft dark:text-starlight"
                       }`}
                     >
@@ -373,7 +373,7 @@ export default function UsagePanel() {
                   </p>
 
                   <div className="space-y-1">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-ink-soft dark:text-starlight">
+                    <p className="text-xs uppercase tracking-[0.14em] text-ink-soft dark:text-starlight">
                       Models
                     </p>
                     {row.models.length > 0 ? (
@@ -443,7 +443,7 @@ export default function UsagePanel() {
                       role={panelMessage.kind === "error" ? "alert" : "status"}
                       className={
                         panelMessage.kind === "error"
-                          ? "text-xs text-red-700 dark:text-red-300"
+                          ? "text-xs text-danger"
                           : "text-xs text-ink-soft dark:text-starlight"
                       }
                     >

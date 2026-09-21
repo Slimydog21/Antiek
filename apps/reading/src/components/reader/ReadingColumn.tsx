@@ -107,7 +107,7 @@ export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
         // chunk stays asset-level (the contract's cover/title-card case).
         {...(assetId ? { "data-akb-asset-id": assetId } : {})}
         {...(assetId && chunkId ? { "data-akb-chunk-id": chunkId } : {})}
-        className="flex-1 font-serif text-[15px] leading-[1.7] text-ink dark:text-bright"
+        className="flex-1 font-serif text-base leading-[1.7] text-ink dark:text-bright"
       >
         {text.trim() ? (
           contentFormat === "html" ? (

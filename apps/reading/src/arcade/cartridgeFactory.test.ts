@@ -8,7 +8,7 @@ describe("arcade cartridge factory helpers", () => {
     const teardown = vi.fn();
     const cart: Cartridge = {
       id: "lifecycle",
-      meta: { title: "Lifecycle", blurb: "", style: "demo" },
+      meta: { title: "Lifecycle", blurb: "", instructions: "", style: "demo" },
       init: vi.fn(),
       update: vi.fn(),
       render: vi.fn(),
@@ -24,7 +24,7 @@ describe("arcade cartridge factory helpers", () => {
     const teardown = vi.fn();
     const cart: Cartridge = {
       id: "throwing",
-      meta: { title: "Throwing", blurb: "", style: "demo" },
+      meta: { title: "Throwing", blurb: "", instructions: "", style: "demo" },
       init: vi.fn(),
       update: vi.fn(() => {
         throw new Error("simulation failed");

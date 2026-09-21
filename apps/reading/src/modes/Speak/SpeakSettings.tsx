@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { LemonButton } from "../../components/lemon";
+import { LemonButton, LemonCard } from "../../components/lemon";
 import type { EconomicsView, PayoutReleaseView } from "../../lib/speakApi";
 import { GATE_PHRASES, PAYOUT_COPY, PRIVATE_ECON_COPY } from "../../lib/speakVocab";
 
@@ -104,19 +104,20 @@ export default function SpeakSettings({
   };
 
   return (
-    <div className="space-y-5 rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
+    <LemonCard elevation="z1">
+      <div className="space-y-5">
       {/* How it's shared */}
       <section>
-        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+        <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           How this story is shared
         </h3>
-        <p className="mt-1 font-serif text-[13px] text-ink dark:text-bright">
+        <p className="mt-1 font-serif text-sm text-ink dark:text-bright">
           {willBePublic
             ? "This story will be shared publicly."
             : "This story is kept private — only you can see the assembled draft."}
         </p>
         {subjectStatusWord && (
-          <p className="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+          <p className="mt-0.5 font-serif text-xs text-ink-mute dark:text-moonlight">
             About someone {subjectStatusWord}.
           </p>
         )}
@@ -126,7 +127,7 @@ export default function SpeakSettings({
           two dimensions (who can be invited × whether it's published) and
           what each implies. The current project's cell is highlighted. */}
       <section className="rounded border border-rule p-3 dark:border-charcoal-1">
-        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+        <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           How invites &amp; publishing work
         </h3>
         <div className="mt-2 grid grid-cols-2 gap-2">
@@ -151,7 +152,7 @@ export default function SpeakSettings({
             active={false}
           />
         </div>
-        <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+        <p className="mt-2 font-serif text-xs text-ink-mute dark:text-moonlight">
           A public story always shares 70% of earnings with contributors —
           that's fixed, not something a requester can switch off.
         </p>
@@ -159,12 +160,12 @@ export default function SpeakSettings({
 
       {/* The honest split — shown, not paid */}
       <section className="rounded border border-rule p-3 dark:border-charcoal-1">
-        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+        <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           What contributors are owed
         </h3>
         {splitApplies ? (
           <>
-            <p className="mt-1 font-serif text-[13px] text-ink dark:text-bright">
+            <p className="mt-1 font-serif text-sm text-ink dark:text-bright">
               When a story is public, 70% of what it earns goes to the people
               who contributed their voices — divided by how much each one
               shaped the story.
@@ -173,18 +174,18 @@ export default function SpeakSettings({
                 basis (shared verbatim with the public lane via PAYOUT_COPY),
                 the slop-earns-$0 rule, and verifier-not-requester. No formula,
                 no per-second/airtime model. */}
-            <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+            <p className="mt-2 font-serif text-xs text-ink-mute dark:text-moonlight">
               {PAYOUT_COPY.basis}
             </p>
-            <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+            <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
               {PAYOUT_COPY.slopEarnsZero}
             </p>
-            <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+            <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
               {PAYOUT_COPY.verifierNotRequester}
             </p>
             {/* M2 — the share FRACTION accrues now; the $ AMOUNT is honestly $0
                 with no buyers (shown as $0, never a projection). */}
-            <p className="mt-2 font-serif text-[13px] text-ink dark:text-bright">
+            <p className="mt-2 font-serif text-sm text-ink dark:text-bright">
               Each voice's share accrues now. Earned so far:{" "}
               <span className="font-mono font-semibold">$0.00</span>
               <span className="ml-2 text-ink-mute dark:text-moonlight">
@@ -195,12 +196,12 @@ export default function SpeakSettings({
                 allowed branch is hypothetical today (deny-by-default); neither
                 branch offers a close/enable affordance. */}
             {disbursementAllowed ? (
-              <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              <p className="mt-2 font-serif text-xs text-ink-mute dark:text-moonlight">
                 This is what each voice is owed. Payouts are open — money routes
                 to contributors as a public story earns.
               </p>
             ) : (
-              <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              <p className="mt-2 font-serif text-xs text-ink-mute dark:text-moonlight">
                 This is what each voice is owed, not a payment. The share accrues
                 now; nothing is paid out until the legal review (G2/G3) is
                 complete.
@@ -209,7 +210,7 @@ export default function SpeakSettings({
           </>
         ) : (
           <p
-            className="mt-1 font-serif text-[13px] font-semibold text-ink dark:text-bright"
+            className="mt-1 font-serif text-sm font-semibold text-ink dark:text-bright"
             data-testid="private-econ-settings-notice"
           >
             {PRIVATE_ECON_COPY.operatorPrivateNoSplit}
@@ -220,7 +221,7 @@ export default function SpeakSettings({
       {/* Publishing — gated. The gate STATE is read from the backend and
           shown; there is no affordance here to close it (operator-only). */}
       <section>
-        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+        <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           Publishing
         </h3>
         <div className="mt-1 flex flex-wrap gap-2">
@@ -236,16 +237,16 @@ export default function SpeakSettings({
           // copy can't drift from the lanes). publicSharing = going public;
           // disbursement = the earnings that ride on it.
           <>
-            <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+            <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
               {GATE_PHRASES.publicSharing.whenGated}
             </p>
-            <p className="mt-1 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+            <p className="mt-1 font-serif text-sm text-ink-mute dark:text-moonlight">
               {GATE_PHRASES.disbursement.whenGated} You can try; we'll tell you
               plainly if it's not ready yet.
             </p>
           </>
         ) : (
-          <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+          <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
             Publishing is open. Going public shares the assembled story and
             routes the contributor split.
           </p>
@@ -259,7 +260,7 @@ export default function SpeakSettings({
           </LemonButton>
         </div>
         {actionNote && (
-          <p className="mt-2 font-serif text-[12px] text-ink dark:text-bright">
+          <p className="mt-2 font-serif text-xs text-ink dark:text-bright">
             {actionNote}
           </p>
         )}
@@ -273,20 +274,20 @@ export default function SpeakSettings({
           the backend, not as a switch here. */}
       {onReleasePayout && splitApplies && (
         <section className="rounded border border-rule p-3 dark:border-charcoal-1">
-          <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+          <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
             What you're hoping to learn (and the budget for it)
           </h3>
           {/* M3 — the §9.3 Option-B basis, slop-earns-$0, and
               verifier-not-requester, single-sourced from PAYOUT_COPY so this
               surface and the public lane cannot drift. No formula, no
               per-second/airtime model. */}
-          <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+          <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
             {PAYOUT_COPY.verifierNotRequester}
           </p>
-          <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+          <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
             {PAYOUT_COPY.basis} {PAYOUT_COPY.slopEarnsZero}
           </p>
-          <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+          <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
             Nothing is paid out before the legal review — this only sets aside
             what's owed.
           </p>
@@ -297,10 +298,10 @@ export default function SpeakSettings({
               rows={2}
               placeholder="e.g. What was his work, and what was he like during the war years?"
               aria-label="What you're hoping to learn"
-              className="w-full rounded border border-rule bg-ice-0 p-2 font-serif text-[13px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+              className="w-full rounded border border-rule bg-ice-0 p-2 font-serif text-sm text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
             />
             <div className="flex flex-wrap gap-2">
-              <label className="flex items-center gap-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              <label className="flex items-center gap-1 font-serif text-xs text-ink-mute dark:text-moonlight">
                 Total budget $
                 <input
                   value={budget}
@@ -308,10 +309,10 @@ export default function SpeakSettings({
                   inputMode="decimal"
                   placeholder="0"
                   aria-label="Total budget in dollars"
-                  className="w-20 rounded border border-rule bg-ice-0 px-2 py-1 font-mono text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+                  className="w-20 rounded border border-rule bg-ice-0 px-2 py-1 font-mono text-xs text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
                 />
               </label>
-              <label className="flex items-center gap-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              <label className="flex items-center gap-1 font-serif text-xs text-ink-mute dark:text-moonlight">
                 Most per voice $
                 <input
                   value={cap}
@@ -319,7 +320,7 @@ export default function SpeakSettings({
                   inputMode="decimal"
                   placeholder="0"
                   aria-label="Most per voice in dollars"
-                  className="w-20 rounded border border-rule bg-ice-0 px-2 py-1 font-mono text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+                  className="w-20 rounded border border-rule bg-ice-0 px-2 py-1 font-mono text-xs text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
                 />
               </label>
             </div>
@@ -332,10 +333,10 @@ export default function SpeakSettings({
               {releaseBusy ? "Grading…" : "Grade what's been shared & set aside what's owed"}
             </LemonButton>
             {releaseErr && (
-              <p className="font-mono text-[11px] text-emperor">{releaseErr}</p>
+              <p className="font-mono text-xs text-emperor">{releaseErr}</p>
             )}
             {release && (
-              <p className="font-serif text-[12px] text-ink dark:text-bright">
+              <p className="font-serif text-xs text-ink dark:text-bright">
                 Set aside so far:{" "}
                 <span className="font-mono font-semibold">${release.spentUsd}</span>
                 {release.budgetExhausted && " — budget reached"}
@@ -352,17 +353,18 @@ export default function SpeakSettings({
 
       {/* Consent + removal */}
       <section>
-        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+        <h3 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           Consent &amp; removal
         </h3>
-        <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+        <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
           Everyone who contributes chooses what they're comfortable with, and
           can ask for their words to be removed at any time. A public story
           also needs the subject's consent (or a documented reason when that
           isn't possible).
         </p>
       </section>
-    </div>
+      </div>
+    </LemonCard>
   );
 }
 
@@ -385,11 +387,11 @@ function MatrixCell({
           : "border-rule dark:border-charcoal-1"
       }`}
     >
-      <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-ink dark:text-bright">
+      <p className="font-mono text-xxs font-semibold uppercase tracking-wider text-ink dark:text-bright">
         {title}
         {active && <span className="ml-1 text-sun-deep dark:text-sun">· now</span>}
       </p>
-      <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">{body}</p>
+      <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">{body}</p>
     </div>
   );
 }
@@ -399,7 +401,7 @@ function MatrixCell({
 function GatePill({ label, gated }: { label: string; gated: boolean }) {
   return (
     <span
-      className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
+      className={`rounded-full border px-2 py-0.5 font-mono text-xxs uppercase tracking-wider ${
         gated
           ? "border-rule text-ink-mute dark:border-charcoal-1 dark:text-moonlight"
           : "border-sun text-ink dark:text-bright"

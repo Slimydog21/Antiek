@@ -52,7 +52,7 @@ export function WorkflowStub({
         data-testid={`workflow-stub-misuse-${workflow}`}
       >
         <div className="max-w-md text-center">
-          <p className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          <p className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
             {meta.label}
           </p>
           <p className="mt-2 text-sm text-ink dark:text-bright">
@@ -70,13 +70,13 @@ export function WorkflowStub({
       data-testid={`workflow-stub-${workflow}`}
     >
       <div className="max-w-lg text-center">
-        <p className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        <p className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           {meta.label}
         </p>
         <h1 className="mt-3 font-serif text-2xl text-ink dark:text-bright">
           Not yet — {meta.label} is on the way.
         </h1>
-        <p className="mt-3 text-[15px] leading-relaxed text-ink-soft dark:text-starlight font-serif">
+        <p className="mt-3 text-base leading-relaxed text-ink-soft dark:text-starlight font-serif">
           {meta.tagline}{" "}
           {meta.shippingSprint
             ? `Shipping in ${meta.shippingSprint}.`
@@ -85,14 +85,14 @@ export function WorkflowStub({
 
         {pending.length > 0 && (
           <div className="mt-6 inline-block text-left">
-            <p className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
+            <p className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
               Pending surfaces
             </p>
             <ul className="space-y-1">
               {pending.map((m) => (
                 <li
                   key={m.id}
-                  className="text-[13px] text-ink-soft dark:text-starlight flex items-baseline gap-2"
+                  className="text-sm text-ink-soft dark:text-starlight flex items-baseline gap-2"
                 >
                   <span aria-hidden="true" className="text-ink-mute dark:text-moonlight">
                     ·

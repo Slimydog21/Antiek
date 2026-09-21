@@ -134,7 +134,7 @@ export default function ConnectResearch({
       )}
 
       <div className="flex items-center gap-2">
-        <span className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        <span className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Model for the backing research
         </span>
         <ModelUsagePicker
@@ -148,7 +148,7 @@ export default function ConnectResearch({
           size="sm"
         />
         {model.state === "error" && (
-          <span className="text-[10px] font-mono text-emperor" aria-live="polite">
+          <span className="text-xxs font-mono text-emperor" aria-live="polite">
             Your models couldn’t load. Default is still available.
           </span>
         )}
@@ -158,12 +158,12 @@ export default function ConnectResearch({
         type="button"
         onClick={() => void connectNone()}
         disabled={disabled || spawning}
-        className="w-full rounded border border-dashed border-rule px-3 py-2 text-left text-sm hover:border-ocean disabled:opacity-60 dark:border-charcoal-1"
+        className="w-full rounded border border-dashed border-rule px-3 py-2 text-left text-sm hover:border-sun-deep disabled:opacity-60 dark:border-charcoal-1"
       >
         <span className="font-medium text-ink dark:text-bright">
           {spawning ? "Opening a research folder…" : "Start without a project"}
         </span>
-        <span className="block text-[11px] text-ink-mute dark:text-moonlight">
+        <span className="block text-xs text-ink-mute dark:text-moonlight">
           We'll auto-spawn a backing research folder and link it.
         </span>
       </button>
@@ -176,7 +176,7 @@ export default function ConnectResearch({
         <>
           {preferredInvestigationId ? (
             <p
-              className="text-xs text-aurora"
+              className="text-xs text-ink-soft"
               data-testid="connect-research-preferred"
             >
               Pre-selected from your notebook — connect to import the research
@@ -197,12 +197,12 @@ export default function ConnectResearch({
                 type="button"
                 onClick={() => void connectExisting(p)}
                 disabled={disabled || spawning}
-                className={`w-full rounded border px-3 py-2 text-left hover:border-ocean disabled:opacity-60 dark:bg-charcoal-2 ${preferredInvestigationId === p.investigation_id ? "border-aurora bg-ice-1 dark:border-aurora" : "border-rule bg-ice-0 dark:border-charcoal-1"}`}
+                className={`w-full rounded border px-3 py-2 text-left hover:border-sun-deep disabled:opacity-60 dark:bg-charcoal-2 ${preferredInvestigationId === p.investigation_id ? "border-sun-deep bg-sun/10" : "border-rule bg-ice-0 dark:border-charcoal-1"}`}
               >
                 <span className="block truncate font-serif text-sm text-ink dark:text-bright">
                   {p.question?.trim() || "(untitled research)"}
                 </span>
-                <span className="text-[10px] uppercase tracking-wide text-ink-mute dark:text-moonlight">
+                <span className="text-xxs uppercase tracking-wide text-ink-mute dark:text-moonlight">
                   {p.status}
                   {p.spawned_by_daemon ? " · found by the loop" : ""}
                 </span>
