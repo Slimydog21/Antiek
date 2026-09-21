@@ -33,7 +33,7 @@ export default function WernerAuthoredPose({
       src={AUTHORED_POSE[pose]}
       alt=""
       aria-hidden="true"
-      data-werner-authored-pose={pose}
+      data-mascot-authored-pose={pose}
       width={size}
       height={size}
       className={className}
