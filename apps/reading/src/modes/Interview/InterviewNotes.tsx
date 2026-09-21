@@ -51,7 +51,7 @@ export default function InterviewNotes({ interviewId }: Props) {
 
   if (!interviewId) {
     return (
-      <div className="h-full p-3 bg-ice-0 dark:bg-charcoal-2 text-[12px] font-mono italic text-ink-mute dark:text-moonlight">
+      <div className="h-full p-3 bg-ice-0 dark:bg-charcoal-2 text-xs font-mono italic text-ink-mute dark:text-moonlight">
         No interview loaded.
       </div>
     );
@@ -63,7 +63,7 @@ export default function InterviewNotes({ interviewId }: Props) {
         <h3 className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Notes · operator margin
         </h3>
-        <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+        <span className="text-xxs font-mono text-ink-mute dark:text-moonlight">
           {saved === "saving"
             ? "saving…"
             : saved === "saved"
@@ -77,9 +77,9 @@ export default function InterviewNotes({ interviewId }: Props) {
         placeholder={
           "Body-language cues, emphasis, follow-ups… stored locally only."
         }
-        className="flex-1 w-full p-3 font-serif text-[14px] leading-relaxed bg-transparent text-ink dark:text-bright outline-none resize-none"
+        className="flex-1 w-full p-3 font-serif text-sm leading-relaxed bg-transparent text-ink dark:text-bright outline-none resize-none"
       />
-      <footer className="px-3 py-2 border-t border-rule dark:border-charcoal-1 text-[10px] font-mono text-ink-mute dark:text-moonlight">
+      <footer className="px-3 py-2 border-t border-rule dark:border-charcoal-1 text-xxs font-mono text-ink-mute dark:text-moonlight">
         Notes are operator-private (localStorage). Substrate events are
         recorded separately via the main compose form.
       </footer>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonCard from "../../components/lemon/LemonCard";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import { apiFetch } from "../../lib/api";
@@ -46,10 +47,10 @@ const TABLE_GROUPS: { title: string; tables: string[] }[] = [
 ];
 
 export default function Stats() {
-  // SPR-09 window-adaptation contract: when hosted inside a WorkspaceWindow,
-  // fill the window container (h-full, not h-screen) and drop the opaque
-  // full-bleed bg so the glass body + scene shows through. Both edits are
-  // gated on this flag, so the full-page route renders unchanged.
+  // SPR-09 window-adaptation contract: the root fills its container (h-full —
+  // AppShell's main slot on the full-page route, the WorkspaceWindow when
+  // popped out), and in a window the opaque full-bleed bg drops so the glass
+  // body + scene shows through. The bg swap stays gated on this flag.
   const inWindow = useInWindow();
   const [data, setData] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -76,7 +77,7 @@ export default function Stats() {
   }, [reload]);
 
   return (
-    <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
+    <div className="flex flex-col h-full">
       <main
         className={`flex-1 overflow-y-auto ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}
       >
@@ -103,9 +104,9 @@ export default function Stats() {
           </header>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (
@@ -113,11 +114,11 @@ export default function Stats() {
           )}
 
           {data && data.warnings.length > 0 && (
-            <section className="border border-amber-200 bg-sun/10 rounded-md p-4 space-y-1">
-              <p className="text-xs font-mono uppercase text-amber-900">
+            <section className="border border-sun-deep bg-sun/10 dark:bg-sun/5 rounded-md p-4 space-y-1">
+              <p className="text-xs font-mono uppercase text-sun-deep dark:text-sun">
                 Warnings
               </p>
-              <ul className="text-xs text-amber-900 list-disc pl-5 space-y-0.5">
+              <ul className="text-xs text-ink-soft dark:text-starlight list-disc pl-5 space-y-0.5">
                 {data.warnings.map((w, i) => (
                   <li key={i}>{w}</li>
                 ))}
@@ -144,7 +145,7 @@ export default function Stats() {
                       <p className="text-2xl font-serif text-ink dark:text-bright">
                         {(data.counts[t] ?? 0).toLocaleString()}
                       </p>
-                      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+                      <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
                         {t.replace(/_/g, " ")}
                       </p>
                     </LemonCard>

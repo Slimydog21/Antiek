@@ -62,7 +62,7 @@ function describeScopes(scopes: InviteRow["requiredScopes"]): string {
 const STATUS_STYLE: Record<InviteStatus, string> = {
   invited: "text-ink-mute dark:text-moonlight",
   in_progress: "text-sun-deep dark:text-sun",
-  completed: "text-aurora",
+  completed: "text-success",
   declined: "text-emperor",
   incomplete: "text-ink-mute dark:text-moonlight italic",
 };
@@ -88,7 +88,7 @@ export default function Invites({
         <h2 className="text-sm font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           {projectTitle} · invitations
         </h2>
-        <p className="text-[11px] font-mono text-ink-mute dark:text-moonlight mt-1">
+        <p className="text-xs font-mono text-ink-mute dark:text-moonlight mt-1">
           {publishIntent === "will_be_public"
             ? "will-be-public — invites capture publish-scope consent"
             : "private — invites capture record consent"}
@@ -101,7 +101,7 @@ export default function Invites({
             className="mt-2 rounded border-2 border-emperor bg-ice-0 p-2 dark:bg-charcoal-1"
             data-testid="private-econ-invites-notice"
           >
-            <p className="font-serif text-[12px] font-semibold text-ink dark:text-bright">
+            <p className="font-serif text-xs font-semibold text-ink dark:text-bright">
               {PRIVATE_ECON_COPY.operatorInviteNoEarnings}
             </p>
           </aside>
@@ -114,20 +114,20 @@ export default function Invites({
           value={email}
           placeholder="friend@example.com"
           onChange={(e) => setEmail(e.target.value)}
-          className="flex-1 font-mono text-[12px] px-2 py-1 border border-ink-mute rounded bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright"
+          className="flex-1 font-mono text-xs px-2 py-1 border border-ink-mute rounded bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright"
         />
         <button
           type="button"
           onClick={() => void submit()}
           disabled={!onInvite}
-          className="font-mono text-[11px] px-3 py-1 border border-ink rounded text-sun-deep dark:text-sun hover:underline disabled:opacity-40"
+          className="font-mono text-xs px-3 py-1 border border-ink rounded text-sun-deep dark:text-sun hover:underline disabled:opacity-40"
         >
           send invite
         </button>
       </div>
 
       {invites.length === 0 ? (
-        <p className="text-[12px] italic text-ink-mute dark:text-moonlight font-serif">
+        <p className="text-xs italic text-ink-mute dark:text-moonlight font-serif">
           No invitees yet — send the first link above.
         </p>
       ) : (
@@ -138,12 +138,12 @@ export default function Invites({
               className="border border-ink-mute/40 rounded p-2 flex flex-col gap-1"
             >
               <div className="flex items-center justify-between">
-                <span className="font-serif text-[14px] text-ink dark:text-bright">
+                <span className="font-serif text-sm text-ink dark:text-bright">
                   {iv.email ?? iv.handle ?? iv.interviewId}
                 </span>
                 <span
                   className={
-                    "font-mono text-[10px] uppercase tracking-wider " +
+                    "font-mono text-xxs uppercase tracking-wider " +
                     STATUS_STYLE[iv.status]
                   }
                 >
@@ -151,18 +151,18 @@ export default function Invites({
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <code className="text-[10px] text-ink-mute dark:text-moonlight truncate">
+                <code className="text-xxs text-ink-mute dark:text-moonlight truncate">
                   {iv.link}
                 </code>
                 <button
                   type="button"
                   onClick={() => void navigator.clipboard?.writeText(iv.link)}
-                  className="font-mono text-[10px] text-sun-deep dark:text-sun hover:underline shrink-0"
+                  className="font-mono text-xxs text-sun-deep dark:text-sun hover:underline shrink-0"
                 >
                   copy
                 </button>
               </div>
-              <span className="font-mono text-[9px] text-ink-mute dark:text-moonlight">
+              <span className="font-mono text-xxs text-ink-mute dark:text-moonlight">
                 consent: {describeScopes(iv.requiredScopes)}
               </span>
             </li>

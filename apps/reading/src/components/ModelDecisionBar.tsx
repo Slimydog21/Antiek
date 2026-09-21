@@ -211,11 +211,11 @@ export default function ModelDecisionBar({
   return (
     <div
       data-testid="model-decision-bar"
-      className="flex flex-col gap-2 rounded-lg border border-border p-3"
+      className="flex flex-col gap-2 rounded-lg border border-rule dark:border-charcoal-1 p-3"
       aria-label="per-prompt model decision"
     >
       <div className="flex items-center gap-2">
-        <span className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+        <span className="text-xs uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
           model
         </span>
         <select
@@ -231,7 +231,7 @@ export default function ModelDecisionBar({
           }}
           data-testid="model-decision-select"
           aria-label="model choice"
-          className="rounded border border-border bg-surface px-2 py-1 text-sm text-ink dark:text-bright"
+          className="rounded border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-2 py-1 text-sm text-ink dark:text-bright"
         >
           {selectedValue === "" && <option value="">choose a model</option>}
           {options.map((opt) => (
@@ -250,7 +250,7 @@ export default function ModelDecisionBar({
         {selectedProviderBalance && (
           <span
             data-testid="selected-provider-balance"
-            className="rounded-full bg-ice-2 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-charcoal-1 dark:text-emerald-300"
+            className="rounded-full bg-ice-2 px-2 py-0.5 text-xs text-success dark:bg-charcoal-1"
           >
             key remaining {selectedProviderBalance}
           </span>
@@ -260,7 +260,7 @@ export default function ModelDecisionBar({
       {projection.pricing_status === "unknown" && (
         <span
           data-testid="pricing-unknown"
-          className="text-[11px] text-sun"
+          className="text-xs text-sun"
           role="status"
         >
           pricing unknown for the chosen model
@@ -273,7 +273,7 @@ export default function ModelDecisionBar({
         aria-label="budget bar"
       >
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+          <span className="text-xs uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
             budget
           </span>
           {budgetPct == null ? (
@@ -303,7 +303,7 @@ export default function ModelDecisionBar({
                   ? "bg-emperor"
                   : budgetPct >= 80
                     ? "bg-sun"
-                    : "bg-aurora"
+                    : "bg-success"
               }`}
               style={{ width: `${budgetPct.toFixed(1)}%` }}
             />
@@ -326,7 +326,7 @@ export default function ModelDecisionBar({
                 ? "text-danger"
                 : exceed.tone === "unknown"
                   ? "text-shadow-1 dark:text-moonlight"
-                  : "text-aurora"
+                  : "text-success"
             }
           >
             · {exceed.text}
@@ -337,11 +337,11 @@ export default function ModelDecisionBar({
       {projection.fallback_plan && (
         <div
           data-testid="fallback-plan"
-          className="border-t border-border pt-2"
+          className="border-t border-rule dark:border-charcoal-1 pt-2"
           aria-label="fallback plan"
         >
           <div className="mb-1 flex items-baseline justify-between gap-3">
-            <span className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+            <span className="text-xs uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
               fallback plan
             </span>
             <span
@@ -355,7 +355,7 @@ export default function ModelDecisionBar({
               {fallbackExposureLabel(projection)}
             </span>
           </div>
-          <ol className="divide-y divide-border">
+          <ol className="divide-y divide-rule dark:divide-charcoal-1">
             {projection.fallback_plan.routes.map((route) => (
               <li
                 key={JSON.stringify([route.provider, route.model])}
@@ -373,7 +373,7 @@ export default function ModelDecisionBar({
                 <span className="font-mono text-ink dark:text-bright">
                   {fallbackProjectionLabel(route.projection)}
                 </span>
-                <span className="col-span-2 mt-0.5 text-[11px] text-shadow-1 dark:text-moonlight">
+                <span className="col-span-2 mt-0.5 text-xs text-shadow-1 dark:text-moonlight">
                   {route.registered ? "registered" : "not registered"} ·{" "}
                   {executionLabel(route.execution_status)}
                 </span>
@@ -386,7 +386,7 @@ export default function ModelDecisionBar({
       {projection.notes.length > 0 && (
         <ul
           data-testid="projection-notes"
-          className="text-[11px] text-shadow-1 dark:text-moonlight"
+          className="text-xs text-shadow-1 dark:text-moonlight"
         >
           {projection.notes.slice(0, 2).map((note, index) => (
             <li key={`${index}:${note}`}>{note}</li>

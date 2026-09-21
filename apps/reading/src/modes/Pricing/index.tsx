@@ -43,11 +43,11 @@ export default function PricingPage() {
   const totalUsd = rawPrivateUsd + privateMargin + rawPublicAboveCapUsd + publicMargin;
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-10">
           <header className="space-y-3">
-            <div className="flex items-center gap-3"><WorkflowArt workflow="pricing" size={56} className="shrink-0" /><h1 className="text-3xl font-serif text-ink dark:text-bright">Pricing</h1></div>
+            <div className="flex items-center gap-3"><WorkflowArt workflow="pricing" size={56} className="shrink-0" /><h1 className="text-2xl font-serif text-ink dark:text-bright">Pricing</h1></div>
             <p className="text-base text-ink dark:text-bright leading-relaxed">
               Antiek prices like OpenRouter. You set a token budget;
               we bill against actual usage with a transparent margin

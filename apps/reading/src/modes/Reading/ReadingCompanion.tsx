@@ -320,7 +320,7 @@ export default function ReadingCompanion({
         <p className="font-serif text-sm text-ink dark:text-bright">
           Reading {title ? <span className="italic">{title}</span> : "this book"} with you
         </p>
-        <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight mt-0.5">
+        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mt-0.5">
           Notes and open questions gather here as you read.
         </p>
       </header>
@@ -337,7 +337,7 @@ export default function ReadingCompanion({
           aria-label="Saved research handoffs"
         >
           <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="font-mono text-[10px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+            <p className="font-mono text-xxs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
               Saved chases
             </p>
             <div className="flex shrink-0 items-center gap-2">
@@ -345,7 +345,7 @@ export default function ReadingCompanion({
                 type="button"
                 onClick={() => void draftReadyChases()}
                 disabled={draftBusy || readyIds.length < 2}
-                className="font-mono text-[11px] text-ink hover:underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
+                className="font-mono text-xs text-ink hover:underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
                 title={
                   readyIds.length >= 2
                     ? "Draft a no-mutation merge of completed chase artifacts"
@@ -357,7 +357,7 @@ export default function ReadingCompanion({
               <button
                 type="button"
                 onClick={copyMergePacket}
-                className="font-mono text-[11px] text-ink hover:underline dark:text-bright"
+                className="font-mono text-xs text-ink hover:underline dark:text-bright"
                 title="Copy a no-spend packet for a later draft merge"
               >
                 {copiedMergePacket ? "copied" : "copy packet"}
@@ -366,7 +366,7 @@ export default function ReadingCompanion({
           </div>
           {draftMergeReceipt ? (
             <div
-              className="mb-2 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-[10px] text-shadow-1 dark:bg-charcoal-2 dark:text-moonlight"
+              className="mb-2 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-xxs text-shadow-1 dark:bg-charcoal-2 dark:text-moonlight"
               aria-label="Draft merge receipt"
               role="region"
             >
@@ -575,7 +575,7 @@ export default function ReadingCompanion({
             </div>
           ) : null}
           {draftError ? (
-            <p className="mb-2 font-serif text-[12px] text-emperor">{draftError}</p>
+            <p className="mb-2 font-serif text-xs text-emperor">{draftError}</p>
           ) : null}
           <ol className="space-y-1.5">
             {handoffs.map((handoff) => (
@@ -583,15 +583,15 @@ export default function ReadingCompanion({
                 key={`${handoff.parent_investigation_id}:${handoff.child_investigation_id}`}
                 className="rounded-hog border border-rule bg-ice-0 px-2 py-1.5 dark:bg-charcoal-2"
               >
-                <span className="mb-1 inline-flex rounded-hog border border-rule px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                <span className="mb-1 inline-flex rounded-hog border border-rule px-1.5 py-0.5 font-mono text-xxs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                   {handoffStatusLabel(summariesById.get(handoff.child_investigation_id))}
                 </span>
-                <p className="line-clamp-2 font-serif text-[13px] leading-snug text-ink dark:text-bright">
+                <p className="line-clamp-2 font-serif text-sm leading-snug text-ink dark:text-bright">
                   {handoff.source_passage}
                 </p>
                 <Link
                   to={`/inv/${handoff.child_investigation_id}`}
-                  className="mt-1 inline-flex font-mono text-[11px] text-shadow-1 hover:text-ink hover:underline dark:text-moonlight dark:hover:text-bright"
+                  className="mt-1 inline-flex font-mono text-xs text-shadow-1 hover:text-ink hover:underline dark:text-moonlight dark:hover:text-bright"
                 >
                   open research
                 </Link>
@@ -616,25 +616,23 @@ export default function ReadingCompanion({
                 className="flex items-start gap-2.5 border-b border-rule pb-2.5 last:border-b-0 dark:border-charcoal-1"
               >
                 <span
-                  className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${
-                    n.kind === "question" ? "bg-sun-deep dark:bg-sun" : "bg-aurora"
-                  }`}
+                  className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-aurora"
                   aria-hidden="true"
                 />
-                <p className="min-w-0 flex-1 font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
+                <p className="min-w-0 flex-1 font-serif text-sm leading-relaxed text-ink dark:text-bright">
                   {n.kind === "question" ? <span className="italic">Open question: </span> : null}
                   {/* §9 honest attribution — a note the reader authored in-book
                       (a marginalia note) is labelled as theirs, never shown as
                       if the AI distilled it. A model-emerged note carries no
                       such label (the absence is "model"). */}
                   {n.sourceKind === "user" ? (
-                    <span className="mr-1 font-mono text-[11px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                    <span className="mr-1 font-mono text-xs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                       Your note ·
                     </span>
                   ) : null}
                   {n.text}
                   {n.refinements > 0 && n.previousText && (
-                    <span className="mt-1 block border-l-2 border-rule pl-2 font-serif text-[12px] italic leading-relaxed text-ink-mute dark:border-charcoal-1 dark:text-moonlight">
+                    <span className="mt-1 block border-l-2 border-rule pl-2 font-serif text-xs italic leading-relaxed text-ink-mute dark:border-charcoal-1 dark:text-moonlight">
                       was: {n.previousText}
                     </span>
                   )}

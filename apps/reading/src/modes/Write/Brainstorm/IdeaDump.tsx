@@ -85,7 +85,7 @@ export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps)
           type="button"
           disabled={!canAskMore(clarify)}
           onClick={() => setClarify((s) => recordTurn(s, { shouldEnd: false }))}
-          className="px-2 py-0.5 rounded border border-rule disabled:opacity-40 hover:border-ocean"
+          className="px-2 py-0.5 rounded border border-rule disabled:opacity-40 hover:border-sun-deep"
         >
           Ask a clarifying question
         </button>
@@ -93,7 +93,7 @@ export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps)
           type="button"
           disabled={clarify.done}
           onClick={() => setClarify((s) => recordTurn(s, { shouldEnd: true }))}
-          className="px-2 py-0.5 rounded border border-rule disabled:opacity-40 hover:border-ocean"
+          className="px-2 py-0.5 rounded border border-rule disabled:opacity-40 hover:border-sun-deep"
         >
           Done clarifying
         </button>
@@ -150,7 +150,7 @@ function DriverColumn({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-semibold text-ink-soft">{label}</span>
+      <span className="text-xs font-semibold text-ink-soft">{label}</span>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -158,7 +158,7 @@ function DriverColumn({
         placeholder="one per line"
         className="px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded font-serif focus:outline-none focus:ring-2 focus:ring-sun"
       />
-      {hint && <span className="text-[10px] text-ink-mute leading-tight">{hint}</span>}
+      {hint && <span className="text-xxs text-ink-mute leading-tight">{hint}</span>}
     </div>
   );
 }
