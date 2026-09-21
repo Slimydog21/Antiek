@@ -82,7 +82,7 @@ export default function AdSlot({
       >
         <div className="flex items-center justify-between">
           <div className="flex flex-col">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+            <span className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
               Sponsored · {ad.sector}
             </span>
             <a
@@ -95,7 +95,7 @@ export default function AdSlot({
               {ad.creative_headline}
             </a>
           </div>
-          <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+          <span className="text-xxs font-mono text-ink-mute dark:text-moonlight">
             {ad.advertiser_name}
           </span>
         </div>
@@ -111,7 +111,7 @@ export default function AdSlot({
       className="border-t border-rule dark:border-charcoal-1 mt-8 pt-3 pb-2"
     >
       <div className="flex items-center justify-between text-sm">
-        <span className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        <span className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Sponsored · {ad.sector} · {ad.intent}
         </span>
         <a
@@ -123,7 +123,7 @@ export default function AdSlot({
         >
           {ad.creative_headline}
         </a>
-        <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+        <span className="text-xxs font-mono text-ink-mute dark:text-moonlight">
           {ad.advertiser_name}
         </span>
       </div>

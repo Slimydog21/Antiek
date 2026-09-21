@@ -21,7 +21,7 @@ type Story = StoryObj<typeof meta>;
 export const InAReply: Story = {
   render: () => (
     <div className="max-w-lg space-y-2">
-      <p className="font-serif text-[15px] leading-[1.7] text-ink dark:text-bright">
+      <p className="font-serif text-base leading-[1.7] text-ink dark:text-bright">
         The passage echoes Seneca: that the obstacle to a tranquil mind is
         not the event but our judgement of it. Read against the surrounding
         chapter, the author is making the Stoic move explicit.

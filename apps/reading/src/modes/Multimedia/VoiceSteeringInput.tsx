@@ -109,7 +109,7 @@ export function VoiceSteeringInput({
   return (
     <div>
       <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
-      <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Text or voice steering</p>
+      <p className="font-mono text-xs text-shadow-2 dark:text-moonlight">Text or voice steering</p>
       <LemonTextarea
         value={value}
         minRows={3}
@@ -138,7 +138,7 @@ export function VoiceSteeringInput({
         </LemonButton>
         {rawTranscript && (
           <>
-            <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight" role="status">
+            <span className="font-mono text-xs text-shadow-1 dark:text-moonlight" role="status">
               Voice transcript attached. Review before applying.
             </span>
             <LemonButton type="button" size="sm" variant="tertiary" onClick={onDiscardTranscript} disabled={disabled || busy}>
@@ -148,7 +148,7 @@ export function VoiceSteeringInput({
         )}
       </div>
       {(error || recorderError) && (
-        <p className="mt-2 text-[12px] text-emperor" role="alert">{error || recorderError}</p>
+        <p className="mt-2 text-xs text-emperor" role="alert">{error || recorderError}</p>
       )}
     </div>
   );

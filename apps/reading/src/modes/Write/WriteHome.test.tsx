@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { emitTraceIntent } from "./Editor/traceIntent";
+import { toast } from "../../components/lemon/LemonToast";
 import type { TraceTarget } from "./writeApi";
 
 /**
@@ -168,7 +169,9 @@ describe("WriteHome — the re-homed door", () => {
   });
 
   it("falls back honestly (no dead page) when the source is gated/unreachable", async () => {
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    // The honest fallback is a LemonToast (FEEL contract), not window.alert —
+    // assert the toast fires with the gate's own detail text.
+    const warnSpy = vi.spyOn(toast, "warn").mockImplementation(() => 0);
     const gated: TraceTarget = {
       kind: "document",
       full_text_allowed: false, // the no-leak bit
@@ -188,10 +191,12 @@ describe("WriteHome — the re-homed door", () => {
       nodeId: "node-g",
       provenanceKind: "graph_node",
     });
-    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(warnSpy).toHaveBeenCalledWith("this source is gated"),
+    );
     // It did NOT navigate to a dead reader page.
     expect(screen.queryByText("READER")).toBeNull();
-    alertSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it("outline→Write: connects via from-investigation when synthesis exists", async () => {

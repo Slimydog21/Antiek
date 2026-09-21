@@ -203,7 +203,7 @@ export default function InterviewVoiceCapture({
     <div className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-serif text-ink dark:text-bright">Voice capture</p>
-        <span className="text-[11px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+        <span className="text-xs font-mono text-shadow-1 dark:text-moonlight uppercase">
           {state.replace(/_/g, " ")}
         </span>
       </div>
@@ -222,7 +222,7 @@ export default function InterviewVoiceCapture({
         <button
           type="button"
           onClick={startRecording}
-          className="px-3 py-1.5 rounded-md bg-rose-700 text-white text-sm font-medium hover:bg-rose-600 transition-colors"
+          className="px-3 py-1.5 rounded-md bg-danger text-white dark:text-ink text-sm font-medium hover:bg-danger/90 transition-colors"
         >
           Start recording
         </button>
@@ -248,7 +248,7 @@ export default function InterviewVoiceCapture({
       )}
 
       {state === "uploaded" && (
-        <p className="text-xs font-mono text-emerald-700">
+        <p className="text-xs font-mono text-success">
           Upload complete · {durationSeconds}s of audio captured.
         </p>
       )}

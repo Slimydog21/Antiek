@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { LemonButton, LemonTag } from "../../../components/lemon";
+import { ErrorBanner, LemonButton, LemonTag } from "../../../components/lemon";
 import {
   getFileSuggestion,
   listPersonalSpace,
@@ -117,7 +117,7 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
   );
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -133,7 +133,7 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
                 recency up as themes. */}
             {!loading && visibleAssets.length > 0 && (
               <p
-                className="text-[12px] font-mono text-shadow-2 dark:text-moonlight"
+                className="text-xs font-mono text-shadow-2 dark:text-moonlight"
                 data-testid="personal-space-ordering"
               >
                 {ordering === "theme"
@@ -144,9 +144,9 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
           </header>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded" role="alert">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (
@@ -164,7 +164,7 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
                   ? "You haven’t made any readings yet."
                   : "Your reading space is empty."}
               </p>
-              <p className="text-[13px] text-shadow-1 dark:text-moonlight">
+              <p className="text-sm text-shadow-1 dark:text-moonlight">
                 Read a book in your{" "}
                 <button type="button" className="underline" onClick={() => navigate("/library")}>
                   library
@@ -182,11 +182,11 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
             visibleCategories.map((cat) => (
               <section key={cat.category_id} className="space-y-2" data-testid="personal-space-category">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-[13px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                  <h2 className="text-sm font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                     {cat.label}
                   </h2>
                   {cat.ordering === "theme" && (
-                    <span className="text-[10px] font-mono text-aurora-deep dark:text-aurora">
+                    <span className="text-xxs font-mono text-sun-deep dark:text-sun">
                       auto
                     </span>
                   )}
@@ -278,7 +278,7 @@ function AssetRow({
         <div className="flex items-center justify-between gap-3">
           <span className="font-serif text-ink dark:text-bright truncate">{asset.title}</span>
           {/* M4 — the visible created-asset vs source-book distinction. */}
-          <LemonTag colour={asset.kind === "meta_reading" ? "aurora" : "muted"}>
+          <LemonTag colour={asset.kind === "meta_reading" ? "sun" : "muted"}>
             {asset.kind === "meta_reading" ? "reading" : "book"}
           </LemonTag>
         </div>
@@ -287,7 +287,7 @@ function AssetRow({
       {/* M3 — the continuous suggestion: appears, never auto-fires; accept files
           into the ONE chosen project, decline (dismiss) leaves it. */}
       {filedInto && (
-        <p className="text-[12px] text-aurora-deep dark:text-aurora" data-testid="personal-asset-filed">
+        <p className="text-xs text-success" data-testid="personal-asset-filed">
           Filed into “{filedInto}.”
         </p>
       )}
@@ -296,7 +296,7 @@ function AssetRow({
           className="rounded border border-sun/40 bg-sun/10 px-3 py-2 space-y-2"
           data-testid="personal-asset-suggestion"
         >
-          <p className="text-[12px] text-ink dark:text-bright">{suggestion.rationale}</p>
+          <p className="text-xs text-ink dark:text-bright">{suggestion.rationale}</p>
           <div className="flex flex-wrap items-center gap-1.5">
             {suggestion.candidates.map((m) => (
               <LemonButton
@@ -313,7 +313,7 @@ function AssetRow({
             <button
               type="button"
               onClick={() => setDismissed(true)}
-              className="text-[11px] font-mono text-shadow-1 dark:text-moonlight underline"
+              className="text-xs font-mono text-shadow-1 dark:text-moonlight underline"
               data-testid="personal-asset-decline"
             >
               not now

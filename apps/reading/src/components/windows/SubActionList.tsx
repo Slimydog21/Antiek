@@ -99,12 +99,12 @@ export default function SubActionList({ workflow, __windowId }: SubActionListPro
             {meta?.label ?? "Workflow"}
           </h2>
           {meta && (
-            <p className="text-[12px] text-shadow-1 dark:text-moonlight mt-0.5 leading-relaxed">
+            <p className="text-xs text-shadow-1 dark:text-moonlight mt-0.5 leading-relaxed">
               {meta.tagline}
             </p>
           )}
           {!workflow && (
-            <p className="text-[12px] text-shadow-1 dark:text-moonlight mt-0.5">
+            <p className="text-xs text-shadow-1 dark:text-moonlight mt-0.5">
               No workflow was given to this window.
             </p>
           )}
@@ -135,11 +135,11 @@ export default function SubActionList({ workflow, __windowId }: SubActionListPro
                         : "text-ink-mute dark:text-moonlight cursor-default opacity-70")
                     }
                   >
-                    <span className="flex-1 min-w-0 truncate text-[13px]">
+                    <span className="flex-1 min-w-0 truncate text-sm">
                       {m.label}
                     </span>
                     {!m.built && (
-                      <span className="shrink-0 text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+                      <span className="shrink-0 text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
                         not yet
                       </span>
                     )}
