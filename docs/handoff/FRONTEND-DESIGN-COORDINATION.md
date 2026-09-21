@@ -125,3 +125,18 @@ Queue after that: Q5 Lemon/ModePage sweep, Q14 type-scale snap.
 **Visual note for whoever merges first:** ~630 previously-dead muted-text/danger renderings
 now paint (that was the point), so lostpixel baselines must be regenerated deliberately
 (`npm run visualtest:update`) at merge time — not bypassed, not "fixed" by reverting.
+
+### 2026-09-21 later — Kimi queue complete
+
+Waves 2–4 landed on `ui/posthog-grade-polish` (same PR #3312): Q3 state colours + `success`
+token (aurora now reserved for AI cognition per D8/D11), Q4 shared `lemon/ErrorBanner` (31
+strips), Q5 `lemon/ModePage` + Lemon adoption, Q8 LemonModal overlays + z ladder rungs
+(`scenePresence`/`mobileRail`/`mobileRailToggle`), Q9 DRW registry unified into
+`shared/researchState.ts`, Q14 type-scale snap (1,157 arbitrary `text-[Npx]` → named steps,
+sub-ceiling lint now enforced, 0 grandfathered), Q15 motion (`surfaceSpring` unification,
+`enter` adopted by LemonModal, `feel-focus.css` deleted — ring-sun idiom won), Q16 arcade/misc,
+Q17 all mode roots `h-full`, Q18–Q22 leftovers. `lint_token_refs` GRANDFATHERED down to
+`bg-card`/`bg-card-soft` in `src/werner/*.stories.tsx` — those are yours via #3284.
+Queue Q1–Q22 is fully claimed/done by me; open design adjudications are recorded in
+`docs/ui-audit/INVENTORY.md` §6–§7 (D1–D11). lostpixel baselines being regenerated
+deliberately at PR time (visual shifts are the fixes rendering).
