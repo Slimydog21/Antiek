@@ -152,3 +152,31 @@ def test_the_cli_arm_really_is_unavailable_in_these_tests() -> None:
         )
         is None
     )
+
+
+def test_the_docs_extra_is_actually_installed() -> None:
+    """Guard: this whole file is vacuous without the binding.
+
+    CI installed `.[dev,arxiv,pdf,urls,embedding,youtube,rss]` while the
+    production deploy installs `[pdf,urls,embedding,docs,turbopuffer_shadow]`.
+    The `docs` extra — firecrawl-anydoc — was in prod and not in CI, so no test
+    could ever exercise the conversion path production actually runs, and the
+    three tests above failed on arrival with "anydoc, docling failed".
+
+    This asserts the import DIRECTLY rather than using `importorskip`. A skip
+    would be worse than the bug: the suite would go green on a machine missing
+    the binding, and the next person to drop `docs` from the extras list would
+    get a clean board while every Office upload broke in production. Failing
+    loudly is the point.
+    """
+    from importlib import import_module
+
+    try:
+        import_module("anydoc")
+    except ModuleNotFoundError:  # pragma: no cover - the failure this guards
+        raise AssertionError(
+            "firecrawl-anydoc is not installed. Add the 'docs' extra: "
+            "pip install -e '.[...,docs]'. Production installs it via "
+            "infrastructure/ansible/playbooks/deploy.yml; CI must match or this "
+            "file measures nothing."
+        ) from None

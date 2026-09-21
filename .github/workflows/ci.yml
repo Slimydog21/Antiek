@@ -78,8 +78,16 @@ jobs:
       - name: Install Antiek + dev deps
         run: |
           python -m pip install --upgrade pip
+          #
+          # `docs` (firecrawl-anydoc) is REQUIRED here, not optional. The
+          # production deploy installs
+          # `[pdf,urls,embedding,docs,turbopuffer_shadow]`
+          # (infrastructure/ansible/playbooks/deploy.yml), so leaving `docs`
+          # out of CI meant no test could ever exercise the Office/ODF/RTF/CSV
+          # conversion path that production actually runs. It is a small pure
+          # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs]'
 
       - name: Install local media runtime
         run: |
@@ -163,8 +171,16 @@ jobs:
           # test_krea_routes on every PR (the #81 fix). `-c` only pins a
           # package IF it installs, so macOS-frozen platform wheels are inert
           # on ubuntu.
+          #
+          # `docs` (firecrawl-anydoc) is REQUIRED here, not optional. The
+          # production deploy installs
+          # `[pdf,urls,embedding,docs,turbopuffer_shadow]`
+          # (infrastructure/ansible/playbooks/deploy.yml), so leaving `docs`
+          # out of CI meant no test could ever exercise the Office/ODF/RTF/CSV
+          # conversion path that production actually runs. It is a small pure
+          # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs]'
 
       - name: Install local media runtime
         run: |
@@ -448,8 +464,16 @@ jobs:
           # test_krea_routes on every PR (the #81 fix). `-c` only pins a
           # package IF it installs, so macOS-frozen platform wheels are inert
           # on ubuntu.
+          #
+          # `docs` (firecrawl-anydoc) is REQUIRED here, not optional. The
+          # production deploy installs
+          # `[pdf,urls,embedding,docs,turbopuffer_shadow]`
+          # (infrastructure/ansible/playbooks/deploy.yml), so leaving `docs`
+          # out of CI meant no test could ever exercise the Office/ODF/RTF/CSV
+          # conversion path that production actually runs. It is a small pure
+          # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs]'
       - name: Compounding benchmark (SPR-09 keystone)
         # The falsifiable compounding benchmark (compounding/benchmark/tests/).
         # `-m "not slow"` excludes the full n=20 multi-arm run. The seed-and-catch
