@@ -441,7 +441,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
   return (
     <div className="flex flex-col gap-4 py-2">
       <div>
-        <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-1">
+        <p className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-1">
           Proposed sub-questions
         </p>
         <p className="text-sm font-serif text-ink-mute dark:text-moonlight leading-relaxed">
@@ -469,7 +469,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                 }}
               >
                 <input
-                  className="min-w-0 flex-1 rounded border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-1 px-2 py-1 text-[13px] font-serif text-ink dark:text-bright"
+                  className="min-w-0 flex-1 rounded border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-1 px-2 py-1 text-sm font-serif text-ink dark:text-bright"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   aria-label="Edit sub-question"
@@ -483,7 +483,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
             ) : (
               <>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-serif text-ink dark:text-bright leading-relaxed">
+                  <p className="text-sm font-serif text-ink dark:text-bright leading-relaxed">
                     {sub.question}
                   </p>
                   {/* The planner's REAL rationale for this sub-question — why it
@@ -491,7 +491,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                       (the planner may omit it); never a placeholder. This is
                       the "why" half of the plan, sourced from planner output. */}
                   {sub.rationale?.trim() && (
-                    <p className="mt-0.5 text-[11px] font-serif italic text-ink-mute dark:text-moonlight leading-snug">
+                    <p className="mt-0.5 text-xs font-serif italic text-ink-mute dark:text-moonlight leading-snug">
                       {sub.rationale}
                     </p>
                   )}
@@ -499,7 +499,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                 <div className="flex shrink-0 gap-2 opacity-60 transition-opacity group-hover:opacity-100">
                   <button
                     type="button"
-                    className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:text-sun"
+                    className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-sun"
                     disabled={interactionLocked}
                     onClick={() => {
                       setDraft(sub.question);
@@ -510,7 +510,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                   </button>
                   <button
                     type="button"
-                    className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:text-emperor"
+                    className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-emperor"
                     disabled={interactionLocked}
                     onClick={() => void applyEdit({ op: "remove", target_local_id: sub.local_id })}
                   >
@@ -524,7 +524,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       </ul>
 
       <fieldset className="border-t border-rule pt-3 dark:border-charcoal-1">
-        <legend className="text-[11px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+        <legend className="text-xs font-mono uppercase text-shadow-1 dark:text-moonlight">
           Spend control
         </legend>
         <div
@@ -633,7 +633,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       </fieldset>
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
+        <p className="text-xs font-mono text-ink-mute dark:text-moonlight">
           {launchCount} {launchCount === 1 ? "research" : "researches"}
         </p>
         <div className="flex gap-2">

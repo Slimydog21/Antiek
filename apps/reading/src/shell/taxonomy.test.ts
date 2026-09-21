@@ -36,7 +36,7 @@ import {
  *
  * A "mode" is:
  *   - any directory under src/modes/ that has an index.tsx, EXCEPT
- *     `shared/` (a HeaderBar utility, not a product mode), OR
+ *     `shared/` (cross-cutting utilities — FloatMenu — not a product mode), OR
  *   - the two Write component modes (Write/Editor, Write/Repository),
  *     which are the Write workflow's surfaces and have no index.tsx of
  *     their own.
@@ -62,13 +62,21 @@ function discoverModeIds(): Set<ModeId> {
   // The Write workflow's two component modes — present as components,
   // no index.tsx. Discover them by globbing their entry components so
   // this stays mechanical (renaming/removing them breaks here too).
+  // "Write/Repository" is the block repository mounted inside WriteHome;
+  // the probe targets the LIVE component (BlockRepository.tsx) — the old
+  // Repository/Repository.tsx was an orphan with no production consumer
+  // and was deleted in the Q7 dead-UI sweep.
   const writeModules = import.meta.glob([
     "../modes/Write/Editor/Editor.tsx",
-    "../modes/Write/Repository/Repository.tsx",
+    "../modes/Write/BlockRepository.tsx",
   ]);
   for (const path of Object.keys(writeModules)) {
     const m = path.match(/\.\.\/modes\/(Write\/[^/]+)\//);
-    if (m) ids.add(m[1]);
+    if (m) {
+      ids.add(m[1]);
+    } else if (path.endsWith("/Write/BlockRepository.tsx")) {
+      ids.add("Write/Repository" as ModeId);
+    }
   }
 
   return ids;
