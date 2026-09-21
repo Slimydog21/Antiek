@@ -68,7 +68,8 @@ import re
 import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 # Ensure substrate root on path.
 _PKG_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
