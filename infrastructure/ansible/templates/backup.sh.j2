@@ -52,11 +52,29 @@ mkdir -p "${STAGING}"
 # fail at the EXPORT step before the timer ever fired.
 chown antiek:antiek "${STAGING}"
 
+# ── 0. Release the single-writer lock ─────────────────────────────────────
+# The substrate holds the DuckDB write-lock flock for its whole lifetime
+# (single-writer architecture), so the read-only EXPORT below can never run
+# while the service is up — this is what silently broke the nightly backup
+# from 2026-09-19 to 2026-09-21 (6 aborted runs). Stop the service for the
+# snapshot window and ALWAYS restart it, even when the export fails.
+ANTIEK_STOPPED_FOR_BACKUP=0
+restart_antiek() {
+    if [ "${ANTIEK_STOPPED_FOR_BACKUP}" -eq 1 ]; then
+        systemctl start antiek \
+            && echo "${LOG_PREFIX} antiek.service restarted after backup" \
+            || echo "${LOG_PREFIX} ERROR: failed to restart antiek"
+    fi
+}
+trap restart_antiek EXIT
+
 # ── 1. DuckDB consistent snapshot ─────────────────────────────────────────
 # Run as the antiek user so file ownership matches. DuckDB CLI isn't in
 # Ubuntu's apt repos as of 24.04, so we use the substrate's own venv —
 # the duckdb Python package is pinned in pyproject.toml and works headless.
 echo "${LOG_PREFIX} exporting DuckDB → ${STAGING}/duckdb"
+systemctl stop antiek
+ANTIEK_STOPPED_FOR_BACKUP=1
 sudo -u {{ antiek_user }} {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
 import duckdb
 con = duckdb.connect("${STATE_DIR}/antiek.duckdb", read_only=True)
