@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ArtifactExport } from "../../components/ArtifactExport";
+import { LemonButton } from "../../components/lemon/LemonButton";
 import { PanelHost } from "../../workspace/PanelHost";
 import {
   attachBlock,
@@ -210,14 +211,15 @@ function ExportButton({ deliverableId }: { deliverableId: string }) {
 
   return (
     <div className="relative">
-      <button
+      <LemonButton
+        variant="secondary"
+        size="sm"
         onClick={() => setOpen((v) => !v)}
-        className="px-3 py-1.5 bg-ice-4 dark:bg-charcoal-1 hover:bg-glacial-1 dark:bg-slate-1 text-ink dark:text-bright text-sm rounded"
       >
         Export
-      </button>
+      </LemonButton>
       {open && (
-        <div className="absolute right-0 mt-1 bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded shadow-md text-xs z-10 min-w-[140px]">
+        <div className="absolute right-0 mt-1 bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded shadow-z1 dark:shadow-z1-night text-xs z-10 min-w-[140px]">
           {(["markdown", "html", "json"] as ExportFormatName[]).map((f) => (
             <button
               key={f}
@@ -301,7 +303,7 @@ function SectionCard({
       onDrop={handleDrop}
       className={`bg-ice-0 dark:bg-charcoal-2 border rounded-md p-4 transition-colors ${
         dropHover
-          ? "border-emerald-500 ring-2 ring-emerald-300"
+          ? "border-sun-deep ring-2 ring-sun"
           : "border-rule dark:border-charcoal-1"
       }`}
     >
@@ -391,7 +393,7 @@ function ProseEditor({
             <span
               className={`text-xs ${
                 lastStatus === "saved_and_promoted"
-                  ? "text-emerald-700"
+                  ? "text-success"
                   : "text-shadow-1 dark:text-moonlight"
               }`}
             >
@@ -433,13 +435,14 @@ function ProseEditor({
           >
             Cancel
           </button>
-          <button
+          <LemonButton
+            variant="primary"
+            size="sm"
             onClick={handleSave}
             disabled={busy || !text.trim()}
-            className="px-3 py-1 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-xs rounded"
           >
             {busy ? "Saving…" : promote ? "Save & promote" : "Save"}
-          </button>
+          </LemonButton>
         </div>
       </div>
     </div>
@@ -486,13 +489,14 @@ function NewSectionForm({
         placeholder={`New section title (will be #${nextIndex + 1})…`}
         className="flex-1 px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
       />
-      <button
+      <LemonButton
+        variant="primary"
+        size="sm"
         type="submit"
         disabled={busy || !title.trim()}
-        className="px-3 py-1.5 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-sm rounded"
       >
         Add section
-      </button>
+      </LemonButton>
     </form>
   );
 }

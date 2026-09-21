@@ -92,25 +92,25 @@ export function LocalAudiblePanel({
     <section className="border-t border-rule pt-4 dark:border-charcoal-1" aria-label="Local audible experience">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-mono text-[13px] font-semibold text-ink dark:text-bright">
+          <h3 className="font-mono text-sm font-semibold text-ink dark:text-bright">
             Local audible experience
           </h3>
-          <p className="mt-1 text-[12px] text-shadow-1 dark:text-moonlight">
+          <p className="mt-1 text-xs text-shadow-1 dark:text-moonlight">
             Movement-ready narration with source-linked remember beats and recaps. No paid TTS fallback.
           </p>
         </div>
-        <span className="font-mono text-[12px] font-semibold text-ink dark:text-bright">
+        <span className="font-mono text-xs font-semibold text-ink dark:text-bright">
           $0.00 · Local
         </span>
       </div>
 
       {pending === "capability" && (
-        <p className="mt-3 font-mono text-[11px] text-shadow-2 dark:text-moonlight">Checking local audio...</p>
+        <p className="mt-3 font-mono text-xs text-shadow-2 dark:text-moonlight">Checking local audio...</p>
       )}
       {capability?.available === false && (
-        <p className="mt-3 text-[12px] text-emperor">Local audible production is not configured on this server.</p>
+        <p className="mt-3 text-xs text-emperor">Local audible production is not configured on this server.</p>
       )}
-      {error && <p className="mt-3 text-[12px] text-emperor">{error}</p>}
+      {error && <p className="mt-3 text-xs text-emperor">{error}</p>}
 
       {capability?.available && !prepared && (
         <LemonButton
@@ -132,15 +132,15 @@ export function LocalAudiblePanel({
                 className="grid gap-2 border-b border-rule py-3 last:border-b-0 dark:border-charcoal-1 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center"
               >
                 <div className="min-w-0">
-                  <h4 className="truncate text-[13px] font-semibold text-ink dark:text-bright">{chapter.title}</h4>
-                  <p className="mt-1 font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                  <h4 className="truncate text-sm font-semibold text-ink dark:text-bright">{chapter.title}</h4>
+                  <p className="mt-1 font-mono text-xs text-shadow-2 dark:text-moonlight">
                     {chapter.ready_span_count}/{chapter.span_count} spans · {formatDuration(chapter.duration_seconds)} · {chapter.source_count} {chapter.source_count === 1 ? "source" : "sources"}
                   </p>
                 </div>
-                <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+                <span className="font-mono text-xs text-shadow-1 dark:text-moonlight">
                   {chapter.remember_ready && chapter.recap_ready ? "Remember + recap ready" : "Retention pending"}
                 </span>
-                <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+                <span className="font-mono text-xs text-shadow-1 dark:text-moonlight">
                   {chapter.learned_claim_count} {chapter.learned_claim_count === 1 ? "learned claim" : "learned claims"}
                 </span>
               </div>
@@ -157,7 +157,7 @@ export function LocalAudiblePanel({
                 {pending === "recover" ? "Recovering audio..." : "Recover audible experience"}
               </LemonButton>
             ) : prepared.status === "registered" ? (
-              <span className="font-mono text-[12px] font-semibold text-ink dark:text-bright">Verified audio ready</span>
+              <span className="font-mono text-xs font-semibold text-ink dark:text-bright">Verified audio ready</span>
             ) : (
               <LemonButton
                 variant="primary"
@@ -175,16 +175,16 @@ export function LocalAudiblePanel({
             >
               Refresh status
             </LemonButton>
-            <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+            <span className="font-mono text-xs text-shadow-2 dark:text-moonlight">
               {formatDuration(prepared.total_duration_seconds)} prepared
             </span>
           </div>
 
-          {pending === "playback" && <p className="mt-3 font-mono text-[11px] text-shadow-2">Verifying audio...</p>}
+          {pending === "playback" && <p className="mt-3 font-mono text-xs text-shadow-2">Verifying audio...</p>}
           {playback && (
             <div className="mt-4 border-t border-rule pt-4 dark:border-charcoal-1">
               <ActiveListeningPlayer playback={playback} title={record.asset.title} />
-              <p className="mt-2 font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+              <p className="mt-2 font-mono text-xs text-shadow-2 dark:text-moonlight">
                 {playback.chapter_ids.length} chapters · {playback.retention_marker_count} retention beats · {playback.learned_claim_count} learned claims
               </p>
             </div>

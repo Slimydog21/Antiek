@@ -89,25 +89,25 @@ export function LocalProductionPanel({
     <section className="border-t border-rule pt-4 dark:border-charcoal-1" aria-label="Local production">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-mono text-[13px] font-semibold text-ink dark:text-bright">
+          <h3 className="font-mono text-sm font-semibold text-ink dark:text-bright">
             Local documentary
           </h3>
-          <p className="mt-1 text-[12px] text-shadow-1 dark:text-moonlight">
+          <p className="mt-1 text-xs text-shadow-1 dark:text-moonlight">
             Fully local narration and source cards. No Krea or paid-provider fallback.
           </p>
         </div>
-        <span className="font-mono text-[12px] font-semibold text-ink dark:text-bright">
+        <span className="font-mono text-xs font-semibold text-ink dark:text-bright">
           $0.00 · Local
         </span>
       </div>
 
       {pending === "capability" && (
-        <p className="mt-3 font-mono text-[11px] text-shadow-2 dark:text-moonlight">Checking local capability...</p>
+        <p className="mt-3 font-mono text-xs text-shadow-2 dark:text-moonlight">Checking local capability...</p>
       )}
       {unavailable && (
-        <p className="mt-3 text-[12px] text-emperor">Local production is not configured on this server.</p>
+        <p className="mt-3 text-xs text-emperor">Local production is not configured on this server.</p>
       )}
-      {error && <p className="mt-3 text-[12px] text-emperor">{error}</p>}
+      {error && <p className="mt-3 text-xs text-emperor">{error}</p>}
 
       {capability?.available && !prepared && (
         <LemonButton
@@ -127,14 +127,14 @@ export function LocalProductionPanel({
               <article key={chapter.chapter_id} className="border border-rule p-3 dark:border-charcoal-1">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h4 className="truncate text-[13px] font-semibold text-ink dark:text-bright">
+                    <h4 className="truncate text-sm font-semibold text-ink dark:text-bright">
                       {chapter.title}
                     </h4>
-                    <p className="mt-1 font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                    <p className="mt-1 font-mono text-xs text-shadow-2 dark:text-moonlight">
                       {chapter.source_count} {chapter.source_count === 1 ? "source" : "sources"}
                     </p>
                   </div>
-                  <span className="shrink-0 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+                  <span className="shrink-0 font-mono text-xs text-shadow-1 dark:text-moonlight">
                     {chapter.attested ? "Reviewed" : chapter.card_ready ? "Review required" : "Preparing"}
                   </span>
                 </div>
@@ -146,7 +146,7 @@ export function LocalProductionPanel({
                   />
                 )}
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                  <span className="font-mono text-xs text-shadow-2 dark:text-moonlight">
                     Narration {chapter.narration_ready ? "ready" : "pending"}
                   </span>
                   {chapter.card_id && chapter.card_ready && !chapter.attested && (
@@ -182,7 +182,7 @@ export function LocalProductionPanel({
                 {pending === "recover" ? "Recovering..." : "Recover local production"}
               </LemonButton>
             ) : prepared.status === "registered" ? (
-              <span className="font-mono text-[12px] font-semibold text-ink dark:text-bright">
+              <span className="font-mono text-xs font-semibold text-ink dark:text-bright">
                 Verified playback ready
               </span>
             ) : (

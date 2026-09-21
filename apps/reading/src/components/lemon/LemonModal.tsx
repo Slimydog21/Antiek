@@ -1,6 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
+
+import { enter } from "../../design/motion";
 
 /**
  * LemonModal — centered modal with backdrop, ESC-to-close, outside-click-to-close,
@@ -52,6 +54,20 @@ export function LemonModal({
   children,
 }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  // Drives the motion.ts `enter` primitive: the dialog mounts at
+  // data-enter=false (faded, 4px low) and flips to true on the next frame,
+  // so the fade-rise runs exactly once per open. Under reduced-motion the
+  // motion.css guard collapses the transition — the modal simply appears.
+  const [entered, setEntered] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setEntered(false);
+      return;
+    }
+    const raf = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(raf);
+  }, [open]);
 
   // ESC handler
   useEffect(() => {
@@ -118,12 +134,14 @@ export function LemonModal({
         // a plain-string title.
         aria-label={typeof title === "string" ? title : "Dialog"}
         tabIndex={-1}
+        data-enter={entered}
         onMouseDown={(e) => e.stopPropagation()}
         className={
           `relative w-full ${widths[size]} mx-4 ` +
           "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright " +
           "border-edge border-sun rounded-hog-lg shadow-lift dark:shadow-lift-night " +
-          "outline-none"
+          enter +
+          " outline-none"
         }
       >
         {title && (

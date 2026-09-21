@@ -87,10 +87,11 @@ export const Showcase: Story = {
                 <LemonTag>default</LemonTag>
                 <LemonTag colour="sun">sun</LemonTag>
                 <LemonTag colour="aurora">aurora</LemonTag>
+                <LemonTag colour="success">success</LemonTag>
                 <LemonTag colour="danger">danger</LemonTag>
                 <LemonTag colour="muted">muted</LemonTag>
                 <LemonTag dot colour="sun">running</LemonTag>
-                <LemonTag dot colour="aurora">done</LemonTag>
+                <LemonTag dot colour="success">done</LemonTag>
                 <LemonTag dot colour="danger">failed</LemonTag>
                 <LemonTag onRemove={() => toast.info("Tag removed")}>kalshi</LemonTag>
               </div>
@@ -193,7 +194,7 @@ export const Showcase: Story = {
                     key: "status",
                     header: "Status",
                     render: (r) => (
-                      <LemonTag dot colour={r.status === "done" ? "aurora" : "sun"}>
+                      <LemonTag dot colour={r.status === "done" ? "success" : "sun"}>
                         {r.status}
                       </LemonTag>
                     ),
