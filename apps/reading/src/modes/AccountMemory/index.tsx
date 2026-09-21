@@ -277,7 +277,7 @@ export default function AccountMemory() {
                       data-testid="memory-history"
                     >
                       <summary
-                        className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight cursor-pointer"
+                        className="text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight cursor-pointer"
                         data-testid="memory-history-summary"
                       >
                         {group.superseded.length} earlier{" "}
@@ -297,12 +297,12 @@ export default function AccountMemory() {
                             >
                               {old.object}
                             </p>
-                            <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                               {formatTimestamp(old.valid_from)} →{" "}
                               {formatTimestamp(old.valid_to)}
                             </p>
                             <p
-                              className="text-[11px] font-mono text-shadow-1 dark:text-moonlight break-words"
+                              className="text-xs font-mono text-shadow-1 dark:text-moonlight break-words"
                               data-testid="memory-history-provenance"
                             >
                               {formatProvenance(old.provenance)}
@@ -316,7 +316,7 @@ export default function AccountMemory() {
                   {editing ? (
                     <div className="space-y-2 pt-1">
                       <label
-                        className="block text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight"
+                        className="block text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight"
                         htmlFor={`memory-correct-${group.head.edge_id}`}
                       >
                         corrected value
@@ -343,7 +343,7 @@ export default function AccountMemory() {
                           data-testid="memory-correct-submit"
                           disabled={submitting || !draftObject.trim()}
                           onClick={() => void submitCorrection(group.head)}
-                          className="text-[10px] uppercase tracking-wider font-mono border border-rule dark:border-charcoal-1 px-2 py-1 rounded text-ink dark:text-bright disabled:opacity-50"
+                          className="text-xxs uppercase tracking-wider font-mono border border-rule dark:border-charcoal-1 px-2 py-1 rounded text-ink dark:text-bright disabled:opacity-50"
                         >
                           {submitting ? "saving…" : "save correction"}
                         </button>
@@ -351,7 +351,7 @@ export default function AccountMemory() {
                           type="button"
                           data-testid="memory-correct-cancel"
                           onClick={cancelCorrection}
-                          className="text-[10px] uppercase tracking-wider font-mono px-2 py-1 rounded text-shadow-1 dark:text-moonlight"
+                          className="text-xxs uppercase tracking-wider font-mono px-2 py-1 rounded text-shadow-1 dark:text-moonlight"
                         >
                           cancel
                         </button>
@@ -362,7 +362,7 @@ export default function AccountMemory() {
                       type="button"
                       data-testid="memory-correct-button"
                       onClick={() => beginCorrection(group.key, group.head.object)}
-                      className="text-[10px] uppercase tracking-wider font-mono border border-rule dark:border-charcoal-1 px-2 py-1 rounded text-ink dark:text-bright"
+                      className="text-xxs uppercase tracking-wider font-mono border border-rule dark:border-charcoal-1 px-2 py-1 rounded text-ink dark:text-bright"
                     >
                       correct this fact
                     </button>
@@ -377,7 +377,7 @@ export default function AccountMemory() {
               type="button"
               data-testid="memory-reload"
               onClick={() => void reload()}
-              className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight"
+              className="text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight"
             >
               refresh
             </button>
