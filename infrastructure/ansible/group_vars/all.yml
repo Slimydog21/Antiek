@@ -29,6 +29,12 @@ antiek_group: antiek
 antiek_repo_url: "git@github.com:Slimydog21/Antiek.git"
 antiek_repo_branch: "main"
 
+# Continuous research is a production daemon and defaults to always-live.
+# Set this boolean to true only for a durable operator pause; deploy.yml then
+# stops and disables the service so neither deploy nor reboot silently resumes
+# it. A bare `systemctl stop` is undeclared drift and the next deploy heals it.
+antiek_continuous_research_paused: false
+
 # Local path on the operator's Mac to the GitHub deploy private key.
 # Generated once with `ssh-keygen -t ed25519 -f ~/.ssh/antiek_deploy`;
 # the public counterpart is registered as a read-only deploy key on

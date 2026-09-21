@@ -48,6 +48,28 @@
    setup.yml since the last code change with `force: yes` toggled, it
    would have been; default is `force: false`).
 
+### Continuous-research lifecycle and intentional pause
+
+The continuous-research daemon is production-always-live by default. Every
+deploy starts it if it was stopped and restarts it after code or unit changes.
+A manual `systemctl stop antiek-continuous-research` is therefore temporary
+drift, not a durable pause.
+
+For an intentional pause, set this boolean under `[antiek_prod:vars]` in the
+operator's gitignored `inventory.ini`, then deploy:
+
+```ini
+antiek_continuous_research_paused=true
+```
+
+The playbook stops and disables the service, preserving the pause across later
+deploys and reboots. Set it back to `false` and deploy to resume. This is the
+daemon lifecycle policy; per-investigation pause/resume controls do not stop the
+daemon. Likewise, `/health`'s `flywheel_ready` is historical compounding
+evidence (graph readability plus prior `knowledge.reused` events), not proof
+that this systemd process is currently active. The deploy verifies process
+liveness directly with `systemctl is-active`.
+
 3. **(Optional) Spot-check a quick investigation** — same as first-deploy
    step 14, against a cheap throwaway question.
 

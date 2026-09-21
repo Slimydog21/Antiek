@@ -233,18 +233,58 @@
       changed_when: false
       tags: [systemd, health_probe]
 
-    - name: enable antiek-continuous-research.service
-      ansible.builtin.systemd:
-        name: antiek-continuous-research.service
-        enabled: true
-      tags: [systemd, continuous]
+    - name: require a boolean continuous-research pause policy
+      ansible.builtin.assert:
+        that: >-
+          (antiek_continuous_research_paused is boolean) or
+          ((antiek_continuous_research_paused is string) and
+           ((antiek_continuous_research_paused | lower) in ['true', 'false']))
+        fail_msg: >-
+          antiek_continuous_research_paused must be true or false (a YAML
+          boolean or the canonical INI string), not a service-state string.
+      tags: [code, systemd, continuous]
 
-    - name: restart antiek-continuous-research if unit changed
+    - name: normalize continuous-research pause policy
+      ansible.builtin.set_fact:
+        antiek_continuous_research_is_paused: >-
+          {{ antiek_continuous_research_paused | bool }}
+      tags: [code, systemd, continuous]
+
+    - name: reconcile antiek-continuous-research lifecycle
       ansible.builtin.systemd:
         name: antiek-continuous-research.service
-        state: restarted
-      when: antiek_continuous_unit.changed
-      tags: [systemd, continuous]
+        enabled: "{{ not antiek_continuous_research_is_paused }}"
+        state: >-
+          {{ 'stopped' if antiek_continuous_research_is_paused
+             else 'restarted' if ((antiek_continuous_unit.changed | default(false))
+                                  or (git_pull.changed | default(false)))
+             else 'started' }}
+      tags: [code, systemd, continuous]
+
+    - name: verify live continuous-research daemon is active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, --quiet, antiek-continuous-research.service]
+      changed_when: false
+      when: not antiek_continuous_research_is_paused
+      tags: [code, systemd, continuous]
+
+    - name: verify paused continuous-research daemon is inactive
+      ansible.builtin.command:
+        argv: [systemctl, is-active, antiek-continuous-research.service]
+      register: antiek_continuous_paused_active
+      changed_when: false
+      failed_when: (antiek_continuous_paused_active.stdout | trim) != 'inactive'
+      when: antiek_continuous_research_is_paused
+      tags: [code, systemd, continuous]
+
+    - name: verify paused continuous-research daemon is disabled
+      ansible.builtin.command:
+        argv: [systemctl, is-enabled, antiek-continuous-research.service]
+      register: antiek_continuous_paused_enabled
+      changed_when: false
+      failed_when: (antiek_continuous_paused_enabled.stdout | trim) != 'disabled'
+      when: antiek_continuous_research_is_paused
+      tags: [code, systemd, continuous]
 
     - name: enable and start antiek-arxiv-oai-sync.timer
       ansible.builtin.systemd:
