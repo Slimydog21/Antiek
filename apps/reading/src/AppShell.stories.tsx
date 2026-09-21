@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect } from "react";
 
 import AppShell from "./AppShell";
+import { AuthProvider } from "./lib/auth";
 import { useWorkspace } from "./workspace/WorkspaceStore";
 
 /**
@@ -32,6 +33,17 @@ const meta = {
   // AppShell is the composed full-chrome story — auditing it covers the
   // NavRail + Topbar + SceneChrome chrome in one pass.
   tags: ["autodocs", "a11y-audit"],
+  // Topbar consumes useAuth (the Sign out item); the app always mounts
+  // AuthProvider (App.tsx), so the story does the same — the /auth/me probe
+  // settles unauthenticated harmlessly in the sandbox (Topbar.stories.tsx
+  // established the pattern).
+  decorators: [
+    (Story) => (
+      <AuthProvider>
+        <Story />
+      </AuthProvider>
+    ),
+  ],
 } satisfies Meta<typeof AppShell>;
 
 export default meta;

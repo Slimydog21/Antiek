@@ -183,10 +183,15 @@ function toggleProjectTree() {
  *  right or closes it via `workspace.open` / `workspace.close`
  *  exactly like ⌘B does for ProjectTree.
  *
+ *  Exported so every "Ask"/"Toggle AI sidecar" affordance (SceneChrome
+ *  action bar, CommandPalette) goes through the SAME toggle as the ⌘/
+ *  hotkey — the bare `AISIDECAR_TOGGLE` CustomEvent has NO production
+ *  listener (it never did the toggling; this function does).
+ *
  *  The custom-event dispatch is kept for backward-compat with any
  *  Storybook stories that listen for the event directly. */
-const AISIDECAR_PANEL_ID = "shortcuts:aisidecar";
-function toggleAISidecar() {
+export const AISIDECAR_PANEL_ID = "shortcuts:aisidecar";
+export function toggleAISidecar() {
   const ws = useWorkspace.getState();
   if (ws.panels[AISIDECAR_PANEL_ID]) {
     ws.close(AISIDECAR_PANEL_ID);

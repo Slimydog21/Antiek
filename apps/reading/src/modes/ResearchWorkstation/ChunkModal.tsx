@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import { LemonModal } from "../../components/lemon/LemonModal";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
 
@@ -49,109 +51,86 @@ export default function ChunkModal({
     };
   }, [chunkId]);
 
-  // ESC to close.
-  useEffect(() => {
-    if (!chunkId) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [chunkId, onClose]);
-
   if (!chunkId) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-ink/40 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-ice-0 dark:bg-charcoal-2 rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-5 py-3 border-b border-rule dark:border-charcoal-1 flex items-center justify-between">
-          <div className="font-mono text-xs text-shadow-1 dark:text-moonlight">
-            <code>{chunkId}</code>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-ink-mute dark:text-moonlight hover:text-ink dark:text-bright transition-colors text-lg leading-none"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          {loading && (
-            <div className="text-sm text-ink-mute dark:text-moonlight italic font-serif">
-              Loading chunk…
-            </div>
-          )}
-          {error && (
-            <div className="text-sm font-mono text-emperor bg-red-50 p-3 rounded">
-              {error}
-            </div>
-          )}
-          {chunk && (
-            <>
-              <div className="mb-3 flex items-center gap-2 flex-wrap text-xs">
-                {chunk.document_title && (
-                  <span className="font-mono text-ink dark:text-bright">
-                    {chunk.document_title}
-                  </span>
-                )}
-                {chunk.section_path && (
-                  <span className="font-mono text-shadow-1 dark:text-moonlight">
-                    · {chunk.section_path}
-                  </span>
-                )}
-                <TierChip tier={chunk.source_tier} />
-              </div>
-              {chunk.servable ? (
-                <p className="text-sm text-ink dark:text-bright font-serif leading-relaxed whitespace-pre-wrap">
-                  {chunk.text}
-                </p>
-              ) : (
-                // §9.0: the endpoint withheld the body for a restricted /
-                // taken-down source. Show the honest "not available" state —
-                // never the content (it isn't here to show anyway).
-                <p className="text-sm text-shadow-1 dark:text-moonlight font-serif italic leading-relaxed">
-                  This source isn’t available to open here
-                  {chunk.servability === "taken_down"
-                    ? " — it was taken down on request."
-                    : " — its license restricts the full text."}{" "}
-                  You can see what it backs, but not read it inside Antiek.
-                </p>
-              )}
-            </>
-          )}
-        </div>
-        {chunk && (
-          <div className="px-5 py-3 border-t border-rule dark:border-charcoal-1 flex items-center justify-between">
-            <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+    <LemonModal
+      open
+      onClose={onClose}
+      size="md"
+      title={<code className="normal-case tracking-normal">{chunkId}</code>}
+      footer={
+        chunk ? (
+          <div className="flex items-center justify-between">
+            <div className="text-xxs font-mono text-ink-mute dark:text-moonlight">
               {chunk.servable ? `${chunk.token_count} tokens` : "not available"}
             </div>
             {chunk.servable && <OpenInDocumentButton chunk={chunk} />}
           </div>
+        ) : undefined
+      }
+    >
+      <div className="max-h-[65vh] overflow-y-auto">
+        {loading && (
+          <div className="text-sm text-ink-mute dark:text-moonlight italic font-serif">
+            Loading chunk…
+          </div>
+        )}
+        {error && (
+          <ErrorBanner className="font-mono">
+            {error}
+          </ErrorBanner>
+        )}
+        {chunk && (
+          <>
+            <div className="mb-3 flex items-center gap-2 flex-wrap text-xs">
+              {chunk.document_title && (
+                <span className="font-mono text-ink dark:text-bright">
+                  {chunk.document_title}
+                </span>
+              )}
+              {chunk.section_path && (
+                <span className="font-mono text-shadow-1 dark:text-moonlight">
+                  · {chunk.section_path}
+                </span>
+              )}
+              <TierChip tier={chunk.source_tier} />
+            </div>
+            {chunk.servable ? (
+              <p className="text-sm text-ink dark:text-bright font-serif leading-relaxed whitespace-pre-wrap">
+                {chunk.text}
+              </p>
+            ) : (
+              // §9.0: the endpoint withheld the body for a restricted /
+              // taken-down source. Show the honest "not available" state —
+              // never the content (it isn't here to show anyway).
+              <p className="text-sm text-shadow-1 dark:text-moonlight font-serif italic leading-relaxed">
+                This source isn’t available to open here
+                {chunk.servability === "taken_down"
+                  ? " — it was taken down on request."
+                  : " — its license restricts the full text."}{" "}
+                You can see what it backs, but not read it inside Antiek.
+              </p>
+            )}
+          </>
         )}
       </div>
-    </div>
+    </LemonModal>
   );
 }
 
 function TierChip({ tier }: { tier: number }) {
   const colorClass =
     tier === 1
-      ? "bg-emerald-100 text-emerald-800"
+      ? "bg-success/15 text-success"
       : tier === 2
-        ? "bg-emerald-50 text-emerald-700"
+        ? "bg-success/10 text-success"
         : tier === 3
           ? "bg-sun/10 text-sun-deep dark:text-sun"
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
-      className={`text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
+      className={`text-xxs font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
     >
       tier {tier}
     </span>

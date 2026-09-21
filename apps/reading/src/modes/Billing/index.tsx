@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import { track } from "../../lib/analytics";
 import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import LemonCard from "../../components/lemon/LemonCard";
+import { ModePage } from "../../components/lemon/ModePage";
 
 /**
  * Billing summary UI (master-spec §13.5).
@@ -76,116 +79,116 @@ export default function Billing() {
     : 0;
 
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Billing summary
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Per master-spec §13.5: pay-as-you-go pricing. Free-tier
-              cap is {FREE_TIER_CAP.toLocaleString()} tokens/month on
-              DeepSeek-Flash; paid-public margin is 10%; paid-private
-              margin is 50% (managed-service value).
-            </p>
-          </header>
+    <ModePage
+      title="Billing summary"
+      lede={
+        <>
+          Per master-spec §13.5: pay-as-you-go pricing. Free-tier
+          cap is {FREE_TIER_CAP.toLocaleString()} tokens/month on
+          DeepSeek-Flash; paid-public margin is 10%; paid-private
+          margin is 50% (managed-service value).
+        </>
+      }
+    >
+      <LemonCard elevation="z1">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
+              User
+            </label>
+            <input
+              type="text"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
+              Period (YYYY-MM)
+            </label>
+            <input
+              type="text"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+            />
+          </div>
+        </div>
+      </LemonCard>
 
-          <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
-                User
-              </label>
-              <input
-                type="text"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
+      {error && (
+        <ErrorBanner>
+          {error}
+        </ErrorBanner>
+      )}
+
+      {loading && (
+        <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+      )}
+
+      {data && (
+        <>
+          <LemonCard elevation="z1">
+            <div className="space-y-3">
+              <h2 className="text-base font-serif text-ink dark:text-bright">
+                Free-tier usage
+              </h2>
+              <div className="h-3 bg-ice-3 dark:bg-charcoal-1 rounded overflow-hidden">
+                <div
+                  className={`h-full transition-all ${
+                    pctConsumed >= 90
+                      ? "bg-sun/100"
+                      : "bg-shadow-2"
+                  }`}
+                  style={{ width: `${pctConsumed}%` }}
+                />
+              </div>
+              <p className="text-xs font-mono text-ink-soft dark:text-starlight">
+                {data.free_tokens_consumed.toLocaleString()} /{" "}
+                {FREE_TIER_CAP.toLocaleString()} tokens · {pctConsumed}%
+              </p>
+              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+                remaining: {data.free_tokens_remaining.toLocaleString()}
+              </p>
             </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
-                Period (YYYY-MM)
-              </label>
-              <input
-                type="text"
-                value={period}
-                onChange={(e) => setPeriod(e.target.value)}
-                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-              />
-            </div>
+          </LemonCard>
+
+          <section className="grid grid-cols-2 gap-3">
+            <CostCard
+              title="Paid public"
+              margin="10%"
+              raw={data.paid_public_token_cost_usd}
+              marginValue={data.paid_public_margin_usd}
+            />
+            <CostCard
+              title="Paid private"
+              margin="50%"
+              raw={data.paid_private_token_cost_usd}
+              marginValue={data.paid_private_margin_usd}
+            />
           </section>
 
-          {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
-              {error}
-            </p>
-          )}
-
-          {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
-          )}
-
-          {data && (
-            <>
-              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-ink dark:text-bright">
-                  Free-tier usage
-                </h2>
-                <div className="h-3 bg-ice-3 dark:bg-charcoal-1 rounded overflow-hidden">
-                  <div
-                    className={`h-full transition-all ${
-                      pctConsumed >= 90
-                        ? "bg-sun/100"
-                        : "bg-shadow-2"
-                    }`}
-                    style={{ width: `${pctConsumed}%` }}
-                  />
-                </div>
-                <p className="text-xs font-mono text-ink-soft dark:text-starlight">
-                  {data.free_tokens_consumed.toLocaleString()} /{" "}
-                  {FREE_TIER_CAP.toLocaleString()} tokens · {pctConsumed}%
-                </p>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                  remaining: {data.free_tokens_remaining.toLocaleString()}
-                </p>
-              </section>
-
-              <section className="grid grid-cols-2 gap-3">
-                <CostCard
-                  title="Paid public"
-                  margin="10%"
-                  raw={data.paid_public_token_cost_usd}
-                  marginValue={data.paid_public_margin_usd}
-                />
-                <CostCard
-                  title="Paid private"
-                  margin="50%"
-                  raw={data.paid_private_token_cost_usd}
-                  marginValue={data.paid_private_margin_usd}
-                />
-              </section>
-
-              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-ink dark:text-bright">
-                  Totals
-                </h2>
-                <Row label="Total raw provider cost" value={data.total_raw_usd} />
-                <Row label="Total margin" value={data.total_margin_usd} />
-                <Row
-                  label="Total billable"
-                  value={data.total_billable_usd}
-                  emphasize
-                />
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                  {data.record_count} usage records aggregated this period
-                </p>
-              </section>
-            </>
-          )}
-        </div>
-      </main>
-    </div>
+          <LemonCard elevation="z1">
+            <div className="space-y-3">
+              <h2 className="text-base font-serif text-ink dark:text-bright">
+                Totals
+              </h2>
+              <Row label="Total raw provider cost" value={data.total_raw_usd} />
+              <Row label="Total margin" value={data.total_margin_usd} />
+              <Row
+                label="Total billable"
+                value={data.total_billable_usd}
+                emphasize
+              />
+              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+                {data.record_count} usage records aggregated this period
+              </p>
+            </div>
+          </LemonCard>
+        </>
+      )}
+    </ModePage>
   );
 }
 
@@ -196,16 +199,18 @@ function CostCard({
   marginValue,
 }: { title: string; margin: string; raw: string; marginValue: string }) {
   return (
-    <div className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-2">
+    <LemonCard elevation="z1">
       <div className="flex items-baseline justify-between">
         <h3 className="text-sm font-serif text-ink dark:text-bright">{title}</h3>
-        <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
+        <span className="text-xxs font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
           {margin} margin
         </span>
       </div>
-      <Row label="Raw" value={`$${raw}`} small />
-      <Row label="Margin" value={`$${marginValue}`} small />
-    </div>
+      <div className="mt-2 space-y-2">
+        <Row label="Raw" value={`$${raw}`} small />
+        <Row label="Margin" value={`$${marginValue}`} small />
+      </div>
+    </LemonCard>
   );
 }
 

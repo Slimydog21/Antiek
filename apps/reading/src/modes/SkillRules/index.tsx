@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 /**
  * Shared-substrate skill rules surface (master-spec §13.2 + §13.9).
@@ -73,7 +74,7 @@ export default function SkillRules() {
   }, [rules]);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -99,7 +100,7 @@ export default function SkillRules() {
                 <p className="text-2xl font-serif text-ink dark:text-bright">
                   {counts[c] ?? 0}
                 </p>
-                <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+                <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
                   {c} confidence
                 </p>
               </div>
@@ -109,7 +110,7 @@ export default function SkillRules() {
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3">
             <h2 className="text-sm font-serif text-ink dark:text-bright">Filter</h2>
             <div className="space-y-1">
-              <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+              <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
                 Search rule text
               </label>
               <input
@@ -122,7 +123,7 @@ export default function SkillRules() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+                <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
                   Domain
                 </label>
                 <input
@@ -134,7 +135,7 @@ export default function SkillRules() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+                <label className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
                   Confidence
                 </label>
                 <select
@@ -152,9 +153,9 @@ export default function SkillRules() {
           </section>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {loading && (
@@ -181,9 +182,9 @@ export default function SkillRules() {
                     {r.rule_text}
                   </h3>
                   <span
-                    className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded shrink-0 ${
+                    className={`text-xxs uppercase tracking-wider font-mono px-2 py-0.5 rounded shrink-0 ${
                       r.confidence === "high"
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-success/10 text-success"
                         : r.confidence === "moderate"
                         ? "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
                         : "bg-ice-1 dark:bg-charcoal-2 text-shadow-1 dark:text-moonlight"
@@ -192,12 +193,12 @@ export default function SkillRules() {
                     {r.confidence}
                   </span>
                 </div>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                   {r.domain} · {r.rule_kind} · users={r.source_user_count}
                   {" · "}ε={r.epsilon_budget_consumed.toFixed(4)}
                   {r.extracted_at ? ` · ${r.extracted_at}` : ""}
                 </p>
-                <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+                <p className="text-xxs font-mono text-ink-mute dark:text-moonlight">
                   {r.rule_id}
                 </p>
               </Link>
