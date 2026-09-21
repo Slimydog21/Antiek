@@ -113,7 +113,7 @@ jobs:
           # don't resolve here are simply not constrained). Provenance +
           # regeneration rule: header of tools/lints/constraints.txt.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
           pip install -c tools/lints/constraints.txt \
             "ruff==${RUFF_VERSION}" "mypy==${MYPY_VERSION}"
           # Surface the resolved set in the job log so a future red can be
