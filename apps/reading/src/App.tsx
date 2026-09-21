@@ -8,6 +8,7 @@ import CommandPalette from "./components/CommandPalette";
 import { AuthProvider, useAuth } from "./lib/auth";
 import Backtest from "./modes/Backtest";
 import Billing from "./modes/Billing";
+import AccountMemory from "./modes/AccountMemory";
 import Biography from "./modes/Biography";
 import BrainstormStation from "./modes/BrainstormStation";
 import Coordination from "./modes/Coordination";
@@ -191,6 +192,11 @@ function AuthenticatedRoutes() {
         <Route path="/map" element={<Map />} />
         <Route path="/multimedia" element={<Multimedia />} />
         <Route path="/backtest/:synthesisId" element={<Backtest />} />
+        {/* SPR-11 Task 6 — the owner-private account-memory panel. Both
+            /account/memory routes have been live and gated since the
+            account-memory sprint; until this route nothing in apps/ called
+            either, so the facts an account accumulated were curl-only. */}
+        <Route path="/memory" element={<AccountMemory />} />
         <Route path="/privacy" element={<PrivacyDashboard />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/settings" element={<Settings />} />
