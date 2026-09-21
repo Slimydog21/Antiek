@@ -98,7 +98,7 @@ export function ArtifactExport({
         </button>
       ))}
       {error && (
-        <p className="mt-1 text-amber-700 dark:text-amber-400">
+        <p className="mt-1 text-danger">
           Export refused: {error}
         </p>
       )}

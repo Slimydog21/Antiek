@@ -15,7 +15,7 @@ class QualityGateError(Exception):
     pass
 
 
-class QualityGateReason(str, enum.Enum):
+class QualityGateReason(enum.StrEnum):
     """Why the gate rejected (or accepted). Each component contributes
     its own reason; the composite verdict lists all that fired."""
 

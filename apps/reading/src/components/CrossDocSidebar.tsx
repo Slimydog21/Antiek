@@ -101,8 +101,8 @@ function CrossDocCard({
 }) {
   const p = event.payload;
   return (
-    <li className="border border-violet-200 rounded-md bg-violet-50/30 px-3 py-2.5 flex flex-col gap-1.5">
-      <div className="text-[10px] font-mono text-violet-700 uppercase tracking-wide">
+    <li className="border border-rule dark:border-charcoal-1 rounded-md bg-ice-0 dark:bg-charcoal-2 px-3 py-2.5 flex flex-col gap-1.5">
+      <div className="text-xxs font-mono text-ink-mute dark:text-moonlight uppercase tracking-wide">
         cross-document resolution
       </div>
       {questionText ? (
@@ -114,16 +114,16 @@ function CrossDocCard({
           (question text not captured — id: {shortenId(p.question_id)})
         </p>
       )}
-      <div className="text-[11px] font-mono text-ink dark:text-bright flex items-center gap-1.5 flex-wrap">
+      <div className="text-xs font-mono text-ink dark:text-bright flex items-center gap-1.5 flex-wrap">
         <span className="px-1.5 py-0.5 rounded bg-ice-3 dark:bg-charcoal-1" title={p.question_document_id}>
           {shortenDocId(p.question_document_id)}
         </span>
-        <span className="text-violet-600">→</span>
+        <span className="text-ink-soft dark:text-starlight">→</span>
         <span className="px-1.5 py-0.5 rounded bg-ice-3 dark:bg-charcoal-1" title={p.answer_document_id}>
           {shortenDocId(p.answer_document_id)}
         </span>
       </div>
-      <div className="text-[10px] font-mono text-shadow-1 dark:text-moonlight pt-0.5 flex items-center gap-1.5">
+      <div className="text-xxs font-mono text-shadow-1 dark:text-moonlight pt-0.5 flex items-center gap-1.5">
         <span>bridged by:</span>
         <button
           onClick={() => onCiteJump?.(p.answer_note_id)}

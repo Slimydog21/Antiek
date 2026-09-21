@@ -71,7 +71,7 @@ function formatCents(cents: number | null | undefined): string {
 function usageBar(usage?: SettingsUsageKeyEntry): React.ReactNode {
   if (!usage || usage.limit_cents == null || usage.limit_cents <= 0) {
     return (
-      <span className="text-[10px] text-ink-mute dark:text-moonlight">
+      <span className="text-xxs text-ink-mute dark:text-moonlight">
         {usage ? formatCents(usage.used_cents) : "—"} / uncapped
       </span>
     );
@@ -83,16 +83,16 @@ function usageBar(usage?: SettingsUsageKeyEntry): React.ReactNode {
   const over = (usage.used_cents || 0) > usage.limit_cents;
   return (
     <div className="flex items-center gap-1.5 min-w-[120px]">
-      <div className="h-1.5 flex-1 bg-ice-2 dark:bg-charcoal-3 rounded overflow-hidden border border-edge">
+      <div className="h-1.5 flex-1 bg-ice-2 dark:bg-charcoal-1 rounded overflow-hidden border border-edge">
         <div
           className={
             "h-full " +
-            (over ? "bg-red-500" : "bg-sun")
+            (over ? "bg-danger" : "bg-sun")
           }
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-[10px] tabular-nums text-ink-soft dark:text-starlight whitespace-nowrap">
+      <span className="text-xxs tabular-nums text-ink-soft dark:text-starlight whitespace-nowrap">
         {formatCents(usage.used_cents)} / {formatCents(usage.limit_cents)}
       </span>
     </div>
@@ -100,18 +100,18 @@ function usageBar(usage?: SettingsUsageKeyEntry): React.ReactNode {
 }
 
 function balanceChip(b?: SettingsBalanceResponse | null, loading?: boolean): React.ReactNode {
-  if (loading) return <span className="text-[10px] text-ink-mute">…</span>;
+  if (loading) return <span className="text-xxs text-ink-mute">…</span>;
   if (!b || b.kind === "unavailable" || b.balance_usd == null) {
-    return <span className="text-[10px] text-ink-mute dark:text-moonlight">—</span>;
+    return <span className="text-xxs text-ink-mute dark:text-moonlight">—</span>;
   }
   const sign = b.balance_usd < 0 ? "" : "+";
   return (
     <span
       className={
-        "text-[10px] tabular-nums px-1 py-px rounded " +
+        "text-xxs tabular-nums px-1 py-px rounded " +
         (b.balance_usd < 0
-          ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30"
-          : "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30")
+          ? "text-danger bg-danger/10"
+          : "text-success bg-success/10")
       }
       title={b.note || b.window_label || undefined}
     >
@@ -260,9 +260,9 @@ export default function ModelUsagePicker({
       menuClassName="min-w-[320px] max-w-[420px]"
     >
       {({ close }) => (
-        <div className="py-1 text-[13px]">
+        <div className="py-1 text-sm">
           {loadError && (
-            <div className="px-3 py-2 text-red-600 dark:text-red-400 text-xs">
+            <div className="px-3 py-2 text-danger text-xs">
               {loadError}
             </div>
           )}
@@ -285,7 +285,7 @@ export default function ModelUsagePicker({
                 <span className={value === "" || value == null ? "font-semibold" : ""}>
                   {defaultLabel}
                 </span>
-                <div className="text-[10px] text-ink-mute">
+                <div className="text-xxs text-ink-mute">
                   route through the house dispatch tiers
                 </div>
               </div>
@@ -294,7 +294,7 @@ export default function ModelUsagePicker({
           {grouped.map(({ key, label, items }) => (
             <div key={key}>
               {label !== null && (
-                <div className="px-3 pt-1.5 pb-0.5 text-[10px] font-mono uppercase tracking-wider text-ink-mute">
+                <div className="px-3 pt-1.5 pb-0.5 text-xxs font-mono uppercase tracking-wider text-ink-mute">
                   {label}
                 </div>
               )}
@@ -323,14 +323,14 @@ export default function ModelUsagePicker({
                         <div className="flex items-center gap-2 shrink-0">
                           {showBalance && balanceChip(m.balance, m.balanceLoading)}
                           {m.key_present ? null : (
-                            <span className="text-[10px] text-amber-600">no key</span>
+                            <span className="text-xxs text-sun-deep dark:text-sun">no key</span>
                           )}
                         </div>
                       </div>
                       {showUsage && (
                         <div className="mt-0.5">{usageBar(m.usage)}</div>
                       )}
-                      <div className="text-[10px] text-ink-mute">
+                      <div className="text-xxs text-ink-mute">
                         {m.provider_catalog_id || m.provider_kind} · {m.execution_status}
                       </div>
                     </div>
@@ -342,7 +342,7 @@ export default function ModelUsagePicker({
           <div className="border-t border-edge mt-1 pt-1 px-2 flex justify-end">
             <button
               type="button"
-              className="text-[10px] text-ink-soft hover:text-ink px-1"
+              className="text-xxs text-ink-soft hover:text-ink px-1"
               onClick={() => void refreshBalances()}
             >
               ↻ refresh balances

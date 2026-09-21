@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 
 try:
     from ..constants import SYSTEM_INVESTIGATION_ID
@@ -12,13 +13,15 @@ except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import SYSTEM_INVESTIGATION_ID  # type: ignore[no-redef]
-    from substrate.dispatch.router import (  # type: ignore[no-redef]
+    from substrate.constants import SYSTEM_INVESTIGATION_ID
+    from substrate.dispatch.router import (
         DispatchConfig,
         DispatchResult,
         dispatch,
     )
-    from substrate.research_bridge.extractor import LlmCallResult  # type: ignore[no-redef]
+    from substrate.research_bridge.extractor import (
+        LlmCallResult,
+    )
 
 
 DISPATCH_ROLE: str = "note_taker"
@@ -29,7 +32,7 @@ def build_dispatch_llm_callable(
     investigation_id: str | None = None,
     role: str = DISPATCH_ROLE,
     config: DispatchConfig | None = None,
-):
+) -> Callable[[str], LlmCallResult]:
     """Build an ``LlmCallable`` that routes through dispatch."""
     inv = investigation_id or SYSTEM_INVESTIGATION_ID
 

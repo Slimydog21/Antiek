@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Model Routing, Budget Projection, and Antiek-bench</title>
+  <style>
+    body{font-family:Inter,system-ui,sans-serif;line-height:1.55;margin:0;color:#17212b;background:#f7f4ee}
+    main{max-width:1120px;margin:0 auto;padding:40px 24px 80px}
+    h1,h2,h3{line-height:1.15;color:#111827}
+    h1{font-size:34px;margin:0 0 10px}
+    h2{font-size:24px;margin-top:36px;border-top:1px solid #d7d0c4;padding-top:24px}
+    h3{font-size:18px;margin-top:24px}
+    a{color:#075985}
+    .meta,.note{color:#4b5563}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+    .card{border:1px solid #d7d0c4;background:#fffaf2;border-radius:8px;padding:16px}
+    code{background:#eee7dc;padding:1px 4px;border-radius:4px}
+    table{border-collapse:collapse;width:100%;background:#fffaf2}
+    th,td{border:1px solid #d7d0c4;padding:9px;text-align:left;vertical-align:top}
+    th{background:#eee7dc}
+    .must{font-weight:700;color:#7c2d12}
+  </style>
+</head>
+<body>
+<main>
+  <p class="meta">Status: executable htmlspec. Owner: dispatch/router + Settings + Research/Reading workflows. Date: 2026-07-09.</p>
+  <h1>Antiek Model Routing, Budget Projection, and Antiek-bench</h1>
+  <p>
+    This spec turns the operator's expanded goal into an implementation path:
+    Antiek should let a researcher choose or delegate model selection for any prompt,
+    see budget impact before running, learn from weekly task outcomes, and route
+    midnight-oil/research/reading agents without losing the canonical substrate
+    dispatch ledger.
+  </p>
+
+  <h2>Decision</h2>
+  <div class="card">
+    <p>
+      Implement NotDiamond-style routing as an <strong>optional advisory layer</strong>
+      feeding Antiek's existing <code>substrate/dispatch/router.py</code>. Do not
+      replace the dispatch router, provider registry, event log, or cost accounting.
+      The canonical router remains the single execution chokepoint; external routers
+      may recommend candidates, but Antiek records and enforces the final route.
+    </p>
+    <p>
+      Current NotDiamond docs describe routing as choosing the best LLM per query to
+      improve accuracy, reduce cost, and optimize latency, with pre-trained and custom
+      routers plus quality/cost/latency tradeoff modes. Their 2026 model-routing guide
+      separates gateways from routers and explicitly calls out cache-aware routing as
+      decisive for agent workloads. That maps well to Antiek only if route receipts,
+      cache state, budget ceilings, and benchmark feedback are first-class.
+    </p>
+  </div>
+
+  <h2>Why This Matters</h2>
+  <ul>
+    <li>The research workstation and reading mode both spawn recursive research work; fixed model choices will overpay on easy work and underpower hard synthesis.</li>
+    <li>Midnight oil needs an approved price ceiling before autonomous work starts; model routing must prove how it will stay inside that ceiling.</li>
+    <li>Settings already exposes models, budget, and prompt cost estimation; this spec turns that into a decision tree with receipts and benchmark feedback.</li>
+    <li>Antiek-bench should learn from real usage outcomes, not just synthetic prompts, so weekly recommendations improve with the product.</li>
+  </ul>
+
+  <h2>Non-Negotiable Invariants</h2>
+  <table>
+    <tr><th>Invariant</th><th>Reason</th><th>Proof</th></tr>
+    <tr><td>One execution router</td><td>A second router would fork billing, retries, event provenance, and provider errors.</td><td>No new production call path bypasses <code>substrate.dispatch.router.dispatch</code>.</td></tr>
+    <tr><td>Route receipt on every routed answer</td><td>Users need to know which model answered, why, cost estimate, actual cost, and whether an override happened.</td><td>Dispatch events carry receipt fields and tests assert redaction.</td></tr>
+    <tr><td>Budget projection before spend</td><td>Operator asked to see whether a prompt will exceed configured API-key limits.</td><td>Settings API returns projected low/high cost and budget impact for selected or auto-routed candidates.</td></tr>
+    <tr><td>Cache-aware routing</td><td>Agentic sessions can lose savings if a router abandons cached context for a cheaper uncached model.</td><td>Router inputs include cache/session state and tests cover a cheaper-but-uncached rejection.</td></tr>
+    <tr><td>Benchmark feedback loop</td><td>Antiek-bench must learn from usage patterns and update sub-benchmarks weekly.</td><td>Benchmark results produce model-task scorecards and next-week fixture proposals.</td></tr>
+    <tr><td>No secret leakage</td><td>Settings/model keys are sensitive.</td><td>Route receipts and benchmark artifacts never include API key values.</td></tr>
+  </table>
+
+  <h2>Architecture</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>Decision Tree UI</h3>
+      <p>Settings and prompt composers expose manual model choice, auto-router choice, budget remaining, and projected prompt impact.</p>
+    </section>
+    <section class="card">
+      <h3>Route Planner</h3>
+      <p>A new pure planner evaluates task kind, role, prompt size, expected output, cache state, user objective, and budget ceiling.</p>
+    </section>
+    <section class="card">
+      <h3>Router Adapters</h3>
+      <p>Local deterministic policy first; optional NotDiamond advisor later. Both return recommendations, never execute provider calls.</p>
+    </section>
+    <section class="card">
+      <h3>Canonical Dispatch</h3>
+      <p><code>dispatch()</code> executes the selected tier/model and records actual usage/cost as it does today.</p>
+    </section>
+    <section class="card">
+      <h3>Route Receipt</h3>
+      <p>Per answer: candidates, selected provider/model/tier, objective, estimated cost, actual cost, fallback chain, override reason.</p>
+    </section>
+    <section class="card">
+      <h3>Antiek-bench</h3>
+      <p>Weekly task-suite runner over research, reading, synthesis, extraction, verification, voice, and multimedia prompt classes.</p>
+    </section>
+  </div>
+
+  <h2>Nested Sprints</h2>
+  <table>
+    <tr><th>Sprint</th><th>Artifact</th><th>Outcome</th></tr>
+    <tr><td>SPR-01</td><td><a href="./sprint-01-route-receipt.html">Route receipt contract</a></td><td>Transparent model decision records without leaking secrets.</td></tr>
+    <tr><td>SPR-02</td><td><a href="./sprint-02-budget-projection-api.html">Budget projection API</a></td><td>Prompt composers can show projected spend and cap impact before dispatch.</td></tr>
+    <tr><td>SPR-03</td><td><a href="./sprint-03-decision-tree-settings.html">Decision tree settings UI</a></td><td>Model selection, auto-routing mode, budget bars, and prompt estimate in Settings.</td></tr>
+    <tr><td>SPR-04</td><td><a href="./sprint-04-antiek-bench.html">Antiek-bench weekly scorecards</a></td><td>Task-specific model quality/cost/latency scorecards and fixture evolution.</td></tr>
+    <tr><td>SPR-05</td><td><a href="./sprint-05-notdiamond-advisor.html">NotDiamond advisor spike</a></td><td>Optional advisory integration behind flags, compared against local policy.</td></tr>
+    <tr><td>SPR-06</td><td><a href="./sprint-06-midnight-oil-routing.html">Midnight oil routing contract</a></td><td>Autonomous research swarms carry time, goals, price ceiling, route policy, and receipts.</td></tr>
+  </table>
+
+  <h2>Acceptance Bar</h2>
+  <ul>
+    <li>Every new API has unit tests for known pricing, unknown pricing, cap exceeded, and no-cap cases.</li>
+    <li>Every route recommendation is deterministic in tests and stores an auditable reason.</li>
+    <li>NotDiamond is never a hard dependency for core Antiek dispatch; if unavailable, local routing continues.</li>
+    <li>Route receipts are visible from research workstation, reading spawned research, and midnight-oil runs.</li>
+    <li>Antiek-bench outputs both a human settings summary and a machine-readable scorecard for future routing policy.</li>
+  </ul>
+
+  <h2>External Sources Consulted</h2>
+  <ul>
+    <li><a href="https://docs.notdiamond.ai/docs/what-is-model-routing">NotDiamond docs: What is Model Routing?</a></li>
+    <li><a href="https://www.notdiamond.ai/blog/a-comprehensive-guide-to-model-routing">NotDiamond 2026 model routing guide</a></li>
+    <li><a href="https://www.notdiamond.ai/">NotDiamond product page</a></li>
+  </ul>
+</main>
+</body>
+</html>

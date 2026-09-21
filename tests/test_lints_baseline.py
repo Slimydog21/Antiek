@@ -472,3 +472,100 @@ def test_enrich_keys_with_snippets_accepts_absolute_paths(tmp_path: Path) -> Non
     keys = [ViolationKey(path=str(src), line=1, col=4, kind="raise:CustomDomainError")]
     enriched = enrich_keys_with_snippets(keys, tmp_path)
     assert enriched[0].snippet == "raise CustomDomainError('x')"
+
+
+# ── A baselined COORDINATE is not a blank cheque ────────────────────────────
+#
+# Pass 1 matched on (path, line, col, kind) alone. As code moves, a wholly
+# different violation of the same kind lands on a baselined coordinate and was
+# absorbed silently. On a REQUIRED merge gate that turns every occupied
+# coordinate into a free pass — 2,267 of them across the mypy and ruff
+# baselines at the time this was found.
+
+
+def test_a_different_violation_at_a_baselined_coordinate_is_reported_new():
+    baseline = BaselineSchema(
+        schema_version=1,
+        lint="declared_bar",
+        generated_at="2026-09-20T00:00:00Z",
+        violations=[
+            ViolationKey(
+                path="tests/t.py", line=29, col=1, kind="ruff:E402",
+                snippet="import os",
+            )
+        ],
+    )
+    intruder = ViolationKey(
+        path="tests/t.py", line=29, col=1, kind="ruff:E402",
+        snippet="from zzz.malicious import backdoor",
+    )
+
+    new = filter_to_new_only([intruder], baseline)
+
+    assert len(new) == 1, (
+        "a different violation at a baselined coordinate was absorbed; every "
+        "baselined coordinate is then a free pass on a required gate"
+    )
+    assert new[0].snippet == "from zzz.malicious import backdoor"
+
+
+def test_the_same_violation_at_its_baselined_coordinate_is_still_absorbed():
+    """The grandfathering this gate exists for must keep working."""
+    baseline = BaselineSchema(
+        schema_version=1, lint="declared_bar", generated_at="x",
+        violations=[
+            ViolationKey(
+                path="tests/t.py", line=29, col=1, kind="ruff:E402",
+                snippet="import os",
+            )
+        ],
+    )
+    same = ViolationKey(
+        path="tests/t.py", line=29, col=1, kind="ruff:E402", snippet="import os"
+    )
+    assert filter_to_new_only([same], baseline) == []
+
+
+def test_a_shifted_baselined_violation_is_still_absorbed():
+    """Drift robustness — the whole reason the snippet exists — is preserved."""
+    baseline = BaselineSchema(
+        schema_version=1, lint="declared_bar", generated_at="x",
+        violations=[
+            ViolationKey(
+                path="tests/t.py", line=29, col=1, kind="ruff:E402",
+                snippet="import os",
+            )
+        ],
+    )
+    shifted = ViolationKey(
+        path="tests/t.py", line=44, col=1, kind="ruff:E402", snippet="import os"
+    )
+    assert filter_to_new_only([shifted], baseline) == []
+
+
+def test_a_snippetless_legacy_baseline_still_matches_on_coordinate_alone():
+    """v1 and substrate-lint baselines carry no snippet; they must not regress.
+
+    Without this, tightening pass 1 would report every grandfathered v1 entry
+    as NEW the moment a lint started emitting snippets — turning a safety fix
+    into a mass false-positive event on a required gate.
+    """
+    baseline = BaselineSchema(
+        schema_version=1, lint="substrate", generated_at="x",
+        violations=[
+            ViolationKey(path="tests/t.py", line=29, col=1, kind="raise:ValueError")
+        ],
+    )
+    current_no_snippet = ViolationKey(
+        path="tests/t.py", line=29, col=1, kind="raise:ValueError"
+    )
+    current_with_snippet = ViolationKey(
+        path="tests/t.py", line=29, col=1, kind="raise:ValueError",
+        snippet="raise ValueError('x')",
+    )
+    assert filter_to_new_only([current_no_snippet], baseline) == []
+    assert filter_to_new_only([current_with_snippet], baseline) == [], (
+        "a snippet-bearing current finding must still match a snippetless "
+        "baseline entry at the same coordinate, or every legacy baseline "
+        "erupts the day its lint learns to capture snippets"
+    )

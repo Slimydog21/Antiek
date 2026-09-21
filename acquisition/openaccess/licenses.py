@@ -24,13 +24,15 @@ from acquisition.licenses_core import (  # noqa: F401
     CC_PDM_ROW,
     CC_SHORT_CODE_ROWS,
     PUBLIC_DOMAIN_CONTENT_CLASS,
-    SOURCE_DECLARED_OPEN_CONTENT_CLASS,
     LicenseResolution,
     LicenseRow,
     license_basis_string,
     resolve_against_table,
 )
-from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
+from substrate.constants import (
+    GATED_DEFAULT_CONTENT_CLASS,
+    SOURCE_DECLARED_OPEN_CONTENT_CLASS,  # noqa: F401
+)
 
 # --- OA-specific rows (beyond the shared CC family) ---
 

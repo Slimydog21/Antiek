@@ -62,6 +62,7 @@ import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
+from types import TracebackType
 from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 
 import duckdb
@@ -593,14 +594,19 @@ class LockedConnection:
             )
         self.execute("COMMIT")
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._con, name)
 
-    def __enter__(self):
+    def __enter__(self) -> LockedConnection:
         return self
 
-    def __exit__(self, exc_type, exc, tb):
-        if exc is not None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> Literal[False]:
+        if exc is not None and exc_type is not None:
             # Capture the in-flight exception so write_log records the failure
             # mode. Don't suppress it — we still return False.
             self._error = f"{exc_type.__name__}: {exc}"
@@ -1120,7 +1126,7 @@ class WriteCoordinator(Protocol):
     Callers select the active coordinator via `init_db.get_write_coordinator()`.
     """
 
-    def acquire_write_context(self, purpose: str): ...
+    def acquire_write_context(self, purpose: str) -> Iterator[WriteContext]: ...
 
 
 class FlockWriteCoordinator:
@@ -1151,7 +1157,7 @@ class FlockWriteCoordinator:
         self.timeout_s = timeout_s
 
     @contextlib.contextmanager
-    def acquire_write_context(self, purpose: str):
+    def acquire_write_context(self, purpose: str) -> Iterator[WriteContext]:
         if not purpose:
             raise ValueError(
                 "WriteCoordinator.acquire_write_context: purpose is mandatory. "
@@ -1174,11 +1180,12 @@ class FlockWriteCoordinator:
         finally:
             con.close()
 
-    def _acquire_with_override(self, purpose: str):
+    def _acquire_with_override(self, purpose: str) -> Iterator[LockedConnection]:
         """Test-only path: honor a non-default lock_path. Mirrors connect_write
         but uses self._lock_path_override.
         """
-        lock_path = self._lock_path_override  # type: ignore[assignment]
+        lock_path = self._lock_path_override
+        assert lock_path is not None  # caller branch guarantees an override
         parent = os.path.dirname(lock_path)
         if parent and not os.path.exists(parent):
             os.makedirs(parent, exist_ok=True)

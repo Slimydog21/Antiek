@@ -163,14 +163,18 @@ class ThrottledClient:
                 time.sleep(wait)
             self._last_request_at = time.monotonic()
 
-    def get_json(self, url: str, *, params: dict | None = None) -> dict:
+    def get_json(
+        self, url: str, *, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         resp = self._request(url, params=params)
-        return resp.json()
+        payload: dict[str, Any] = resp.json()
+        return payload
 
     def get_bytes(self, url: str) -> bytes:
-        return self._request(url).content
+        content: bytes = self._request(url).content
+        return content
 
-    def _request(self, url: str, *, params: dict | None = None) -> requests.Response:
+    def _request(self, url: str, *, params: dict[str, Any] | None = None) -> requests.Response:
         last_exc: Exception | None = None
         for attempt in range(self._max_retries):
             self._throttle()

@@ -38,6 +38,7 @@ import contextlib
 import dataclasses
 import datetime as _dt
 import json
+from collections.abc import Iterator
 from typing import Any
 
 from orchestration.continuous.research_topic import topic_id_for
@@ -110,7 +111,7 @@ def _naive_utc(ts: str) -> str:
 
 
 @contextlib.contextmanager
-def _read(con: Any, path: str | None):
+def _read(con: Any, path: str | None) -> Iterator[Any]:
     """Yield a read connection.
 
     If the caller passed a live connection, reuse it (and do NOT close it —
@@ -324,7 +325,7 @@ def create_monitor(
     )
 
 
-def _row_to_monitor(row) -> Monitor:
+def _row_to_monitor(row: Any) -> Monitor:
     (
         monitor_id,
         investigation_id,

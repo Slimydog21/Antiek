@@ -13,6 +13,7 @@ the ``PUT`` endpoint.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from .federation import FederationConfig
@@ -28,7 +29,7 @@ def ensure_table(con: Any) -> None:
     """Defensive table-creation. The canonical schema lives in
     ``substrate/graph/schema.py`` and runs at boot via
     ``init_database``. Read-only connections fail this call silently."""
-    try:
+    with contextlib.suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS federation_config (
@@ -40,8 +41,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def _serialize_partners(partners: tuple[str, ...]) -> str:

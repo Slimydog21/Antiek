@@ -149,6 +149,7 @@ dev = [
   "mypy>=1.11",
   "types-PyYAML",
   "types-python-dateutil",
+  "types-requests",
 ]
 # NOTE on export extras: xhtml2pdf pulls reportlab → pycairo which needs
 # system libcairo2-dev. We deliberately do NOT include xhtml2pdf or
@@ -228,6 +229,23 @@ strict = true
 warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
+
+# The unified-CLI dispatchers (substrate/cli/{queue,hooks,compact}.py +
+# substrate/cli/__main__.py) depend on the pi-execution primitives
+# (substrate.queue / substrate.hooks / substrate.conversation / substrate.harness)
+# that are NOT merged on this branch — those package dirs are empty stubs here.
+# Per the same merge-or-kill ruling as the harness.fork test skips (commit
+# 5fa504590), exclude them from the gate; they re-enter it when pi-execution
+# merges. `[[tool.mypy.overrides]]` with ignore_errors keeps the rest of the
+# strict floor intact.
+[[tool.mypy.overrides]]
+module = [
+    "substrate.cli.__main__",
+    "substrate.cli.queue",
+    "substrate.cli.hooks",
+    "substrate.cli.compact",
+]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "compounding/benchmark/tests"]

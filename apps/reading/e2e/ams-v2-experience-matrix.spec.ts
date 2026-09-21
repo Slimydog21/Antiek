@@ -200,7 +200,7 @@ test.describe("AMS-v2 experience matrix — every master-spec success criterion,
     page,
   }) => {
     await loginAndGotoApp(page, DEFAULT_ROUTE);
-    const mascot = page.locator('[data-testid="penguin-mascot"], [data-penguin-mascot]').first();
+    const mascot = page.locator('[data-testid="brain-mascot"]').first();
     await expect(mascot, "the penguin mascot must be a live on-screen element").toBeVisible({
       timeout: 5_000,
     });

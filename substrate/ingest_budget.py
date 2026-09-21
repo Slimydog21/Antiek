@@ -105,7 +105,7 @@ DEFAULT_SOFT_RSS_BYTES = 9 * _GIB
 EST_BYTES_PER_DOC = 250_000
 
 
-class BudgetState(str, enum.Enum):
+class BudgetState(enum.StrEnum):
     """The governor verdict. ``str``-valued so it serializes straight into the
     event-log payload + the status snapshot."""
 

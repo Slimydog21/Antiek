@@ -16,7 +16,7 @@ const wrapCls =
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight shrink-0">
+    <span className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight shrink-0">
       {children}
     </span>
   );

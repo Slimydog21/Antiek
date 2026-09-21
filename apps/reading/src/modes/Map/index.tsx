@@ -21,6 +21,7 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
     title: "Workstation",
     routes: [
       { path: "/", title: "Research workstation", description: "Mode A — chat-first investigation surface" },
+      { path: "/midnight-oil", title: "Midnight oil", description: "Autonomous research-swarm preflight" },
       { path: "/wrestle", title: "Document wrestler", description: "Mode B — PDF reading + region selection" },
       { path: "/create", title: "Creation studio", description: "Mode C — lego-block writing" },
       { path: "/brainstorm", title: "Brainstorm station", description: "Mode E — watch-for-later + thought partner" },
@@ -66,7 +67,7 @@ const KEYBOARD_HINTS: { label: string; key: string }[] = [
 
 export default function Map() {
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
@@ -84,7 +85,7 @@ export default function Map() {
               {KEYBOARD_HINTS.map((h) => (
                 <span
                   key={h.label}
-                  className="text-[11px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded"
+                  className="text-xs font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded"
                 >
                   {h.label}: <kbd className="font-mono">{h.key}</kbd>
                 </span>
@@ -110,7 +111,7 @@ export default function Map() {
                       <p className="text-sm font-serif text-ink dark:text-bright">
                         {r.title}
                       </p>
-                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
                         {r.path}
                       </p>
                       <p className="text-xs text-ink-soft dark:text-starlight mt-1">

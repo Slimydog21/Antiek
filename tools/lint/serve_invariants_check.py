@@ -202,6 +202,13 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # sidecar prefer bridge. Same internal-writer category as book_import
         # publish / twin backfill above.
         "tools/backfill_book_reader_html.py",
+        # Research source-merge (ANT-AHT): the merge apply / restore writers read
+        # raw_text ONLY to hash the before/after body so a concurrent edit is
+        # rejected (hash-binding mismatch) and to write the merged body back with
+        # UPDATE. The body never leaves storage on this path — no serve surface,
+        # no caller return — the same internal-writer category as book_import
+        # publish.py above. Owner reads still go only through serve_full_text_guarded.
+        "substrate/research_artifact/source_merge.py",
     }
 )
 

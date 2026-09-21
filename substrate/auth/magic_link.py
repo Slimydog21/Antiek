@@ -26,6 +26,7 @@ JWT issued elsewhere and vice versa.
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -123,7 +124,7 @@ def _decode(
     try:
         payload_bytes = _b64url_decode(payload_b64)
         provided_sig = _b64url_decode(sig_b64)
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise invalid_exc(f"base64 decode failed: {exc}") from exc
     expected_sig = _sign(audience, payload_bytes)
     if not hmac.compare_digest(provided_sig, expected_sig):

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
@@ -50,7 +51,7 @@ def _tag_text(entry_xml: str, local_name: str) -> str | None:
     return text or None
 
 
-def _link_href(entry_xml: str, *, predicate) -> str | None:
+def _link_href(entry_xml: str, *, predicate: Callable[[str, str], bool]) -> str | None:
     for m in re.finditer(r"<(?:\w+:)?link\b([^>]*)/?>", entry_xml, re.IGNORECASE):
         attrs = m.group(1)
         href_m = re.search(r'href\s*=\s*"([^"]+)"', attrs, re.IGNORECASE)

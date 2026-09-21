@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     import sys
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from substrate.event_log import trajectory as _trajectory  # type: ignore[no-redef]
+    from substrate.event_log import trajectory as _trajectory
 
 
 # Action-type string constants — read from the trajectory rows, which carry the

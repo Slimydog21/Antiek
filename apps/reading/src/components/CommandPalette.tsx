@@ -9,7 +9,7 @@ import {
   clearScope,
   project,
 } from "../workspace/persistence";
-import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
+import { toggleAISidecar } from "../workspace/shortcuts";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
   WORKFLOWS,
@@ -387,7 +387,13 @@ export default function CommandPalette() {
         ).flatMap(
           (inv: {
             investigation_id: string;
-            topic?: string;
+            // GET /investigations returns InvestigationSummary, whose title
+            // field is `question` (app.py:419). This was declared and read as
+            // `topic`, a key that schema has never had, so the value was
+            // always undefined and every row fell through to the raw UUID.
+            // lib/api.ts:359 already declared `question`; this file was the
+            // only outlier.
+            question?: string;
             status?: string;
             completed_at?: string | null;
           }) => {
@@ -414,7 +420,7 @@ export default function CommandPalette() {
               {
                 kind: "investigation" as const,
                 id: `inv:${inv.investigation_id}`,
-                title: inv.topic ?? inv.investigation_id,
+                title: inv.question ?? inv.investigation_id,
                 subtitle: `Investigation · ${inv.investigation_id.slice(0, 8)}`,
                 path: `/inv/${inv.investigation_id}`,
                 state,
@@ -423,7 +429,7 @@ export default function CommandPalette() {
               {
                 kind: "investigation" as const,
                 id: `replay:${inv.investigation_id}`,
-                title: `Replay: ${inv.topic ?? inv.investigation_id}`,
+                title: `Replay: ${inv.question ?? inv.investigation_id}`,
                 subtitle: `Trajectory · ${inv.investigation_id.slice(0, 8)}`,
                 path: `/replay/${inv.investigation_id}`,
                 state,
@@ -465,7 +471,11 @@ export default function CommandPalette() {
 
       if (pResp?.ok) {
         const data = await pResp.json();
-        const items: PaletteParkedQuestion[] = (data.parked ?? []).map(
+        // GET /watch-for-later returns WatchForLaterResponse, which is
+        // {count, questions} (app.py:4589). This read a `parked` key the
+        // backend has never emitted, so the `?? []` silently produced an
+        // empty section on every open.
+        const items: PaletteParkedQuestion[] = (data.questions ?? []).map(
           (q: { question_id: string; question_text: string }) => ({
             kind: "parked_question" as const,
             id: `pq:${q.question_id}`,
@@ -563,10 +573,10 @@ export default function CommandPalette() {
         id: "ws:toggle-aisidecar",
         title: "Toggle AI sidecar",
         subtitle: "Workspace · ⌘/",
+        // Same workspace-store toggle as ⌘/ — the bare AISIDECAR_TOGGLE
+        // event this used to dispatch has no production listener.
         run: () => {
-          window.dispatchEvent(
-            new CustomEvent(SHORTCUT_EVENTS.AISIDECAR_TOGGLE),
-          );
+          toggleAISidecar();
         },
       },
       {
@@ -785,7 +795,7 @@ export default function CommandPalette() {
                     return base ? `state:${f} ${base}` : `state:${f}`;
                   })
                 }
-                className={`text-[11px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
+                className={`text-xs font-mono px-2 py-0.5 rounded-full border transition-colors ${
                   active
                     ? "bg-sun text-ink border-sun"
                     : "border-rule dark:border-charcoal-1 text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
@@ -799,7 +809,7 @@ export default function CommandPalette() {
             <button
               type="button"
               onClick={() => setQuery("")}
-              className="text-[11px] font-mono px-2 py-0.5 text-shadow-1 dark:text-moonlight hover:text-emperor"
+              className="text-xs font-mono px-2 py-0.5 text-shadow-1 dark:text-moonlight hover:text-emperor"
             >
               ✕ clear
             </button>
@@ -842,12 +852,12 @@ export default function CommandPalette() {
                   {(() => {
                     const wf = entryWorkflow(e);
                     return wf && wf !== "shared" ? (
-                      <span className="text-[10px] uppercase tracking-wider font-mono text-ink bg-sun/70 px-1.5 py-0.5 rounded">
+                      <span className="text-xxs uppercase tracking-wider font-mono text-ink bg-sun/70 px-1.5 py-0.5 rounded">
                         {WORKFLOWS[wf].label}
                       </span>
                     ) : null;
                   })()}
-                  <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
+                  <span className="text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
                     {e.kind.replace("_", " ")}
                   </span>
                 </div>
@@ -855,7 +865,7 @@ export default function CommandPalette() {
             ))
           )}
         </ul>
-        <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between">
+        <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-xs font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between">
           <span>↑↓ navigate · Enter select · Esc close</span>
           <span>⌘K toggle</span>
         </footer>

@@ -43,6 +43,7 @@ import json
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 # The three §2 cells. ``high_overlap`` is the headline; ``zero_overlap_control``
 # is the validity gate; ``partial_overlap`` is the load-bearing dose-response
@@ -113,7 +114,7 @@ class QuestionSet:
         return len(self.questions)
 
 
-def _canonical_question_payload(questions: Sequence[dict]) -> bytes:
+def _canonical_question_payload(questions: Sequence[dict[str, Any]]) -> bytes:
     """The bytes the ``frozen_sha`` is computed over.
 
     Each question is reduced to its frozen fields in a fixed key order and the
@@ -135,7 +136,7 @@ def _canonical_question_payload(questions: Sequence[dict]) -> bytes:
     return json.dumps(reduced, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def compute_frozen_sha(questions: Sequence[dict]) -> str:
+def compute_frozen_sha(questions: Sequence[dict[str, Any]]) -> str:
     """Content-addressed sha of the question set. ``sha256:`` prefix mirrors the
     ``_sha256_prefix`` convention used in ``substrate/dispatch/router.py``."""
     return "sha256:" + hashlib.sha256(_canonical_question_payload(questions)).hexdigest()

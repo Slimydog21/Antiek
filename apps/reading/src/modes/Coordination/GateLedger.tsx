@@ -130,7 +130,7 @@ function GateRow({ gate }: { gate: GateView }) {
             over four per-product descriptions. */}
         {gate.impacts.length > 0 ? (
           <div className="space-y-1.5 border-t border-rule dark:border-charcoal-1 pt-2.5">
-            <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+            <p className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
               {blocking ? "Blocks per workflow" : "Per-workflow impact"}
             </p>
             <ul className="space-y-1">

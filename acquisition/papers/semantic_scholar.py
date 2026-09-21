@@ -128,7 +128,7 @@ def parse_search_response(payload: dict[str, Any]) -> list[PaperRecord]:
 
 def _http_get(
     url: str, *, api_key: str | None, client: httpx.Client | None
-) -> dict:
+) -> dict[str, Any]:
     # HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``url`` is built from a
     # ``base_url`` that is env/param-overridable, so the actual send is routed
     # through the host-based gate. The default ``api.semanticscholar.org`` is a
@@ -164,7 +164,8 @@ def _http_get(
 
             r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     r.raise_for_status()
-    return r.json()
+    payload: dict[str, Any] = r.json()
+    return payload
 
 
 def search_papers(

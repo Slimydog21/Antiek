@@ -32,7 +32,7 @@ CASCADE_TARGETS: tuple[str, ...] = (
 )
 
 
-class DeletionRequestStatus(str, enum.Enum):
+class DeletionRequestStatus(enum.StrEnum):
     PENDING = "pending"
     CANCELLED = "cancelled"
     CONFIRMED = "confirmed"
@@ -52,7 +52,7 @@ class DeletionRequest:
     reason: str | None = None
 
 
-class DeletionResultKind(str, enum.Enum):
+class DeletionResultKind(enum.StrEnum):
     SKIPPED_CANCELLATION_WINDOW = "skipped_cancellation_window"
     SKIPPED_ALREADY_TERMINAL = "skipped_already_terminal"
     CONFIRMED = "confirmed"
@@ -119,8 +119,10 @@ def process_request(
             reason=f"status={req.status.value}",
         )
 
-    if req.status == DeletionRequestStatus.PENDING:
-        if age < timedelta(days=CANCELLATION_WINDOW_DAYS):
+    if (
+        req.status == DeletionRequestStatus.PENDING
+        and age < timedelta(days=CANCELLATION_WINDOW_DAYS)
+    ):
             remaining = CANCELLATION_WINDOW_DAYS - age.days
             return DeletionResult(
                 request_id=req.request_id,

@@ -135,7 +135,7 @@ def inbound_refused_to_payload(
         )
     return FederationInboundCitationRefusedPayload(
         partner_id=partner_id,
-        rejection=outcome.rejection.value,  # type: ignore[arg-type]
+        rejection=outcome.rejection.value,  # type: ignore[arg-type,unused-ignore]
         detail=outcome.detail,
         received_at=outcome.received_at,
     )

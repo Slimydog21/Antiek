@@ -1,15 +1,21 @@
 import {
+  Component,
   lazy,
   Suspense,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
   type RefObject,
 } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
+import ErrorBanner from "../../components/lemon/ErrorBanner";
 import type { ArcadeGameKind } from "../../arcade/cartridgeFactory";
+import { ARCADE_CARTRIDGE_META } from "../../arcade/cartridgeMeta";
+import { press } from "../../design/motion";
+import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import iceFishingArt from "../../brand/werner/arcade/ice-fishing-station-key-art-v1.webp";
 import paperclipArt from "../../brand/werner/arcade/paperclip-archive-key-art-v1.webp";
 import { acquireStationInstrumentSuspension } from "../../werner/stationInstrumentSuspension";
@@ -23,24 +29,14 @@ const LazyResearchWaitArcadeGame = lazy(
   () => import("./ResearchWaitArcadeGame"),
 );
 
+// Key art is the only per-choice asset; title/description come from
+// ARCADE_CARTRIDGE_META so the chooser can never drift from the cartridge.
 const ARCADE_CHOICES: ReadonlyArray<{
   id: ArcadeGameKind;
-  title: string;
-  description: string;
   art: string;
 }> = [
-  {
-    id: "zombies",
-    title: "Paperclip Zombies",
-    description: "Defend the archive while research keeps running.",
-    art: paperclipArt,
-  },
-  {
-    id: "ice-fishing",
-    title: "Ice Fishing",
-    description: "Drop the line, catch fish, avoid the boot.",
-    art: iceFishingArt,
-  },
+  { id: "zombies", art: paperclipArt },
+  { id: "ice-fishing", art: iceFishingArt },
 ];
 
 export interface ResearchWaitArcadeProps {
@@ -58,7 +54,7 @@ export default function ResearchWaitArcade({
   returnFocusRef,
   reducedMotion,
 }: ResearchWaitArcadeProps) {
-  const systemReducedMotion = useReducedMotionPreference();
+  const systemReducedMotion = usePrefersReducedMotion();
   const effectiveReducedMotion = reducedMotion ?? systemReducedMotion;
   const [offerReady, setOfferReady] = useState(false);
   const [optedIn, setOptedIn] = useState(false);
@@ -97,7 +93,6 @@ export default function ResearchWaitArcade({
     hasAuthoritativeSnapshot: true,
     researchCount: activeResearchCount,
     allTerminal: false,
-    reducedMotion: effectiveReducedMotion,
     offerReady,
     optedIn,
   });
@@ -145,6 +140,9 @@ export default function ResearchWaitArcade({
         }
       }}
       onKeyDownCapture={(event) => {
+        // Escape has ONE owner: this shell. It intercepts in the capture
+        // phase, so the canvas never sees the key and the cartridge's own
+        // Escape→exited phase (kept for shell-less hosts) stays dormant.
         if (mode === "playing" && event.key === "Escape") {
           event.preventDefault();
           event.stopPropagation();
@@ -155,7 +153,7 @@ export default function ResearchWaitArcade({
       <div className="research-wait-arcade__rail">
         <span className="research-wait-arcade__pulse" aria-hidden="true" />
         <span className="research-wait-arcade__trace" aria-hidden="true" />
-        <span className="research-wait-arcade__rail-status font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+        <span className="research-wait-arcade__rail-status font-mono text-xs text-shadow-1 dark:text-moonlight">
           {activeResearchCount}{" "}
           {activeResearchCount === 1 ? "research" : "researches"} still running
         </span>
@@ -171,39 +169,44 @@ export default function ResearchWaitArcade({
               Optional. Your research continues above either game.
             </p>
             <div className="research-wait-arcade__cartridges">
-              {ARCADE_CHOICES.map((choice) => (
-                <label
-                  key={choice.id}
-                  className="research-wait-arcade__cartridge"
-                  data-selected={selectedGame === choice.id ? "true" : "false"}
-                >
-                  <input
-                    type="radio"
-                    name={`research-wait-cartridge-${episodeId}`}
-                    value={choice.id}
-                    checked={selectedGame === choice.id}
-                    onChange={() => setSelectedGame(choice.id)}
-                  />
-                  <img
-                    src={choice.art}
-                    alt=""
-                    aria-hidden="true"
-                    decoding="async"
-                  />
-                  <span className="research-wait-arcade__cartridge-copy">
-                    <span className="font-serif text-sm font-semibold text-ink dark:text-bright">
-                      {choice.title}
+              {ARCADE_CHOICES.map((choice) => {
+                const meta = ARCADE_CARTRIDGE_META[choice.id];
+                return (
+                  <label
+                    key={choice.id}
+                    className={`research-wait-arcade__cartridge ${press}`}
+                    data-selected={
+                      selectedGame === choice.id ? "true" : "false"
+                    }
+                  >
+                    <input
+                      type="radio"
+                      name={`research-wait-cartridge-${episodeId}`}
+                      value={choice.id}
+                      checked={selectedGame === choice.id}
+                      onChange={() => setSelectedGame(choice.id)}
+                    />
+                    <img
+                      src={choice.art}
+                      alt=""
+                      aria-hidden="true"
+                      decoding="async"
+                    />
+                    <span className="research-wait-arcade__cartridge-copy">
+                      <span className="font-serif text-sm font-semibold text-ink dark:text-bright">
+                        {meta.title}
+                      </span>
+                      <span className="text-xs text-shadow-1 dark:text-moonlight">
+                        {meta.blurb}
+                      </span>
                     </span>
-                    <span className="text-xs text-shadow-1 dark:text-moonlight">
-                      {choice.description}
-                    </span>
-                  </span>
-                  <span
-                    className="research-wait-arcade__choice-mark"
-                    aria-hidden="true"
-                  />
-                </label>
-              ))}
+                    <span
+                      className="research-wait-arcade__choice-mark"
+                      aria-hidden="true"
+                    />
+                  </label>
+                );
+              })}
             </div>
           </fieldset>
           <div className="research-wait-arcade__offer-action">
@@ -224,10 +227,7 @@ export default function ResearchWaitArcade({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="font-serif text-sm font-semibold text-ink dark:text-bright">
-                {
-                  ARCADE_CHOICES.find((choice) => choice.id === selectedGame)
-                    ?.title
-                }
+                {ARCADE_CARTRIDGE_META[selectedGame].title}
               </p>
               <p className="text-xs text-shadow-1 dark:text-moonlight">
                 Research stays live above the game.
@@ -238,12 +238,14 @@ export default function ResearchWaitArcade({
             </LemonButton>
           </div>
           <div className="research-wait-arcade__canvas-shell">
-            <Suspense fallback={null}>
-              <LazyResearchWaitArcadeGame
-                game={selectedGame}
-                reducedMotion={effectiveReducedMotion}
-              />
-            </Suspense>
+            <ArcadeChunkBoundary>
+              <Suspense fallback={<GameSkeleton />}>
+                <LazyResearchWaitArcadeGame
+                  game={selectedGame}
+                  reducedMotion={effectiveReducedMotion}
+                />
+              </Suspense>
+            </ArcadeChunkBoundary>
           </div>
         </div>
       )}
@@ -251,22 +253,45 @@ export default function ResearchWaitArcade({
   );
 }
 
-function useReducedMotionPreference(): boolean {
-  const [reduced, setReduced] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+// Skeleton while the game chunk loads. The block matches the mounted
+// canvas's 480×300 (8:5) ratio so the shell does not jump when the game
+// lands; the named-step label keeps the wait honest instead of a blank box.
+function GameSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading game"
+      className="flex aspect-[8/5] w-full items-center justify-center rounded-hog bg-ice-3 dark:bg-space-2"
+    >
+      <span className="font-mono text-xs uppercase text-shadow-1 dark:text-moonlight">
+        Loading game…
+      </span>
+    </div>
   );
+}
 
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
+// If the lazy chunk fails (offline, deploy skew), the failure is stated
+// plainly and the header's Exit game control above still leads back — the
+// boundary unmounts with the drawer, so Play again is a real retry.
+class ArcadeChunkBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
 
-  return reduced;
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <ErrorBanner>
+          The game failed to load. Your research is still running — Exit game
+          above returns to the monitor.
+        </ErrorBanner>
+      );
+    }
+    return this.props.children;
+  }
 }
