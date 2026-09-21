@@ -125,7 +125,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
     <div id="distill" data-testid="distill-view" className="flex flex-col gap-5 px-4 py-4">
       <OpenAutoNotebookLink investigationId={investigationId} />
       {running && (
-        <p className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+        <p className="font-mono text-xs text-shadow-1 dark:text-moonlight">
           still working — this is what’s distilled so far
         </p>
       )}
@@ -158,7 +158,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
 function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+      <h3 className="mb-2 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
         {heading}
       </h3>
       {children}
@@ -211,10 +211,10 @@ function InsightRow({
       <div className="flex items-start gap-2.5">
         <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-aurora" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
+          <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright">
             {node.text}
           </p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-shadow-1 dark:text-moonlight">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-shadow-1 dark:text-moonlight">
             <Grounding node={node} />
             {node.refinement_count > 0 && (
               <span className="font-mono">changed {node.refinement_count === 1 ? "once" : `${node.refinement_count} times`}</span>
@@ -231,22 +231,22 @@ function InsightRow({
             {outcome === "busy" && <span className="font-mono italic" role="status">weighing…</span>}
           </div>
           {outcome === "changed" && (
-            <p className="mt-1 font-mono text-[11px] text-emerald-700" role="status">
+            <p className="mt-1 font-mono text-xs text-success" role="status">
               the note changed in light of your challenge
             </p>
           )}
           {outcome === "unchanged" && (
-            <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight" role="status">
+            <p className="mt-1 font-mono text-xs text-shadow-1 dark:text-moonlight" role="status">
               a newer revision already settled this — unchanged
             </p>
           )}
           {outcome === "escalated" && (
-            <p className="mt-1 font-mono text-[11px] text-sun-deep dark:text-sun" role="status">
+            <p className="mt-1 font-mono text-xs text-sun-deep dark:text-sun" role="status">
               this needs more research — saved as an open question
             </p>
           )}
           {outcome === "noSource" && (
-            <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight" role="status">
+            <p className="mt-1 font-mono text-xs text-shadow-1 dark:text-moonlight" role="status">
               this note isn’t grounded in a source yet, so it can’t be challenged
             </p>
           )}
@@ -268,10 +268,10 @@ function InsightRow({
 function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: DistilledNode) => void }) {
   return (
     <li className="flex items-start gap-2.5">
-      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-sun-deep dark:bg-sun" aria-hidden="true" />
+      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-aurora" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">{node.text}</p>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-shadow-1 dark:text-moonlight">
+        <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright">{node.text}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-shadow-1 dark:text-moonlight">
           {node.escalated ? (
             <span className="font-mono text-sun-deep dark:text-sun">this needs more research</span>
           ) : null}
@@ -309,7 +309,7 @@ function OpenAutoNotebookLink({ investigationId }: { investigationId: string }) 
       <Link
         to={`/notebook/auto/${encodeURIComponent(investigationId)}`}
         data-testid="open-auto-notebook"
-        className="font-mono text-[11px] uppercase tracking-wider text-aurora underline-offset-2 hover:underline"
+        className="font-mono text-xs uppercase tracking-wider text-sun-deep dark:text-sun underline-offset-2 hover:underline"
       >
         Open auto-notebook →
       </Link>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 /**
  * Skill rule detail page (master-spec §13.2 + §13.9).
@@ -59,7 +60,7 @@ export default function SkillRuleDetail() {
   }, [reload]);
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
@@ -82,9 +83,9 @@ export default function SkillRuleDetail() {
           )}
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <ErrorBanner>
               {error}
-            </p>
+            </ErrorBanner>
           )}
 
           {rule && (
@@ -136,7 +137,7 @@ export default function SkillRuleDetail() {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
-      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
+      <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
         {label}
       </p>
       <p className="text-sm font-mono text-ink dark:text-bright truncate">

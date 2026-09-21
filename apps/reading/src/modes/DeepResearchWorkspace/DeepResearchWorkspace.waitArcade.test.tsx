@@ -120,12 +120,13 @@ describe("Deep Research wait arcade gate", () => {
     expect(screen.queryByTestId("lazy-wait-arcade")).toBeNull();
   });
 
-  it("does not request the lazy host under reduced motion", async () => {
+  it("still requests the lazy host under reduced motion (reduced cartridges, not hidden)", async () => {
     motion.reduced = true;
     render(<ResearchWaitArcadeGate {...base} />);
-    await Promise.resolve();
-    expect(screen.queryByTestId("lazy-wait-arcade")).toBeNull();
-    expect(arcadeRender).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("lazy-wait-arcade")).toBeTruthy();
+    expect(arcadeRender).toHaveBeenCalledWith(
+      expect.objectContaining({ episodeId: "session:3" }),
+    );
   });
 
   it("keeps partial cards and reconnect truth visible, then removes the host in the terminal render", async () => {

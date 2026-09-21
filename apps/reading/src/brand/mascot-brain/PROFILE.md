@@ -52,8 +52,8 @@ subtle subsurface glow on the brain surface, crisp cinematic lighting
 | Cheeks | `#F2A0A0` | rosy blush |
 | Eyes/mouth/limbs | `#1A1A1A` | soft black |
 | Cream bg | `#F0E4DA` | Ghibli paper cream |
-| Dark surface | `#0B1020` | app `space-2` navy |
-| Sun accent (existing brand) | `#FFD54A` | rail button, kept |
+| Dark surface | `#0D1019` | app `space-2` navy — canonical value per `apps/reading/src/design/tokens.ts` (`surface.night[2]`) |
+| Sun accent (existing brand) | `#F5DF24` | rail button, kept — canonical value per tokens.ts (`sun.base`) |
 
 ---
 
@@ -72,7 +72,7 @@ All in `tools/brand/mascot-brain/`. Models: **GPT Image 2 (2K/4K), Krea 2 Large,
 | 5 | `05_reading_scene.png` | Ghibli library, reading | Krea 2 Large (i2i) | marketing, landing |
 | 6 | `06_neural_setting.png` | neural-network night field | Krea 2 Large (i2i) | hero banner 16:9 |
 | 7 | `07_desk_study.png` | wooden desk, notebook, tea | Krea 2 Large (i2i) | blog/OG imagery |
-| 8 | `08_app_ui_dark_composite.png` | **idle pose, dark mode** | hero + `#0B1020` composite | rail mascot / dark UI |
+| 8 | `08_app_ui_dark_composite.png` | **idle pose, dark mode** | hero + `#0D1019` composite | rail mascot / dark UI |
 | 9 | `09_logo_mark.png` | flat vector-style mark | Nano Banana Pro | logo mark (navy bg) |
 | 10 | `10_action_leap.png` | mid-leap, joy | Flux 1.1 Pro Ultra | celebration, confetti |
 | 11 | `11_character_sheet.png` | 2×2 expression sheet | Nano Banana Pro (i2i) | animation reference |
@@ -104,7 +104,7 @@ All in `tools/brand/mascot-brain/`. Models: **GPT Image 2 (2K/4K), Krea 2 Large,
 | — | `mark-32/180/400.png` | resized transparent marks | local | favicon, avatar, rail |
 | — | `CONTACT-SHEET.png` | all shots on one page | local | quick human review |
 
-**Dark-mode note:** Krea 2 Large would NOT hold a flat `#0B1020` background (two re-rolls came back cream) — but **GPT Image 2 delivered it** (`18_dark_idle_v2.png`, 71% navy, verified). The deterministic composite (`08_app_ui_dark_composite.png`) remains as the pixel-perfect fallback for UI placement.
+**Dark-mode note:** Krea 2 Large would NOT hold a flat `#0D1019` background (two re-rolls came back cream) — but **GPT Image 2 delivered it** (`18_dark_idle_v2.png`, 71% navy, verified). The deterministic composite (`08_app_ui_dark_composite.png`) remains as the pixel-perfect fallback for UI placement.
 
 ---
 
@@ -134,7 +134,7 @@ src/brand/cortex/
 
 Required next asset pass (not done yet):
 - **Vector logo mark** — hand-trace `09_logo_mark.png` to SVG for `stack-lockup.svg`/`favicon.svg` (brain silhouette + two dot eyes + smile is a tractable 3-path SVG).
-- **Dark-surface check** — verify transparent pose composites on `space-2` (`#0B1020`) like Werner's M4 criterion (composite already produced; check at 64px rail size for belly-fringe).
+- **Dark-surface check** — verify transparent pose composites on `space-2` (`#0D1019`) like Werner's M4 criterion (composite already produced; check at 64px rail size for belly-fringe).
 - **Social card 1200×630** — crop/place hero or reading scene.
 
 ---
