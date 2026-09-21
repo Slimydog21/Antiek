@@ -56,10 +56,26 @@ cd ~/Desktop/Antiek/infrastructure/ansible
 nano inventory.ini
 ```
 
+> **Tunnel credentials (added 2026-09-21, D8 in #3328).** `setup.yml` now
+> provisions cloudflared, but it needs the tunnel's credentials JSON, which
+> exists ONLY on the running VM (`/etc/cloudflared/<tunnel-id>.json`) and is in
+> no backup. Before you ever need this runbook, copy it off the box into
+> `infrastructure/ansible/cloudflared-creds.yml` (gitignored) with shape:
+>
+> ```yaml
+> cloudflared_tunnel_id: "<uuid from /etc/cloudflared/config.yml>"
+> cloudflared_tunnel_credentials_json: '<contents of /etc/cloudflared/<uuid>.json>'
+> ```
+>
+> Without it a rebuilt VM restores the data but has no `api.antiek.ai`.
+> DNS needs no change on rebuild: it is a proxied CNAME to the tunnel, so the
+> new VM answers as soon as cloudflared connects — the old "wait for DNS" note
+> in Step 10 is obsolete.
+
 ## Step 3 — Bring the new VM to the same configured state
 
 ```bash
-ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml
+ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml -e @cloudflared-creds.yml
 ```
 
 Same playbook as first-deploy.md step 10. Idempotent. ~5 minutes. End

@@ -163,3 +163,8 @@ variable "r2_bucket_location" {
     is the knob.
   EOT
 }
+
+variable "cloudflared_tunnel_id" {
+  description = "UUID of the Cloudflare Tunnel that fronts api.antiek.ai (the `tunnel:` line in /etc/cloudflared/config.yml on the VM). DNS is a CNAME to <id>.cfargotunnel.com."
+  type        = string
+}
