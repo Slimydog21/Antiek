@@ -38,6 +38,20 @@ function quotaText(row: ToolConnection): string {
   return quota.note ?? "Quota unavailable";
 }
 
+/**
+ * What a search on this provider costs the user, or null when the provider
+ * does not bill per call. Kept separate from {@link quotaText} on purpose: a
+ * rate ceiling is Antiek's own brake and says nothing about money, and showing
+ * only the ceiling for a pay-per-use vendor reads as an allowance the user
+ * does not have.
+ */
+function costText(row: ToolConnection): string | null {
+  const { estimated_cost_usd: estimate, cost_note: note } = row.quota;
+  if (note === null) return null;
+  if (estimate === null) return note;
+  return `Costs you up to $${estimate.toFixed(3)} per full-size search. ${note}`;
+}
+
 export default function ToolConnectionsPanel() {
   const [rows, setRows] = useState<ToolConnection[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -138,6 +152,8 @@ export default function ToolConnectionsPanel() {
           reset_at: null,
           hard_exhausted: null,
           note: "Connect a credential to start local quota tracking",
+          estimated_cost_usd: null,
+          cost_note: null,
         } : item.quota,
       } : item) ?? null);
       setAction(null);
@@ -198,6 +214,13 @@ export default function ToolConnectionsPanel() {
                           value={row.quota.remaining}
                           aria-label="YouTube local quota remaining"
                         />
+                      )}
+                      {costText(row) && (
+                        <p className="mt-1 text-xs text-ink-soft dark:text-starlight">
+                          <span className="font-medium text-ink dark:text-bright">Cost</span>
+                          <span aria-hidden="true"> · </span>
+                          {costText(row)}
+                        </p>
                       )}
                       {row.status_note && <p className="mt-1 text-xs text-danger">{row.status_note}</p>}
                       <a className="mt-2 block w-fit text-xs font-semibold underline underline-offset-4" href={row.docs_url} target="_blank" rel="noreferrer">Provider setup guide</a>
