@@ -58,22 +58,35 @@ export const config: CustomProjectConfig = {
   // phase exceeds the 0.4% ceiling. Re-include once each story has a
   // deterministic still (the preview-level reduced-motion freeze is
   // not enough on CI).
-  filterShot: (story: { id?: string }) => {
-    const id = story?.id ?? "";
-    if (!id) return true;
+  filterShot: (story: {
+    id?: string;
+    kind?: string;
+    story?: string;
+  }) => {
+    // Storybook id is `navigation-appshell--empty`; lost-pixel filenames
+    // kebab the kind (`navigation-app-shell--empty`). Match both.
+    const hay = JSON.stringify(story).toLowerCase();
     const animated = [
       "workspace-demo--scene",
-      "navigation-app-shell--empty",
-      "navigation-app-shell--with-project-tree",
-      "home-unified-home-spr-12--default",
-      "windows-workspace-windows--two-windows",
-      "sketches-processing-seed-sketches--all-three-animated",
-      "sketches-processing-seed-sketches--alternate-seed",
-      "deep-research-research-wait-arcade--offer",
-      "deep-research-research-wait-arcade--playing",
-      "werner-station-instruments-complete-atlas--station-instrument-atlas",
-      "werner-station-instruments-complete-atlas--knowledge-workflow-grammar",
+      "appshell--empty",
+      "app-shell--empty",
+      "withprojecttree",
+      "with-project-tree",
+      "two-windows",
+      "two windows",
+      "all three (animated)",
+      "all-three-animated",
+      "alternate seed",
+      "alternate-seed",
+      "researchwaitarcade",
+      "research-wait-arcade",
+      "completeatlas",
+      "complete-atlas",
+      "unified-home",
+      "unifiedhome",
+      "research-house-fill",
+      "researchhousefill",
     ];
-    return !animated.some((prefix) => id.startsWith(prefix));
+    return !animated.some((needle) => hay.includes(needle));
   },
 };
