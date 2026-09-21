@@ -59,6 +59,13 @@ export type WorkspaceActions = {
   open: (kind: PanelKind, props?: Record<string, unknown>, opts?: OpenOptions) => string;
   close: (id: string) => void;
   focus: (id: string) => void;
+  /**
+   * herdr transfer P0/P1 — zoom one panel to the full slot with persistent
+   * chrome. Pass the same id again (or null) to exit. Zoom is a RUNTIME
+   * focus mode: it is not part of WorkspaceSnapshot, so it never persists,
+   * and route hydration exits it (setState carries zoomedPanelId: null).
+   */
+  toggleZoom: (id: string | null) => void;
   setMode: (id: string, mode: PanelMode) => void;
   setRect: (id: string, rect: Partial<PanelDescriptor["rect"]>) => void;
   setSize: (id: string, size: Partial<PanelDescriptor["size"]>) => void;
@@ -71,7 +78,10 @@ export type WorkspaceActions = {
   reset: () => void;
 };
 
-type Store = WorkspaceSnapshot & WorkspaceActions;
+type Store = WorkspaceSnapshot & {
+  /** The panel currently zoomed to the full slot, or null when not zoomed. */
+  zoomedPanelId: string | null;
+} & WorkspaceActions;
 
 function uniqueId(prefix: string): string {
   return `${prefix}:${Math.random().toString(36).slice(2, 10)}`;
@@ -113,6 +123,7 @@ function insertForMode(
 
 export const useWorkspace = create<Store>()((set, get) => ({
   ...EMPTY_SNAPSHOT,
+  zoomedPanelId: null,
 
   open: (kind, props = {}, opts = {}) => {
     const id = opts.id ?? uniqueId(kind);
@@ -165,6 +176,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
       return {
         ...s,
         panels: rest,
+        zoomedPanelId: s.zoomedPanelId === id ? null : s.zoomedPanelId,
         dockLeftIds: cleaned.dockLeftIds!,
         dockRightIds: cleaned.dockRightIds!,
         dockBottomIds: cleaned.dockBottomIds!,
@@ -184,6 +196,19 @@ export const useWorkspace = create<Store>()((set, get) => ({
       set({ focusedPanelId: id });
     }
   },
+
+  toggleZoom: (id) =>
+    set((s) => {
+      if (id === null || !s.panels[id]) {
+        // Exit zoom (also covers a zoomed panel that no longer exists).
+        return { ...s, zoomedPanelId: null };
+      }
+      if (s.zoomedPanelId === id) {
+        // Same panel again = exit.
+        return { ...s, zoomedPanelId: null };
+      }
+      return { ...s, zoomedPanelId: id, focusedPanelId: id };
+    }),
 
   setMode: (id, mode) =>
     set((s) => {
@@ -268,7 +293,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
       return { dockBottomHeight: clamped };
     }),
 
-  reset: () => set({ ...EMPTY_SNAPSHOT }),
+  reset: () => set({ ...EMPTY_SNAPSHOT, zoomedPanelId: null }),
 }));
 
 /**
