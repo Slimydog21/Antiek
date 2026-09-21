@@ -35,6 +35,7 @@ from substrate.graph.search import EmbeddingModel, search
 _SKIPPED = "skipped — no credentials"
 _ENABLE_ENV = "ANTIEK_TURBOPUFFER_SHADOW_ENABLED"
 _SERVABLE_ENABLE_ENV = "ANTIEK_TURBOPUFFER_SERVABLE"
+_PRODUCTION_DEFAULT_MOUNT_ENV = "ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT"
 _MAX_ROWS_ENV = "ANTIEK_TURBOPUFFER_MAX_ROWS"
 _MANIFEST_DIR_ENV = "ANTIEK_TURBOPUFFER_MANIFEST_DIR"
 
@@ -53,9 +54,12 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
     Reports env+key+pointer-file honesty plus shadow flag, pointer context
     match, and ``indexed_row_count`` from the promote manifest when present.
     ``hybrid_ready`` is True only when resolved kind is turbopuffer, an
-    ``active.json`` pointer exists, and context match is not False. Does
-    **not** flip ``production_default_mount`` (stays False). Context-matching
-    of pointer↔db is best-effort when ``db_path`` is given.
+    ``active.json`` pointer exists, and context match is not False.
+    ``production_default_mount`` mirrors the
+    ``ANTIEK_TURBOPUFFER_PRODUCTION_DEFAULT_MOUNT`` env (default False) — the
+    operator's formal promote declaration; failure branches report False
+    because false is the safe answer when nothing was verified.
+    Context-matching of pointer↔db is best-effort when ``db_path`` is given.
     """
     from substrate.graph.retrieval_substrate import resolve_reuse_substrate_kind
 
@@ -129,7 +133,7 @@ def probe_turbopuffer_health(*, db_path: str | None = None) -> dict[str, Any]:
             # assumption, and saying so is better than implying it was checked.
             "thought_partner_hybrid_wired": True,
             "duckdb_is_sot": True,
-            "production_default_mount": False,
+            "production_default_mount": _env_truthy(_PRODUCTION_DEFAULT_MOUNT_ENV),
         }
     except Exception as exc:
         return {
@@ -297,7 +301,7 @@ class TurbopufferSubstrate:
             "export_classes": sorted(TURBOPUFFER_INDEX_CONTENT_CLASSES),
             "max_export_rows": _max_export_rows(),
             "duckdb_is_sot": True,
-            "production_default_mount": False,
+            "production_default_mount": _env_truthy(_PRODUCTION_DEFAULT_MOUNT_ENV),
         }
 
     def eligible_stats(self) -> dict[str, Any]:
