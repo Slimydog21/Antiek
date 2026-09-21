@@ -2,9 +2,11 @@ name: prod-parity
 
 # SPR-07 · antiek-foundation-v2 — scheduled prod-parity probe.
 #
-# Probes the LIVE api.antiek.ai and asserts the SHA it reports
-# (build_sha) equals the tip of origin/main, and that the provider
-# registry is non-empty. Earlier this month a stale-SPA drift shipped
+# Probes the LIVE api.antiek.ai and asserts that the SHA it reports
+# (build_sha) is an ANCESTOR of origin/main with nothing older than the lag
+# budget still unshipped, and that the provider registry is non-empty.
+# (It asserted exact equality with main's tip until 2026-09-21; see the
+# comment on the probe step for why that reds on healthy operation.) Earlier this month a stale-SPA drift shipped
 # and went undetected because nothing compared the deployed SHA against
 # main. This job surfaces that drift.
 #
@@ -67,4 +69,25 @@ jobs:
         # Defaults --expected-sha to `git rev-parse origin/main`. The checker
         # itself keeps flywheel maturity informational by default, while SHA,
         # provider-registry, and transport failures propagate as non-zero.
-        run: python tools/prod_parity/check.py --url https://api.antiek.ai
+        # --max-lag-hours turns the SHA assertion from "equals main's tip"
+        # into "is an ancestor of main, and nothing older than the budget is
+        # still unshipped". Exact equality is the right contract for the
+        # POST-DEPLOY check in ansible (you shipped X, prod must report X) and
+        # is unchanged there — the flag defaults to 0, which is exact.
+        #
+        # It is the wrong contract for THIS daily probe. With automatic
+        # deploys main advances while a deploy is in flight, so equality is
+        # false for a window after every merge. Measured 2026-09-21: this job
+        # had failed 30 of its last 100 scheduled runs and 13 of the last 15,
+        # while prod was provably healthy (an ancestor of main, oldest
+        # unshipped commit 0.6h old, 5 providers, flywheel live). An alarm
+        # that reds on correct operation is one nobody reads — see dep_audit,
+        # red for nine weeks.
+        #
+        # 6h: comfortably longer than any real deploy, far shorter than the
+        # "survives an operator's eyeball" staleness this job exists to catch.
+        # A fork or rollback still fails immediately, at ANY budget.
+        run: |
+          python tools/prod_parity/check.py \
+            --url https://api.antiek.ai \
+            --max-lag-hours 6
