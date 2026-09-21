@@ -438,6 +438,46 @@ jobs:
         with:
           python-version: '3.14'
           cache: 'pip'
+      # ── write-lock async floor, ENFORCED ────────────────────────────────
+      # These three lints also run in write_lock_async_floor.yml, which emits
+      # the `write-lock-async-gate` context. That workflow is PATH-FILTERED,
+      # and a required check behind `paths:` is never reported on a PR that
+      # misses the filter and so stays permanently pending — which is why it
+      # could never be added to the ruleset and has sat in
+      # `emitted_but_not_required` as "a candidate for the fence".
+      #
+      # `keystone` IS required and ci.yml carries no path filter, so running
+      # the same assertions here is what actually enforces them. They are
+      # stdlib-only (ast/dataclasses/pathlib) and need no install, so they sit
+      # BEFORE the dependency install and fail fast — a few seconds on a job
+      # that already runs, rather than a new runner on every PR while runner
+      # starvation is the throughput bottleneck.
+      #
+      # Verified under 3.14 (the standalone workflow pins 3.12) by mutation:
+      # an injected raw read-only connect in runtime/ reds with
+      # "1 NEW violation(s)", and removing it returns exit 0.
+      #
+      # tests/test_write_lock_gate_parity.py READS both files and fails if the
+      # scope, baselines or lint names drift apart, so this copy cannot
+      # silently diverge from the one it mirrors.
+      - name: Enforce — write-lock async floor (required copy)
+        env:
+          SCOPE_DIRS: >-
+            acquisition compounding interfaces middleware orchestration
+            processing roles runtime services substrate tools
+        run: |
+          python -m tools.lints.cli_with_baseline enforce raw_read_only_connect \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_raw_read_only_connect.json \
+            --check-stale
+          python -m tools.lints.cli_with_baseline enforce blocking_write_in_async \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_blocking_write_in_async.json \
+            --check-stale
+          python -m tools.lints.cli_with_baseline enforce indirect_write_in_async \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_indirect_write_in_async.json \
+            --check-stale
       - name: Install Antiek + dev deps
         run: |
           python -m pip install --upgrade pip
