@@ -333,6 +333,28 @@ class TestSketchSvg:
             sketch_svg(palette=("#fff", "#000"))
         with pytest.raises(ValueError, match=">= 2"):
             sketch_svg(palette=("#ffffff",))
+        # ink is validated on the same bounded-sculpting contract as
+        # palette: a caller that can move the ground must be able to move
+        # the text on it, and must be told loudly when it passes garbage.
+        with pytest.raises(ValueError, match="ink must be #RRGGBB"):
+            sketch_svg(data=[1.0, 2.0], ink="#fff")
+        with pytest.raises(ValueError, match="ink must be #RRGGBB"):
+            sketch_svg(data=[1.0, 2.0], ink="rebeccapurple")
+
+    def test_ink_moves_the_caption_and_defaults_unchanged(self) -> None:
+        # The default must stay byte-identical (DEFAULT_INK is exactly the
+        # literal that used to be hardcoded in _data_body), and an explicit
+        # ink must actually reach the caption — otherwise the parameter is
+        # decoration. Generative mode emits no text, so ink cannot move it.
+        from substrate.agent_skills.sketch_svg import DEFAULT_INK
+
+        default = sketch_svg(data=[1.0, 2.0, 3.0], title="t")
+        assert sketch_svg(data=[1.0, 2.0, 3.0], title="t", ink=DEFAULT_INK) == default
+        assert DEFAULT_INK in default
+        recolored = sketch_svg(data=[1.0, 2.0, 3.0], title="t", ink="#0F1419")
+        assert recolored != default
+        assert "#0F1419" in recolored and DEFAULT_INK not in recolored
+        assert sketch_svg(seed=4, ink="#0F1419") == sketch_svg(seed=4)
 
     def test_seeded_rng_is_deterministic(self) -> None:
         r1, r2 = SeededRng(9), SeededRng(9)

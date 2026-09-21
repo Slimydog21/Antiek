@@ -3,7 +3,7 @@
 Two fixture sets, both deterministic (no wall-clock, no randomness — every
 value is a literal or a pure comprehension over ``range``):
 
-``FIXTURES`` — the golden shapes. For each of the seven widgets, three
+``FIXTURES`` — the golden shapes. For each of the eight widgets, three
 size-shapes the sprint's rigor names as the places SVG layout actually
 breaks:
 
@@ -16,7 +16,7 @@ breaks:
                       truncation (the ``+N more`` marker), never an unreadable
                       smear.
 
-These 21 (7 × 3) are what the golden-file tests freeze and the gallery renders.
+These 24 (8 × 3) are what the golden-file tests freeze and the gallery renders.
 All values are BENIGN — golden bytes must be stable and reviewable.
 
 ``HOSTILE_FIXTURES`` — adversarial inputs (markup injection, ``javascript:``
@@ -168,6 +168,41 @@ FIXTURES: dict[str, dict[str, dict]] = {
             "accessed": "2026-06-29",
         },
     },
+    "sketch": {
+        # empty: the ``data`` key is supplied but unusable -> the "no
+        # sketch" placeholder. NOT a bare {}: a bare {} is a legitimate
+        # generative request that renders a full composition, so it would
+        # not exercise the placeholder path this shape exists to cover.
+        "empty": {"data": [], "title": "No values mined"},
+        # typical: the GENERATIVE mode (no ``data`` key) — the seeded
+        # p5-style composition, at a legible in-projection canvas.
+        "typical": {
+            "seed": 42,
+            "title": "Citation drift across the corpus",
+            "width": 320,
+            "height": 200,
+        },
+        # degenerate: DATA mode at the awkward end — 28 values (past the
+        # skill's 20-value label cutoff, so labels drop and the caption
+        # carries the story), values crossing zero (the moving-baseline
+        # branch), a long title, and an explicit LEMON palette override.
+        "degenerate": {
+            "seed": 7,
+            "title": "Signed residuals per ingest shard across every "
+            "connector in the operator graph since first light",
+            "data": [(i % 7) * 13 - 39 for i in range(28)],
+            "palette": [
+                "#F4F7FA",
+                "#0F1419",
+                "#1F6FEB",
+                "#2EA043",
+                "#F9BD2B",
+                "#1d4aff",
+            ],
+            "width": 480,
+            "height": 300,
+        },
+    },
 }
 
 
@@ -191,6 +226,13 @@ HOSTILE_FIXTURES: list[tuple[str, dict]] = [
     ("dep_graph", {"nodes": [{"id": _XSS, "label": _IMG}],
                    "edges": [{"from": _XSS, "to": _XSS}]}),
     ("cite_block", {"title": _XSS, "url": _JS_URL, "quote": _IMG}),
+    # sketch: the title is the ONLY caller string that reaches the SVG,
+    # and the palette is the only other attacker-controlled surface. Both
+    # payloads go in at once. The widget must neutralize or refuse — the
+    # skill raises ScriptViolation rather than emit a poisoned artifact,
+    # and the widget degrades that to its placeholder.
+    ("sketch", {"title": _XSS + _IMG, "data": [1, 2, 3], "palette": [_JS_URL, _IMG]}),
+    ("sketch", {"title": _IMG, "seed": 3, "palette": [_XSS, _XSS]}),
 ]
 
 # Active-tag openings that must NEVER appear raw in output: correct escaping

@@ -1,7 +1,7 @@
 """Widget block partial — wires the SPR-03 widget seam into the renderer.
 
 Renders ``antiek_widget``: a chart / sparkline / dep-graph / stat-chip / donut /
-timeline / cite-block from the SPR-03 library. ``attrs.kind`` selects the
+timeline / cite-block / sketch from the widget library. ``attrs.kind`` selects the
 widget; ``attrs.data`` (a dict) is its input — or, when ``data`` is absent, the
 remaining attrs (minus ``kind``). Dispatch goes through
 ``tokens.render_widget(kind, data)`` — the registered SPR-03 widget, which is
@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 from .. import tokens
-from .. import widgets as _widgets  # noqa: F401 — import registers the 7 widgets
+from .. import widgets as _widgets  # noqa: F401 — import registers the 8 widgets
 from ._common import attr
 
 

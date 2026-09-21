@@ -1,6 +1,6 @@
 """Palette lint (HPRJ SPR-03 M4): every widget color traces to tokens.py.
 
-This is what keeps the visual language coherent as seven widget files evolve
+This is what keeps the visual language coherent as eight widget files evolve
 independently. It scans every widget's rendered output for color values and
 fails on any hex that is not derived from an atomic ``LEMON_*`` constant. A
 seeded off-palette color is proven to turn it red (then removed), so the lint
