@@ -37,6 +37,7 @@ import json
 import sys
 from collections.abc import Callable
 
+from runtime.db_lock import connect_read
 from substrate.ad_inventory.advertiser_onboarding import (
     AdvertiserOnboardingError,
     AdvertiserRecord,
@@ -235,10 +236,9 @@ def _cmd_churn(args: argparse.Namespace) -> int:
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
-    import duckdb
 
     db = _resolve_db_path(args.db)
-    con = duckdb.connect(db, read_only=True)
+    con = connect_read(db)
     try:
         registry = load_registry(con)
     finally:
@@ -273,10 +273,9 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_show(args: argparse.Namespace) -> int:
-    import duckdb
 
     db = _resolve_db_path(args.db)
-    con = duckdb.connect(db, read_only=True)
+    con = connect_read(db)
     try:
         registry = load_registry(con)
     finally:
