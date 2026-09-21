@@ -56,7 +56,6 @@ import { useResearchSession } from "./useResearchSession";
 import { useWernerResearchReactions } from "./useWernerResearchReactions";
 import { emitWernerExperience, notifyResearchStarted } from "../../werner";
 import { wernerResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
-import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import { deriveResearchWaitArcadeMode } from "./researchWaitArcadePolicy";
 
 const LazyResearchWaitArcade = lazy(() => import("./ResearchWaitArcade"));
@@ -298,7 +297,7 @@ export function SourcePolicyPreflightPanel({
     <section className="rounded-md border border-rule bg-ice-0 px-3 py-2 dark:border-charcoal-1 dark:bg-charcoal-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          <span className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
             Source preflight
           </span>
           {SOURCE_POLICY_OPTIONS.map((opt) => {
@@ -311,9 +310,9 @@ export function SourcePolicyPreflightPanel({
                 disabled={busy}
                 onClick={() => onToggle(opt.value)}
                 className={
-                  "rounded border px-2 py-0.5 text-[11px] font-mono disabled:opacity-50 " +
+                  "rounded border px-2 py-0.5 text-xs font-mono disabled:opacity-50 " +
                   (active
-                    ? "border-aurora bg-aurora/15 text-ink dark:text-bright"
+                    ? "border-sun-deep bg-sun/15 text-ink dark:text-bright"
                     : "border-rule text-ink-mute dark:border-charcoal-1 dark:text-moonlight")
                 }
               >
@@ -327,7 +326,7 @@ export function SourcePolicyPreflightPanel({
         </LemonButton>
       </div>
       {receipt && (
-        <div className="mt-2 text-[11px] font-mono text-ink-mute dark:text-moonlight">
+        <div className="mt-2 text-xs font-mono text-ink-mute dark:text-moonlight">
           <p>
             Receipt {receipt.source_receipt_id} · gather {receipt.gather_mode} · external call{" "}
             {receipt.external_call_performed ? "yes" : "no"} · budget reserved $
@@ -338,7 +337,7 @@ export function SourcePolicyPreflightPanel({
               <li key={entry.source} className="rounded border border-rule px-2 py-1 dark:border-charcoal-1">
                 <span className="text-ink dark:text-bright">{entry.source}</span>{" "}
                 <span>{entry.status}</span>
-                <span className="block font-serif text-[12px]">{entry.note}</span>
+                <span className="block font-serif text-xs">{entry.note}</span>
               </li>
             ))}
           </ul>
@@ -423,7 +422,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
     return (
       <div className="flex flex-col items-center gap-2 py-8" role="status" aria-live="polite">
         <p className="text-sm font-serif text-ink dark:text-bright">Connecting to your researches…</p>
-        <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
           they’re starting in parallel
         </p>
       </div>
@@ -438,7 +437,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           <LemonButton variant="tertiary" size="sm" onClick={() => setCanvasFor(null)}>
             ← back to monitor
           </LemonButton>
-          <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+          <span className="font-mono text-xs text-shadow-1 dark:text-moonlight">
             organism canvas
           </span>
         </div>
@@ -472,10 +471,10 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
         <h2 ref={monitorHeadingRef} tabIndex={-1} className="text-sm font-semibold text-ink dark:text-bright">
           {session.researches.length} researches
           {!session.allTerminal && session.researches.length > 0 && (
-            <span className="ml-2 text-[11px] font-normal text-aurora">live</span>
+            <span className="ml-2 text-xs font-normal text-sun-deep dark:text-sun">live</span>
           )}
           {session.allTerminal && (
-            <span className="ml-2 text-[11px] font-normal text-shadow-1 dark:text-moonlight">complete</span>
+            <span className="ml-2 text-xs font-normal text-shadow-1 dark:text-moonlight">complete</span>
           )}
         </h2>
         <div className="flex items-center gap-3">
@@ -501,7 +500,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
         </div>
       </div>
       {session.error && (
-        <p className="text-[11px] text-shadow-1 dark:text-moonlight">reconnecting… ({session.error})</p>
+        <p className="text-xs text-shadow-1 dark:text-moonlight">reconnecting… ({session.error})</p>
       )}
       {session.hardCeiling && (
         <HardCeilingEvidence sessionId={sessionId} snapshot={session.hardCeiling} />
@@ -552,13 +551,11 @@ export function ResearchWaitArcadeGate({
   allTerminal,
   returnFocusRef,
 }: ResearchWaitArcadeGateProps) {
-  const reducedMotion = usePrefersReducedMotion();
   const eligible = activeResearchCount > 0 && deriveResearchWaitArcadeMode({
     featureEnabled: enabled,
     hasAuthoritativeSnapshot,
     researchCount,
     allTerminal,
-    reducedMotion,
     offerReady: false,
     optedIn: false,
   }) !== "hidden";

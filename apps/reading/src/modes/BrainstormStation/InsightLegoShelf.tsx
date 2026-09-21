@@ -54,17 +54,17 @@ export default function InsightLegoShelf({
   return (
     <div
       className={
-        "border border-rule dark:border-charcoal-1 rounded p-2 space-y-2 bg-ice-0 dark:bg-charcoal-3 " +
+        "border border-rule dark:border-charcoal-1 rounded p-2 space-y-2 bg-ice-0 dark:bg-charcoal-2 " +
         (className ?? "")
       }
       data-testid="insight-lego-shelf"
     >
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        <h4 className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
           Insight Legos
         </h4>
         {loading ? (
-          <span className="text-[10px] text-ink-mute dark:text-moonlight">
+          <span className="text-xxs text-ink-mute dark:text-moonlight">
             searching…
           </span>
         ) : null}
@@ -75,11 +75,11 @@ export default function InsightLegoShelf({
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search graph insights…"
         aria-label="Search insight Legos"
-        className="w-full px-2 py-1 text-[11px] border border-rule dark:border-charcoal-1 rounded bg-ice-1 dark:bg-charcoal-2 focus:outline-none focus:ring-1 focus:ring-sun"
+        className="w-full px-2 py-1 text-xs border border-rule dark:border-charcoal-1 rounded bg-ice-1 dark:bg-charcoal-2 focus:outline-none focus:ring-1 focus:ring-sun"
       />
       <ul className="max-h-36 overflow-y-auto space-y-1" aria-label="Draggable insights">
         {hits.length === 0 && !loading ? (
-          <li className="text-[11px] text-ink-mute dark:text-moonlight italic px-1 py-2">
+          <li className="text-xs text-ink-mute dark:text-moonlight italic px-1 py-2">
             No matches. Research deposits insights here as Lego blocks.
           </li>
         ) : null}
@@ -93,14 +93,14 @@ export default function InsightLegoShelf({
                   e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
                   e.dataTransfer.effectAllowed = "copy";
                 }}
-                className="flex items-start gap-1 px-1.5 py-1 border border-rule dark:border-charcoal-1 rounded cursor-grab hover:border-ocean bg-ice-1 dark:bg-charcoal-2"
+                className="flex items-start gap-1 px-1.5 py-1 border border-rule dark:border-charcoal-1 rounded cursor-grab hover:border-sun-deep bg-ice-1 dark:bg-charcoal-2"
                 title="Drag into the thought-partner focus tray"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-serif text-ink dark:text-bright truncate">
+                  <p className="text-xs font-serif text-ink dark:text-bright truncate">
                     {h.label}
                   </p>
-                  <p className="text-[9px] font-mono text-ink-mute dark:text-moonlight truncate">
+                  <p className="text-xxs font-mono text-ink-mute dark:text-moonlight truncate">
                     {h.block_kind}
                     {h.document_title ? ` · ${h.document_title}` : ""}
                   </p>
@@ -108,7 +108,7 @@ export default function InsightLegoShelf({
                 {onSlot ? (
                   <button
                     type="button"
-                    className="shrink-0 text-[10px] font-mono text-ocean hover:underline px-1"
+                    className="shrink-0 text-xxs font-mono text-sun-deep hover:underline px-1"
                     aria-label={`Slot ${h.label}`}
                     onClick={() => onSlot(payload)}
                   >

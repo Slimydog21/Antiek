@@ -117,10 +117,10 @@ export default function PanelWindowApp() {
   return (
     <div className="h-screen w-screen flex flex-col bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright">
       <header className="h-9 shrink-0 px-3 flex items-center justify-between border-b-edge border-sun bg-ice-1 dark:bg-charcoal-1">
-        <span className="font-mono text-[12px] font-semibold truncate">
+        <span className="font-mono text-xs font-semibold truncate">
           {descriptor.title}
         </span>
-        <span className="font-mono text-[10px] text-ink-mute dark:text-moonlight">
+        <span className="font-mono text-xxs text-ink-mute dark:text-moonlight">
           popout · close window to re-dock
         </span>
       </header>

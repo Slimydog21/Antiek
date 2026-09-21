@@ -9,7 +9,7 @@ import {
   clearScope,
   project,
 } from "../workspace/persistence";
-import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
+import { toggleAISidecar } from "../workspace/shortcuts";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
   WORKFLOWS,
@@ -573,10 +573,10 @@ export default function CommandPalette() {
         id: "ws:toggle-aisidecar",
         title: "Toggle AI sidecar",
         subtitle: "Workspace · ⌘/",
+        // Same workspace-store toggle as ⌘/ — the bare AISIDECAR_TOGGLE
+        // event this used to dispatch has no production listener.
         run: () => {
-          window.dispatchEvent(
-            new CustomEvent(SHORTCUT_EVENTS.AISIDECAR_TOGGLE),
-          );
+          toggleAISidecar();
         },
       },
       {
@@ -795,7 +795,7 @@ export default function CommandPalette() {
                     return base ? `state:${f} ${base}` : `state:${f}`;
                   })
                 }
-                className={`text-[11px] font-mono px-2 py-0.5 rounded-full border transition-colors ${
+                className={`text-xs font-mono px-2 py-0.5 rounded-full border transition-colors ${
                   active
                     ? "bg-sun text-ink border-sun"
                     : "border-rule dark:border-charcoal-1 text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
@@ -809,7 +809,7 @@ export default function CommandPalette() {
             <button
               type="button"
               onClick={() => setQuery("")}
-              className="text-[11px] font-mono px-2 py-0.5 text-shadow-1 dark:text-moonlight hover:text-emperor"
+              className="text-xs font-mono px-2 py-0.5 text-shadow-1 dark:text-moonlight hover:text-emperor"
             >
               ✕ clear
             </button>
@@ -852,12 +852,12 @@ export default function CommandPalette() {
                   {(() => {
                     const wf = entryWorkflow(e);
                     return wf && wf !== "shared" ? (
-                      <span className="text-[10px] uppercase tracking-wider font-mono text-ink bg-sun/70 px-1.5 py-0.5 rounded">
+                      <span className="text-xxs uppercase tracking-wider font-mono text-ink bg-sun/70 px-1.5 py-0.5 rounded">
                         {WORKFLOWS[wf].label}
                       </span>
                     ) : null;
                   })()}
-                  <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
+                  <span className="text-xxs uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
                     {e.kind.replace("_", " ")}
                   </span>
                 </div>
@@ -865,7 +865,7 @@ export default function CommandPalette() {
             ))
           )}
         </ul>
-        <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between">
+        <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-xs font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between">
           <span>↑↓ navigate · Enter select · Esc close</span>
           <span>⌘K toggle</span>
         </footer>

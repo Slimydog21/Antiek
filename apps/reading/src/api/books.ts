@@ -1073,16 +1073,16 @@ export async function getSavedMetaReading(assetId: string): Promise<SavedMetaRea
 
 /** Human-readable label + Lemon tag colour for a servability status. One
  * source so Library cards and the reader badge never disagree. */
-export function servabilityLabel(s: Servability): { label: string; colour: "aurora" | "sun" | "muted" | "danger" } {
+export function servabilityLabel(s: Servability): { label: string; colour: "success" | "sun" | "muted" | "danger" } {
   switch (s) {
     case "public_domain":
-      return { label: "Public domain", colour: "aurora" };
+      return { label: "Public domain", colour: "success" };
     case "platform_authored":
-      return { label: "Antiek original", colour: "aurora" };
+      return { label: "Antiek original", colour: "success" };
     case "publisher_opted_in":
-      return { label: "Publisher licensed", colour: "aurora" };
+      return { label: "Publisher licensed", colour: "success" };
     case "source_declared_open":
-      return { label: "Open license", colour: "aurora" };
+      return { label: "Open license", colour: "success" };
     case "gated_metadata_only":
       return { label: "Preview only", colour: "sun" };
     case "taken_down":

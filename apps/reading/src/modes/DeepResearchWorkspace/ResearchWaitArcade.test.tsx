@@ -12,7 +12,13 @@ const createCartridge = vi.hoisted(() => vi.fn());
 const teardown = vi.hoisted(() => vi.fn());
 
 vi.mock("./ResearchWaitArcadeGame", () => ({
-  default: ({ game }: { game: "ice-fishing" | "zombies" }) => {
+  default: ({
+    game,
+    reducedMotion,
+  }: {
+    game: "ice-fishing" | "zombies";
+    reducedMotion: boolean;
+  }) => {
     createCartridge(game);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     useEffect(() => {
@@ -22,6 +28,7 @@ vi.mock("./ResearchWaitArcadeGame", () => ({
       <canvas
         ref={canvasRef}
         data-testid="research-wait-arcade-canvas"
+        data-reduced-motion={reducedMotion ? "true" : "false"}
         role="application"
         tabIndex={0}
       />
@@ -35,7 +42,12 @@ import { isStationInstrumentSuspended } from "../../werner/stationInstrumentSusp
 function cartridge() {
   return {
     id: "paperclip-zombies",
-    meta: { title: "Paperclip Zombies", blurb: "", style: "zombies-arcade" },
+    meta: {
+      title: "Paperclip Zombies",
+      blurb: "",
+      instructions: "",
+      style: "defense",
+    },
     init: vi.fn(),
     update: vi.fn(),
     render: vi.fn(),
@@ -125,7 +137,7 @@ describe("ResearchWaitArcade", () => {
     expect(createCartridge).not.toHaveBeenCalled();
   });
 
-  it("keeps the optional arcade hidden for reduced-motion readers", () => {
+  it("offers reduced-motion readers the arcade and threads the reduced path into the game", async () => {
     const returnFocusRef = createRef<HTMLElement>();
     render(
       <ResearchWaitArcade
@@ -137,8 +149,20 @@ describe("ResearchWaitArcade", () => {
       />,
     );
     act(() => vi.runOnlyPendingTimers());
-    expect(screen.queryByTestId("research-wait-arcade")).toBeNull();
+    expect(screen.getByTestId("research-wait-arcade")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Play while waiting" }),
+    ).toBeTruthy();
     expect(createCartridge).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Play while waiting" }),
+      );
+    });
+    const canvas = screen.getByTestId("research-wait-arcade-canvas");
+    expect(canvas.getAttribute("data-reduced-motion")).toBe("true");
+    expect(createCartridge).toHaveBeenCalledWith("zombies");
   });
 
   it("constructs only after explicit Play and does not focus before activation", async () => {
