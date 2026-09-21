@@ -59,16 +59,20 @@ from typing import Any, Final, Protocol
 
 TOKENS_CSS: Final[str] = """\
 :root{
+  --antiek-page:#ffffff;
   --antiek-surface:#ffffff;
   --antiek-ink:#1f1f2e;
   --antiek-muted:#5a5a6e;
   --antiek-rule:#e4e4ec;
   --antiek-accent:#5b6cff;
   --antiek-accent-soft:#eef0ff;
+  --antiek-inset:#fafaff;
+  --antiek-code-bg:#f6f6fa;
   --antiek-warn:#8a5a00;
   --antiek-warn-bg:#fff7e6;
   --antiek-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
+body{background:var(--antiek-page);}
 .antiek-doc{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--antiek-ink);background:var(--antiek-surface);max-width:760px;margin:0 auto;padding:2rem 1.25rem;line-height:1.6;}
 .antiek-doc h1{font-size:1.6rem;margin:0 0 1rem;}
 .antiek-block{margin:0 0 1.25rem;}
@@ -76,7 +80,7 @@ TOKENS_CSS: Final[str] = """\
 .antiek-highlight{border-left:3px solid var(--antiek-accent);background:var(--antiek-accent-soft);padding:.75rem 1rem;border-radius:.25rem;}
 .antiek-highlight-passage{font-style:italic;}
 .antiek-highlight-framing{margin-top:.5rem;color:var(--antiek-muted);font-size:.9rem;}
-.antiek-voice{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;background:#fafaff;}
+.antiek-voice{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;background:var(--antiek-inset);}
 .antiek-voice-meta{color:var(--antiek-muted);font-size:.85rem;font-family:var(--antiek-mono);}
 .antiek-voice-transcript{margin-top:.5rem;}
 .antiek-qa{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;}
@@ -85,11 +89,11 @@ TOKENS_CSS: Final[str] = """\
 .antiek-qa-attr{margin-top:.4rem;color:var(--antiek-muted);font-size:.85rem;font-style:italic;}
 .antiek-cite{font-family:var(--antiek-mono);font-size:.9rem;}
 .antiek-crossdoc{font-family:var(--antiek-mono);font-size:.9rem;color:var(--antiek-muted);}
-.antiek-region{border:1px dashed var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;background:#fafaff;}
+.antiek-region{border:1px dashed var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;background:var(--antiek-inset);}
 .antiek-region-ref{font-family:var(--antiek-mono);font-size:.85rem;color:var(--antiek-muted);}
 .antiek-claim{border:1px solid var(--antiek-rule);border-left:3px solid var(--antiek-ink);border-radius:.375rem;padding:.75rem 1rem;}
 .antiek-claim-statement{font-weight:500;}
-.antiek-note{background:#fafaff;border-radius:.375rem;padding:.6rem .9rem;font-size:.95rem;}
+.antiek-note{background:var(--antiek-inset);border-radius:.375rem;padding:.6rem .9rem;font-size:.95rem;}
 .antiek-question{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;}
 .antiek-question-q{font-weight:600;}
 .antiek-chat{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;}
@@ -98,9 +102,9 @@ TOKENS_CSS: Final[str] = """\
 .antiek-chat-role{font-weight:600;font-size:.85rem;color:var(--antiek-muted);}
 .antiek-mdsection{border-top:1px solid var(--antiek-rule);padding-top:.75rem;}
 .antiek-mdsection-head{font-weight:600;color:var(--antiek-muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.04em;}
-.antiek-image{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.6rem;background:#fafaff;text-align:center;}
+.antiek-image{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.6rem;background:var(--antiek-inset);text-align:center;}
 .antiek-image-alt{color:var(--antiek-muted);font-size:.85rem;font-style:italic;}
-.antiek-latex{font-family:var(--antiek-mono);background:#f6f6fa;border-radius:.25rem;padding:.6rem .8rem;overflow-x:auto;font-size:.95rem;}
+.antiek-latex{font-family:var(--antiek-mono);background:var(--antiek-code-bg);border-radius:.25rem;padding:.6rem .8rem;overflow-x:auto;font-size:.95rem;}
 .antiek-tombstone{border:1px solid var(--antiek-warn);background:var(--antiek-warn-bg);color:var(--antiek-warn);border-radius:.375rem;padding:.6rem .9rem;font-size:.9rem;}
 .antiek-tombstone-label{font-weight:600;}
 .antiek-unsupported{border:1px dashed var(--antiek-warn);background:var(--antiek-warn-bg);color:var(--antiek-warn);border-radius:.375rem;padding:.6rem .9rem;font-size:.9rem;font-family:var(--antiek-mono);}
@@ -118,13 +122,48 @@ TOKENS_CSS: Final[str] = """\
 .antiek-list li{margin:0 0 .35rem;}
 .antiek-list .antiek-list{margin:.35rem 0 0;}
 .antiek-quote{margin:0 0 1.25rem;padding:.1rem 0 .1rem 1rem;border-left:3px solid var(--antiek-rule);color:var(--antiek-muted);}
-.antiek-code{font-family:var(--antiek-mono);background:#f6f6fa;border-radius:.25rem;padding:.7rem .9rem;margin:0 0 1.25rem;overflow-x:auto;font-size:.9rem;}
+.antiek-code{font-family:var(--antiek-mono);background:var(--antiek-code-bg);border-radius:.25rem;padding:.7rem .9rem;margin:0 0 1.25rem;overflow-x:auto;font-size:.9rem;}
 .antiek-rule{border:0;border-top:1px solid var(--antiek-rule);margin:1.75rem 0;}
 .antiek-table-wrap{overflow-x:auto;margin:0 0 1.25rem;}
 .antiek-table{border-collapse:collapse;width:100%;font-size:.95rem;}
 .antiek-table caption{caption-side:top;text-align:left;color:var(--antiek-muted);font-size:.85rem;padding:0 0 .4rem;}
 .antiek-table th,.antiek-table td{border:1px solid var(--antiek-rule);padding:.4rem .6rem;text-align:left;vertical-align:top;}
-.antiek-table th{background:#fafaff;font-weight:600;}
+.antiek-table th{background:var(--antiek-inset);font-weight:600;}
+@media (prefers-color-scheme: dark){
+  :root{
+    --antiek-page:#0d1016;
+    --antiek-surface:#171b22;
+    --antiek-ink:#e7e3db;
+    --antiek-muted:#a3aab8;
+    --antiek-rule:#2e3540;
+    --antiek-accent:#8ba6ff;
+    --antiek-accent-soft:#111827;
+    --antiek-inset:#12161d;
+    --antiek-code-bg:#0f1219;
+    --antiek-warn:#e2c07d;
+    --antiek-warn-bg:#1f180a;
+  }
+}
+@media print{
+  :root{
+    --antiek-page:#ffffff !important;
+    --antiek-surface:#ffffff !important;
+    --antiek-ink:#000000 !important;
+    --antiek-muted:#3a3a3a !important;
+    --antiek-rule:#9a9a9a !important;
+    --antiek-accent:#000000 !important;
+    --antiek-accent-soft:#f2f2f2 !important;
+    --antiek-inset:#ffffff !important;
+    --antiek-code-bg:#f2f2f2 !important;
+    --antiek-warn:#000000 !important;
+    --antiek-warn-bg:#ffffff !important;
+  }
+  .antiek-doc{max-width:none;margin:0;padding:0;}
+  .antiek-block,.antiek-table,.antiek-code,.antiek-latex,.antiek-quote,.antiek-image{break-inside:avoid;}
+  .antiek-heading,.antiek-doc h1{break-after:avoid;}
+  .antiek-footer{break-before:avoid;}
+  .antiek-table-wrap,.antiek-code,.antiek-latex{overflow-x:visible;}
+}
 """
 
 

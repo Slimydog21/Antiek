@@ -225,17 +225,40 @@ _BLOG_CSS = """\
 .antiek-doc a { color: #1d4aff; text-underline-offset: 2px; }
 """
 
+# Slate is a DARK theme, so it re-points the --antiek-* tokens rather than
+# re-skinning four selectors. Before this it set only `body`, `.antiek-doc`,
+# `.antiek-doc-title` and `.antiek-doc a`, which left the five inset blocks
+# (voice / region / note / image / table header), the code + latex slabs, the
+# highlight and the tombstone reading their near-white day values — near-white
+# boxes on a dark page. Redefining the tokens fixes all of them at once and is
+# the ONLY mechanism a dark theme should need; a theme that has to name a block
+# class to darken it is a sign the base has a colour outside :root.
+#
+# The luminance ramp is deliberate and is asserted by
+# ``tests/test_tokens_css_derives.py``: page is darkest, the document surface
+# floats above it, and every inset sits at or below the surface (a recess, not
+# a Material elevation) so nothing outshines the page it sits on.
 _SLATE_CSS = """\
-body { background: #0f1419; }
+:root {
+  --antiek-page: #0f1419;
+  --antiek-surface: #171b22;
+  --antiek-ink: #e6e1d8;
+  --antiek-muted: #9fa8b6;
+  --antiek-rule: #2b323d;
+  --antiek-accent: #7aa2ff;
+  --antiek-accent-soft: #101a2a;
+  --antiek-inset: #12161d;
+  --antiek-code-bg: #0e1217;
+  --antiek-warn: #e0bd76;
+  --antiek-warn-bg: #201908;
+}
 .antiek-doc {
   font-family: "Inter", system-ui, sans-serif;
   max-width: 42rem;
   line-height: 1.7;
-  color: #e6e1d8;
-  background: #171b22;
 }
-.antiek-doc-title { color: #f4efe6; }
-.antiek-doc a { color: #7aa2ff; }
+.antiek-doc-title { color: var(--antiek-ink); }
+.antiek-doc a { color: var(--antiek-accent); }
 """
 
 BUILTIN_STYLES: list[ProjectionStyle] = [
