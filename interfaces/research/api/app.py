@@ -187,6 +187,14 @@ class HealthResponse(BaseModel):
     duckdb_wal_present: bool = False
     duckdb_wal_bytes: int = 0
     duckdb_error: str | None = None
+    # SPR-11 T4: account-memory v10 schema postconditions, read from the same
+    # startup-cached snapshot as the duckdb_* fields (never a per-request open).
+    # Reported independently of duckdb_ready: idx_edges_owner is created only by
+    # migrate_v10_account_memory, so a False memory_owner_index_ready on a fresh
+    # schema is a pending migration, not an outage.
+    memory_node_type_ready: bool = False
+    memory_edges_owner_ready: bool = False
+    memory_owner_index_ready: bool = False
 
 
 def _resolve_build_sha() -> str:
@@ -2237,6 +2245,9 @@ def create_app(
             duckdb_wal_present=duckdb_health.wal_present,
             duckdb_wal_bytes=duckdb_health.wal_bytes,
             duckdb_error=duckdb_health.error,
+            memory_node_type_ready=duckdb_health.memory_node_type_ready,
+            memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
+            memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
         )
 
     # ── POST typed event ────────────────────────────────────────
