@@ -668,6 +668,25 @@ def _fmt_usd(cents: int) -> str:
     return f"${cents / 100:,.2f}"
 
 
+def report_verifies(report: VerificationReport) -> bool:
+    """Every money-story invariant, as ONE value both the report and the exit code read.
+
+    This predicate used to be a local inside ``render_report``, so it reached the
+    printed ``OVERALL:`` line and nothing else — ``main`` returned
+    ``0 if idempotent else 1``. A run whose ledger did not conserve therefore
+    printed ``OVERALL: DISCREPANCY`` and still exited 0, and any cron or wrapper
+    gating on ``$?`` was blind to it. Extracted so the two can no longer disagree.
+    """
+    rec = report.reconciliation
+    return (
+        rec.reconciles and rec.per_window_reconciles and rec.all_non_negative
+        and all(t.reconciles for t in report.traces)
+        and not report.safety.gate_allowed
+        and report.safety.disbursement_blocked
+        and all(r.replay_identical for r in report.results)
+    )
+
+
 def render_report(report: VerificationReport) -> str:
     """The operator's trust artifact: reproducible, reconciles to the cent,
     traces every accrual to second+asset, states plainly that $0 disbursed."""
@@ -801,13 +820,7 @@ def render_report(report: VerificationReport) -> str:
     lines.append("  >>> disbursed: $0 (G2/G3 open) <<<")
     lines.append("")
     lines.append("=" * 78)
-    overall = (
-        rec.reconciles and rec.per_window_reconciles and rec.all_non_negative
-        and all(t.reconciles for t in report.traces)
-        and not report.safety.gate_allowed
-        and report.safety.disbursement_blocked
-        and all(r.replay_identical for r in report.results)
-    )
+    overall = report_verifies(report)
     lines.append(f"OVERALL: {'VERIFIED — money story reproduces and the valve holds' if overall else 'DISCREPANCY — see lines above (rigor #1: not fudged)'}")
     lines.append("=" * 78)
     return "\n".join(lines)
@@ -848,7 +861,12 @@ def main() -> int:
         print("")
         print(f"IDEMPOTENCY (re-accrue identical batches in same DB): "
               f"{'OK — no double accrual' if idempotent else 'FAIL — balances changed'}")
-        return 0 if idempotent else 1
+        verified = report_verifies(report)
+        if not verified:
+            print("")
+            print("EXIT 1: the report above reports a DISCREPANCY "
+                  "(conservation, per-window, non-negative, traces, gate or replay).")
+        return 0 if (idempotent and verified) else 1
     finally:
         con.close()  # type: ignore[no-untyped-call]
 
