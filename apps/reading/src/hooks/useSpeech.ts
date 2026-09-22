@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { API_BASE, apiFetch } from "../lib/api";
-import { notifyVoicePlaybackStarted } from "../werner/shellExperienceSignals";
+import { notifyVoicePlaybackStarted } from "../mascot/shellExperienceSignals";
 
 /**
  * useSpeech (Read SPR-07) — synthesize a reply to audio and play it.
