@@ -7,6 +7,14 @@ export interface ProjectionStyle {
   builtin: boolean;
   source_fidelity: boolean;
   theme_css: string;
+  /**
+   * Slug of the style this fork was derived from, as persisted by the API
+   * (`user_styles.parent`). `null` for builtins and for forks saved before the
+   * provenance column existed -- those are honestly "origin untracked" rather
+   * than given an invented parent. Optional on the wire so a response from an
+   * older backend that omits the key is read as unknown, not as a crash.
+   */
+  parent?: string | null;
 }
 
 export interface StyleDraft {
@@ -15,6 +23,13 @@ export interface StyleDraft {
   description: string;
   source_fidelity: boolean;
   theme_css: string;
+  /**
+   * Declared provenance for the fork being saved. The API validates it against
+   * the caller's own wheel and answers 422 both for an unknown slug and for a
+   * self-reference (`parent === name`), so callers must not send a style's own
+   * slug back as its parent.
+   */
+  parent?: string | null;
 }
 
 export interface ArtifactStatus {
