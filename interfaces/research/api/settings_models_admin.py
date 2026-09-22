@@ -207,10 +207,34 @@ def _registered_name_belongs_to(name: str, owner_user_id: str) -> bool:
 
 
 def request_owner_user_id(request: Request) -> str:
-    value = getattr(request.state, "user_id", _LEGACY_OWNER_USER_ID)
-    if not isinstance(value, str) or not value or len(value) > 256:
+    """Stable opaque owner for this request (namespace Option A).
+
+    A real per-user id is used as-is (Sprint 22+ multi-user). The shared
+    ``__operator__`` sentinel cannot name a person, so it derives from the
+    verified session e-mail — the same function account memory, ingest,
+    BYOT, and tool search already use. Two allowlisted operators therefore
+    get two owners instead of one shared credential pool.
+
+    Fail-closed: sentinel without a verified e-mail, or a malformed id →
+    401. Never invents an owner. No implicit read-fallback that would let
+    any derived owner claim legacy ``__operator__`` rows (the migration in
+    ``tools/migrate_owner_namespace.py`` re-owns those explicitly).
+    """
+    from .account_memory_identity import (
+        OPERATOR_STORAGE_SENTINEL,
+        derive_owner_from_verified_email,
+    )
+
+    value = getattr(request.state, "user_id", None)
+    if isinstance(value, str) and value and len(value) <= 256:
+        if value.casefold() != OPERATOR_STORAGE_SENTINEL.casefold():
+            return value
+    derived = derive_owner_from_verified_email(
+        getattr(request.state, "user_email", None)
+    )
+    if not isinstance(derived, str) or not derived or len(derived) > 256:
         raise HTTPException(status_code=401, detail="authenticated user identity required")
-    return value
+    return derived
 
 
 def _registry_path() -> Path:
