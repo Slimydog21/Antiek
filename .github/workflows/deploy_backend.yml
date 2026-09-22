@@ -352,7 +352,16 @@ jobs:
       - name: Assert production is on main's line, and providers are live
         run: |
           set -euo pipefail
-          MAIN_SHA=$(git rev-parse origin/main)
+          # Fetch main's tip NOW, at the last possible moment. Without this,
+          # MAIN_SHA comes from the job-start checkout (T0), while the box's
+          # `git pull` happens later (T1) inside the ansible Deploy step. A
+          # merge landing in (T0, T1] makes prod ship a DESCENDANT of the
+          # runner's stale origin/main, and check.py's non-ancestor guard
+          # reddens it as "fork or rolled back" — the same false-red class
+          # #3326 removed, in a narrower window with a scarier message.
+          # Proven 2026-09-22 against real repo history (agent-31 review).
+          git fetch origin main
+          MAIN_SHA=$(git rev-parse FETCH_HEAD)
           # --max-lag-hours is deliberately LARGE here, and that is not a
           # weakened gate: per check.py's own contract (and its unit test
           # test_staleness_non_ancestor_fails_regardless_of_budget) a fork or
