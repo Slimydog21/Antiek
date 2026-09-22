@@ -20,6 +20,7 @@ up.
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import json
 import sys
 from collections.abc import Callable
@@ -71,6 +72,11 @@ class AntiekMemoryServer:
         public partitions). Requires per-user OAuth scope; the
         scope claim is read from the request's `auth_context` field
         (which the transport layer fills from the bearer token).
+        `auth_context` is a sibling of `name`/`arguments` inside
+        `params`, never a member of `arguments`: the caller controls
+        `arguments`, the transport controls `auth_context`, and a
+        handler that declares an `auth_context` keyword receives only
+        the transport's value (see `_call_handler`).
       - search_public: search the collective graph. Per-query cost
         flows through IP attribution to publishers (§9) and creators
         (§13.9).
@@ -87,7 +93,7 @@ class AntiekMemoryServer:
     """
 
     tools: list[ToolDescription] = field(default_factory=list)
-    handler_fns: dict[str, Callable[[dict], ToolResult]] = field(default_factory=dict)
+    handler_fns: dict[str, Callable[..., ToolResult]] = field(default_factory=dict)
     resource_handler: Callable[[str], ResourceContent | None] | None = None
     server_info: dict = field(default_factory=lambda: {
         "name": "antiek-memory",
@@ -129,11 +135,12 @@ class AntiekMemoryServer:
         if method == "tools/call":
             tool_name = params.get("name")
             tool_args = params.get("arguments") or {}
+            auth_context = params.get("auth_context")
             handler = self.handler_fns.get(tool_name)
             if handler is None:
                 return _err(rpc_id, -32601, f"Tool not found: {tool_name}")
             try:
-                result = handler(tool_args)
+                result = _call_handler(handler, tool_args, auth_context)
             except Exception as exc:  # defensive
                 return _err(rpc_id, -32603, f"Tool execution error: {exc}")
             return _ok(rpc_id, {
@@ -187,6 +194,29 @@ class AntiekMemoryServer:
 
         # ── unknown method ────────────────────────────────────────
         return _err(rpc_id, -32601, f"Method not found: {method}")
+
+
+def _call_handler(
+    handler: Callable[..., ToolResult],
+    tool_args: dict,
+    auth_context: Any,
+) -> ToolResult:
+    """Invoke a tool handler, passing the transport's ``auth_context`` only
+    to handlers that declare the keyword.
+
+    Handlers stay plain ``(args) -> ToolResult`` callables so stubs and the
+    public-graph tools need no auth plumbing; a handler that must know the
+    caller (``search_personal``) opts in by naming ``auth_context``. The
+    value is never merged into ``tool_args`` because ``arguments`` is
+    caller-controlled and an owner claim there would be self-asserted.
+    """
+    try:
+        accepts_auth = "auth_context" in inspect.signature(handler).parameters
+    except (TypeError, ValueError):  # builtins / C callables without a signature
+        accepts_auth = False
+    if accepts_auth:
+        return handler(tool_args, auth_context=auth_context)
+    return handler(tool_args)
 
 
 def _ok(rpc_id: Any, result: dict) -> dict:

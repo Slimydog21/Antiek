@@ -319,9 +319,17 @@ class TestResourcesRead:
 
 
 class TestToolsCallSearchPersonal:
-    """tools/call search_personal — real substrate query path."""
+    """tools/call search_personal — owner-scoped, fail-closed over the wire.
 
-    def test_search_personal_returns_chunks_from_substrate(self, server_proc):
+    The ranked path itself (query changes the answer, owners are disjoint) is
+    pinned in ``test_antiek_memory_search_personal.py`` with an injected
+    embedding stub; a subprocess cannot take one, so these two cases cover what
+    only the wire can prove: the transport-level ``auth_context`` reaches the
+    handler, and its absence yields an error rather than the sentinel owner's
+    chunks that this tool used to return to everyone.
+    """
+
+    def test_search_personal_without_auth_context_fails_closed(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
         resp = _send_and_recv(
             server_proc,
@@ -333,28 +341,30 @@ class TestToolsCallSearchPersonal:
             rpc_id=5,
         )
         assert "result" in resp
-        assert resp["result"]["isError"] is False
-        content = resp["result"]["content"]
-        assert len(content) >= 1
-        body = json.loads(content[0]["text"])
-        assert "chunks" in body
-        assert len(body["chunks"]) == 2  # both chunks from doc-1
-        chunk_ids = {c["chunk_id"] for c in body["chunks"]}
-        assert chunk_ids == {"chunk-1", "chunk-2"}
+        assert resp["result"]["isError"] is True
+        body = json.loads(resp["result"]["content"][0]["text"])
+        assert body["chunks"] == []
+        assert "auth_context" in body["error"]
 
-    def test_search_personal_respects_top_k(self, server_proc):
+    def test_search_personal_scopes_to_the_authenticated_owner(self, server_proc):
+        # The fixture's document belongs to the storage sentinel, which no
+        # per-user scope can name; a distinct owner who owns nothing gets an
+        # honest empty answer, not that document's chunks.
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
         resp = _send_and_recv(
             server_proc,
             "tools/call",
             {
                 "name": "search_personal",
-                "arguments": {"query": "test", "top_k": 1},
+                "arguments": {"query": "test", "top_k": 10},
+                "auth_context": {"user_id": "testuser"},
             },
             rpc_id=5,
         )
+        assert resp["result"]["isError"] is False
         body = json.loads(resp["result"]["content"][0]["text"])
-        assert len(body["chunks"]) == 1
+        assert body["chunks"] == []
+        assert body["query"] == "test"
 
 
 class TestToolsCallSearchPublic:

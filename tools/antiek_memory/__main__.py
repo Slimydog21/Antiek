@@ -12,10 +12,13 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Callable
 
+from interfaces.research.api.account_memory_identity import FORBIDDEN_OWNERS
 from runtime.db_lock import connect_read, connect_write
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
+from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding, search
 
 from .server import (
     CANONICAL_TOOLS,
@@ -27,38 +30,129 @@ from .server import (
 
 _TRUSTED_FALSE = '<antiek:content trusted="false">{}</antiek:content>'
 
+# Longest owner id the handler will bind; mirrors account_memory_identity.
+_MAX_OWNER_LENGTH = 256
 
-def _make_handlers(db_path: str):
-    """Build handler closures bound to *db_path*."""
+
+def _authenticated_owner(auth_context: object) -> str | None:
+    """Resolve the caller's owner id from the transport-filled ``auth_context``.
+
+    The claim is ``auth_context["user_id"]`` — the same subject the API's auth
+    middleware places on ``request.state.user_id``. Storage sentinels that name
+    a deployment rather than a person (``FORBIDDEN_OWNERS``, shared with every
+    other private-memory boundary) are refused: "per-user OAuth scope" in the
+    published manifest means a distinct human, and a shared identity would
+    hand one caller every operator-authenticated document. Returns ``None``
+    whenever proof is absent so the caller fails closed instead of falling
+    back to any default owner.
+    """
+    if not isinstance(auth_context, dict):
+        return None
+    value = auth_context.get("user_id")
+    if not isinstance(value, str):
+        return None
+    owner = value.strip()
+    if not owner or len(owner) > _MAX_OWNER_LENGTH or owner.casefold() in FORBIDDEN_OWNERS:
+        return None
+    return owner
+
+
+def _error_result(message: str, *, query: str) -> ToolResult:
+    return ToolResult(
+        content=[{
+            "type": "text",
+            "text": json.dumps({"chunks": [], "query": query, "error": message}),
+        }],
+        is_error=True,
+    )
+
+
+def _make_handlers(
+    db_path: str,
+    *,
+    embedding_model: Callable[[], EmbeddingModel] = SentenceTransformerEmbedding,
+):
+    """Build handler closures bound to *db_path*.
+
+    ``embedding_model`` is a zero-argument factory for the ranked-retrieval
+    model. Production keeps the default (the same sentence-transformers wrapper
+    the thought partner's library grounding uses); tests inject a deterministic
+    stub. It is constructed lazily on the first ``search_personal`` call so the
+    server still starts where the model is not installed, and an owner who owns
+    no documents gets an honest empty answer without ever loading it.
+    """
+    model_slot: list[EmbeddingModel] = []
+
+    def _model() -> EmbeddingModel:
+        if not model_slot:
+            model_slot.append(embedding_model())
+        return model_slot[0]
 
     # ── search_personal ───────────────────────────────────────────
-    def search_personal(args: dict) -> ToolResult:
+    def search_personal(args: dict, *, auth_context: object = None) -> ToolResult:
+        """Ranked retrieval over the caller's OWN documents.
+
+        The owner comes from the transport's ``auth_context`` (see
+        ``AntiekMemoryServer``), never from ``args``. Scope is the set of
+        documents whose ``owner_user_id`` is that owner, expressed through
+        ``search()``'s existing ``document_ids`` bound so the §9.0 gate and the
+        ranking stay the one reviewed implementation; ``private_research`` is
+        the owner reading their own library, which is what "personal" means.
+        """
         query = args["query"]
         top_k = args.get("top_k", 5)
+        owner = _authenticated_owner(auth_context)
+        if owner is None:
+            return _error_result(
+                "search_personal requires an authenticated per-user owner in "
+                "auth_context.user_id",
+                query=query,
+            )
         con = connect_read(db_path)
         try:
-            rows = con.execute(
-                """
-                SELECT c.chunk_id, c.text, d.title, d.source_tier, d.owner_user_id
-                FROM chunks c
-                JOIN documents d ON c.document_id = d.document_id
-                WHERE d.owner_user_id = ?
-                ORDER BY c.chunk_index
-                LIMIT ?
-                """,
-                ["__operator__", top_k],
-            ).fetchall()
+            owned = [
+                str(row[0])
+                for row in con.execute(
+                    "SELECT document_id FROM documents WHERE owner_user_id = ? "
+                    "ORDER BY document_id",
+                    [owner],
+                ).fetchall()
+            ]
+            hits: list[dict] = []
+            if owned:
+                hits = search(
+                    con,
+                    query,
+                    model=_model(),
+                    top_k=top_k,
+                    document_ids=owned,
+                    policy_tag="private_research",
+                    owner_user_id=owner,
+                )["results"]
+            # search() truncates chunk_text for prompt budgets; this surface
+            # has always returned the whole chunk, so read it back by id.
+            full_text: dict[str, str] = {}
+            if hits:
+                placeholders = ",".join("?" for _ in hits)
+                full_text = {
+                    str(row[0]): str(row[1])
+                    for row in con.execute(
+                        f"SELECT chunk_id, text FROM chunks WHERE chunk_id IN ({placeholders})",
+                        [hit["chunk_id"] for hit in hits],
+                    ).fetchall()
+                }
         finally:
             con.close()
         chunks = [
             {
-                "chunk_id": r[0],
-                "text": r[1],
-                "title": r[2],
-                "source_tier": r[3],
-                "owner_user_id": r[4],
+                "chunk_id": hit["chunk_id"],
+                "text": full_text.get(hit["chunk_id"], hit["chunk_text"]),
+                "title": hit["document_title"],
+                "source_tier": hit["source_tier"],
+                "owner_user_id": owner,
+                "similarity": hit["similarity"],
             }
-            for r in rows
+            for hit in hits
         ]
         return ToolResult(content=[{
             "type": "text",
