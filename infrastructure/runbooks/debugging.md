@@ -410,8 +410,9 @@ reading at the point in an incident where you've reached for this.
 
 ## Known gaps in operational tooling
 
-These are deliberate omissions for the current sprint. Documented here
-so the next engineer or agent knows what to expect:
+Mostly deliberate omissions for the current sprint, plus one line that
+is no longer a gap at all. Documented here so the next engineer or
+agent knows what to expect:
 
 - **No Prometheus / Grafana**. Use `journalctl` for application logs and
   `caddy` access logs for traffic. Adding metrics + dashboards is a
