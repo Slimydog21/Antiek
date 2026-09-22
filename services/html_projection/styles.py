@@ -183,10 +183,33 @@ class StyleRegistry:
 # (``.antiek-doc`` wrapper, ``.antiek-doc-title``) plus generic block elements, so
 # it re-skins without needing per-block knowledge. The Antiek base underneath
 # still defines layout, the provenance footer, and the hidden data island.
+#
+# Day and night. The base stylesheet follows the reader's OS colour scheme
+# (``tokens.TOKENS_CSS`` re-points the ``--antiek-*`` palette at its night set
+# under ``prefers-color-scheme: dark``). A theme decides whether to follow it:
+# ``antiek`` does; the three source-fidelity themes emulate a printed or paper
+# medium, which is light at any hour, so they pin the day palette on the
+# document; ``slate`` is night at any hour and pins its own dark palette. A
+# theme that sets a light page colour but leaves the tokens alone would render
+# night-coloured insets, rules and code blocks on it under a dark OS scheme.
 
 DEFAULT_STYLE_NAME = "antiek"
 
-_ACADEMIC_CSS = """\
+_PIN_DAY_CSS = """\
+.antiek-doc {
+  --antiek-surface: var(--antiek-day-surface);
+  --antiek-ink: var(--antiek-day-ink);
+  --antiek-muted: var(--antiek-day-muted);
+  --antiek-rule: var(--antiek-day-rule);
+  --antiek-accent: var(--antiek-day-accent);
+  --antiek-accent-soft: var(--antiek-day-accent-soft);
+  --antiek-warn: var(--antiek-day-warn);
+  --antiek-warn-bg: var(--antiek-day-warn-bg);
+  --antiek-lift: var(--antiek-day-lift);
+}
+"""
+
+_ACADEMIC_CSS = _PIN_DAY_CSS + """\
 .antiek-doc {
   font-family: "Charter", "Georgia", "Times New Roman", serif;
   max-width: 44rem;
@@ -199,7 +222,7 @@ _ACADEMIC_CSS = """\
 .antiek-doc a { color: #7a1f1f; text-decoration-thickness: 1px; }
 """
 
-_BOOK_CSS = """\
+_BOOK_CSS = _PIN_DAY_CSS + """\
 .antiek-doc {
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
   max-width: 38rem;
@@ -213,7 +236,7 @@ _BOOK_CSS = """\
 .antiek-doc a { color: #4a3b2a; }
 """
 
-_BLOG_CSS = """\
+_BLOG_CSS = _PIN_DAY_CSS + """\
 .antiek-doc {
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   max-width: 40rem;
@@ -225,17 +248,30 @@ _BLOG_CSS = """\
 .antiek-doc a { color: #1d4aff; text-underline-offset: 2px; }
 """
 
+# Slate re-skins the WHOLE palette, not just the page: before the inset was
+# derived from the surface, voice/region/note/image blocks and table headers
+# kept the base's near-white background and sat as light boxes on the dark
+# page. The insets and code surfaces now follow from the surface + lift.
 _SLATE_CSS = """\
 body { background: #0f1419; }
 .antiek-doc {
+  --antiek-surface: #171b22;
+  --antiek-ink: #e6e1d8;
+  --antiek-muted: #a3a7b3;
+  --antiek-rule: #2a303a;
+  --antiek-accent: #7aa2ff;
+  --antiek-accent-soft: #1a2340;
+  --antiek-warn: #e0b45a;
+  --antiek-warn-bg: #2e2410;
+  --antiek-lift: 8%;
   font-family: "Inter", system-ui, sans-serif;
   max-width: 42rem;
   line-height: 1.7;
-  color: #e6e1d8;
-  background: #171b22;
+  color: var(--antiek-ink);
+  background: var(--antiek-surface);
 }
 .antiek-doc-title { color: #f4efe6; }
-.antiek-doc a { color: #7aa2ff; }
+.antiek-doc a { color: var(--antiek-accent); }
 """
 
 BUILTIN_STYLES: list[ProjectionStyle] = [
