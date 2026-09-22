@@ -5,20 +5,32 @@ your own tokens… allow users to connect their X Developer account API, YouTube
 API, and the other core internet APIs; and also key data vendors… figure out
 what are the best options and offer my users the options."
 
-**Current state (verified on main)**: `settings_tool_connections.py` +
-`ToolConnectionsPanel.tsx` already support X (Twitter) and YouTube with quota
-tracking (youtube_units, hard_exhausted, reset_at); `research_tool_search.py`
-searches owner-connected X and YouTube (merged #3026/#3013). This spec covers
-the *expansion* surface.
+**Current state (re-verified on main 2026-09-22)**: the catalog in
+`runtime/connectors/registry.py` (`ToolVendor` / `_VENDOR_ORDER`) ships FIVE
+vendors: `youtube`, `polygon`, `fmp`, `edgar`, `x`. `settings_tool_connections.py`
++ `ToolConnectionsPanel.tsx` expose all five with quota tracking (youtube_units,
+hard_exhausted, reset_at); `research_tool_search.py` searches owner-connected X
+and YouTube (merged #3026/#3013). Polygon, FMP and EDGAR are connectable but
+have no consuming surface yet (SPR-04 task 3). This spec covers the
+*expansion* surface. Sell-side research and expert-interview vendors are
+NOT OBTAINABLE; see
+`docs/decisions/sell-side-and-expert-interview-not-obtainable-2026-09-20.md`.
 
 ---
 
-## 1. Already built (verified)
+## 1. Already built (verified on main 2026-09-22)
 
-| Tool | Backend | Frontend | Quota model |
-|---|---|---|---|
-| X (Twitter) API v2 | settings_tool_connections.py | ToolConnectionsPanel | bearer token; usage counted |
-| YouTube Data API | settings_tool_connections.py | ToolConnectionsPanel | youtube_units; hard_exhausted; reset_at |
+| Tool | Vendor id | Connector | Frontend | Quota model | Consumed by |
+|---|---|---|---|---|---|
+| YouTube Data API | `youtube` | `runtime/connectors/youtube.py` (api_key_query) | ToolConnectionsPanel | youtube_units; hard_exhausted; reset_at | `research_tool_search.py` |
+| Polygon.io | `polygon` | `acquisition/polygon/client.py` `PolygonConnector` | ToolConnectionsPanel | vendor rate spec | nothing yet (connect-only) |
+| Financial Modeling Prep | `fmp` | `acquisition/fmp/client.py` `FmpConnector` | ToolConnectionsPanel | vendor rate spec | nothing yet (connect-only) |
+| SEC EDGAR | `edgar` | `acquisition/edgar/client.py` `EdgarConnector` (contact-keyed, not api-keyed) | ToolConnectionsPanel | SEC fair-access rate | nothing yet (connect-only) |
+| X (Twitter) API v2 | `x` | `runtime/connectors/x_twitter.py` (bearer_token) | ToolConnectionsPanel | 25 req / 900 s governor; pay-per-use credits since 2026-06 | `research_tool_search.py` |
+
+Also on main, server-side and NOT user-connectable: `acquisition/rss` and
+`acquisition/substack` are operator-run acquisition lanes. They exist; they are
+simply not BYOT connections. Do not list them as unbuilt.
 
 ## 2. Expansion candidates, ranked by user value for knowledge workers
 
@@ -27,23 +39,27 @@ the *expansion* surface.
    (the user's own assets → HTML pipeline). Highest-value BYOTools addition:
    it feeds the ingestion thesis directly.
 2. **Notion** (OAuth 2.0 internal integration) — workspace ingestion.
-3. **Substack / RSS** (no auth) — follow feeds into the reading pipeline
-   (already partially supported via arxiv-style acquisition? add RSS reader).
+3. **Substack / RSS** (no auth) — `acquisition/rss` and `acquisition/substack`
+   already exist as server-side lanes. The open item is exposing them as a
+   per-user connection (a user's own feed list), not building a reader.
 4. **Reddit API** (OAuth 2.0, read-only) — research source.
 5. **GitHub** (fine-grained PAT or OAuth) — code/knowledge ingestion for the
    agent's coding-tool surface (Processing sketches, analysis scripts).
 
 ### Tier 2 — data vendors (paid/subscription; operator selects)
-- **Sell-side research**: Bloomberg Terminal API (enterprise, expensive),
-  FactSet (enterprise), S&P Capital IQ (enterprise), or the accessible tier:
-  **Seeking Alpha API** (no official public API; scraping is TOS-gray) —
-  **honest verdict**: sell-side research APIs are enterprise-gated; the
-  realistic v1 options are (a) user uploads PDFs they have access to (already
-  supported by the ingestion pipeline — the Bartz-compliant path), (b) Tier-1
-  brokers' public research portals via RSS.
-- **Expert interviews**: GLG/AlphaSights have no public API for individuals —
-  the Antiek-native answer is the DeepBlu interview surface (Surface D) +
-  user-uploaded transcripts. No vendor integration needed.
+- **Sell-side research**: NOT OBTAINABLE (closed 2026-09-20, see
+  `docs/decisions/sell-side-and-expert-interview-not-obtainable-2026-09-20.md`).
+  Bloomberg 24k-27k USD/seat/yr with the API gated behind a terminal, FactSet
+  contract-only with no self-serve tier, S&P Capital IQ one-year minimum from
+  ~25k USD/team; none permit redistribution to Antiek's users. The v1 answer is
+  the user uploading research they hold lawful access to, at `personal_reading`
+  with the user as fetch agent (§9.0).
+- **Expert interviews**: NOT OBTAINABLE (same record). AlphaSense acquired
+  Tegus for 930M USD in 2024; Tegus-AlphaSense, Third Bridge and Guidepoint
+  hold the API/MCP surfaces under institutional subscriptions; GLG and
+  AlphaSights have no individual API. The Antiek-native answer is the existing
+  `acquisition/interview` lane plus user-uploaded transcripts at
+  `personal_reading`. No vendor integration.
 - **Survey data**: Qualtrics API (OAuth, survey responses → substrate),
   Typeform API (OAuth) — both real APIs, moderate value, good for
   interview/research data capture.
@@ -74,7 +90,7 @@ the *expansion* surface.
 ## 4. Recommended v1 addition order (operator decision)
 
 1. Google Drive/Docs OAuth (feeds ingestion; highest leverage)
-2. RSS/Substack (zero-auth reader feeds)
+2. RSS/Substack as per-user connections (the server-side lanes already exist)
 3. FRED + Alpha Vantage (free quantitative APIs → DuckDB tables)
 4. GitHub PAT (code/Processing-sketch ingestion)
 5. Reddit read-only OAuth
