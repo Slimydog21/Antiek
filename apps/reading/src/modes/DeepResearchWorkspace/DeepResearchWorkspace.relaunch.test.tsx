@@ -10,7 +10,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { PlanTree } from "../../api/research";
-import { WERNER_EXPERIENCE_EVENT } from "../../werner";
+import { MASCOT_EXPERIENCE_EVENT } from "../../mascot";
 
 const api = vi.hoisted(() => ({
   approvePlan: vi.fn(),
@@ -141,7 +141,7 @@ describe("DeepResearchWorkspace deterministic session relaunch", () => {
     const experiences: string[] = [];
     const listener = (event: Event) =>
       experiences.push((event as CustomEvent).detail.experience);
-    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
+    window.addEventListener(MASCOT_EXPERIENCE_EVENT, listener);
 
     render(
       <MemoryRouter>
@@ -221,6 +221,6 @@ describe("DeepResearchWorkspace deterministic session relaunch", () => {
         },
       },
     });
-    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
+    window.removeEventListener(MASCOT_EXPERIENCE_EVENT, listener);
   });
 });

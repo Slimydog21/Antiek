@@ -9,7 +9,7 @@
 
 :root {
   /* --sun is the brand CONSTANT — the loud lemon. UNCHANGED (AMS-SPR-09): it
-     is the bottom-tab value (via --bar-accent) and the Werner bill/foot. The
+     is the bottom-tab value (via --bar-accent) and the Brain bill/foot. The
      SPR-09 re-tone softens only the var-driven accent/highlight roles below,
      never this. */
   --sun:        #F5DF24;
@@ -138,7 +138,7 @@
      tokens.ts `mediaWell`. */
   --media-well: #1B202A;
   /* was var(--sun) #F5DF24; toned to neutral --rule for calmer chrome per
-     AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
+     AMS-SPR-01. Yellow stays the brand via --mascot-* and --bar-accent. */
   --border:     var(--rule);
 
   /* Preserved bottom-bar yellow accent (AMS-SPR-01; SPR-06 paints the bar
@@ -160,12 +160,12 @@
   --glass-border:   rgba(15,20,25,0.12);    /* --ink #0F1419 @ 0.12 hairline */
   --glass-blur:     12px;                    /* backdrop-filter radius */
 
-  /* werner — three fills for the single-source <Werner> component.
+  /* mascot — three fills for the single-source <Brain> component.
      Bill locks to --sun so the mark carries the brand constant at every size.
      See tokens.ts + brand/README.md (restraint: rail idle, thinking, empty, celebrate only). */
-  --werner-coat:  #0F1419;
-  --werner-belly: #FBFCFD;
-  --werner-bill:  var(--sun);
+  --mascot-coat:  #0F1419;
+  --mascot-belly: #FBFCFD;
+  --mascot-bill:  var(--sun);
 
   /* accent (reserved) */
   --aurora:  #16C2C2;
@@ -225,7 +225,7 @@
 
   /* motion (U-05) — durations + easings as tokens, never magic numbers.
      fast = press, base = hover/colour, slow = signature-beat ceiling
-     (== Werner's 800 ms celebrate). See src/design/motion.ts +
+     (== Brain's 800 ms celebrate). See src/design/motion.ts +
      src/design/motion/README.md. */
   --motion-fast:  80ms;
   --motion-base:  150ms;
@@ -330,7 +330,7 @@
        recedes below the night chrome (bright text 17.4:1). */
     --media-well: #040508;
     /* was var(--sun) #F5DF24; toned to neutral --rule for calmer chrome per
-       AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
+       AMS-SPR-01. Yellow stays the brand via --mascot-* and --bar-accent. */
     --border:     var(--rule);
 
     /* was #8A7300; re-toned (AMS-SPR-09) to a weathered ochre so the night
@@ -368,9 +368,9 @@
     --glass-border:   rgba(238,241,246,0.14); /* --ink(night) #EEF1F6 @ 0.14 */
     --glass-blur:     12px;
 
-    --werner-coat:  #0A0D14;
-    --werner-belly: #DCE2EA;
-    --werner-bill:  var(--sun);
+    --mascot-coat:  #0A0D14;
+    --mascot-belly: #DCE2EA;
+    --mascot-bill:  var(--sun);
 
     --aurora:  #3FE0DC;
     --emperor: #FF6155;
