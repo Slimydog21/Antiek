@@ -554,6 +554,19 @@ def check_phase_8(
         cutoff = cutoff.replace(tzinfo=UTC)
     cutoff_ts = cutoff.timestamp()
 
+    # Scope to THIS investigation. The knowledge-skills root is SHARED across
+    # every investigation — `default_knowledge_skills_dir()` takes no
+    # investigation argument and resolves to one
+    # `$ANTIEK_HOME/knowledge_skills` — so an mtime test alone asks "did
+    # ANYTHING compound recently?", not the keystone's actual question, "did
+    # THIS investigation compound?". With concurrent investigations, A's skill
+    # write satisfied B's keystone. The existing test could not catch that: it
+    # runs under `tmp_path`, an isolation production does not have.
+    #
+    # The file carries its own provenance. `skills/domain/auto_patch.render_patch`
+    # writes "### From investigation `<id>` (<date>)" into the skill body, so
+    # membership is checkable rather than inferred from wall-clock.
+    provenance_marker = f"From investigation `{investigation_id}`"
     for entry in sorted(os.listdir(knowledge_skills_dir)):
         if not entry.endswith("-knowledge"):
             continue
@@ -564,17 +577,23 @@ def check_phase_8(
             for fname in files:
                 p = os.path.join(root, fname)
                 try:
-                    if os.stat(p).st_mtime > cutoff_ts:
-                        return True, (
-                            f"skill file {p!r} modified after "
-                            f"{cutoff.isoformat()}"
-                        )
+                    if os.stat(p).st_mtime <= cutoff_ts:
+                        continue
+                    with open(p, encoding="utf-8", errors="replace") as fh:
+                        body = fh.read()
                 except OSError:
                     continue
+                if provenance_marker in body:
+                    return True, (
+                        f"skill file {p!r} carries this investigation's "
+                        f"patch marker and was modified after "
+                        f"{cutoff.isoformat()}"
+                    )
 
     return False, (
         f"no auto_patch_applied event with patched domains, AND no "
-        f"skill file modified after {cutoff.isoformat()} under "
+        f"skill file carrying this investigation's patch marker was "
+        f"modified after {cutoff.isoformat()} under "
         f"{knowledge_skills_dir}"
     )
 
