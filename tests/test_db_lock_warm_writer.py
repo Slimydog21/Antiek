@@ -104,3 +104,43 @@ def test_pytest_forces_keepalive_off(monkeypatch):
     monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "99")
     assert os.environ.get("PYTEST_CURRENT_TEST")
     assert db_lock._write_keepalive_s() == 0.0
+
+
+def test_parked_slot_releases_flock_on_expiry_without_another_writer(
+    tmp_path: Path, monkeypatch
+):
+    """The documented 20s bound must hold on an IDLE process.
+
+    Before the expiry timer, a parked writer released its flock only when the
+    NEXT in-process write called _take_warm_slot. With no next write the
+    cross-process flock was held forever: prod's nightly backup timed out
+    after 180s three nights running and /export/my-graph answered 503.
+    """
+    import fcntl
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "0.2")
+    db = str(tmp_path / "idle.duckdb")
+    with db_lock.connect_write(db, purpose="idle:1", timeout_s=5) as con:
+        con.execute("CREATE TABLE IF NOT EXISTS t (id INTEGER)")
+    lock_path = db + ".write.lock"
+    fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
+    try:
+        # Immediately after close the slot is parked and the flock is HELD.
+        with pytest.raises(OSError):
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # ... and with NO further connect_write, it must free itself.
+        deadline = time.monotonic() + 2.0
+        acquired = False
+        while time.monotonic() < deadline:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except OSError:
+                time.sleep(0.02)
+        assert acquired, "parked warm writer never released the flock on expiry"
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+    assert db_lock.flush_warm_writers(db) == 0
