@@ -6,6 +6,7 @@ import {
   fetchUserModels,
   type UserModelRow,
 } from "../../api/settingsModels";
+import { userModelVariants } from "../../lib/userModelVariants";
 import {
   fetchSettingsUsage,
   fetchSettingsBalance,
@@ -21,19 +22,27 @@ import {
  *   usage bar (spent / limit) from /settings/usage
  *   balance chip (from /settings/balance/{id}; "—" when unavailable or loading)
  *
- * For v1: one row per registered user model (key). "Variant toggle" is future
- * when a single registration advertises multiple model variants; today we
- * surface the registered model_id.
+ * One row per registered key. A key whose registration lists several
+ * `model_ids` (one credential, one ledger row, several variants — e.g.
+ * DeepSeek V4 Pro and V4 Flash) renders ONE key row with the usage bar and
+ * balance chip once, and a variant sub-row per model_id beneath it; choosing
+ * a sub-row reports `(rowId, modelId)`. A single-variant key renders flat.
  *
- * Used by: AISidecar, CommandPalette, Chat surfaces, Settings dashboard, etc.
- * Keeps the Lemon idiom; no copy-paste of dropdown chrome.
+ * Used by: AISidecar, CommandPalette, Reading/TalkToBook, Biography,
+ * ResearchWorkstation/ChatInputArea, Write/ConnectResearch. Keeps the Lemon
+ * idiom; no copy-paste of dropdown chrome.
  */
 
 export interface ModelUsagePickerProps {
   /** Currently selected user model id (UserModelRow.id). */
   value: string | null;
-  /** Called with the chosen user model row id. */
-  onChange: (userModelId: string) => void;
+  /** Currently selected variant under `value` (one of the row's
+   *  `model_ids`); null/undefined means the row's primary `model_id`. */
+  valueModelId?: string | null;
+  /** Called with the chosen user model row id and, when the row lists
+   *  several variants, the chosen variant's model id. Consumers that ignore
+   *  the second argument keep driving the row's primary model_id. */
+  onChange: (userModelId: string, modelId?: string) => void;
   /** Optional filter predicate (e.g. only route_eligible). */
   filter?: (m: UserModelRow) => boolean;
   /** Label for the trigger button. */
@@ -168,6 +177,7 @@ function balanceChip(b?: SettingsBalanceResponse | null, loading?: boolean): Rea
 
 export default function ModelUsagePicker({
   value,
+  valueModelId = null,
   onChange,
   filter,
   triggerLabel = "Model",
@@ -282,9 +292,20 @@ export default function ModelUsagePicker({
     }
   }, [enriched]);
 
-  const handleChoose = (id: string) => {
-    onChange(id);
+  const handleChoose = (id: string, modelId: string) => {
+    onChange(id, modelId);
   };
+
+  // The trigger names the variant only when it is not the row's primary, so
+  // a single-variant key reads exactly as it did before variants existed.
+  const selectedVariant =
+    selected && valueModelId && userModelVariants(selected).includes(valueModelId)
+      ? valueModelId
+      : null;
+  const selectedLabel = selected
+    ? (selected.display_name || `${selected.provider_catalog_id}/${selected.model_id}`) +
+      (selectedVariant && selectedVariant !== selected.model_id ? ` · ${selectedVariant}` : "")
+    : triggerLabel;
 
   const trigger = (
     <LemonButton
@@ -294,7 +315,7 @@ export default function ModelUsagePicker({
       disabled={loading || !!loadError}
       aria-label={triggerAriaLabel}
     >
-      {loading ? "…" : selected ? selected.display_name || `${selected.provider_catalog_id}/${selected.model_id}` : triggerLabel}
+      {loading ? "…" : selectedLabel}
       <span className="text-ink-mute">▾</span>
     </LemonButton>
   );
@@ -352,35 +373,95 @@ export default function ModelUsagePicker({
                       : m.model_id
                     : m.display_name || m.model_id;
                 const isSelected = m.id === value;
+                const variants = userModelVariants(m);
+                const disabled = !m.route_eligible && !m.key_present;
+                // The key-level facts (usage, balance, status) render ONCE per
+                // key: the ledger is keyed on the record id, so every variant
+                // under it shares the same numbers.
+                const keyFacts = (
+                  <>
+                    {showUsage && <div className="mt-0.5">{usageBar(m.usage)}</div>}
+                    <div className="text-xxs text-ink-mute">
+                      {m.provider_catalog_id || m.provider_kind} · {m.execution_status}
+                    </div>
+                  </>
+                );
+                const chipAndKey = (
+                  <div className="flex items-center gap-2 shrink-0">
+                    {showBalance && balanceChip(m.balance, m.balanceLoading)}
+                    {m.key_present ? null : (
+                      <span className="text-xxs text-sun-deep dark:text-sun">no key</span>
+                    )}
+                  </div>
+                );
+                if (variants.length <= 1) {
+                  return (
+                    <LemonMenuItem
+                      key={m.id}
+                      onClick={() => {
+                        handleChoose(m.id, m.model_id);
+                        close();
+                      }}
+                      disabled={disabled}
+                    >
+                      <div className="flex flex-col gap-0.5 w-full">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={isSelected ? "font-semibold" : ""}>
+                            {variantLabel}
+                          </span>
+                          {chipAndKey}
+                        </div>
+                        {keyFacts}
+                      </div>
+                    </LemonMenuItem>
+                  );
+                }
+                // One key, many variants: a non-clickable key header carrying
+                // the shared facts, then one selectable sub-row per model_id.
+                const activeVariant =
+                  isSelected && valueModelId && variants.includes(valueModelId)
+                    ? valueModelId
+                    : isSelected
+                      ? m.model_id
+                      : null;
                 return (
-                  <LemonMenuItem
-                    key={m.id}
-                    onClick={() => {
-                      handleChoose(m.id);
-                      close();
-                    }}
-                    disabled={!m.route_eligible && !m.key_present}
-                  >
-                    <div className="flex flex-col gap-0.5 w-full">
+                  <div key={m.id} data-key-row={m.id}>
+                    <div className="px-3 pt-1.5 pb-0.5">
                       <div className="flex items-center justify-between gap-2">
-                        <span className={isSelected ? "font-semibold" : ""}>
-                          {variantLabel}
-                        </span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {showBalance && balanceChip(m.balance, m.balanceLoading)}
-                          {m.key_present ? null : (
-                            <span className="text-xxs text-sun-deep dark:text-sun">no key</span>
+                        <span className={isSelected ? "font-semibold" : ""}>{variantLabel}</span>
+                        {chipAndKey}
+                      </div>
+                      {keyFacts}
+                    </div>
+                    {variants.map((variantId) => (
+                      <LemonMenuItem
+                        key={`${m.id}:${variantId}`}
+                        onClick={() => {
+                          handleChoose(m.id, variantId);
+                          close();
+                        }}
+                        disabled={disabled}
+                      >
+                        <div
+                          className="flex items-center gap-2 pl-3 w-full"
+                          data-variant-row={variantId}
+                        >
+                          <span className="text-ink-mute">↳</span>
+                          <span
+                            className={
+                              "font-mono text-xs " +
+                              (activeVariant === variantId ? "font-semibold" : "")
+                            }
+                          >
+                            {variantId}
+                          </span>
+                          {variantId === m.model_id && (
+                            <span className="text-xxs text-ink-mute">primary</span>
                           )}
                         </div>
-                      </div>
-                      {showUsage && (
-                        <div className="mt-0.5">{usageBar(m.usage)}</div>
-                      )}
-                      <div className="text-xxs text-ink-mute">
-                        {m.provider_catalog_id || m.provider_kind} · {m.execution_status}
-                      </div>
-                    </div>
-                  </LemonMenuItem>
+                      </LemonMenuItem>
+                    ))}
+                  </div>
                 );
               })}
             </div>

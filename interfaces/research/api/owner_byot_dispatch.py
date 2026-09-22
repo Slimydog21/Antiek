@@ -282,15 +282,17 @@ def _freeze_current_authority(
     except models_admin.UserModelChoiceUnavailable:
         raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
     record = resolved.record
+    # The chosen variant (one of record.model_ids) is what gets bound, priced
+    # and sent; the ledger stays keyed on record.id across variants.
     binding = OwnerCredentialBinding(
         owner_user_id=record.owner_user_id, user_model_id=record.id,
         credential_id=resolved.credential_id, provider_id=record.id,
-        model_id=record.model_id, metadata_fingerprint=resolved.credential_fingerprint,
+        model_id=resolved.model_id, metadata_fingerprint=resolved.credential_fingerprint,
         binding_version=3,
     )
 
     projected_cents, budget_digest, exact_config = _budget_and_exact_config(
-        record=record,
+        record=record, model_id=resolved.model_id,
         prompt=prompt, role=role,
         config=config,
     )
@@ -336,11 +338,14 @@ def _freeze_current_authority(
 def _budget_and_exact_config(
     *, record: models_admin.UserModelRecord | None, prompt: str,
     config: DispatchConfig | None, role: str = "user_agent",
+    model_id: str | None = None,
 ) -> tuple[int, str, DispatchConfig]:
     if record is None or record.provider_catalog_id is None:
         raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
+    # ``model_id`` is the chosen variant; the record's primary when absent.
+    chosen_model_id = model_id or record.model_id
     preset = get_provider_preset(record.provider_catalog_id)
-    variant = get_model_variant(preset, record.model_id)
+    variant = get_model_variant(preset, chosen_model_id)
     endpoint = record.base_url or "https://api.anthropic.com"
     if (
         record.provider_kind != preset.adapter_kind
@@ -365,7 +370,7 @@ def _budget_and_exact_config(
     envelope = {
         "input_tokens": input_tokens,
         "max_output_tokens": base.max_tokens,
-        "model_id": record.model_id,
+        "model_id": chosen_model_id,
         "projected_max_cents": projected_cents,
         "provider_id": record.id,
         "rate_snapshot": variant.snapshot,
@@ -376,7 +381,7 @@ def _budget_and_exact_config(
     exact_tier = replace(
         base,
         provider=record.id,
-        model=record.model_id,
+        model=chosen_model_id,
         pricing=TierPricing(
             input_per_mtok=float(rates["input_token"] * Decimal(1_000_000)),
             output_per_mtok=float(rates["output_token"] * Decimal(1_000_000)),

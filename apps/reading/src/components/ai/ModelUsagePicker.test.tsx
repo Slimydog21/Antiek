@@ -157,7 +157,9 @@ describe("ModelUsagePicker", () => {
     });
     const item = screen.getByText("DeepSeek V4 Pro");
     await userEvent.click(item);
-    expect(onChange).toHaveBeenCalledWith("um-1");
+    // The row id first; the row's primary model_id rides second so a
+    // consumer that reads variants gets it and one that ignores it is unchanged.
+    expect(onChange).toHaveBeenCalledWith("um-1", "deepseek-chat");
   });
 
   it("renders usage bar and balance chip when data present", async () => {
@@ -248,6 +250,83 @@ describe("ModelUsagePicker includeDefault", () => {
       expect(document.body.textContent || "").toContain("DeepSeek V4 Pro");
     });
     expect(document.body.textContent || "").not.toContain("Default (house route)");
+  });
+});
+
+describe("ModelUsagePicker one key, many variants", () => {
+  const twoVariantKey = {
+    models: [
+      {
+        ...sampleModels.models[0],
+        id: "um-multi",
+        model_id: "deepseek-reasoner",
+        model_ids: ["deepseek-reasoner", "deepseek-chat"],
+        display_name: "My DeepSeek",
+      },
+    ],
+    count: 1,
+    stale_registered: [],
+    source: "test",
+  };
+
+  it("renders one key row with a variant sub-row per model_id and reports the chosen variant", async () => {
+    mockFetchUserModels.mockResolvedValue(twoVariantKey);
+    mockFetchUsage.mockResolvedValue({
+      keys: [{ ...sampleUsage.keys[0], api_key_id: "um-multi" }],
+      count: 1,
+    });
+    mockFetchBalance.mockResolvedValue(
+      balanceBody({ api_key_id: "um-multi", kind: "balance_native", balance_usd: 42.5 }),
+    );
+    const onChange = vi.fn();
+    render(<ModelUsagePicker value={null} onChange={onChange} showUsage showBalance />);
+    await userEvent.click(screen.getAllByRole("button")[0]);
+
+    const keyRow = await waitFor(() => {
+      const el = document.querySelector('[data-key-row="um-multi"]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    // Two sub-rows, one per variant, under ONE key row.
+    const subRows = Array.from(keyRow.querySelectorAll("[data-variant-row]")).map((el) =>
+      el.getAttribute("data-variant-row"),
+    );
+    expect(subRows).toEqual(["deepseek-reasoner", "deepseek-chat"]);
+    // The usage bar and the balance chip render ONCE for the key — the
+    // ledger is keyed on the record id, not on the variant.
+    await waitFor(() => {
+      expect(keyRow.querySelectorAll("[data-balance-kind]").length).toBe(1);
+    });
+    expect((keyRow.textContent || "").match(/\$12\.34/g)?.length).toBe(1);
+
+    const flash = Array.from(document.querySelectorAll("button")).find((b) =>
+      (b.textContent || "").includes("deepseek-chat"),
+    );
+    expect(flash).toBeTruthy();
+    await userEvent.click(flash as HTMLElement);
+    expect(onChange).toHaveBeenCalledWith("um-multi", "deepseek-chat");
+  });
+
+  it("names the chosen non-primary variant on the trigger", async () => {
+    mockFetchUserModels.mockResolvedValue(twoVariantKey);
+    render(
+      <ModelUsagePicker value="um-multi" valueModelId="deepseek-chat" onChange={() => {}} />,
+    );
+    await waitFor(() => {
+      expect(screen.getAllByRole("button")[0].textContent).toContain("My DeepSeek · deepseek-chat");
+    });
+  });
+
+  it("keeps a single-variant key flat and reports its primary model_id", async () => {
+    const onChange = vi.fn();
+    render(<ModelUsagePicker value={null} onChange={onChange} />);
+    await userEvent.click(screen.getAllByRole("button")[0]);
+    await waitFor(() => {
+      expect(document.body.textContent || "").toContain("DeepSeek V4 Pro");
+    });
+    expect(document.querySelector("[data-key-row]")).toBeNull();
+    await userEvent.click(screen.getByText("DeepSeek V4 Pro"));
+    expect(onChange).toHaveBeenCalledWith("um-1", "deepseek-chat");
   });
 });
 
