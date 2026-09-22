@@ -158,6 +158,10 @@ _PYTEST_BASE: tuple[str, ...] = (
     "no:cacheprovider",
     "-p",
     "no:xdist",
+    # FORCE_COLOR / PY_COLORS in the inherited environment make pytest colour
+    # its output even through a pipe, which defeated the line-prefix harvest
+    # below. Belt: ask pytest not to. Braces: _strip_ansi in the parser.
+    "--color=no",
 )
 
 Outcome = Literal[
@@ -617,6 +621,31 @@ class _PytestRun:
     node_error_nodes: tuple[str, ...]
 
 
+def _strip_ansi(text: str) -> str:
+    """Remove SGR escapes before parsing.
+
+    ``subprocess.run`` here inherits the parent environment, so ``FORCE_COLOR``
+    or ``PY_COLORS`` makes pytest colour its output even through a pipe. The
+    summary harvest matches on a LINE PREFIX (``ERROR ``/``FAILED ``), so a
+    colourised ``\x1b[31mERROR\x1b[0m ...`` matched nothing — while the
+    ``N passed`` regex, which searches rather than anchors, kept working.
+
+    That asymmetry made the blindness silent and one-sided: ``n_ran`` was
+    correct and ``node_error_nodes`` was ALWAYS empty, so no clean re-run ever
+    ran, no node error was ever credited as mutation-caused, and a mutant whose
+    guard manifests as a SETUP error reported ``no-tests`` — printed as "an
+    unguarded load-bearing line" — instead of ``killed``.
+
+    Measured on a machine with ``FORCE_COLOR=3``: the ``db_lock`` single-writer
+    mutant reported ``n_tests=0`` while its selector's 7 tests ALL errored under
+    the mutation and ALL passed on the clean tree. The most comprehensively
+    guarded line in the repo read as the only unguarded one.
+    """
+    import re  # module-local by this file's convention (see _parse_pytest_output)
+
+    return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text)
+
+
 def _parse_pytest_output(out: str) -> _PytestRun:
     """Parse pytest -q output. Distinguishes runtime FAILED tests (a kill signal)
     from COLLECTION errors (a selector/environment defect that reds regardless of
@@ -652,6 +681,7 @@ def _parse_pytest_output(out: str) -> _PytestRun:
     collection_errors = 0
     for m in re.finditer(r"(\d+)\s+error[s]?\s+during\s+collection", out):
         collection_errors = max(collection_errors, int(m.group(1)))
+    out = _strip_ansi(out)
     for m in re.finditer(r"Interrupted:\s+(\d+)\s+error", out):
         collection_errors = max(collection_errors, int(m.group(1)))
 
