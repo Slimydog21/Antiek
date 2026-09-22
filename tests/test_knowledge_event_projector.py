@@ -468,15 +468,25 @@ def _recovery_child(db: str, events: Path, crash_boundary: str | None = None):
     code = textwrap.dedent(
         f"""
         import os
+        from runtime.db_lock import WriteLockTimeout
         from substrate.graph.knowledge_event_projector import recover
         def checkpoint(boundary, event_id):
             if boundary == {crash_boundary!r}:
                 os._exit(73)
-        recover(
-            db_path={db!r},
-            events_dir={str(events)!r},
-            checkpoint=checkpoint,
-        )
+        try:
+            recover(
+                db_path={db!r},
+                events_dir={str(events)!r},
+                checkpoint=checkpoint,
+            )
+        except WriteLockTimeout:
+            # Losing the write-lock race is the EXPECTED outcome for one of two
+            # racers. recover() raises by design rather than hanging — see
+            # test_recovery_wall_time_is_one_deadline_for_snapshot_lock, which
+            # pins that behaviour — so the loser must translate it into a clean
+            # exit. Without this, a child that simply lost the race exits 1 and
+            # reds the suite under CI load (observed on main: [0, 1] != [0, 0]).
+            pass
         """
     )
     env = dict(os.environ)
@@ -631,12 +641,24 @@ def test_app_startup_does_not_create_missing_db_and_retries_recovery(
 
 
 def test_app_startup_worker_continues_catch_up_batches(monkeypatch, tmp_path: Path) -> None:
+    import threading
+
     import runtime.db_lock as db_lock_module
 
     calls = 0
     call_times: list[float] = []
+    return_times: list[float] = []
     db_path = str(tmp_path / "worker.duckdb")
     handoff_checks = 0
+    # The first recover() call blocks on this gate. The test opens it only
+    # AFTER app startup has returned, so "startup returned while recover() is
+    # provably still in flight" is a statement about ordering that no runner
+    # speed can change. Two earlier shapes of this test were wall-clock in
+    # disguise and red on slow shards: `elapsed < 0.14s` (0.597s / 0.737s on
+    # CI), then `startup_returned < first recover() return`, which still lost
+    # a race against recover()'s 0.15s sleep when the rest of the lifespan
+    # took longer than that (PR #3338 shard 2: returned 68ms after it).
+    first_call_gate = threading.Event()
 
     def handoff_requested(_db_path: str) -> bool:
         nonlocal handoff_checks
@@ -647,22 +669,70 @@ def test_app_startup_worker_continues_catch_up_batches(monkeypatch, tmp_path: Pa
         nonlocal calls
         calls += 1
         call_times.append(time.monotonic())
-        time.sleep(0.15)
+        if calls == 1:
+            first_call_gate.wait(10)
+        else:
+            time.sleep(0.15)
+        return_times.append(time.monotonic())
         return projector.RecoveryReport(catching_up=calls == 1, remaining=None)
 
     monkeypatch.setattr(projector, "recover", fake_recover)
     monkeypatch.setattr(db_lock_module, "write_handoff_requested", handoff_requested)
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
-    started = time.monotonic()
-    with TestClient(app):
-        assert time.monotonic() - started < 0.14
-        deadline = time.monotonic() + 2
+
+    # Startup runs in a daemon thread and the TEST holds the clock: if the
+    # lifespan is gated on the worker it can never return (the gate opens only
+    # after startup), and a deadlocked daemon thread is simply left behind.
+    # 5s is not a performance budget — a slow startup passes as long as it
+    # never waited on recover(); a blocked one fails here, loudly, with the
+    # gate still closed as proof. (Verified by mutation: `worker.join()`
+    # after `worker.start()` in app.py reds this test in ~5s.)
+    client = TestClient(app)
+    startup_returned = threading.Event()
+    startup_error: list[BaseException] = []
+
+    def _enter() -> None:
+        try:
+            client.__enter__()
+        except BaseException as exc:  # noqa: BLE001 — surfaced below
+            startup_error.append(exc)
+        finally:
+            startup_returned.set()
+
+    threading.Thread(target=_enter, name="test-startup", daemon=True).start()
+    try:
+        assert startup_returned.wait(5.0), (
+            "startup blocked on the catch-up worker: recover() is still gated "
+            "and app startup has not returned"
+        )
+        assert not startup_error, startup_error
+        # The worker is running (recover() was entered) and has NOT returned —
+        # it cannot, the gate is still closed. Startup returned anyway.
+        deadline = time.monotonic() + 5
+        while not call_times:
+            assert time.monotonic() < deadline, "recover() never invoked"
+            time.sleep(0.005)
+        assert not return_times, "recover() returned before the gate opened"
+        first_call_gate.set()
+        deadline = time.monotonic() + 5
         while app.state.knowledge_event_recovery["status"] == "catching_up":
             assert time.monotonic() < deadline
             time.sleep(0.01)
+    finally:
+        first_call_gate.set()
+        if startup_returned.is_set() and not startup_error:
+            client.__exit__(None, None, None)
     assert calls == 2
-    assert call_times[1] - call_times[0] >= 0.6
+    # The worker waits `stop_recovery.wait(0.5)` between catch-up batches
+    # (app.py, run_recovery). Measure THAT: from the first call's RETURN to
+    # the second call's START. The old `call_times[1] - call_times[0] >= 0.6`
+    # was 0.15 (the fake's sleep) + 0.5 (the wait) with slack — a composite
+    # that broke the moment the fake stopped sleeping (CI: 0.50). 0.45 is
+    # clock granularity on Event.wait, not a performance budget.
+    assert call_times[1] - return_times[0] >= 0.45, (
+        f"worker did not wait between batches: {call_times[1] - return_times[0]:.3f}s"
+    )
     assert app.state.knowledge_event_recovery["status"] == "current"
 
 

@@ -53,6 +53,7 @@ vi.mock("../../hooks/useInvestigation", () => ({
     completedAt: null,
     streamStatus: "open",
     reconnects: 0,
+    sourcePolicy: [],
   }),
 }));
 // The Werner beat is decoration; render it inert.
@@ -65,12 +66,17 @@ vi.mock("./VoiceChaseButton", () => ({ default: () => null }));
 
 import ChaseThread from "./ChaseThread";
 import { ApiError } from "../../lib/api";
+import {
+  clearChaseDraftHandoffs,
+  listChaseDraftHandoffs,
+} from "./chaseHandoffs";
 
 afterEach(() => {
   cleanup();
   startInvestigationMock.mockReset();
   navigateMock.mockReset();
   recordSpawnMock.mockReset();
+  clearChaseDraftHandoffs();
 });
 
 function renderChase(props: {
@@ -128,6 +134,14 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
     // No reserved id ⇒ no investigation_id ⇒ substrate mints fresh.
     expect(arg.investigation_id).toBeUndefined();
     expect(arg.parent_investigation_id).toBe("inv-parent");
+    await waitFor(() =>
+      expect(listChaseDraftHandoffs("inv-parent")[0]).toMatchObject({
+        child_investigation_id: "inv-fresh",
+        parent_investigation_id: "inv-parent",
+        source_passage: "an unflagged passage",
+        no_spend: true,
+      }),
+    );
   });
 });
 
@@ -157,5 +171,40 @@ describe("ChaseThread — honest no-key (M4)", () => {
     );
     // Did NOT transition to a launched child.
     expect(screen.queryByText(/following the thread/)).toBeNull();
+  });
+});
+
+describe("ChaseThread — draft handoff receipt", () => {
+  it("copies a no-spend handoff that connects the launched child back to its parent and passage", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: "inv-child",
+      status: "in_progress",
+      start_event_id: "e3",
+    });
+    renderChase({
+      spawnContext: "wing sweep delayed transonic drag rise",
+      parentInvestigationId: "read-doc-1",
+    });
+
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() => expect(screen.getByText(/following the thread/)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /copy handoff/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(writeText.mock.calls[0][0]);
+    expect(payload).toMatchObject({
+      kind: "antiek.chase.draft_handoff",
+      child_investigation_id: "inv-child",
+      parent_investigation_id: "read-doc-1",
+      source_passage: "wing sweep delayed transonic drag rise",
+      no_spend: true,
+    });
+    expect(payload.next_step).toMatch(/compose it with its parent/);
+    expect(screen.getByRole("button", { name: /copied/i })).toBeTruthy();
   });
 });

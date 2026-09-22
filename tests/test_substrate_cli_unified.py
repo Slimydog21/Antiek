@@ -14,6 +14,10 @@ import pytest
 # erroring collection (CI runs the full suite). Runs in full once pi-execution
 # merges.
 pytest.importorskip("substrate.conversation")
+pytest.importorskip(
+    "substrate.harness.fork",
+    reason="harness.fork ships with the unmerged pi-execution primitives",
+)
 
 from substrate.harness.fork import create_fork
 

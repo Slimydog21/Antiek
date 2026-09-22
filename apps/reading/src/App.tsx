@@ -26,6 +26,7 @@ import LibraryView from "./components/library/LibraryView";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
+import MidnightOil from "./modes/MidnightOil";
 import Multimedia from "./modes/Multimedia";
 import Notebook from "./modes/Notebook";
 import AutoNotebook from "./modes/Notebook/AutoNotebook";
@@ -59,6 +60,11 @@ import Signals from "./modes/Signals";
 import WriteHome from "./modes/Write/WriteHome";
 import WrestleApp from "./modes/WrestleApp";
 
+// Account Memory is lazy-loaded: it is an owner-private secondary panel, not
+// part of the first paint. Keeping it out of App's entry chunk preserves the
+// WP-12.2 700 KB gz budget as the routed surface set grows.
+const AccountMemory = lazy(() => import("./modes/AccountMemory"));
+
 /**
  * Top-level route registry.
  *
@@ -80,7 +86,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (state.status === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-ice-2 dark:bg-space-2 text-shadow-1 dark:text-moonlight text-[12px] tracking-[0.18em] uppercase font-sans">
+      <div className="min-h-screen flex items-center justify-center bg-ice-2 dark:bg-space-2 text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
         Loading…
       </div>
     );
@@ -116,7 +122,14 @@ function AuthenticatedRoutes() {
         <Route
           path="/link-monster"
           element={
-            <Suspense fallback={<div className="lm-loading">summoning the Monster…</div>}>
+            <Suspense fallback={
+              // Styled like the RequireAuth veil (App.tsx RequireAuth loading
+              // branch) — the old `lm-loading` class had no CSS definition
+              // anywhere, so the fallback rendered unstyled.
+              <div className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
+                summoning the Monster…
+              </div>
+            }>
               <LinkMonster />
             </Suspense>
           }
@@ -128,6 +141,7 @@ function AuthenticatedRoutes() {
             (the Research-entry cascade navigates here after launch). */}
         <Route path="/deep-research" element={<DeepResearchWorkspace />} />
         <Route path="/deep-research/:sessionId" element={<DeepResearchWorkspace />} />
+        <Route path="/midnight-oil" element={<MidnightOil />} />
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />
@@ -182,6 +196,24 @@ function AuthenticatedRoutes() {
         <Route path="/map" element={<Map />} />
         <Route path="/multimedia" element={<Multimedia />} />
         <Route path="/backtest/:synthesisId" element={<Backtest />} />
+        {/* SPR-11 Task 6 — the owner-private account-memory panel. Both
+            /account/memory routes have been live and gated since the
+            account-memory sprint; until this route nothing in apps/ called
+            either, so the facts an account accumulated were curl-only. */}
+        <Route
+          path="/memory"
+          element={
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
+                  Loading memory…
+                </div>
+              }
+            >
+              <AccountMemory />
+            </Suspense>
+          }
+        />
         <Route path="/privacy" element={<PrivacyDashboard />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/settings" element={<Settings />} />

@@ -16,7 +16,7 @@ invent a gap or change the ranking.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, List, Optional
+from typing import Any
 
 from .candidates import (
     GapCandidate,
@@ -85,15 +85,15 @@ def detect_gaps(
             impact_score=impact.get(c.node_id, 0.0),
             evidence={"claim_text": c.text, "support_edges": c.support_edges},
         ))
-    for c in contradictions:
+    for ct in contradictions:
         # A contradiction's impact is the stronger of its two backing nodes.
-        score = max(impact.get(c.node_id_a, 0.0), impact.get(c.node_id_b, 0.0))
+        score = max(impact.get(ct.node_id_a, 0.0), impact.get(ct.node_id_b, 0.0))
         candidates.append(GapCandidate(
             kind="contradiction",
-            question=phrase("contradiction", c.text_a, other_text=c.text_b),
-            backing_node_ids=(c.node_id_a, c.node_id_b),
+            question=phrase("contradiction", ct.text_a, other_text=ct.text_b),
+            backing_node_ids=(ct.node_id_a, ct.node_id_b),
             impact_score=score,
-            evidence={"similarity": c.similarity},
+            evidence={"similarity": ct.similarity},
         ))
 
     return dedupe_candidates(candidates)

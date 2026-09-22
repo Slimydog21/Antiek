@@ -3,6 +3,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 import { opaquePanelShadowClasses } from "../design/elevation";
+import { surfaceSpring } from "../design/motion";
 
 import { PanelHandle } from "./PanelHandle";
 import { PanelRegistry } from "./PanelRegistry";
@@ -145,11 +146,7 @@ export function PanelLayoutPanel({ id }: Props) {
         initial={reduceMotion ? false : { scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={reduceMotion ? undefined : { scale: 0.96, opacity: 0 }}
-        transition={
-          reduceMotion
-            ? { duration: 0 }
-            : { type: "spring", stiffness: 320, damping: 28 }
-        }
+        transition={reduceMotion ? { duration: 0 } : surfaceSpring}
         style={{
           position: "absolute",
           top: panel.rect.y,

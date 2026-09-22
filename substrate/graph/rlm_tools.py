@@ -68,7 +68,7 @@ import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from orchestration.rlm.prime_agent_backend import (
     PrimeAgentOutcome,
@@ -83,12 +83,15 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-try:
-    import requests  # type: ignore[import-not-found]
-    _REQUESTS_AVAILABLE = True
-except ImportError:  # pragma: no cover — best-effort
-    requests = None  # type: ignore[assignment]
-    _REQUESTS_AVAILABLE = False
+_REQUESTS_AVAILABLE = False
+if TYPE_CHECKING:
+    import requests
+else:
+    try:
+        import requests  # type: ignore[import-untyped]
+        _REQUESTS_AVAILABLE = True
+    except ImportError:  # pragma: no cover — best-effort
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +146,7 @@ RULES:
 
 
 def _build_system_prompt(
-    tool_specs: list[dict], max_rounds: int,
+    tool_specs: list[dict[str, Any]], max_rounds: int,
 ) -> str:
     """Render the tool list into the system prompt."""
     if not tool_specs:
@@ -231,8 +234,8 @@ def web_search(query: str) -> str:
                 return requests.get(
                     _serp_url,
                     params={
-                        "q": query, "api_key": serpapi_key,
-                        "engine": "google", "num": 5,
+                        "q": str(query), "api_key": str(serpapi_key),
+                        "engine": "google", "num": "5",
                     },
                     timeout=15,
                 )
@@ -282,17 +285,19 @@ def _parse_ddg_html(html: str, *, query: str) -> str:
     from html.parser import HTMLParser
 
     class DDGParser(HTMLParser):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__()
-            self.results: list[dict] = []
-            self._current: dict | None = None
+            self.results: list[dict[str, str]] = []
+            self._current: dict[str, str] | None = None
             self._in_snippet = False
             self._in_title = False
             self._buf: str = ""
             self._link: str = ""
 
-        def handle_starttag(self, tag, attrs):
-            attrs_d = dict(attrs)
+        def handle_starttag(
+            self, tag: str, attrs: list[tuple[str, str | None]]
+        ) -> None:
+            attrs_d = {k: v or "" for k, v in attrs}
             if tag == "a" and "result__a" in attrs_d.get("class", ""):
                 self._current = {"title": "", "snippet": "", "link": ""}
                 self._in_title = True
@@ -304,7 +309,7 @@ def _parse_ddg_html(html: str, *, query: str) -> str:
                     self._in_snippet = True
                     self._buf = ""
 
-        def handle_endtag(self, tag):
+        def handle_endtag(self, tag: str) -> None:
             if tag == "a" and self._in_title and self._current:
                 self._current["title"] = self._buf.strip()
                 self._in_title = False
@@ -317,7 +322,7 @@ def _parse_ddg_html(html: str, *, query: str) -> str:
                     self.results.append(self._current)
                 self._current = None
 
-        def handle_data(self, data):
+        def handle_data(self, data: str) -> None:
             if self._in_title or self._in_snippet:
                 self._buf += data
 
@@ -325,7 +330,7 @@ def _parse_ddg_html(html: str, *, query: str) -> str:
     parser.feed(html)
     if not parser.results:
         return f"(no results for: {query})"
-    snippets = []
+    snippets: list[str] = []
     for i, res in enumerate(parser.results[:5], 1):
         title = res.get("title", "(no title)")
         snippet = res.get("snippet", "")
@@ -484,7 +489,7 @@ def search_graph(query: str, top_k: int = 5) -> str:
     return _format_graph_search_result(result, query=query)
 
 
-def _format_graph_search_result(result: dict, *, query: str) -> str:
+def _format_graph_search_result(result: dict[str, Any], *, query: str) -> str:
     """Render the graph search result as a sub-LLM-friendly string."""
     parts = [f"Graph search results for: {query}\n"]
     chunks = result.get("results", [])
@@ -528,7 +533,7 @@ def _format_graph_search_result(result: dict, *, query: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-_BUILTIN_TOOLS: dict[str, dict] = {
+_BUILTIN_TOOLS: dict[str, dict[str, Any]] = {
     "web_search": {
         "fn": web_search,
         "description": "Search the web (DuckDuckGo or SerpAPI).",
@@ -563,9 +568,9 @@ def get_builtin_tool_names() -> list[str]:
     return list(_BUILTIN_TOOLS.keys())
 
 
-def get_tool_specs(names: list[str]) -> list[dict]:
+def get_tool_specs(names: list[str]) -> list[dict[str, Any]]:
     """Return tool specs (metadata, not callables) for the given names."""
-    specs = []
+    specs: list[dict[str, Any]] = []
     for name in names:
         if name in _BUILTIN_TOOLS:
             t = _BUILTIN_TOOLS[name]
@@ -644,14 +649,14 @@ class SubLLMWithTools:
         self.max_rounds = max_rounds
         self.temperature = temperature
         self.synthesis_max_tokens = synthesis_max_tokens
-        self._tools: dict[str, dict] = {}
+        self._tools: dict[str, dict[str, Any]] = {}
 
     def register_tool(
         self,
         name: str,
-        fn: Callable,
+        fn: Callable[..., Any],
         description: str,
-        parameters: list[dict],
+        parameters: list[dict[str, Any]],
     ) -> None:
         """Register a tool the sub-LLM can call."""
         self._tools[name] = {
@@ -739,7 +744,7 @@ class SubLLMWithTools:
     def _call_llm(self, system: str, user: str) -> str:
         return self.llm_call(system, user)
 
-    def _execute_tool(self, name: str, args: dict) -> str:
+    def _execute_tool(self, name: str, args: dict[str, Any]) -> str:
         fn = self._tools[name]["fn"]
         try:
             return str(fn(**args))
@@ -758,7 +763,7 @@ class SubLLMWithTools:
 
 
 def equipped_llm_batch(
-    tasks: list[dict],
+    tasks: list[dict[str, Any]],
     *,
     llm_call: LLMCall | None = None,
     investigation_id: str | None = None,

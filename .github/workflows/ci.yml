@@ -1,8 +1,9 @@
 name: CI
 
 # Substrate test gate. Runs the full pytest suite on every push to
-# main and on every PR. Failure blocks the deploy webhook (when
-# wired); for now the deploy stays manual but the gate exists.
+# main and on every PR. Failure blocks the deploy: deploy_backend.yml
+# fires on this workflow's completion and refuses to ship unless every
+# required context on the SHA is green. The deploy is no longer manual.
 #
 # Why pytest only (not lint / typecheck / coverage gates): start
 # with the test that catches regressions and add stricter checks
@@ -14,6 +15,16 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # merge_group: REQUIRED for the merge queue. A queued PR is tested as a
+  # temporary merge commit of (main + PR) delivered as a `merge_group` event,
+  # NOT as a `pull_request` event. Without this trigger the 8 required checks
+  # would never report for a queue entry and every PR would hang in the queue
+  # forever — so this must land BEFORE the merge_queue rule is enabled.
+  # Concurrency needs no change: for a non-pull_request event the group keys
+  # on github.sha with cancel-in-progress false, so each merge group gets its
+  # own run and nothing cancels it.
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:  # let the operator trigger from the Actions tab
 
 concurrency:
@@ -45,7 +56,7 @@ jobs:
     # Shards include production-scale DuckDB tests (for example a real-shape
     # 5,017-chunk merge). Loaded hosted runners can legitimately exceed the
     # old 30-minute ceiling even when every assertion is making progress.
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       # Each hosted runner starts with limited free disk. The full ML/PDF
       # dependency set is large; retaining downloaded wheels alongside the
@@ -78,7 +89,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
 
       - name: Install local media runtime
         run: |
@@ -106,8 +117,11 @@ jobs:
           XIAOMI_API_KEY: ""
           Z_AI_API_KEY: ""
           ANTIEK_OPERATOR_TOKEN: ""
+          # Hosted runners cancel a step that prints nothing for ~10 minutes.
+          # -v prints each node id as it starts so a slow file cannot look hung.
+          PYTHONUNBUFFERED: "1"
         run: |
-          python -m pytest tests/ -q -m "not integration" \
+          python -u -m pytest tests/ -v -m "not integration" \
             -p tools.pytest_file_shard
 
   pytest:
@@ -162,7 +176,7 @@ jobs:
           # package IF it installs, so macOS-frozen platform wheels are inert
           # on ubuntu.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
 
       - name: Install local media runtime
         run: |
@@ -207,6 +221,27 @@ jobs:
           Z_AI_API_KEY: ""
         run: |
           python -m pytest services/html_projection/ services/antiek_format/ services/ingestion/ \
+            -q -p no:cacheprovider
+
+      - name: Previously-uncollected test suites
+        # A 2026-09-20 sweep found nine test files (115 test functions) that
+        # NO runner collected: pytest's `testpaths` is overridden by the
+        # explicit paths every CI invocation passes, so anything outside
+        # `tests/`, `services/*`, `compounding/` and `tools/faultinject/`
+        # executed zero times. Two were failing at the time of the sweep --
+        # including tools/tests/test_fake_gate_detector.py, the suite for the
+        # tool that certifies other gates are not fake.
+        #
+        # fixtures/ is excluded deliberately: it is the corpus the meta-tests
+        # consume (test_always_fails.py etc. are MEANT to fail when executed
+        # directly) and is not a test suite of its own.
+        #
+        # tests/test_test_collection_coverage.py keeps this list honest -- it
+        # fails if a new test file lands outside every invocation here.
+        run: |
+          python -m pytest tools/tests/ runtime/notdiamond/ \
+            interfaces/research/api/test_krea_stream.py \
+            --ignore=tools/tests/fixtures \
             -q -p no:cacheprovider
 
       - name: Substrate/dispatch boundary check
@@ -426,6 +461,46 @@ jobs:
         with:
           python-version: '3.14'
           cache: 'pip'
+      # ── write-lock async floor, ENFORCED ────────────────────────────────
+      # These three lints also run in write_lock_async_floor.yml, which emits
+      # the `write-lock-async-gate` context. That workflow is PATH-FILTERED,
+      # and a required check behind `paths:` is never reported on a PR that
+      # misses the filter and so stays permanently pending — which is why it
+      # could never be added to the ruleset and has sat in
+      # `emitted_but_not_required` as "a candidate for the fence".
+      #
+      # `keystone` IS required and ci.yml carries no path filter, so running
+      # the same assertions here is what actually enforces them. They are
+      # stdlib-only (ast/dataclasses/pathlib) and need no install, so they sit
+      # BEFORE the dependency install and fail fast — a few seconds on a job
+      # that already runs, rather than a new runner on every PR while runner
+      # starvation is the throughput bottleneck.
+      #
+      # Verified under 3.14 (the standalone workflow pins 3.12) by mutation:
+      # an injected raw read-only connect in runtime/ reds with
+      # "1 NEW violation(s)", and removing it returns exit 0.
+      #
+      # tests/test_write_lock_gate_parity.py READS both files and fails if the
+      # scope, baselines or lint names drift apart, so this copy cannot
+      # silently diverge from the one it mirrors.
+      - name: Enforce — write-lock async floor (required copy)
+        env:
+          SCOPE_DIRS: >-
+            acquisition compounding interfaces middleware orchestration
+            processing roles runtime services substrate tools
+        run: |
+          python -m tools.lints.cli_with_baseline enforce raw_read_only_connect \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_raw_read_only_connect.json \
+            --check-stale
+          python -m tools.lints.cli_with_baseline enforce blocking_write_in_async \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_blocking_write_in_async.json \
+            --check-stale
+          python -m tools.lints.cli_with_baseline enforce indirect_write_in_async \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_indirect_write_in_async.json \
+            --check-stale
       - name: Install Antiek + dev deps
         run: |
           python -m pip install --upgrade pip
@@ -437,7 +512,7 @@ jobs:
           # package IF it installs, so macOS-frozen platform wheels are inert
           # on ubuntu.
           pip install -c tools/lints/constraints.txt \
-            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
       - name: Compounding benchmark (SPR-09 keystone)
         # The falsifiable compounding benchmark (compounding/benchmark/tests/).
         # `-m "not slow"` excludes the full n=20 multi-arm run. The seed-and-catch
@@ -598,6 +673,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # tools/specs/verify_spec_refs.test.ts is a GROUND-TRUTH suite: it
+          # resolves paths with `git cat-file -e origin/main:<path>` rather
+          # than mocking existence. A default checkout creates
+          # refs/remotes/origin/<checked-out-branch>, which on a PR is the
+          # merge ref -- so `origin/main` does not resolve, every lookup
+          # returns false, and the 5 ground-truth cases fail while the same
+          # job is green on a push to main (where origin/main DOES exist).
+          # Same reason the tsc/pytest jobs already pin this.
+          fetch-depth: 0
 
       - name: Set up Node 20
         uses: actions/setup-node@v6

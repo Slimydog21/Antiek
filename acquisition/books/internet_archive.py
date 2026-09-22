@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
@@ -87,7 +88,7 @@ _COPYRIGHT_CLAIM_RE = re.compile(
 )
 
 
-def _as_list(value) -> list[str]:
+def _as_list(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
     if isinstance(value, list):
@@ -95,7 +96,7 @@ def _as_list(value) -> list[str]:
     return []
 
 
-def ia_rights_input(meta: dict) -> tuple[str | None, str | None]:
+def ia_rights_input(meta: dict[str, Any]) -> tuple[str | None, str | None]:
     """THE one IA-status → classify-input mapping. Returns (license_uri,
     pd_signal); both None when PD is NOT established → classify() gates.
 
@@ -140,7 +141,7 @@ def ia_rights_input(meta: dict) -> tuple[str | None, str | None]:
     return None, None
 
 
-def _pdf_download_url(identifier: str, files) -> str | None:
+def _pdf_download_url(identifier: str, files: Any) -> str | None:
     for f in files or []:
         name = f.get("name", "")
         if isinstance(name, str) and name.lower().endswith(".pdf"):

@@ -68,7 +68,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    import duckdb
 
     from compounding.skill_growth import PatchOutcome, SkillPatchGate
     from substrate.dispatch.research_tier import ResearchTier
@@ -90,6 +89,9 @@ from orchestration.phase_runner import (  # noqa: E402
     verify_phase,
 )
 from orchestration.session_evidence_pack import SessionEvidencePack  # noqa: E402
+
+# connect_read replaces the two lazy `import duckdb` + raw read-only connects below.
+from runtime.db_lock import ReadConnection, connect_read  # noqa: E402
 from skills.domain import (  # noqa: E402
     extract_and_patch,
     generate_master_md,
@@ -168,7 +170,7 @@ def _extract_keywords(text: str, *, min_len: int = 3, max_n: int = 8) -> list[st
 
 
 def _keyword_search_chunks(
-    con: duckdb.DuckDBPyConnection,
+    con: ReadConnection,
     keywords: list[str],
     top_k: int,
     *,
@@ -246,7 +248,6 @@ def _render_chunks_block_for_sub_question(
     never serves/attributes that content publicly.
     """
     try:
-        import duckdb
 
         from processing.embedding.embed import default_embedding_provider
         from substrate.graph import default_db_path
@@ -255,7 +256,7 @@ def _render_chunks_block_for_sub_question(
         db_path = default_db_path()
         embedder = default_embedding_provider()
         keywords = _extract_keywords(sub_question)
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
         try:
             # Embedding side — half the slots
             emb_half = max(1, top_k // 2)
@@ -360,7 +361,6 @@ def _render_subgraph_block_for_sub_question(
     additive evidence, the chunks_block remains the floor.
     """
     try:
-        import duckdb
 
         from processing.embedding.embed import default_embedding_provider
         from substrate.graph import default_db_path
@@ -368,7 +368,7 @@ def _render_subgraph_block_for_sub_question(
 
         db_path = default_db_path()
         embedder = default_embedding_provider()
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
         try:
             res = graph_search(
                 con, sub_question, model=embedder, top_k=top_k,
@@ -1704,6 +1704,16 @@ async def run_synthesis_tail_from_pack(
         return ctx
 
     assert ctx.synthesis is not None
+    # Persist BEFORE announcing. `_deposit_synthesis_to_substrate` used to be
+    # a synchronous call here, so no yield point existed between the emit and
+    # the write and every consumer woke to a durable row. Moving it onto
+    # `asyncio.to_thread` (to keep the blocking DuckDB write off the loop)
+    # introduced a yield, so a subscriber to INVESTIGATION_COMPLETED could
+    # observe "completed" before the synthesis existed — the frontend, the
+    # exporter, or any other listener, not just a test. Depositing first keeps
+    # the write off the event loop AND restores the ordering guarantee the
+    # event implies.
+    await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)
     await broadcast_emit(
         broadcaster,
         ctx.investigation_id,
@@ -1719,7 +1729,6 @@ async def run_synthesis_tail_from_pack(
         role="orchestrator",
         policy_id="orchestrator-cascade-tail",
     )
-    _deposit_synthesis_to_substrate(ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
     return ctx
 
@@ -1827,6 +1836,16 @@ async def _run_investigation(
         return
 
     assert ctx.synthesis is not None
+    # Persist BEFORE announcing. `_deposit_synthesis_to_substrate` used to be
+    # a synchronous call here, so no yield point existed between the emit and
+    # the write and every consumer woke to a durable row. Moving it onto
+    # `asyncio.to_thread` (to keep the blocking DuckDB write off the loop)
+    # introduced a yield, so a subscriber to INVESTIGATION_COMPLETED could
+    # observe "completed" before the synthesis existed — the frontend, the
+    # exporter, or any other listener, not just a test. Depositing first keeps
+    # the write off the event loop AND restores the ordering guarantee the
+    # event implies.
+    await asyncio.to_thread(_deposit_synthesis_to_substrate, ctx)
     await broadcast_emit(
         broadcaster,
         ctx.investigation_id,
@@ -1842,7 +1861,6 @@ async def _run_investigation(
         role="orchestrator",
         policy_id="orchestrator-deterministic",
     )
-    _deposit_synthesis_to_substrate(ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
 
 

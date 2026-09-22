@@ -44,7 +44,7 @@ export const InvestigationsList: Story = {
               <LemonTag
                 dot
                 colour={
-                  r.status === "done" ? "aurora" : r.status === "failed" ? "danger" : "sun"
+                  r.status === "done" ? "success" : r.status === "failed" ? "danger" : "sun"
                 }
               >
                 {r.status}

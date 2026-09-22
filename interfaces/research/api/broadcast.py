@@ -22,6 +22,7 @@ events are sufficient to validate the reading-UI roundtrip end-to-end.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 import traceback
@@ -84,15 +85,11 @@ class _Subscriber:
         except asyncio.QueueFull:
             # Drop oldest, enqueue newest. Keeps the live tail current
             # even when the client falls behind.
-            try:
+            with contextlib.suppress(asyncio.QueueEmpty):  # pragma: no cover — race
                 _ = self.queue.get_nowait()
-            except asyncio.QueueEmpty:  # pragma: no cover — race
-                pass
             self.dropped += 1
-            try:
+            with contextlib.suppress(asyncio.QueueFull):  # pragma: no cover — re-race
                 self.queue.put_nowait(event)
-            except asyncio.QueueFull:  # pragma: no cover — re-race
-                pass
 
 
 class EventBroadcaster:
@@ -121,7 +118,7 @@ class EventBroadcaster:
     def __init__(self) -> None:
         self._subscribers: set[_Subscriber] = set()
         self._handlers: dict[str, list[EventHandler]] = {}
-        self._handler_tasks: set[asyncio.Task] = set()
+        self._handler_tasks: set[asyncio.Task[None]] = set()
         self._lock = asyncio.Lock()
 
     # ── WS subscribers ──────────────────────────────────────────

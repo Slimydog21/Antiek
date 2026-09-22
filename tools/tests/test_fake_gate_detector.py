@@ -98,10 +98,30 @@ def test_negative_control_fake_test_lets_the_mutant_survive():
 
 
 def test_drifted_anchor_is_anchor_stale_not_a_false_pass():
+    """A mutant whose anchor drifted adjudicated NOTHING, so it is a finding.
+
+    This assertion used to be ``assert not r.is_finding()`` under the comment
+    "stale is NOT a finding, but is NOT a pass either" — which is
+    self-contradictory, because ``not is_finding()`` is exactly what makes it a
+    pass: --enforce exits 0 and the report prints "NO FINDINGS".
+
+    Three things agree it is a finding. The module docstring: "NOT a false pass
+    — reported so the mutant is fixed", and again at run_mutant: "NEVER a false
+    pass". This test's own name. And the sibling below, which asserts
+    ``is_finding()`` for ``no-tests`` — operationally the same condition, a
+    mutant that scanned zero tests.
+
+    It mattered in practice: two mutants over runtime/db_lock.py, the
+    single-writer flock, had dead anchors while `--enforce` reported
+    "NO FINDINGS", rc=0 and a 100.0% kill rate.
+    """
     m = _by_id(_fixture_mutants(), "fixture-stale")
     r = fgd.run_mutant(m, repo=FIXTURE_DIR, timeout_s=60)
     assert r.outcome == "anchor-stale", r.detail
-    assert not r.is_finding()  # stale is NOT a finding, but is NOT a pass either
+    assert r.is_finding(), (
+        "a mutant whose anchor no longer resolves scanned nothing; reporting it "
+        "as a pass is the blind spot this detector exists to catch"
+    )
 
 
 def test_no_tests_outcome_when_selector_matches_zero_tests():

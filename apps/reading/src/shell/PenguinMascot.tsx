@@ -240,11 +240,11 @@ export function PenguinMascot() {
       pos.current = { x: target.x, y: target.y };
       el.style.transition = `left ${durationMs}ms ease-in-out, top ${durationMs}ms ease-in-out`;
       if (bob) {
-        // The at-rest `penguin-mascot-wander` and the walking `werner-waddle`
+        // The at-rest `mascot-wander` and the walking `werner-waddle`
         // both set `animation` on this one node — stacking them means the later
         // rule wins and the walk bob is silently suppressed. Swap them so the
         // feet actually bob while strolling; restore wander at rest (restGait).
-        bob.classList.remove("penguin-mascot-wander");
+        bob.classList.remove("mascot-wander");
         bob.classList.add("werner-waddle");
         // The directed gait (a fuller waddle than the ambient drift) rides
         // alongside the body bob so an excursion reads as deliberate walking.
@@ -261,7 +261,7 @@ export function PenguinMascot() {
     if (bobRef.current) {
       bobRef.current.classList.remove("werner-waddle");
       bobRef.current.classList.remove("werner-step");
-      if (!reduceMotion) bobRef.current.classList.add("penguin-mascot-wander");
+      if (!reduceMotion) bobRef.current.classList.add("mascot-wander");
     }
     if (buttonRef.current) buttonRef.current.style.transition = "";
   }, [reduceMotion]);
@@ -390,7 +390,7 @@ export function PenguinMascot() {
     const stage = createWernerStage(host);
     stageRef.current = stage;
     // Two activation paths feed the one stage: product activations (click OR
-    // hotkey, via the shared event) and any opt-in `data-werner-target` button.
+    // hotkey, via the shared event) and any opt-in `data-mascot-target` button.
     const teardownChoreo = installChoreography(stage);
     const teardownTarget = installTargetChoreography(stage);
     const teardownReactions = installReactionBus(stage);
@@ -453,12 +453,12 @@ export function PenguinMascot() {
       if (buttonRef.current) buttonRef.current.style.transition = "";
       if (bobRef.current) {
         // Invariant: `werner-waddle` ⟺ actively strolling; otherwise the idle
-        // `penguin-mascot-wander`. A drag ends any stroll, so swap back to the
+        // `mascot-wander`. A drag ends any stroll, so swap back to the
         // wander (gated on reduceMotion so a reduced-motion drag stays still).
         bobRef.current.classList.remove("werner-waddle");
         bobRef.current.classList.remove("werner-step");
         if (!reduceMotion)
-          bobRef.current.classList.add("penguin-mascot-wander");
+          bobRef.current.classList.add("mascot-wander");
       }
       if (returnTimer.current !== null) {
         window.clearTimeout(returnTimer.current);
@@ -550,8 +550,8 @@ export function PenguinMascot() {
     <button
       ref={buttonRef}
       type="button"
-      data-testid="penguin-mascot"
-      data-werner-emote={emote ?? "none"}
+      data-testid="brain-mascot"
+      data-mascot-emote={emote ?? "none"}
       aria-label="Project — click to float the project tree, double-click to open"
       title="Project · click to float · double-click to open · drag to move"
       onPointerDown={onPointerDown}
@@ -574,7 +574,7 @@ export function PenguinMascot() {
         top: pos.current.y,
       }}
     >
-      {/* The bob wrapper. At rest it carries `penguin-mascot-wander` (a small
+      {/* The bob wrapper. At rest it carries `mascot-wander` (a small
           IN-PLACE drift on top of Werner's breathing sway — ambient life, not
           locomotion); while Werner is on a directed excursion the stroll adds
           `werner-waddle`/`werner-step` here so his feet bob as he walks; while
@@ -582,7 +582,7 @@ export function PenguinMascot() {
           still for those users. */}
       <span
         ref={bobRef}
-        className={reduceMotion ? "" : "penguin-mascot-wander"}
+        className={reduceMotion ? "" : "mascot-wander"}
         style={{
           display: "block",
           width: MASCOT_SIZE,

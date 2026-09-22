@@ -68,5 +68,8 @@ def test_export_carries_forward_agent_notes(imp_env):
         "inv-carry", db_path=imp_env["db"], events_dir=imp_env["events"]
     )
     text = res.path.read_text(encoding="utf-8")
+    twin = res.twin_notes_path.read_text(encoding="utf-8")
     assert "Persist me" in text
+    assert "Persist me" in twin
     assert '"agent_notes"' in text
+    assert '"agent_notes"' in twin

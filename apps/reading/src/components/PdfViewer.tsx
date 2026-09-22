@@ -6,6 +6,7 @@ import type { DocumentRegionSelectedPayload } from "../generated/types";
 import { postTypedEvent } from "../lib/api";
 import { openNotebook } from "../workspace/actions";
 import { usePanelSizeStable } from "../workspace/PanelLayoutPanel";
+import { ErrorBanner } from "./lemon/ErrorBanner";
 import LemonButton from "./lemon/LemonButton";
 import { toast } from "./lemon/LemonToast";
 
@@ -249,9 +250,9 @@ export default function PdfViewer({
         </span>
       </div>
       {postError && (
-        <div className="px-4 py-2 text-xs font-mono bg-red-50 text-red-800 border-b border-red-200">
+        <ErrorBanner role="alert" className="rounded-none text-xs font-mono">
           {postError}
-        </div>
+        </ErrorBanner>
       )}
       <div
         className="flex-1 overflow-auto p-6 flex justify-center"

@@ -105,7 +105,7 @@ export default function LineupPanel() {
   if (loading && !lineup) {
     return (
       <LemonCard title="AI Role Lineup" elevation="z1">
-        <div className="flex items-center gap-2 p-4 text-[11px] text-shadow-1 dark:text-moonlight" role="status">
+        <div className="flex items-center gap-2 p-4 text-xs text-shadow-1 dark:text-moonlight" role="status">
           <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-sun" />
           Loading the lineup…
         </div>
@@ -117,7 +117,7 @@ export default function LineupPanel() {
     return (
       <LemonCard title="AI Role Lineup" elevation="z1">
         <div className="flex flex-col items-start gap-3 p-4">
-          <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-[11px] text-emperor" role="alert">
+          <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-xs text-emperor" role="alert">
             Lineup unavailable · {error}
           </p>
           <LemonButton variant="secondary" size="sm" onClick={() => void refresh()}>
@@ -139,7 +139,7 @@ export default function LineupPanel() {
         elevation="z1"
         footer={
           <div className="flex items-center justify-between px-4 py-2">
-            <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+            <span className="font-mono text-xxs text-shadow-1 dark:text-moonlight">
               {saving
                 ? "Saving lineup…"
                 : savedAt
@@ -147,7 +147,7 @@ export default function LineupPanel() {
                   : "No changes saved yet"}
             </span>
             {saveError && (
-              <span className="font-mono text-[10px] text-red-700 dark:text-red-300" role="alert">
+              <span className="font-mono text-xxs text-danger" role="alert">
                 Save failed · {saveError}
               </span>
             )}
@@ -155,7 +155,7 @@ export default function LineupPanel() {
         }
       >
         <div className="p-4">
-          <p className="mb-3 text-[11px] leading-relaxed text-shadow-1 dark:text-moonlight">
+          <p className="mb-3 text-xs leading-relaxed text-shadow-1 dark:text-moonlight">
             One model per role. <span className="font-bold">Writer</span> scores the human-facing
             deliverables, <span className="font-bold">Data Refinement</span> builds the play,
             <span className="font-bold"> Data Miner</span> does the grunt work, and
@@ -179,11 +179,11 @@ export default function LineupPanel() {
 
       <LemonCard title="Tactics — advanced selector" elevation="z1">
         <div className="p-4">
-          <p className="mb-3 text-[11px] leading-relaxed text-shadow-1 dark:text-moonlight">
+          <p className="mb-3 text-xs leading-relaxed text-shadow-1 dark:text-moonlight">
             Pick a model for a specific action/behavior. <span className="font-bold">Auto</span>{" "}
             follows the role's formation pick; a direct pick overrides it for that action only.
             The dispatch role + default tier shown are from{" "}
-            <code className="font-mono text-[10px]">substrate/dispatch/config.yaml</code>.
+            <code className="font-mono text-xxs">substrate/dispatch/config.yaml</code>.
           </p>
           <div className="mb-3 flex flex-wrap gap-1.5">
             {lineup.general.map((role) => (
@@ -192,14 +192,14 @@ export default function LineupPanel() {
                 type="button"
                 aria-pressed={advancedRole === role.role_id}
                 onClick={() => setAdvancedRole(role.role_id)}
-                className={`rounded-md border-2 px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                className={`rounded-md border-2 px-2.5 py-1 text-xs font-bold transition-colors ${
                   advancedRole === role.role_id
                     ? "border-sun bg-sun text-ink"
                     : "border-emperor/30 text-shadow-1 hover:border-sun/70 dark:text-moonlight"
                 }`}
               >
                 {role.label}
-                {role.discovered && <span className="ml-1 text-[8px] font-mono">NEW</span>}
+                {role.discovered && <span className="ml-1 text-xxs font-mono">NEW</span>}
               </button>
             ))}
           </div>
@@ -216,10 +216,10 @@ export default function LineupPanel() {
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-[12px] font-bold text-ink dark:text-bright">
+                        <div className="text-xs font-bold text-ink dark:text-bright">
                           {action.label}
                         </div>
-                        <div className="truncate font-mono text-[9px] text-shadow-1 dark:text-moonlight">
+                        <div className="truncate font-mono text-xxs text-shadow-1 dark:text-moonlight">
                           {action.blurb} · dispatch_role={action.dispatch_role ?? "none"} · default_tier=
                           {action.default_tier ?? "none"}
                         </div>
@@ -230,7 +230,7 @@ export default function LineupPanel() {
                           aria-label={`${action.label}: Auto`}
                           onClick={() => void assignAction(action.action_id, null)}
                           disabled={isBusy || saving}
-                          className={`rounded-md border-2 px-2 py-1 text-[10px] font-bold transition-colors ${
+                          className={`rounded-md border-2 px-2 py-1 text-xxs font-bold transition-colors ${
                             current === null
                               ? "border-sun bg-sun text-ink"
                               : "border-emperor/30 text-shadow-1 hover:border-sun/70 dark:text-moonlight"
@@ -251,7 +251,7 @@ export default function LineupPanel() {
                             void assignAction(action.action_id, { provider_id, model_id });
                           }}
                           disabled={isBusy || saving}
-                          className="max-w-[220px] rounded-md border-2 border-emperor/40 bg-ice-0 px-2 py-1 text-[11px] font-semibold text-ink dark:bg-charcoal-1 dark:text-bright"
+                          className="max-w-[220px] rounded-md border-2 border-emperor/40 bg-ice-0 px-2 py-1 text-xs font-semibold text-ink dark:bg-charcoal-1 dark:text-bright"
                         >
                           <option value="">Auto (follow formation)</option>
                           {(action.allowed_models
@@ -266,7 +266,7 @@ export default function LineupPanel() {
                             </option>
                           ))}
                         </select>
-                        {isBusy && <span className="font-mono text-[9px] text-shadow-1">…</span>}
+                        {isBusy && <span className="font-mono text-xxs text-shadow-1">…</span>}
                       </div>
                     </div>
                   </li>
@@ -274,7 +274,7 @@ export default function LineupPanel() {
               })}
             </ul>
           ) : (
-            <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-[11px] text-emperor">
+            <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-xs text-emperor">
               Select a role above to see its actions.
             </p>
           )}

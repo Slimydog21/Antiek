@@ -62,6 +62,7 @@ import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
+from types import TracebackType
 from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 
 import duckdb
@@ -179,6 +180,40 @@ def _park_warm_slot(
     if old is not None:
         # Should be unreachable under the process gate; destroy defensively.
         _destroy_warm_slot(old)
+    _schedule_warm_expiry(key, new_slot, keepalive_s)
+
+
+def _expire_warm_slot(key: str, slot: _WarmWriterSlot) -> None:
+    """Timer callback: release a parked writer whose keepalive has lapsed.
+
+    Only destroys the slot if it is STILL the parked one for this key — a
+    writer that already took it (``_take_warm_slot`` pops under the same
+    lock) is never touched, and a newer slot parked after ours is left for
+    its own timer.
+    """
+    with _warm_slots_lock:
+        current = _warm_slots.get(key)
+        if current is not slot:
+            return
+        if time.monotonic() < slot.expires_mono:
+            return
+        _warm_slots.pop(key, None)
+    _destroy_warm_slot(slot)
+
+
+def _schedule_warm_expiry(key: str, slot: _WarmWriterSlot, keepalive_s: float) -> None:
+    # WHY A TIMER EXISTS (2026-09-21): ``expires_mono`` used to be consulted
+    # only lazily, inside ``_take_warm_slot`` — i.e. on the NEXT in-process
+    # write. On an idle service nothing ever called that, so the parked
+    # writer held the cross-process flock INDEFINITELY, not "bounded by
+    # default 20s" as documented above. Measured on prod: the nightly backup
+    # could not acquire the flock in 180s three nights running (RPO breach),
+    # GET /export/my-graph answered 503 after its 15s wait, and the
+    # workaround was to stop antiek.service for every backup. The timer
+    # makes the documented bound true.
+    t = threading.Timer(max(keepalive_s, 0.0) + 0.01, _expire_warm_slot, args=(key, slot))
+    t.daemon = True
+    t.start()
 
 
 def flush_warm_writers(db_path: str | None = None) -> int:
@@ -327,6 +362,15 @@ def write_handoff_requested(db_path: str) -> bool:
     finally:
         os.close(dir_fd)
     return live_waiter
+
+
+class WriteLockClosed(RuntimeError):
+    """Raised when a closed write lease is used.
+
+    See ``LockedConnection._reject_if_closed`` — the warm-keepalive path keeps
+    the handle open for the next lease, so "closed" is about OWNERSHIP, not
+    about the underlying connection being torn down.
+    """
 
 
 class WriteLockTimeout(RuntimeError):
@@ -512,6 +556,7 @@ class LockedConnection:
         ``COMMIT`` then succeeds while applying nothing. See
         ``transaction()`` for why that silence has to be turned into a raise.
         """
+        self._reject_if_closed("execute")
         try:
             result = self._con.execute(sql, parameters)
         except Exception:
@@ -593,14 +638,40 @@ class LockedConnection:
             )
         self.execute("COMMIT")
 
-    def __getattr__(self, name):
+    def _reject_if_closed(self, what: str) -> None:
+        """A lease that has ended must not reach the handle.
+
+        On the warm-keepalive path ``close()`` hands ``self._con`` to the warm
+        slot and returns WITHOUT dropping this wrapper's reference, so the
+        handle stays open by design — it is waiting for the next lease. Without
+        this check a caller holding the closed wrapper can still write through
+        it, and ``_take_warm_slot`` hands the SAME connection object to the next
+        writer: two "holders" of one handle, the first one's writes landing
+        inside the second one's transaction.
+        """
+        if self._closed:
+            raise WriteLockClosed(
+                f"{what} on a closed write lease (purpose={self._purpose!r}). "
+                "The connection may be parked for warm reuse and is no longer "
+                "yours; acquire a new connect_write."
+            )
+
+    def __getattr__(self, name: str) -> Any:
+        # Private/dunder lookups must not trip the guard (copy, pickle, repr).
+        if not name.startswith("_"):
+            self._reject_if_closed(name)
         return getattr(self._con, name)
 
-    def __enter__(self):
+    def __enter__(self) -> LockedConnection:
         return self
 
-    def __exit__(self, exc_type, exc, tb):
-        if exc is not None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> Literal[False]:
+        if exc is not None and exc_type is not None:
             # Capture the in-flight exception so write_log records the failure
             # mode. Don't suppress it — we still return False.
             self._error = f"{exc_type.__name__}: {exc}"
@@ -1120,7 +1191,7 @@ class WriteCoordinator(Protocol):
     Callers select the active coordinator via `init_db.get_write_coordinator()`.
     """
 
-    def acquire_write_context(self, purpose: str): ...
+    def acquire_write_context(self, purpose: str) -> Iterator[WriteContext]: ...
 
 
 class FlockWriteCoordinator:
@@ -1151,7 +1222,7 @@ class FlockWriteCoordinator:
         self.timeout_s = timeout_s
 
     @contextlib.contextmanager
-    def acquire_write_context(self, purpose: str):
+    def acquire_write_context(self, purpose: str) -> Iterator[WriteContext]:
         if not purpose:
             raise ValueError(
                 "WriteCoordinator.acquire_write_context: purpose is mandatory. "
@@ -1174,11 +1245,12 @@ class FlockWriteCoordinator:
         finally:
             con.close()
 
-    def _acquire_with_override(self, purpose: str):
+    def _acquire_with_override(self, purpose: str) -> Iterator[LockedConnection]:
         """Test-only path: honor a non-default lock_path. Mirrors connect_write
         but uses self._lock_path_override.
         """
-        lock_path = self._lock_path_override  # type: ignore[assignment]
+        lock_path = self._lock_path_override
+        assert lock_path is not None  # caller branch guarantees an override
         parent = os.path.dirname(lock_path)
         if parent and not os.path.exists(parent):
             os.makedirs(parent, exist_ok=True)

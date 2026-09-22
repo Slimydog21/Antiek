@@ -208,7 +208,7 @@ class AgentMailEmailProvider:
                 "ANTIEK_AGENTMAIL_INBOX_ID to its id."
             )
         url = f"{self.api_base.rstrip('/')}/inboxes/{self.inbox_id}/messages/send"
-        payload: dict = {
+        payload: dict[str, str] = {
             "to": email.to,
             "subject": email.subject,
             "text": email.text_body,

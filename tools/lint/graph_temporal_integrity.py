@@ -58,6 +58,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from runtime.db_lock import connect_read
+
 DEFAULT_BASELINE = Path(__file__).resolve().parent / "baselines" / "graph_temporal.json"
 
 
@@ -186,7 +188,7 @@ def load_edges_from_duckdb(graph_path: str) -> list[Edge]:
     import duckdb
 
     try:
-        con = duckdb.connect(graph_path, read_only=True)
+        con = connect_read(graph_path)
     except duckdb.Error as exc:
         raise SchemaDriftError(f"cannot open graph: {exc}") from exc
     try:

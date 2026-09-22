@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-class VendorClass(str, enum.Enum):
+class VendorClass(enum.StrEnum):
     """The coarse classes the multi-cloud opt-in operates on."""
 
     LLM = "llm"
@@ -178,10 +178,10 @@ def is_enabled(vendor_class: VendorClass) -> bool:
     env_val = os.environ.get(env_key, "").strip().lower()
     if env_val in ("1", "true", "yes", "on"):
         return True
-    if env_val in ("0", "false", "no", "off", ""):
-        # explicit-off or unset; fall through to file check
-        if env_val:
-            return False
+    # Explicit-off is authoritative; only unset continues to the operator
+    # file check.
+    if env_val in ("0", "false", "no", "off") and env_val:
+        return False
     file_path = _override_file_path()
     if file_path:
         parsed = _parse_toml(file_path)

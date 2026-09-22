@@ -224,6 +224,14 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/backtest/:synthesisId",
   },
+  {
+    id: "MidnightOil",
+    workflow: "research",
+    label: "Midnight oil",
+    blurb: "Autonomous research-swarm preflight with time, budget, source, and route policy.",
+    built: true,
+    route: "/midnight-oil",
+  },
 
   // ── READ ──────────────────────────────────────────────────────────
   // Document-wrestling, the library/document index, sources, and the
@@ -493,6 +501,17 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/signals",
     sharedReason: "Audit/governance inventory over the event schema; not workflow-scoped.",
+  },
+  {
+    id: "AccountMemory",
+    workflow: "shared",
+    label: "Account memory",
+    blurb: "Owner-private facts, their provenance, and every superseded version.",
+    built: true,
+    route: "/memory",
+    sharedReason:
+      "Governance — the account's own long-term memory feeds every workflow's " +
+      "thought partner, so it belongs to none of them.",
   },
   {
     id: "PrivacyDashboard",

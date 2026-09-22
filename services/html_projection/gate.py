@@ -238,6 +238,33 @@ def _tag_interiors(html: str) -> list[str]:
     return interiors
 
 
+# An attribute value: quoted either way, or an unquoted run up to whitespace
+# or the tag close. Used to BLANK values while leaving attribute NAMES intact.
+_ATTR_VALUE_RE = re.compile(r"""=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)""")
+
+
+def _attr_names_only(tag: str) -> str:
+    """A tag interior with every attribute VALUE blanked.
+
+    Scoping the event-handler scan to tag interiors (above) stops prose from
+    false-firing, but it does not stop the tag's own attribute VALUES from
+    matching — and a URL is an attribute value full of ``name=value`` pairs.
+    Any ingested link carrying an ``on...=`` token cleared the word boundary
+    and was classified as an event handler:
+
+        ?onsale=1        -> matched "onsale="
+        ?online=true     -> matched "online="
+        #section-only=2  -> matched "only="   (the dash is a word boundary)
+
+    That is not hypothetical prose; it is an ordinary marketing URL, and
+    GET /documents/{id}/render answers 500 for the whole document when one
+    appears. Blanking values leaves the NAME side of every pair matchable, so
+    ``onclick="x()"``, ``onclick=alert(1)``, ``ONLOAD="z()"`` and
+    ``onclick ="x()"`` all still fire.
+    """
+    return _ATTR_VALUE_RE.sub("=", tag)
+
+
 def find_violations(html: str) -> list[Violation]:
     """Return every script-violation found in ``html``. Empty list = clean.
 
@@ -257,7 +284,7 @@ def find_violations(html: str) -> list[Violation]:
     # 2. Event-handler attributes (on*=). SCOPED TO TAG INTERIORS so prose
     # like "online = connected" does not false-fire.
     for tag in tag_interiors:
-        mh = _EVENT_HANDLER_RE.search(tag)
+        mh = _EVENT_HANDLER_RE.search(_attr_names_only(tag))
         if mh:
             violations.append(Violation("event_handler", _trunc(mh.group(0))))
             break

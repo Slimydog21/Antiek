@@ -104,11 +104,11 @@ def build_research_seed(
     status = served.servability or ServabilityStatus.GATED_METADATA_ONLY
     is_gated = not served.servable
 
-    if served.servable:
+    if served.servable:  # noqa: SIM108 -- branch comments document a security boundary
         # Licensed/public-domain: the selected passage (or the served body)
         # may seed the research.
         body = passage_text or served.full_text or ""
-    else:
+    else:  # noqa: SIM108 -- the branch comments document a security boundary
         # Gated / taken-down: NEVER the passage body. Only the bounded
         # snippet (or nothing). Drop any passage_text the caller passed.
         body = served.snippet or ""

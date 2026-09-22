@@ -21,6 +21,10 @@ import pytest
 # bare import error would show red. The suite runs in full once pi-execution
 # merges.
 pytest.importorskip("substrate.conversation")
+pytest.importorskip(
+    "substrate.harness.fork",
+    reason="harness.fork ships with the unmerged pi-execution primitives",
+)
 
 from substrate.conversation.compaction import compact as compact_fn
 from substrate.conversation.event import Event
@@ -185,7 +189,7 @@ def test_end_to_end_every_primitive_in_one_session(tmp_path: Path) -> None:
     assert by_tool.get("queue.watermark", 0) >= 1
 
     # 9. HARNESS DIFF — capture again; diff is non-empty
-    apply_result_v2 = apply_harness(
+    apply_harness(
         project_root=project_root, fork_name="e2e_fork", capture_tag="e2e-final",
     )
     a_snap = load_snapshot("e2e-initial", project_root)

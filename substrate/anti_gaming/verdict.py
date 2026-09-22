@@ -12,7 +12,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class FraudVerdictKind(str, enum.Enum):
+class FraudVerdictKind(enum.StrEnum):
     PASS = "pass"
     REVIEW = "review"
     BLOCK = "block"

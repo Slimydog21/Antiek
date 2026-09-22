@@ -50,3 +50,97 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit -r tools/lints/constraints.txt
+
+  pip-audit-prod:
+    # THE GAP THIS CLOSES. The job above is honestly scoped — it says it
+    # audits "what CI actually runs", and that is exactly true:
+    # tools/lints/constraints.txt is installed by 7 CI workflows and by
+    # ZERO production paths. Production installs
+    #   {{ antiek_install_dir }}[pdf,urls,embedding,docs,turbopuffer_shadow]
+    # editable from pyproject.toml with NO `-c constraints.txt`
+    # (infrastructure/ansible/playbooks/deploy.yml). So nothing in this
+    # repo measured production's dependency exposure at all. Nine weeks of
+    # red on the lock job were therefore unreadable as a production signal
+    # rather than ignored — the number for prod did not exist.
+    #
+    # WHAT THIS MEASURES, EXACTLY: the set a FRESH deploy would resolve
+    # today. That is a proxy, and the residual gap is real enough to name
+    # rather than paper over. The ansible pip task leaves `state` unset, so
+    # it defaults to `present` and never passes --upgrade; pyproject's
+    # bounds are open (cryptography>=42.0, pypdf>=4.3), so a requirement
+    # that is already satisfied is NOT bumped by a deploy. /opt/antiek/.venv
+    # can therefore hold a version older than anything resolved here, and
+    # /health returns 30 keys of which none is a dependency version, so the
+    # live set is unreadable from outside. Closing THAT needs a deploy-time
+    # freeze artifact; this job is the strongest signal obtainable from the
+    # repo alone, and it is a strict improvement on having none.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: resolve the production extras set, unconstrained
+        # Deliberately NO `-c tools/lints/constraints.txt`: constraining
+        # here would re-audit the lock and reproduce the very blind spot
+        # this job exists to remove.
+        run: |
+          python -m venv /tmp/prodenv
+          /tmp/prodenv/bin/pip install --quiet --upgrade pip
+          /tmp/prodenv/bin/pip install -e ".[pdf,urls,embedding,docs,turbopuffer_shadow]"
+          /tmp/prodenv/bin/pip freeze --exclude-editable > /tmp/prod-resolved.txt
+      - name: assert the resolved set is real before auditing it
+        # Anti-vacuity guard. `pip-audit -r` over an empty or truncated file
+        # exits 0 and reads as "no vulnerabilities" — a failed resolve, a
+        # renamed freeze flag, or a moved path would each manufacture that
+        # false green. 20 core deps + 9 extra deps + transitives is
+        # comfortably >= 30, so a smaller number means the resolve did not
+        # happen rather than that production is lean.
+        run: |
+          n=$(grep -cE '^[A-Za-z0-9._-]+==' /tmp/prod-resolved.txt || true)
+          echo "resolved $n pinned production packages"
+          if [ "$n" -lt 30 ]; then
+            echo "::error::resolved only $n packages — refusing to report a green audit over nothing"
+            exit 1
+          fi
+      - name: pip-audit the production-resolved set
+        # --no-deps is valid here precisely BECAUSE the input is `pip
+        # freeze` output: a complete, fully-pinned closure needs no further
+        # resolution. (Contrast the lock job's note on --disable-pip, which
+        # is unusable there for a different reason: it demands hashes.)
+        run: |
+          pip install pip-audit
+          pip-audit --no-deps -r /tmp/prod-resolved.txt
+      - name: publish the resolved production set
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-resolved-requirements
+          path: /tmp/prod-resolved.txt
+
+  uv-lock-audit:
+    # THE MANIFEST NOBODY NAMED. The `pip-audit` job above scans
+    # tools/lints/constraints.txt and `npm-audit` scans
+    # apps/reading/package-lock.json — the manifests someone thought to name.
+    # `uv.lock` (194 pinned packages, committed to main) was named by nothing,
+    # so no gate looked at it. When Dependabot alerts were switched on it
+    # reported 18 there including a CRITICAL, and `anyio` sat at the vulnerable
+    # 4.14.1 while constraints.txt had already been bumped to 4.14.2 — fixed in
+    # one lock, still vulnerable in another nobody audited.
+    #
+    # OSV rather than pip-audit: `pip-audit -r` dry-run-INSTALLS even with
+    # --no-deps, so it dies on platform-specific pins that cannot resolve on the
+    # runner (cuda-bindings, the nvidia-* wheels). OSV's querybatch takes
+    # name+version and needs no resolution — the right shape for a
+    # cross-platform lockfile.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Audit uv.lock against OSV
+        # Stdlib only (tomllib + urllib), so there is no install step to fail.
+        # The script carries its own anti-vacuity floor: below 100 parsed pins
+        # it errors rather than reporting a clean audit over a failed parse.
+        run: python tools/audit_uv_lock.py uv.lock

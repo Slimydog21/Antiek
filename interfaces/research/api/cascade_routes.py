@@ -45,7 +45,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from decimal import Decimal, DecimalException
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -138,6 +138,7 @@ cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 
 _SESSIONS: dict[str, CascadeSession] = {}
 _SESSION_TASKS: dict[str, asyncio.Task[None]] = {}
+_SESSION_SOURCE_POLICIES: dict[str, list[SourcePolicy]] = {}
 _HARD_CEILING_RUNS: dict[CascadeSession, tuple[ResearchProviderGateway, RunBinding]] = {}
 _HARD_CEILING_LAUNCHING: set[str] = set()
 
@@ -392,6 +393,31 @@ def _research_loop_factory() -> BrowseLoop:
     return cast(BrowseLoop, make_contract_gather_stub(steps=2, cost_per_step=0.01))
 
 
+def resolved_gather_mode() -> str:
+    """Which gather backend ``_research_loop_factory`` would build, as one word.
+
+    Exposed on ``/health`` so "is DRW actually retrieving, or returning the
+    stub?" is answerable without shell access on the box. It was not: the
+    only signal lived in an env var on the server, and
+    ``infrastructure/ansible/templates/secrets.env.j2:64`` renders
+    ``ANTIEK_DRW_GATHER=`` EMPTY (the intended ``=exa`` sits in a comment two
+    lines above), while an empty value is not ``"exa"`` and falls to the
+    stub. A deployment could therefore do no real retrieval while the smoke
+    runbook read green.
+
+    This mirrors ``_research_loop_factory``'s branch order exactly rather than
+    re-deriving it, and ``tests/test_drw_gather_mode_reported.py`` pins the
+    two together for every env combination — so the reported word cannot
+    drift from the loop that actually gets built.
+    """
+    mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
+    backend_kind = os.environ.get(BACKEND_ENV, "").strip()
+    if backend_kind:
+        # _research_loop_factory refuses this combination rather than picking one.
+        return "conflict" if mode == "exa" else "contained"
+    return "exa" if mode == "exa" else "stub"
+
+
 def _command(kind: str, payload: dict[str, Any] | None) -> Command:
     try:
         return Command(kind=CommandKind(kind), payload=payload or {})
@@ -427,6 +453,9 @@ class ApproveRequest(BaseModel):
     approver: str = "__operator__"
 
 
+SourcePolicy = Literal["arxiv", "substack", "web", "operator_corpus"]
+
+
 class LaunchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -436,6 +465,10 @@ class LaunchRequest(BaseModel):
     hard_ceiling_usd: Decimal | None = Field(default=None, gt=0, allow_inf_nan=False)
     authority_digest: str | None = Field(default=None, min_length=64, max_length=64)
     owner_model_choices: dict[str, UserModelChoice] | None = None
+    # Metadata-only source-pack intent for this DRW launch. The runner does
+    # not consume this yet; it is echoed in launch/session responses so the
+    # operator's checked policy survives the launch boundary.
+    source_policy: list[SourcePolicy] = Field(default_factory=list)
 
 
 class SpendPreviewRequest(BaseModel):
@@ -444,6 +477,31 @@ class SpendPreviewRequest(BaseModel):
     spend_mode: SpendControlMode
     amount_usd: Decimal = Field(gt=0, allow_inf_nan=False)
     per_research_budget_usd: float = Field(default=0.50, gt=0, allow_inf_nan=False)
+
+
+class SourcePolicyPreflightRequest(BaseModel):
+    source_policy: list[SourcePolicy] = Field(min_length=1)
+    root_id: str | None = None
+    problem: str | None = Field(default=None, max_length=2000)
+
+
+class SourcePolicyPreflightEntry(BaseModel):
+    source: SourcePolicy
+    status: Literal["ready", "stub", "gated"]
+    runner_consumes_today: bool
+    external_call_would_be_required: bool
+    note: str
+
+
+class SourcePolicyPreflightResponse(BaseModel):
+    source_receipt_id: str
+    source_policy: list[SourcePolicy]
+    gather_mode: str
+    external_call_performed: bool = False
+    connector_execution_allowed: bool = False
+    budget_reserved_usd: float = 0.0
+    entries: list[SourcePolicyPreflightEntry]
+    notes: list[str] = Field(default_factory=list)
 
 
 class SteerRequest(BaseModel):
@@ -533,8 +591,86 @@ async def suggestions(limit: int = 8) -> SuggestionsResponse:
     )
 
 
+@cascade_router.post(
+    "/source-policy/preflight",
+    response_model=SourcePolicyPreflightResponse,
+)
+async def source_policy_preflight(
+    req: SourcePolicyPreflightRequest,
+) -> SourcePolicyPreflightResponse:
+    """No-spend source-pack receipt for a future DRW launch.
+
+    This endpoint deliberately does not load plans, run connectors, call Exa,
+    reserve budget, or mutate the graph. It reports what the current runner
+    would be allowed to consume today and which requested sources remain
+    execution-gated. The launch path is still separately explicit.
+    """
+    import hashlib
+
+    seen: set[SourcePolicy] = set()
+    ordered: list[SourcePolicy] = []
+    for source in req.source_policy:
+        if source not in seen:
+            seen.add(source)
+            ordered.append(source)
+
+    gather_mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower() or "stub"
+    exa_enabled = gather_mode == "exa"
+    entries: list[SourcePolicyPreflightEntry] = []
+    for source in ordered:
+        if source == "operator_corpus":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="ready",
+                runner_consumes_today=True,
+                external_call_would_be_required=False,
+                note="available through the local corpus/reuse substrate when the runner reads prior knowledge",
+            ))
+        elif source == "web":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="gated" if exa_enabled else "stub",
+                runner_consumes_today=exa_enabled,
+                external_call_would_be_required=exa_enabled,
+                note=(
+                    "ANTIEK_DRW_GATHER=exa would use the env-gated Exa gather loop"
+                    if exa_enabled
+                    else "current gather mode is stub; no public-web call will run"
+                ),
+            ))
+        elif source == "arxiv":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="gated",
+                runner_consumes_today=False,
+                external_call_would_be_required=True,
+                note="paper connector/source-pack execution is not wired into DRW launch yet",
+            ))
+        elif source == "substack":
+            entries.append(SourcePolicyPreflightEntry(
+                source=source,
+                status="gated",
+                runner_consumes_today=False,
+                external_call_would_be_required=True,
+                note="Substack ingestion exists in Sources, but DRW launch does not consume it yet",
+            ))
+
+    basis = "|".join([gather_mode, req.root_id or "", req.problem or "", *ordered])
+    receipt = "srcpf-" + hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+    return SourcePolicyPreflightResponse(
+        source_receipt_id=receipt,
+        source_policy=ordered,
+        gather_mode=gather_mode,
+        entries=entries,
+        notes=[
+            "preflight only: no connector, provider, retrieval, graph write, or budget reservation ran",
+            "launch remains a separate operator action and still uses the existing approved runner path",
+        ],
+    )
+
+
 @cascade_router.post("/plans")
-async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
+def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
     """Decompose a problem into an editable, focus-checked sub-question tree
     and persist it. Returns the root node id + the editable tree."""
     if req.spend_mode is SpendControlMode.HARD_CEILING and not req.sub_questions:
@@ -607,7 +743,7 @@ async def get_plan(root_id: str) -> dict[str, Any]:
 
 
 @cascade_router.post("/plans/{root_id}/edit")
-async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
+def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
     """Apply one edit to the tree and re-persist. Any edit re-opens the
     approval gate (SPR-05 contract)."""
     with _translate():
@@ -648,7 +784,7 @@ def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
 
 
 @cascade_router.post("/plans/{root_id}/approve")
-async def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
+def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
     with _write("approve_plan") as con:
         approval = approve_plan(
             root_id, approver=req.approver, investigation_id="__operator__", con=con
@@ -1541,6 +1677,7 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                 _HARD_CEILING_LAUNCHING.discard(session_id)
 
             _SESSIONS[session_id] = session
+            _SESSION_SOURCE_POLICIES[session_id] = req.source_policy
             if owner_manifest is not None and owner_operation_id is not None:
                 _OWNER_CASCADE_LAUNCHES[session_id] = _CascadeOwnerLaunch(
                     manifest=owner_manifest,

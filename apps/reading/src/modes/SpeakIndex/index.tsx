@@ -144,7 +144,7 @@ export default function SpeakIndex() {
             onChange={(e) => setName(e.target.value)}
             placeholder="A name — e.g. my grandmother, Dad, Maria"
             aria-label="Who do you want to remember?"
-            className="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
+            className="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-base text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
           />
           <LemonButton
             type="submit"
@@ -155,7 +155,7 @@ export default function SpeakIndex() {
           </LemonButton>
         </form>
         <p
-          className="mb-6 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+          className="mb-6 font-serif text-xs text-ink-mute dark:text-moonlight"
           data-testid="private-econ-create-notice"
         >
           {PRIVATE_ECON_COPY.createDefaultsPrivate}
@@ -172,7 +172,7 @@ export default function SpeakIndex() {
         )}
 
         {error && (
-          <p className="mb-3 font-mono text-[12px] text-emperor">{error}</p>
+          <p className="mb-3 font-mono text-xs text-emperor">{error}</p>
         )}
 
         {/* M1 — the public/private split: your dashboard vs the public feed. */}
@@ -182,7 +182,7 @@ export default function SpeakIndex() {
             role="tab"
             aria-selected={tab === "yours"}
             onClick={() => setTab("yours")}
-            className={`-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider ${
+            className={`-mb-px border-b-2 px-3 py-2 font-mono text-xs uppercase tracking-wider ${
               tab === "yours"
                 ? "border-sun text-ink dark:text-bright"
                 : "border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
@@ -195,7 +195,7 @@ export default function SpeakIndex() {
             role="tab"
             aria-selected={tab === "public"}
             onClick={() => setTab("public")}
-            className={`-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider ${
+            className={`-mb-px border-b-2 px-3 py-2 font-mono text-xs uppercase tracking-wider ${
               tab === "public"
                 ? "border-sun text-ink dark:text-bright"
                 : "border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
@@ -208,7 +208,7 @@ export default function SpeakIndex() {
             role="tab"
             aria-selected={tab === "pushes"}
             onClick={() => setTab("pushes")}
-            className={`-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider ${
+            className={`-mb-px border-b-2 px-3 py-2 font-mono text-xs uppercase tracking-wider ${
               tab === "pushes"
                 ? "border-sun text-ink dark:text-bright"
                 : "border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"

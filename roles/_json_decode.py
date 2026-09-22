@@ -16,9 +16,10 @@ keep working without churn.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 
-def extract_json_object(text: str) -> dict | None:
+def extract_json_object(text: str) -> dict[str, Any] | None:
     """Best-effort JSON extraction. Handles the common LLM failure
     modes: extra prose before/after, ```json fences, trailing
     commentary. Returns the first balanced ``{...}`` that decodes
@@ -48,8 +49,12 @@ def extract_json_object(text: str) -> dict | None:
         while end > start:
             candidate = text[start : end + 1]
             try:
-                return json.loads(candidate)
+                parsed = json.loads(candidate)
             except json.JSONDecodeError:
                 end = text.rfind("}", start, end)
+            else:
+                # Top-level `{...}` JSON always decodes to a dict object.
+                if isinstance(parsed, dict):
+                    return parsed
         start = text.find("{", start + 1)
     return None

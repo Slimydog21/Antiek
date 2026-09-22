@@ -95,15 +95,15 @@ export function installChoreography(
 }
 
 /**
- * The opt-in attribute (SPR-10 M4). Any element carrying `data-werner-target`
+ * The opt-in attribute (SPR-10 M4). Any element carrying `data-mascot-target`
  * — or whose ancestor carries it — makes Werner waddle to it + emote when
  * clicked, generalizing the choreography beyond the product bar to ANY UI
  * button that opts in. The attribute VALUE, when it names a valid emote kind
- * (e.g. `data-werner-target="curious"`), picks the emote; bare presence
+ * (e.g. `data-mascot-target="curious"`), picks the emote; bare presence
  * defaults to "hit". Product-bar buttons use `data-product-id` + the activation
  * event instead, so the two paths are disjoint (no double-waddle).
  */
-export const WERNER_TARGET_ATTR = "data-werner-target";
+export const MASCOT_TARGET_ATTR = "data-mascot-target";
 
 function emoteFromAttr(raw: string | null): EmoteKind {
   return raw && (EMOTE_KINDS as readonly string[]).includes(raw)
@@ -119,7 +119,7 @@ export interface TargetChoreographyOptions {
 
 /**
  * Wire the opt-in CLICK choreography: a click on any element carrying
- * `data-werner-target` (or a descendant of one) makes Werner waddle to that
+ * `data-mascot-target` (or a descendant of one) makes Werner waddle to that
  * element and play its emote. Returns a teardown.
  *
  * It listens in the CAPTURE phase and is strictly read-only — it never calls
@@ -140,9 +140,9 @@ export function installTargetChoreography(
   const onClick = (event: Event) => {
     const start = event.target;
     if (!(start instanceof Element)) return;
-    const el = start.closest(`[${WERNER_TARGET_ATTR}]`);
+    const el = start.closest(`[${MASCOT_TARGET_ATTR}]`);
     if (!el) return;
-    stage.waddleToEl(el, emoteFromAttr(el.getAttribute(WERNER_TARGET_ATTR)));
+    stage.waddleToEl(el, emoteFromAttr(el.getAttribute(MASCOT_TARGET_ATTR)));
   };
 
   doc.addEventListener("click", onClick as EventListener, true);

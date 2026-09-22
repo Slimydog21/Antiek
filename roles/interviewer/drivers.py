@@ -21,6 +21,7 @@ them unverified rather than minting them as fact.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from .._json_decode import extract_json_object
 
@@ -65,7 +66,7 @@ return an empty list for it. Return JSON only:
 """
 
 
-def _string_list(data: dict, key: str) -> list[str]:
+def _string_list(data: dict[str, Any], key: str) -> list[str]:
     raw = data.get(key) or []
     if not isinstance(raw, list):
         raise DriverValidationError(f"{key} must be a list, got {type(raw).__name__}")

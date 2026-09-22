@@ -49,7 +49,7 @@ class CohortScore:
     p90_voice_score: float
 
 
-class AuditVerdictKind(str, enum.Enum):
+class AuditVerdictKind(enum.StrEnum):
     PASS = "pass"  # regression < 5%
     WATCH = "watch"  # regression 5-10%
     FAIL = "fail"  # regression > 10% or absolute drop below 0.70

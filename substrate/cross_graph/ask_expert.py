@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 
 def _now_iso() -> str:
@@ -116,7 +117,7 @@ def request_user_interview(
     expert_opt_in_status: str,
     topic: str,
     investigation_id: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Create an interview-request handle. Refuses unless expert has
     affirmatively opted in (opt_in_status='opted_in')."""
     if expert_opt_in_status != "opted_in":
