@@ -481,7 +481,11 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           </span>
         </div>
         <div className="relative min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
-          <Canvas investigationId={canvasFor} onOpenDetail={setOpenNode} />
+          <Canvas
+            investigationId={canvasFor}
+            onOpenDetail={setOpenNode}
+            onCiteSource={openEvidenceSource}
+          />
           {/* SPR-04: the block detail is the SECOND live FloatMenu host. It
               opens off a BlockCard click as an overlay over the canvas (the
               canvas stays mounted underneath — non-breaking) and dismisses

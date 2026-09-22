@@ -7,6 +7,7 @@ import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 const {
   getBookMock,
