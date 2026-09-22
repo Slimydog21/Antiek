@@ -1,7 +1,7 @@
 # Antiek Mascot Profile — the Brain
 
 **Status:** v4 — 32 shots across 4 rounds + 1 veo-3.1 idle video + transparent cutouts (2026-08-12)
-**Replaces:** Werner (penguin) — `apps/reading/src/brand/werner/`
+**Replaces:** the penguin mascot (historical name Werner) — formerly `apps/reading/src/brand/werner/`, now `apps/reading/src/brand/mascot/`
 **Mission tie-in:** Antiek uses AI to *amplify* the human brain, never replace it. The mascot *is* the thesis: a warm, curious, capable brain doing the learning itself.
 
 ---
@@ -118,9 +118,9 @@ All in `tools/brand/mascot-brain/`. Models: **GPT Image 2 (2K/4K), Krea 2 Large,
 
 ---
 
-## 5. App asset pipeline (mirrors Werner)
+## 5. App asset pipeline (mirrors the old penguin pipeline)
 
-Replace `apps/reading/src/brand/werner/` with `apps/reading/src/brand/cortex/` (or chosen name):
+Replace `apps/reading/src/brand/mascot/` with `apps/reading/src/brand/cortex/` (or chosen name):
 
 ```
 src/brand/cortex/
@@ -134,7 +134,7 @@ src/brand/cortex/
 
 Required next asset pass (not done yet):
 - **Vector logo mark** — hand-trace `09_logo_mark.png` to SVG for `stack-lockup.svg`/`favicon.svg` (brain silhouette + two dot eyes + smile is a tractable 3-path SVG).
-- **Dark-surface check** — verify transparent pose composites on `space-2` (`#0D1019`) like Werner's M4 criterion (composite already produced; check at 64px rail size for belly-fringe).
+- **Dark-surface check** — verify transparent pose composites on `space-2` (`#0D1019`) like the old mascot's M4 criterion (composite already produced; check at 64px rail size for belly-fringe).
 - **Social card 1200×630** — crop/place hero or reading scene.
 
 ---
@@ -145,7 +145,7 @@ Required next asset pass (not done yet):
 - **Cursor interaction:** eyes track cursor (Kirby-style pupils), wave on hover, happy squish on click — per the operator's brief.
 - **Background presence:** low-opacity floating brain in empty states / loading screens, Ghibli sparkle trail.
 - **Mood system:** map app states (reading, thinking, lost, celebrating) to the sheet's four moods, extended to 6–8.
-- Where: the reading app's existing Werner animation component (`brand-werner-animations` surface) gets renamed/re-skinned to the brain.
+- Where: the reading app's existing mascot animation component (`brand-mascot-animations` surface) gets renamed/re-skinned to the brain.
 
 ---
 

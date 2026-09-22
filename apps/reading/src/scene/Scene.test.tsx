@@ -2,9 +2,9 @@
  * Scene.test.tsx — SPR-04 milestone 1 + 6 (compositor + freeze).
  *
  *   - The Scene mounts at z-0, pointer-events-none, with all layers in the
- *     documented order (peaks → krea → clouds → snow → penguin).
+ *     documented order (peaks → krea → clouds → snow → mascot).
  *   - reducedMotion → the Scene reports frozen (a single static frame).
- *   - the scenery penguin is marked scenery (distinct from SPR-05's mascot).
+ *   - the scenery mascot is marked scenery (distinct from SPR-05's mascot).
  *   - the offline/fallback path renders procedural-only (no live Krea art),
  *     which is the path CI takes (the default Krea mock returns fallback).
  */
@@ -80,7 +80,7 @@ describe("Scene — compositor", () => {
       "krea-art-layer",
       "clouds-layer",
       "snow-layer",
-      "penguin-journey",
+      "brain-journey",
     ];
     const found = Array.from(
       container.querySelectorAll("[data-testid]"),
@@ -100,9 +100,9 @@ describe("Scene — compositor", () => {
     expect(root.getAttribute("data-scene-frozen")).toBe("true");
   });
 
-  it("the scenery penguin is marked scenery (NOT the interactive mascot)", () => {
+  it("the scenery mascot is marked scenery (NOT the interactive mascot)", () => {
     const { container } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
-    const peng = container.querySelector('[data-testid="penguin-journey"]') as HTMLElement;
+    const peng = container.querySelector('[data-testid="brain-journey"]') as HTMLElement;
     expect(peng.getAttribute("data-scenery")).toBe("true");
     // pointer-events-none ⇒ it cannot be interactive.
     expect(peng.className).toContain("pointer-events-none");
