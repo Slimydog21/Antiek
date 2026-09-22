@@ -88,6 +88,38 @@ Auth: magic-link via AgentMail. Per
 - The §16 REJECT list is canonical: no Daytona/Modal/Pulumi/etc, no
   PostHog vendor tone, no ε > 10 on DP claims, no premature scaling.
 
+## Before you touch the PR board — read this, it is the dominant cost
+
+Measured 2026-09-22 across the 28 PRs merged in one day: **each one consumed a
+median of 6 CI runs — ~58 job-slots where 9 would do. A 6.4x waste multiplier.**
+That, not the runner ceiling, is what makes the board slow. Twenty concurrent
+job-slots is ample for ~320 PRs/day at one cycle each; observed throughput was 30.
+
+Why it happens: `main-gate-integrity` sets `strict_required_status_checks_policy`,
+and main takes a commit every ~2.7 minutes against a ~63-minute CI run. A branch
+rebased early is BEHIND again within minutes and its run is wasted.
+
+- **Update-branch exactly ONE PR at a time — the one you intend to merge next.**
+  Never in a batch. A batch fires 2 runs per PR (`CI` + `enforce-declared-bar`)
+  and the first merge invalidates every other one.
+- **`ps aux | grep -iE "gh run|gh api|gh pr"` before driving any PR.** Several
+  agent sessions run against this repo at once. Two loops applying
+  BEHIND->update-branch to the same PR cannot converge: `ci.yml` keys
+  `cancel-in-progress` on the PR ref, so each session's rebase kills the other's
+  in-flight CI. Exactly one writer per branch.
+- **Do NOT auto-rerun a run whose conclusion is `cancelled`.** Under
+  `cancel-in-progress`, cancelled is the NORMAL state of a superseded attempt;
+  re-running it re-triggers the same rule. Re-run at most once, only when the run
+  is `completed`, and only for an ORPHANED run (cancelled with no newer run on
+  that branch) — that case does leave required checks unreported forever.
+- **Never bulk-cancel runs to free capacity.** Each cancelled run costs a blocked
+  PR needing a manual rerun, and `gh run cancel`/`rerun` both return 0 for
+  requests they do not fulfil — verify `run_attempt` incremented.
+- A merge QUEUE would fix this structurally and is **not available**: the rule is
+  organization-only and this repo is user-owned, so `merge_queue` returns 422
+  `Invalid rule`. The `merge_group:` triggers already in `ci.yml` and
+  `enforce_declared_bar.yml` are waiting on a repo transfer to an org.
+
 <!-- BEGIN: s16-research-fanout-exemption (unified SPR-02; operator-ratified 2026-05-25) -->
 - **§16 exemption — research fan-out only.** The operator ratified one
   scoped carve-out on 2026-05-25: *research-runner fan-out* (and only that)
