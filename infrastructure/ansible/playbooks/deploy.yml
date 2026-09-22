@@ -42,7 +42,6 @@
           playbook.
       when: not dist_stat.stat.exists
 
-
 # Phase B — substrate + frontend rsync on the VM.
 - name: Antiek substrate — deploy update
   hosts: antiek_prod
@@ -232,25 +231,11 @@
       when: antiek_continuous_unit.changed
       tags: [systemd, continuous]
 
-    - name: enable and start antiek-arxiv-oai-sync.timer
-      ansible.builtin.systemd:
-        name: antiek-arxiv-oai-sync.timer
-        enabled: true
-        state: started
-      tags: [systemd, arxiv_oai]
-
     - name: remove legacy backup cron job
       ansible.builtin.file:
         path: /etc/cron.d/antiek-backup
         state: absent
       tags: [backup]
-
-    - name: enable and start antiek-backup.timer
-      ansible.builtin.systemd:
-        name: antiek-backup.timer
-        enabled: true
-        state: started
-      tags: [systemd, backup]
 
     - name: enable and start antiek-backup-freshness.timer
       ansible.builtin.systemd:
@@ -479,6 +464,22 @@
     # otherwise hold DuckDB / flock and ansible schema tasks time out — the
     # recurring failed=1 seen across #3166–#3169 deploys. Cite
     # docs/decisions/anti-ek-composite-rollup-2026-09-19.md + ads-warm-writer-keepalive.
+    # arXiv sync and backup both acquire the same DuckDB writer lock. Starting
+    # their timers before migration let a scheduled job win that lock after
+    # uvicorn stopped; on 2026-09-22 this left antiek.service down for the
+    # remainder of a deploy. Pause both for the short exclusive maintenance
+    # window, then resume them only after the new substrate is live.
+    - name: pause DB-writing background jobs before schema migration
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - antiek-arxiv-oai-sync.timer
+        - antiek-arxiv-oai-sync.service
+        - antiek-backup.timer
+        - antiek-backup.service
+      tags: [code]
+
     - name: stop antiek before schema migrate (release DuckDB + warm flock)
       ansible.builtin.systemd:
         name: antiek.service
@@ -591,6 +592,16 @@
       until: systemd_status.stdout == "active"
       changed_when: false
       tags: [verify]
+
+    - name: resume DB-writing background jobs after substrate is live
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - antiek-arxiv-oai-sync.timer
+        - antiek-backup.timer
+      tags: [code, verify]
 
     # Re-run the same fail-closed contract during verify-only playbook runs.
     # Verifiers are connect_read (2026-09-19) so they no longer contend for the

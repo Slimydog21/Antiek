@@ -16,7 +16,7 @@
  *   2. no default window   — WindowsLayer returns null until summoned       → SPR-04
  *   3. igloo has no caption — only aria-label="Antiek home"                 → SPR-07
  *   4. no ⌘ overlay default / vim chords present                            → SPR-08
- *   5. penguin emote carries a white background                            → SPR-06
+ *   5. mascot emote carries a white background                            → SPR-06
  *
  * They are marked `test.fixme` so they DON'T block CI now (the bugs are owned
  * by later sprints), but are impossible to forget. This spec imports ONLY from
@@ -137,21 +137,21 @@ test.describe("AMS-v2 regression anchors — the v1 failures, encoded as red lig
 
   // ── Anchor 5 ──────────────────────────────────────────────────────────────
   // SPR-06 FLIPS THIS GREEN (un-fixme'd).
-  // v1 complaint #5: the penguin emote poses (loaded via brand/Werner.tsx,
-  // rendered by werner/emotes.tsx) BAKED a near-white (#FBFCFD-class) backdrop
+  // v1 complaint #5: the mascot emote poses (loaded via brand/Brain.tsx,
+  // rendered by mascot/emotes.tsx) BAKED a near-white (#FBFCFD-class) backdrop
   // into the *_v1_corrected.png raster — so an emote painted a white BOX behind
-  // the penguin even though the wrapper is bg-transparent. SPR-06's fix is the
+  // the mascot even though the wrapper is bg-transparent. SPR-06's fix is the
   // alpha-cut (cut_pose_bg.py → *_v1_transparent.png, flood-filled topologically
-  // so the white BELLY stays opaque) + repointing Werner.tsx at the transparent
+  // so the white BELLY stays opaque) + repointing Brain.tsx at the transparent
   // variants. Here we sample the mascot's whole region and assert the opaque-
   // near-white fraction is small (the surround now bleeds the surface through,
   // not a white box). Pre-fix this fraction was large (a solid white box).
-  test("anchor[penguin]: the penguin emote has no white background", async ({ page }) => {
+  test("anchor[mascot]: the mascot emote has no white background", async ({ page }) => {
     await loginAndGotoApp(page, DEFAULT_ROUTE);
     const mascot = page.locator('[data-testid="brain-mascot"]').first();
     await expect(
       mascot,
-      "penguin mascot not found (SPR-06 owns its rigging + transparent emotes)",
+      "mascot not found (SPR-06 owns its rigging + transparent emotes)",
     ).toBeVisible({ timeout: 5_000 });
     // Drive an emote so the OVERLAY pose (the surface that carried the white box)
     // is the thing on screen, then sample the mascot region for an opaque white box.
@@ -177,7 +177,7 @@ test.describe("AMS-v2 regression anchors — the v1 failures, encoded as red lig
     expect(
       frac,
       `${(frac * 100).toFixed(1)}% of the mascot region is opaque near-white — the emote ` +
-        `pose still carries a baked white backdrop (the v1 anchor[penguin] white box)`,
+        `pose still carries a baked white backdrop (the v1 anchor[mascot] white box)`,
     ).toBeLessThan(0.25);
   });
 });
