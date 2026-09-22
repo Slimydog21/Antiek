@@ -75,6 +75,7 @@ from roles.thought_partner import (  # noqa: E402
     compose_thought_partner_prompt,
     parse_thought_partner_response,
 )
+from substrate.agent_skills.py_analysis import summarize_rows  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
@@ -593,9 +594,27 @@ class DeliverableSummary(BaseModel):
     section_count: int = 0
 
 
+class SeriesStats(BaseModel):
+    """One column of a read-only projection, summarized by the
+    ``py_analysis`` kernel skill (``substrate.agent_skills``): stdlib-only
+    and pure, so the projection is read through ``connect_read`` and no
+    writer handle is opened."""
+
+    name: str
+    kind: str
+    count: int
+    mean: float | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    total: float | None = None
+
+
 class DeliverableListResponse(BaseModel):
     count: int
     deliverables: list[DeliverableSummary] = Field(default_factory=list)
+    # ``section_count`` across the listed deliverables via
+    # ``py_analysis.summarize_rows``; None when the projection is empty.
+    section_stats: SeriesStats | None = None
 
 
 class CreateSectionRequest(BaseModel):
@@ -3429,6 +3448,11 @@ def create_app(
             ).fetchall()
         finally:
             con.close()
+        # The projection is already in hand (read-only); summarize its one
+        # numeric column through the kernel skill rather than re-querying.
+        section_summary = summarize_rows(
+            [{"section_count": r[7] or 0} for r in rows]
+        ).summary("section_count")
         return DeliverableListResponse(
             count=len(rows),
             deliverables=[
@@ -3438,6 +3462,19 @@ def create_app(
                     created_at=r[5], updated_at=r[6], section_count=r[7] or 0,
                 ) for r in rows
             ],
+            section_stats=(
+                SeriesStats(
+                    name=section_summary.name,
+                    kind=section_summary.kind,
+                    count=section_summary.count,
+                    mean=section_summary.mean,
+                    minimum=section_summary.minimum,
+                    maximum=section_summary.maximum,
+                    total=section_summary.total,
+                )
+                if section_summary is not None
+                else None
+            ),
         )
 
     @app.get("/deliverables/{deliverable_id}", response_model=DeliverableDetailResponse)
