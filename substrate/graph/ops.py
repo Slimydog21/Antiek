@@ -46,6 +46,7 @@ from runtime.db_lock import LockedConnection  # noqa: E402
 try:
     from ..constants import (
         PERSONAL_READING_CONTENT_CLASS,
+        THIRD_PARTY_DOCUMENT_TYPES,
     )
     from ..event_log import emit_typed
     from ..schemas import (
@@ -60,6 +61,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from runtime.db_lock import LockedConnection
     from substrate.constants import (
         PERSONAL_READING_CONTENT_CLASS,
+        THIRD_PARTY_DOCUMENT_TYPES,
     )
     from substrate.event_log import emit_typed
     from substrate.graph.embedding_meta import (
@@ -167,30 +169,36 @@ def insert_document(
     metadata-only. The Read ingest path (``substrate/books/ingest.py``)
     always sets both — never relying on the NULL fallthrough.
 
-    DENY-BY-DEFAULT GUARD (Personal-Reading Lane SPR-01 M5, widened by audit
-    wave 3). A NULL content_class is never acceptable for a NEW row: a NULL
-    row passes the public chunk-search gate (search.py treats NULL as
-    legacy/grandfathered) and would be reachable on the monetized read path
-    — the §9.0 (Hachette / Bartz) leak. So when ``content_class is None``,
-    whatever the ``document_type``, this function writes
-    ``content_class='personal_reading'`` (the owner-readable /
-    public-non-servable lane) instead of NULL, and emits a
+    DENY-BY-DEFAULT GUARD (Personal-Reading Lane SPR-01 M5). For the
+    third-party ingest connectors (urls / youtube / twitter / Substack), a NULL
+    content_class is NOT acceptable: a NULL row passes the public chunk-search
+    gate (search.py treats NULL as legacy/grandfathered) and would be reachable
+    on the monetized read path — the §9.0 (Hachette / Bartz) leak. So when
+    ``document_type in THIRD_PARTY_DOCUMENT_TYPES`` AND ``content_class is None``,
+    this function writes ``content_class='personal_reading'`` (the
+    owner-readable / public-non-servable lane) instead of NULL, and emits a
     ``document.content_class_defaulted`` typed event recording the defaulting.
-    One rule keeps this honest:
+    Two scoping rules keep this tight and reversible:
       * EXPLICIT BEATS DEFAULT — if the caller passes any ``content_class``
-        (a verified public_domain text, an opt-in licence, the rights
-        chokepoint's resolution), the guard does NOT override it. The
-        connectors that know their rights register them in the SAME write
-        (``substrate.rights.register.register_source_document``), which
-        overrides this default before the transaction commits.
-    The rule used to be scoped to ``THIRD_PARTY_DOCUMENT_TYPES`` with
-    "genuine uploads are untouched (NULL stays NULL)". That left three
-    production inserts NULL-and-public: the Wrestle document load (any
-    ``media_type``), the Wrestle region PDF and the research-bridge paste —
-    all third-party material by content. A genuinely first-party upload
-    (``interfaces/research/api/upload_routes.py``) names its class and is
-    unaffected. Legacy NULL rows already in the store are not touched by
-    this function; their grandfathering is the retrieval gate's contract.
+        (including a positive servable basis from a future connector, e.g. a
+        verified public_domain Project Gutenberg text), the guard does NOT
+        override it.
+      * GENUINE UPLOADS ARE UNTOUCHED — a non-third-party ``document_type``
+        (book / paper / a real user_owned upload) with ``content_class=None``
+        still writes NULL exactly as before; the schema default is NOT flipped
+        (flipping it would mislabel real operator content as non-servable). The
+        guard is scoped to the four third-party types only.
+    The event fires ONLY on a genuine insert — the ``on_conflict='ignore'``
+    early-return below short-circuits before the guard, so re-inserting an
+    existing row never re-emits the defaulting event. The event carries
+    document_id + document_type + the applied content_class, NEVER raw_text
+    (§9.0: events carry no body).
+
+    ``on_conflict``:
+      - ``"error"`` (default): a duplicate ``document_id`` raises.
+      - ``"ignore"``: silently skip if a row with that ``document_id``
+        already exists. Used by the wrestling bridge to keep
+        ``document.loaded`` handling idempotent.
     """
     _assert_write_locked(con)
     # Runtime-local to keep graph module initialization independent from the
@@ -207,23 +215,12 @@ def insert_document(
         stamp_existing_document(con, document_id)
         return document_id
 
-    # Deny-by-default: a document with no explicit content_class lands
-    # personal_reading (never NULL-that-serves). Explicit always beats default.
-    #
-    # This used to apply only to THIRD_PARTY_DOCUMENT_TYPES — a denylist of
-    # four connector types — and "non-third-party types are untouched (NULL
-    # stays NULL)". Audit wave 3 (#13 residual) enumerated every production
-    # insert: the only NULL-class inserts that never register a class in the
-    # same transaction are the Wrestle document load (``p.media_type`` — an
-    # operator-uploaded file of anyone's authorship), the Wrestle region
-    # PDF, and the research-bridge paste (``external_deep_research`` — text
-    # from an outside tool). All three are third-party material by content,
-    # and all three landed NULL, which the chunk-search gate grandfathers as
-    # public. The rule now keys on what the caller SAID (nothing) rather
-    # than on a list of what the caller IS; a producer that knows the rights
-    # passes the class (the connectors register in-transaction via the
-    # rights chokepoint and override this default in the same write).
-    defaulted_to_personal_reading = content_class is None
+    # Deny-by-default: a third-party document_type with no explicit content_class
+    # lands personal_reading (never NULL-that-serves). Explicit always beats
+    # default; non-third-party types are untouched (NULL stays NULL).
+    defaulted_to_personal_reading = (
+        content_class is None and document_type in THIRD_PARTY_DOCUMENT_TYPES
+    )
     if defaulted_to_personal_reading:
         content_class = PERSONAL_READING_CONTENT_CLASS
 

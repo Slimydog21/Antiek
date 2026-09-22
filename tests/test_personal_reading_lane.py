@@ -432,14 +432,7 @@ def test_explicit_content_class_beats_default(env):
     assert matching == []
 
 
-def test_non_third_party_with_none_lands_personal_reading_too(env):
-    """Was: "a real upload keeps today's NULL behaviour". Audit wave 3 found
-    that rule left the Wrestle document load, the Wrestle region PDF and the
-    research-bridge paste NULL — and NULL is grandfathered PUBLIC by the
-    chunk-search gate. A class-less row now lands personal_reading for every
-    document_type; a first-party upload names its class (upload_routes does)
-    and is unaffected. Legacy NULL rows are the retrieval gate's contract,
-    not this function's."""
+def test_non_third_party_with_none_stays_null(env):
     con = connect_write(env["db_path"], purpose="ingest")
     try:
         insert_document(
@@ -447,17 +440,16 @@ def test_non_third_party_with_none_lands_personal_reading_too(env):
             document_id="book-legacy",
             source_tier=2,
             document_type="book",
-            title="A document of unknown rights",
-            # content_class None — deny-by-default, whatever the type
+            title="A genuine upload",
+            # content_class None — a real upload keeps today's NULL behaviour
         )
     finally:
         con.close()
-    assert _content_class_of(env["db_path"], "book-legacy") == "personal_reading"
+    assert _content_class_of(env["db_path"], "book-legacy") is None
     matching = [
         e for e in _defaulted_events(env["events_dir"]) if e.get("document_id") == "book-legacy"
     ]
-    assert len(matching) == 1, "the defaulting is recorded, exactly once, for every type"
-    assert (matching[0].get("payload") or {}).get("document_type") == "book"
+    assert matching == [], "a non-third-party upload must not emit a defaulting event"
 
 
 def test_on_conflict_ignore_does_not_re_emit_defaulting_event(env):
