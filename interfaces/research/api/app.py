@@ -1631,7 +1631,9 @@ def create_app(
             # from the configured allowlist address (first entry).
             if claims.email is None:
                 _op = os.environ.get("ANTIEK_OPERATOR_EMAIL", "").split(",")[0].strip()
-                request.state.user_email = _op or None
+                # Local/tests often have no allowlist env; fall back to a
+                # stable single-operator address so derivation still works.
+                request.state.user_email = _op or "operator@localhost"
             else:
                 request.state.user_email = claims.email
             return await call_next(request)
