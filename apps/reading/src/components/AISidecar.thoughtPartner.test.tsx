@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/api", () => ({ apiFetch: vi.fn() }));
-vi.mock("../brand/werner/animated", () => ({ WernerThinking: () => null }));
+vi.mock("../brand/mascot/animated", () => ({ BrainThinking: () => null }));
 vi.mock("../hooks/useReplyMode", () => ({
   useReplyMode: () => ({ mode: "text", setMode: vi.fn() }),
 }));
