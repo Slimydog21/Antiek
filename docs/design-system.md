@@ -202,7 +202,28 @@ Report what was not proved (geometry in a real browser, print, theme toggle unde
 
 ---
 
-## 7. Related docs
+## 7. Builtin wheel styles: a counterfactual review
+
+frontend-craft §1 asks of every visual choice whether it is derived from the subject or is
+what any generic tool would ship, and it asks for the counterfactual to be written down:
+what the surface would look like if nobody had looked at the subject. Applied to the five
+builtin styles in `services/html_projection/styles.py`:
+
+| Style | Slug | Verdict | Counterfactual, and what a subject-derived version would be |
+| --- | --- | --- | --- |
+| Antiek | `antiek` | Subject-derived | The base stylesheet is the house chrome itself: the Lemon rule and ledge language, the provenance footer, insets derived from the surface and the accent, day + night + print from one token block. Take Antiek away and this style has no reason to exist. Keep. |
+| Academic paper | `academic-paper` | Category default | Charter/Georgia, a justified 44rem column, oxblood links: the serif the word “academic” suggests, not anything measured from what Antiek’s readers actually read (arXiv HTML and preprints). A subject-derived version would take its measure, math spacing and citation-marker treatment from that corpus. Due for replacement. |
+| Book | `book` | Category default | Cream paper, old-style serif, first-line indents: the “book” every tool ships. The library’s actual holdings (Gutenberg-era scans, EPUB imports) and `design/physics-of-reading.md` are the subject; neither was consulted. Due for replacement. |
+| Blog | `blog` | Category default | Inter at 40rem with blue links is the 2020s web default, not a design. The URL-ingest corpus (Substack, personal sites) shares one trait worth keeping, a narrow measure with strong heading rhythm; a derived style would set that and nothing else. Due for replacement. |
+| Slate | `slate` | Partly subject-derived | The dark reading surface exists because long sessions are a stated use. Its palette now shares the night set’s ink, rules, accent and derived insets, with its own two-tone page (`#0f1419` body, `#171b22` sheet), pinned on at any hour. Keep; it is the house night look, not a fourth palette. |
+
+Three of the five are category defaults with a replacement direction named and none
+replaced yet. This table is the record that says so, so the wheel does not imply the set
+was designed.
+
+---
+
+## 8. Related docs
 
 - [`html-first-design-thesis.md`](./html-first-design-thesis.md) — why every artifact is HTML
 - [`craft_signature.md`](./craft_signature.md) — the performance craft signature (rubric p95)
