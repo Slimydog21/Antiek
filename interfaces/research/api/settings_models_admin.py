@@ -226,9 +226,13 @@ def request_owner_user_id(request: Request) -> str:
     )
 
     value = getattr(request.state, "user_id", None)
-    if isinstance(value, str) and value and len(value) <= 256:
-        if value.casefold() != OPERATOR_STORAGE_SENTINEL.casefold():
-            return value
+    if (
+        isinstance(value, str)
+        and value
+        and len(value) <= 256
+        and value.casefold() != OPERATOR_STORAGE_SENTINEL.casefold()
+    ):
+        return value
     derived = derive_owner_from_verified_email(
         getattr(request.state, "user_email", None)
     )
