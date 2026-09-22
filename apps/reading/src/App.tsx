@@ -8,7 +8,6 @@ import CommandPalette from "./components/CommandPalette";
 import { AuthProvider, useAuth } from "./lib/auth";
 import Backtest from "./modes/Backtest";
 import Billing from "./modes/Billing";
-import AccountMemory from "./modes/AccountMemory";
 import Biography from "./modes/Biography";
 import BrainstormStation from "./modes/BrainstormStation";
 import Coordination from "./modes/Coordination";
@@ -60,6 +59,11 @@ import ObjectiveCard from "./modes/ObjectiveCard";
 import Signals from "./modes/Signals";
 import WriteHome from "./modes/Write/WriteHome";
 import WrestleApp from "./modes/WrestleApp";
+
+// Account Memory is lazy-loaded: it is an owner-private secondary panel, not
+// part of the first paint. Keeping it out of App's entry chunk preserves the
+// WP-12.2 700 KB gz budget as the routed surface set grows.
+const AccountMemory = lazy(() => import("./modes/AccountMemory"));
 
 /**
  * Top-level route registry.
@@ -196,7 +200,20 @@ function AuthenticatedRoutes() {
             /account/memory routes have been live and gated since the
             account-memory sprint; until this route nothing in apps/ called
             either, so the facts an account accumulated were curl-only. */}
-        <Route path="/memory" element={<AccountMemory />} />
+        <Route
+          path="/memory"
+          element={
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
+                  Loading memory…
+                </div>
+              }
+            >
+              <AccountMemory />
+            </Suspense>
+          }
+        />
         <Route path="/privacy" element={<PrivacyDashboard />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/settings" element={<Settings />} />
