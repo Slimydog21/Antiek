@@ -28,6 +28,8 @@ const rows: ToolConnection[] = [
       reset_at: "2026-08-13T00:00:00-07:00",
       hard_exhausted: false,
       note: "Local Antiek meter",
+      estimated_cost_usd: null,
+      cost_note: null,
     },
   },
   {
@@ -46,6 +48,8 @@ const rows: ToolConnection[] = [
       reset_at: null,
       hard_exhausted: null,
       note: "Provider quota is not available to Antiek",
+      estimated_cost_usd: null,
+      cost_note: null,
     },
   },
   {
@@ -64,6 +68,8 @@ const rows: ToolConnection[] = [
       reset_at: null,
       hard_exhausted: null,
       note: "Provider quota is not available to Antiek",
+      estimated_cost_usd: null,
+      cost_note: null,
     },
   },
   {
@@ -82,6 +88,28 @@ const rows: ToolConnection[] = [
       reset_at: null,
       hard_exhausted: null,
       note: "Local ceiling: 8 requests per second",
+      estimated_cost_usd: null,
+      cost_note: null,
+    },
+  },
+  {
+    vendor: "x",
+    display_name: "X Developer API",
+    credential_kind: "api_key",
+    auth: "bearer_token",
+    docs_url: "https://example.test/x",
+    status: "configured_unverified",
+    credential_present: true,
+    status_note: null,
+    quota: {
+      kind: "rate_ceiling",
+      remaining: null,
+      limit: 25,
+      reset_at: null,
+      hard_exhausted: null,
+      note: "Antiek's own host-global brake across all owners and keys: 25 requests per 15 minutes. It is not a provider allowance.",
+      estimated_cost_usd: 0.125,
+      cost_note: "X bills pay-per-use credits, not a flat monthly tier: about $0.005 per post returned.",
     },
   },
 ];
@@ -261,6 +289,18 @@ describe("ToolConnectionsPanel", () => {
     await screen.findByText("Quota exhausted");
     expect(screen.getByText(/Local quota exhausted · resets/)).toBeTruthy();
     expect(screen.getByRole("meter", { name: "YouTube local quota remaining" }).getAttribute("value")).toBe("0");
+  });
+
+  it("shows what a pay-per-use provider costs rather than only its ceiling", async () => {
+    render(<ToolConnectionsPanel />);
+    const x = (await screen.findByText("X Developer API")).closest("li")!;
+    // The dollar figure, composed from the sourced per-post rate.
+    expect(within(x).getByText(/Costs you up to \$0\.125 per full-size search/)).toBeTruthy();
+    // And its provenance, so the number is never shown bare.
+    expect(within(x).getByText(/pay-per-use credits, not a flat monthly tier/)).toBeTruthy();
+    // A vendor with no sourced rate says nothing rather than guessing.
+    const youtube = screen.getByText("YouTube Data API").closest("li")!;
+    expect(within(youtube).queryByText(/Costs you up to/)).toBeNull();
   });
 
   it("uses full-width 44px controls at the mobile breakpoint", async () => {

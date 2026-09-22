@@ -173,19 +173,10 @@
         proto: tcp
       tags: [firewall]
 
-    - name: ufw — allow HTTP (Caddy ACME)
-      community.general.ufw:
-        rule: allow
-        port: "80"
-        proto: tcp
-      tags: [firewall]
 
-    - name: ufw — allow HTTPS
-      community.general.ufw:
-        rule: allow
-        port: "443"
-        proto: tcp
-      tags: [firewall]
+    # 80/443 are deliberately NOT opened: all ingress is the Cloudflare Tunnel
+    # (cloudflared → 127.0.0.1:443). The live box has had them closed since
+    # the tunnel cutover; opening them was a posture regression (D10 in #3328).
 
     - name: ufw — enable
       community.general.ufw:
@@ -233,6 +224,90 @@
         name: caddy
         state: present
       tags: [caddy]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 4b. Cloudflare Tunnel (cloudflared)
+    #
+    # The ONLY public path to api.antiek.ai. Before 2026-09-21 this playbook
+    # had zero cloudflared tasks and the tunnel credentials existed only on
+    # the running VM: a rebuilt VM restored the data but had no api.antiek.ai
+    # (D8 in #3328), so the documented 30-minute RTO was unachievable.
+    #
+    # Credentials are a secret, delivered exactly like r2-creds.yml:
+    #   --extra-vars @cloudflared-creds.yml   (gitignored) with shape
+    #       cloudflared_tunnel_id: "<uuid>"
+    #       cloudflared_tunnel_credentials_json: '{"AccountTag":..,"TunnelSecret":..,"TunnelID":..,"Endpoint":..}'
+    # Keep a copy of that file OFF the VM — it is the one artifact a rebuild
+    # cannot regenerate without the Cloudflare dashboard.
+    # ──────────────────────────────────────────────────────────────────────
+    - name: cloudflared — assert tunnel creds were passed in
+      ansible.builtin.assert:
+        that:
+          - cloudflared_tunnel_id is defined
+          - cloudflared_tunnel_credentials_json is defined
+        fail_msg: "pass --extra-vars @cloudflared-creds.yml (see comment above)"
+      tags: [cloudflared]
+    - name: cloudflared — fetch signing key
+      ansible.builtin.get_url:
+        url: https://pkg.cloudflare.com/cloudflare-main.gpg
+        dest: /usr/share/keyrings/cloudflare-main.gpg
+        mode: "0644"
+      tags: [cloudflared]
+    - name: cloudflared — apt source
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/cloudflared.list
+        content: |
+          deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main
+        mode: "0644"
+      register: cloudflared_apt_source
+      tags: [cloudflared]
+    - name: cloudflared — apt update if source changed
+      ansible.builtin.apt:
+        update_cache: true
+      when: cloudflared_apt_source.changed
+      tags: [cloudflared]
+    - name: cloudflared — install
+      ansible.builtin.apt:
+        name: cloudflared
+        state: present
+      tags: [cloudflared]
+    - name: cloudflared — config dir
+      ansible.builtin.file:
+        path: /etc/cloudflared
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      tags: [cloudflared]
+    - name: cloudflared — install tunnel credentials (0600)
+      ansible.builtin.copy:
+        content: "{{ cloudflared_tunnel_credentials_json }}"
+        dest: "/etc/cloudflared/{{ cloudflared_tunnel_id }}.json"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      tags: [cloudflared]
+    - name: cloudflared — render config.yml
+      ansible.builtin.template:
+        src: ../templates/cloudflared-config.yml.j2
+        dest: /etc/cloudflared/config.yml
+        owner: root
+        group: root
+        mode: "0644"
+      tags: [cloudflared]
+    - name: cloudflared — install systemd service (idempotent)
+      ansible.builtin.command:
+        cmd: cloudflared --no-autoupdate service install
+        creates: /etc/systemd/system/cloudflared.service
+      tags: [cloudflared]
+    - name: cloudflared — enable and start
+      ansible.builtin.systemd:
+        name: cloudflared
+        enabled: true
+        state: started
+        daemon_reload: true
+      tags: [cloudflared]
 
     # ──────────────────────────────────────────────────────────────────────
     # 5. Antiek user
