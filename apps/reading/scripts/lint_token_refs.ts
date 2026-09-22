@@ -120,8 +120,8 @@ const BORDER_NONCOLOR = new Set([
  *  big-bang refactor; this set only ever shrinks. Never add to it to silence
  *  a NEW reference — define the token instead. */
 const GRANDFATHERED = new Set([
-  "bg-card", // ResearchLensCursor.stories + werner stories — card alias mirror; Q13 lint hardening
-  "bg-card-soft", // ResearchLensCursor.stories + werner stories — same
+  "bg-card", // ResearchLensCursor.stories + mascot stories — card alias mirror; Q13 lint hardening
+  "bg-card-soft", // ResearchLensCursor.stories + mascot stories — same
 ]);
 
 function walk(dir: string, out: string[] = []): string[] {

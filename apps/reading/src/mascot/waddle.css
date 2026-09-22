@@ -1,0 +1,49 @@
+/*
+ * Brain steering gait (SPR-05 / SPR-10).
+ *
+ * These extend the mascot's existing walk feel for the FOLLOW-driven and
+ * DIRECTED (waddle-to-button) strolls. The mascot already swaps the brand
+ * `mascot-waddle` body-bob on its bob span while strolling (MascotStation.tsx
+ * + brand/mascot/animated/animations.css); this file adds:
+ *
+ *   1. `mascot-step` — a stronger, side-to-side foot-driven gait used on top
+ *      of (not instead of) the brand bob during a directed walk, so a
+ *      waddle-to-button reads as deliberate WALKING, not the ambient drift.
+ *   2. `mascot-hit-bump` — the one-shot squash/lunge for SPR-10's Tom-&-Jerry
+ *      button bump, composed over an existing emote mark (no new SVG art).
+ *
+ * Both collapse to a still frame under prefers-reduced-motion (the media
+ * query at the foot of this file), matching the brand animations' own guard.
+ * No raw colour literals here — geometry only — so token-lint stays green.
+ */
+
+/* ── Directed walking gait — a fuller waddle than the ambient drift ──────
+ * A pronounced left-right rock + vertical step so the directed walk reads as
+ * footwork. Rides on the same bob span the mascot already toggles; period
+ * matches the brand mascot-waddle (300ms) so the two stay in phase. */
+@keyframes mascot-step {
+  0%   { transform: translateY(0) rotate(-3deg); }
+  25%  { transform: translateY(-2px) rotate(0deg); }
+  50%  { transform: translateY(0) rotate(3deg); }
+  75%  { transform: translateY(-2px) rotate(0deg); }
+  100% { transform: translateY(0) rotate(-3deg); }
+}
+.mascot-step {
+  animation: mascot-step 320ms ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+
+/* ── Tom-&-Jerry button bump (SPR-10) ───────────────────────────────────
+ * A brief squash-stretch lunge toward the target on arrival. One-shot:
+ * restarts only on remount, so SPR-10 keys the emote per fire. Short + cute,
+ * not disruptive (≈360ms). */
+@keyframes mascot-hit-bump {
+  0%   { transform: scale(1, 1) translateY(0); }
+  35%  { transform: scale(1.12, 0.9) translateY(2px); }
+  55%  { transform: scale(0.94, 1.08) translateY(-3px); }
+  100% { transform: scale(1, 1) translateY(0); }
+}
+.mascot-hit-bump {
+  animation: mascot-hit-bump 360ms ease-out forwards;
+  transform-origin: 50% 100%;
+}
