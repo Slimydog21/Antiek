@@ -115,7 +115,7 @@ describe("isSolidColor — the calibration that makes assertSceneVisible honest"
   });
 });
 
-describe("SPR-06 penguin pixel helpers — the M1/M2/M5 calibration", () => {
+describe("SPR-06 mascot pixel helpers — the M1/M2/M5 calibration", () => {
   // frameMeanAbsDiff — the M1 walk-cycle + M5 stillness signal.
   it("frameMeanAbsDiff is ~0 for two identical frames (a frozen rig / still mascot)", () => {
     const a = decodePng(solidPng(40, 40, ICE));

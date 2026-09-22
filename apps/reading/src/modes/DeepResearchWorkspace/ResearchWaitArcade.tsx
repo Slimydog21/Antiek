@@ -16,9 +16,9 @@ import type { ArcadeGameKind } from "../../arcade/cartridgeFactory";
 import { ARCADE_CARTRIDGE_META } from "../../arcade/cartridgeMeta";
 import { press } from "../../design/motion";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
-import iceFishingArt from "../../brand/werner/arcade/ice-fishing-station-key-art-v1.webp";
-import paperclipArt from "../../brand/werner/arcade/paperclip-archive-key-art-v1.webp";
-import { acquireStationInstrumentSuspension } from "../../werner/stationInstrumentSuspension";
+import iceFishingArt from "../../brand/mascot/arcade/ice-fishing-station-key-art-v1.webp";
+import paperclipArt from "../../brand/mascot/arcade/paperclip-archive-key-art-v1.webp";
+import { acquireStationInstrumentSuspension } from "../../mascot/stationInstrumentSuspension";
 import {
   RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS,
   deriveResearchWaitArcadeMode,

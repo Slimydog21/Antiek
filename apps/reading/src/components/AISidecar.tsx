@@ -6,7 +6,7 @@ import {
 } from "../hooks/useThoughtPartnerThread";
 
 import { apiFetch } from "../lib/api";
-import { WernerThinking } from "../brand/werner/animated";
+import { BrainThinking } from "../brand/mascot/animated";
 import { useReplyMode } from "../hooks/useReplyMode";
 import SpokenReply from "./SpokenReply";
 import ContextPicker from "./ai/ContextPicker";
@@ -326,7 +326,7 @@ export default function AISidecar() {
             >
               {pending ? (
                 <>
-                  <WernerThinking size={20} label="" />
+                  <BrainThinking size={20} label="" />
                   <span>Thinking…</span>
                 </>
               ) : (

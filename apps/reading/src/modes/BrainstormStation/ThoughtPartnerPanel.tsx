@@ -20,7 +20,7 @@ import {
 } from "../../hooks/useThoughtPartnerThread";
 
 import { apiFetch, composeContext } from "../../lib/api";
-import { WernerThinking } from "../../brand/werner/animated";
+import { BrainThinking } from "../../brand/mascot/animated";
 import { LemonButton } from "../../components/lemon/LemonButton";
 import ContextPicker from "../../components/ai/ContextPicker";
 import {
@@ -269,7 +269,7 @@ export default function ThoughtPartnerPanel() {
       >
         {pending ? (
           <>
-            <WernerThinking size={20} label="" />
+            <BrainThinking size={20} label="" />
             <span>Thinking…</span>
           </>
         ) : (
