@@ -247,6 +247,8 @@ def _emit_synthesize_delivered(
     investigation_id: str, *,
     status: str = "single_pass",
     falsifications: list | None = None,
+    thesis_summary: str = "X is well-supported.",
+    implicit_recommendation: str = "proceed",
 ) -> None:
     if falsifications is None:
         falsifications = [
@@ -258,8 +260,8 @@ def _emit_synthesize_delivered(
     emit_typed(
         investigation_id,
         SynthesizeDeliveredPayload(
-            thesis_summary="X is well-supported.",
-            implicit_recommendation="proceed",
+            thesis_summary=thesis_summary,
+            implicit_recommendation=implicit_recommendation,
             thesis_components=[],
             falsification_conditions=falsifications,
             execution_risks=[],
@@ -608,3 +610,28 @@ def test_run_check_filters_kwargs(research_dir):
 
 def test_checks_dispatch_table_covers_1_through_9():
     assert sorted(CHECKS.keys()) == list(range(1, 10))
+
+
+def test_phase_6_rejects_a_recommendation_with_no_thesis() -> None:
+    """A recommendation other than insufficient_evidence asserts a thesis exists.
+
+    The gate verified the FALSIFICATIONS were non-vacuous but never checked
+    there was a thesis to falsify, so an empty thesis_summary recommending
+    "proceed" passed. The contract is explicit: "if you cannot produce a
+    defensible thesis with non-vacuous falsifications, signal
+    insufficient_evidence" — so anything else claims one exists.
+    """
+    _emit_synthesize_delivered("inv-p6-nothesis", status="passed", thesis_summary="")
+    ok, reason = check_phase_6("inv-p6-nothesis")
+    assert ok is False, "an empty thesis must not pass as a 'proceed' synthesis"
+    assert "thesis_summary is" in reason
+
+
+def test_phase_6_insufficient_evidence_still_accepts_an_empty_thesis() -> None:
+    """The escape hatch must survive: an honest 'no defensible thesis' converges."""
+    _emit_synthesize_delivered(
+        "inv-p6-insuf", status="passed", thesis_summary="",
+        implicit_recommendation="insufficient_evidence", falsifications=[],
+    )
+    ok, _ = check_phase_6("inv-p6-insuf")
+    assert ok is True, "insufficient_evidence must remain a converged terminal state"
