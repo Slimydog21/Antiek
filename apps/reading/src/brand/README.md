@@ -11,7 +11,7 @@ component. Animated wrappers add only motion and small semantic accents.
 `mascot-brain/PROFILE.md` is the canonical character bible: concept, design
 spec, palette, consistency protocol, and shot provenance for every future
 generation. (The penguin-era `docs/ui_redesign_posthog/brand_werner.html` is
-historical; the brain replaced Werner because Antiek's promise is AI that
+historical; the brain replaced the penguin because Antiek's promise is AI that
 amplifies the human brain, never replaces it — the mascot is the thesis.)
 
 ## BrainMascot.tsx — the four moods
@@ -51,8 +51,8 @@ the presence layer.
 Animation lives in `mascot-brain/brainMascot.css`; every wrapper imports it.
 The idle sway is a gentle breathing cycle, the blink fires at irregular
 ~3–6 s intervals, and hover provokes a blink. Every animation collapses to a
-static frame under `prefers-reduced-motion: reduce`. (The penguin-era
-keyframes in `werner/animated/animations.css` serve only the legacy wrappers
+static frame under `prefers-reduced-motion: reduce`. (The mascot-era
+keyframes in `mascot/animated/animations.css` serve only the legacy wrappers
 below.)
 
 ## What's in here
@@ -69,9 +69,9 @@ mascot-brain/             Krea pose rasters + brainMascot.css.
   authored/               Authored variant poses (head-tilt, sleeping).
 marks/                    Out-of-app brain derivatives (favicon, social card,
                           avatars) + build_brain_marks.py.
-werner/                   Legacy penguin-era animated wrappers and pose
-                          rasters, still rendering the brain via delegation;
-                          pending the batch Werner→Brain rename pass.
+mascot/                   Penguin-era animated wrappers and pose sources
+                          (Werner* → Brain*/Mascot* in the 2026-09-21 naming
+                          purge), still rendering the brain via delegation.
 ```
 
 The favicon chain (`public/mark-32.png`, `public/favicon.svg`,

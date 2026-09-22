@@ -16,7 +16,7 @@ import TrajectoryView from "./TrajectoryView";
  * per substrate event (action_type / phase numbers / dispatch internals), it
  * narrates the run in the user's terms via narrateEvent — "Breaking your
  * question into parts… Looking for evidence on X… Found supporting points…
- * Writing the answer." Werner thinks while it runs.
+ * Writing the answer." Brain thinks while it runs.
  *
  * What this component is and is NOT:
  *   - It is a READ/DISPLAY layer over `useInvestigation` (which already
@@ -187,7 +187,7 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
             </ol>
           )}
 
-          {/* While running, Werner thinks under the last line — the ongoing
+          {/* While running, Brain thinks under the last line — the ongoing
               "it's still working" signal. Sealed runs drop it. */}
           {running && lines.length > 0 && (
             <div className="mt-4 flex items-center gap-2" role="status" aria-live="polite">

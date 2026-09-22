@@ -55,7 +55,7 @@ utilities. **These three must agree** — drift is a bug.
 - **Shadows (chunky offset):** day `z1/z2/z3 = 3/5/8px 3/5/8px 0 0 ink`; night casts the same offsets in `sun-deep #84722F` (the edge glows, weathered).
 - **Radius:** `sm/md/lg = 4/6/10px` in tokens.ts; Tailwind exposes the two larger steps as `rounded-hog` (6px) / `rounded-hog-lg` (10px). **Edge width:** `2.5px` (`border-edge`).
 - **Type:** sans `Inter`, mono `JetBrains Mono`, **serif `Charter`** (prose — the notebook register).
-- **Brain mascot (shipped):** the mark is the coral brain — warm coral-pink body, soft-black eyes/stick limbs, rosy cheeks; full palette + hard rules in `src/brand/mascot-brain/PROFILE.md` (the Krea character bible). `BrainMascot.tsx` renders the four moods (`idle`/`thinking`/`empty`/`celebrate`); `BrainMark.tsx` is the geometric line-brain rail mark. The `werner` palette still exported from tokens.ts is legacy penguin chrome, pending the batch rename pass.
+- **Brain mascot (shipped):** the mark is the coral brain — warm coral-pink body, soft-black eyes/stick limbs, rosy cheeks; full palette + hard rules in `src/brand/mascot-brain/PROFILE.md` (the Krea character bible). `BrainMascot.tsx` renders the four moods (`idle`/`thinking`/`empty`/`celebrate`); `BrainMark.tsx` is the geometric line-brain rail mark. The `mascot` palette still exported from tokens.ts is legacy mascot chrome, pending the batch rename pass.
 - **Reserved accents (sparingly, never substituting for sun):** `aurora #16C2C2` (day) / `#3FE0DC` (night) (AI cognition only — thinking AND emergent outputs such as questions and insights, one role per adjudication D11 widening D8; components telling questions from insights do so by label/icon, never a second colour), `emperor #CE3623` (day) / `#FF6155` (night) (danger only — also exposed under its semantic alias `danger`, same values day + night).
 - **State colours (Q3, adjudication D2):** `success #237242` (day) / `#6ECB8F` (night) — the done/met/passed green, AA-cleared as text on ice-0/ice-2 and space-2/charcoal-2 (aurora fails that floor and stays reserved for AI cognition, D8/D11); the research-state family aliases it (`--state-done` = `var(--success)`), with `working` = sun, `blocked` = emperor, `stopped/muted` = shadow-2.
 
@@ -78,7 +78,7 @@ on this family again — `scripts/check_token_parity.ts` asserts it.
 `scripts/lint_tokens.ts` (`npm run lint:tokens`) fails on any **new** hardcoded
 hex outside `tokens.ts` / `tokens.css`. Existing literals (120 at mint, 80 live
 at the 2026-09-20 audit and only shrinking since — the dead entries are
-penguin-era SVG fills migrated to tokens, and re-minting the baseline down is
+mascot-era SVG fills migrated to tokens, and re-minting the baseline down is
 a deliberate reviewed pass, not a silencing) are grandfathered in
 `scripts/token_lint_baseline.json`. Policy:
 

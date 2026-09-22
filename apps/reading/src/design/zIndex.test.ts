@@ -23,7 +23,7 @@ describe("zIndex ladder — pinned values (no behaviour change)", () => {
     expect(zIndex.mobileRail).toBe(40); //           NavRail mobile rail (was z-40)
     expect(zIndex.floatingPanelCeiling).toBe(50); // WorkspaceStore "z = 2…50"
     expect(zIndex.mobileRailToggle).toBe(50); //     NavRail hamburger (was z-50)
-    expect(zIndex.mascot).toBe(60); //               PenguinMascot z-[60]
+    expect(zIndex.mascot).toBe(60); //               MascotStation z-[60]
     expect(zIndex.modal).toBe(100); //               LemonModal z-[100]
     expect(zIndex.popover).toBe(120); //             SlashMenu z-[120]
     expect(zIndex.adOverlay).toBe(150); //           AdBorder z-[150]
