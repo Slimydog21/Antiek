@@ -96,8 +96,15 @@ That, not the runner ceiling, is what makes the board slow. Twenty concurrent
 job-slots is ample for ~320 PRs/day at one cycle each; observed throughput was 30.
 
 Why it happens: `main-gate-integrity` sets `strict_required_status_checks_policy`,
-and main takes a commit every ~2.7 minutes against a ~63-minute CI run. A branch
-rebased early is BEHIND again within minutes and its run is wasted.
+so a branch must be up to date with main at merge time, against a ~63-minute CI
+run. **main's commit rate varies by an order of magnitude and that decides
+whether merging is winnable at all** — measured 2026-09-22: a 2.7-minute median
+gap over 24h (163 commits, inflated by a burst period) but **44.7 minutes over
+the quiet 3 hours that followed** (6 commits). Measure it before you plan a
+merge: `git log origin/main --since="3 hours ago" --format=%cI`. When the gap is
+minutes, a rebased branch is BEHIND again before CI finishes and the run is
+wasted; when it is ~45 minutes, a green PR can be updated and merged inside one
+window.
 
 - **Update-branch exactly ONE PR at a time — the one you intend to merge next.**
   Never in a batch. A batch fires 2 runs per PR (`CI` + `enforce-declared-bar`)
