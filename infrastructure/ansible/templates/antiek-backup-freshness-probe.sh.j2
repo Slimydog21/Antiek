@@ -12,7 +12,7 @@ fi
 set +a
 
 set +e
-verdict="$({{ antiek_install_dir }}/.venv/bin/python3 \
+verdict="$(PYTHON_CALL=freshness {{ antiek_install_dir }}/.venv/bin/python3 \
     {{ antiek_install_dir }}/tools/backup_freshness.py \
     --marker {{ antiek_state_dir }}/backup_freshness.json \
     --max-age-hours 26 2>&1)"
@@ -26,12 +26,53 @@ fi
 
 host="$(hostname -s 2>/dev/null || echo unknown)"
 message="[antiek-backup@${host} $(date -u +%FT%TZ)] ${verdict}"
+delivered=0
 webhook="${ANTIEK_ALERT_WEBHOOK:-}"
 if [[ -n "${webhook}" ]]; then
-    curl -fsS --max-time 15 -X POST "${webhook}" \
+    if curl -fsS --max-time 15 -X POST "${webhook}" \
         -H 'Content-Type: application/json' \
-        -d "$(jq -nc --arg text "${message}" '{text: $text}')" >/dev/null \
-        || echo "WARN: backup freshness webhook delivery failed" >&2
+        -d "$(jq -nc --arg text "${message}" '{text: $text}')" >/dev/null; then
+        delivered=1
+    else
+        echo "WARN: backup freshness webhook delivery failed" >&2
+    fi
+fi
+
+# A webhook is not delivery. When the configured sink is dead (or unset),
+# use the production email provider as the durable fallback. The secrets
+# are read from the already-exported environment; no value is printed.
+if [[ ${delivered} -eq 0 && -n "${ANTIEK_OPERATOR_EMAIL:-}" ]]; then
+    if {{ antiek_install_dir }}/.venv/bin/python3 - "${host}" "${message}" <<'PY'
+import os
+import sys
+
+from substrate.auth.email_provider import (
+    EmailDeliveryFailure,
+    OutboundEmail,
+    get_email_provider,
+)
+
+
+host, message = sys.argv[1], sys.argv[2]
+provider = get_email_provider()
+if provider.name == "mock":
+    raise SystemExit(3)
+provider.send(
+    OutboundEmail(
+        to=os.environ["ANTIEK_OPERATOR_EMAIL"],
+        subject=f"Antiek backup freshness alert on {host}",
+        text_body=message,
+    )
+)
+PY
+    then
+        delivered=1
+    else
+        echo "WARN: backup freshness email fallback failed" >&2
+    fi
+fi
+if [[ ${delivered} -eq 0 ]]; then
+    echo "WARN: no working backup freshness alert channel" >&2
 fi
 
 echo "${message}" >&2
