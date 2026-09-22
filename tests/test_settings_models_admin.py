@@ -1118,11 +1118,9 @@ def test_boot_reload_lands_after_create_app_state_assignment(env: Path) -> None:
     # create_app has already run its assignment (empty set: no provider
     # keys); the reload is a lifespan-startup handler and has NOT run yet.
     assert app.state.registered_providers == set()
-    with TestClient(app) as c:
+    with TestClient(app):
         # Startup fired: reload landed after the assignment, not clobbered.
         assert app.state.registered_providers == {_pid("my-deepseek")}
-        # Full create_app has real auth middleware; inventory needs a
-        # session. The reload claim under test is the name set above.
     reset_provider_registry()
 
 
