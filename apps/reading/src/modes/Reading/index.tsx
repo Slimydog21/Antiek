@@ -12,7 +12,7 @@ import type {
 } from "../shared/FloatMenu/useFloatMenuSelection";
 import ReadingColumn from "../../components/reader/ReadingColumn";
 import { useInWindow } from "../../components/windows/windowHostContext";
-import { WernerTobogganSpinner } from "../../brand/werner/animated";
+import { BrainTobogganSpinner } from "../../brand/mascot/animated";
 import { notifyEvidenceSourceOpened } from "../../mascot";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
@@ -364,7 +364,7 @@ export default function BookReader({
       <CenterNote inWindow={inWindow}>
         {inWindow && evidenceSourceContext ? (
           <span className="flex flex-col items-center gap-2">
-            <WernerTobogganSpinner size={64} label="Opening the research source…" />
+            <BrainTobogganSpinner size={64} label="Opening the research source…" />
             <span aria-hidden="true">Opening the research source…</span>
           </span>
         ) : (
