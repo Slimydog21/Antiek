@@ -213,6 +213,7 @@ to prevent.
   54KB of `<ast.Module object at 0x…>` and names no module at all:
 
   ```bash
+  cd /opt/antiek          # or the Mac checkout — `-c` puts CWD on sys.path
   ./.venv/bin/python -c "
   import ast, substrate.ad_inventory.auction_model as m
   mods = set()
