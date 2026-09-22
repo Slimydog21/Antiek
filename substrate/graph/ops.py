@@ -461,8 +461,22 @@ def insert_chunk(
             int(token_count),
         ],
     )
-    if embedding is not None and embedding_provider is not None:
-        record_chunk_embedding_meta(con, chunk_id=cid, provider=embedding_provider)
+    if embedding is not None:
+        # Pin the provider identity for EVERY stored vector. This used to run
+        # only when the caller passed ``embedding_provider=``, and 15 of 16
+        # production producers did not — so their vectors entered
+        # ``chunks.embedding`` unpinned, ``assert_embedding_compatible``
+        # found no embeddings_meta row and returned None, and a MiniLM query
+        # was ranked against whatever those floats were (hash vectors, when
+        # the provider had silently fallen back). The docstring's promise that
+        # a provider switch is "loud, never silent" only holds if the pin is
+        # unconditional. When no provider is named, the vector came from the
+        # process default — so that is the identity recorded.
+        provider = embedding_provider
+        if provider is None:
+            from processing.embedding.embed import default_embedding_provider
+            provider = default_embedding_provider()
+        record_chunk_embedding_meta(con, chunk_id=cid, provider=provider)
     return cid
 
 

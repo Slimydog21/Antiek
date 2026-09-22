@@ -220,10 +220,24 @@ def default_embedding_provider() -> EmbeddingProvider:
         )
     try:
         _DEFAULT_PROVIDER = SentenceTransformerEmbedding(model_name)
-    except RuntimeError:  # sentence-transformers not installed
+    except RuntimeError as exc:
+        # Fall back to HashEmbedding ONLY when the package is genuinely
+        # absent. ``SentenceTransformerEmbedding.__init__`` raises
+        # ``RuntimeError(...) from ImportError`` for that case, so the cause
+        # is the discriminator. Every other RuntimeError — torch OOM, a corrupt
+        # weight file, a device that failed to initialise — used to take this
+        # same branch, print "sentence-transformers unavailable" (false), and
+        # silently make every subsequent chunk a 384-dim HASH vector: the same
+        # dimension as MiniLM, so nothing downstream could tell, and retrieval
+        # degraded to "lexical/hash collisions, not meaning" (see
+        # tools/reembed_chunks.py, which records this having happened in prod).
+        # A provider that cannot be constructed for any other reason is an
+        # error, not a configuration choice.
+        if not isinstance(exc.__cause__, ImportError):
+            raise
         import sys as _sys
         _sys.stderr.write(
-            "antiek: sentence-transformers unavailable; falling back to "
+            "antiek: sentence-transformers not installed; falling back to "
             "HashEmbedding. Install via `pip install sentence-transformers` "
             "to enable semantic search.\n"
         )
