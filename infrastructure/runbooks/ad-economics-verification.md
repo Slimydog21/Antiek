@@ -33,15 +33,38 @@ auction (SPR-10 select_ad) prices the window
 
 ```bash
 # the harness + auditable report (idempotent; safe to re-run)
-.venv/bin/python tools/verify_ad_economics.py
+# (name the variable rc, not status — status is read-only in zsh)
+.venv/bin/python tools/verify_ad_economics.py > /tmp/ad-econ.txt 2>&1; rc=$?
+cat /tmp/ad-econ.txt
 
-# the e2e assertions
+# the verdict lives in the REPORT TEXT, not in $? — read both
+grep -q '^OVERALL: VERIFIED' /tmp/ad-econ.txt \
+  && echo 'AD-ECON: report VERIFIED' \
+  || echo 'AD-ECON: DISCREPANCY — read /tmp/ad-econ.txt'
+[ "$rc" -eq 0 ] && echo 'AD-ECON: idempotency OK' || echo 'AD-ECON: idempotency FAILED'
+
+# the e2e assertions — this is the actual gate
 .venv/bin/python -m pytest tests/test_ad_economics_e2e.py -q
 ```
 
-The harness exits non-zero if conservation, traceability, the safety valve, or
-idempotency fails. It is read-only against any recorded corpus; every DB write
-goes through the single-writer lock (`runtime.db_lock.connect_write`).
+**Grade the harness on its report, not on its exit code.** `main()`
+(`tools/verify_ad_economics.py:851`) is `return 0 if idempotent else 1`, so
+idempotency is the *only* failure that reaches `$?`. The `overall` flag —
+conservation, per-window reconciliation, non-negative amounts, every trace, the
+gate closed, disbursement blocked, replay identical — is a local computed inside
+`render_report()` and printed; `main()` never reads it. A control run with
+`reconcile()` patched to report a broken ledger printed `CONSERVES TO THE CENT:
+False` and `OVERALL: DISCREPANCY` and still exited `0`. So never script
+`verify_ad_economics.py || alert`: grep the `OVERALL:` line as above, and lean on
+the pytest run, where `test_m6_report_states_zero_disbursed` asserts `VERIFIED`
+appears in the rendered report (it does not when the money story breaks). The
+fix is one line — return `overall` from `render_report()`, or recompute it in
+`main()`, and make `main()` `return 0 if (idempotent and overall) else 1`; until
+that lands, a green exit code is not a verdict.
+
+The harness is read-only against any recorded corpus; every DB write goes
+through the single-writer lock (`runtime.db_lock.connect_write`) into a fresh
+temp DuckDB, so re-running it touches nothing an operator cares about.
 
 ---
 
@@ -54,7 +77,7 @@ goes through the single-writer lock (`runtime.db_lock.connect_write`).
 | M3 | traceability amount→chunk→asset→holder, reconciles | each holder's escrow traces via `explain_asset_earning` + the frame accrual rows to the EXACT accrued cents (`trace_reconciles=True`); per-chunk sums to asset total |
 | M4 | eligibility gate read, not re-derived | `user_owned` earns $0 even alone (whole window → house); `restricted_pending_opt_in` earns to escrow while NOT in `FULL_TEXT_SERVABLE`; verdicts come from `monetization_eligible` |
 | M5 | house-second pocket is an explicit line | a zero-eligible window writes a `house_seconds` row, no contributor accrues; `Σ house` recomputed independently equals the report and reconciles into M2 |
-| M6 | safety valve: escrow accrues, NOTHING disburses | escrow lands on `pre_onboarded` holders (no notification); `attempt_disbursement` raises `DisbursementBlocked`; `ANTIEK_STRIPE_PROVIDER != real`; no `tools/stripe_connect/` import; report states `disbursed: $0 (G2/G3 open)` |
+| M6 | safety valve: escrow accrues, NOTHING disburses | escrow lands on `pre_onboarded` holders (no notification); `attempt_disbursement` raises `DisbursementBlocked`; `ANTIEK_STRIPE_PROVIDER != real`; no `tools/stripe_connect/` import (proven by `test_m6_no_stripe_path_invoked`, NOT by the report line); report states `disbursed: $0 (G2/G3 open)` |
 
 ---
 
@@ -88,7 +111,14 @@ lines with a known holder and amount > 0).
 - Independently, every earning holder is `pre_onboarded`. `ip_holders.claim()`
   (the ONLY transition that unlocks payout) is never called, so even if the
   gate were open, status alone blocks the payout.
-- No module under `tools/stripe_connect/` is imported or invoked.
+- No module under `tools/stripe_connect/` is imported or invoked. Note what
+  proves it: the report's `no Stripe path under tools/stripe_connect/ invoked:
+  True` is a hardcoded literal in `check_safety_valve` (`SafetyValve(
+  no_stripe_path_invoked=True)`), so that line is a statement, not a
+  measurement. The structural proof is `test_m6_no_stripe_path_invoked`, which
+  imports the harness in a FRESH interpreter, asserts no `tools.stripe_connect.*`
+  module lands in `sys.modules`, and scans the harness source for the package
+  name. Trust the test, not the line.
 - The G2/G3 gate is **not** closed, flipped, simulated, or bypassed by this
   sprint. Closing it is an operator action gated on counsel sign-off (see
   `docs/operator_gate_actions.md`).
@@ -207,4 +237,20 @@ decide — the production choice is the operator's (master-spec §9.3).
 - This runbook — operator reproduction guide + recorded report
 
 This sprint touches NOTHING under `substrate/ad_inventory/payout.py` or
-`tools/stripe_connect/` (`git diff --stat` on both is empty).
+`tools/stripe_connect/`. Check that against the sprint's own base, not against
+the working tree: a bare `git diff --stat` compares the tree to `HEAD` and comes
+back empty on any clean checkout no matter what the sprint changed, so it cannot
+fail and proves nothing. SPR-11 landed as `10ac82644`, so:
+
+```bash
+# quote the range — zsh reads an unquoted SHA:path as a history modifier
+git diff --stat '10ac82644^..10ac82644' -- substrate/ad_inventory/payout.py tools/stripe_connect/
+#   -> prints nothing: the claim holds
+
+# positive control: the same command CAN print, so the silence above is evidence
+git diff --stat '10ac82644^..10ac82644' -- tools/verify_ad_economics.py
+#   ->  tools/verify_ad_economics.py | 859 +++++++++++++++++++++++++++++++++++++++++++
+```
+
+On a branch that has not merged yet, substitute
+`"$(git merge-base origin/main HEAD)..HEAD"` for the pinned range.
