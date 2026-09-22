@@ -52,6 +52,12 @@ default) instead of the real prod file.
   Every command below uses `$LIVE_DB`. **Never** let `--db-path` /
   `--live-db` / the audit `--db-path` default — always pass `$LIVE_DB`.
 
+  That `export` lives and dies with **this ssh session**. Preflight 2 and steps
+  1–2 run back on the control node, and step 3 opens a *second* ssh, so the
+  variable is gone by the time the merge and the audit need it. Step 3
+  re-derives it from the same unit at the top of that session — do not assume it
+  survived, and do not retype a path from memory.
+
 ### Preflight 2 — Ansible `template:` renders from the CONTROL-NODE checkout
 
 Any templated ansible play (`deploy.yml`, anything with a `template:` task)
@@ -139,6 +145,19 @@ are flagged `[body not assessed pre-ingest]` — expected, not a defect). If the
 plan looks wrong, adjust `--source` / selectors / `--limit` and dry-run again.
 Nothing has touched any DB.
 
+Two things `--limit` does **not** do. It is a per-source cap, never a batch
+total, and `--pd-curated` overrides it outright: the curated spine raises the
+limit to the 23 hard-coded Gutenberg ids and then hands the same `--limit` to
+each of the five curated book connectors (Standard Ebooks, Wikisource, Internet
+Archive, HathiTrust, Library of Congress), so `--limit 25` plans dozens of
+documents rather than 25. Read the count the plan prints, not the flag. Second,
+a source whose throttle sentinel is armed is skipped rather than fetched:
+discovery prints a `rotation: ...` line on **stderr** and that source
+contributes **zero** candidates while the run still exits 0. `arxiv_export` has
+been banned for long stretches, so if you meant to land arXiv, read the
+`rotation:` lines before you believe the plan — only an every-source-banned run
+halts loudly (exit 3).
+
 ## 2. Back up prod BEFORE any prod write
 
 ```bash
@@ -159,7 +178,12 @@ serving; nothing is stopped (Preflight 4).
 
 ```bash
 ssh -i ~/.ssh/antiek_ed25519 root@<vm-ip>
-# $LIVE_DB was pinned in Preflight 1.
+# This is a NEW shell — Preflight 1's export did not survive it. Re-derive the
+# live path from the same unit. Keep the grep: it is what holds the secrets
+# systemd loaded from EnvironmentFile off your screen.
+LIVE_DB=$(systemctl show antiek -p Environment | tr ' ' '\n' \
+  | grep -m1 ANTIEK_DUCKDB_PATH | sed 's/.*ANTIEK_DUCKDB_PATH=//')
+test -f "$LIVE_DB" && echo "live DB present: $LIVE_DB" || echo "WRONG PATH — stop"
 STAGING_DB=/home/antiek/.antiek/staging-$(date +%Y%m%d-%H%M%S).duckdb
 
 sudo -u antiek /opt/antiek/.venv/bin/python -m tools.run_corpus_ingest \
@@ -169,15 +193,43 @@ sudo -u antiek /opt/antiek/.venv/bin/python -m tools.run_corpus_ingest \
     --staging-db "$STAGING_DB"
 ```
 
-The orchestrator reports `ingested N / M planned; K failed`. Per-item failures
-are isolated — one bad fetch never aborts the batch. Re-running is safe: dedup
-collapses within a run and the connectors key on content-stable identity, so an
-already-present work is not duplicated.
+The orchestrator reports `staged N / M planned; K failed` — **staged**, not
+ingested, because nothing has reached live yet — and echoes the exact
+`merge_staging` command for step 4. Per-item failures are isolated — one bad
+fetch never aborts the batch. Re-running is safe: dedup collapses within a run
+and the connectors key on content-stable identity, so an already-present work is
+not duplicated.
 
-> For a standing, box-bounded fill use `--continuous --staging-db "$STAGING_DB"`
-> (one process, one in-process loop, paced/halted against the box ceiling — NOT
-> a daemon or fan-out). It still merges on a cadence via the same brief-window
-> mechanism; the no-stop / staging discipline is identical.
+**Stay in this session through step 7.** Steps 4, 6 and 7 all expand `$LIVE_DB`
+and `$STAGING_DB`. If the connection drops, re-run the `LIVE_DB=` derivation
+above, then re-point `STAGING_DB` at the file you already wrote — do *not* let
+the `$(date …)` line mint a fresh empty one, or the merge will land nothing:
+
+```bash
+STAGING_DB=$(ls -t /home/antiek/.antiek/staging-*.duckdb | head -1)
+ls -l "$STAGING_DB"   # eyeball the timestamp and size before you merge it
+```
+
+> For a standing, box-bounded fill add `--continuous` — and pass **both** DBs:
+>
+> ```bash
+> sudo -u antiek /opt/antiek/.venv/bin/python -m tools.run_corpus_ingest \
+>     --source arxiv --arxiv-category cs.LG \
+>     --source public_domain --pd-curated \
+>     --continuous --staging-db "$STAGING_DB" --db-path "$LIVE_DB"
+> ```
+>
+> One process, one in-process loop, paced/halted against the box ceiling — NOT a
+> daemon or fan-out. It merges on a cadence through the same brief-window
+> mechanism, but **only if `--db-path` names the live DB**. `--continuous` is
+> enforced to require `--staging-db` and nothing enforces `--db-path`, so without
+> it every cadence merge returns `skipped: no_live_db`, resets the accumulator so
+> the cadence will not re-fire, emits no merge event, prints nothing and exits 0
+> — a fill that stages forever and lands zero rows in live. Passing `--db-path`
+> does not put the ingest back on the live writer: with `--staging-db` set the
+> ingest still writes staging (`runtime.staging_db.resolve_ingest_target`), and
+> `--db-path` is read only as the cadence merge's target. The no-stop / staging
+> discipline is otherwise identical.
 
 ## 4. Merge the staging DB into live — the ONLY writer-touching step (brief)
 
@@ -192,6 +244,17 @@ sudo -u antiek /opt/antiek/.venv/bin/python -m tools.merge_staging \
     --live-db "$LIVE_DB" \
     --staging-db "$STAGING_DB"
 ```
+
+Run this in the **same session as step 3** — `merge_staging` does not validate
+`--live-db`, and an empty `$LIVE_DB` satisfies argparse. It hands `''` straight
+to `connect_write`, drops a stray `.write.lock` in the *current directory*
+rather than beside a DB, and then dies somewhere downstream — a
+`SchemaDivergence`, a DuckDB parser error on an empty column list, or an
+`IOException: … Is a directory`, depending on where you were standing. It never
+says "your variable is empty" and it never merges anything (exit 1, zero rows).
+So read the tell, not the traceback: a `.write.lock` sitting in your cwd means
+you lost the pin. Re-run the step-3 derivation and re-run the merge — it is
+idempotent, so a repeat costs nothing.
 
 The merge is idempotent on the content-stable id (a re-merge inserts zero rows)
 and atomic (an interruption mid-merge leaves live exactly at its pre-merge
@@ -218,6 +281,17 @@ sudo -u antiek /opt/antiek/.venv/bin/python -m substrate.corpus_audit \
     --db-path "$LIVE_DB"
 echo "audit exit code: $?"
 ```
+
+This runs in the same session as steps 3–4; Preflight 1's export does not reach
+here either. A lost pin fails safe rather than auditing the wrong corpus — you
+get `corpus audit: db not found at ` with nothing after it and `audit exit code:
+2`. That is a missing variable, not a violated invariant: re-derive `$LIVE_DB`
+and run it again. The uglier case is a path that exists but holds no corpus
+schema — that one exits **1** with a raw `_duckdb.CatalogException: Catalog
+Error: Table with name documents does not exist!` traceback, which is Preflight
+1's landmine wearing a different hat. Exit 2 means "I could not find a DB";
+exit 1 with a traceback means "that file is not the corpus"; exit 1 with a
+check list is the real gate speaking.
 
 It asserts FIVE corpus-level invariants + THE BINDING and **exits 0 only when
 ALL pass**, non-zero with the failing check(s) + offending ids otherwise:
@@ -249,9 +323,16 @@ sudo -u antiek /opt/antiek/.venv/bin/python -m substrate.corpus_audit \
 Prints total docs + DB bytes + chunk count, the servable/gated split, by-source
 counts, and the last-audit verdict. The verdict line is sourced from the **same
 `AuditResult`** the step-6 audit returned — one source of truth, so the
-dashboard never disagrees with the gate. On the first batch this reads
-**31 docs (22 servable / 9 gated), 5,017 chunks**. If the numbers don't match
-what the plan said it would ingest, stop and investigate before going live.
+dashboard never disagrees with the gate. It needs `$LIVE_DB` for the same reason
+step 6 does, and fails the same way without it.
+
+On the first batch — **as of 2026-05-30** — this read 31 docs (22 servable / 9
+gated), 5,017 chunks. The corpus has grown since, so that is history, not
+today's expectation: `https://api.antiek.ai/health` reported
+`turbopuffer_indexed_row_count` 4,837 on 2026-09-22. Compare against **the
+previous run's summary** and the count step 3 reported as staged: docs should
+rise by that number and by nothing else. If the delta is a different size, stop
+and investigate before going live.
 
 ---
 
