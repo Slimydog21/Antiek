@@ -13,7 +13,7 @@ import type {
 import ReadingColumn from "../../components/reader/ReadingColumn";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import { WernerTobogganSpinner } from "../../brand/werner/animated";
-import { notifyEvidenceSourceOpened } from "../../werner";
+import { notifyEvidenceSourceOpened } from "../../mascot";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
 import ArxivFrame from "./ArxivFrame";

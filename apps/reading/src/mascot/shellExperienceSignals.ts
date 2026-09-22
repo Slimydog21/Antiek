@@ -29,7 +29,7 @@ export function notifyShellFailure(): void {
 
 /** A current gate-served cited source is committed as readable content. */
 export function notifyEvidenceSourceOpened(): void {
-  emitWernerExperience("evidence_source_opened");
+  emitMascotExperience("evidence_source_opened");
 }
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();

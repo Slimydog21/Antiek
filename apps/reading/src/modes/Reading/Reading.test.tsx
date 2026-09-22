@@ -43,8 +43,8 @@ const {
   notifyEvidenceSourceOpenedMock: vi.fn(),
 }));
 
-vi.mock("../../werner", async (orig) => {
-  const actual = await orig<typeof import("../../werner")>();
+vi.mock("../../mascot", async (orig) => {
+  const actual = await orig<typeof import("../../mascot")>();
   return { ...actual, notifyEvidenceSourceOpened: notifyEvidenceSourceOpenedMock };
 });
 
