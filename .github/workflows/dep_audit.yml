@@ -117,3 +117,30 @@ jobs:
         with:
           name: prod-resolved-requirements
           path: /tmp/prod-resolved.txt
+
+  uv-lock-audit:
+    # THE MANIFEST NOBODY NAMED. The `pip-audit` job above scans
+    # tools/lints/constraints.txt and `npm-audit` scans
+    # apps/reading/package-lock.json — the manifests someone thought to name.
+    # `uv.lock` (194 pinned packages, committed to main) was named by nothing,
+    # so no gate looked at it. When Dependabot alerts were switched on it
+    # reported 18 there including a CRITICAL, and `anyio` sat at the vulnerable
+    # 4.14.1 while constraints.txt had already been bumped to 4.14.2 — fixed in
+    # one lock, still vulnerable in another nobody audited.
+    #
+    # OSV rather than pip-audit: `pip-audit -r` dry-run-INSTALLS even with
+    # --no-deps, so it dies on platform-specific pins that cannot resolve on the
+    # runner (cuda-bindings, the nvidia-* wheels). OSV's querybatch takes
+    # name+version and needs no resolution — the right shape for a
+    # cross-platform lockfile.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - name: Audit uv.lock against OSV
+        # Stdlib only (tomllib + urllib), so there is no install step to fail.
+        # The script carries its own anti-vacuity floor: below 100 parsed pins
+        # it errors rather than reporting a clean audit over a failed parse.
+        run: python tools/audit_uv_lock.py uv.lock

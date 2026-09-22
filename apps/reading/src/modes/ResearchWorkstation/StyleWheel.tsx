@@ -55,6 +55,7 @@ function draftFromStyle(base: ProjectionStyle | undefined, nameHint: string): St
       description: "",
       theme_css: "",
       source_fidelity: false,
+      parent: null,
     };
   }
   const seedName = nameHint || `${base.name}-fork`;
@@ -64,7 +65,29 @@ function draftFromStyle(base: ProjectionStyle | undefined, nameHint: string): St
     description: base.description,
     theme_css: base.theme_css,
     source_fidelity: base.source_fidelity,
+    // The wheel entry the draft was seeded from IS its provenance. Resolved
+    // against the self-reference rule at save time, not here, because the slug
+    // is still editable.
+    parent: base.name,
   };
+}
+
+/**
+ * The `parent` to persist for a fork saved under `name`, seeded from `seed`.
+ *
+ * Re-posting a fork under its own slug is an edit, not a re-fork. The API
+ * refuses `parent === name` with 422, and sending `null` instead would erase
+ * lineage the backend already holds, so an in-place edit carries the style's
+ * own stored parent forward.
+ */
+function resolveParent(
+  seed: string | null | undefined,
+  name: string,
+  styles: ProjectionStyle[],
+): string | null {
+  if (!seed) return null;
+  if (seed !== name) return seed;
+  return styles.find((style) => style.name === name)?.parent ?? null;
 }
 
 export default function StyleWheel({ artifactId, investigationId, initialStyle }: StyleWheelProps) {
@@ -90,10 +113,15 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
     description: "",
     theme_css: "",
     source_fidelity: false,
+    parent: null,
   });
-  /** name → parent style name (session-local; backend has no parent field) */
+  /**
+   * name → parent style name, session-local. The API persists `parent` and is
+   * the source of truth; this is only a fallback for a style whose stored
+   * provenance did not come back on the wire (an older backend, or a fork
+   * saved before the column existed).
+   */
   const [provenance, setProvenance] = useState<ForkProvenance>({});
-  const [forkParent, setForkParent] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const previewRun = useRef(0);
   const applyRun = useRef(0);
@@ -212,7 +240,6 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
     const base = styles.find((s) => s.name === baseName);
     const hint = base ? `${base.name}-fork` : "my-style";
     setDraft(draftFromStyle(base, hint));
-    setForkParent(base?.name ?? null);
     setShowFork(true);
     setError(null);
     setConfirmDelete(false);
@@ -220,7 +247,6 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
 
   const closeForkEditor = () => {
     setShowFork(false);
-    setForkParent(null);
   };
 
   const onSaveFork = async (event: FormEvent) => {
@@ -228,12 +254,15 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
     setSavingFork(true);
     setError(null);
     try {
+      const name = draft.name.trim();
+      const parent = resolveParent(draft.parent, name, styles);
       const payload: StyleDraft = {
-        name: draft.name.trim(),
+        name,
         label: draft.label.trim(),
         description: draft.description,
         theme_css: draft.theme_css,
         source_fidelity: draft.source_fidelity,
+        parent,
       };
       const saved = await saveStyle(payload);
       setStyles((current) => {
@@ -241,13 +270,12 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
         if (at < 0) return [...current, saved];
         return current.map((style, index) => (index === at ? saved : style));
       });
-      if (forkParent && forkParent !== saved.name) {
-        setProvenance((prev) => ({ ...prev, [saved.name]: forkParent }));
+      if (parent && parent !== saved.name) {
+        setProvenance((prev) => ({ ...prev, [saved.name]: parent }));
       }
       setSelected(saved.name);
       setStatus("ready");
       setShowFork(false);
-      setForkParent(null);
     } catch (cause) {
       setError(messageOf(cause));
     } finally {
@@ -344,9 +372,13 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   }
 
   const active = styles.find((style) => style.name === selected);
-  const parentName = active ? provenance[active.name] : undefined;
+  // Persisted provenance first; the session map only answers for a style the
+  // server did not send a `parent` for.
+  const parentName = active ? active.parent ?? provenance[active.name] : undefined;
   const parentStyle = parentName ? styles.find((s) => s.name === parentName) : undefined;
-  const forkParentStyle = forkParent ? styles.find((s) => s.name === forkParent) : undefined;
+  const forkParentStyle = draft.parent
+    ? styles.find((s) => s.name === draft.parent)
+    : undefined;
 
   return (
     <section className="style-wheel" aria-labelledby={headingId}>
@@ -396,7 +428,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
           }}
         >
           {styles.map((style, index) => {
-            const derivedFrom = provenance[style.name];
+            const derivedFrom = style.parent ?? provenance[style.name];
             const derivedLabel = derivedFrom
               ? styles.find((s) => s.name === derivedFrom)?.label ?? derivedFrom
               : null;
