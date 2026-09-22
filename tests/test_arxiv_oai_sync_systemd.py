@@ -78,10 +78,13 @@ def test_deploy_renders_and_enables_arxiv_oai_sync_timer():
     assert "dest: /etc/systemd/system/antiek-arxiv-oai-sync.service" in deploy
     assert "src: ../templates/antiek-arxiv-oai-sync.timer.j2" in deploy
     assert "dest: /etc/systemd/system/antiek-arxiv-oai-sync.timer" in deploy
-    assert (
-        "name: antiek-arxiv-oai-sync.timer\n"
-        "        enabled: true\n"
-        "        state: started"
-    ) in deploy
+    # The deploy pauses this timer for exclusive schema migration, then resumes
+    # it only after antiek.service is active. A pre-migration start is a race:
+    # the scheduled job can win the DuckDB writer lock and strand the deploy.
+    assert "pause DB-writing background jobs before schema migration" in deploy
+    assert "resume DB-writing background jobs after substrate is live" in deploy
+    assert deploy.index("pause DB-writing background jobs before schema migration") < deploy.index(
+        "resume DB-writing background jobs after substrate is live"
+    )
     assert "antiek_arxiv_oai_sync_unit.changed" in deploy
     assert "antiek_arxiv_oai_sync_timer.changed" in deploy
