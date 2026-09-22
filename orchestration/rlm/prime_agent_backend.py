@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -42,6 +43,24 @@ _SESSION_NO_OUTPUT_DETAIL = (
     "no session output: argv passes --no-tools, so the handoff file cannot be "
     "written, and the run produced no stdout to fall back on"
 )
+# Process-wide count of invocations that reached the spawn path (enabled
+# backend, well-formed request), whatever the receipt said afterwards —
+# an UNAVAILABLE binary still counts as an attempt. Surfaced by /health so
+# an "activated" lane that never runs is visible as a counter stuck at 0.
+_INVOCATIONS_LOCK = threading.Lock()
+_INVOCATIONS_ATTEMPTED = 0
+
+
+def prime_agent_invocations_attempted() -> int:
+    """How many Prime invocations this process has attempted so far."""
+    with _INVOCATIONS_LOCK:
+        return _INVOCATIONS_ATTEMPTED
+
+
+def _count_invocation_attempt() -> None:
+    global _INVOCATIONS_ATTEMPTED
+    with _INVOCATIONS_LOCK:
+        _INVOCATIONS_ATTEMPTED += 1
 
 
 class PrimeAgentTerminalState(StrEnum):
@@ -159,6 +178,7 @@ class PrimeAgentRLMBackend:
                 argv,
                 detail="prompt exceeds input limit",
             )
+        _count_invocation_attempt()
         try:
             binary = resolve_prime_agent_binary(self._environment, binary=self._executable)
             installation = verify_prime_agent_installation(binary, environ=self._environment)
