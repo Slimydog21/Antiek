@@ -37,6 +37,7 @@ from .budget import DaemonBudget, DaemonBudgetError
 from .research_topic import ResearchTopic, topic_id_for
 from .scoring import GapRegistry, score_gap
 
+
 # ── Public types ──────────────────────────────────────────────────────
 
 

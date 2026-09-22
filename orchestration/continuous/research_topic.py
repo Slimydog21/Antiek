@@ -25,6 +25,7 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Optional
 
+
 # Master-spec §7.4 hard cap on per-topic chase depth.
 MAX_TOPIC_DEPTH: int = 5
 
