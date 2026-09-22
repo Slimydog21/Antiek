@@ -100,7 +100,24 @@ jobs:
         run: npm ci
 
       - name: Canonical verify — agent-gates
-        run: ./scripts/canonical_verify.sh agent-gates
+        # Every OTHER mode's success sentinel is asserted in
+        # tests/test_canonical_verify.py — profile, cascade, deep-research,
+        # handoff and html-transport each assert
+        # "CANONICAL_VERIFY_OK: <mode>" in stdout, not merely returncode == 0.
+        # agent-gates is the one mode with no such test, because it runs
+        # `npm run test:handoff` and the Python pytest shards do not install
+        # node_modules. That left a hole: replacing the body with
+        # `cmd_agent_gates() { return 0; #` makes the script exit 0, this step
+        # stay green, and all 8 tests still pass — verified 2026-09-22.
+        #
+        # The assertion therefore lives here, where npm exists. pipefail makes
+        # a failure inside the script fail the step; the grep makes a silent
+        # success fail it too.
+        run: |
+          set -euo pipefail
+          out=$(./scripts/canonical_verify.sh agent-gates 2>&1)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q 'CANONICAL_VERIFY_OK: agent-gates'
 
       - name: Canonical verify — cascade (hermetic)
         run: ./scripts/canonical_verify.sh cascade

@@ -68,13 +68,14 @@ except ImportError:  # pragma: no cover — direct-script fallback
         search_nodes_by_label,
     )
 
-try:
-    from ..runtime.db_lock import connect_read  # type: ignore[import-untyped]
-except ImportError:  # pragma: no cover
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_read
-
+# ``..runtime.db_lock`` resolves to ``substrate.runtime.db_lock``, which does
+# NOT exist, so the try branch was permanently dead and the branch marked
+# "# pragma: no cover" was the only live path. mypy resolved the missing
+# module as "installed but missing py.typed", which the ignore suppressed,
+# so the write-lock API degraded to Any here. Import what actually loads.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+from runtime.db_lock import connect_read  # noqa: E402
 
 _log = logging.getLogger("antiek.retrieval_substrate")
 

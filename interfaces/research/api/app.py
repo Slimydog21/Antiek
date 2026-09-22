@@ -41,6 +41,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
+import duckdb
+
 if TYPE_CHECKING:
     from orchestration.cascade_session import CascadeSession
     from orchestration.session_evidence_pack import SessionEvidencePack
@@ -3964,7 +3966,9 @@ def create_app(
             # ``pip install -e '.[export]'`` and retries.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from xhtml2pdf import pisa  # type: ignore[import-not-found]
+                from xhtml2pdf import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                    pisa,
+                )
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -4037,7 +4041,9 @@ def create_app(
             # as PDF. Same 503 fallback when the extra isn't installed.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from ebooklib import epub  # type: ignore[import-not-found]
+                from ebooklib import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                    epub,
+                )
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -6234,8 +6240,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[OutcomeRecentRow] = []
         for r in rows:
             out.append(OutcomeRecentRow(
@@ -6640,8 +6665,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[PayoutTransferResponse] = []
         for r in rows:
             out.append(PayoutTransferResponse(
@@ -6925,8 +6969,26 @@ def create_app(
                     "WHERE user_id = ? ORDER BY requested_at DESC",
                     [user_id],
                 ).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # Table not created yet — genuinely no requests have been filed.
             rows = []
+        except Exception as exc:
+            # GDPR/CCPA surface (master-spec 13.3/13.7). Returning [] told a
+            # user who HAD filed an erasure request that they never did — and
+            # the client cannot tell, so it hid their cancel control while the
+            # cancellation window ran down. Never impersonate "none" here.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "deletion_ledger_unavailable",
+                        "message": (
+                            "Your deletion requests could not be read. This is "
+                            "NOT a statement that none are pending."
+                        ),
+                    }
+                },
+            ) from exc
         return DeletionRequestListResponse(
             requests=[
                 _deletion_request_row_to_response(r) for r in rows
@@ -7108,8 +7170,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[DocumentSummary] = []
         for r in rows:
             out.append(DocumentSummary(
@@ -7237,10 +7318,15 @@ def create_app(
                         else (str(r[7]) if r[7] is not None else None)
                     ),
                 ))
-        except Exception:
+        except duckdb.CatalogException:
             # The skill_rules table is created lazily by the writer.
             # An empty/missing table is a normal pre-promotion state;
             # return an empty list rather than 500.
+            #
+            # NARROWED from `except Exception`: that also swallowed a genuinely
+            # unreadable store, so corruption was reported as "no rules yet".
+            # Only the missing-table case is a normal state; anything else is a
+            # real failure and must surface.
             rules = []
 
         return SkillRuleListResponse(rules=rules)
