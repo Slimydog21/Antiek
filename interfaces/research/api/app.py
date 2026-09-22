@@ -196,7 +196,7 @@ class HealthResponse(BaseModel):
     backup_reason: str = ""
 
 
-def _probe_backup_freshness() -> dict:
+def _probe_backup_freshness() -> dict[str, Any]:
     """Read-only backup freshness for /health. Never raises."""
     try:
         from tools.backup_freshness import evaluate, resolve_marker_path
