@@ -34,6 +34,7 @@ from urllib.parse import urlsplit
 from acquisition.snapshot.reader_html import markdown_to_safe_html
 from runtime.db_lock import connect_write
 from substrate.books.html_sanitizer import sanitize_book_html, strip_trust_markers
+from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import insert_document
 from substrate.memory import write_memory_item
@@ -575,7 +576,27 @@ def ingest_asset(
             investigation_id=None,
             raw_text=md,
             metadata=metadata,
-            content_class=provenance["fair_use_class"],
+            # `fair_use_class` is NOT a content_class. The two vocabularies are
+            # DISJOINT: fair_use_class is {public, licensed, personal} (validated
+            # in _check_fair_use), while SERVABLE_CONTENT_CLASSES is
+            # {public_domain, user_owned, user_public_contribution,
+            # opt_in_licensed, source_declared_open}. Their intersection is
+            # EMPTY, so passing one through as the other wrote a value no read
+            # path can ever serve — every asset ingested here was permanently
+            # dark, silently, because insert_document takes `str | None` and
+            # validates nothing.
+            #
+            # Landing on the deny-by-default gate states that outcome instead of
+            # stumbling into it. Behaviour is unchanged (these documents were
+            # already unservable); what changes is that the column now holds a
+            # REAL content_class, and the fair-use claim stays in `metadata`
+            # (above) where it belongs until someone maps it.
+            #
+            # Do NOT "fix" this by guessing a mapping. `public` (fair use) is not
+            # `public_domain` (no copyright) — that pairing fails OPEN and is a
+            # rights violation, strictly worse than the outage it would cure.
+            # The mapping is an owner decision; see the disjointness proof above.
+            content_class=GATED_DEFAULT_CONTENT_CLASS,
             on_conflict="ignore",
         )
         store_reader_html(
