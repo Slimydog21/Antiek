@@ -7,6 +7,25 @@ Last updated 2026-09-20 by the Claude session that shipped the mascot + feature 
 work — Kimi has no peer socket, so it is invisible to `ListAgents` and unreachable by
 `SendMessage`. This file and the PR threads are the channel. Keep this file current.
 
+## Branch holds
+
+**2026-09-21 — Kimi session holds the penguin/werner NAMING purge** on branch
+`mascot/penguin-naming-purge` (user-ordered; PR to follow). It renames
+`src/shell/PenguinMascot.tsx` → `MascotStation.tsx`, `src/werner/` → `src/mascot/`,
+`src/brand/werner/` → `src/brand/mascot/` (Werner* components → Brain*), `PenguinJourney`
+→ `BrainJourney`, all `werner-*` classes / `--werner-*` vars → `mascot-*`, the tokens.ts
+`werner` palette export → `mascot`, story titles/ids, the e2e `_ams/penguin.spec.ts` →
+`mascot.spec.ts`, and moves the tooling refs in the same commit
+(`tools/reachability/probes/read.py`, `tools/lint/uniqueness_registry.py`,
+`tools/brand/cut_werner_bg.py` → `cut_mascot_bg.py`). Lostpixel baselines were renamed to
+the new shot ids, NOT re-minted — so visible canvas strings inside baselined stories still
+say "Werner" on purpose (marked LOSTPIXEL PIXEL-FREEZE); purge that wording only in a PR
+that re-mints baselines. NOT renamed, deliberately: the two `VITE_WERNER_*` env vars, the
+flywheel/person fixture strings (`test_flywheel.py`, `test_seam_no_copy.py`,
+`test_thread_no_duplicate.py` — "Werner traded antiques before software." is a person),
+`werner-rig-*` reintroduction guards in `tests/test_e2e_suite_status.py`, and historical
+docs. Do not start the same work; rebase onto it instead.
+
 ## Live on antiek.ai — do not redo
 
 **PR #3187 — mascot.** The Krea Doodles brain in coral `#FE947B` replaced the 3D brain and the

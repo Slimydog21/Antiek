@@ -294,7 +294,7 @@ export default function Login() {
     return (
       <ReceiptShell>
         <section className="handoff-receipt" aria-labelledby="handoff-title">
-          <div className="handoff-receipt__werner">
+          <div className="handoff-receipt__mascot">
             <SketchCanvas
               render={renderConstellation}
               params={{ ...DEFAULT_CONSTELLATION_PARAMS, seed: "antiek-access-desk", mode: "night" }}
@@ -331,7 +331,7 @@ export default function Login() {
     return (
       <ReceiptShell>
         <section className="handoff-receipt handoff-receipt--approved" role="status">
-          <div className="handoff-receipt__werner">
+          <div className="handoff-receipt__mascot">
             <SketchCanvas
               render={renderConstellation}
               params={{ ...DEFAULT_CONSTELLATION_PARAMS, seed: "antiek-access-desk", mode: "night" }}

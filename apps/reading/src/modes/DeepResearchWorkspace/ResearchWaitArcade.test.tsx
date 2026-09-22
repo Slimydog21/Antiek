@@ -37,7 +37,7 @@ vi.mock("./ResearchWaitArcadeGame", () => ({
 }));
 
 import ResearchWaitArcade from "./ResearchWaitArcade";
-import { isStationInstrumentSuspended } from "../../werner/stationInstrumentSuspension";
+import { isStationInstrumentSuspended } from "../../mascot/stationInstrumentSuspension";
 
 function cartridge() {
   return {
@@ -308,7 +308,7 @@ describe("ResearchWaitArcade", () => {
     ).toBe(true);
     expect(
       images.every((image) =>
-        image.getAttribute("src")?.startsWith("/src/brand/werner/arcade/"),
+        image.getAttribute("src")?.startsWith("/src/brand/mascot/arcade/"),
       ),
     ).toBe(true);
   });
