@@ -330,6 +330,7 @@ def store_digest(
                 text=chunk.text,
                 section_path=chunk.section or None,
                 embedding=provider.encode(chunk.text),
+                embedding_provider=provider,
                 token_count=chunk.token_count,
             )
             chunk_ids.append(cid)

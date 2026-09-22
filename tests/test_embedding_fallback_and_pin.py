@@ -43,7 +43,12 @@ def test_any_other_construction_failure_raises_instead_of_degrading(monkeypatch,
     # and it must NOT have cached a hash provider on the way out
     assert embed_mod._DEFAULT_PROVIDER is None
 
-def test_insert_chunk_pins_the_default_provider_when_none_is_passed(monkeypatch):
+def test_insert_chunk_pins_the_provider_it_is_told_about(monkeypatch):
+    """A stored vector carries the identity of the provider that PRODUCED it —
+    the one the caller names. insert_chunk never guesses: a vector with no
+    named provider is stored unpinned (the caller's omission, caught for every
+    production producer by tests/test_insert_chunk_names_its_provider.py),
+    never stamped with a provider that did not produce it."""
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     d = tempfile.mkdtemp()
     db = os.path.join(d, "g.duckdb")
@@ -51,12 +56,15 @@ def test_insert_chunk_pins_the_default_provider_when_none_is_passed(monkeypatch)
     from runtime.db_lock import connect_read, connect_write
     from substrate.graph import ensure_initialized, insert_chunk, insert_document
     ensure_initialized(db)
+    prov = HashEmbedding()
     with connect_write(db, purpose="t") as con:
         insert_document(con, document_id="doc1", source_tier=4, document_type="article", events_dir=d)
-        insert_chunk(con, document_id="doc1", chunk_index=0, text="hello", embedding=HashEmbedding().encode("hello"))
+        insert_chunk(con, document_id="doc1", chunk_index=0, text="named",
+                     embedding=prov.encode("named"), embedding_provider=prov)
+        insert_chunk(con, document_id="doc1", chunk_index=1, text="unnamed",
+                     embedding=prov.encode("unnamed"))
     con = connect_read(db)
     n_vec = con.execute("select count(*) from chunks where embedding is not null").fetchone()[0]
-    n_meta = con.execute("select count(*) from embeddings_meta").fetchone()[0]
-    prov = con.execute("select provider from embeddings_meta limit 1").fetchone()
-    assert n_vec == 1 and n_meta == 1, "a stored vector must always carry a provider pin"
-    assert prov and "hash" in str(prov[0]).lower()
+    rows = con.execute("select provider from embeddings_meta").fetchall()
+    assert n_vec == 2
+    assert len(rows) == 1 and "hash" in str(rows[0][0]).lower(), rows
