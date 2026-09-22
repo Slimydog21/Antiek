@@ -512,6 +512,7 @@ def make_document_loaded_handler(
         # documents stay on the existing single-call path.
         try:
             from orchestration.rlm.bridge import (
+                RLMBridgeDecision,
                 estimate_tokens_from_bytes,
                 maybe_escalate_to_rlm,
             )
@@ -519,44 +520,51 @@ def make_document_loaded_handler(
                 prime_agent_backend_from_environment,
             )
 
-            # A backend is supplied here, but supplying it does NOT execute Prime.
+            # This is the one live call site of the Prime lane. When
+            # ANTIEK_PRIME_AGENT_RLM_ENABLED=1 AND ANTIEK_RLM_RATIFIED=1 AND a
+            # binary resolves, ``_bridge_executor`` selects root_executor=
+            # "prime_agent" and the bridge then DRIVES the session: one
+            # ``run_session`` spawn and one recorded iteration
+            # (bridge.py:_drive_prime_session). An earlier version of this
+            # comment claimed the flags were a real switch while the bridge
+            # consumed the backend as a truthiness token and spawned nothing;
+            # tests/test_rlm_prime_bridge_executes.py now pins the spawn count.
             #
-            # What the argument actually does: ``_bridge_executor`` (bridge.py:107-110)
-            # reads ``prime_backend`` as a truthiness token and, when it is non-None
-            # AND ANTIEK_PRIME_AGENT_RLM_ENABLED=1 AND ANTIEK_RLM_RATIFIED=1, selects
-            # the string label ``root_executor="prime_agent"`` for ``create_session``.
-            # The bridge never calls ``.run()`` or ``.run_session()`` on it, and the
-            # session it creates is not iterated by anything on this path. With both
-            # flags set and a binary installed, ``document.loaded`` still spawns no
-            # Prime process — it creates a differently labelled session and returns.
-            #
-            # An earlier comment here claimed the documented flags were now a real
-            # switch and the lane's unreachability gap was closed. That was false: the
-            # wiring changed a label, not an execution path. Executing Prime from this
-            # site is SPR-01 Task 3, and it must cross into a worker thread (the
-            # backend's ``run_session`` blocks for up to 120s and this handler runs on
-            # the uvicorn event loop — see ``_sync`` above for the precedent).
+            # The drive is BLOCKING (a subprocess wait of up to the backend's
+            # 120s timeout), and this handler runs on the uvicorn event loop,
+            # so the whole decision hops to a worker thread exactly like
+            # ``_sync`` above. Below-threshold and unratified documents pay
+            # only the thread hop; the decision itself is in-memory.
             #
             # The default path is unchanged: the factory returns a backend with
-            # enabled=False unless the first flag is set, and neither flag is set in
-            # any deployment config.
-            decision = maybe_escalate_to_rlm(
-                document_id=event.document_id,
-                investigation_id=event.investigation_id or "__no_investigation__",
-                estimated_tokens=estimate_tokens_from_bytes(p.size_bytes or 0),
-                root_role="wrestler",
-                prime_backend=prime_agent_backend_from_environment(),
-            )
+            # enabled=False unless the first flag is set, and neither flag is
+            # set in any deployment config.
+            def _decide() -> RLMBridgeDecision:
+                return maybe_escalate_to_rlm(
+                    document_id=document_id,
+                    investigation_id=event.investigation_id or "__no_investigation__",
+                    estimated_tokens=estimate_tokens_from_bytes(p.size_bytes or 0),
+                    root_role="wrestler",
+                    prime_backend=prime_agent_backend_from_environment(),
+                )
+
+            decision = await asyncio.to_thread(_decide)
             if decision.above_threshold:
                 # Surface the decision for the wrestling driver +
                 # observability — escalated or deferred, both informative.
+                # ``iterations``/``prime_state`` are the execution facts: a
+                # Prime-rooted session that spawned nothing shows
+                # iterations=0 prime_state=-, which is the failure mode this
+                # lane silently lived in.
                 print(
                     f"wrestling.document_loaded[rlm-bridge]: "
                     f"document_id={event.document_id} "
                     f"estimated_tokens={decision.estimated_tokens} "
                     f"escalated={decision.escalated} "
                     f"session_id={decision.session_id or '-'} "
-                    f"reason={decision.reason}",
+                    f"reason={decision.reason} "
+                    f"iterations={decision.iteration_count} "
+                    f"prime_state={decision.prime_state or '-'}",
                     flush=True,
                 )
                 # Emit the typed rlm.bridge.decided event so the
