@@ -357,11 +357,42 @@ def test_phase_4_critique_excluded(research_dir):
     assert ok is False
 
 
+_ROUND2_REAL = """# Round 2 — Relational Deep Dive
+
+Investigation: `inv-p4`
+
+Algorithm: `top_n_shortest_paths` — chosen because the seed pairs are sparse
+and the question asks for the shortest explanatory chain, not all chains.
+
+4 graph path(s) traversed.
+
+- Shard contention and cache warmth share an upstream cause: the runner pool
+  serialises both. (path #0)
+- The 8-shard knee disappears when the pool is widened, which the traversal
+  reaches through the scheduler node rather than the storage node. (path #1)
+- No path connects shard count to disk latency, so the storage hypothesis is
+  unsupported by the graph. (path #2)
+"""
+
+
 def test_phase_4_happy(research_dir):
-    _write(os.path.join(research_dir, "round2-technical.md"),
-           "deep dive content. " * 50)
+    _write(os.path.join(research_dir, "round2-technical.md"), _ROUND2_REAL)
     ok, _ = check_phase_4("inv-p4", research_dir=research_dir)
     assert ok is True
+
+
+def test_phase_4_rejects_padding_that_clears_the_floor(research_dir):
+    """The exact string the orchestrator used to write for round 2.
+
+    ``"Cross-domain connector substrate surfaced. " * 50`` is ~2100 bytes, so
+    it cleared _ROUND2_DEEP_DIVE_MIN_BYTES whatever the Connector actually
+    returned — the deep-dive gate measured the orchestrator's padding.
+    """
+    _write(os.path.join(research_dir, "round2-technical.md"),
+           "# Round 2\n\n" + ("Cross-domain connector substrate surfaced. " * 50))
+    ok, reason = check_phase_4("inv-p4", research_dir=research_dir)
+    assert ok is False
+    assert "round2" in reason
 
 
 # ---------------------------------------------------------------------------

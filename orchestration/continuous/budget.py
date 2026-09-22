@@ -28,7 +28,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-
 PER_INVESTIGATION_CAP_USD: float = 2.0
 DEFAULT_DAILY_CAP_USD: float = 5.0
 MAX_TOPIC_DEPTH: int = 5

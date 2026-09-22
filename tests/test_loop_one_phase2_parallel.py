@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-import sys
-
 import re
+import sys
 
 import pytest
 
@@ -15,12 +14,12 @@ sys.path.insert(0, os.path.dirname(_HERE))
 
 from interfaces.research.api import EventBroadcaster  # noqa: E402
 from orchestration.loop_one.coordinator import InvestigationCoordinator  # noqa: E402
-from orchestration.phase_runner.postconditions import (
-    NO_PRIOR_GRAPH_KNOWLEDGE,
-)
 from orchestration.loop_one.orchestrator import (  # noqa: E402
     PHASE_2_MAX_CONCURRENCY,
     _prior_graph_knowledge_section,
+)
+from orchestration.phase_runner.postconditions import (  # noqa: E402
+    NO_PRIOR_GRAPH_KNOWLEDGE,
 )
 from substrate.schemas import (  # noqa: E402
     ActionType,

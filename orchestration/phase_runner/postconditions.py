@@ -242,7 +242,13 @@ def _repetition_filler(body: str) -> str | None:
     for f in frags:
         counts[f] = counts.get(f, 0) + 1
     frag, n = max(counts.items(), key=lambda kv: kv[1] * len(kv[0]))
-    if n > 3 and (n * len(frag)) > 0.6 * len(text):
+    # 0.8, not 0.6, and the number is measured rather than chosen. The three
+    # real filler strings in this repo land at 92%, 96% and 95%. A legitimate
+    # body can repeat a fragment well above half: when several sub-questions
+    # share one supporting claim the renderer writes it once per sub-question,
+    # which measured 65% on a real run. A 0.6 bar rejected that. The gap
+    # between 65% and 92% is where the line belongs.
+    if n > 3 and (n * len(frag)) > 0.8 * len(text):
         pct = int(100 * n * len(frag) / len(text))
         return (
             f"{frag[:48]!r} repeated {n}x = {pct}% of the body — "
