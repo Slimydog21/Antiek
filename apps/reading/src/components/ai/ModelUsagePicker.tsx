@@ -28,7 +28,9 @@ import {
  * balance chip once, and a variant sub-row per model_id beneath it; choosing
  * a sub-row reports `(rowId, modelId)`. A single-variant key renders flat.
  *
- * Used by: AISidecar, CommandPalette, Reading/TalkToBook, Biography,
+ * Mount sites (re-verify with git grep for the JSX tag, since a docstring
+ * here once promised surfaces that never mounted it): AISidecar, CommandPalette,
+ * BrainstormStation/ThoughtPartnerPanel, Reading/TalkToBook, Biography,
  * ResearchWorkstation/ChatInputArea, Write/ConnectResearch. Keeps the Lemon
  * idiom; no copy-paste of dropdown chrome.
  */

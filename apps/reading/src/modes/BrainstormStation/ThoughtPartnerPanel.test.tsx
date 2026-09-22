@@ -94,6 +94,27 @@ describe("ThoughtPartnerPanel (Surface E)", () => {
     expect(body.prompt).toBe("Challenge these notes");
   });
 
+  it("mounts the driver dropdown (SPR-03 Task 3) and sends no model fields on the house route", async () => {
+    apiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ shape: "SYNTHESIS", text: "ok" }),
+    });
+    render(<ThoughtPartnerPanel />);
+    const trigger = screen.getByLabelText("Model for this brainstorm");
+    await waitFor(() => expect(trigger.textContent).toContain("Default"));
+    fireEvent.change(screen.getByLabelText("Thought partner prompt"), {
+      target: { value: "Challenge these notes" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    const call = apiFetch.mock.calls.find(([u]) => String(u).includes("/thought-partner"));
+    expect(call).toBeTruthy();
+    const body = JSON.parse((call![1] as { body: string }).body);
+    // Both fields or neither: the house route sends neither.
+    expect("model_choice" in body).toBe(false);
+    expect("operation_id" in body).toBe(false);
+  });
+
   it("seeds the composer from antiek:thought-partner:seed", async () => {
     render(<ThoughtPartnerPanel />);
     window.dispatchEvent(
