@@ -131,7 +131,7 @@ def default_events_dir() -> str:
     if explicit:
         return explicit
     return os.path.join(
-        os.environ.get("ANTIEK_HOME", os.path.expanduser("~/.antiek")),
+        os.environ.get("ANTIEK_HOME", "").strip() or os.path.expanduser("~/.antiek"),
         "research_events",
     )
 
