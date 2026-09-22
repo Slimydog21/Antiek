@@ -7,19 +7,18 @@ import sys
 
 import duckdb
 
-try:
-    from ...runtime.db_lock import (  # type: ignore[import-not-found]
-        LockedConnection,
-        connect_write,
-    )
-except ImportError:  # pragma: no cover
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import (
-        LockedConnection,
-        connect_write,
-    )
-
+# ``...runtime.db_lock`` resolves to ``substrate.runtime.db_lock``, which does
+# NOT exist, so the try branch is permanently dead and the branch marked
+# "# pragma: no cover" is the only live path. The ignore code here MATCHES
+# what mypy emits (import-not-found), which is why it never looked wrong —
+# but a correctly-matched ignore suppresses just as thoroughly, and the
+# symbols were still typed Any. Import what actually loads.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+from runtime.db_lock import (  # noqa: E402
+    LockedConnection,
+    connect_write,
+)
 
 _KNOWN_SOURCES_SQL_LIST = "'chatgpt', 'anthropic', 'grok', 'alphasense', 'other'"
 

@@ -53,16 +53,12 @@ class GraphRouter:
     """
 
     personal_graphs_dir: str = field(
-        default_factory=lambda: os.environ.get(
-            "ANTIEK_PERSONAL_GRAPHS_DIR",
-            os.path.expanduser("~/.antiek/personal_graphs"),
-        )
+        default_factory=lambda: os.environ.get("ANTIEK_PERSONAL_GRAPHS_DIR", "").strip()
+        or os.path.expanduser("~/.antiek/personal_graphs")
     )
     shared_substrate_path: str = field(
-        default_factory=lambda: os.environ.get(
-            "ANTIEK_SHARED_SUBSTRATE_DB",
-            os.path.expanduser("~/.antiek/shared_substrate.duckdb"),
-        )
+        default_factory=lambda: os.environ.get("ANTIEK_SHARED_SUBSTRATE_DB", "").strip()
+        or os.path.expanduser("~/.antiek/shared_substrate.duckdb")
     )
 
     def personal_graph_path(self, user_id: str) -> str:
