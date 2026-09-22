@@ -4,7 +4,7 @@ import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import { LemonModal } from "../../components/lemon/LemonModal";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
-import { notifyEvidenceSourceOpened } from "../../werner";
+import { notifyEvidenceSourceOpened } from "../../mascot";
 
 /**
  * Modal showing the actual text of a chunk cited by a claim.

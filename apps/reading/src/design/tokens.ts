@@ -1,10 +1,10 @@
 /**
- * Antiek design tokens — Werner brand.
+ * Antiek design tokens.
  *
  *  sun-yellow outlining is the brand constant.
  *  day mode = layered off-whites + glacials.
  *  night mode = ten-layer off-black "majestic night sky".
- *  Werner's bill + feet match `sun.base` (the visual hook).
+ *  Brain's bill + feet match `sun.base` (the visual hook).
  *
  * See:
  *   docs/ui_redesign_posthog/brand_werner.html §5 (sun), §6 (day), §7 (night)
@@ -20,7 +20,7 @@ export type Mode = "day" | "night";
  * softer, weathered "light" across the VAR-DRIVEN accent/highlight roles,
  * while keeping the bottom-tab yellow loud. So:
  *   - `base` (#F5DF24) is UNCHANGED — the brand constant, the bottom-tab value
- *     (via `barAccent`), and the Werner bill/foot. Never softened.
+ *     (via `barAccent`), and the Brain bill/foot. Never softened.
  *   - `deep`, `glow`, `highlight` are RE-TONED toward the new `sunLight`
  *     family below: lower chroma, sun-bleached gold. Each carries its
  *     derivation + the AA pair it must clear (see comments).
@@ -46,7 +46,7 @@ export type Mode = "day" | "night";
  * catching it; closing it is a follow-up for the Tailwind owner.
  */
 export const sun = {
-  base: "#F5DF24", // sharp esoteric lemon, slightly green-leaning — UNCHANGED (brand/bar/Werner)
+  base: "#F5DF24", // sharp esoteric lemon, slightly green-leaning — UNCHANGED (brand/bar/Brain)
   // was {day #B89A00, night #8A7300}; re-toned to weathered ochre. AA accent-
   // edge (1.4.11 ≥3:1): day #9C8636 on #FFFFFF 3.57:1 / on page #F4F7FA 3.32:1;
   // night #84722F on card #1B202A 3.44:1 / on page #0D1019 4.01:1. == sunLight.deep day.
@@ -94,7 +94,7 @@ export const sunLight = {
  * border "a bit too much of a bold yellow" and asked to "replace that
  * yellowness with light." `rule` is that replacement: a calm, low-chroma
  * blue-grey line — neutral, not yellow, and far less assertive than the
- * lemon. Yellow is NOT gone from the brand: it survives as `sun` (Werner
+ * lemon. Yellow is NOT gone from the brand: it survives as `sun` (Brain
  * bill/feet) and as `barAccent` (the bottom bar). This token only retires
  * yellow from the *default* border role.
  *
@@ -326,13 +326,13 @@ export const shadow = {
 
 export type ShadowKey = keyof (typeof shadow)["day"];
 
-/** Werner mascot palette. Bill + feet lock to sun — the single constant that makes the mark the brand.
+/** Brain mascot palette. Bill + feet lock to sun — the single constant that makes the mark the brand.
 
-   These five drive the canonical <Werner mood="..." /> (U-02). The component renders
+   These five drive the canonical <Brain mood="..." /> (U-02). The component renders
    at rail size (28px, mark fidelity) and hero (120px+, character fidelity) from the
    same geometry. Abstract dot rejected: a stranger must call the rail mark "a cute
    brain" not "a dot". See brand/README.md for the four-slot restraint rule. */
-export const werner = {
+export const mascot = {
   day: {
     coat: "#0F1419",
     belly: "#FBFCFD",
@@ -352,8 +352,6 @@ export const werner = {
 /** Exactly the four moods the restraint rule permits. Used only in the four named
    slots; never mid-content, never more than one on screen. */
 export type MascotMood = "idle" | "thinking" | "empty" | "celebrate";
-/** @deprecated penguin-era name, kept one release so external importers do not snap. */
-export type WernerMood = MascotMood;
 
 /** Reserved-use accents — use sparingly; never substitute for sun. */
 export const accent = {
@@ -418,13 +416,13 @@ export const state = {
  *           Short enough to read as tactile, not as travel.
  * `base`  — the everyday hover lift + colour/opacity transitions.
  * `slow`  — the ceiling for a signature delight beat. No flourish may
- *           run longer than this; Werner's 800 ms celebrate one-shot
+ *           run longer than this; Brain's 800 ms celebrate one-shot
  *           sits under it.
  *
  * `standard` is the default ease for interactions; `enter` (ease-out)
  * for elements arriving. GPU-cheap properties only — transform/opacity.
- * Werner's pose timings (idle 4200 ms, thinking 1200 ms, celebrate
- * 800 ms) live in werner/animated/animations.css and predate this
+ * Brain's pose timings (idle 4200 ms, thinking 1200 ms, celebrate
+ * 800 ms) live in mascot/animated/animations.css and predate this
  * scale; `slow` is set to 800 ms so the celebrate beat is the
  * longest sanctioned flourish rather than an outlier.
  */
@@ -432,7 +430,7 @@ export const motion = {
   duration: {
     fast: "80ms", // press
     base: "150ms", // hover / colour
-    slow: "800ms", // signature-beat ceiling (== Werner celebrate)
+    slow: "800ms", // signature-beat ceiling (== Brain celebrate)
   },
   easing: {
     standard: "cubic-bezier(0.4, 0, 0.2, 1)", // interaction default

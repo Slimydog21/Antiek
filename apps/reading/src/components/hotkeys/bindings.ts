@@ -15,7 +15,7 @@
  *      sprint gives a UNIFORM, single ⌘+key combo (one modifier, one
  *      keypress — NO vim chords), each carrying the `ProductActivateDetail`
  *      it fires so a click and a hotkey emit the IDENTICAL activation event
- *      (the click≡hotkey contract SPR-06's penguin depends on).
+ *      (the click≡hotkey contract SPR-06's mascot depends on).
  *
  *   3. Key NORMALISATION + DISPLAY helpers shared by every consumer, so a
  *      combo written as `"Mod+E"` displays as `⌘E` everywhere and a custom
@@ -54,12 +54,12 @@
  */
 
 // ─────────────────────────────────────────────────────────────────────
-// Shared activation contract (the thing the penguin / SPR-06 consumes)
+// Shared activation contract (the thing the mascot / SPR-06 consumes)
 // ─────────────────────────────────────────────────────────────────────
 
 /**
  * The single event a product activation fires — whether the operator
- * CLICKED the product or pressed its HOTKEY. The penguin listens for this
+ * CLICKED the product or pressed its HOTKEY. The mascot listens for this
  * one event and reacts identically to both. The invariant the whole sprint
  * defends: *there is exactly one activation path per product, and both
  * input methods go through it.*

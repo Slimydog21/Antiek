@@ -2,7 +2,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WERNER_EXPERIENCE_EVENT } from "../../../werner";
+import { MASCOT_EXPERIENCE_EVENT } from "../../../mascot";
 import { useFloatMenuSelection } from "./useFloatMenuSelection";
 
 function Host() {
@@ -42,7 +42,7 @@ afterEach(() => {
 describe("FloatMenu selection reactions", () => {
   it("emits once per selection-open episode", () => {
     const listener = vi.fn();
-    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
+    window.addEventListener(MASCOT_EXPERIENCE_EVENT, listener);
     render(<Host />);
     const scope = screen.getByTestId("scope");
 
@@ -56,6 +56,6 @@ describe("FloatMenu selection reactions", () => {
     expect((listener.mock.calls[1]?.[0] as CustomEvent).detail).toEqual({
       experience: "highlight",
     });
-    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
+    window.removeEventListener(MASCOT_EXPERIENCE_EVENT, listener);
   });
 });

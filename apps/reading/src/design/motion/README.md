@@ -22,8 +22,8 @@ motion breaks a flow, the flow is wrong, not the motion.
   These systematize what LemonButton + BookCard already did; they are the
   canonical vocabulary, not re-improvised per surface.
 - **Signature beats** — `src/shared/delight/` (`useCelebrate` + `CelebrateBurst`):
-  one reusable one-shot built on Werner's `celebrate` mood.
-- **Werner poses** — `src/brand/werner/animated/animations.css`: the pose
+  one reusable one-shot built on Brain's `celebrate` mood.
+- **Brain poses** — `src/brand/mascot/animated/animations.css`: the pose
   keyframes (U-02), with their own reduced-motion fallbacks.
 - **Reduced-motion catch-all** — `src/design/motion.css`: collapses every
   transition/animation to instant under the OS reduce-motion setting.
@@ -53,7 +53,7 @@ Motion is permitted in exactly these slots and nowhere else:
    are owned by their product experience-specs and adopt this primitive at
    the trigger above when their surface lands. Resist a fifth beat — these
    four are the product's emotional high points.
-3. **Werner's four mood slots** — rail `idle`, AI-working `thinking`, blank
+3. **Brain's four mood slots** — rail `idle`, AI-working `thinking`, blank
    `empty`, completed-action `celebrate`. This is the same restraint rule as
    [`src/brand/README.md`](../../brand/README.md): never mid-content, never
    over controls, never more than one on screen. The signature beats are the
@@ -67,7 +67,7 @@ discussion before animating it.
 
 `motion.guard.test.ts` (in this folder) is the mechanical half. It flags a
 **new raw `@keyframes`** declared outside the motion system's homes
-(Werner's `animations.css`, `motion.css`, `motion.ts`). A hand-rolled
+(Brain's `animations.css`, `motion.css`, `motion.ts`). A hand-rolled
 keyframe is the high-signal marker that someone is improvising a new motion
 vocabulary instead of reaching for the tokens/primitives.
 
@@ -90,7 +90,7 @@ be noise rather than signal. Nor can it judge *which* beat is appropriate, or
 that a beat is brief and non-blocking. Those are the review checklist:
 
 - Is this a base interaction (use a primitive), a signature beat (use
-  `useCelebrate`), or a Werner slot? If none, it doesn't get motion.
+  `useCelebrate`), or a Brain slot? If none, it doesn't get motion.
 - Does any flourish gate input or a result? It must not.
 - Does it survive reduced-motion as an instant, fully-functional state?
-- Is there more than one Werner on screen, or a fifth beat? Reject it.
+- Is there more than one Brain on screen, or a fifth beat? Reject it.
