@@ -10,12 +10,12 @@ function Mocked() {
         return new Response(JSON.stringify({ connections: [{
           vendor: "youtube", display_name: "YouTube Data API", credential_kind: "api_key", auth: "api_key_query",
           docs_url: "https://console.cloud.google.com/apis/credentials", status: "configured_unverified",
-          credential_present: true, status_note: null,
+          credential_present: true, status_note: null, searchable: true,
           quota: { kind: "youtube_units", remaining: 9600, limit: 10000, reset_at: "2026-08-13T07:00:00Z", hard_exhausted: false, note: "Provider remains authoritative", estimated_cost_usd: null, cost_note: null },
         }, {
           vendor: "x", display_name: "X Developer API", credential_kind: "api_key", auth: "bearer_token",
           docs_url: "https://developer.x.com/en/portal/dashboard", status: "configured_unverified",
-          credential_present: true, status_note: null,
+          credential_present: true, status_note: null, searchable: true,
           quota: { kind: "rate_ceiling", remaining: null, limit: 25, reset_at: null, hard_exhausted: null, note: "Antiek brake: 25 requests per 15 minutes", estimated_cost_usd: 0.125, cost_note: "X bills pay-per-use credits at about $0.005 per post returned." },
         }], count: 2 }), { status: 200, headers: { "Content-Type": "application/json" } });
       }

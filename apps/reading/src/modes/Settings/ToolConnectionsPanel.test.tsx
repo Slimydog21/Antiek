@@ -14,6 +14,7 @@ const SECRET = "AIza-secret-never-render";
 const rows: ToolConnection[] = [
   {
     vendor: "youtube",
+    searchable: true,
     display_name: "YouTube Data API",
     credential_kind: "api_key",
     auth: "api_key_query",
@@ -34,6 +35,7 @@ const rows: ToolConnection[] = [
   },
   {
     vendor: "polygon",
+    searchable: false,
     display_name: "Polygon.io",
     credential_kind: "api_key",
     auth: "api_key_query",
@@ -54,6 +56,7 @@ const rows: ToolConnection[] = [
   },
   {
     vendor: "fmp",
+    searchable: false,
     display_name: "Financial Modeling Prep",
     credential_kind: "api_key",
     auth: "api_key_query",
@@ -74,6 +77,7 @@ const rows: ToolConnection[] = [
   },
   {
     vendor: "edgar",
+    searchable: false,
     display_name: "SEC EDGAR",
     credential_kind: "contact",
     auth: "none",
@@ -94,6 +98,7 @@ const rows: ToolConnection[] = [
   },
   {
     vendor: "x",
+    searchable: true,
     display_name: "X Developer API",
     credential_kind: "api_key",
     auth: "bearer_token",
@@ -141,6 +146,26 @@ describe("ToolConnectionsPanel", () => {
     expect(screen.getByText("Local ceiling: 8 requests per second")).toBeTruthy();
     expect(screen.getByText("Needs attention")).toBeTruthy();
     expect(document.body.textContent).not.toContain(SECRET);
+  });
+
+  it('labels a configured polygon row "connected, not yet used" rather than configured', async () => {
+    // Polygon is connectable but no research surface reads it. A stored key
+    // must not be reported as configured; the row says exactly what is true.
+    const polygonStored: ToolConnection = {
+      ...rows[1],
+      status: "configured_unverified",
+      credential_present: true,
+    };
+    vi.mocked(fetchToolConnections).mockResolvedValue([rows[0], polygonStored]);
+    render(<ToolConnectionsPanel />);
+    const polygon = (await screen.findByText("Polygon.io")).closest("li")!;
+    expect(within(polygon).getByText("Connected, not yet used")).toBeTruthy();
+    expect(within(polygon).queryByText("Credential stored · not yet verified")).toBeNull();
+    expect(within(polygon).getByText(/no Antiek research surface reads this provider yet/)).toBeTruthy();
+    // A searchable vendor with a stored key keeps the ordinary label.
+    const youtube = (await screen.findByText("YouTube Data API")).closest("li")!;
+    expect(within(youtube).getByText("Credential stored · not yet verified")).toBeTruthy();
+    expect(within(youtube).queryByText("Connected, not yet used")).toBeNull();
   });
 
   it("submits and immediately clears a write-only password", async () => {

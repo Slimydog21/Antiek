@@ -233,3 +233,35 @@ def test_x_tool_quota_cost_is_not_invented_for_vendors_without_a_sourced_rate(
         quota = _row(payload, vendor)["quota"]
         assert quota["estimated_cost_usd"] is None, vendor
         assert quota["cost_note"] is None, vendor
+
+
+def test_tool_connections_inventory_marks_which_vendors_are_searchable(client) -> None:
+    """A stored key is only "configured" if some surface will spend it.
+
+    Polygon, FMP and EDGAR are connectable, and nothing on main calls their
+    connectors outside the resolver itself, so a user who pastes a paid key
+    was told "configured" over zero behaviour. The payload now says which
+    vendors a research surface actually reads; the panel labels the rest
+    "connected, not yet used". The flag is pinned per vendor so that adding a
+    consuming branch is the only way to flip it.
+    """
+    payload = client.get("/settings/tools", cookies=_cookie("user-a")).json()
+    flags = {item["vendor"]: item["searchable"] for item in payload["connections"]}
+    assert flags == {
+        "youtube": True,
+        "x": True,
+        "polygon": False,
+        "fmp": False,
+        "edgar": False,
+    }
+
+    # Storing a key does not promote the vendor: the row a PUT hands back
+    # is configured_unverified AND still not searchable.
+    stored = client.put(
+        "/settings/tools/polygon",
+        json={"credential": "polygon-key-" + "p" * 24},
+        cookies=_cookie("user-a"),
+    )
+    assert stored.status_code == 200, stored.text
+    assert stored.json()["status"] == "configured_unverified"
+    assert stored.json()["searchable"] is False

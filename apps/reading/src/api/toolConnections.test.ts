@@ -17,6 +17,7 @@ const row = {
   status: "configured_unverified",
   credential_present: true,
   status_note: null,
+  searchable: true,
   quota: {
     kind: "youtube_units",
     remaining: 9900,

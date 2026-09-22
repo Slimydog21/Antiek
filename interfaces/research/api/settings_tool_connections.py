@@ -83,6 +83,10 @@ class ToolConnectionResponse(BaseModel):
     credential_present: bool
     status_note: str | None = None
     quota: ToolQuotaResponse
+    # Whether any Antiek surface spends this credential today. False means
+    # the key is stored and scoped to the owner but nothing reads it yet, and
+    # the panel says so instead of calling it configured.
+    searchable: bool
 
 
 class ToolConnectionsResponse(BaseModel):
@@ -163,6 +167,7 @@ def _response(snapshot: ToolConnectionSnapshot) -> ToolConnectionResponse:
         credential_present=snapshot.credential_present,
         status_note=snapshot.status_note,
         quota=_quota(snapshot),
+        searchable=snapshot.searchable,
     )
 
 

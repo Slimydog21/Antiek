@@ -64,6 +64,14 @@ class ToolDefinition:
     credential_kind: CredentialKind
     descriptor: ConnectorDescriptor
     quota_kind: Literal["youtube_units", "rate_ceiling", "unavailable"]
+    # True only when a product surface actually spends this credential today
+    # (``/research/tools/search``). A vendor that is connectable but has no
+    # call site is still listed, so the user can store the key, but the
+    # settings panel must not report it as anything more than stored: a
+    # green "configured" over zero behaviour is the vacuous-gate shape this
+    # repo keeps getting burned by. Flip this only when the consuming branch
+    # lands, in the same change.
+    searchable: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +107,7 @@ class ToolConnectionSnapshot:
     credential_present: bool
     status_note: str | None
     quota_kind: str
+    searchable: bool
 
 
 class ToolConnectionError(RuntimeError):
@@ -127,6 +136,7 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
             docs_url="https://console.cloud.google.com/apis/credentials",
         ),
         quota_kind="youtube_units",
+        searchable=True,
     ),
     "polygon": ToolDefinition(
         vendor="polygon",
@@ -141,6 +151,7 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
             docs_url="https://polygon.io/docs",
         ),
         quota_kind="unavailable",
+        searchable=False,
     ),
     "fmp": ToolDefinition(
         vendor="fmp",
@@ -155,6 +166,7 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
             docs_url="https://site.financialmodelingprep.com/developer/docs",
         ),
         quota_kind="unavailable",
+        searchable=False,
     ),
     "edgar": ToolDefinition(
         vendor="edgar",
@@ -169,6 +181,7 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
             docs_url="https://www.sec.gov/search-filings",
         ),
         quota_kind="rate_ceiling",
+        searchable=False,
     ),
     "x": ToolDefinition(
         vendor="x",
@@ -183,6 +196,7 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
             docs_url="https://developer.x.com/en/portal/dashboard",
         ),
         quota_kind="rate_ceiling",
+        searchable=True,
     ),
 }
 _VENDOR_ORDER: tuple[ToolVendor, ...] = ("youtube", "polygon", "fmp", "edgar", "x")
@@ -544,6 +558,7 @@ def _snapshot(
             else "Stored credential metadata is unavailable" if record else None
         ),
         quota_kind=item.quota_kind,
+        searchable=item.searchable,
     )
 
 
