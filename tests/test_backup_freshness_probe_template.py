@@ -25,7 +25,17 @@ def _render_probe(tmp_path: Path) -> tuple[Path, dict[str, str], Path]:
     state.mkdir()
     _write_executable(
         install / ".venv/bin/python3",
-        '#!/usr/bin/env bash\necho "${PROBE_VERDICT}"\nexit "${PROBE_STATUS}"\n',
+        "#!/usr/bin/env bash\n"
+        'if [[ "${PYTHON_CALL:-}" == "freshness" ]]; then\n'
+        '    echo "${PROBE_VERDICT}"\n'
+        '    exit "${PROBE_STATUS}"\n'
+        "fi\n"
+        'if [[ "${PYTHON_MODE:-}" == "email" ]]; then\n'
+        '    printf \'to=%s args=%s\\n\' "${EMAIL_TO:-}" "$*" >> "${EMAIL_LOG}"\n'
+        '    exit "${EMAIL_STATUS:-0}"\n'
+        "fi\n"
+        'echo "${PROBE_VERDICT}"\n'
+        'exit "${PROBE_STATUS}"\n',
     )
     source = (TEMPLATES / "antiek-backup-freshness-probe.sh.j2").read_text()
     rendered = jinja2.Environment(undefined=jinja2.StrictUndefined).from_string(source).render(
@@ -40,7 +50,9 @@ def _render_probe(tmp_path: Path) -> tuple[Path, dict[str, str], Path]:
     stub_bin = tmp_path / "bin"
     _write_executable(
         stub_bin / "curl",
-        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "${CURL_LOG}"\n',
+        '#!/usr/bin/env bash\n'
+        'printf \'%s\\n\' "$*" >> "${CURL_LOG}"\n'
+        'exit "${CURL_STATUS:-0}"\n',
     )
     env = dict(os.environ)
     env.update({"PATH": f"{stub_bin}:{env['PATH']}", "CURL_LOG": str(curl_log)})
@@ -69,6 +81,50 @@ def test_stale_probe_posts_webhook_and_stays_failed(tmp_path: Path) -> None:
     assert proc.returncode == 1
     assert "STALE: no verified backup" in proc.stderr
     assert "https://alerts.invalid/hook" in curl_log.read_text()
+
+
+def test_stale_probe_uses_email_when_webhook_fails(tmp_path: Path) -> None:
+    script, env, curl_log = _render_probe(tmp_path)
+    email_log = tmp_path / "email.log"
+    env.update(
+        {
+            "PROBE_STATUS": "1",
+            "PROBE_VERDICT": "STALE: no verified backup",
+            "ANTIEK_ALERT_WEBHOOK": "https://alerts.invalid/hook",
+            "ANTIEK_OPERATOR_EMAIL": "operator@antiek.ai",
+            "ANTIEK_EMAIL_PROVIDER": "agentmail",
+            "PYTHON_MODE": "email",
+            "EMAIL_TO": "operator@antiek.ai",
+            "EMAIL_STATUS": "0",
+            "EMAIL_LOG": str(email_log),
+            "CURL_STATUS": "22",
+        }
+    )
+    proc = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True)
+    assert proc.returncode == 1
+    assert "WARN: backup freshness webhook delivery failed" in proc.stderr
+    assert "STALE: no verified backup" in proc.stderr
+    assert email_log.exists()
+    assert "to=operator@antiek.ai" in email_log.read_text()
+    assert "https://alerts.invalid/hook" in curl_log.read_text()
+
+
+def test_stale_probe_warns_when_no_alert_channel_works(tmp_path: Path) -> None:
+    script, env, _ = _render_probe(tmp_path)
+    env.update(
+        {
+            "PROBE_STATUS": "1",
+            "PROBE_VERDICT": "STALE: no verified backup",
+            "ANTIEK_OPERATOR_EMAIL": "operator@antiek.ai",
+            "ANTIEK_EMAIL_PROVIDER": "mock",
+            "PYTHON_MODE": "email",
+            "EMAIL_STATUS": "3",
+        }
+    )
+    proc = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True)
+    assert proc.returncode == 1
+    assert "WARN: backup freshness email fallback failed" in proc.stderr
+    assert "WARN: no working backup freshness alert channel" in proc.stderr
 
 
 def test_setup_and_deploy_enable_both_backup_timers() -> None:

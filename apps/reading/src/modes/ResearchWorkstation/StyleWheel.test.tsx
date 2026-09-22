@@ -30,6 +30,26 @@ const stylesWithFork = {
   ],
 };
 
+/**
+ * The same fork as `stylesWithFork`, but as the SERVER returns it: `parent`
+ * persisted on the row. Used to prove the wheel reads lineage off the wire
+ * with no session state -- the component is rendered fresh and never forks.
+ */
+const stylesWithPersistedParent = {
+  styles: [
+    ...styles.styles,
+    {
+      name: "field-notes",
+      label: "Field notes",
+      description: "A personal fork",
+      builtin: false,
+      source_fidelity: true,
+      theme_css: ":root { --x: 1; }",
+      parent: "antiek",
+    },
+  ],
+};
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -68,6 +88,7 @@ describe("StyleWheel", () => {
               builtin: false,
               source_fidelity: Boolean(body.source_fidelity),
               theme_css: body.theme_css ?? "",
+              parent: body.parent ?? null,
             },
             201,
           ),
@@ -287,5 +308,80 @@ describe("StyleWheel", () => {
     const before = vi.mocked(URL.revokeObjectURL).mock.calls.length;
     unmount();
     expect(vi.mocked(URL.revokeObjectURL).mock.calls.length).toBeGreaterThan(before);
+  });
+  it("sends the seed style's slug as `parent` in the POST /styles body", async () => {
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
+    await screen.findByRole("option", { name: /Antiek/ });
+    fireEvent.click(screen.getByRole("button", { name: /Fork “Antiek”/ }));
+    fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "field-notes" } });
+    fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Field notes" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Save fork" }).closest("form")!);
+
+    const post = await waitFor(() => {
+      const call = apiFetchMock.mock.calls.find(
+        ([url, init]) => String(url) === "/styles" && init?.method === "POST",
+      );
+      expect(call).toBeTruthy();
+      return call!;
+    });
+    // Parse the body and compare the FIELD. A substring match would pass
+    // vacuously: the seeded label is "Antiek (fork)", so "antiek" is already
+    // in the body of a request that carries no provenance at all.
+    const body = JSON.parse(String(post[1].body)) as Record<string, unknown>;
+    expect(body.parent).toBe("antiek");
+    expect(body.name).toBe("field-notes");
+  });
+
+  it("renders server-persisted lineage with no session state", async () => {
+    apiFetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/styles") return Promise.resolve(json(stylesWithPersistedParent));
+      const style = new URL(url, "http://test").searchParams.get("style") ?? "antiek";
+      return Promise.resolve(html("preview", style));
+    });
+    // Nothing is forked in this test: the only source of `parent` is the wire.
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
+    fireEvent.click(await screen.findByRole("option", { name: /Field notes/ }));
+    expect((await screen.findByText(/forked from Antiek/)).textContent).toContain(
+      "forked from Antiek",
+    );
+    expect(screen.queryByText("origin untracked")).toBeNull();
+  });
+
+  it("re-saving a fork under its own slug carries lineage instead of self-parenting", async () => {
+    apiFetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/styles" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        // The real API answers a self-parent with 422; a test that let it
+        // through would hide the bug rather than catch it.
+        if (body.parent === body.name) return Promise.resolve(json({ detail: "self parent" }, 422));
+        return Promise.resolve(json({ ...body, builtin: false, parent: body.parent ?? null }, 201));
+      }
+      if (url === "/styles") return Promise.resolve(json(stylesWithPersistedParent));
+      const style = new URL(url, "http://test").searchParams.get("style") ?? "antiek";
+      return Promise.resolve(html("preview", style));
+    });
+    render(<StyleWheel artifactId="artifact-7" investigationId="inv-7" />);
+    fireEvent.click(await screen.findByRole("option", { name: /Field notes/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Edit fork/ }));
+    // The editor reseeds the slug to "<name>-fork"; typing the original slug
+    // back is what "edit this fork in place" actually looks like today, and
+    // it is exactly the request the API answers 422 to if the seed parent is
+    // sent through unchanged.
+    fireEvent.change(screen.getByLabelText("Slug"), { target: { value: "field-notes" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Save fork" }).closest("form")!);
+
+    const post = await waitFor(() => {
+      const call = apiFetchMock.mock.calls.find(
+        ([url, init]) => String(url) === "/styles" && init?.method === "POST",
+      );
+      expect(call).toBeTruthy();
+      return call!;
+    });
+    const body = JSON.parse(String(post[1].body)) as Record<string, unknown>;
+    expect(body.name).toBe("field-notes");
+    expect(body.parent).toBe("antiek");
+    expect(await screen.findByText(/forked from Antiek/)).toBeTruthy();
   });
 });

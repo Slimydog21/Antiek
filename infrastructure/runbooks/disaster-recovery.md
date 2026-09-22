@@ -56,10 +56,26 @@ cd ~/Desktop/Antiek/infrastructure/ansible
 nano inventory.ini
 ```
 
+> **Tunnel credentials (added 2026-09-21, D8 in #3328).** `setup.yml` now
+> provisions cloudflared, but it needs the tunnel's credentials JSON, which
+> exists ONLY on the running VM (`/etc/cloudflared/<tunnel-id>.json`) and is in
+> no backup. Before you ever need this runbook, copy it off the box into
+> `infrastructure/ansible/cloudflared-creds.yml` (gitignored) with shape:
+>
+> ```yaml
+> cloudflared_tunnel_id: "<uuid from /etc/cloudflared/config.yml>"
+> cloudflared_tunnel_credentials_json: '<contents of /etc/cloudflared/<uuid>.json>'
+> ```
+>
+> Without it a rebuilt VM restores the data but has no `api.antiek.ai`.
+> DNS needs no change on rebuild: it is a proxied CNAME to the tunnel, so the
+> new VM answers as soon as cloudflared connects — the old "wait for DNS" note
+> in Step 10 is obsolete.
+
 ## Step 3 — Bring the new VM to the same configured state
 
 ```bash
-ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml
+ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml -e @cloudflared-creds.yml
 ```
 
 Same playbook as first-deploy.md step 10. Idempotent. ~5 minutes. End
@@ -104,7 +120,7 @@ ssh root@<new-vm-ip>
 cd /tmp
 tar -xzf antiek-restore.tar.gz
 # Creates /tmp/antiek-backup-<timestamp>/
-ls -la /tmp/antiek-backup-*/
+ls -la /tmp/antiek-backup.*/
 # Expected: duckdb/  research_events/  knowledge_skills/
 ```
 
@@ -114,14 +130,14 @@ These are file copies — straightforward rsync over the empty state
 directory:
 
 ```bash
-RESTORE_DIR=$(ls -d /tmp/antiek-backup-*/ | head -n 1)
+RESTORE_DIR=$(ls -d /tmp/antiek-backup.*/ | head -n 1)
 
 # Restore the event log
-sudo -u antiek rsync -a "${RESTORE_DIR}/research_events/" \
+sudo -u antiek rsync -a "${RESTORE_DIR}research_events/" \
     /home/antiek/.antiek/research_events/
 
 # Restore the knowledge-skills directory
-sudo -u antiek rsync -a "${RESTORE_DIR}/knowledge_skills/" \
+sudo -u antiek rsync -a "${RESTORE_DIR}knowledge_skills/" \
     /home/antiek/.antiek/knowledge_skills/
 ```
 
@@ -132,16 +148,36 @@ The backup is a directory of Parquet shards + a `load.sql` script
 DATABASE`:
 
 ```bash
-RESTORE_DIR=$(ls -d /tmp/antiek-backup-*/ | head -n 1)
+set -euo pipefail
 
-# Ensure no stale DuckDB file exists (IMPORT requires a fresh DB)
-rm -f /home/antiek/.antiek/antiek.duckdb
+RESTORE_DIR=$(ls -d /tmp/antiek-backup.*/ | head -n 1)
+
+# GUARD (added 2026-09-21 after a read-only DR audit). Do NOT remove.
+# The archive's top-level directory is `antiek-backup.<mktemp suffix>` — a
+# DOT, not a hyphen. This runbook globbed `antiek-backup-*` for its whole
+# life, which matches NOTHING, so RESTORE_DIR resolved to the empty string
+# and the next line still deleted the live graph before IMPORT failed on
+# the path '/duckdb'. Following this runbook destroyed production and did
+# not restore it. Verified on the box: `ls -d /tmp/antiek-backup-*/` ->
+# "No such file or directory".
+if [ -z "${RESTORE_DIR:-}" ] || [ ! -d "${RESTORE_DIR}duckdb" ]; then
+  echo "ABORT: no extracted backup found. RESTORE_DIR='${RESTORE_DIR:-}'" >&2
+  echo "Re-check Step 5 extracted to /tmp/antiek-backup.*/ before continuing." >&2
+  exit 1
+fi
+echo "Restoring from: ${RESTORE_DIR}"
+
+# Ensure no stale DuckDB file exists (IMPORT requires a fresh DB).
+# The .wal is removed too: leaving an orphan WAL beside a deleted DB was
+# tested on DuckDB 1.5.2 and imports cleanly, but removing it keeps the
+# starting state unambiguous.
+rm -f /home/antiek/.antiek/antiek.duckdb /home/antiek/.antiek/antiek.duckdb.wal
 
 # Run IMPORT DATABASE as the antiek user so file ownership is right
 sudo -u antiek /opt/antiek/.venv/bin/python3 -c "
 import duckdb
 con = duckdb.connect('/home/antiek/.antiek/antiek.duckdb')
-con.execute(\"IMPORT DATABASE '${RESTORE_DIR}/duckdb';\")
+con.execute(\"IMPORT DATABASE '${RESTORE_DIR}duckdb';\")
 con.close()
 print('IMPORT complete')
 "
@@ -207,7 +243,7 @@ substrate is healthy AND the restored graph is queryable end-to-end.
 
 ```bash
 rm /tmp/antiek-restore.tar.gz
-rm -rf /tmp/antiek-backup-*/
+rm -rf /tmp/antiek-backup.*/
 ```
 
 ---
