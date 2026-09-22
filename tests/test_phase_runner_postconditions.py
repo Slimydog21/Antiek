@@ -54,9 +54,10 @@ from orchestration.phase_runner.postconditions import (  # noqa: E402
     run_check,
 )
 from substrate.event_log import emit_typed  # noqa: E402
-from substrate.schemas import (  # noqa: E402
+from substrate.schemas import (  # noqa: E402  # noqa: E402
     AutoPatchAppliedPayload,
     ConstraintCompliance,
+    EvidenceRetrieveDeliveredPayload,
     FalsificationCondition,
     MasterMdWrittenPayload,
     SynthesizeDeliveredPayload,
@@ -178,17 +179,122 @@ def test_phase_1_happy_with_regex_citation(research_dir):
 # ---------------------------------------------------------------------------
 
 
-def _write_round1(research_dir):
-    body = "round 1 dimension content. " * 50  # > 500 bytes
+# A realistic round-1 body: distinct findings, citations and a gap. The old
+# fixture was `"round 1 dimension content. " * 50  # > 500 bytes` — built, like
+# the orchestrator it stood in for, purely to clear the size floor. A fixture
+# made of padding can only ever prove that padding passes.
+_ROUND1_REAL = """# Round 1 — inv-p2
+
+Question: does the shard count bound throughput?
+
+## Does throughput degrade above 8 shards?
+
+Yes, measurably, and the knee is sharp rather than gradual.
+
+- **Throughput falls 40% above 8 shards** (measurement, confidence=high;
+  chunk_a1f, edge_b22) — replicated across three independent runs.
+- **The knee tracks runner concurrency, not shard count per se** (analysis,
+  confidence=medium; chunk_c07) — from the queue-depth histogram.
+- _Gap_: no data above 16 shards. Suggested: extend the sweep.
+
+## Is the effect present with a warm cache?
+
+Partially. Warm cache moves the knee but does not remove it.
+
+- **Warm cache shifts the knee to 12 shards** (measurement, confidence=high;
+  chunk_d91) — same harness, cache pre-populated.
+"""
+
+
+def _write_round1(research_dir, body=None):
     for name in ("round1-technical.md", "round1-competitive.md",
                  "round1-strategic.md"):
-        _write(os.path.join(research_dir, name), body)
+        _write(os.path.join(research_dir, name), body or _ROUND1_REAL)
 
 
 def test_phase_2_all_present_ok(research_dir):
     _write_round1(research_dir)
     ok, _ = check_phase_2("inv-p2", research_dir=research_dir)
     assert ok is True
+
+
+def test_phase_2_rejects_padding_that_clears_the_size_floor(research_dir):
+    """A size floor cannot tell an investigation from padding.
+
+    This is the exact string the orchestrator used to write — one sentence,
+    fifty times, ~1700 bytes. It cleared _ROUND1_MIN_BYTES, so Phase 2 passed
+    over three files that said nothing. The producer and the checker were
+    written to the same weak spec, so the gate verified the orchestrator's own
+    padding rather than any role's output.
+    """
+    _write_round1(
+        research_dir,
+        body=(
+            "# Round 1 — inv-p2\n\nQuestion: q\n\n"
+            + ("Evidence-grounded round 1 content. " * 50)
+        ),
+    )
+    ok, reason = check_phase_2("inv-p2", research_dir=research_dir)
+    assert ok is False, "padding cleared the size floor and passed the gate"
+    assert "padding, not content" in reason
+    assert "repeated 50x" in reason
+
+
+def _emit_evidence_declined(investigation_id: str, n: int = 2) -> None:
+    """n evidence deliveries that all honestly declined."""
+    for i in range(n):
+        emit_typed(
+            investigation_id,
+            EvidenceRetrieveDeliveredPayload(
+                sub_question=f"sub question {i}",
+                answer="",
+                supporting_claims=[],
+                evidentiary_gaps=[],
+                insufficient_evidence=True,
+            ),
+            role="evidence_retriever",
+            policy_id="test",
+        )
+
+
+def test_phase_2_thin_round1_passes_when_every_retriever_declined(research_dir):
+    """A thin round 1 is correct when the evidence honestly was not there.
+
+    Dropping the orchestrator's padding makes a genuine round 1 fall under the
+    byte floor — real evidence for two sub-questions is a few hundred bytes,
+    where fifty copies of one sentence was 1700. Without this hatch the fix
+    would trade a gate that passes on nothing for one that fails on honesty.
+    Mirrors the same escape in Phase 6 and Phase 8.
+    """
+    _write_round1(research_dir, body="# Round 1\n\nNothing retrievable.\n")
+    _emit_evidence_declined("inv-p2")
+    ok, reason = check_phase_2("inv-p2", research_dir=research_dir)
+    assert ok is True
+    assert "insufficient_evidence" in reason
+
+
+def test_phase_2_thin_round1_still_fails_when_retrievers_did_answer(research_dir):
+    """The hatch must not become a blanket exemption.
+
+    Same thin files, but the deliveries reported real answers — so a
+    round 1 this small means the pipeline dropped work, and Phase 2 must say so.
+    """
+    _write_round1(research_dir, body="# Round 1\n\nNothing retrievable.\n")
+    emit_typed(
+        "inv-p2",
+        EvidenceRetrieveDeliveredPayload(
+            sub_question="sub question 0",
+            answer="A real answer that the round-1 file failed to carry.",
+            supporting_claims=[],
+            evidentiary_gaps=[],
+            insufficient_evidence=False,
+        ),
+        role="evidence_retriever",
+        policy_id="test",
+    )
+    ok, reason = check_phase_2("inv-p2", research_dir=research_dir)
+    assert ok is False
+    assert "bytes" in reason or "padding" in reason
 
 
 def test_phase_2_missing_one_rejected(research_dir):

@@ -50,6 +50,7 @@ from substrate.schemas import (
     AutoPatchAppliedPayload,
     ConnectorDeliveredPayload,
     Event,
+    EvidenceRetrieveDeliveredPayload,
     MasterMdWrittenPayload,
     SynthesizeDeliveredPayload,
 )
@@ -219,6 +220,37 @@ def check_phase_1(
 # ---------------------------------------------------------------------------
 
 
+def _repetition_filler(body: str) -> str | None:
+    """Return a reason when ``body`` is one fragment repeated to clear a floor.
+
+    A size floor alone cannot distinguish an investigation from padding: the
+    orchestrator used to satisfy Phase 2 with
+    ``"Evidence-grounded round 1 content. " * 50`` — 1700 characters, one
+    sentence. A byte count says that is substantial; a reader says it is empty.
+
+    This does NOT prescribe what a round file must contain, which would put the
+    checker back in step with whatever the producer happens to emit. It asks
+    only that the bytes are not the same fragment over and over.
+    """
+    text = body.strip()
+    if not text:
+        return "empty"
+    frags = [f.strip() for f in re.split(r"[.\n]+", text) if f.strip()]
+    if not frags:
+        return "no sentence-like content"
+    counts: dict[str, int] = {}
+    for f in frags:
+        counts[f] = counts.get(f, 0) + 1
+    frag, n = max(counts.items(), key=lambda kv: kv[1] * len(kv[0]))
+    if n > 3 and (n * len(frag)) > 0.6 * len(text):
+        pct = int(100 * n * len(frag) / len(text))
+        return (
+            f"{frag[:48]!r} repeated {n}x = {pct}% of the body — "
+            f"this is padding, not content"
+        )
+    return None
+
+
 def check_phase_2(
     investigation_id: str,
     *,
@@ -231,6 +263,7 @@ def check_phase_2(
     )
     missing: list[str] = []
     too_small: list[str] = []
+    padded: list[str] = []
     for name in required:
         p = os.path.join(research_dir, name)
         if not os.path.exists(p):
@@ -238,10 +271,46 @@ def check_phase_2(
             continue
         if os.path.getsize(p) <= _ROUND1_MIN_BYTES:
             too_small.append(f"{p} ({os.path.getsize(p)} bytes)")
+            continue
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                reason = _repetition_filler(fh.read())
+        except OSError as exc:
+            return False, f"{p} unreadable: {exc!r}"
+        if reason is not None:
+            padded.append(f"{p}: {reason}")
     if missing:
         return False, "missing: " + ", ".join(missing)
+
+    # Honest-decline hatch, mirroring Phase 6 and Phase 8.
+    #
+    # Removing the orchestrator's padding makes a genuinely thin round 1 fall
+    # UNDER _ROUND1_MIN_BYTES — real evidence for a couple of sub-questions can
+    # be 100-400 bytes, where 50 copies of one sentence was 1700. Failing those
+    # runs would just trade a gate that passes on nothing for one that fails on
+    # honesty. The retriever already reports this: EvidenceRetrieveDelivered
+    # carries ``insufficient_evidence``, and the prompt treats an absent answer
+    # as information rather than failure. So when EVERY delivery for this
+    # investigation declined, a small round 1 is the correct outcome, not a
+    # defect.
+    if too_small or padded:
+        delivered = _events_of_type(
+            investigation_id, ActionType.EVIDENCE_RETRIEVE_DELIVERED,
+        )
+        payloads = [
+            e.payload for e in delivered
+            if isinstance(e.payload, EvidenceRetrieveDeliveredPayload)
+        ]
+        if payloads and all(pl.insufficient_evidence for pl in payloads):
+            return True, (
+                f"round-1 files are thin, and correctly so: all "
+                f"{len(payloads)} evidence deliveries reported "
+                f"insufficient_evidence"
+            )
     if too_small:
         return False, f"≤{_ROUND1_MIN_BYTES} bytes: " + ", ".join(too_small)
+    if padded:
+        return False, "padding, not content: " + "; ".join(padded)
     return True, f"3 round-1 files OK under {research_dir}"
 
 

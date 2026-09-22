@@ -798,14 +798,60 @@ async def _run_phase_2(
             _retrieve_one(index, sq) for index, sq in enumerate(sub_qs)
         ))
         ctx.evidence.extend(results)
-        # Write the three round-1 dimension markers so the file-
-        # artifact postcondition for Phase 2 passes. The markers
-        # carry the evidence summaries the orchestrator already has.
-        body_base = (
-            f"# Round 1 — {ctx.investigation_id}\n\n"
-            f"Question: {ctx.question}\n\n"
-            + ("Evidence-grounded round 1 content. " * 50)
-        )
+        # Render the evidence the retrievers actually returned.
+        #
+        # This block used to append ``("Evidence-grounded round 1 content. "
+        # * 50)`` — one constant sentence, fifty times — and its own comment
+        # said why: "so the file-artifact postcondition for Phase 2 passes".
+        # The postcondition checks the three files exist and clear
+        # ``_ROUND1_MIN_BYTES``, and 1700 characters of one repeated sentence
+        # clears it. So Phase 2 verified the orchestrator's padding, not any
+        # role's output: the producer and the checker were written to the same
+        # weak spec, and the gate could not tell a real investigation from an
+        # empty one.
+        #
+        # The same comment also claimed the markers "carry the evidence
+        # summaries the orchestrator already has". They did not — ``results``
+        # was collected, appended to ``ctx.evidence``, and then discarded here.
+        # This makes the claim true.
+        lines: list[str] = [
+            f"# Round 1 — {ctx.investigation_id}",
+            "",
+            f"Question: {ctx.question}",
+            "",
+        ]
+        for payload in results:
+            lines.append(f"## {payload.sub_question}")
+            lines.append("")
+            if payload.insufficient_evidence:
+                lines.append(
+                    "_Retriever declined: insufficient evidence. A gap is "
+                    "first-class output, not a failure._"
+                )
+            elif payload.answer.strip():
+                lines.append(payload.answer.strip())
+            else:
+                lines.append("_No answer returned._")
+            lines.append("")
+            for claim in payload.supporting_claims:
+                cites = ", ".join(
+                    [f"chunk_{c}" for c in claim.chunk_ids]
+                    + [f"edge_{e}" for e in claim.edge_ids]
+                ) or "no citation"
+                lines.append(
+                    f"- **{claim.claim.strip()}** "
+                    f"({claim.evidence_type}, confidence={claim.confidence}; "
+                    f"{cites}) — {claim.confidence_basis.strip()}"
+                )
+            for gap in payload.evidentiary_gaps:
+                suggestion = (
+                    f" Suggested: {gap.additional_retrieval_suggested.strip()}"
+                    if gap.additional_retrieval_suggested
+                    else ""
+                )
+                lines.append(f"- _Gap_: {gap.gap_description.strip()}{suggestion}")
+            lines.append("")
+        body_base = "\n".join(lines)
         for name in (
             "round1-technical.md", "round1-competitive.md",
             "round1-strategic.md",
