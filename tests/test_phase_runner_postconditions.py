@@ -502,7 +502,15 @@ def test_phase_8_skill_file_mtime_fallback(tmp_path):
     quantum_dir = skills_root / "quantum-knowledge"
     quantum_dir.mkdir(parents=True)
     skill_file = quantum_dir / "SKILL.md"
-    skill_file.write_text("# Quantum\n\n## Findings\n")
+    # The body must carry this investigation's provenance marker, exactly as
+    # `skills/domain/auto_patch.render_patch` writes it. A bare skill file is
+    # no longer sufficient: the knowledge-skills root is SHARED across
+    # investigations, so "some file changed" cannot answer "did THIS
+    # investigation compound?".
+    skill_file.write_text(
+        "# Quantum\n\n## Findings\n\n"
+        "### From investigation `inv-p8mtime` (2026-09-22)\n"
+    )
 
     # Use a past investigation start (1 hour ago) so the file's NOW
     # mtime is strictly after it. UTC-aware throughout.
@@ -516,7 +524,57 @@ def test_phase_8_skill_file_mtime_fallback(tmp_path):
         investigation_started_at=started_at,
     )
     assert ok is True
-    assert "modified after" in reason
+    assert "patch marker" in reason
+
+
+def test_phase_8_does_not_pass_on_another_investigations_skill_write(tmp_path):
+    """THE KEYSTONE LEAK, pinned.
+
+    The knowledge-skills root is shared: `default_knowledge_skills_dir()` takes
+    no investigation argument. Before this fix path B asked only "has any file
+    under the root changed since the cutoff", so a CONCURRENT investigation's
+    skill write satisfied this investigation's keystone — and in production the
+    caller (`orchestration/invariants/deep_research_complete.py`) omits
+    `investigation_started_at`, widening the cutoff to a 24-hour window over a
+    directory every investigation writes to.
+
+    The pre-existing mtime test could not detect this: it runs under `tmp_path`
+    with a single investigation, an isolation production does not have. This
+    test recreates the real topology — ONE root, TWO investigations — and
+    asserts B does not compound A's work.
+    """
+    skills_root = tmp_path / "skills"
+    quantum_dir = skills_root / "quantum-knowledge"
+    quantum_dir.mkdir(parents=True)
+
+    # Investigation A really did compound: its marker is in the file.
+    skill_file = quantum_dir / "SKILL.md"
+    skill_file.write_text(
+        "# Quantum\n\n## Findings\n\n"
+        "### From investigation `inv-AAA` (2026-09-22)\n"
+    )
+    past = datetime.now(UTC).timestamp() - 3600
+    os.utime(str(skill_file), (past + 1800, past + 1800))
+    started_at = datetime.fromtimestamp(past, tz=UTC)
+
+    # A passes — it owns the write.
+    ok_a, _ = check_phase_8(
+        "inv-AAA",
+        knowledge_skills_dir=str(skills_root),
+        investigation_started_at=started_at,
+    )
+    assert ok_a is True
+
+    # B must NOT pass on A's write, though the mtime is identical.
+    ok_b, reason_b = check_phase_8(
+        "inv-BBB",
+        knowledge_skills_dir=str(skills_root),
+        investigation_started_at=started_at,
+    )
+    assert ok_b is False, (
+        "investigation BBB passed the keystone on AAA's skill write — "
+        f"path B is not investigation-scoped: {reason_b}"
+    )
 
 
 def test_phase_8_naive_started_at_treated_as_utc(tmp_path):
