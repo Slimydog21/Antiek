@@ -83,16 +83,26 @@ def test_keystone_enforces_all_three_write_lock_lints() -> None:
     # Anti-vacuity: an empty parse would make every comparison below trivially
     # true, which is exactly how this stops testing anything.
     assert lints, "parsed no enforce invocations from the keystone job"
-    assert lints == set(_EXPECTED_LINTS), (
-        "the required keystone job no longer enforces the full write-lock floor: "
-        f"missing={sorted(set(_EXPECTED_LINTS) - lints)} "
-        f"unexpected={sorted(lints - set(_EXPECTED_LINTS))}"
+    # SUPERSET, not equality. `keystone` is the designated home for every lint
+    # promoted out of an advisory, paths-filtered floor — that is the pattern
+    # #3329 established and this file documents. Asserting equality turns a
+    # floor check into a FREEZE on unrelated work: promoting any other floor
+    # reds it even though all three write-lock lints are untouched. That is
+    # exactly what happened when unbounded_external_call, seam_under_write_lock,
+    # no_raise and bypass were promoted — `missing=[]`, yet the test failed.
+    #
+    # What this file exists to catch is a write-lock lint going MISSING, and a
+    # superset assertion catches that just as sharply.
+    missing_lints = set(_EXPECTED_LINTS) - lints
+    assert not missing_lints, (
+        "the required keystone job no longer enforces the full write-lock "
+        f"floor: missing={sorted(missing_lints)}"
     )
-    assert baselines == set(_EXPECTED_BASELINES), (
-        f"baseline drift: missing={sorted(set(_EXPECTED_BASELINES) - baselines)} "
-        f"unexpected={sorted(baselines - set(_EXPECTED_BASELINES))}"
+    missing_baselines = set(_EXPECTED_BASELINES) - baselines
+    assert not missing_baselines, (
+        f"baseline drift: missing={sorted(missing_baselines)}"
     )
-    assert scope == set(_EXPECTED_SCOPE), (
+    assert set(_EXPECTED_SCOPE) <= scope, (
         "SCOPE_DIRS drifted — a directory the lints no longer scan is a blind "
         f"spot: missing={sorted(set(_EXPECTED_SCOPE) - scope)} "
         f"unexpected={sorted(scope - set(_EXPECTED_SCOPE))}"

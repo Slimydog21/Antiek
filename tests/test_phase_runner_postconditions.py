@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from orchestration.phase_log import PhaseLog  # noqa: E402
 from orchestration.phase_runner.postconditions import (  # noqa: E402
     CHECKS,
+    NO_PRIOR_GRAPH_KNOWLEDGE,
     check_phase_1,
     check_phase_2,
     check_phase_3,
@@ -53,9 +54,10 @@ from orchestration.phase_runner.postconditions import (  # noqa: E402
     run_check,
 )
 from substrate.event_log import emit_typed  # noqa: E402
-from substrate.schemas import (  # noqa: E402
+from substrate.schemas import (  # noqa: E402  # noqa: E402
     AutoPatchAppliedPayload,
     ConstraintCompliance,
+    EvidenceRetrieveDeliveredPayload,
     FalsificationCondition,
     MasterMdWrittenPayload,
     SynthesizeDeliveredPayload,
@@ -117,6 +119,48 @@ def test_phase_1_section_with_no_citations(research_dir):
     assert ok is False
 
 
+def test_phase_1_cold_start_may_declare_absence_instead_of_faking_citations(
+    research_dir,
+):
+    """A cold question has no prior graph knowledge, and may say so.
+
+    The orchestrator used to satisfy the citation regex with
+    "chunk_orientation_marker and node_orchestrator_start seed the connector
+    substrate ..." — tokens shaped like citations that referred to no chunk and
+    no node. The gate read a fabrication and passed. The failure was not that
+    the gate was weak; it was that the only way to pass was to claim knowledge
+    that did not exist, so the producer invented some.
+
+    Giving absence an honest expression removes the incentive. Same shape as
+    the insufficient_evidence hatch in Phases 2, 6 and 8.
+    """
+    body = (
+        "# Orientation\n\n" + ("orientation detail. " * 40)
+        + "\n\n## Prior Graph Knowledge\n\n"
+        + NO_PRIOR_GRAPH_KNOWLEDGE + "\n"
+    )
+    _write(os.path.join(research_dir, "orientation.md"), body)
+    ok, reason = check_phase_1("inv-p1", research_dir=research_dir)
+    assert ok is True
+    assert "no-prior-graph-knowledge" in reason
+
+
+def test_phase_1_still_rejects_a_section_with_neither(research_dir):
+    """Neither a citation nor the declaration is still a failure.
+
+    The hatch must not become a blanket exemption: a Prior Graph Knowledge
+    section that says nothing at all is exactly what Phase 1 exists to catch.
+    """
+    body = (
+        "# Orientation\n\n" + ("orientation detail. " * 40)
+        + "\n\n## Prior Graph Knowledge\n\nSome prose with no citation.\n"
+    )
+    _write(os.path.join(research_dir, "orientation.md"), body)
+    ok, reason = check_phase_1("inv-p1", research_dir=research_dir)
+    assert ok is False
+    assert "neither" in reason
+
+
 def test_phase_1_happy_with_regex_citation(research_dir):
     body = (
         "# Orientation\n\n"
@@ -135,17 +179,122 @@ def test_phase_1_happy_with_regex_citation(research_dir):
 # ---------------------------------------------------------------------------
 
 
-def _write_round1(research_dir):
-    body = "round 1 dimension content. " * 50  # > 500 bytes
+# A realistic round-1 body: distinct findings, citations and a gap. The old
+# fixture was `"round 1 dimension content. " * 50  # > 500 bytes` — built, like
+# the orchestrator it stood in for, purely to clear the size floor. A fixture
+# made of padding can only ever prove that padding passes.
+_ROUND1_REAL = """# Round 1 — inv-p2
+
+Question: does the shard count bound throughput?
+
+## Does throughput degrade above 8 shards?
+
+Yes, measurably, and the knee is sharp rather than gradual.
+
+- **Throughput falls 40% above 8 shards** (measurement, confidence=high;
+  chunk_a1f, edge_b22) — replicated across three independent runs.
+- **The knee tracks runner concurrency, not shard count per se** (analysis,
+  confidence=medium; chunk_c07) — from the queue-depth histogram.
+- _Gap_: no data above 16 shards. Suggested: extend the sweep.
+
+## Is the effect present with a warm cache?
+
+Partially. Warm cache moves the knee but does not remove it.
+
+- **Warm cache shifts the knee to 12 shards** (measurement, confidence=high;
+  chunk_d91) — same harness, cache pre-populated.
+"""
+
+
+def _write_round1(research_dir, body=None):
     for name in ("round1-technical.md", "round1-competitive.md",
                  "round1-strategic.md"):
-        _write(os.path.join(research_dir, name), body)
+        _write(os.path.join(research_dir, name), body or _ROUND1_REAL)
 
 
 def test_phase_2_all_present_ok(research_dir):
     _write_round1(research_dir)
     ok, _ = check_phase_2("inv-p2", research_dir=research_dir)
     assert ok is True
+
+
+def test_phase_2_rejects_padding_that_clears_the_size_floor(research_dir):
+    """A size floor cannot tell an investigation from padding.
+
+    This is the exact string the orchestrator used to write — one sentence,
+    fifty times, ~1700 bytes. It cleared _ROUND1_MIN_BYTES, so Phase 2 passed
+    over three files that said nothing. The producer and the checker were
+    written to the same weak spec, so the gate verified the orchestrator's own
+    padding rather than any role's output.
+    """
+    _write_round1(
+        research_dir,
+        body=(
+            "# Round 1 — inv-p2\n\nQuestion: q\n\n"
+            + ("Evidence-grounded round 1 content. " * 50)
+        ),
+    )
+    ok, reason = check_phase_2("inv-p2", research_dir=research_dir)
+    assert ok is False, "padding cleared the size floor and passed the gate"
+    assert "padding, not content" in reason
+    assert "repeated 50x" in reason
+
+
+def _emit_evidence_declined(investigation_id: str, n: int = 2) -> None:
+    """n evidence deliveries that all honestly declined."""
+    for i in range(n):
+        emit_typed(
+            investigation_id,
+            EvidenceRetrieveDeliveredPayload(
+                sub_question=f"sub question {i}",
+                answer="",
+                supporting_claims=[],
+                evidentiary_gaps=[],
+                insufficient_evidence=True,
+            ),
+            role="evidence_retriever",
+            policy_id="test",
+        )
+
+
+def test_phase_2_thin_round1_passes_when_every_retriever_declined(research_dir):
+    """A thin round 1 is correct when the evidence honestly was not there.
+
+    Dropping the orchestrator's padding makes a genuine round 1 fall under the
+    byte floor — real evidence for two sub-questions is a few hundred bytes,
+    where fifty copies of one sentence was 1700. Without this hatch the fix
+    would trade a gate that passes on nothing for one that fails on honesty.
+    Mirrors the same escape in Phase 6 and Phase 8.
+    """
+    _write_round1(research_dir, body="# Round 1\n\nNothing retrievable.\n")
+    _emit_evidence_declined("inv-p2")
+    ok, reason = check_phase_2("inv-p2", research_dir=research_dir)
+    assert ok is True
+    assert "insufficient_evidence" in reason
+
+
+def test_phase_2_thin_round1_still_fails_when_retrievers_did_answer(research_dir):
+    """The hatch must not become a blanket exemption.
+
+    Same thin files, but the deliveries reported real answers — so a
+    round 1 this small means the pipeline dropped work, and Phase 2 must say so.
+    """
+    _write_round1(research_dir, body="# Round 1\n\nNothing retrievable.\n")
+    emit_typed(
+        "inv-p2",
+        EvidenceRetrieveDeliveredPayload(
+            sub_question="sub question 0",
+            answer="A real answer that the round-1 file failed to carry.",
+            supporting_claims=[],
+            evidentiary_gaps=[],
+            insufficient_evidence=False,
+        ),
+        role="evidence_retriever",
+        policy_id="test",
+    )
+    ok, reason = check_phase_2("inv-p2", research_dir=research_dir)
+    assert ok is False
+    assert "bytes" in reason or "padding" in reason
 
 
 def test_phase_2_missing_one_rejected(research_dir):
@@ -208,11 +357,42 @@ def test_phase_4_critique_excluded(research_dir):
     assert ok is False
 
 
+_ROUND2_REAL = """# Round 2 — Relational Deep Dive
+
+Investigation: `inv-p4`
+
+Algorithm: `top_n_shortest_paths` — chosen because the seed pairs are sparse
+and the question asks for the shortest explanatory chain, not all chains.
+
+4 graph path(s) traversed.
+
+- Shard contention and cache warmth share an upstream cause: the runner pool
+  serialises both. (path #0)
+- The 8-shard knee disappears when the pool is widened, which the traversal
+  reaches through the scheduler node rather than the storage node. (path #1)
+- No path connects shard count to disk latency, so the storage hypothesis is
+  unsupported by the graph. (path #2)
+"""
+
+
 def test_phase_4_happy(research_dir):
-    _write(os.path.join(research_dir, "round2-technical.md"),
-           "deep dive content. " * 50)
+    _write(os.path.join(research_dir, "round2-technical.md"), _ROUND2_REAL)
     ok, _ = check_phase_4("inv-p4", research_dir=research_dir)
     assert ok is True
+
+
+def test_phase_4_rejects_padding_that_clears_the_floor(research_dir):
+    """The exact string the orchestrator used to write for round 2.
+
+    ``"Cross-domain connector substrate surfaced. " * 50`` is ~2100 bytes, so
+    it cleared _ROUND2_DEEP_DIVE_MIN_BYTES whatever the Connector actually
+    returned — the deep-dive gate measured the orchestrator's padding.
+    """
+    _write(os.path.join(research_dir, "round2-technical.md"),
+           "# Round 2\n\n" + ("Cross-domain connector substrate surfaced. " * 50))
+    ok, reason = check_phase_4("inv-p4", research_dir=research_dir)
+    assert ok is False
+    assert "round2" in reason
 
 
 # ---------------------------------------------------------------------------
@@ -502,7 +682,15 @@ def test_phase_8_skill_file_mtime_fallback(tmp_path):
     quantum_dir = skills_root / "quantum-knowledge"
     quantum_dir.mkdir(parents=True)
     skill_file = quantum_dir / "SKILL.md"
-    skill_file.write_text("# Quantum\n\n## Findings\n")
+    # The body must carry this investigation's provenance marker, exactly as
+    # `skills/domain/auto_patch.render_patch` writes it. A bare skill file is
+    # no longer sufficient: the knowledge-skills root is SHARED across
+    # investigations, so "some file changed" cannot answer "did THIS
+    # investigation compound?".
+    skill_file.write_text(
+        "# Quantum\n\n## Findings\n\n"
+        "### From investigation `inv-p8mtime` (2026-09-22)\n"
+    )
 
     # Use a past investigation start (1 hour ago) so the file's NOW
     # mtime is strictly after it. UTC-aware throughout.
@@ -516,7 +704,57 @@ def test_phase_8_skill_file_mtime_fallback(tmp_path):
         investigation_started_at=started_at,
     )
     assert ok is True
-    assert "modified after" in reason
+    assert "patch marker" in reason
+
+
+def test_phase_8_does_not_pass_on_another_investigations_skill_write(tmp_path):
+    """THE KEYSTONE LEAK, pinned.
+
+    The knowledge-skills root is shared: `default_knowledge_skills_dir()` takes
+    no investigation argument. Before this fix path B asked only "has any file
+    under the root changed since the cutoff", so a CONCURRENT investigation's
+    skill write satisfied this investigation's keystone — and in production the
+    caller (`orchestration/invariants/deep_research_complete.py`) omits
+    `investigation_started_at`, widening the cutoff to a 24-hour window over a
+    directory every investigation writes to.
+
+    The pre-existing mtime test could not detect this: it runs under `tmp_path`
+    with a single investigation, an isolation production does not have. This
+    test recreates the real topology — ONE root, TWO investigations — and
+    asserts B does not compound A's work.
+    """
+    skills_root = tmp_path / "skills"
+    quantum_dir = skills_root / "quantum-knowledge"
+    quantum_dir.mkdir(parents=True)
+
+    # Investigation A really did compound: its marker is in the file.
+    skill_file = quantum_dir / "SKILL.md"
+    skill_file.write_text(
+        "# Quantum\n\n## Findings\n\n"
+        "### From investigation `inv-AAA` (2026-09-22)\n"
+    )
+    past = datetime.now(UTC).timestamp() - 3600
+    os.utime(str(skill_file), (past + 1800, past + 1800))
+    started_at = datetime.fromtimestamp(past, tz=UTC)
+
+    # A passes — it owns the write.
+    ok_a, _ = check_phase_8(
+        "inv-AAA",
+        knowledge_skills_dir=str(skills_root),
+        investigation_started_at=started_at,
+    )
+    assert ok_a is True
+
+    # B must NOT pass on A's write, though the mtime is identical.
+    ok_b, reason_b = check_phase_8(
+        "inv-BBB",
+        knowledge_skills_dir=str(skills_root),
+        investigation_started_at=started_at,
+    )
+    assert ok_b is False, (
+        "investigation BBB passed the keystone on AAA's skill write — "
+        f"path B is not investigation-scoped: {reason_b}"
+    )
 
 
 def test_phase_8_naive_started_at_treated_as_utc(tmp_path):

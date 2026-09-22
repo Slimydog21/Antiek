@@ -39,7 +39,13 @@ issue, **not** an accessibility violation. Accessibility is still exercised by
 
 **Reconsider-if:** the test-runner's index resolution is made stable in CI.
 
-## 3. lostpixel — visual regression → NOW BLOCKING (AGH SPR-04, 2026-07-03)
+## 3. lostpixel — visual regression → REDS THE CHECK, NOT MERGE-BLOCKING
+
+> **Correction (2026-09-22).** This section read "NOW BLOCKING" since AGH SPR-04. That is true
+> of the STEP — its exit code is lost-pixel's own and a real regression reds the check — but the
+> `lostpixel` context sits in `emitted_but_not_required`, so the PR still merges. #3300 and #3261
+> both merged with `lostpixel` red on their merged head sha. Requiring it needs the 82%-pass
+> flake rate addressed first; 675 baselines currently cover light mode only.
 
 **Was informational** because no visual baselines existed for the new
 four-workflow shell. **The reconsider-if has fired:** 381 baseline PNGs are now

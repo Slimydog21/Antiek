@@ -287,15 +287,48 @@
     # directly). Caddy then path-splits API vs SPA.
     - name: read existing tunnel ID from VM
       ansible.builtin.shell: |
+        set -o pipefail
         # Tunnel ID is the name of the credentials JSON file (UUID).
         ls /etc/cloudflared/ | grep -E '^[0-9a-f-]+\.json$' | sed 's/\.json$//'
+      args:
+        executable: /bin/bash
       register: tunnel_id_lookup
       changed_when: false
+      # A miss is handled below, not here: we want the assert's message,
+      # not a bare non-zero rc from grep.
+      failed_when: false
       tags: [cloudflared]
 
+    # `ls | grep | sed` exits 0 with EMPTY stdout when /etc/cloudflared holds
+    # no credentials file, so "not found" was indistinguishable from success.
+    # That empty string used to overwrite the known-good ID from
+    # cloudflared-creds.yml (set_fact outranks a vars file), and the template
+    # below would then render `tunnel:` with no value and
+    # `credentials-file: /etc/cloudflared/.json`. That differs from the live
+    # config, so `cloudflared_config.changed` fires and the next task RESTARTS
+    # the tunnel that terminates all public TLS for {{ api_domain }} — while
+    # the play still reports success. Prefer the discovered ID, but never
+    # downgrade a good one to empty.
     - name: set cloudflared_tunnel_id fact
       ansible.builtin.set_fact:
-        cloudflared_tunnel_id: "{{ tunnel_id_lookup.stdout | trim }}"
+        cloudflared_tunnel_id: >-
+          {{ (tunnel_id_lookup.stdout | default('') | trim)
+             or (cloudflared_tunnel_id | default('')) }}
+      tags: [cloudflared]
+
+    - name: assert the resolved tunnel ID is a UUID before rendering
+      ansible.builtin.assert:
+        that:
+          - cloudflared_tunnel_id | default('') | length > 0
+          - cloudflared_tunnel_id is match('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+        fail_msg: >-
+          Refusing to render /etc/cloudflared/config.yml: the resolved tunnel
+          ID is not a UUID (got '{{ cloudflared_tunnel_id | default('') }}').
+          Rendering it would point cloudflared at a credentials file that does
+          not exist and restart the tunnel serving {{ api_domain }}.
+          Check that /etc/cloudflared/<uuid>.json is present and readable, or
+          set cloudflared_tunnel_id in cloudflared-creds.yml.
+        success_msg: "cloudflared tunnel ID resolved: {{ cloudflared_tunnel_id }}"
       tags: [cloudflared]
 
     - name: re-render cloudflared config.yml
