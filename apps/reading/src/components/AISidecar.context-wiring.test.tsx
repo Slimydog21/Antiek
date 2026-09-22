@@ -13,8 +13,8 @@ vi.mock("../lib/api", () => ({
   apiFetch: vi.fn(),
   composeContext: vi.fn(),
 }));
-vi.mock("../brand/werner/animated", () => ({
-  WernerThinking: () => null,
+vi.mock("../brand/mascot/animated", () => ({
+  BrainThinking: () => null,
 }));
 vi.mock("../hooks/useReplyMode", () => ({
   useReplyMode: () => ({ mode: "text", setMode: () => undefined }),

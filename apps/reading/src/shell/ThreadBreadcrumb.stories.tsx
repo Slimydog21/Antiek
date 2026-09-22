@@ -15,7 +15,7 @@ import type { Thread, ThreadHop } from "./threadModel";
  *     breadcrumb refuses to render a continuity the data can't support),
  *   - the ThreadJump container that advances the breadcrumb on a jump.
  *
- * Werner skin (Lemon tokens) — no hardcoded colors.
+ * Brain skin (Lemon tokens) — no hardcoded colors.
  */
 const CANONICAL = "insight-7f3a9c";
 
