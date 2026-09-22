@@ -945,9 +945,18 @@ def _determinism_for_fn(
     # bound to a name and reused/injected is spared. (SPR-04's dynamic
     # frozen-vs-live diff catches an injected-clock test that IS in fact flaky.)
     if not frozen:
+        deadline_names = _poll_deadline_names(fn)
         for sub in ast.walk(fn):
             if isinstance(sub, ast.Call) and _nondeterministic_call_kind(sub) == "clock":
                 if not _node_flows_into_assert(sub, fn):
+                    continue
+                # `assert time.monotonic() < deadline` is a poll TIMEOUT GUARD,
+                # not a time-of-day assertion — the docstring above already says
+                # a poll deadline must not flag, but only recognises the
+                # `while time.time() < deadline` form. The assert form is the
+                # same idiom written with a hard failure instead of a silent
+                # exit, and is the more honest of the two.
+                if _is_poll_deadline_guard(sub, fn, deadline_names):
                     continue
                 key = ("time", sub.lineno)
                 if key in reported:
@@ -1028,6 +1037,52 @@ def _determinism_for_fn(
                 )
     return out
 
+
+
+def _poll_deadline_names(fn: ast.AST) -> frozenset[str]:
+    """Names bound from a clock expression — i.e. `deadline = monotonic() + 3`.
+
+    Only a name whose ASSIGNMENT contains a clock call counts, so an unrelated
+    `limit = 5` can never turn a real finding into an exemption.
+    """
+    names: set[str] = set()
+    for sub in ast.walk(fn):
+        if not isinstance(sub, ast.Assign):
+            continue
+        if not any(
+            isinstance(n, ast.Call) and _nondeterministic_call_kind(n) == "clock"
+            for n in ast.walk(sub.value)
+        ):
+            continue
+        for target in sub.targets:
+            if isinstance(target, ast.Name):
+                names.add(target.id)
+    return frozenset(names)
+
+
+def _is_poll_deadline_guard(
+    call: ast.Call, fn: ast.AST, deadline_names: frozenset[str]
+) -> bool:
+    """`assert <clock>() < <deadline-name>` — a timeout guard on a poll loop.
+
+    Deliberately NARROW. The clock must be the LEFT operand of a `<`/`<=`
+    against a name bound from a clock, so
+    `assert claims.issued_at <= int(time.time())` — the flaky-at-a-boundary
+    shape this rule exists for — still flags, because there the clock is on the
+    right and the left is a value under test.
+    """
+    for sub in ast.walk(fn):
+        if not isinstance(sub, ast.Assert) or not isinstance(sub.test, ast.Compare):
+            continue
+        cmp_node = sub.test
+        if len(cmp_node.ops) != 1 or not isinstance(cmp_node.ops[0], (ast.Lt, ast.LtE)):
+            continue
+        if cmp_node.left is not call:
+            continue
+        right = cmp_node.comparators[0]
+        if isinstance(right, ast.Name) and right.id in deadline_names:
+            return True
+    return False
 
 def _nondeterministic_call_kind(call: ast.Call) -> str | None:
     """'clock' / 'rng' / None for a call.
