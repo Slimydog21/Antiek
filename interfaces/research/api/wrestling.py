@@ -519,22 +519,27 @@ def make_document_loaded_handler(
                 prime_agent_backend_from_environment,
             )
 
-            # Supply the backend so the documented flags become the real switch.
+            # A backend is supplied here, but supplying it does NOT execute Prime.
             #
-            # Every RLM site accepts a ``prime_backend`` and, until now, no non-test
-            # code anywhere constructed one — so `_bridge_executor(None)` returned
-            # "dispatch" unconditionally and the entire Prime lane was unreachable at
-            # runtime while looking wired at the module level. This is the one RLM site
-            # with a live entry point (document.loaded), which makes it the honest place
-            # to close that gap first; the other seven have no route at all and wiring
-            # them without a consumer is what produced eight inert parameters.
+            # What the argument actually does: ``_bridge_executor`` (bridge.py:107-110)
+            # reads ``prime_backend`` as a truthiness token and, when it is non-None
+            # AND ANTIEK_PRIME_AGENT_RLM_ENABLED=1 AND ANTIEK_RLM_RATIFIED=1, selects
+            # the string label ``root_executor="prime_agent"`` for ``create_session``.
+            # The bridge never calls ``.run()`` or ``.run_session()`` on it, and the
+            # session it creates is not iterated by anything on this path. With both
+            # flags set and a binary installed, ``document.loaded`` still spawns no
+            # Prime process — it creates a differently labelled session and returns.
             #
-            # The default path is unchanged. `_bridge_executor` requires ALL THREE of a
-            # non-None backend, ANTIEK_PRIME_AGENT_RLM_ENABLED=1 and ANTIEK_RLM_RATIFIED=1
-            # (bridge.py:103-110), and the factory itself returns a backend with
-            # enabled=False unless the first flag is set. Neither flag is set anywhere in
-            # the deployment config, so behaviour is byte-identical until the operator
-            # ratifies — which is exactly the gate session.py:36-40 says is deliberate.
+            # An earlier comment here claimed the documented flags were now a real
+            # switch and the lane's unreachability gap was closed. That was false: the
+            # wiring changed a label, not an execution path. Executing Prime from this
+            # site is SPR-01 Task 3, and it must cross into a worker thread (the
+            # backend's ``run_session`` blocks for up to 120s and this handler runs on
+            # the uvicorn event loop — see ``_sync`` above for the precedent).
+            #
+            # The default path is unchanged: the factory returns a backend with
+            # enabled=False unless the first flag is set, and neither flag is set in
+            # any deployment config.
             decision = maybe_escalate_to_rlm(
                 document_id=event.document_id,
                 investigation_id=event.investigation_id or "__no_investigation__",
