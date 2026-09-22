@@ -110,7 +110,8 @@ script into the reader.
 ## 3. The style-wheel model
 
 Backend: `interfaces/research/api/style_routes.py` + `substrate/styles/store.py`.
-Frontend: `apps/reading/src/modes/ResearchWorkstation/StyleWheel.tsx` +
+Frontend: `apps/reading/src/modes/ResearchWorkstation/StyleWheel.tsx` (artifacts),
+`DocumentStylePreview.tsx` (ingested documents), the shared rail `StyleRail.tsx`, and
 `apps/reading/src/api/styles.ts`.
 
 | Verb | Route | UX |
@@ -120,6 +121,7 @@ Frontend: `apps/reading/src/modes/ResearchWorkstation/StyleWheel.tsx` +
 | Apply | `POST /artifacts/{id}/render?style=` | Durable version + receipt (version, style, SHA-256) |
 | Create / replace fork | `POST /styles` | Fork form seeded from selected style; builtins 409 if name collides |
 | Delete fork | `DELETE /styles/{name}` | Two-step confirm; builtins 409; unknown 404 |
+| Preview a document | `GET /documents/{id}/render?style=` | Preview-only rail on the Documents index; no Apply — a document has no version chain, each pick re-projects the reader sidecar (receipt: document id, style, SHA-256, reader revision) |
 
 Rules the UI must honour:
 
@@ -128,6 +130,7 @@ Rules the UI must honour:
 3. **Preview ≠ apply.** Preview is temporary (`X-Artifact-Version: preview`). Apply creates a versioned HTML under the artifact store.
 4. **Determinism.** Restyle is pure presentation: `render(extract_island(artifact), style=X)` — no model call.
 5. **Provenance of forks.** The API persists a fork's `parent` (`user_styles.parent`, returned on `GET /styles` and accepted on `POST /styles`), so lineage survives a reload. The wheel reads `style.parent` and falls back to a session-local seed map only when the server sent no parent — a legacy fork, or an older backend. A fork with no parent either way is labelled `origin untracked` rather than given an invented one. `parent === name` is refused by the API (422), so re-saving a fork under its own slug carries its stored parent forward instead of self-referencing.
+6. **Documents are preview-only, and refusals are named.** `GET /documents/{id}/render` has no apply leg. When the reader sidecar will not release a body as HTML the API answers with the serve gate's own reason (`no_reader_html`, `sanitizer_version_stale`, `rights_denied`, `taken_down`), and the preview shows that reason in the reader's words — a stale sanitizer stamp names the operator tool that repairs it (`tools/resanitize_reader_html.py`) rather than a generic “unavailable”.
 
 ### 3.1 Wheel interaction craft
 
@@ -191,7 +194,7 @@ A structural pass and a rendered pass are different proofs.
 
 For the style wheel specifically:
 
-1. `npx vitest run src/modes/ResearchWorkstation/StyleWheel.test.tsx src/api/styles.test.ts`
+1. `npx vitest run src/modes/ResearchWorkstation/StyleWheel.test.tsx src/modes/ResearchWorkstation/DocumentStylePreview.test.tsx src/api/styles.test.ts`
 2. `npx tsc --noEmit` in `apps/reading`
 3. Manual: keyboard rail, fork → apply → receipt hash, delete confirm, reduced motion
 
