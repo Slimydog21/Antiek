@@ -102,7 +102,10 @@ from runtime.research_runner import (
     make_contract_gather_stub,
     make_exa_gather_loop,
 )
-from runtime.research_runner.contained_gather import make_contained_gather_loop
+from runtime.research_runner.contained_gather import (
+    GATHER_PROGRAM,
+    make_contained_gather_loop,
+)
 from runtime.research_runner.cost_projection import project_cascade_cost
 from runtime.research_runner.protocol import BrowseLoop
 from runtime.research_runner.provider_gateway import (
@@ -335,7 +338,7 @@ def _decompose(problem: str, max_depth: int) -> PlanReport:
     return build_plan(problem, decomposer=DispatchDecomposer(), max_depth=max_depth)
 
 
-def _research_loop_factory() -> BrowseLoop:
+def _research_loop_factory(*, program: str = GATHER_PROGRAM) -> BrowseLoop:
     """The browse loop each investigation runs.
 
     Default = the contract gather stub (an honest placeholder that does
@@ -358,6 +361,12 @@ def _research_loop_factory() -> BrowseLoop:
     Reading the env here (not at import) keeps both branches — and any
     ``ExaClient`` or backend they would build — out of the stub-default path
     entirely.
+
+    *program* is the source the contained step runs, defaulting to the
+    placeholder ``GATHER_PROGRAM``; it is the one knob a caller above the loop
+    has over what executes in the workspace. Only the exec-backend branch
+    carries a program — the stub and Exa loops run no workspace — and it does
+    not touch the runner, so ``on_emit=funnel.submit`` stays the sole writer.
     """
     mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
     backend_kind = os.environ.get(BACKEND_ENV, "").strip()
@@ -386,7 +395,9 @@ def _research_loop_factory() -> BrowseLoop:
                 BACKEND_ENV,
                 backend_kind,
             )
-        return make_contained_gather_loop(backend, steps=2, cost_per_step=0.01)
+        return make_contained_gather_loop(
+            backend, steps=2, cost_per_step=0.01, program=program
+        )
 
     if mode == "exa":
         return cast(BrowseLoop, make_exa_gather_loop(top_k=3))
