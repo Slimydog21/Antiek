@@ -59,7 +59,34 @@ function balanceLabel(
   if (balance.kind === "unavailable") {
     return { text: "Live balance unavailable", tone: "unknown" };
   }
+  if (balance.kind === "spend_history") {
+    // Antiek's OWN meter of what this app settled against the key. The
+    // provider was never asked, so this row must not read "Live": a spend
+    // meter presented as provider credit is a wrong number, not a missing one.
+    const spend =
+      typeof balance.spend_usd === "number" && Number.isFinite(balance.spend_usd)
+        ? balance.spend_usd
+        : null;
+    const budget =
+      typeof balance.budget_usd === "number" && Number.isFinite(balance.budget_usd)
+        ? balance.budget_usd
+        : null;
+    if (spend === null) {
+      return { text: "Antiek meter unavailable (not provider credit)", tone: "unknown" };
+    }
+    if (budget === null) {
+      return {
+        text: `Antiek meter: spent ${formatUsd(spend)}, uncapped (not provider credit)`,
+        tone: "ok",
+      };
+    }
+    return {
+      text: `Antiek meter: ${formatUsd(budget - spend)} of ${formatUsd(budget)} cap left (not provider credit)`,
+      tone: "ok",
+    };
+  }
   if (
+    balance.kind === "balance_native" &&
     typeof balance.balance_usd === "number" &&
     Number.isFinite(balance.balance_usd)
   ) {

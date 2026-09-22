@@ -99,23 +99,69 @@ function usageBar(usage?: SettingsUsageKeyEntry): React.ReactNode {
   );
 }
 
+/**
+ * The balance chip switches on `kind`, because the two numbers the backend
+ * can return are not the same number:
+ *   - `balance_native` is credit the PROVIDER reports as remaining;
+ *   - `spend_history` is Antiek's OWN meter of what this app has settled
+ *     against the key (plus the user's cap) — the provider was never asked.
+ * A meter styled as credit is a wrong number, not a missing one, so the two
+ * kinds get distinct text, styling, a title that says which it is, and a
+ * `data-balance-kind` attribute the tests assert on. Anything else is "—".
+ */
 function balanceChip(b?: SettingsBalanceResponse | null, loading?: boolean): React.ReactNode {
   if (loading) return <span className="text-xxs text-ink-mute">…</span>;
-  if (!b || b.kind === "unavailable" || b.balance_usd == null) {
-    return <span className="text-xxs text-ink-mute dark:text-moonlight">—</span>;
+  if (!b || b.kind === "unavailable") {
+    return (
+      <span className="text-xxs text-ink-mute dark:text-moonlight" title={b?.note || undefined}>
+        —
+      </span>
+    );
   }
-  const sign = b.balance_usd < 0 ? "" : "+";
+  if (b.kind === "balance_native" && b.balance_usd != null) {
+    const negative = b.balance_usd < 0;
+    return (
+      <span
+        data-balance-kind="balance_native"
+        className={
+          "text-xxs tabular-nums px-1 py-px rounded " +
+          (negative ? "text-danger bg-danger/10" : "text-success bg-success/10")
+        }
+        title={`Provider credit reported by ${b.catalog_id}${b.note ? ` · ${b.note}` : ""}`}
+      >
+        {negative ? "" : "+"}${b.balance_usd.toFixed(2)}{" "}
+        <span className="opacity-70">credit</span>
+      </span>
+    );
+  }
+  if (b.kind === "spend_history" && b.spend_usd != null) {
+    const budget = b.budget_usd;
+    const over = budget != null && b.spend_usd > budget;
+    return (
+      <span
+        data-balance-kind="spend_history"
+        className={
+          "text-xxs tabular-nums px-1 py-px rounded border border-edge " +
+          (over
+            ? "text-danger bg-danger/10"
+            : "text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1")
+        }
+        title={
+          "Antiek spend meter — not provider credit" +
+          (budget != null ? ` · cap $${budget.toFixed(2)}` : " · uncapped")
+        }
+      >
+        spent ${b.spend_usd.toFixed(2)}
+        {budget != null ? ` / $${budget.toFixed(2)}` : ""}
+      </span>
+    );
+  }
   return (
     <span
-      className={
-        "text-xxs tabular-nums px-1 py-px rounded " +
-        (b.balance_usd < 0
-          ? "text-danger bg-danger/10"
-          : "text-success bg-success/10")
-      }
+      className="text-xxs text-ink-mute dark:text-moonlight"
       title={b.note || b.window_label || undefined}
     >
-      {sign}${b.balance_usd.toFixed(2)}
+      —
     </span>
   );
 }

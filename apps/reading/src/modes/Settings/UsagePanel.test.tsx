@@ -188,6 +188,38 @@ describe("UsagePanel", () => {
     expect(within(kimi).getByText(/remaining unknown/)).toBeTruthy();
   });
 
+  it("labels a spend_history balance as Antiek's meter, never as a live provider balance", async () => {
+    // A key whose provider has no native balance adapter: the backend answers
+    // with Antiek's own settled-spend meter against the user's cap.
+    vi.mocked(fetchSettingsBalance).mockImplementation(async (id) => ({
+      api_key_id: id,
+      catalog_id: id === "user-deepseek" ? "deepseek" : "kimi",
+      kind: "spend_history",
+      balance_usd: null,
+      granted_usd: null,
+      spend_usd: 2.5,
+      budget_usd: id === "user-deepseek" ? 50 : null,
+      utilization: null,
+      window_label: null,
+      resets_at: null,
+      note: null,
+      held_cents: 0,
+      available_cents: 4750,
+    }));
+    render(<UsagePanel />);
+    const deepseek = await screen.findByTestId("usage-row-user-deepseek");
+    expect(
+      within(deepseek).getByText("Antiek meter: $47.50 of $50.00 cap left (not provider credit)"),
+    ).toBeTruthy();
+    expect(within(deepseek).queryByText(/^Live /)).toBeNull();
+
+    const kimi = await screen.findByTestId("usage-row-user-kimi");
+    expect(
+      within(kimi).getByText("Antiek meter: spent $2.50, uncapped (not provider credit)"),
+    ).toBeTruthy();
+    expect(within(kimi).queryByText(/^Live /)).toBeNull();
+  });
+
   it("saves and clears spend caps", async () => {
     const user = userEvent.setup();
     render(<UsagePanel />);

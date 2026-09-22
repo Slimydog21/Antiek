@@ -78,12 +78,43 @@ beforeEach(() => {
   mockFetchBalance.mockResolvedValue({
     api_key_id: "um-1",
     catalog_id: "deepseek",
-    kind: "spend_history",
+    kind: "balance_native",
     balance_usd: 12.34,
     held_cents: 0,
     available_cents: 3766,
   });
 });
+
+/** A full 13-field balance body, as the backend actually shapes it. */
+function balanceBody(
+  overrides: Partial<{
+    api_key_id: string;
+    catalog_id: string;
+    kind: "balance_native" | "spend_history" | "unavailable";
+    balance_usd: number | null;
+    granted_usd: number | null;
+    spend_usd: number | null;
+    budget_usd: number | null;
+    note: string | null;
+  }>,
+) {
+  return {
+    api_key_id: "um-1",
+    catalog_id: "deepseek",
+    kind: "balance_native" as const,
+    balance_usd: null,
+    granted_usd: null,
+    spend_usd: null,
+    budget_usd: null,
+    utilization: null,
+    window_label: null,
+    resets_at: null,
+    note: null,
+    held_cents: 0,
+    available_cents: null,
+    ...overrides,
+  };
+}
 
 afterEach(() => {
   cleanup();
@@ -136,6 +167,56 @@ describe("ModelUsagePicker", () => {
     await waitFor(() => {
       const txt = document.body.textContent || "";
       expect(txt).toContain("$12.34");
+    });
+  });
+
+  it("labels balance_native as provider credit and spend_history as Antiek's meter, never the same chip", async () => {
+    // um-1 → the provider reported remaining credit; um-2 → no native
+    // adapter, so the backend answered with Antiek's own spend meter.
+    mockFetchBalance.mockImplementation(async (id: string) =>
+      id === "um-1"
+        ? balanceBody({ api_key_id: "um-1", kind: "balance_native", balance_usd: 42.5, granted_usd: 40 })
+        : balanceBody({ api_key_id: "um-2", catalog_id: "xai", kind: "spend_history", spend_usd: 2.5, budget_usd: 50 }),
+    );
+    render(<ModelUsagePicker value={null} onChange={() => {}} showBalance />);
+    await userEvent.click(screen.getAllByRole("button")[0]);
+
+    const native = await waitFor(() => {
+      const el = document.querySelector('[data-balance-kind="balance_native"]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+    const meter = await waitFor(() => {
+      const el = document.querySelector('[data-balance-kind="spend_history"]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+
+    // Provider credit reads as credit, with the sign and the word.
+    expect(native.textContent).toContain("+$42.50");
+    expect(native.textContent).toContain("credit");
+    expect(native.getAttribute("title")).toContain("Provider credit");
+    // The meter reads as spend against a cap, says it is not credit, and is
+    // styled differently — a meter presented as credit is a wrong number.
+    expect(meter.textContent).toContain("spent $2.50");
+    expect(meter.textContent).toContain("$50.00");
+    expect(meter.textContent).not.toContain("credit");
+    expect(meter.getAttribute("title")).toContain("not provider credit");
+    expect(meter.className).not.toBe(native.className);
+  });
+
+  it("renders a dash, not a number, when the adapter reports unavailable", async () => {
+    mockFetchBalance.mockResolvedValue(
+      balanceBody({ kind: "unavailable", note: "schema drift: KeyError: 'data'" }),
+    );
+    // showUsage off so the only dollar figure that could appear is a balance.
+    render(<ModelUsagePicker value={null} onChange={() => {}} showBalance showUsage={false} />);
+    await userEvent.click(screen.getAllByRole("button")[0]);
+    await waitFor(() => expect(mockFetchBalance).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(document.body.textContent || "").toContain("DeepSeek V4 Pro");
+      expect(document.querySelector("[data-balance-kind]")).toBeNull();
+      expect(document.body.textContent || "").not.toContain("$");
     });
   });
 });
