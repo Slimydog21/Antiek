@@ -600,6 +600,45 @@ jobs:
           # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
             -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
+      # ACV SPR-06 ratified-scoring gate. docs/decisions/ratified-scoring-gate.md
+      # carried "NOT WIRED — the tool exists, the CI step does not" since its
+      # 2026-09-20 correction: the record claimed this step lived in the `pytest`
+      # job, but `git log -S ratified_gate -- .github/workflows/` returns zero
+      # commits. It never existed.
+      #
+      # It lands in keystone rather than `pytest` because `pytest` is NOT a
+      # required context — a deny-by-default gate in a job that cannot block a
+      # merge reproduces the gap the record describes.
+      #
+      # Mutation-verified: a correctly-shaped scored artifact (mock_run=false)
+      # with no `parameters_ratified` / `ratification_ref` reds it with
+      # "RATIFIED-SCORING GATE: BLOCKED"; removing it returns exit 0. It reports
+      # OK over zero scored artifacts today because none exist — deny-by-default
+      # working, and only the mutation distinguishes that from a dead gate.
+      - name: Ratified-scoring gate (ACV SPR-06)
+        run: python tools/ratified_gate.py
+      # SPR-08 usability keystone. docs/decisions/usability-keystone.md has read
+      # "NOT INSTALLED — the probe is written; nothing runs it" since its
+      # 2026-09-20 correction, which found none of the four artifacts it cited
+      # existed.
+      #
+      # It asserts the CONJUNCTION no other probe covers — login, launch,
+      # compound, read and §9 attribution as ONE journey through the real
+      # create_app() factory. Every other probe asserts a single leg, so "all
+      # five green individually" never proved the journey worked.
+      #
+      # ~13s, and needs NO credentials: verified REACHABLE twice with all seven
+      # provider keys unset, which is exactly CI's posture.
+      #
+      # Mutation-verified: injecting a 404 into the GET /chunks/{chunk_id}
+      # handler flips it to "BLOCKED ... read — GET /chunks", exit 1, naming the
+      # failing leg; reverting returns exit 0.
+      #
+      # --only keeps this to the one probe. `compounding` measures cost_cold vs
+      # cost_warm and both read 0 without provider credentials, so running the
+      # whole suite here would wire a permanently-red gate.
+      - name: Usability keystone probe (SPR-08)
+        run: python -m tools.reachability.probe_runner --only usability_keystone
       - name: Compounding benchmark (SPR-09 keystone)
         # The falsifiable compounding benchmark (compounding/benchmark/tests/).
         # `-m "not slow"` excludes the full n=20 multi-arm run. The seed-and-catch
