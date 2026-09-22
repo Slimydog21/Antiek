@@ -29,7 +29,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { narrate, TtsError, TTS_OUT_SOURCE_KIND } from "../../api/tts";
-import { notifyVoicePlaybackStarted } from "../../werner/shellExperienceSignals";
+import { notifyVoicePlaybackStarted } from "../../mascot/shellExperienceSignals";
 
 export type ReadAloudState =
   | "idle"
