@@ -32,7 +32,7 @@ _WORKFLOWS = _ROOT / ".github" / "workflows"
 #: ran. Recorded rather than deleted because removing a test is a claim about
 #: intent, and the mascot wave's owner should make it.
 _DEAD_SUBJECT = {
-    "_ams/penguin.spec.ts",
+    "_ams/mascot.spec.ts",
 }
 
 #: Every spec currently executed by NO workflow. Until e2e_chromium.yml landed
