@@ -1,9 +1,10 @@
-"""Lemon-UI widget library (HPRJ SPR-03).
+"""Lemon-UI widget library (HPRJ SPR-03; ``sketch`` added by V1-CONNECT SPR-02).
 
-Seven pure-function widgets, each ``widget(data) -> str``: a stat_chip,
-bar_chart, sparkline, donut, timeline, dep_graph, and cite_block. Each
-takes a plain ``dict`` (the "input contract" below), returns a single
-script-free HTML/SVG string, and reads its palette + geometry from
+Eight pure-function widgets, each ``widget(data) -> str``: a stat_chip,
+bar_chart, sparkline, donut, timeline, dep_graph, cite_block, and
+sketch. Each takes a plain ``dict`` (the "input contract" below),
+returns a single script-free HTML/SVG string, and reads its palette +
+geometry from
 ``services.html_projection.tokens`` (the Lemon-UI constants:
 ``LEMON_PRIMARY`` #1d4aff, ``LEMON_ACCENT`` #F9BD2B, the semantic set,
 ``LEMON_BORDER`` 2px solid ink, ``LEMON_SHADOW`` 4px offset hard
@@ -193,6 +194,42 @@ defensively and never assumes a hostile caller's types.
      - ``tone``    : str | None — OPTIONAL. Accent rule tone (default
                        ``"accent"``).
 
+8. sketch(data) -> str
+   A Processing/p5-inspired sketch as script-free SVG: either a seeded
+   generative composition (nested circles on a jittered grid, sparse
+   connectors) or a faithful bar sketch of a mined series. This widget
+   GENERATES NO SVG OF ITS OWN — it delegates to the agent kernel skill
+   ``substrate.agent_skills.sketch_svg.sketch_svg``, so a sketch an
+   agent produces and a sketch a projection renders are byte-identical
+   for identical inputs. That skill validates its own output through
+   this package's zero-script gate before returning.
+   ``data`` shape:
+     - ``data``    : list[int|float] | None — OPTIONAL. PRESENCE selects
+                       the mode. Absent/None -> the seeded generative
+                       composition. Present -> a bar sketch of the
+                       series, which is a deterministic VIEW OF THE DATA
+                       and therefore does NOT vary with ``seed``; that
+                       is by design, not a defect. Non-numeric and
+                       non-finite entries are dropped; more than 160
+                       values are evenly sampled with the dropped count
+                       recorded in the title. A present-but-unusable
+                       series -> "no sketch" placeholder (never a silent
+                       fall back to generative, which would mislead).
+     - ``seed``    : int | None — OPTIONAL (default 0). PRNG seed for
+                       the generative composition only.
+     - ``title``   : str | None — OPTIONAL (default ``"sketch"``).
+     - ``palette`` : list[str] | None — OPTIONAL. >= 2 ``#RRGGBB``
+                       colors, [0] ground and the rest voices. Accepted
+                       ONLY when every entry is an atomic ``LEMON_*``
+                       color; anything else falls back WHOLE to
+                       ``sketch.LEMON_SKETCH_PALETTE`` (index position
+                       carries meaning, so a patched palette would
+                       render a composition nobody asked for).
+     - ``width``   : int | None — OPTIONAL (default 480, clamped
+                       64..960).
+     - ``height``  : int | None — OPTIONAL (default 300, clamped
+                       64..640).
+
 PUBLIC API
 ----------
 Each widget is exposed as a submodule with a ``render(data) -> str``
@@ -214,13 +251,15 @@ from . import bar_chart as _bar_chart_module
 from . import cite_block as _cite_block_module
 from . import dep_graph as _dep_graph_module
 from . import donut as _donut_module
+from . import sketch as _sketch_module
 from . import sparkline as _sparkline_module
 from . import stat_chip as _stat_chip_module
 from . import timeline as _timeline_module
 
-# The seven widget kinds, in the canonical order the spec lists them.
+# The eight widget kinds, in the canonical order the spec lists them.
 # Used by the fan-out builders + any registry/dispatch. A tuple (not a
-# set) so the order is deterministic.
+# set) so the order is deterministic. "sketch" is appended last so the
+# seven frozen SPR-03 goldens keep their order.
 WIDGET_KINDS = (
     "stat_chip",
     "bar_chart",
@@ -229,6 +268,7 @@ WIDGET_KINDS = (
     "timeline",
     "dep_graph",
     "cite_block",
+    "sketch",
 )
 
 stat_chip = _stat_chip_module.render
@@ -238,6 +278,7 @@ donut = _donut_module.render
 timeline = _timeline_module.render
 dep_graph = _dep_graph_module.render
 cite_block = _cite_block_module.render
+sketch = _sketch_module.render
 
 
 def _stat_chip_adapter(kind: str, attrs: dict) -> str:
@@ -268,6 +309,10 @@ def _cite_block_adapter(kind: str, attrs: dict) -> str:
     return _cite_block_module.render(attrs)
 
 
+def _sketch_adapter(kind: str, attrs: dict) -> str:
+    return _sketch_module.render(attrs)
+
+
 tokens.register_widget("stat_chip", _stat_chip_adapter)
 tokens.register_widget("bar_chart", _bar_chart_adapter)
 tokens.register_widget("sparkline", _sparkline_adapter)
@@ -275,6 +320,7 @@ tokens.register_widget("donut", _donut_adapter)
 tokens.register_widget("timeline", _timeline_adapter)
 tokens.register_widget("dep_graph", _dep_graph_adapter)
 tokens.register_widget("cite_block", _cite_block_adapter)
+tokens.register_widget("sketch", _sketch_adapter)
 
 __all__ = [
     "WIDGET_KINDS",
@@ -285,4 +331,5 @@ __all__ = [
     "timeline",
     "dep_graph",
     "cite_block",
+    "sketch",
 ]
