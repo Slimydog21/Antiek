@@ -187,6 +187,17 @@ class HealthResponse(BaseModel):
     duckdb_wal_present: bool = False
     duckdb_wal_bytes: int = 0
     duckdb_error: str | None = None
+    # Verified-backup freshness (pass46 / production-audit P1). A green
+    # /health must not hide a missing or stale backup marker. Mirrors
+    # tools/backup_freshness.py: fresh=False + backup_reason when the
+    # marker is missing/unreadable/stale; never raises.
+    backup_fresh: bool = False
+    backup_completed_at: str | None = None
+    backup_age_hours: float | None = None
+    backup_marker_path: str = ""
+    backup_reason: str = ""
+
+
     # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
     # these fields existed /health said nothing about Prime or RLM, so an
     # operator could flip ANTIEK_PRIME_AGENT_RLM_ENABLED + ANTIEK_RLM_RATIFIED
@@ -201,6 +212,27 @@ class HealthResponse(BaseModel):
     prime_agent_invocations_attempted: int = 0
 
 
+def _probe_backup_freshness() -> dict[str, Any]:
+    """Read-only backup freshness for /health. Never raises."""
+    try:
+        from tools.backup_freshness import evaluate, resolve_marker_path
+
+        verdict = evaluate(resolve_marker_path(None), 26.0)
+        return {
+            "backup_fresh": verdict.fresh,
+            "backup_completed_at": verdict.completed_at,
+            "backup_age_hours": verdict.age_hours,
+            "backup_marker_path": verdict.marker_path,
+            "backup_reason": verdict.reason,
+        }
+    except Exception as exc:
+        return {
+            "backup_fresh": False,
+            "backup_completed_at": None,
+            "backup_age_hours": None,
+            "backup_marker_path": "",
+            "backup_reason": f"probe_exception: {type(exc).__name__}: {exc}",
+        }
 def _probe_prime_lane() -> dict[str, bool | int]:
     """Resolve-only readiness of the Prime Agent RLM lane for ``/health``.
 
@@ -238,38 +270,6 @@ def _probe_prime_lane() -> dict[str, bool | int]:
         "prime_agent_binary_present": binary_present,
         "prime_agent_invocations_attempted": attempted,
     }
-    # Verified-backup freshness (pass46 / production-audit P1). A green
-    # /health must not hide a missing or stale backup marker. Mirrors
-    # tools/backup_freshness.py: fresh=False + backup_reason when the
-    # marker is missing/unreadable/stale; never raises.
-    backup_fresh: bool = False
-    backup_completed_at: str | None = None
-    backup_age_hours: float | None = None
-    backup_marker_path: str = ""
-    backup_reason: str = ""
-
-
-def _probe_backup_freshness() -> dict[str, Any]:
-    """Read-only backup freshness for /health. Never raises."""
-    try:
-        from tools.backup_freshness import evaluate, resolve_marker_path
-
-        verdict = evaluate(resolve_marker_path(None), 26.0)
-        return {
-            "backup_fresh": verdict.fresh,
-            "backup_completed_at": verdict.completed_at,
-            "backup_age_hours": verdict.age_hours,
-            "backup_marker_path": verdict.marker_path,
-            "backup_reason": verdict.reason,
-        }
-    except Exception as exc:
-        return {
-            "backup_fresh": False,
-            "backup_completed_at": None,
-            "backup_age_hours": None,
-            "backup_marker_path": "",
-            "backup_reason": f"probe_exception: {type(exc).__name__}: {exc}",
-        }
 
 
 def _resolve_build_sha() -> str:
@@ -2323,13 +2323,13 @@ def create_app(
             duckdb_wal_present=duckdb_health.wal_present,
             duckdb_wal_bytes=duckdb_health.wal_bytes,
             duckdb_error=duckdb_health.error,
+            **_probe_backup_freshness(),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
             prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
             prime_agent_invocations_attempted=int(
                 prime_lane["prime_agent_invocations_attempted"]
             ),
-            **_probe_backup_freshness(),
         )
 
     # ── POST typed event ────────────────────────────────────────
