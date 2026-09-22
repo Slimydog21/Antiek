@@ -1,5 +1,16 @@
 # TollBit Bridge — Integration Assessment for Antiek
 
+> **SUPERSEDED 2026-09-20 — do not execute this document.** The verdict below
+> ("Integrate TollBit as a short-to-medium-term bridge (Sprint 18-22)") is
+> REVERSED by `docs/decisions/tollbit-rejected-2026-09-20.md`. Three
+> disqualifiers: TollBit's surface carries no ad, attribution or inference
+> product; Antiek is the fee-paying AI buyer in every option described here;
+> per-fetch pricing raises the price of the eventual ad-revshare ask. The
+> §5.2 alternatives table below was also missing the direct model competitor
+> (ProRata/Gist) and the free open standard (RSL); both rows are now added.
+> No TollBit code exists on main and none should be written. The rest of this
+> file is kept verbatim as the historical assessment.
+
 **Date:** 2026-08-12  
 **Status:** Research-complete, operator review pending  
 **Authoritative on:** TollBit's model, Antiek integration options, risks, and decision matrix  
@@ -150,6 +161,8 @@ This is the correct strategic posture. TollBit's per-fetch pricing model is a **
 | **Cloudflare Pay-Per-Crawl (PPC)** | Cloudflare's built-in AI content monetization for sites on Cloudflare's CDN. Over 1M passively enrolled customers. | Lower-touch for publishers already on Cloudflare. Weaker on licensing enforcement and publisher dashboards. Less curated AI-buyer side. TollBit has deeper publisher-side tooling. But PPC is "free" for Cloudflare CDN customers. |
 | **Content Authenticity Initiative (C2PA/CAI)** | Adobe-led content provenance standard. Cryptographically signs content with creator metadata. | Not a marketplace — no pricing, no payouts, no licensing. Complements TollBit/Antiek by providing content provenance that makes attribution more defensible. Antiek should adopt C2PA provenance tagging as a separate workstream. |
 | **CrossRef / journal licensing infrastructure** | Existing academic publishing infrastructure for DOI resolution, citation tracking, and institutional licensing. | For academic publishers specifically, CrossRef is the existing rail. Antiek's first-cohort (university presses) already use CrossRef. Integrating with CrossRef for DOI-based content discovery and attribution is complementary to TollBit for news/media. |
+| **ProRata / Gist (direct model competitor)** | ProRata's Gist Answers keeps 50% of ad revenue alongside AI answers and splits the other 50% proportionally among contributing publishers by per-citation attribution. $40M Series B closed Sept 2025; 500+ publisher deals (Boston Globe, Vox Media, Future, Raptive). | Not an alternative to TollBit — an alternative to *Antiek*: it runs the operator's exact ad-attribution model, already at scale. Antiek's differentiators are the 70/30 split (`substrate/ad_inventory/payout.py`), per-frame attention rather than per-citation, and pre-onboarded escrow that accrues before a publisher signs. See `docs/specs/prorata-competitive-2026-09-20.md`. |
+| **RSL — Really Simple Licensing (rslstandard.org / RSL Collective)** | Open, machine-readable licence terms published by the site itself: a `License:` directive in robots.txt pointing at an RSL XML licence file. Payment types include `free`, `attribution`, `subscription`, `per-crawl`, `per-inference`. Named supporters include Akamai, Cloudflare, Creative Commons, Fastly, O'Reilly Media, Reddit, USA Today, Vox Media, Yahoo, Ziff Davis; Collective membership is free and non-exclusive; 1.0 reached 1,500+ publishers. | Strictly dominates TollBit for Antiek's purpose: reading the terms costs nothing, needs no membership, and natively expresses the `free` / `attribution` posture the operator wants publishers to choose. Paying TollBit to broker access to content a publisher already gives away under RSL is the worst available trade. Implemented in `acquisition/urls/rights_terms.py`. |
 | **Build in-house** | Antiek builds its own Licensed Search, content retrieval proxy, licensing token system, and publisher dashboard. | Maximum control. Maximum build cost (6-12 months of engineering). TollBit's value is that it's already built and has 7,000 publishers. The build-vs-buy calculus favors "buy for the bridge, build for the endgame." |
 
 ---
