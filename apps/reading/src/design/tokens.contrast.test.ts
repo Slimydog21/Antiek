@@ -99,7 +99,7 @@ describe("AMS-SPR-09 token re-tone — every consumed pair still clears WCAG", (
   // ── M2: the bottom-tab / brand stays LOUD (unchanged) ─────────────────────
   describe("M2 — the bottom-tab yellow + brand constant stay LOUD", () => {
     // The brand lemon, sourced from the export (no literal): the byte the
-    // bottom tab + Werner mark carry and SPR-09 must NOT soften.
+    // bottom tab + Brain mark carry and SPR-09 must NOT soften.
     const BRAND_LEMON = sun.base; // the loud brand lemon (no literal here)
 
     it("barAccent day = the brand lemon (sun.base), unchanged", () => {

@@ -96,8 +96,8 @@
 .antiek-login--receipt { grid-template-columns: minmax(0, 1fr); place-items: center; place-content: center; padding: 72px 24px 48px; background: var(--ice-3); overflow: auto; }
 .handoff-receipt { width: min(100%, 600px); padding: clamp(34px, 7vw, 72px); background: var(--ice-1); border: 2px solid var(--ink); box-shadow: 12px 12px 0 var(--sun); position: relative; }
 .handoff-receipt p { max-width: 440px; color: var(--text-muted); font: 500 16px/1.6 Inter, sans-serif; }
-.handoff-receipt__werner { position: absolute; right: 24px; top: -46px; width: 150px; height: 150px; border: 2px solid var(--ink); border-radius: 50%; overflow: hidden; background: var(--charcoal-2); box-shadow: 5px 5px 0 var(--sun); }
-.handoff-receipt__werner canvas { width: 100% !important; height: 100% !important; }
+.handoff-receipt__mascot { position: absolute; right: 24px; top: -46px; width: 150px; height: 150px; border: 2px solid var(--ink); border-radius: 50%; overflow: hidden; background: var(--charcoal-2); box-shadow: 5px 5px 0 var(--sun); }
+.handoff-receipt__mascot canvas { width: 100% !important; height: 100% !important; }
 .handoff-receipt__stamp { position: absolute; right: 28px; top: 32px; padding: 8px 12px; border: 3px double var(--emperor); color: var(--emperor); font: 800 10px/1 Inter, sans-serif; letter-spacing: .16em; text-transform: uppercase; transform: rotate(7deg); }
 .handoff-code { margin: 28px 0 !important; color: var(--ink) !important; font: 800 clamp(42px, 10vw, 72px)/1 "JetBrains Mono", monospace !important; letter-spacing: .22em; }
 .handoff-code--desk { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border: 2px dashed var(--ink); background: var(--card); }
@@ -124,7 +124,7 @@
   .handoff-ticket__route { height: 14px; flex-direction: column; align-items: center; }
   .handoff-ticket__route i:nth-child(n+2) { display: none; }
   .handoff-receipt { padding: 54px 26px 34px; }
-  .handoff-receipt__werner { right: 8px; top: -46px; width: 120px; height: 120px; }
+  .handoff-receipt__mascot { right: 8px; top: -46px; width: 120px; height: 120px; }
   .handoff-receipt__stamp { right: 18px; top: 24px; }
   .handoff-code--desk { align-items: flex-end; gap: 12px; }
 }

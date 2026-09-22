@@ -219,7 +219,7 @@ describe("overlap determinism — a cited 'result' sentence (rigor #3)", () => {
 // ── §9.0 — non-servable cited source: bounded metadata only ─────────────────
 
 describe("§9.0 — a non-servable cited source's hover card shows only bounded metadata", () => {
-  const WITHHELD_OWNER = "Penguin Random House";
+  const WITHHELD_OWNER = "Mascot Random House";
   // A non-servable cited source. Per §9.0 the substrate already withheld the
   // owner (ipHolderName = null) AND the body; the augmentation must pass ONLY
   // the title to the card, never the owner, never any body.
