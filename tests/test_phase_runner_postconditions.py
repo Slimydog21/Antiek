@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from orchestration.phase_log import PhaseLog  # noqa: E402
 from orchestration.phase_runner.postconditions import (  # noqa: E402
     CHECKS,
+    NO_PRIOR_GRAPH_KNOWLEDGE,
     check_phase_1,
     check_phase_2,
     check_phase_3,
@@ -116,6 +117,48 @@ def test_phase_1_section_with_no_citations(research_dir):
     _write(os.path.join(research_dir, "orientation.md"), body)
     ok, _ = check_phase_1("inv-p1", research_dir=research_dir)
     assert ok is False
+
+
+def test_phase_1_cold_start_may_declare_absence_instead_of_faking_citations(
+    research_dir,
+):
+    """A cold question has no prior graph knowledge, and may say so.
+
+    The orchestrator used to satisfy the citation regex with
+    "chunk_orientation_marker and node_orchestrator_start seed the connector
+    substrate ..." — tokens shaped like citations that referred to no chunk and
+    no node. The gate read a fabrication and passed. The failure was not that
+    the gate was weak; it was that the only way to pass was to claim knowledge
+    that did not exist, so the producer invented some.
+
+    Giving absence an honest expression removes the incentive. Same shape as
+    the insufficient_evidence hatch in Phases 2, 6 and 8.
+    """
+    body = (
+        "# Orientation\n\n" + ("orientation detail. " * 40)
+        + "\n\n## Prior Graph Knowledge\n\n"
+        + NO_PRIOR_GRAPH_KNOWLEDGE + "\n"
+    )
+    _write(os.path.join(research_dir, "orientation.md"), body)
+    ok, reason = check_phase_1("inv-p1", research_dir=research_dir)
+    assert ok is True
+    assert "no-prior-graph-knowledge" in reason
+
+
+def test_phase_1_still_rejects_a_section_with_neither(research_dir):
+    """Neither a citation nor the declaration is still a failure.
+
+    The hatch must not become a blanket exemption: a Prior Graph Knowledge
+    section that says nothing at all is exactly what Phase 1 exists to catch.
+    """
+    body = (
+        "# Orientation\n\n" + ("orientation detail. " * 40)
+        + "\n\n## Prior Graph Knowledge\n\nSome prose with no citation.\n"
+    )
+    _write(os.path.join(research_dir, "orientation.md"), body)
+    ok, reason = check_phase_1("inv-p1", research_dir=research_dir)
+    assert ok is False
+    assert "neither" in reason
 
 
 def test_phase_1_happy_with_regex_citation(research_dir):
@@ -314,11 +357,42 @@ def test_phase_4_critique_excluded(research_dir):
     assert ok is False
 
 
+_ROUND2_REAL = """# Round 2 — Relational Deep Dive
+
+Investigation: `inv-p4`
+
+Algorithm: `top_n_shortest_paths` — chosen because the seed pairs are sparse
+and the question asks for the shortest explanatory chain, not all chains.
+
+4 graph path(s) traversed.
+
+- Shard contention and cache warmth share an upstream cause: the runner pool
+  serialises both. (path #0)
+- The 8-shard knee disappears when the pool is widened, which the traversal
+  reaches through the scheduler node rather than the storage node. (path #1)
+- No path connects shard count to disk latency, so the storage hypothesis is
+  unsupported by the graph. (path #2)
+"""
+
+
 def test_phase_4_happy(research_dir):
-    _write(os.path.join(research_dir, "round2-technical.md"),
-           "deep dive content. " * 50)
+    _write(os.path.join(research_dir, "round2-technical.md"), _ROUND2_REAL)
     ok, _ = check_phase_4("inv-p4", research_dir=research_dir)
     assert ok is True
+
+
+def test_phase_4_rejects_padding_that_clears_the_floor(research_dir):
+    """The exact string the orchestrator used to write for round 2.
+
+    ``"Cross-domain connector substrate surfaced. " * 50`` is ~2100 bytes, so
+    it cleared _ROUND2_DEEP_DIVE_MIN_BYTES whatever the Connector actually
+    returned — the deep-dive gate measured the orchestrator's padding.
+    """
+    _write(os.path.join(research_dir, "round2-technical.md"),
+           "# Round 2\n\n" + ("Cross-domain connector substrate surfaced. " * 50))
+    ok, reason = check_phase_4("inv-p4", research_dir=research_dir)
+    assert ok is False
+    assert "round2" in reason
 
 
 # ---------------------------------------------------------------------------
