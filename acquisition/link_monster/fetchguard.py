@@ -111,6 +111,15 @@ def _host_is_safe(hostname: str) -> bool:
     ranges = _blocked_ranges()
     for info in infos:
         addr = ipaddress.ip_address(info[4][0])
+        # DENY BY DEFAULT. The explicit ranges below enumerate what we know we
+        # must stop; `is_global` is what actually enforces the docstring's
+        # promise that every address be PUBLIC. A denylist can only reject the
+        # forms someone thought to list — an IPv4-mapped IPv6 address, for one,
+        # is in none of these networks because an IPv6Address never compares
+        # inside an IPv4Network, so it passed while routing to the IPv4 target.
+        # This is the same posture as acquisition/doc_to_html/ssrf.py:73,90.
+        if not addr.is_global:
+            return False
         for net in ranges:
             if addr in net:
                 return False
