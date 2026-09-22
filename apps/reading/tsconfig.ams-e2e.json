@@ -25,6 +25,7 @@
     "e2e/glass-surface.spec.ts",
     "e2e/glass-reduced-motion.spec.ts",
     "e2e/windows-default.spec.ts",
-    "e2e/hotkeys-command-scheme.spec.ts"
+    "e2e/hotkeys-command-scheme.spec.ts",
+    "e2e/account-memory-panel.spec.ts"
   ]
 }
