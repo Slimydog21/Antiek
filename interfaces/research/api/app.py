@@ -782,6 +782,12 @@ class ProviderRatioResponse(BaseModel):
     openrouter_fraction: float = 0.0
     alert_recommended: bool = False
     alert_reason: str | None = None
+    # An alarm must be able to say "I could not measure". Without these two,
+    # a dead sensor and a quiet system are the SAME payload
+    # (total_dispatches=0, alert_recommended=false) and the cron reads silence
+    # as health.
+    evidence_readable: bool = True
+    unreadable_event_files: int = 0
 
 
 # ── Sprint 16 partial: IP attribution telemetry ───────────────────────
@@ -4161,13 +4167,24 @@ def create_app(
 
         events_dir = default_events_dir()
         if not _os.path.isdir(events_dir):
+            # NOT "zero dispatches". We could not look. Fail CLOSED: an alarm
+            # whose sensor is unplugged must page, not report health.
             return ProviderRatioResponse(
-                window_minutes=window_minutes, total_dispatches=0,
+                window_minutes=window_minutes,
+                total_dispatches=0,
+                evidence_readable=False,
+                alert_recommended=True,
+                alert_reason=(
+                    f"event log directory is unreadable ({events_dir!r}); this "
+                    "is NOT a statement that no dispatches occurred — the "
+                    "provider-ratio sensor could not read its own data source."
+                ),
             )
         cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
 
         per_provider: dict[str, dict[str, int]] = {}
         total = 0
+        unreadable_files = 0
         for filename in _os.listdir(events_dir):
             if not filename.endswith(".jsonl"):
                 continue
@@ -4177,6 +4194,7 @@ def create_app(
                     _os.path.getmtime(path), tz=UTC,
                 )
             except OSError:
+                unreadable_files += 1
                 continue
             # Skip files entirely older than the cutoff window — saves
             # an open() on the long tail of historical investigations.
@@ -4218,6 +4236,7 @@ def create_app(
                             bucket["success"] += 1
                         total += 1
             except OSError:
+                unreadable_files += 1
                 continue
 
         breakdown = []
@@ -4260,6 +4279,17 @@ def create_app(
                 f"Hermes-primary is likely silently failing."
             )
 
+        if unreadable_files:
+            # Evidence we KNOW we could not read. Unlike the zero-dispatch case
+            # below, there is no ambiguity here to defer to another probe: the
+            # measurement is incomplete and the ratio may be wrong. Page.
+            alert = True
+            unread_note = (
+                f"{unreadable_files} event file(s) could not be read; the "
+                "provider ratio is computed over incomplete evidence."
+            )
+            reason = f"{reason} {unread_note}" if reason else unread_note
+
         return ProviderRatioResponse(
             window_minutes=window_minutes,
             total_dispatches=total,
@@ -4268,6 +4298,8 @@ def create_app(
             openrouter_fraction=openrouter_fraction,
             alert_recommended=alert,
             alert_reason=reason,
+            evidence_readable=unreadable_files == 0,
+            unreadable_event_files=unreadable_files,
         )
 
     # ── Sprint 16 partial: attribution telemetry ───────────────────
