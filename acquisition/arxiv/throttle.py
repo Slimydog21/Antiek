@@ -132,8 +132,9 @@ class ArxivThrottle:
     """Process-wide throttle backed by a JSON state file.
 
     ``wait_if_needed()`` is called BEFORE each request: it raises
-    ``ArxivBanned`` if a ban is active, else sleeps until >= 3s have elapsed
-    since the last request, then records the new request time.
+    ``ArxivBanned`` if a ban is active, else clears any expired ban sentinel,
+    sleeps until >= 3s have elapsed since the last request, then records the
+    new request time.
 
     ``note_response(status, headers)`` is called AFTER each request: on a
     429 it persists a ``banned_until`` sentinel.
@@ -202,6 +203,12 @@ class ArxivThrottle:
         now = self._now()
         if now < state.banned_until:
             raise ArxivBanned(state.banned_until, now)
+        # An EXPIRED sentinel is history, not state. Left in place it outlives
+        # the ban by months (the live file carried a 2026-06-03 ban behind a
+        # same-day last_request_at), poisons every "were we banned recently?"
+        # read-out, and gets mirrored forward into the shared source_throttle
+        # sentinel on every ingest run. Clear it on the first permitted request.
+        state.banned_until = 0.0
 
         elapsed = now - state.last_request_at
         if elapsed < self._min_spacing:

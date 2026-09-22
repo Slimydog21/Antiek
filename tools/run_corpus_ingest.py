@@ -61,6 +61,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
@@ -490,8 +491,14 @@ def _arxiv_candidates(
     shared = SourceThrottle()
 
     def _mirror_export_ban() -> None:
+        # Mirror only a LIVE ban. An expired sentinel (the throttle clears one
+        # on its next permitted request, but a stale value can still be read
+        # here — a concurrent last-writer-wins rewrite, or a Retry-After that
+        # elapsed in flight) must not be copied forward: it would make the
+        # next run's source rotation skip arXiv for a ban that is already over.
         until = throttle.banned_until()
-        if until > 0:
+        now = time.time()
+        if until > now:
             shared.note_response_at(ARXIV_EXPORT_KEY, until)
 
     papers: list[ArxivPaper] = []
