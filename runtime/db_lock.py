@@ -180,6 +180,40 @@ def _park_warm_slot(
     if old is not None:
         # Should be unreachable under the process gate; destroy defensively.
         _destroy_warm_slot(old)
+    _schedule_warm_expiry(key, new_slot, keepalive_s)
+
+
+def _expire_warm_slot(key: str, slot: _WarmWriterSlot) -> None:
+    """Timer callback: release a parked writer whose keepalive has lapsed.
+
+    Only destroys the slot if it is STILL the parked one for this key — a
+    writer that already took it (``_take_warm_slot`` pops under the same
+    lock) is never touched, and a newer slot parked after ours is left for
+    its own timer.
+    """
+    with _warm_slots_lock:
+        current = _warm_slots.get(key)
+        if current is not slot:
+            return
+        if time.monotonic() < slot.expires_mono:
+            return
+        _warm_slots.pop(key, None)
+    _destroy_warm_slot(slot)
+
+
+def _schedule_warm_expiry(key: str, slot: _WarmWriterSlot, keepalive_s: float) -> None:
+    # WHY A TIMER EXISTS (2026-09-21): ``expires_mono`` used to be consulted
+    # only lazily, inside ``_take_warm_slot`` — i.e. on the NEXT in-process
+    # write. On an idle service nothing ever called that, so the parked
+    # writer held the cross-process flock INDEFINITELY, not "bounded by
+    # default 20s" as documented above. Measured on prod: the nightly backup
+    # could not acquire the flock in 180s three nights running (RPO breach),
+    # GET /export/my-graph answered 503 after its 15s wait, and the
+    # workaround was to stop antiek.service for every backup. The timer
+    # makes the documented bound true.
+    t = threading.Timer(max(keepalive_s, 0.0) + 0.01, _expire_warm_slot, args=(key, slot))
+    t.daemon = True
+    t.start()
 
 
 def flush_warm_writers(db_path: str | None = None) -> int:
