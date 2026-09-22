@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { notifyShellFailure } from "../../werner/shellExperienceSignals";
+import { notifyShellFailure } from "../../mascot/shellExperienceSignals";
 
 /**
  * LemonToast — tiny pub-sub toast queue + viewport renderer.

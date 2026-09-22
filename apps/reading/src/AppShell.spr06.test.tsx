@@ -20,7 +20,7 @@ import { MemoryRouter } from "react-router-dom";
 
 // SPR-08 — the real NavRail (kept un-mocked here) now renders on-bar KeyChips,
 // which read usePrefersReducedMotion (matchMedia). jsdom lacks matchMedia;
-// stub it as the hotkey/ad/penguin suites already do. No new assertion — it
+// stub it as the hotkey/ad/mascot suites already do. No new assertion — it
 // only lets the real rail render its real children.
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -44,7 +44,7 @@ beforeAll(() => {
 // Heavy / separately-tested children → lightweight honest stand-ins. The PDF
 // worker import lives behind PanelLayout; mocking it keeps the env happy while
 // preserving the prop contract (PanelLayout renders its mainSlot).
-vi.mock("./shell/PenguinMascot", () => ({ PenguinMascot: () => null }));
+vi.mock("./shell/MascotStation", () => ({ MascotStation: () => null }));
 // SPR-07 — the always-on ad border mounts here too; it has its own suite
 // (components/ad/*.test.*) and pulls usePrefersReducedMotion (matchMedia,
 // which jsdom lacks), so stub it to null exactly as the other heavy children.

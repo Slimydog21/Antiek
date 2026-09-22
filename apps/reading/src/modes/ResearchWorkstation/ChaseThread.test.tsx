@@ -56,7 +56,7 @@ vi.mock("../../hooks/useInvestigation", () => ({
     sourcePolicy: [],
   }),
 }));
-// The Werner beat is decoration; render it inert.
+// The Brain beat is decoration; render it inert.
 vi.mock("../../shared/delight", () => ({
   CelebrateBurst: () => null,
   useCelebrate: () => ({ celebrating: false, celebrate: vi.fn() }),

@@ -36,7 +36,7 @@ beforeAll(() => {
   }
 });
 
-vi.mock("./shell/PenguinMascot", () => ({ PenguinMascot: () => null }));
+vi.mock("./shell/MascotStation", () => ({ MascotStation: () => null }));
 vi.mock("./components/ad/AdBorderMount", () => ({ AdBorderMount: () => null }));
 vi.mock("./shell/SceneChrome", () => ({
   SceneChrome: ({ children }: { children: React.ReactNode }) => <>{children}</>,
