@@ -59,9 +59,9 @@ import {
 } from "./Canvas/evidenceWindowPlacement";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
-import { useWernerResearchReactions } from "./useWernerResearchReactions";
-import { emitWernerExperience, notifyResearchStarted } from "../../werner";
-import { wernerResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
+import { useMascotResearchReactions } from "./useMascotResearchReactions";
+import { emitMascotExperience, notifyResearchStarted } from "../../mascot";
+import { mascotResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
 import { deriveResearchWaitArcadeMode } from "./researchWaitArcadePolicy";
 
 const LazyResearchWaitArcade = lazy(() => import("./ResearchWaitArcade"));
@@ -386,7 +386,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
   busy: boolean;
 }) {
   const session = useResearchSession(sessionId);
-  useWernerResearchReactions({
+  useMascotResearchReactions({
     sessionId,
     loading: session.loading,
     allTerminal: session.allTerminal,
@@ -446,7 +446,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
     try {
       await steerResearch(sessionId, iid, kind, payload);
     } catch {
-      emitWernerExperience("deep_research_error");
+      emitMascotExperience("deep_research_error");
       // The next poll reflects the authoritative state; a failed steer is
       // surfaced by the research not changing — no optimistic lie.
     } finally {
@@ -549,7 +549,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
         <HardCeilingEvidence sessionId={sessionId} snapshot={session.hardCeiling} />
       )}
       <ResearchWaitArcadeGate
-        enabled={wernerResearchWaitArcadeEnabled}
+        enabled={mascotResearchWaitArcadeEnabled}
         episodeId={`${sessionId}:${sessionGeneration}`}
         hasAuthoritativeSnapshot={!session.loading}
         researchCount={session.researches.length}

@@ -20,8 +20,8 @@ vi.mock("../../lib/api", () => ({
   searchBlocks: (...args: unknown[]) => searchBlocks(...args),
 }));
 
-vi.mock("../../brand/werner/animated", () => ({
-  WernerThinking: () => <span data-testid="thinking" />,
+vi.mock("../../brand/mascot/animated", () => ({
+  BrainThinking: () => <span data-testid="thinking" />,
 }));
 
 vi.mock("../../components/ai/ContextPicker", () => ({

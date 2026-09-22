@@ -8,7 +8,7 @@ import { useKreaStatus } from "../krea/useKreaStatus";
 import { Peaks } from "./layers/Peaks";
 import { Clouds } from "./layers/Clouds";
 import { Snow } from "./layers/Snow";
-import { PenguinJourney } from "./layers/PenguinJourney";
+import { BrainJourney } from "./layers/BrainJourney";
 import { KreaArtLayer } from "./layers/KreaArtLayer";
 import { SceneStatusBadge } from "./SceneStatusBadge";
 // The scene's consolidated keyframes + reduced-motion guard (one motion home,
@@ -25,9 +25,9 @@ import "./scene.css";
  *                           mood change; renders nothing in fallback
  *   z-2  Clouds             parallax cloud drift (canvas, off the scene clock)
  *   z-3  Snow               wind-driven snow flurry (canvas, scene clock)
- *   z-4  PenguinJourney     scenery penguin walking toward the horizon
+ *   z-4  BrainJourney     scenery mascot walking toward the horizon
  * ─────────────────────────────────────────────────────────────────────────
- * Peaks render FIRST (furthest back) and the penguin LAST so it walks in front
+ * Peaks render FIRST (furthest back) and the mascot LAST so it walks in front
  * of the ridge but behind the glass content above the whole Scene.
  *
  * MOUNTING: the Scene is `position:absolute inset-0 z-0 pointer-events-none` —
@@ -97,8 +97,8 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
       <Clouds mood={mood} reducedMotion={frozen} />
       {/* z-3 snow (canvas) */}
       <Snow mood={mood} reducedMotion={frozen} />
-      {/* z-4 scenery penguin */}
-      <PenguinJourney mood={mood} />
+      {/* z-4 scenery mascot */}
+      <BrainJourney mood={mood} />
       <SceneStatusBadge
         status={kreaStatus.data}
         error={kreaStatus.status === "error" ? kreaStatus.error : null}

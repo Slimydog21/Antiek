@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 // Pull in the Tailwind base styles so Storybook renders components
 // with the same typography + spacing scale as the production app.
 import "../src/index.css";
-// Werner brand tokens — sun-yellow outlining, day/night surface ramps.
+// Antiek brand tokens — sun-yellow outlining, day/night surface ramps.
 // Loaded here so every story has --sun, --ink, --ice-2 etc. available.
 import "../src/design/tokens.css";
 // U-05 motion system — the reduced-motion catch-all so stories honour the
@@ -16,7 +16,7 @@ import "../src/design/motion.css";
  * MemoryRouter (several components use react-router hooks like
  * useNavigate / NavLink) and applies the global Tailwind CSS layer.
  *
- * Backgrounds expose the Werner brand surface ramp so authors can
+ * Backgrounds expose the Antiek brand surface ramp so authors can
  * preview a story on a card, on the page, on a trough, or on the
  * deep ink. Default is `ice-2` (day page bg).
  *

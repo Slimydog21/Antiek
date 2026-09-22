@@ -8,7 +8,7 @@ parallel-and-independent by design, so two failure classes recur —
 
   * FORKS — two competing implementations of ONE substrate concern. The §9.0
     retrieval gate had two (#65 converged them; SPR-03 installed a never-re-fork
-    guard). The Werner reading shell was alleged to have two (SPR-04 verified
+    guard). The Brain reading shell was alleged to have two (SPR-04 verified
     it was already one).
   * DEAD-IN-PROD FEATURES — a feature whose reachability depends on a wire no
     single sprint owns (the flywheel; SPR-01 caught it, SPR-02 wired it). That
@@ -206,27 +206,29 @@ def _check_dispatch_router(repo: Path) -> CheckResult:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# reading_shell — single definition of the #54 canonical Werner ice-fishing
-#   shell component.
-#   canonical: apps/reading/src/werner/WernerIceCursorShell.tsx
-#              (the #54 ice-fishing shell, mounted once in AppShell.tsx).
+# reading_shell — single definition of the canonical reading-shell mascot
+#   component.
+#   canonical: apps/reading/src/shell/MascotStation.tsx
+#              (the fixed-station brain mascot, mounted once in AppShell.tsx).
 #   converged by: SPR-04 (verified already-converged — there was no #52 fork on
 #                 this branch); ruled canonical in
 #                 docs/decisions/acv-spr04-read-shell-convergence.md.
+#   repointed 2026-09-21 (mascot naming purge): the #54 ice-cursor shell
+#   (WernerIceCursorShell) was deleted in the 2026-09 mascot wave, leaving this
+#   check red on ZERO definitions; the floating mascot station is the surviving
+#   canonical shell component, so the concern now guards ``MascotStation``.
 # The reading shell is FRONTEND-ONLY (TSX) — a Python AST cannot see it. This is
-# a NEW text/regex scan (authored this sprint) over apps/reading/src/*.ts(x)
-# asserting EXACTLY ONE DEFINITION of the canonical shell component
-# ``WernerIceCursorShell``. A definition is ``function WernerIceCursorShell`` /
-# ``const WernerIceCursorShell =`` / ``class WernerIceCursorShell`` — NOT an
-# import, a re-export (``export { WernerIceCursorShell } from …``), a JSX mount
-# (``<WernerIceCursorShell />``), or a call. A fork would re-DEFINE the shell
-# component under this canonical name in a second module; that is what this
-# catches. Test files are excluded (a test may stub/redeclare the symbol).
+# a text/regex scan over apps/reading/src/*.ts(x) asserting EXACTLY ONE
+# DEFINITION of the canonical shell component ``MascotStation``. A definition
+# is ``function MascotStation`` / ``const MascotStation =`` /
+# ``class MascotStation`` — NOT an import, a re-export
+# (``export { MascotStation } from …``), a JSX mount (``<MascotStation />``),
+# or a call. A fork would re-DEFINE the shell component under this canonical
+# name in a second module; that is what this catches. Test files are excluded
+# (a test may stub/redeclare the symbol).
 # ──────────────────────────────────────────────────────────────────────────────
-_READING_SHELL_CANONICAL = (
-    "apps/reading/src/werner/WernerIceCursorShell.tsx"
-)
-_READING_SHELL_SYMBOL = "WernerIceCursorShell"
+_READING_SHELL_CANONICAL = "apps/reading/src/shell/MascotStation.tsx"
+_READING_SHELL_SYMBOL = "MascotStation"
 _READING_SHELL_ROOT = "apps/reading/src"
 
 # A DEFINITION of the component (function / arrow-or-value const / class), with
@@ -255,9 +257,9 @@ def _is_ts_test_file(name: str) -> bool:
 
 def _check_reading_shell(repo: Path) -> CheckResult:
     # INTENTIONAL BOUNDARY (not an oversight): the def-regex matches a
-    # `function`/`const|let|var`/`class WernerIceCursorShell` declaration only.
-    # A bare property re-bind (`shells.WernerIceCursorShell = () => {}`) or a
-    # same-named `interface`/`enum WernerIceCursorShell` is NOT matched — neither
+    # `function`/`const|let|var`/`class MascotStation` declaration only.
+    # A bare property re-bind (`shells.MascotStation = () => {}`) or a
+    # same-named `interface`/`enum MascotStation` is NOT matched — neither
     # is a plausible SECOND *component* definition, which is the only thing a
     # reading-shell fork would be. Matching them would invite false positives for
     # no convergence gain; the named-component re-definition is the real tripwire.
@@ -295,7 +297,7 @@ def _check_reading_shell(repo: Path) -> CheckResult:
         False,
         [
             f"{s}: a SECOND definition of reading-shell component "
-            f"'{_READING_SHELL_SYMBOL}' — the #54 Werner reading shell has "
+            f"'{_READING_SHELL_SYMBOL}' — the #54 Brain reading shell has "
             f"FORKED (it must have exactly ONE definition; SPR-04 ruled "
             f"{_READING_SHELL_CANONICAL} canonical). Other definition(s): "
             f"{others(s)}"
@@ -350,7 +352,7 @@ REGISTRY: tuple[Concern, ...] = (
     ),
     Concern(
         name="reading_shell",
-        canonical="apps/reading/src/werner/WernerIceCursorShell.tsx",
+        canonical="apps/reading/src/shell/MascotStation.tsx",
         check=_check_reading_shell,
         # SPR-04 verified the shell was ALREADY one (#54 canonical; the alleged
         # #52 fork never touched apps/reading/src on this branch).

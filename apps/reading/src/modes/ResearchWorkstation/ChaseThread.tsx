@@ -47,7 +47,7 @@ import VoiceChaseButton from "./VoiceChaseButton";
  *
  * 3. **No substrate vocabulary.** "Follow this", not "Spawn". The reserved
  *    id is consumed silently — never rendered as a label (the user never
- *    sees an ``inv-…`` id). A Werner beat fires once on launch (consumes
+ *    sees an ``inv-…`` id). A Brain beat fires once on launch (consumes
  *    the wired-in pose via ``useCelebrate`` — it does not author it).
  *
  * Honest no-key (M4): launching emits the start event regardless of

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { AdBorderMount } from "./components/ad/AdBorderMount";
 import { NavRail } from "./shell/NavRail";
-import { PenguinMascot } from "./shell/PenguinMascot";
+import { MascotStation } from "./shell/MascotStation";
 import { Scene } from "./scene/Scene";
 import BrainPresence from "./brand/BrainPresence";
 import { SceneChrome } from "./shell/SceneChrome";
@@ -165,17 +165,17 @@ export function AppShell({ children }: Props) {
         <NavRail />
       </div>
 
-      {/* SPR-12 M3 — the Penguin mascot IS the floating project home, now an
+      {/* SPR-12 M3 — the Mascot IS the floating project home, now an
           AUTONOMOUS WADDLER (SPR-06 M5): it roams the viewport on its own,
           bounded + reduced-motion-safe. Mounted at shell level so it floats
           over the whole app (any route), not inside one surface. Single-click
           floats the project tree panel, double-click opens the project home,
           drag moves it (clamped on-screen). This supersedes the old NavRail
           "+ project / Project tree" button — the tree is reached through the
-          Penguin. (It sits OUTSIDE the seam frame on purpose: a free agent
+          Mascot. (It sits OUTSIDE the seam frame on purpose: a free agent
           roaming the whole window, not a chrome element constrained by the
           ad-border inset.) */}
-      <PenguinMascot />
+      <MascotStation />
 
       {/* SPR-07 — the always-on, four-edge "Times-Square" ad border. Mounted
           ONCE here so it wraps every lens — Read / Research / Write / Speak —
