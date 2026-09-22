@@ -36,6 +36,7 @@ from substrate.agent_work.store import (
     WorkLease,
     WorkProgress,
 )
+from runtime.db_lock import WriteLockTimeout
 from substrate.graph import default_db_path, ensure_initialized
 
 from .bridge_auth import BridgePrincipal, authenticate_bridge
@@ -141,6 +142,26 @@ def _lock_yield_s() -> float:
         return 3.0
 
 
+async def _write_off_loop(fn: Any) -> Any:
+    """Run a write-lock-holding sync call off the uvicorn loop.
+
+    A write-lock timeout here is DESIGNED backpressure, not a server fault:
+    substrate/agent_work/service.py sets LEASE_WRITE_TIMEOUT_S so the lease
+    FAILS rather than holding the flock for the 300s connect_write default.
+    Uncaught, WriteLockTimeout (a RuntimeError) surfaced as HTTP 500 — the
+    mac-mini herdr bridge logged 132 of them, and a 500 is not a retryable
+    signal. 503 is what the rest of this codebase returns for the same
+    condition (ad_routes.py: "ad_frame_writer_busy").
+    """
+    try:
+        return await asyncio.to_thread(fn)
+    except WriteLockTimeout as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="agent_work_writer_busy",
+        ) from exc
+
+
 async def _yield_write_lock_for_peers() -> None:
     delay = _lock_yield_s()
     if delay > 0.0:
@@ -224,7 +245,7 @@ async def lease_work(
         return lease_agent_work(_db_path(), cmd)
 
     # Offload ensure_initialized + lease write lock off the uvicorn loop (#3108/#3111).
-    lease = await asyncio.to_thread(_sync)
+    lease = await _write_off_loop(_sync)
     # Lock released; yield so fills / note_taker peers can acquire (#3112 class).
     await _yield_write_lock_for_peers()
     return None if lease is None else _lease_payload(lease)
@@ -257,7 +278,7 @@ async def mark_submitted(
         return mark_agent_work_submitted(_db_path(), cmd)
 
     try:
-        result = await asyncio.to_thread(_sync)
+        result = await _write_off_loop(_sync)
         await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
@@ -297,7 +318,7 @@ async def renew_lease(
         return renew_agent_work_lease(_db_path(), cmd)
 
     try:
-        result = await asyncio.to_thread(_sync)
+        result = await _write_off_loop(_sync)
         await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
@@ -338,7 +359,7 @@ async def mark_acknowledged(
         return mark_agent_work_acknowledged(_db_path(), cmd)
 
     try:
-        result = await asyncio.to_thread(_sync)
+        result = await _write_off_loop(_sync)
         await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
@@ -371,7 +392,7 @@ async def mark_working(
         return mark_agent_work_working(_db_path(), cmd)
 
     try:
-        result = await asyncio.to_thread(_sync)
+        result = await _write_off_loop(_sync)
         await _yield_write_lock_for_peers()
     except LeaseConflict as exc:
         raise HTTPException(status_code=410, detail=str(exc)) from exc
