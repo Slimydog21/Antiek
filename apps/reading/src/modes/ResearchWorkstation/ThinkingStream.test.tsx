@@ -10,7 +10,7 @@
  *     perpetual "thinking…" (M4);
  *   - the live cost is the real accumulated dollar figure (M3).
  *
- * The render pulls in Werner (PNG poses) + LemonCard via TrajectoryView; vite
+ * The render pulls in Brain (PNG poses) + LemonCard via TrajectoryView; vite
  * resolves the asset imports to URL strings under jsdom, so no asset mock is
  * needed.
  */

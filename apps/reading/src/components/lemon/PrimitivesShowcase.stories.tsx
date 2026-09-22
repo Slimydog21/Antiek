@@ -46,7 +46,7 @@ export const Showcase: Story = {
       const [model, setModel] = useState<string>("nano-banana");
       const [query, setQuery] = useState("");
       const [draft, setDraft] = useState(
-        "Hi Werner. Type Cmd+Enter to submit. The textarea auto-grows.",
+        "Hi Werner. Type Cmd+Enter to submit. The textarea auto-grows.", // LOSTPIXEL PIXEL-FREEZE: visible string kept until design-primitives-showcase--showcase baselines are re-minted
       );
       return (
         <div className="min-h-screen bg-ice-2 dark:bg-space-2 text-ink dark:text-bright">

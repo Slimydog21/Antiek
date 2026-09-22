@@ -21,7 +21,7 @@ Grade the living-background experience and its shell surfaces (the SPR-05..08 te
 
 1. **Scene layers** — `apps/reading/src/scene/scene.css`, `apps/reading/src/scene/Scene.tsx` (the living background; SPR-05/06 terrain).
 2. **Shell controls** — `apps/reading/src/index.css` + `apps/reading/src/AppShell.tsx` + `apps/reading/src/shell/` (chrome, launcher windows, panels; SPR-08 terrain).
-3. **Werner** — `apps/reading/src/werner/`, `apps/reading/src/brand/werner/` (mascot motion/state — graded for craft only, NEVER for hedgehog-resemblance; see firewall).
+3. **Brain** — `apps/reading/src/mascot/`, `apps/reading/src/brand/mascot/` (mascot motion/state — graded for craft only, NEVER for hedgehog-resemblance; see firewall).
 4. **Reading-mode states** — reading-surface components and their authored states (`apps/reading/src/components/`, `apps/reading/src/modes/`).
 5. **The FALLBACK / procedural floor** — see next section; grade it as FIRST-CLASS.
 
@@ -52,7 +52,7 @@ Antiek tree: <git SHA or "working tree @ <date>">
 Auditor context: <run 1 | run 2 | independent>
 
 ## Graded table
-| Dimension | Scene | Shell | Werner | Reading-mode | Fallback | Dimension grade |
+| Dimension | Scene | Shell | Brain | Reading-mode | Fallback | Dimension grade |
 |---|---|---|---|---|---|---|
 | Visual crispness | n/3 | n/3 | n/3 | n/3 | n/3 | n/3 |
 | Motion & life | … | … | … | … | … | … |
