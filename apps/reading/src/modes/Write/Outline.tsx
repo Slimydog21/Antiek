@@ -51,7 +51,7 @@ import {
  *
  * It is the input the draft generation consumes: one "Generate draft" button
  * per section calls the shipped `/write/sections/{id}/generate` endpoint with
- * the shared Werner thinking beat, and is HONEST — an empty section asks for
+ * the shared Brain thinking beat, and is HONEST — an empty section asks for
  * blocks (never a hang), no key surfaces `AIActionFailure` (never a fake
  * draft), a gap/gate-fail is shown plainly. Generated prose loads into the
  * shipped `WriteEditor` (the real TipTap surface, retiring the textarea),

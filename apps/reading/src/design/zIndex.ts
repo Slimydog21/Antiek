@@ -45,14 +45,14 @@
  *                             Tailwind literal; ties with `windowBase`
  *   mobileRailToggle    50    NavRail collapsed hamburger — was a `z-50`
  *                             literal; ties with `floatingPanelCeiling`
- *   mascot              60    PenguinMascot.tsx `z-[60]`
+ *   mascot              60    MascotStation.tsx `z-[60]`
  *   modal              100    LemonModal.tsx `z-[100]`
  *   popover            120    Notebook/SlashMenu.tsx `z-[120]`
  *   adOverlay          150    AdBorder.tsx `z-[150]`
  *   toast              200    LemonToast.tsx `z-[200]`
  *
  * Surfaces whose elevation is a Tailwind class (LemonModal/LemonToast/
- * AdBorder/SlashMenu/PenguinMascot) are NOT rewired here — those classes are
+ * AdBorder/SlashMenu/MascotStation) are NOT rewired here — those classes are
  * tailwind/token territory (Builder-A) and a class→inline-style swap would be
  * a behaviour change, not a consolidation. They are catalogued in this ladder
  * as the canonical named values so a future token pass has one source to read
@@ -116,7 +116,7 @@ export const zIndex = Object.freeze({
    * ties with `floatingPanelCeiling`.
    */
   mobileRailToggle: 50,
-  /** Draggable Penguin mascot — floats above panels/windows, below modals. */
+  /** Draggable Mascot — floats above panels/windows, below modals. */
   mascot: 60,
   /** LemonModal scrim + dialog — above all in-page surfaces. */
   modal: 100,
