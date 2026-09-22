@@ -119,7 +119,7 @@
       "col": 5,
       "kind": "ruff:SIM103",
       "line": 45,
-      "path": "apps/reading/src/brand/werner/color_correct.py",
+      "path": "apps/reading/src/brand/mascot/color_correct.py",
       "snippet": "if v < 0.40:"
     },
     {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import WernerThinking from "../../brand/werner/animated/WernerThinking";
+import BrainThinking from "../../brand/mascot/animated/BrainThinking";
 import { LemonButton, LemonCard } from "../../components/lemon";
 import { track } from "../../lib/analytics";
 import { apiFetch } from "../../lib/api";
@@ -39,7 +39,7 @@ import SpeakSettings from "./SpeakSettings";
  *   2. the voices as they arrive (light polling while the page is open);
  *   3. what everyone agrees on — corroboration, framed honestly as
  *      "corroborated", NEVER "proven";
- *   4. the assembling story (creator-only), with Werner present while it
+ *   4. the assembling story (creator-only), with Brain present while it
  *      assembles and an honest no-result state without model keys;
  *   5. everything else — economics, the contributor split, publishing,
  *      physical books — behind ONE calm Settings tap (SPR-08 M4).
@@ -400,7 +400,7 @@ export default function Speak() {
               )}
               {agree.phase === "working" && (
                 <div className="py-1">
-                  <WernerThinking size={28} label="Comparing the voices" />
+                  <BrainThinking size={28} label="Comparing the voices" />
                 </div>
               )}
               {agree.phase === "failed" && (
@@ -459,7 +459,7 @@ export default function Speak() {
               </p>
               {draft.phase === "assembling" && (
                 <div className="rounded-md border border-rule p-4 dark:border-charcoal-1">
-                  <WernerThinking size={32} label="Assembling their story" />
+                  <BrainThinking size={32} label="Assembling their story" />
                   <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
                     Drawing the story together from what everyone shared…
                   </p>
