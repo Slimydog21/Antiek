@@ -36,6 +36,7 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
   {
     title: "Governance",
     routes: [
+      { path: "/memory", title: "Account memory", description: "Owner-private facts + correction history" },
       { path: "/privacy", title: "Privacy dashboard", description: "ε budgets + delete-all (§13.3)" },
       { path: "/trust", title: "Trust Center", description: "Substrate-wide DP + control posture" },
       { path: "/federation", title: "Federation config", description: "Cross-substrate citation policy (§13.9 Phase 3)" },

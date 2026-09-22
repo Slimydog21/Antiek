@@ -280,3 +280,54 @@ def test_roadmap_reads_rosters_from_fixture_via_env(tmp_path: Path, monkeypatch:
     assert by_spec["read"] == 2
     # Specs with no fixture dir contribute 0 (read-only, no invention).
     assert by_spec["write"] == 0
+
+
+# ── 5. A root that exists but holds no roster must not defeat the fallback ────
+
+
+def test_root_with_no_recognised_roster_dir_falls_back(tmp_path: Path) -> None:
+    """A directory that merely EXISTS is not the specs root.
+
+    ``~/Desktop/Antiek`` is a symlink to the repo, so the canonical specs root
+    resolves to ``platform/specs/`` — a directory that exists for an unrelated
+    reason (one vendored spec) and contains none of the five rosters. Treating
+    that as "present" made every count read 0 on the operator's machine while
+    CI, where the path is absent, passed via the committed manifest. Same code,
+    opposite verdicts, and the local one was wrong.
+
+    Zero here means "did not look", not "nothing to find".
+    """
+    absent = tmp_path / "does-not-exist"
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    (unrelated / "karpathy-deep-lens-engineering").mkdir()
+
+    from_absent = {r.spec: r.count for r in build_roadmap(specs_root=absent).rosters}
+    from_unrelated = {r.spec: r.count for r in build_roadmap(specs_root=unrelated).rosters}
+
+    assert from_unrelated == from_absent, (
+        "a root holding no recognised roster dir must fall back to the committed "
+        f"manifest exactly as an absent root does: {from_unrelated} != {from_absent}"
+    )
+    assert sum(from_unrelated.values()) > 0, (
+        "the fallback itself returned nothing — this assertion would pass "
+        "vacuously if the manifest were empty"
+    )
+
+
+def test_a_partial_fixture_root_still_reports_honest_zeros(tmp_path: Path) -> None:
+    """Requiring one recognised dir must not turn every gap into a backfill.
+
+    The point of the presence check is to tell "this is not the specs root"
+    from "this is the specs root and that spec has no sprints yet". The second
+    must still report 0, or the roadmap starts inventing work.
+    """
+    (tmp_path / "deep-research-workspace").mkdir()
+    (tmp_path / "deep-research-workspace" / "sprint-01-x.html").write_text("x")
+
+    by_spec = {r.spec: r.count for r in build_roadmap(specs_root=tmp_path).rosters}
+    assert by_spec["drw"] == 1, by_spec
+    for spec in ("read", "write", "speak", "unified"):
+        assert by_spec[spec] == 0, (
+            f"{spec} was backfilled from the manifest despite a present root: {by_spec}"
+        )

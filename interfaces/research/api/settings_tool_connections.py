@@ -18,12 +18,38 @@ from runtime.connectors.registry import (
     disconnect_tool,
     list_tool_connections,
 )
+from runtime.connectors.x_twitter import (
+    SEARCH_MAX_RESULTS,
+    X_POST_READ_USD,
+    X_PRICING_CHECKED_ON,
+    X_PRICING_SOURCE_URL,
+    estimated_search_cost_usd,
+)
 
 from .account_memory_identity import distinct_signed_owner
 
 tool_connections_router = APIRouter(prefix="/settings/tools", tags=["settings-tools"])
 _PRIVATE_NO_STORE = "private, no-store"
 _MAX_CREDENTIAL_BODY_BYTES = 1_024
+# What a connected X key actually costs its owner. Surfacing only the rate
+# ceiling here used to imply a monthly allowance; X sells pay-per-use credits
+# and bills per post returned, so a search spends real money and the ceiling
+# says nothing about how much. The note carries the per-read rate, its source
+# and the date it was read, because an unsourced price is the thing this field
+# exists to stop. It deliberately states that Antiek cannot see the balance:
+# X publishes no billing endpoint, and inventing a balance read would be worse
+# than saying nothing.
+_X_SEARCH_COST_USD = estimated_search_cost_usd(SEARCH_MAX_RESULTS)
+_X_COST_NOTE = (
+    "X bills pay-per-use credits, not a flat monthly tier: about "
+    f"${X_POST_READ_USD:.3f} per post returned, as published at "
+    f"{X_PRICING_SOURCE_URL} and read on {X_PRICING_CHECKED_ON}. A search that "
+    "returns fewer posts costs proportionally less. Antiek cannot read your "
+    "credit balance, because X publishes no billing endpoint, so this is an "
+    "estimate from the published rate and not a charge Antiek has seen."
+)
+
+
 class ToolQuotaResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["youtube_units", "rate_ceiling", "unavailable"]
@@ -32,6 +58,8 @@ class ToolQuotaResponse(BaseModel):
     reset_at: str | None = None
     hard_exhausted: bool | None = None
     note: str | None = None
+    estimated_cost_usd: float | None = None
+    cost_note: str | None = None
 
 
 class ToolConnectionResponse(BaseModel):
@@ -109,12 +137,18 @@ def _quota(snapshot: ToolConnectionSnapshot) -> ToolQuotaResponse:
             ),
         )
     if snapshot.quota_kind == "rate_ceiling":
-        limit = 25 if snapshot.vendor == "x" else 8
-        window = "15 minutes" if snapshot.vendor == "x" else "second"
+        is_x = snapshot.vendor == "x"
+        limit = 25 if is_x else 8
+        window = "15 minutes" if is_x else "second"
         return ToolQuotaResponse(
             kind="rate_ceiling",
             limit=limit,
-            note=f"Host-global shared ceiling across all owners and keys: {limit} requests per {window}",
+            note=(
+                "Antiek's own host-global brake across all owners and keys: "
+                f"{limit} requests per {window}. It is not a provider allowance."
+            ),
+            estimated_cost_usd=_X_SEARCH_COST_USD if is_x else None,
+            cost_note=_X_COST_NOTE if is_x else None,
         )
     return ToolQuotaResponse(
         kind="unavailable",
