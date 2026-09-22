@@ -6,6 +6,8 @@ import asyncio
 import os
 import sys
 
+import re
+
 import pytest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -13,6 +15,9 @@ sys.path.insert(0, os.path.dirname(_HERE))
 
 from interfaces.research.api import EventBroadcaster  # noqa: E402
 from orchestration.loop_one.coordinator import InvestigationCoordinator  # noqa: E402
+from orchestration.phase_runner.postconditions import (
+    NO_PRIOR_GRAPH_KNOWLEDGE,
+)
 from orchestration.loop_one.orchestrator import (  # noqa: E402
     PHASE_2_MAX_CONCURRENCY,
     _prior_graph_knowledge_section,
@@ -110,14 +115,29 @@ def test_prior_graph_section_cites_hyphenated_chunk_ids(monkeypatch):
     assert "chunk-1" in section
 
 
-def test_prior_graph_section_fallback_markers(monkeypatch):
+def test_prior_graph_section_declares_absence_without_faking_citations(monkeypatch):
+    """An empty graph must produce a DECLARATION, not invented citations.
+
+    This test previously asserted `"chunk_orientation_marker" in section` and
+    `"node_orchestrator_start" in section` — it pinned the fabrication as the
+    contract. Those tokens match the Phase 1 citation regex
+    (``\bchunk[-_]...|\bnode[-_]...``) while referring to no chunk and no
+    node, so a cold-start investigation passed Phase 1 by claiming prior
+    knowledge it did not have, and this test kept CI green over it.
+
+    Phase 1 now accepts an explicit no-prior-graph-knowledge declaration, so
+    absence has an honest expression and nothing has to be invented.
+    """
     monkeypatch.setattr(
         "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
         lambda _q, top_k=3: "(corpus search returned no matches above the similarity floor)",
     )
     section = _prior_graph_knowledge_section("cold question")
-    assert "chunk_orientation_marker" in section
-    assert "node_orchestrator_start" in section
+    assert NO_PRIOR_GRAPH_KNOWLEDGE in section
+    # The point of the change: nothing citation-shaped may appear here.
+    assert not re.search(
+        r"\bchunk[-_][A-Za-z0-9_-]+|\bnode[-_][A-Za-z0-9_-]+", section,
+    ), f"fallback still emits a citation-shaped token: {section!r}"
 
 
 def test_trajectory_append_order_preserved_under_sequential_emit():

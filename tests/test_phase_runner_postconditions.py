@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from orchestration.phase_log import PhaseLog  # noqa: E402
 from orchestration.phase_runner.postconditions import (  # noqa: E402
     CHECKS,
+    NO_PRIOR_GRAPH_KNOWLEDGE,
     check_phase_1,
     check_phase_2,
     check_phase_3,
@@ -115,6 +116,48 @@ def test_phase_1_section_with_no_citations(research_dir):
     _write(os.path.join(research_dir, "orientation.md"), body)
     ok, _ = check_phase_1("inv-p1", research_dir=research_dir)
     assert ok is False
+
+
+def test_phase_1_cold_start_may_declare_absence_instead_of_faking_citations(
+    research_dir,
+):
+    """A cold question has no prior graph knowledge, and may say so.
+
+    The orchestrator used to satisfy the citation regex with
+    "chunk_orientation_marker and node_orchestrator_start seed the connector
+    substrate ..." — tokens shaped like citations that referred to no chunk and
+    no node. The gate read a fabrication and passed. The failure was not that
+    the gate was weak; it was that the only way to pass was to claim knowledge
+    that did not exist, so the producer invented some.
+
+    Giving absence an honest expression removes the incentive. Same shape as
+    the insufficient_evidence hatch in Phases 2, 6 and 8.
+    """
+    body = (
+        "# Orientation\n\n" + ("orientation detail. " * 40)
+        + "\n\n## Prior Graph Knowledge\n\n"
+        + NO_PRIOR_GRAPH_KNOWLEDGE + "\n"
+    )
+    _write(os.path.join(research_dir, "orientation.md"), body)
+    ok, reason = check_phase_1("inv-p1", research_dir=research_dir)
+    assert ok is True
+    assert "no-prior-graph-knowledge" in reason
+
+
+def test_phase_1_still_rejects_a_section_with_neither(research_dir):
+    """Neither a citation nor the declaration is still a failure.
+
+    The hatch must not become a blanket exemption: a Prior Graph Knowledge
+    section that says nothing at all is exactly what Phase 1 exists to catch.
+    """
+    body = (
+        "# Orientation\n\n" + ("orientation detail. " * 40)
+        + "\n\n## Prior Graph Knowledge\n\nSome prose with no citation.\n"
+    )
+    _write(os.path.join(research_dir, "orientation.md"), body)
+    ok, reason = check_phase_1("inv-p1", research_dir=research_dir)
+    assert ok is False
+    assert "neither" in reason
 
 
 def test_phase_1_happy_with_regex_citation(research_dir):

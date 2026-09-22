@@ -48,6 +48,7 @@ from substrate.event_log import trajectory
 from substrate.schemas import (
     ActionType,
     AutoPatchAppliedPayload,
+    ConnectorDeliveredPayload,
     Event,
     MasterMdWrittenPayload,
     SynthesizeDeliveredPayload,
@@ -148,6 +149,24 @@ def _events_of_type(investigation_id: str, action_type: ActionType) -> list[Even
 # ---------------------------------------------------------------------------
 
 
+# The one sentence a Phase 1 orientation may use to say the graph had nothing.
+#
+# The orchestrator used to satisfy the citation requirement below by emitting
+# "chunk_orientation_marker and node_orchestrator_start seed the connector
+# substrate when the graph has no servable hits yet" — tokens shaped like
+# citations but referring to nothing. That let a cold-start investigation claim
+# prior knowledge it did not have, which is worse than failing: the gate was
+# not merely weak, it was reading a fabrication.
+#
+# A cold question legitimately has no prior graph knowledge, so the gate needs
+# a way to say so. This is that way — an explicit declaration of ABSENCE,
+# which is auditable, rather than invented evidence, which is not. Same shape
+# as the `insufficient_evidence` hatch in Phases 2, 6 and 8.
+NO_PRIOR_GRAPH_KNOWLEDGE = (
+    "No prior graph knowledge: substrate search returned no servable hits "
+    "for this question."
+)
+
 def check_phase_1(
     investigation_id: str,
     *,
@@ -183,9 +202,14 @@ def check_phase_1(
         text[section_start: section_start + next_header.start()]
         if next_header else text[section_start:]
     )
+    if NO_PRIOR_GRAPH_KNOWLEDGE in section:
+        return True, (
+            "orientation.md OK (explicit no-prior-graph-knowledge declaration)"
+        )
     if not re.search(r"\bchunk[-_][A-Za-z0-9_-]+|\bnode[-_][A-Za-z0-9_-]+", section):
         return False, (
-            "Prior Graph Knowledge section has no chunk/node regex citation"
+            "Prior Graph Knowledge section has neither a chunk/node citation "
+            "nor the explicit no-prior-graph-knowledge declaration"
         )
     return True, "orientation.md OK (regex citation in Prior Graph Knowledge)"
 
@@ -266,6 +290,7 @@ def check_phase_4(
     if not os.path.isdir(research_dir):
         return False, f"{research_dir} not a directory"
     candidates: list[str] = []
+    present_but_small: list[str] = []
     for name in os.listdir(research_dir):
         if (
             not name.startswith("round2-")
@@ -274,9 +299,40 @@ def check_phase_4(
         ):
             continue
         full = os.path.join(research_dir, name)
-        if os.path.getsize(full) > _ROUND2_DEEP_DIVE_MIN_BYTES:
-            candidates.append(full)
+        if os.path.getsize(full) <= _ROUND2_DEEP_DIVE_MIN_BYTES:
+            present_but_small.append(full)
+            continue
+        try:
+            with open(full, encoding="utf-8", errors="replace") as fh:
+                if _repetition_filler(fh.read()) is not None:
+                    present_but_small.append(f"{full} (padding)")
+                    continue
+        except OSError:
+            continue
+        candidates.append(full)
     if not candidates:
+        # Honest-no-paths hatch, mirroring Phase 2 / 6 / 8.
+        #
+        # The round-2 marker used to be
+        # ``("Cross-domain connector substrate surfaced. " * 50)`` — ~2100
+        # bytes that cleared this floor whatever the Connector returned. Now
+        # that the file renders the real payload, a traversal that legitimately
+        # found no cross-domain paths produces a short file, and failing that
+        # would punish an honest empty result. So: if the Connector DELIVERED
+        # and reported no paths, a thin round 2 is the correct outcome.
+        if present_but_small:
+            delivered = _events_of_type(
+                investigation_id, ActionType.CONNECTOR_DELIVERED,
+            )
+            payloads = [
+                e.payload for e in delivered
+                if isinstance(e.payload, ConnectorDeliveredPayload)
+            ]
+            if payloads and not any(pl.paths for pl in payloads):
+                return True, (
+                    "round-2 deep dive is thin, and correctly so: the "
+                    "connector delivered and found no cross-domain paths"
+                )
         return False, (
             f"no round2-*.md (≠ critique) >{_ROUND2_DEEP_DIVE_MIN_BYTES} "
             f"bytes in {research_dir}"
