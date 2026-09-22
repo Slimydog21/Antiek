@@ -73,19 +73,33 @@ at §9.10 must be reviewed by counsel **before any notification email sends**.
 2. **The template itself** — render once with a fixture publisher:
    ```bash
    ./.venv/bin/python -c "
-   from substrate.ip_holders import IpHolder, render_notification_email
+   from decimal import Decimal
    from datetime import datetime, timezone
+   from substrate.ip_holders import IpHolder, render_notification_email
    h = IpHolder(
      ip_holder_id='mit-press',
      display_name='MIT Press',
-     contact_email='legal@mitpress.mit.edu',
+     legal_contact_email='legal@mitpress.mit.edu',
      status='pre_onboarded',
-     escrow_balance_usd=0.0,
+     escrow_balance_usd=Decimal('0.00'),
+     escrow_account_ref=None,
+     notification_sent_at=None,
+     claimed_at=None,
+     opted_out_at=None,
      created_at=datetime.now(timezone.utc).isoformat(),
    )
    print(render_notification_email(h))
    "
    ```
+
+   Verified to render 1338 bytes on `origin/main` 2026-09-22. The previous
+   form in this document raised
+   `TypeError: IpHolder.__init__() got an unexpected keyword argument 'contact_email'`
+   — the field is `legal_contact_email`, `escrow_balance_usd` is a `Decimal`
+   rather than a float, and four further fields (`escrow_account_ref`,
+   `notification_sent_at`, `claimed_at`, `opted_out_at`) have no defaults.
+   If it raises again, read the dataclass rather than editing by guess:
+   `python -c "import dataclasses; from substrate.ip_holders import IpHolder; print([f.name for f in dataclasses.fields(IpHolder)])"`
 3. **Bartz v. Anthropic settlement context** — the $1.5B precedent that
    makes pre-payout exposure (takedown) materially less expensive than
    post-payout exposure (Bartz-level damages on a contemporary monetary
