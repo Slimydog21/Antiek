@@ -80,6 +80,10 @@ class CheckResult:
     kind: CheckResultKind
     score: float  # in [0, 1]
     reasons: tuple[str, ...]
+    # Set when the check PASSED only because a caller invoked an explicit
+    # escape hatch (e.g. a stated null-author reason). Never a failure — but
+    # never invisible either: the run report counts these.
+    admitted_by_exception: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -307,8 +311,10 @@ def check_metadata_completeness(
             reasons=tuple(failures),
         )
     note = "title + source id present"
+    admitted: str | None = None
     if not (author and author.strip()):
         note += f"; author null (allowed: {allow_null_author_reason})"
+        admitted = f"author null: {(allow_null_author_reason or '').strip()}"
     else:
         note += " + author"
     return CheckResult(
@@ -316,6 +322,7 @@ def check_metadata_completeness(
         kind=CheckResultKind.PASS,
         score=1.0,
         reasons=(note,),
+        admitted_by_exception=admitted,
     )
 
 
@@ -339,6 +346,15 @@ class QualityVerdict:
     @property
     def failed_checks(self) -> tuple[CheckResult, ...]:
         return tuple(c for c in self.checks if c.kind == CheckResultKind.FAIL)
+
+    @property
+    def exceptions(self) -> tuple[str, ...]:
+        """Every escape hatch this verdict passed THROUGH (never past)."""
+        return tuple(
+            c.admitted_by_exception
+            for c in self.checks
+            if c.admitted_by_exception is not None
+        )
 
 
 def assess_corpus_quality(
@@ -418,6 +434,13 @@ class QualityRunReport:
     rejected: int
     rejection_rate: float  # rejected / total, 0.0 when total == 0
     rejection_reasons: tuple[str, ...]  # one entry per rejected candidate
+    # Candidates that PASSED only through an explicit escape hatch (a stated
+    # null-author reason). Every corpus-ingest producer states one for every
+    # author-less record, so the hatch is satisfied by construction on that
+    # path; the count + reason tally makes that visible instead of a silent
+    # pass (audit wave 3, #15).
+    admitted_by_exception: int = 0
+    exception_reasons: tuple[tuple[str, int], ...] = ()  # (reason, count)
 
     def render(self) -> str:
         pct = self.rejection_rate * 100.0
@@ -425,6 +448,13 @@ class QualityRunReport:
             f"quality gate: {self.total} assessed, {self.passed} passed, "
             f"{self.rejected} rejected ({pct:.1f}% rejection rate)",
         ]
+        if self.admitted_by_exception:
+            lines.append(
+                f"  {self.admitted_by_exception} of the {self.passed} passed only "
+                f"through an escape hatch:"
+            )
+            for reason, n in self.exception_reasons:
+                lines.append(f"    {n} x {reason}")
         for i, reason in enumerate(self.rejection_reasons, 1):
             lines.append(f"  reject #{i}: {reason}")
         return "\n".join(lines)
@@ -447,12 +477,21 @@ def aggregate_verdicts(verdicts: Iterable[QualityVerdict]) -> QualityRunReport:
         for v in verdict_list
         if not v.passed
     )
+    tally: dict[str, int] = {}
+    admitted = 0
+    for v in verdict_list:
+        if v.passed and v.exceptions:
+            admitted += 1
+            for ex in v.exceptions:
+                tally[ex] = tally.get(ex, 0) + 1
     return QualityRunReport(
         total=total,
         passed=passed,
         rejected=rejected,
         rejection_rate=rate,
         rejection_reasons=reasons,
+        admitted_by_exception=admitted,
+        exception_reasons=tuple(sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))),
     )
 
 
