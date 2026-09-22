@@ -503,6 +503,17 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     sharedReason: "Audit/governance inventory over the event schema; not workflow-scoped.",
   },
   {
+    id: "AccountMemory",
+    workflow: "shared",
+    label: "Account memory",
+    blurb: "Owner-private facts, their provenance, and every superseded version.",
+    built: true,
+    route: "/memory",
+    sharedReason:
+      "Governance — the account's own long-term memory feeds every workflow's " +
+      "thought partner, so it belongs to none of them.",
+  },
+  {
     id: "PrivacyDashboard",
     workflow: "shared",
     label: "Privacy",

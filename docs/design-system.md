@@ -127,7 +127,7 @@ Rules the UI must honour:
 2. **Forks are untrusted input.** Theme CSS is gated; failures surface the server `detail` string, not a generic toast.
 3. **Preview ≠ apply.** Preview is temporary (`X-Artifact-Version: preview`). Apply creates a versioned HTML under the artifact store.
 4. **Determinism.** Restyle is pure presentation: `render(extract_island(artifact), style=X)` — no model call.
-5. **Provenance of forks.** The API does not yet persist `parent_style`. The wheel tracks seed parent **session-locally** when the operator forks from a selected style, and labels reloaded forks as `origin untracked` rather than inventing a parent.
+5. **Provenance of forks.** The API persists a fork's `parent` (`user_styles.parent`, returned on `GET /styles` and accepted on `POST /styles`), so lineage survives a reload. The wheel reads `style.parent` and falls back to a session-local seed map only when the server sent no parent — a legacy fork, or an older backend. A fork with no parent either way is labelled `origin untracked` rather than given an invented one. `parent === name` is refused by the API (422), so re-saving a fork under its own slug carries its stored parent forward instead of self-referencing.
 
 ### 3.1 Wheel interaction craft
 
@@ -177,7 +177,7 @@ Rules for new primitives:
 
 - Don’t replace the Antiek structural base with a theme — append, don’t overwrite.
 - Don’t promote a weaker honesty state into smooth success copy.
-- Don’t invent parent-style provenance the backend did not store.
+- Don’t invent parent-style provenance the backend did not store — `origin untracked` is the honest label for a fork whose `parent` is `null`.
 - Don’t put theme CSS on the render query string; CSS stays in the `POST /styles` body.
 - Don’t ship a second mascot, a second accent system, or a second shadow language on the same surface.
 - Don’t use media-query breakpoints inside resizable islands when container queries will do.

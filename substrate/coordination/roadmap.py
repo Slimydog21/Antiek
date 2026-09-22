@@ -252,7 +252,19 @@ def build_roadmap(specs_root: Path | None = None) -> Roadmap:
     # specs do not ship — fall back to the committed manifest, so the roadmap is
     # portable rather than empty. When a root IS present (the real dir or a test
     # fixture), an absent per-spec dir honestly contributes 0 (no backfill).
-    root_present = root.is_dir()
+    #
+    # "Present" means the directory holds at least one roster dir we recognise,
+    # not merely that the path resolves. `~/Desktop/Antiek` is a symlink to the
+    # repo itself, so the canonical root resolves to `platform/specs/` — which
+    # exists for an UNRELATED reason (one vendored spec) and contains none of
+    # the five rosters. Treating that as "present" defeated the fallback on the
+    # operator's machine: every count read 0 and three tests in
+    # tests/test_coordination_no_fork.py failed locally while passing in CI.
+    # Requiring one recognised dir keeps the fixture behaviour intact — a
+    # fixture supplying SOME dirs still honestly reports 0 for the rest.
+    root_present = root.is_dir() and any(
+        (root / dirname).is_dir() for _spec, dirname, _label in _SPEC_DIRS
+    )
     manifest = {} if root_present else _manifest_rosters()
     for spec, dirname, label in _SPEC_DIRS:
         files = _read_roster_files(root / dirname) if root_present else manifest.get(spec, [])
