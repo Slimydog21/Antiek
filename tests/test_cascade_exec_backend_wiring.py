@@ -45,12 +45,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from collections.abc import Mapping, Sequence
 
+import duckdb
 import pytest
 
 import interfaces.research.api.cascade_routes as cascade_mod
+from processing.embedding.embed import HashEmbedding
 from runtime.exec_backend.factory import BACKEND_ENV, build_execution_backend
 from runtime.exec_backend.interface import (
     ALLOW_ALL,
@@ -69,6 +72,7 @@ from runtime.exec_backend.local_process import LocalProcessBackend
 from runtime.research_runner.budget import BudgetManager
 from runtime.research_runner.contained_gather import (
     ARTIFACT_PATH,
+    GATHER_PROGRAM,
     PROGRAM_PATH,
     REQUEST_PATH,
     make_contained_gather_loop,
@@ -78,6 +82,7 @@ from runtime.research_runner.host_local import (
     LoopContext,
     make_contract_gather_stub,
 )
+from runtime.research_runner.promotion_funnel import PromotionFunnel
 from runtime.research_runner.protocol import BudgetCap, ResearchPlan, StopResearch
 
 # ---------------------------------------------------------------------------
@@ -724,3 +729,243 @@ class TestBudgetIsChargedForContainedWork:
             return runner.budget.spent("inv-budget")
 
         assert asyncio.run(scenario()) == pytest.approx(0.06)
+
+
+# ---------------------------------------------------------------------------
+# SPR-02 task 4 — a caller supplies the program
+#
+# Until this lane the only code that could run in a workspace was
+# ``GATHER_PROGRAM``, a module constant. The containment machinery was
+# therefore guarding a payload that could not vary, which is the same shape of
+# vacuity ``test_flag_does_not_swap_the_runner``'s predecessor had: a guard
+# over a branch with no effects. These tests assert the effects of a program
+# the *caller* wrote, and they assert them on bytes that exist nowhere in this
+# repository except the program source below — so a passing assertion cannot
+# be explained by the default program having run.
+# ---------------------------------------------------------------------------
+
+#: A uid no process has. If this value reaches a promoted graph node, it can
+#: only have come out of ``CALLER_PROGRAM``'s bytes, through ``out/``, through
+#: the note, through ``funnel.submit``.
+SENTINEL_UID = 424242
+SENTINEL_TAG = "antiek-caller-authored-8f3c21"
+
+#: Deliberately NOT ``GATHER_PROGRAM``: different source, different record
+#: count (five rows from a single pass), different uid. Stdlib only, same as
+#: the default, because the workspace has nothing else.
+CALLER_PROGRAM = '''\
+"""A program the caller wrote, not the placeholder the module ships."""
+
+import json
+import os
+
+ARTIFACT = os.path.join("..", "out", "gather.jsonl")
+
+os.makedirs(os.path.dirname(ARTIFACT), exist_ok=True)
+with open(ARTIFACT, "a", encoding="utf-8") as fh:
+    for row in range(5):
+        fh.write(
+            json.dumps({"row": row, "tag": "antiek-caller-authored-8f3c21",
+                        "uid": 424242}, sort_keys=True)
+            + "\\n"
+        )
+print("caller program emitted 5 rows tagged antiek-caller-authored-8f3c21")
+'''
+
+
+def _capturing_backend() -> tuple[RecordingBackend, dict[str, bytes]]:
+    """A ``RecordingBackend`` whose workspace also keeps the bytes it was
+    given, so a test can assert on the program that actually landed in the
+    workspace rather than on the argument it passed."""
+    captured: dict[str, bytes] = {}
+
+    class _Capturing(RecordingWorkspace):
+        async def put_file(self, path: str, content: bytes) -> None:
+            captured[path] = content
+            await super().put_file(path, content)
+
+    class _CapturingBackend(RecordingBackend):
+        async def create(
+            self,
+            profile: WorkspaceProfile,
+            *,
+            limits: ResourceLimits,
+            net_policy: NetPolicy,
+        ) -> _Capturing:
+            self.calls.append(("create", (profile.image, net_policy.kind)))
+            return _Capturing(f"ws-{len(self.calls)}", self.calls)
+
+    return _CapturingBackend(), captured
+
+
+class TestCallerSuppliedProgram:
+    def test_the_program_is_actually_different(self) -> None:
+        """Guards the rest of the class: if this ever became the default
+        program, every assertion below would pass for the wrong reason."""
+        assert CALLER_PROGRAM != GATHER_PROGRAM
+        assert SENTINEL_TAG not in GATHER_PROGRAM
+        assert str(SENTINEL_UID) not in GATHER_PROGRAM
+
+    def test_default_is_byte_identical_to_before(self) -> None:
+        """No caller that did not ask for this gets a different program."""
+        backend, captured = _capturing_backend()
+        asyncio.run(_drain(make_contained_gather_loop(backend, steps=1), _ctx()))
+        assert captured[PROGRAM_PATH] == GATHER_PROGRAM.encode("utf-8")
+
+    def test_the_caller_chooses_the_code_never_the_path(self) -> None:
+        """Containment property, asserted mechanically: ``program`` is source
+        text. The destination stays this module's ``PROGRAM_PATH`` constant, so
+        the workspace path jail gains no surface from this feature. A caller
+        that could also choose the path could write over ``in/request.json``
+        or attempt an escape."""
+        backend, captured = _capturing_backend()
+        loop_fn = make_contained_gather_loop(backend, steps=1, program=CALLER_PROGRAM)
+        asyncio.run(_drain(loop_fn, _ctx()))
+
+        assert set(captured) == {PROGRAM_PATH, REQUEST_PATH}
+        assert captured[PROGRAM_PATH] == CALLER_PROGRAM.encode("utf-8")
+        assert PROGRAM_PATH == "work/gather.py"
+
+    def test_an_unusable_program_fails_when_the_loop_is_built(self) -> None:
+        """Loud at construction, not halfway through an investigation."""
+        backend = RecordingBackend()
+        with pytest.raises(ValueError, match="non-empty"):
+            make_contained_gather_loop(backend, steps=1, program="   \n  ")
+        with pytest.raises(ValueError, match="utf-8"):
+            make_contained_gather_loop(backend, steps=1, program="x = '\ud800'")
+        assert backend.calls == [], "a rejected program must not provision anything"
+
+    def test_a_caller_program_still_cannot_run_uncontained(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        """THE security assertion for this feature.
+
+        Accepting caller-authored code only widens the threat model if that
+        code can reach a backend that does not contain it. It cannot: the loop
+        declares ``DENY_ALL`` and ``LocalProcessBackend`` refuses that policy
+        at ``create()`` (I4), so the product path — ``_research_loop_factory``,
+        which passes no ``net_policy`` — cannot execute a supplied program on
+        the bare host however the operator sets the flag.
+
+        If someone "fixes" this by defaulting the loop to ALLOW_ALL, this test
+        goes red, and it should.
+        """
+        monkeypatch.setenv(BACKEND_ENV, "local")
+        monkeypatch.delenv("ANTIEK_DRW_GATHER", raising=False)
+        monkeypatch.setenv("ANTIEK_EXEC_WORKDIR", str(tmp_path))
+
+        loop_fn = cascade_mod._research_loop_factory(program=CALLER_PROGRAM)
+
+        with pytest.raises(NetPolicyUnsupported):
+            asyncio.run(_drain(loop_fn, _ctx()))
+
+    def test_a_supplied_program_without_a_backend_refuses(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Neither the stub nor the Exa loop executes a program. Honouring the
+        argument silently would leave the caller believing its code ran."""
+        monkeypatch.delenv(BACKEND_ENV, raising=False)
+        monkeypatch.delenv("ANTIEK_DRW_GATHER", raising=False)
+
+        with pytest.raises(RuntimeError, match="requires a contained backend"):
+            cascade_mod._research_loop_factory(program=CALLER_PROGRAM)
+
+    def test_the_factory_threads_the_program_to_the_workspace(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The route-level half of the thread: what the factory's caller passes
+        is what lands in the workspace."""
+        backend, captured = _capturing_backend()
+        monkeypatch.setenv(BACKEND_ENV, "local")
+        monkeypatch.delenv("ANTIEK_DRW_GATHER", raising=False)
+        monkeypatch.setattr(cascade_mod, "build_execution_backend", lambda: backend)
+
+        loop_fn = cascade_mod._research_loop_factory(program=CALLER_PROGRAM)
+        asyncio.run(_drain(loop_fn, _ctx()))
+
+        assert captured[PROGRAM_PATH] == CALLER_PROGRAM.encode("utf-8")
+
+    def test_the_artifact_a_caller_program_wrote_reaches_the_funnel(
+        self, tmp_path
+    ) -> None:
+        """THE done-bar for task 4: the whole round trip, no fakes in the
+        middle.
+
+        A REAL ``LocalProcessBackend`` runs a REAL child process executing
+        source this test wrote. The child appends five rows carrying
+        ``SENTINEL_UID`` to ``out/gather.jsonl``. The host exports that
+        artifact, derives the note from it, and a REAL ``HostLocalRunner``
+        forwards the note to a REAL ``PromotionFunnel.submit`` — the single
+        serialized graph writer, on the host, outside every workspace. The
+        assertion is on the sentinel read back out of the graph.
+
+        ``ALLOW_ALL`` is passed explicitly, exactly as the pre-existing
+        real-subprocess test does, because ``LocalProcessBackend`` refuses
+        ``DENY_ALL``. That is the loop being exercised, not contained:
+        ``test_a_caller_program_still_cannot_run_uncontained`` holds the other
+        half, that the product path cannot do this.
+        """
+        backend = LocalProcessBackend(workdir_base=str(tmp_path / "ws"))
+        loop_fn = make_contained_gather_loop(
+            backend,
+            steps=1,
+            program=CALLER_PROGRAM,
+            interpreter=sys.executable,
+            net_policy=ALLOW_ALL,
+            image=None,
+        )
+
+        # The conftest store-isolation fixture already points this at a tmp
+        # graph with the schema installed; constructing the funnel the way
+        # cascade launch does resolves to it.
+        funnel = PromotionFunnel(embedding_provider=HashEmbedding())
+        db_path = os.environ["ANTIEK_DUCKDB_PATH"]
+        steps: list = []
+
+        async def scenario() -> None:
+            await funnel.start()
+            runner = HostLocalRunner(loop_fn, on_emit=funnel.submit, seal_on_complete=False)
+            plan = ResearchPlan(
+                investigation_id="inv-caller-program",
+                sub_question="does caller-authored code round-trip?",
+                budget=BudgetCap(cost_usd=1.0, max_steps=50),
+            )
+            handle = await runner.start("inv-caller-program", plan)
+            async for ev in runner.stream(handle):
+                if ev.kind == "step":
+                    steps.append(ev)
+            await funnel.drain_and_stop()
+
+        asyncio.run(scenario())
+
+        # 1. The child really ran the caller's source: its stdout is the step.
+        assert steps, "no contained step ran"
+        assert SENTINEL_TAG in steps[0].text
+
+        # 2. The funnel promoted exactly one note and nothing errored.
+        assert funnel.errors == []
+        assert funnel.promoted_insights == 1
+        assert funnel.promoted_questions == 0
+        assert len(funnel.promoted_node_ids) == 1
+
+        # 3. The sentinel bytes the program wrote into out/ are in the graph.
+        #    ``ran_as_uid`` is derived from the artifact records, so 424242
+        #    here is the caller's program speaking; the default program would
+        #    have put this process's real uid there (and one row, not five).
+        con = duckdb.connect(db_path, read_only=True)
+        try:
+            row = con.execute(
+                "SELECT metadata FROM nodes WHERE node_id = ? LIMIT 1",
+                [funnel.promoted_node_ids[0]],
+            ).fetchone()
+        finally:
+            con.close()
+        assert row is not None
+        meta = json.loads(row[0]) if row[0] else {}
+        assert meta.get("ran_as_uid") == SENTINEL_UID
+        assert meta.get("ran_as_uid") != os.getuid()
+        assert meta.get("contained_passes") == 5, (
+            "the note's record count must come from the artifact the program "
+            "wrote (5 rows), not from the loop's step count (1)"
+        )
+        assert meta.get("gather_mode") == "exec_backend"
