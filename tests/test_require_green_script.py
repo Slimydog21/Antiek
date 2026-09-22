@@ -1,0 +1,189 @@
+"""tools/deploy/require_green.sh — the one gate both deploy paths call.
+
+Exercised end to end against a fake ``gh`` on PATH (no network, no token):
+every exit code the two callers branch on (0 green / 1 not yet / 3 cannot
+verify), the newest-run-wins rule for a re-run context, the three repo
+spellings, and — because the CI gate job once called a script it had never
+checked out and read the resulting exit 127 as "not green yet" — a
+structural guard on the workflow that calls it.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import stat
+import subprocess
+from pathlib import Path
+
+import pytest
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = ROOT / "tools" / "deploy" / "require_green.sh"
+WORKFLOW = ROOT / ".github" / "workflows" / "deploy_backend.yml"
+SHA = "0123456789abcdef0123456789abcdef01234567"
+REQUIRED = [
+    "tsc", "vitest", "keystone",
+    "mypy --strict + ruff (declared scope, baselined)",
+    "pytest shard 0 of 4", "pytest shard 1 of 4", "pytest shard 2 of 4", "pytest shard 3 of 4",
+]
+
+pytestmark = pytest.mark.skipif(shutil.which("jq") is None, reason="fake gh applies --jq with jq")
+
+_FAKE_GH = r'''#!/usr/bin/env bash
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  auth) exit "${FAKE_GH_AUTH_RC:-0}" ;;
+  api)
+    [ "${FAKE_GH_API_RC:-0}" -eq 0 ] || exit "${FAKE_GH_API_RC}"
+    jqexpr=""; path=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --jq) jqexpr="$2"; shift 2 ;;
+        --paginate) shift ;;
+        *) path="$1"; shift ;;
+      esac
+    done
+    printf '%s\n' "$path" >> "${FAKE_GH_CALLS:-/dev/null}"
+    jq -r "$jqexpr" < "$FAKE_GH_CHECKRUNS"
+    ;;
+  *) exit 2 ;;
+esac
+'''
+
+
+def _run(tmp_path: Path, runs: list[dict], *, repo="Slimydog21/Antiek", sha=SHA,
+         auth_rc=0, api_rc=0, with_gh=True) -> tuple[int, str, str, list[str]]:
+    binw = tmp_path / "bin"
+    binw.mkdir(exist_ok=True)
+    for tool in ("bash", "sed", "awk", "jq"):
+        real = shutil.which(tool)
+        assert real, tool
+        link = binw / tool
+        if not link.exists():
+            link.symlink_to(real)
+    if with_gh:
+        gh = binw / "gh"
+        gh.write_text(_FAKE_GH)
+        gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
+    checkruns = tmp_path / "checkruns.json"
+    checkruns.write_text(json.dumps({"check_runs": runs}))
+    calls = tmp_path / "calls.txt"
+    calls.write_text("")
+    env = {
+        "PATH": str(binw),
+        "FAKE_GH_AUTH_RC": str(auth_rc),
+        "FAKE_GH_API_RC": str(api_rc),
+        "FAKE_GH_CHECKRUNS": str(checkruns),
+        "FAKE_GH_CALLS": str(calls),
+        "HOME": str(tmp_path),
+    }
+    p = subprocess.run([str(binw / "bash"), str(SCRIPT), repo, sha],
+                       capture_output=True, text=True, env=env, cwd=ROOT)
+    return p.returncode, p.stdout, p.stderr, calls.read_text().split()
+
+
+def _green(names=REQUIRED, started="2026-09-22T20:00:00Z"):
+    return [{"name": n, "status": "completed", "conclusion": "success", "started_at": started} for n in names]
+
+
+def test_all_eight_green_exits_0(tmp_path):
+    rc, out, _, calls = _run(tmp_path, _green())
+    assert rc == 0, out
+    assert "all 8 required contexts are success" in out
+    assert calls == [f"repos/Slimydog21/Antiek/commits/{SHA}/check-runs?per_page=100"]
+
+
+@pytest.mark.parametrize("repo", [
+    "https://github.com/Slimydog21/Antiek.git",
+    "git@github.com:Slimydog21/Antiek.git",
+    "https://github.com/Slimydog21/Antiek/",
+])
+def test_every_repo_spelling_queries_the_same_path(tmp_path, repo):
+    rc, _, _, calls = _run(tmp_path, _green(), repo=repo)
+    assert rc == 0
+    assert calls == [f"repos/Slimydog21/Antiek/commits/{SHA}/check-runs?per_page=100"]
+
+
+def test_one_pending_exits_1(tmp_path):
+    runs = _green()
+    runs[1] = {"name": "vitest", "status": "in_progress", "conclusion": None, "started_at": "2026-09-22T20:00:00Z"}
+    rc, out, _, _ = _run(tmp_path, runs)
+    assert rc == 1
+    assert "NOT GREEN: 'vitest' => pending" in out
+
+
+def test_one_failure_exits_1(tmp_path):
+    runs = _green()
+    runs[4]["conclusion"] = "failure"
+    rc, out, _, _ = _run(tmp_path, runs)
+    assert rc == 1
+    assert "NOT GREEN: 'pytest shard 0 of 4' => failure" in out
+
+
+def test_absent_context_exits_1(tmp_path):
+    rc, out, _, _ = _run(tmp_path, _green(REQUIRED[:-1]))
+    assert rc == 1
+    assert "NOT GREEN: 'pytest shard 3 of 4' => absent" in out
+
+
+@pytest.mark.parametrize("newest_first", [True, False])
+def test_rerun_newest_run_wins(tmp_path, newest_first):
+    older = {"name": "vitest", "status": "completed", "conclusion": "failure", "started_at": "2026-09-22T19:00:00Z"}
+    newer = {"name": "vitest", "status": "completed", "conclusion": "success", "started_at": "2026-09-22T21:00:00Z"}
+    base = [r for r in _green() if r["name"] != "vitest"]
+    pair = [newer, older] if newest_first else [older, newer]
+    rc, out, _, _ = _run(tmp_path, base + pair)
+    assert rc == 0, out  # the rerun turned green: deployable
+    older, newer = newer | {"conclusion": "failure", "started_at": "2026-09-22T21:00:00Z"}, older | {"conclusion": "success", "started_at": "2026-09-22T19:00:00Z"}
+    pair = [older, newer] if newest_first else [newer, older]
+    rc, out, _, _ = _run(tmp_path, base + pair)
+    assert rc == 1, out  # the rerun turned red: an earlier green never masks it
+
+
+def test_short_sha_exits_3_without_calling_gh(tmp_path):
+    rc, _, err, calls = _run(tmp_path, _green(), sha="0123456")
+    assert rc == 3 and "FULL 40-char" in err and calls == []
+
+
+def test_unauthenticated_gh_exits_3(tmp_path):
+    rc, _, err, calls = _run(tmp_path, _green(), auth_rc=1)
+    assert rc == 3 and "not authenticated" in err and calls == []
+
+
+def test_api_failure_exits_3(tmp_path):
+    rc, _, err, _ = _run(tmp_path, _green(), api_rc=1)
+    assert rc == 3 and "query failed" in err
+
+
+def test_missing_gh_exits_3(tmp_path):
+    rc, _, err, _ = _run(tmp_path, _green(), with_gh=False)
+    assert rc == 3 and "gh CLI not found" in err
+
+
+# ── the workflow that calls it ──
+
+
+def _gate_steps() -> list[dict]:
+    wf = yaml.safe_load(WORKFLOW.read_text())
+    return wf["jobs"]["gate"]["steps"]
+
+
+def test_gate_job_checks_out_the_script_before_calling_it():
+    steps = _gate_steps()
+    call_idx = next(i for i, s in enumerate(steps) if "require_green.sh" in (s.get("run") or ""))
+    checkouts = [
+        i for i, s in enumerate(steps[:call_idx])
+        if str(s.get("uses", "")).startswith("actions/checkout@")
+        and "tools/deploy" in str((s.get("with") or {}).get("sparse-checkout", ""))
+    ]
+    assert checkouts, "the gate job must check out tools/deploy before it calls require_green.sh"
+
+
+def test_gate_step_treats_only_exit_1_as_not_yet():
+    steps = _gate_steps()
+    run = next(s["run"] for s in steps if "require_green.sh" in (s.get("run") or ""))
+    assert 'test -x tools/deploy/require_green.sh' in run
+    assert '"$rc" -ne 1' in run, "any exit code other than 1 must fail the job, not read as 'not green yet'"
+    assert 'exit "$rc"' in run

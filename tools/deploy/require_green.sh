@@ -53,8 +53,12 @@ REQUIRED=(
   'pytest shard 3 of 4'
 )
 
+# One row per check run: name, status, conclusion, started_at. A context
+# that was re-run has SEVERAL rows; the newest started_at decides, so a
+# rerun that turned red is never masked by its earlier green (nor a rerun
+# that turned green held back by its earlier red).
 if ! runs=$(gh api --paginate "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-              --jq '.check_runs[] | [.name, .status, (.conclusion // "pending")] | @tsv'); then
+              --jq '.check_runs[] | [.name, .status, (.conclusion // "pending"), (.started_at // "")] | @tsv'); then
   echo "require_green: check-runs query failed for $REPO@$SHA — REFUSING (fail-closed)." >&2
   exit 3
 fi
@@ -62,7 +66,7 @@ fi
 missing=0
 for ctx in "${REQUIRED[@]}"; do
   # Most recent conclusion reported for this context name.
-  concl=$(printf '%s\n' "$runs" | awk -F'\t' -v c="$ctx" '$1==c {v=$3} END {print v}')
+  concl=$(printf '%s\n' "$runs" | awk -F'\t' -v c="$ctx" '$1==c && ($4 > t || t == "") {t=$4; v=$3} END {print v}')
   if [ "${concl:-}" != "success" ]; then
     echo "NOT GREEN: '$ctx' => ${concl:-absent}"
     missing=1
