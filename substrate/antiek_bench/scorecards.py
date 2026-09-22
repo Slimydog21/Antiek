@@ -99,7 +99,7 @@ def antiek_bench_dir() -> Path:
     raw = os.environ.get("ANTIEK_BENCH_DIR")
     if raw:
         return Path(raw)
-    home = Path(os.environ.get("ANTIEK_HOME", Path.home() / ".antiek"))
+    home = Path(os.environ.get("ANTIEK_HOME", "").strip() or Path.home() / ".antiek")
     return home / "antiek_bench"
 
 
