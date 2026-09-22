@@ -16,7 +16,7 @@ import WorkflowStub from "./WorkflowStub";
  *   - the scene chrome (zone 3 action bar + tabs),
  *   - the honest "not yet" stub state.
  *
- * Everything renders in the Werner skin (sun-yellow edge, ink rail) using
+ * Everything renders in the Brain skin (sun-yellow edge, ink rail) using
  * Lemon tokens — pattern from PostHog-2025 content-first IA, tone is ours.
  */
 const meta = {

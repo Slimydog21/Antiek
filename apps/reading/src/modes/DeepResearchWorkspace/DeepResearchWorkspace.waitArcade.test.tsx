@@ -65,7 +65,7 @@ vi.mock("../../workspace/usePrefersReducedMotion", () => ({
 }));
 
 vi.mock("../../arcade/waitArcadeFlag", () => ({
-  wernerResearchWaitArcadeEnabled: true,
+  mascotResearchWaitArcadeEnabled: true,
 }));
 
 vi.mock("../../workspace/PanelHost", () => ({
@@ -76,8 +76,8 @@ vi.mock("./useResearchSession", () => ({
   useResearchSession: () => sessionView.current,
 }));
 
-vi.mock("./useWernerResearchReactions", () => ({
-  useWernerResearchReactions: () => undefined,
+vi.mock("./useMascotResearchReactions", () => ({
+  useMascotResearchReactions: () => undefined,
 }));
 
 import { Monitor, ResearchWaitArcadeGate } from ".";

@@ -192,7 +192,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const [promptDerived, setPromptDerived] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // The research-starts signature beat (U-05 M2) — Werner's one-shot
+  // The research-starts signature beat (U-05 M2) — Brain's one-shot
   // celebrate the moment a research is genuinely under way. Non-blocking:
   // it only arms a timer; navigation + the live banner below are driven by
   // their own effects and don't wait on it.
@@ -457,7 +457,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 live status is the two centered lines below (richer than a
                 single inline string), so we use Thinking for the brain
                 mark and pass the live label through; the same accessible
-                name (via WernerThinking) is preserved. */}
+                name (via BrainThinking) is preserved. */}
             <Thinking
               size={48}
               label={
