@@ -64,7 +64,7 @@ describe("NavRail → panel mount contract (SPR-04 M6)", () => {
   it("the project-tree toggle mounts ProjectTree as a docked-left panel with the stable id", () => {
     // Exercises the store contract DIRECTLY (the old NavRail.toggleTree
     // helper was removed in SPR-12 M3 — the project tree is now reached
-    // through the Penguin mascot). This is still the exact open() call the
+    // through the Mascot). This is still the exact open() call the
     // mounting path makes, so the contract under test is unchanged.
     s().open(
       "ProjectTree",

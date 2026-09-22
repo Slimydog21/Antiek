@@ -41,7 +41,7 @@ export const config: CustomProjectConfig = {
   // prefers-reduced-motion end-to-end (Scene.tsx frozen flag → every layer
   // renders one static frame), so forcing the reduce preference in the
   // screenshot browser makes every shot reproducible instead of catching
-  // the aurora/penguins/sketches at a random animation phase.
+  // the aurora/mascots/sketches at a random animation phase.
   browserLaunchOptions: {
     chromium: { args: ["--force-prefers-reduced-motion"] },
   },

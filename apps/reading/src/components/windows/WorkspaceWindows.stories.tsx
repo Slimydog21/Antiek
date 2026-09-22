@@ -38,7 +38,7 @@ type Story = StoryObj<typeof meta>;
 const PAID_TOP: AdFillView = {
   kind: "ad",
   ad: {
-    advertiserName: "Werner & Co.",
+    advertiserName: "Brain & Co.",
     creativeUrl: "https://placehold.co/64",
     landingUrl: "https://example.com",
   },

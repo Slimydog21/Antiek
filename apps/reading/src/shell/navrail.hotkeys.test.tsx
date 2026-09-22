@@ -4,7 +4,7 @@
  * The verifier-critic found that (2) no on-bar button rendered a KeyChip, so
  * the operator's headline ask — "hotkeys shown on-screen" — was unmet, and (3)
  * no click path emitted the activation event, so click≡hotkey parity (which
- * SPR-10's penguin hard-depends on) was unproven (the old shortcuts test
+ * SPR-10's mascot hard-depends on) was unproven (the old shortcuts test
  * "faked" the click by calling the emitter directly).
  *
  * This file asserts against a REAL rendered NavRail:
@@ -12,7 +12,7 @@
  *   - a real DOM CLICK on a product button fires PRODUCT_ACTIVATE_EVENT on
  *     window with source:"click" and the correct productId;
  *   - each product button carries data-product-id (the SPR-10 geometry
- *     contract: the penguin resolves the button rect via that attribute).
+ *     contract: the mascot resolves the button rect via that attribute).
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
@@ -87,7 +87,7 @@ describe("NavRail SPR-08 — on-bar chips + click≡hotkey parity", () => {
     for (const pid of ["research", "read", "write", "speak"]) {
       expect(
         document.querySelector(`[data-product-id="${pid}"]`),
-        `the ${pid} door must carry data-product-id so the penguin can resolve its rect`,
+        `the ${pid} door must carry data-product-id so the mascot can resolve its rect`,
       ).toBeTruthy();
     }
   });

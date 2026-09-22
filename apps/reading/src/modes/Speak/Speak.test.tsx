@@ -10,7 +10,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
  *  - arriving voices render;
  *  - "what everyone agrees on" is framed as corroborated, NEVER "proven";
  *    a disagreement is shown, not hidden;
- *  - the assembling story shows the Werner-thinking beat, then an honest
+ *  - the assembling story shows the Brain-thinking beat, then an honest
  *    no-result (AIActionFailure) without keys — never a fabricated biography;
  *  - economics/publishing live behind ONE Settings tap; the split is shown,
  *    nothing disburses (no money/publish path fires from the page itself).
@@ -142,13 +142,13 @@ describe("Speak project page", () => {
     expect(screen.queryByText(/proven true/i)).toBeNull();
   });
 
-  it("shows the Werner-thinking beat then an honest no-result when assembly fails (no key)", async () => {
+  it("shows the Brain-thinking beat then an honest no-result when assembly fails (no key)", async () => {
     let reject!: (e: Error) => void;
     api.assembleDraft.mockReturnValue(new Promise((_res, rej) => { reject = rej; }));
     mount();
     await screen.findByText("Grandma Rosa");
     fireEvent.click(screen.getByRole("button", { name: /assemble the story/i }));
-    // Werner present while assembling.
+    // Brain present while assembling.
     expect(await screen.findByLabelText(/assembling their story/i)).toBeTruthy();
     // The engine returns nothing (no provider) → honest failure, no fake bio.
     reject(new Error("no provider"));
