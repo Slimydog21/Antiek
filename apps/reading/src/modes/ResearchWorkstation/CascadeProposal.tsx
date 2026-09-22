@@ -23,7 +23,7 @@ import {
   type SpendMode,
   type SpendPreview,
 } from "../../api/research";
-import { notifyResearchStarted } from "../../werner";
+import { notifyResearchStarted } from "../../mascot";
 
 /**
  * CascadeProposal — the Research door's "break this into sub-questions" mode

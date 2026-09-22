@@ -1,6 +1,6 @@
 /**
  * BrainMascot.test.tsx — the real mark renders, and the four-mood guard bites.
- * Mirror of Werner.test.tsx: proves the brain (not an empty span) draws, and
+ * Mirror of Brain.test.tsx: proves the brain (not an empty span) draws, and
  * the dev runtime guard rejects a fifth mood.
  */
 import { afterEach, describe, expect, it } from "vitest";

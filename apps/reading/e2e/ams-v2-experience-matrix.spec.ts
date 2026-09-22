@@ -25,7 +25,7 @@
  *
  * TALLY (kept in sync with the test bodies below):
  *   criteriaProven  = 8  (mountain / glass / windows-default+multipliable /
- *                          penguin-alive / hotkeys-normal+visible / igloo-Home /
+ *                          mascot-alive / hotkeys-normal+visible / igloo-Home /
  *                          lighter-yellow / open-decluttered).  "Never breaks"
  *                          is criterion #9 and is proven in the SIBLING resilience
  *                          matrix (ams-v2-resilience-matrix.spec.ts) — referenced,
@@ -187,21 +187,21 @@ test.describe("AMS-v2 experience matrix — every master-spec success criterion,
     await assertSceneVisible(page, { x: 0.76, y: 0.32, width: 0.12, height: 0.28 });
   });
 
-  // ── Criterion #4: PENGUIN IS ALIVE ──────────────────────────────────────────
+  // ── Criterion #4: MASCOT IS ALIVE ──────────────────────────────────────────
   // "Walk-cycle animates (feet move), tracks the cursor at ~5s lag, plays ≥4
   //  distinct emotes with NO white background, and waddles to a clicked OR
   //  hotkeyed button and bumps it." — the FEET-MOVE walk-cycle + ≥4-emote +
-  //  waddle-bump pixel/DOM proofs are owned by e2e/_ams/penguin.spec.ts (SPR-06,
+  //  waddle-bump pixel/DOM proofs are owned by e2e/_ams/mascot.spec.ts (SPR-06,
   //  a real-app spec with its own rich pixel-diff coverage). THIS matrix row
   //  consolidates the load-bearing visible regression the operator named: the
   //  emote carries NO white box. (Same assertion + helper as ams-shell
-  //  anchor[penguin].) The penguin must also be a live on-screen mascot.
-  test("criterion[penguin]: the mascot is alive on screen + its emote has no white background", async ({
+  //  anchor[mascot].) The mascot must also be a live on-screen mascot.
+  test("criterion[mascot]: the mascot is alive on screen + its emote has no white background", async ({
     page,
   }) => {
     await loginAndGotoApp(page, DEFAULT_ROUTE);
     const mascot = page.locator('[data-testid="brain-mascot"]').first();
-    await expect(mascot, "the penguin mascot must be a live on-screen element").toBeVisible({
+    await expect(mascot, "the mascot must be a live on-screen element").toBeVisible({
       timeout: 5_000,
     });
     // Drive an emote (the overlay pose that carried the v1 white box).
@@ -226,7 +226,7 @@ test.describe("AMS-v2 experience matrix — every master-spec success criterion,
       frac,
       `${(frac * 100).toFixed(1)}% of the mascot region is opaque near-white — the emote still ` +
         `carries a baked white backdrop (the v1 white-box complaint). The walk-cycle / ≥4-emote / ` +
-        `waddle-bump proofs live in e2e/_ams/penguin.spec.ts.`,
+        `waddle-bump proofs live in e2e/_ams/mascot.spec.ts.`,
     ).toBeLessThan(0.25);
   });
 
