@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
@@ -21,11 +23,11 @@ from interfaces.research.api.settings_models_admin import (  # noqa: E402
 )
 
 
-def _req(email: str | None, user_id: str = "__operator__") -> SimpleNamespace:
+def _req(email: str | None, user_id: str = "__operator__") -> Any:
     return SimpleNamespace(state=SimpleNamespace(user_id=user_id, user_email=email))
 
 
-def test_two_allowlisted_emails_get_distinct_owners():
+def test_two_allowlisted_emails_get_distinct_owners() -> None:
     a = request_owner_user_id(_req("alice@example.com"))
     b = request_owner_user_id(_req("bob@example.com"))
     assert a != b
@@ -33,20 +35,20 @@ def test_two_allowlisted_emails_get_distinct_owners():
     assert b == derive_owner_from_verified_email("bob@example.com")
 
 
-def test_same_email_is_stable_across_calls():
+def test_same_email_is_stable_across_calls() -> None:
     a1 = request_owner_user_id(_req("alice@example.com"))
     a2 = request_owner_user_id(_req("Alice@example.com"))
     assert a1 == a2
 
 
-def test_legacy_user_id_does_not_leak_shared_owner():
+def test_legacy_user_id_does_not_leak_shared_owner() -> None:
     # The old path keyed on user_id="__operator__" for everyone.
     a = request_owner_user_id(_req("alice@example.com", user_id="__operator__"))
     b = request_owner_user_id(_req("bob@example.com", user_id="__operator__"))
     assert a != b, "shared sentinel must not collapse two people into one owner"
 
 
-def test_fails_closed_without_verified_email():
+def test_fails_closed_without_verified_email() -> None:
     try:
         request_owner_user_id(_req(None))
     except HTTPException as exc:
@@ -55,7 +57,7 @@ def test_fails_closed_without_verified_email():
         raise AssertionError("missing e-mail must 401, not mint an owner")
 
 
-def test_fails_closed_on_malformed_email():
+def test_fails_closed_on_malformed_email() -> None:
     try:
         request_owner_user_id(_req("not-an-email"))
     except HTTPException as exc:
@@ -64,7 +66,7 @@ def test_fails_closed_on_malformed_email():
         raise AssertionError("malformed e-mail must 401")
 
 
-def test_migration_refuses_multi_owner_registry(tmp_path):
+def test_migration_refuses_multi_owner_registry(tmp_path: Path) -> None:
     from tools.migrate_owner_namespace import migrate_registry
 
     reg = tmp_path / "user_models.json"
@@ -78,7 +80,7 @@ def test_migration_refuses_multi_owner_registry(tmp_path):
     assert rc == 3, "must refuse when more than one legacy owner is present"
 
 
-def test_migration_reowns_only_operator_rows(tmp_path):
+def test_migration_reowns_only_operator_rows(tmp_path: Path) -> None:
     from tools.migrate_owner_namespace import migrate_registry
 
     reg = tmp_path / "user_models.json"
@@ -92,5 +94,6 @@ def test_migration_reowns_only_operator_rows(tmp_path):
     assert rc == 0
     body = reg.read_text()
     assert '"owner_user_id": "__operator__"' not in body and '"owner_user_id":"__operator__"' not in body
-    assert derive_owner_from_verified_email("alice@example.com") in body
+    derived = derive_owner_from_verified_email("alice@example.com")
+    assert derived is not None and derived in body
     assert "migrated_from_owner" in body
