@@ -995,6 +995,20 @@ def _determinism_for_fn(
     if not net_mocked and not is_integration:
         for sub in ast.walk(fn):
             if isinstance(sub, ast.Call) and _is_network_call(sub):
+                # An explicit `transport=` IS the httpx mocking mechanism, and
+                # the transport is very often built by a module-level helper
+                # (`def _transport(...) -> httpx.MockTransport`) rather than
+                # inline — which `_network_mocked_in_scope` cannot see, since it
+                # walks only this function's body.
+                #
+                # Measured 2026-09-22: ALL 72 of the NETWORK findings on main
+                # were this shape — 72 of the lint's 99 total findings, every
+                # one a false positive. The reconsider-if in
+                # docs/decisions/test-integrity-ci-floor.md asks for a ZERO
+                # backlog before this lint can block; it could never be reached
+                # while three quarters of the backlog was not real.
+                if _has_explicit_test_transport(sub):
+                    continue
                 key = ("net", sub.lineno)
                 if key in reported:
                     continue
@@ -1052,6 +1066,26 @@ def _nondeterministic_call_kind(call: ast.Call) -> str | None:
     if tail in ("uuid4", "uuid1") or chain.endswith("uuid.uuid4") or chain.endswith("uuid.uuid1"):
         return "rng"
     return None
+
+
+def _has_explicit_test_transport(call: ast.Call) -> bool:
+    """``httpx.Client(transport=...)`` with a transport that is not the real one.
+
+    Passing a transport is how httpx is mocked. The exemption is deliberately
+    NARROW: an explicitly REAL transport (``httpx.HTTPTransport`` /
+    ``AsyncHTTPTransport``) still counts as a live call, so a test that opts
+    into real networking is still flagged.
+    """
+    real_transports = ("HTTPTransport", "AsyncHTTPTransport")
+    for kw in call.keywords:
+        if kw.arg != "transport":
+            continue
+        chain = _attr_chain(kw.value.func) if isinstance(kw.value, ast.Call) else ""
+        tail = chain.split(".")[-1] if chain else ""
+        # A real transport means the test opted INTO live networking; any
+        # other transport is the mock.
+        return tail not in real_transports
+    return False
 
 
 def _is_network_call(call: ast.Call) -> bool:
