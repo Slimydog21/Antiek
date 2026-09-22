@@ -24,6 +24,8 @@ const row = {
     reset_at: "2026-08-13T00:00:00-07:00",
     hard_exhausted: false,
     note: "Local Antiek meter",
+    estimated_cost_usd: null,
+    cost_note: null,
   },
 } as const;
 
@@ -100,6 +102,8 @@ describe("toolConnections API", () => {
           reset_at: null,
           hard_exhausted: null,
           note: null,
+          estimated_cost_usd: null,
+          cost_note: null,
         },
       }],
       count: 1,

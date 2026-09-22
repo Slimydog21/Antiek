@@ -4,7 +4,11 @@ import react from "@vitejs/plugin-react";
 // Use the literal loopback address for the proxy target. Newer Node releases
 // may resolve `localhost` to IPv6 first while uvicorn listens on IPv4, leaving
 // browser fetches hanging even though direct navigation succeeds.
-const API_TARGET = "http://127.0.0.1:8000";
+// The port is overridable so an e2e harness can boot its OWN backend on a
+// free port instead of racing the operator's live one — which also keeps the
+// harness off the live DuckDB writer lock (single-writer invariant: two
+// uvicorns on one graph file is exactly the conflict db_lock exists to stop).
+const API_TARGET = process.env.ANTIEK_DEV_API_TARGET ?? "http://127.0.0.1:8000";
 
 // In dev, the Python substrate runs at http://localhost:8000. We could
 // either proxy here or rely on CORS on the backend. We do BOTH — proxy
@@ -46,6 +50,10 @@ export default defineConfig({
       // /auth/callback redirect need to be same-origin with the
       // page or the browser drops Set-Cookie.
       "/auth": API_TARGET,
+      // Owner-private account memory (account_memory_routes.py). The panel
+      // at /memory reads and corrects facts here; same-origin in dev so the
+      // session cookie travels and no CORS preflight sits on the POST.
+      "/account": API_TARGET,
       // Mountain Shell SPR-02 — the Krea scene-art proxy
       // (krea_routes.py). Same-origin in dev so the browser never sees
       // the server-held KREA_API_TOKEN and no CORS is involved.

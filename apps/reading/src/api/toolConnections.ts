@@ -13,6 +13,14 @@ export interface ToolQuota {
   reset_at: string | null;
   hard_exhausted: boolean | null;
   note: string | null;
+  /**
+   * Upper-bound USD a single full-size search spends of the owner's own
+   * pay-per-use credit, for vendors that bill per call. Null where the vendor
+   * does not price that way, or where Antiek has no sourced rate to quote.
+   */
+  estimated_cost_usd: number | null;
+  /** Where `estimated_cost_usd` comes from, and what it does not include. */
+  cost_note: string | null;
 }
 
 export interface ToolConnection {
@@ -50,7 +58,8 @@ function exactKeys(value: Record<string, unknown>, expected: string[]): boolean 
 
 function parseQuota(value: unknown): ToolQuota {
   if (!isRecord(value) || !exactKeys(value, [
-    "hard_exhausted", "kind", "limit", "note", "remaining", "reset_at",
+    "cost_note", "estimated_cost_usd", "hard_exhausted", "kind", "limit", "note",
+    "remaining", "reset_at",
   ])) throw new Error("Tool settings returned an invalid quota response");
   if (typeof value.kind !== "string" || !QUOTA_KINDS.has(value.kind as ToolQuota["kind"])) {
     throw new Error("Tool settings returned an invalid quota response");
@@ -60,7 +69,9 @@ function parseQuota(value: unknown): ToolQuota {
     (typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0);
   const nullableString = (candidate: unknown) => candidate === null || typeof candidate === "string";
   if (!nullableNumber(value.remaining) || !nullableNumber(value.limit) ||
+      !nullableNumber(value.estimated_cost_usd) ||
       !nullableString(value.reset_at) || !nullableString(value.note) ||
+      !nullableString(value.cost_note) ||
       !(value.hard_exhausted === null || typeof value.hard_exhausted === "boolean")) {
     throw new Error("Tool settings returned an invalid quota response");
   }
@@ -77,7 +88,10 @@ function parseQuota(value: unknown): ToolQuota {
       (remaining !== null || resetAt !== null || hardExhausted !== null)) ||
     (value.kind === "youtube_units" && limit !== null && limit <= 0) ||
     (value.kind === "rate_ceiling" && (limit === null || limit <= 0)) ||
-    (value.kind === "unavailable" && limit !== null)
+    (value.kind === "unavailable" && limit !== null) ||
+    // A price with no provenance is exactly the thing this field was added to
+    // stop, so refuse a figure that arrives without the note that sources it.
+    (value.estimated_cost_usd !== null && value.cost_note === null)
   ) {
     throw new Error("Tool settings returned an invalid quota response");
   }
