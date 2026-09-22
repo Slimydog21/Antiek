@@ -60,12 +60,19 @@ if TYPE_CHECKING:
     from substrate.contracts.servable import ContentClass
     from substrate.unit_dedup import DuplicateMatch, ExistingUnit
 
+# Hoisted OUT of the try below. ``..runtime.db_lock`` resolves to
+# ``substrate.runtime.db_lock``, which does not exist, so that ONE line made
+# the whole try fail and every relative import in it dead — while mypy read
+# the dead branch and typed the write-lock API as Any.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+from runtime.db_lock import LockedConnection, connect_write  # noqa: E402
+
 try:
     from ..constants import (
         DUCKDB_PATH,
         validate_insight_question_edge,
     )
-    from ..runtime.db_lock import LockedConnection, connect_write  # type: ignore[import-untyped]
     from .ops import content_addressed_id, insert_edge, insert_node
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))

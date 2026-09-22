@@ -35,7 +35,10 @@ instead of the real prod file — and you would audit the wrong DB.
 * **Symptom if skipped**: the audit "passes" against an empty/orphan DB while the
   live corpus is never checked — a green light that proves nothing about prod.
 * **Check** — pin the live path the unit actually uses, and use it for EVERY
-  command below. Never let `--db-path` default.
+  command below. `--db-path` is argparse-**required** (omit it and the audit
+  exits 2 with `error: the following arguments are required: --db-path`), so
+  there is no silent default to fall into here — the failure mode is pinning the
+  WRONG value and auditing the orphan DB while prod goes unchecked.
 
   ```bash
   ssh -i ~/.ssh/antiek_ed25519 root@<vm-ip>
@@ -48,10 +51,54 @@ instead of the real prod file — and you would audit the wrong DB.
 
   Every command below uses `$LIVE_DB`.
 
-> **§16 box-bounded / read-only**: the audit opens the DB **read-only**
-> (`runtime.db_lock.connect_read`) and never takes the write lock, so it is safe
-> to run while `antiek.service` serves. Do not stop any service for this
-> procedure; there is no daemon, queue, or second writer here.
+> **§16 box-bounded — read-only, but NOT lock-free.** The audit never takes the
+> write lock, but `runtime.db_lock.connect_read` is literally
+> `duckdb.connect(path, read_only=True)`, and DuckDB refuses a read-only open
+> while any OTHER process holds that file read-write. Two processes do:
+> `antiek.service`, which takes a scoped `connect_write` per route and then
+> PARKS the handle and its flock for `ANTIEK_WRITE_KEEPALIVE_S` (default 20s) so
+> the next write skips the ~6.8s open; and `antiek-arxiv-oai-sync.service`, which
+> writes nightly at 04:20 UTC in ≤200-row / ≤15s chunks with 0.5s yields.
+> (`antiek-continuous-research.service` is **not** one of them — its production
+> spawn wiring never landed, so `main()` runs with `no_op_spawn` and the daemon
+> opens no DuckDB at all. Do not chase it.)
+
+So every DB command below — steps 1, 2, 2a, 2b, 4 and 5 — can abort while a
+write is in flight. Recognize it and ride it out:
+
+* **Symptom**: a Python traceback ending in
+  `_duckdb.IOException: IO Error: Could not set lock on file ".../antiek.duckdb":`
+  `Conflicting lock is held in /opt/antiek/.venv/bin/python3 (PID 1234) by user antiek`.
+  That is a **transient writer** — not a wrong path, not a corrupt DB.
+  `connect_read`'s widening fallback does not rescue it: it re-opens read-write
+  only for SAME-process config conflicts (`Unique file handle conflict` /
+  `already attached`), and a cross-process lock message matches none of them, so
+  it re-raises.
+* **Recovery** — **do not stop any service.** The lock clears on its own within
+  ~20s of the last write (the keepalive), so re-run behind a retry that waits
+  longer than the keepalive and that retries the lock conflict ONLY:
+
+  ```bash
+  for i in $(seq 1 10); do
+    sudo -u antiek /opt/antiek/.venv/bin/python -m substrate.corpus_audit \
+        --db-path "$LIVE_DB" > /tmp/antiek-audit.out 2>&1
+    rc=$?
+    grep -q 'Conflicting lock is held' /tmp/antiek-audit.out || break
+    echo "a writer holds $LIVE_DB (attempt $i) — retrying in 30s"
+    sleep 30
+  done
+  cat /tmp/antiek-audit.out
+  echo "audit exit code: $rc"
+  ```
+
+  Capture `rc` on the line after the command, never off a pipe — `cmd | tail -5;
+  echo $?` reports `tail`'s status, not the audit's. Because the loop breaks on
+  anything that is not a lock conflict, a genuine audit failure still refuses
+  go-live on the first pass with its real exit code intact. Avoid the
+  04:15–04:45 UTC sync window entirely; if the error keeps naming the same PID
+  for minutes, identify the holder with
+  `systemctl is-active antiek-arxiv-oai-sync.service` before assuming anything
+  is stuck — and still restart nothing.
 
 ---
 
@@ -186,18 +233,20 @@ sudo -u antiek /opt/antiek/.venv/bin/python -m substrate.corpus_audit \
 echo "audit exit code: $?"
 ```
 
-The checks (each links to its owning sprint):
+The eleven checks it prints, in run order (each links to its owning sprint):
 
 | Check | What it proves | Owning sprint |
 |---|---|---|
 | `servable_without_basis` | every servable work has a non-empty `license_basis` | SPR-02 |
 | `gated_body_leak` | no body renders full text on the public serve projection that shouldn't (b1 gated row + b2 servable-class-over-gated-basis) | SPR-02 |
 | `dedup_identity` | no two distinct docs share a stable identity | SPR-04 |
+| `unit_dedup_rate` | the UNIT-level dedup rate — a MEASURE, not a gate (always reports `ok`); a spike or collapse is the trigger to revisit `UNIT_DEDUP_COSINE_THRESHOLD`, never to fail go-live | SPR-07 |
 | `extraction_quality` | no HTML-as-body, no empty body | SPR-03 |
 | `budget_ceiling` | corpus within the SPR-09 box ceiling | SPR-09 |
 | `third_party_servable` | no third-party document_type on a servable class without a basis (must be `personal_reading`) | SPR-02 |
 | `personal_reading_nonattributable` | every `personal_reading` row is non-attributable AND absent from the public graph | SPR-10 |
 | `personal_reading_not_in_training` | no `personal_reading` document_id appears in any declared training/RL export surface (forward-guard) | SPR-10 |
+| `dangling_ip_holder` | every non-NULL `documents.ip_holder_id` resolves to a real `ip_holders` row — the standing substitute for the §9 attribution FK DuckDB cannot ALTER-add | SPR-01 |
 | `content_class_binding` | ZERO connectors assign `content_class` outside `classify()` / an imported lane constant (static) | SPR-10 |
 
 > **GO-LIVE GATE (binding): if the audit exits non-zero, you are NOT live.**
@@ -210,6 +259,13 @@ The checks (each links to its owning sprint):
 > code over your memory: **audit exits 0 → you may go live; non-zero → you are
 > NOT live.** Restore the pre-change backup (see `corpus-mass-ingest.md`
 > Rollback) and file the failing check against its owning sprint.
+>
+> **The one non-zero that is not a refusal**: a run killed by §0's write-lock
+> conflict also exits 1, but no check ever ran. Tell them apart by the verdict
+> line — a real refusal prints `corpus audit: FAIL  (<db>)` followed by the
+> eleven checks with the failures marked `[FAIL]`, while a lock conflict prints
+> a bare traceback and no verdict line at all. A run with no verdict line is not
+> evidence for OR against go-live; re-run it per §0 and gate on the verdict.
 
 ## 5. Post-go-live — confirm the real corpus state
 
@@ -235,7 +291,10 @@ gated/withheld complement, never the servable count).
 * **It does not deploy.** No ansible, no Cloudflare Pages redeploy — deploy is
   operator/PRcrouch-owned and §16 box-bounded. This is verify-and-go-live only.
 * **It does not bypass the single-writer invariant.** The audit is read-only
-  (`connect_read`); there is no daemon, queue, or second writer.
+  (`connect_read`) and never takes the write lock — but read-only is not
+  lock-free, and `antiek.service` and the nightly arXiv sync are both real
+  writers on this file. See §0: a lock conflict is waited out, never resolved by
+  stopping a service.
 * **It does not relax the public-corpus rights gate.** The books-family audit
   (`assert_no_content_class_bypass` over books/textbooks/papers/opt_in) keeps its
   exact semantics; the lane EXTENDS it to the web family, never loosens it.

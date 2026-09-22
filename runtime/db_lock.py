@@ -436,6 +436,16 @@ def _log_write_event_sync(
         # logger opens its own connection bypassing this path, but it
         # guarantees no recursion if someone wires it up incorrectly.
         return
+    if not os.path.exists(db_path):
+        # NEVER create the store just to log about it. `duckdb.connect` creates
+        # the file when absent, and `authority_handoff_guard` reaches here from
+        # its release path — including when its body RAISED before the store was
+        # created. Its callers in research_owner_dispatch.py pass a **SQLite**
+        # path (~/.antiek/owner-launches.sqlite3), so this wrote a DuckDB header
+        # at a SQLite path and broke it permanently: every later
+        # `sqlite3.connect` then fails with "file is not a database".
+        # A missing store means there is nothing to append to. Say nothing.
+        return
     try:
         # Re-acquire the flock briefly. Short timeout: log writes are
         # append-only and tiny; if the lock is heavily contested, drop the
@@ -914,6 +924,66 @@ def _connect_write_after_process_gate(
     )
 
 
+# Relation methods that write. Enumerated against DuckDBPyRelation: 11 of its
+# 111 public attributes. The proxy below denies these by name, but the WRAPPING
+# is keyed on the relation TYPE — that is the part that must not be varied,
+# because it is what makes a future relation-returning connection method safe
+# without anyone remembering to add it to a list.
+_RELATION_WRITE_METHODS: frozenset[str] = frozenset({
+    "create",
+    "create_view",
+    "execute",
+    "insert",
+    "insert_into",
+    "to_csv",
+    "to_parquet",
+    "to_table",
+    "update",
+    "write_csv",
+    "write_parquet",
+})
+
+
+def _wrap_if_relation(value: Any) -> Any:
+    """Wrap a DuckDBPyRelation so it cannot write; pass anything else through."""
+    if isinstance(value, duckdb.DuckDBPyRelation):
+        return _ReadOrientedRelation(value)
+    return value
+
+
+class _ReadOrientedRelation:
+    """A DuckDBPyRelation that refuses the write half of its own API.
+
+    ``_ReadOrientedConnection`` guarded SQL strings but forwarded every
+    relational entry point, so ``con.table("t").insert([...])`` and
+    ``con.values([...]).insert_into("t")`` wrote through an UNFLOCKED handle
+    with no error. Relations chain, so each returned relation is wrapped too.
+    """
+
+    def __init__(self, rel: duckdb.DuckDBPyRelation):
+        self._rel = rel
+
+    def __getattr__(self, name: str) -> Any:
+        if name in _RELATION_WRITE_METHODS:
+            raise duckdb.InvalidInputException(
+                "connect_read fallback rejects relation write method: " + name
+            )
+        attr = getattr(self._rel, name)
+        if callable(attr):
+
+            def _call(*args: Any, **kwargs: Any) -> Any:
+                return _wrap_if_relation(attr(*args, **kwargs))
+
+            return _call
+        return _wrap_if_relation(attr)
+
+    def __len__(self) -> int:
+        return len(self._rel)
+
+    def __repr__(self) -> str:
+        return f"_ReadOrientedRelation({self._rel!r})"
+
+
 class _ReadOrientedConnection:
     """Restrict a same-config fallback to SQL that cannot mutate the catalog."""
 
@@ -958,17 +1028,28 @@ class _ReadOrientedConnection:
 
     def query(self, query: str, *, alias: str = "") -> Any:
         self._reject_mutation(query)
-        return self._con.query(query, alias=alias)
+        return _wrap_if_relation(self._con.query(query, alias=alias))
 
     def sql(self, query: str, *, alias: str = "") -> Any:
         self._reject_mutation(query)
-        return self._con.sql(query, alias=alias)
+        return _wrap_if_relation(self._con.sql(query, alias=alias))
 
     def append(self, *_args: Any, **_kwargs: Any) -> None:
         raise duckdb.InvalidInputException("connect_read fallback rejects append")
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self._con, name)
+        # Was `return getattr(self._con, name)` — which forwarded the whole
+        # relational API (`table`, `values`, `view`, `from_query`, and any
+        # future sibling) straight to an unflocked handle. Wrap by TYPE so a
+        # relation can never escape this class unguarded.
+        attr = getattr(self._con, name)
+        if callable(attr):
+
+            def _call(*args: Any, **kwargs: Any) -> Any:
+                return _wrap_if_relation(attr(*args, **kwargs))
+
+            return _call
+        return _wrap_if_relation(attr)
 
     def __enter__(self) -> _ReadOrientedConnection:
         return self
