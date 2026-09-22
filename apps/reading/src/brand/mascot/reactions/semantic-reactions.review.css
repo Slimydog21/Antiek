@@ -1,0 +1,71 @@
+/* Storybook-only review harness. This file is never imported by production. */
+.mascot-motion-proof__frame {
+  display: grid;
+  min-height: 10rem;
+  place-items: center;
+}
+
+.mascot-motion-proof__frame .mascot-semantic *,
+.mascot-motion-proof__frame .mascot-semantic svg {
+  animation-delay: var(--mascot-review-delay) !important;
+  animation-play-state: paused !important;
+}
+
+/* The capture host may itself request reduced motion. Restore only the authored
+   semantic tracks in explicitly non-reduced proof cells; the fourth column
+   keeps data-reduced=true and therefore exercises the real static fallback. */
+.mascot-motion-proof__frame
+  .mascot-semantic--curious[data-reduced="false"]
+  .mascot-semantic__mark {
+  animation: mascot-curious-beat var(--mascot-semantic-duration) ease-in-out
+    both paused !important;
+  animation-delay: var(--mascot-review-delay) !important;
+}
+
+.mascot-motion-proof__frame
+  .mascot-semantic--curious[data-reduced="false"]
+  .mascot-semantic__evidence {
+  animation: mascot-evidence-arrive var(--mascot-semantic-duration) ease-out
+    both paused !important;
+  animation-delay: var(--mascot-review-delay) !important;
+}
+
+.mascot-motion-proof__frame
+  .mascot-semantic--happy[data-reduced="false"]
+  .mascot-semantic__mark {
+  animation: mascot-proud-lift var(--mascot-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--mascot-review-delay) !important;
+}
+
+.mascot-motion-proof__frame
+  .mascot-semantic--happy[data-reduced="false"]
+  .mascot-semantic__stamp {
+  animation: mascot-verified-beat var(--mascot-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--mascot-review-delay) !important;
+}
+
+.mascot-motion-proof__frame
+  .mascot-semantic--dizzy[data-reduced="false"]
+  .mascot-semantic__orbit {
+  animation: mascot-paperclip-orbit var(--mascot-semantic-duration) linear both
+    paused !important;
+  animation-delay: var(--mascot-review-delay) !important;
+}
+
+.mascot-motion-proof__frame
+  .mascot-semantic--hit[data-reduced="false"]
+  .mascot-semantic__mark {
+  animation: mascot-hit-rebound var(--mascot-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--mascot-review-delay) !important;
+}
+
+.mascot-motion-proof__frame
+  .mascot-semantic--hit[data-reduced="false"]
+  .mascot-semantic__tab {
+  animation: mascot-tab-impact var(--mascot-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--mascot-review-delay) !important;
+}

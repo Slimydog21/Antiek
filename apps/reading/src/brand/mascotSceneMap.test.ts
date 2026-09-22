@@ -11,7 +11,7 @@ import { moodKey, type DayPart, type SceneMood, type Weather } from "../scene/mo
 const DAY_PARTS = ["dawn", "day", "dusk", "night"] satisfies readonly DayPart[];
 const WEATHERS = ["clear", "snow"] satisfies readonly Weather[];
 const ART_PRESENCES = ["live", "fallback"] satisfies readonly ArtPresence[];
-const WERNER_MOODS = ["idle", "thinking", "empty", "celebrate"] as const;
+const MASCOT_MOODS = ["idle", "thinking", "empty", "celebrate"] as const;
 
 const ALL_SCENES: readonly SceneMood[] = DAY_PARTS.flatMap((dayPart) =>
   WEATHERS.map((weather) => ({ dayPart, weather })),
@@ -30,10 +30,10 @@ describe("mascotSceneMap", () => {
     }
   });
 
-  it("emits only the four sanctioned Werner moods", () => {
+  it("emits only the four sanctioned Brain moods", () => {
     for (const scene of ALL_SCENES) {
-      expect(WERNER_MOODS).toContain(mascotForScene(scene).mood);
-      expect(WERNER_MOODS).toContain(mascotForScene(scene, { isFallback: true }).mood);
+      expect(MASCOT_MOODS).toContain(mascotForScene(scene).mood);
+      expect(MASCOT_MOODS).toContain(mascotForScene(scene, { isFallback: true }).mood);
       expect(mascotMoodForScene(scene)).toBe(mascotForScene(scene).mood);
     }
   });

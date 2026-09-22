@@ -1,6 +1,6 @@
 # `src/design/` — design-system source of truth
 
-Single source of truth for Antiek's visual tokens. **Werner brand**: sun-yellow
+Single source of truth for Antiek's visual tokens. **Antiek brand**: sun-yellow
 outlining (`#F5DF24`) as the constant across day + night modes, layered
 off-white + glacial day surfaces, layered off-black + dark-grey night surfaces.
 

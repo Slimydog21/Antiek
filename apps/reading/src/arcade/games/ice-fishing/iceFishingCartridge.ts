@@ -14,7 +14,7 @@ import {
   type IceFishingState,
 } from "./logic";
 
-/** Club Penguin–inspired ice fishing cartridge. */
+/** Club Mascot–inspired ice fishing cartridge. */
 export function createIceFishingCartridge(options?: {
   reducedMotion?: boolean;
   lives?: number;

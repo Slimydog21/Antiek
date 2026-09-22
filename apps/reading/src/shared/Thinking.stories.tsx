@@ -9,9 +9,9 @@ import Thinking from "./Thinking";
  * The status is always a human sentence ("reading sources…", "drafting…"),
  * never a raw phase/substrate name — those translate via the M4 glossary
  * before reaching this surface. Motion + reduced-motion safety inherit from
- * Werner (U-02); this story exists to pin the shared register, not the motion.
+ * Brain (U-02); this story exists to pin the shared register, not the motion.
  *
- * Werner skin (Lemon tokens) — no hardcoded colors.
+ * Brain skin (Lemon tokens) — no hardcoded colors.
  */
 const meta = {
   title: "Shared / Thinking (U-04)",

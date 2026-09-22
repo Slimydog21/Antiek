@@ -68,12 +68,12 @@ import {
  * SPR-12 M3 — the old "New / Project tree" (+ project) utility button
  * that lived here (it toggled the docked-left "shortcuts:projecttree"
  * panel) is REMOVED. The project tree is now reached through the floating
- * Penguin mascot (shell/PenguinMascot.tsx, mounted at AppShell level):
- * single-click the Penguin floats the project tree, double-click opens
+ * Mascot (shell/MascotStation.tsx, mounted at AppShell level):
+ * single-click the Mascot floats the project tree, double-click opens
  * the project. Superseding that rail button is the operator's ratified
- * choice — see PenguinMascot.tsx for the full provenance comment.
+ * choice — see MascotStation.tsx for the full provenance comment.
  *
- * SPR-12 M1 — the top-left Werner mark now navigates to /home (the
+ * SPR-12 M1 — the top-left Brain mark now navigates to /home (the
  * unified branded home) rather than "/" (the Research door). Reversible:
  * the rejected alternative was making "/" itself the Home and moving
  * Research to /research; that was passed over for blast radius (see
@@ -134,7 +134,7 @@ const WF_ICONS: Record<Exclude<Workflow, "shared">, string> = {
 const UTIL_ICONS = {
   search: "M11 4 a7 7 0 1 1 0 14 a7 7 0 1 1 0 -14 M16 16 L21 21", // magnifier
   // SPR-12 M3 — the `plus` ("+ project / New / Project tree") glyph is
-  // gone: that button is superseded by the floating Penguin mascot, which
+  // gone: that button is superseded by the floating Mascot, which
   // now owns floating/opening the project tree.
   // "More" — the single non-workflow affordance. A grid glyph reads as
   // "all products / everything else", which is exactly what it opens.
@@ -167,7 +167,7 @@ function RailButton({
   variant?: "workflow" | "utility" | "more";
   orientation?: Orientation;
   /** SPR-08 / SPR-10 geometry contract: stamps `data-product-id` so a
-   *  downstream listener (the penguin) can resolve the button's screen rect
+   *  downstream listener (the mascot) can resolve the button's screen rect
    *  via document.querySelector(`[data-product-id="…"]`). */
   productId?: string;
   /** SPR-08: the bound hotkey spec to show as an on-bar chip — a single ⌘+key
@@ -294,7 +294,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   useSeenVersion();
 
   // SPR-12 M3 — the project-tree toggle that used to live on the rail is
-  // gone; the floating Penguin mascot (shell/PenguinMascot.tsx) now floats
+  // gone; the floating Mascot (shell/MascotStation.tsx) now floats
   // and opens the "shortcuts:projecttree" panel. The workspace store is no
   // longer touched from here.
 
@@ -306,7 +306,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     navigate(route);
     // SPR-08/SPR-10 — a real click emits the SAME activation event the hotkey
     // path emits (source differs only). This is the click≡hotkey parity the
-    // penguin (SPR-10) depends on. Navigation is AUGMENTED, not replaced.
+    // mascot (SPR-10) depends on. Navigation is AUGMENTED, not replaced.
     emitProductActivate({ productId: wf, route, source: "click" });
     if (isMobile) setCollapsed(true);
   };
@@ -330,9 +330,9 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     );
   }
 
-  // Brain home control — replaces the static penguin/igloo mark.
+  // Brain home control — replaces the static mascot/igloo mark.
   // Same /home route + accessible <button> (aria-label + visible focus ring);
-  // the mark is the only thing that changed (penguin/igloo → brain). In the bottom
+  // the mark is the only thing that changed (mascot/igloo → brain). In the bottom
   // rail its divider is on the trailing (right) edge instead of the bottom.
   //
   // SPR-07 M1 + M3 — the home mark was the LAST caption-less bar control (the

@@ -18,23 +18,23 @@ WITHOUT degrading to "the component file exists":
        ``BookReader`` component (``modes/Reading``). A route that 404'd or
        pointed at a different element would FAIL this — it is the SPA analogue
        of the backend probe's "route resolves to the real entrypoint".
-    2. ``apps/reading/src/AppShell.tsx`` MOUNTS the canonical Werner reading
-       shell — both ``<WernerIceCursorShell />`` and ``<PenguinMascot />`` —
-       so the shell floats over every route (not merely imported, but rendered
+    2. ``apps/reading/src/AppShell.tsx`` MOUNTS the canonical Brain reading
+       shell — ``<MascotStation />`` (the ice-cursor half was retired
+       2026-09-20, see below) — so the shell floats over every route (not merely imported, but rendered
        in the shell's JSX). An imported-but-never-mounted shell is the exact
        "dormancy" / "brick no one can pick up" failure this gate exists to kill.
-    3. ``apps/reading/src/werner/iceFishingFlags.ts`` makes ICE-FISHING the
+    3. ``apps/reading/src/mascot/iceFishingFlags.ts`` makes ICE-FISHING the
        LIVE variant: ``wernerIceFishingCursor`` defaults to ON (it is only off
        when ``VITE_WERNER_ICE_FISHING === "0"``). This is the SPR-04 convergence
-       outcome: #54's ice-fishing is the canonical Werner shell, not a
+       outcome: #54's ice-fishing is the canonical Brain shell, not a
        cursor-pursuit fork that removed it.
 
 Why this is an OUTCOME and not a file-presence check (rigor #3):
   - It does NOT assert ``os.path.exists(...)`` on any component.
   - It asserts the route's ``path``+``element`` BINDING, the shell's JSX
     MOUNT, and the flag's DEFAULT POLARITY. Delete the ``<Route
-    path="/read/:documentId" .../>`` line, or the ``<WernerIceCursorShell />``
-    mount, or flip the flag default, and this probe goes RED — which is the
+    path="/read/:documentId" .../>`` line, or the ``<MascotStation />``
+    mount, and this probe goes RED — which is the
     teeth demonstrated in the SPR-04 handoff (momentary-removal → RED →
     restore → GREEN).
   - The DEEPER render outcome (BookReader actually renders Attribution +
@@ -72,7 +72,7 @@ _REPO_ROOT = os.path.dirname(
 _APP_TSX = os.path.join(_REPO_ROOT, "apps", "reading", "src", "App.tsx")
 _APPSHELL_TSX = os.path.join(_REPO_ROOT, "apps", "reading", "src", "AppShell.tsx")
 _ICE_FLAGS_TS = os.path.join(
-    _REPO_ROOT, "apps", "reading", "src", "werner", "iceFishingFlags.ts"
+    _REPO_ROOT, "apps", "reading", "src", "mascot", "iceFishingFlags.ts"
 )
 
 # The canonical Read route binding. Matches:
@@ -91,17 +91,10 @@ _BOOKREADER_IMPORT_RE = re.compile(
     r'import\s+BookReader\s+from\s+"\./modes/Reading"'
 )
 
-# The canonical Werner reading shell must be MOUNTED in AppShell's JSX (not just
-# imported). Both the floating mascot and the ice-cursor shell.
-_PENGUIN_MOUNT_RE = re.compile(r"<\s*PenguinMascot\s*/?\s*>")
-_ICESHELL_MOUNT_RE = re.compile(r"<\s*WernerIceCursorShell\s*/?\s*>")
-
-# Ice-fishing is the LIVE variant: the flag defaults ON (only off when the env
-# var is exactly "0"). A fork that hard-disabled ice-fishing (e.g. `= false`)
-# would fail this.
-_ICE_DEFAULT_ON_RE = re.compile(
-    r"wernerIceFishingCursor\s*=\s*\n?\s*import\.meta\.env\.VITE_WERNER_ICE_FISHING\s*!==\s*\"0\""
-)
+# The canonical Brain reading shell must be MOUNTED in AppShell's JSX (not just
+# imported). The ice-cursor half of this assertion was retired 2026-09-20 (see
+# the leg-3 note in _probe below); the floating mascot is the surviving half.
+_MASCOT_MOUNT_RE = re.compile(r"<\s*MascotStation\s*/?\s*>")
 
 
 def _read(path: str) -> str | None:
@@ -129,16 +122,16 @@ def _probe() -> ProbeResult:
         )
     # LEG 3 RETIRED 2026-09-20 — the variant it asserted no longer exists.
     #
-    # It required apps/reading/src/werner/iceFishingFlags.ts to default
+    # It required apps/reading/src/mascot/iceFishingFlags.ts to default
     # `wernerIceFishingCursor` ON. That file is gone and so is the flag:
     # `grep -rn "wernerIceFishingCursor\|VITE_WERNER_ICE_FISHING"
     # apps/reading/src` returns NOTHING. Ice-fishing was restructured into
     # the arcade (apps/reading/src/arcade/games/ice-fishing/, reached via
-    # arcade/cartridgeFactory.ts), so there is no longer a Werner cursor
+    # arcade/cartridgeFactory.ts), so there is no longer a Brain cursor
     # variant to be ON or OFF.
     #
     # The leg is removed rather than repointed: its claim was "ice-fishing is
-    # the canonical Werner shell, not a fork that removed it", and the
+    # the canonical Brain shell, not a fork that removed it", and the
     # restructure settled that question. Legs 1 and 2 below are unchanged and
     # still hold — /read/:documentId binds BookReader (App.tsx:179) and
     # AppShell mounts both shell components — so this probe keeps asserting
@@ -170,12 +163,12 @@ def _probe() -> ProbeResult:
             failure_mode="feature_dead",
         )
 
-    # 2. the canonical Werner reading shell is MOUNTED in AppShell's JSX.
-    if not _PENGUIN_MOUNT_RE.search(shell):
+    # 2. the canonical Brain reading shell is MOUNTED in AppShell's JSX.
+    if not _MASCOT_MOUNT_RE.search(shell):
         return ProbeResult(
             ok=False,
             reason=(
-                "<PenguinMascot /> is not mounted in AppShell.tsx — the canonical "
+                "<MascotStation /> is not mounted in AppShell.tsx — the canonical "
                 "reading-shell mascot is imported-but-dormant (no surface renders it)"
             ),
             failure_mode="feature_dead",
@@ -184,7 +177,7 @@ def _probe() -> ProbeResult:
     # `grep -rln WernerIceCursorShell apps/reading/src` matches NO files. The
     # component was removed in the same restructure that moved ice-fishing
     # into the arcade, so this asserted the mounting of something that no
-    # longer exists. <PenguinMascot /> above is the surviving half and still
+    # longer exists. <MascotStation /> above is the surviving half and still
     # holds (AppShell.tsx:177), which is what keeps this leg meaningful.
 
     # Leg 3 (ice-fishing flag defaults ON) retired — see the note above.
@@ -196,6 +189,6 @@ from tools.reachability.probe_runner import Probe  # noqa: E402
 
 PROBE = Probe(
     id="read",
-    feature="read surface (canonical /read/:documentId route + mounted ice-fishing Werner shell)",
+    feature="read surface (canonical /read/:documentId route + mounted ice-fishing Brain shell)",
     run=_probe,
 )
