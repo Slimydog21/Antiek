@@ -1627,6 +1627,13 @@ def create_app(
             request.state.user_id = claims.user_id
             request.state.scopes = frozenset(claims.scopes)
             request.state.auth_method = "unauthenticated_local"
+            # Namespace Option A: single-operator local/tests derive the owner
+            # from the configured allowlist address (first entry).
+            if claims.email is None:
+                _op = os.environ.get("ANTIEK_OPERATOR_EMAIL", "").split(",")[0].strip()
+                request.state.user_email = _op or None
+            else:
+                request.state.user_email = claims.email
             return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
@@ -3958,7 +3965,9 @@ def create_app(
             # ``pip install -e '.[export]'`` and retries.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from xhtml2pdf import pisa  # type: ignore[import-not-found]
+                from xhtml2pdf import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                    pisa,
+                )
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -4031,7 +4040,9 @@ def create_app(
             # as PDF. Same 503 fallback when the extra isn't installed.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from ebooklib import epub  # type: ignore[import-not-found]
+                from ebooklib import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                    epub,
+                )
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
