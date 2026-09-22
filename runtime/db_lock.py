@@ -436,6 +436,16 @@ def _log_write_event_sync(
         # logger opens its own connection bypassing this path, but it
         # guarantees no recursion if someone wires it up incorrectly.
         return
+    if not os.path.exists(db_path):
+        # NEVER create the store just to log about it. `duckdb.connect` creates
+        # the file when absent, and `authority_handoff_guard` reaches here from
+        # its release path — including when its body RAISED before the store was
+        # created. Its callers in research_owner_dispatch.py pass a **SQLite**
+        # path (~/.antiek/owner-launches.sqlite3), so this wrote a DuckDB header
+        # at a SQLite path and broke it permanently: every later
+        # `sqlite3.connect` then fails with "file is not a database".
+        # A missing store means there is nothing to append to. Say nothing.
+        return
     try:
         # Re-acquire the flock briefly. Short timeout: log writes are
         # append-only and tiny; if the lock is heavily contested, drop the
