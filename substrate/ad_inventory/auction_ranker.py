@@ -41,6 +41,7 @@ candidate is scored twice and no ordering is computed then thrown away.
 
 from __future__ import annotations
 
+import logging
 import os
 
 from .ad_bidding import AdInventoryItem
@@ -66,6 +67,9 @@ def learned_ranker_enabled() -> bool:
     return os.environ.get(LEARNED_RANKER_ENV, "").strip().lower() in _TRUTHY
 
 
+_LOGGER = logging.getLogger(__name__)
+
+
 def _load_model_from_env() -> AuctionModel | None:
     """Load the artifact named by ``ANTIEK_AD_RANKER_MODEL_PATH``. Returns None
     (NOT raises) on any problem — a missing/unreadable/stale artifact must
@@ -76,9 +80,24 @@ def _load_model_from_env() -> AuctionModel | None:
     try:
         with open(path, encoding="utf-8") as fh:
             return AuctionModel.from_json(fh.read())
-    except Exception:
-        # Missing file, bad JSON, stale feature schema — all degrade silently to
-        # rule-based. The slot is never blanked by a model artifact problem.
+    except Exception as exc:
+        # Missing file, bad JSON, stale feature schema — all degrade to
+        # rule-based. The slot is never blanked by a model artifact problem,
+        # so this still returns None rather than raising.
+        #
+        # But degrading GRACEFULLY and degrading INVISIBLY are different things.
+        # Until this line, a stale artifact silently downgraded every auction to
+        # rule-based with no log, no event and no /health field, so ranking
+        # quality could regress indefinitely with nothing to notice it. The
+        # runbook told the operator to grep the service logs for
+        # "refusing to load stale coefficients" — a message that could never be
+        # emitted, because this handler swallowed the ValueError that carries it.
+        # WARNING, not ERROR: the system is working as designed, just worse.
+        _LOGGER.warning(
+            "ad ranker artifact at %s could not be loaded (%s: %s); "
+            "auction degrades to rule-based ranking until this is fixed",
+            path, type(exc).__name__, exc,
+        )
         return None
 
 
