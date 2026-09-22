@@ -198,7 +198,7 @@ class AntiekMemoryServer:
 
 def _call_handler(
     handler: Callable[..., ToolResult],
-    tool_args: dict,
+    tool_args: dict[str, Any],
     auth_context: Any,
 ) -> ToolResult:
     """Invoke a tool handler, passing the transport's ``auth_context`` only

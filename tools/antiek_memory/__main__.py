@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Callable
+from typing import Any
 
 from interfaces.research.api.account_memory_identity import FORBIDDEN_OWNERS
 from runtime.db_lock import connect_read, connect_write
@@ -71,7 +72,7 @@ def _make_handlers(
     db_path: str,
     *,
     embedding_model: Callable[[], EmbeddingModel] = SentenceTransformerEmbedding,
-):
+) -> tuple[dict[str, Callable[..., ToolResult]], Callable[[str], ResourceContent | None]]:
     """Build handler closures bound to *db_path*.
 
     ``embedding_model`` is a zero-argument factory for the ranked-retrieval
@@ -89,7 +90,7 @@ def _make_handlers(
         return model_slot[0]
 
     # ── search_personal ───────────────────────────────────────────
-    def search_personal(args: dict, *, auth_context: object = None) -> ToolResult:
+    def search_personal(args: dict[str, Any], *, auth_context: object = None) -> ToolResult:
         """Ranked retrieval over the caller's OWN documents.
 
         The owner comes from the transport's ``auth_context`` (see
@@ -118,7 +119,7 @@ def _make_handlers(
                     [owner],
                 ).fetchall()
             ]
-            hits: list[dict] = []
+            hits: list[dict[str, Any]] = []
             if owned:
                 hits = search(
                     con,
