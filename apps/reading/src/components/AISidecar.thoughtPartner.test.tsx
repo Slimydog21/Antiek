@@ -6,7 +6,7 @@ vi.mock("../brand/werner/animated", () => ({ WernerThinking: () => null }));
 vi.mock("../hooks/useReplyMode", () => ({
   useReplyMode: () => ({ mode: "text", setMode: vi.fn() }),
 }));
-vi.mock("../werner", () => ({ notifyThoughtPartnerReplyReceived: vi.fn() }));
+vi.mock("../mascot", () => ({ notifyThoughtPartnerReplyReceived: vi.fn() }));
 vi.mock("./SpokenReply", () => ({ default: () => null }));
 vi.mock("./ai/ContextPicker", () => ({ default: () => null }));
 vi.mock("./ai/aiActions", () => ({
@@ -16,7 +16,7 @@ vi.mock("./ai/aiActions", () => ({
 }));
 
 import { apiFetch } from "../lib/api";
-import { notifyThoughtPartnerReplyReceived } from "../werner";
+import { notifyThoughtPartnerReplyReceived } from "../mascot";
 import AISidecar from "./AISidecar";
 import { dispatchAiAction, parseAssistantReply } from "./ai/aiActions";
 

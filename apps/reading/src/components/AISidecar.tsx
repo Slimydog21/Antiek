@@ -8,7 +8,7 @@ import {
 import { apiFetch } from "../lib/api";
 import { BrainThinking } from "../brand/mascot/animated";
 import { useReplyMode } from "../hooks/useReplyMode";
-import { notifyThoughtPartnerReplyReceived } from "../werner";
+import { notifyThoughtPartnerReplyReceived } from "../mascot";
 import { AISIDECAR_PANEL_ID } from "../workspace/shortcuts";
 import SpokenReply from "./SpokenReply";
 import ContextPicker from "./ai/ContextPicker";

@@ -29,7 +29,7 @@ export function notifyShellFailure(): void {
 
 /** A decoded and parsed 2xx thought-partner reply is ready to be shown. */
 export function notifyThoughtPartnerReplyReceived(): void {
-  emitWernerExperience("thought_partner_reply_received");
+  emitMascotExperience("thought_partner_reply_received");
 }
 
 export function notifyResearchStarted(sessionId: string): void {
