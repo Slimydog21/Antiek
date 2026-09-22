@@ -41,6 +41,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
+import duckdb
+
 if TYPE_CHECKING:
     from orchestration.cascade_session import CascadeSession
     from orchestration.session_evidence_pack import SessionEvidencePack
@@ -782,6 +784,12 @@ class ProviderRatioResponse(BaseModel):
     openrouter_fraction: float = 0.0
     alert_recommended: bool = False
     alert_reason: str | None = None
+    # An alarm must be able to say "I could not measure". Without these two,
+    # a dead sensor and a quiet system are the SAME payload
+    # (total_dispatches=0, alert_recommended=false) and the cron reads silence
+    # as health.
+    evidence_readable: bool = True
+    unreadable_event_files: int = 0
 
 
 # ── Sprint 16 partial: IP attribution telemetry ───────────────────────
@@ -3958,7 +3966,9 @@ def create_app(
             # ``pip install -e '.[export]'`` and retries.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from xhtml2pdf import pisa  # type: ignore[import-not-found]
+                from xhtml2pdf import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                    pisa,
+                )
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -4031,7 +4041,9 @@ def create_app(
             # as PDF. Same 503 fallback when the extra isn't installed.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from ebooklib import epub  # type: ignore[import-not-found]
+                from ebooklib import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                    epub,
+                )
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -4161,13 +4173,24 @@ def create_app(
 
         events_dir = default_events_dir()
         if not _os.path.isdir(events_dir):
+            # NOT "zero dispatches". We could not look. Fail CLOSED: an alarm
+            # whose sensor is unplugged must page, not report health.
             return ProviderRatioResponse(
-                window_minutes=window_minutes, total_dispatches=0,
+                window_minutes=window_minutes,
+                total_dispatches=0,
+                evidence_readable=False,
+                alert_recommended=True,
+                alert_reason=(
+                    f"event log directory is unreadable ({events_dir!r}); this "
+                    "is NOT a statement that no dispatches occurred — the "
+                    "provider-ratio sensor could not read its own data source."
+                ),
             )
         cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
 
         per_provider: dict[str, dict[str, int]] = {}
         total = 0
+        unreadable_files = 0
         for filename in _os.listdir(events_dir):
             if not filename.endswith(".jsonl"):
                 continue
@@ -4177,6 +4200,7 @@ def create_app(
                     _os.path.getmtime(path), tz=UTC,
                 )
             except OSError:
+                unreadable_files += 1
                 continue
             # Skip files entirely older than the cutoff window — saves
             # an open() on the long tail of historical investigations.
@@ -4218,6 +4242,7 @@ def create_app(
                             bucket["success"] += 1
                         total += 1
             except OSError:
+                unreadable_files += 1
                 continue
 
         breakdown = []
@@ -4260,6 +4285,17 @@ def create_app(
                 f"Hermes-primary is likely silently failing."
             )
 
+        if unreadable_files:
+            # Evidence we KNOW we could not read. Unlike the zero-dispatch case
+            # below, there is no ambiguity here to defer to another probe: the
+            # measurement is incomplete and the ratio may be wrong. Page.
+            alert = True
+            unread_note = (
+                f"{unreadable_files} event file(s) could not be read; the "
+                "provider ratio is computed over incomplete evidence."
+            )
+            reason = f"{reason} {unread_note}" if reason else unread_note
+
         return ProviderRatioResponse(
             window_minutes=window_minutes,
             total_dispatches=total,
@@ -4268,6 +4304,8 @@ def create_app(
             openrouter_fraction=openrouter_fraction,
             alert_recommended=alert,
             alert_reason=reason,
+            evidence_readable=unreadable_files == 0,
+            unreadable_event_files=unreadable_files,
         )
 
     # ── Sprint 16 partial: attribution telemetry ───────────────────
@@ -6202,8 +6240,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[OutcomeRecentRow] = []
         for r in rows:
             out.append(OutcomeRecentRow(
@@ -6608,8 +6665,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[PayoutTransferResponse] = []
         for r in rows:
             out.append(PayoutTransferResponse(
@@ -6893,8 +6969,26 @@ def create_app(
                     "WHERE user_id = ? ORDER BY requested_at DESC",
                     [user_id],
                 ).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # Table not created yet — genuinely no requests have been filed.
             rows = []
+        except Exception as exc:
+            # GDPR/CCPA surface (master-spec 13.3/13.7). Returning [] told a
+            # user who HAD filed an erasure request that they never did — and
+            # the client cannot tell, so it hid their cancel control while the
+            # cancellation window ran down. Never impersonate "none" here.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "deletion_ledger_unavailable",
+                        "message": (
+                            "Your deletion requests could not be read. This is "
+                            "NOT a statement that none are pending."
+                        ),
+                    }
+                },
+            ) from exc
         return DeletionRequestListResponse(
             requests=[
                 _deletion_request_row_to_response(r) for r in rows
@@ -7076,8 +7170,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[DocumentSummary] = []
         for r in rows:
             out.append(DocumentSummary(
@@ -7205,10 +7318,15 @@ def create_app(
                         else (str(r[7]) if r[7] is not None else None)
                     ),
                 ))
-        except Exception:
+        except duckdb.CatalogException:
             # The skill_rules table is created lazily by the writer.
             # An empty/missing table is a normal pre-promotion state;
             # return an empty list rather than 500.
+            #
+            # NARROWED from `except Exception`: that also swallowed a genuinely
+            # unreadable store, so corruption was reported as "no rules yet".
+            # Only the missing-table case is a normal state; anything else is a
+            # real failure and must surface.
             rules = []
 
         return SkillRuleListResponse(rules=rules)

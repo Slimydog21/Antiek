@@ -274,7 +274,25 @@ def run_ruff(
             f"ruff binary not found at {ruff_bin!r}: {exc}. "
             f"Install via `pip install -e '.[dev]'`."
         ) from exc
-    return parse_ruff_json(proc.stdout or "", repo_root=cwd)
+    # ruff: 0 = clean, 1 = violations found, >=2 = ruff itself failed
+    # (bad pyproject config, unknown rule, internal error). Parsing stdout
+    # alone turns that failure into "zero findings", which subtracts to zero
+    # NEW and exits 0 — a REQUIRED check green over a tool that never ran.
+    if proc.returncode >= 2:
+        raise RuntimeError(
+            f"ruff exited {proc.returncode} (tool failure, not a finding). "
+            f"stderr: {(proc.stderr or '').strip()[:400]!r}"
+        )
+    findings = parse_ruff_json(proc.stdout or "", repo_root=cwd)
+    if proc.returncode == 1 and not findings:
+        # ruff says violations exist but we parsed none -> the JSON did not
+        # parse (parse_ruff_json returns [] on JSONDecodeError). Never treat
+        # an unreadable report as a clean one.
+        raise RuntimeError(
+            "ruff exited 1 (violations found) but no findings parsed — "
+            f"unreadable report. stdout[:200]={((proc.stdout or '')[:200])!r}"
+        )
+    return findings
 
 
 def run_mypy(
@@ -298,8 +316,21 @@ def run_mypy(
             f"mypy binary not found at {mypy_bin!r}: {exc}. "
             f"Install via `pip install -e '.[dev]'`."
         ) from exc
+    # mypy: 0 = clean, 1 = type errors found, >=2 = mypy itself failed
+    # (usage error, INTERNAL ERROR, missing plugin). Same hazard as ruff.
+    if proc.returncode >= 2:
+        raise RuntimeError(
+            f"mypy exited {proc.returncode} (tool failure, not a finding). "
+            f"stderr: {(proc.stderr or '').strip()[:400]!r}"
+        )
     combined = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    return parse_mypy_output(combined)
+    errors = parse_mypy_output(combined)
+    if proc.returncode == 1 and not errors:
+        raise RuntimeError(
+            "mypy exited 1 (errors found) but no errors parsed — unreadable "
+            f"report. stdout[:200]={((proc.stdout or '')[:200])!r}"
+        )
+    return errors
 
 
 # tool-name → (runner-attr-name, key-adapter, baseline-lint-label).

@@ -31,13 +31,20 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+# Hoisted OUT of the try below. ``..runtime.db_lock`` resolves to
+# ``substrate.runtime.db_lock``, which does not exist, so that ONE line made
+# the whole try fail and every relative import in it dead — while mypy read
+# the dead branch and typed the write-lock API as Any.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+from runtime.db_lock import (  # noqa: E402
+    LockedConnection,
+    connect_read,
+    connect_write,
+)
+
 try:
     from ..event_log import default_events_dir, trajectory
-    from ..runtime.db_lock import (  # type: ignore[import-untyped]
-        LockedConnection,
-        connect_read,
-        connect_write,
-    )
     from ..schemas.events import ActionType
     from .insight_question import (
         graph_db_path,

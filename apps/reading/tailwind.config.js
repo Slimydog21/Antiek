@@ -1,8 +1,8 @@
 /** @type {import('tailwindcss').Config} */
-// Antiek design tokens — Werner brand.
+// Antiek design tokens.
 // Sun-yellow outlining WAS the brand default border; AMS-SPR-01 retuned the
 // DEFAULT border to a calm neutral "light" rule while keeping sun as the
-// Werner + bottom-bar accent. Day = layered off-whites + glacials. Night =
+// Brain + bottom-bar accent. Day = layered off-whites + glacials. Night =
 // ten-layer off-black "majestic night sky".
 // Source of truth: src/design/tokens.ts (+ tokens.css for the rgba/var tokens).
 // Keep these in sync — every value carrying an AMS-SPR-01 note mirrors one there.
@@ -106,7 +106,7 @@ export default {
         // AMS-SPR-09 but the Tailwind mirror was never added, so bg-sun-light /
         // text-sun-light / bg-sun-light-soft rendered unstyled. Var-referenced
         // (no night redeclaration — the weathered straw is theme-invariant by
-        // design; werner-rod night deliberately reads --sun-light).
+        // design; mascot-rod night deliberately reads --sun-light).
         "sun-light": "var(--sun-light)",
         "sun-light-soft": "var(--sun-light-soft)",
         "sun-light-deep": "var(--sun-light-deep)",

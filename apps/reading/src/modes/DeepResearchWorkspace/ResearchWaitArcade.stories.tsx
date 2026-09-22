@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { createRef, useEffect, useRef, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 
-import { useStationInstrumentSuspended } from "../../werner/stationInstrumentSuspension";
+import { useStationInstrumentSuspended } from "../../mascot/stationInstrumentSuspension";
 import ResearchWaitArcade from "./ResearchWaitArcade";
 
 const meta = {
