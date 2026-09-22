@@ -11,6 +11,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from runtime.db_lock import WriteLockTimeout
 from substrate.agent_work.service import (
     CompleteDispositionCommand,
     CompleteFailureCommand,
@@ -36,7 +37,6 @@ from substrate.agent_work.store import (
     WorkLease,
     WorkProgress,
 )
-from runtime.db_lock import WriteLockTimeout
 from substrate.graph import default_db_path, ensure_initialized
 
 from .bridge_auth import BridgePrincipal, authenticate_bridge
