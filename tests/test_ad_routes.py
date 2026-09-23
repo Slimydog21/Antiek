@@ -861,3 +861,80 @@ def test_frame_telemetry_reconciles_false_when_window_ledger_exceeds_settled(
     )
     assert response.status_code == 202
     assert response.json()["reconciles"] is False
+
+
+def test_frame_telemetry_failed_flush_does_not_let_next_flush_remint(
+    isolated_db, monkeypatch
+):
+    """A flush that dies part-way through the accrual write must leave nothing
+    behind. Each statement used to autocommit, so a flush that raised after
+    crediting escrow but before its mint-budget row landed kept the $10.00
+    credit, and the emitter's next flush (disjoint, because it clears its
+    buffer when a flush fails) minted the settled 1000 cents again: $20.00 in
+    escrow against $10.00 settled, reported as reconciles=False."""
+    _seed_book(
+        isolated_db,
+        document_id="pd-earner",
+        title="Earner",
+        author="A",
+        content_class="public_domain",
+        raw_text="body",
+        rights_holder_name="Earner Estate",
+    )
+    _seed_fill_record(
+        isolated_db,
+        owner_user_id="__operator__",
+        window_id="win-crash",
+        revenue_usd_cents=1000,
+        price_status="settled",
+    )
+    holder = _ip_holder_of(isolated_db, "pd-earner")
+    before = _escrow_of(isolated_db, holder)
+    client = TestClient(
+        create_app(register_wrestling=False, register_providers=False),
+        raise_server_exceptions=False,
+    )
+
+    def _flush(first_second, area):
+        return client.post(
+            "/api/ad/frame-telemetry",
+            json={
+                "window_id": "win-crash",
+                "schema_version": FRAME_TELEMETRY_SCHEMA_VERSION,
+                "seconds": [
+                    {
+                        "second_index": second_index,
+                        "lens": "read",
+                        "samples": [
+                            {
+                                "asset_id": "pd-earner",
+                                "viewport_area_fraction": area,
+                                "prominence": 0.5,
+                                "focused_dwell_ms": 400,
+                            }
+                        ],
+                    }
+                    for second_index in range(first_second, first_second + 3)
+                ],
+            },
+        )
+
+    from substrate.ad_inventory import frame_attention_accrual
+
+    def _mint_row_insert_fails(*_args, **_kwargs):
+        raise RuntimeError("frame_window_mints insert failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            frame_attention_accrual, "_record_window_mint", _mint_row_insert_fails
+        )
+        failed = _flush(0, 0.5)
+    assert failed.status_code == 500
+    assert _escrow_of(isolated_db, holder) == before
+
+    retried = _flush(3, 0.51)
+    assert retried.status_code == 202
+    body = retried.json()
+    assert body["total_ad_value_cents"] == 1000
+    assert body["reconciles"] is True
+    assert _escrow_of(isolated_db, holder) - before == Decimal("10.00")

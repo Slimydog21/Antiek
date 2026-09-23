@@ -633,10 +633,43 @@ def accrue_window(
     window_id)``; ``owner_user_id`` None means identity ``""``. Disjoint flushes
     of the same window each receive only the unminted remainder, and a flush
     after the budget is exhausted apportions zero.
-    """
-    ensure_tables(con)
-    asset_to_ip_holder = asset_to_ip_holder or {}
 
+    Atomic: the idempotency check, the budget read and every write (dwell
+    rows, accrual rows, escrow credits, the house row and the mint row) run in
+    one ``con.transaction()``. DuckDB autocommits each statement, so without
+    it a flush that dies after crediting escrow but before its mint row lands
+    leaves the credit durable and the budget empty, and the next (always
+    disjoint) flush mints the whole settled value again. The block is
+    re-entrant: a caller already inside a transaction extends it.
+    """
+    # Outside the transaction: ensure_tables swallows DDL errors, and a
+    # swallowed failure inside the block would abort the whole write
+    # (LockedConnection.transaction raises TransactionAborted).
+    ensure_tables(con)
+    with con.transaction():
+        return _accrue_window_in_transaction(
+            con,
+            batch,
+            asset_to_ip_holder=asset_to_ip_holder or {},
+            owner_user_id=owner_user_id,
+            dwell_cap_ms=dwell_cap_ms,
+            day_bucket=day_bucket,
+            classification=classification,
+        )
+
+
+def _accrue_window_in_transaction(
+    con: Any,
+    batch: WindowFrameBatch,
+    *,
+    asset_to_ip_holder: dict[str, str | None],
+    owner_user_id: str | None,
+    dwell_cap_ms: int | None,
+    day_bucket: str | None,
+    classification: BatchClassification | None,
+) -> WindowAccrual:
+    """:func:`accrue_window`'s reads and writes. Runs inside the transaction
+    that function opens, so every write lands together or not at all."""
     inputs = _batch_inputs(batch, asset_to_ip_holder)
     inputs_json = _canonical_json(inputs)
     batch_ref = _batch_ref(batch.window_id, inputs_json)

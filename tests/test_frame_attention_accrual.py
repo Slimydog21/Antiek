@@ -16,6 +16,7 @@ import pytest
 
 from runtime.db_lock import connect_write
 from substrate import ip_holders
+from substrate.ad_inventory import frame_attention_accrual
 from substrate.ad_inventory.frame_attention import (
     FRAME_TELEMETRY_SCHEMA_VERSION,
     FRAME_WEIGHTING_VERSION,
@@ -352,3 +353,91 @@ def test_identical_repost_does_not_record_second_mint(con):
         "SELECT COUNT(*) FROM frame_window_mints"
     ).fetchone()[0]
     assert count == 1
+
+
+class _InjectedWriteFailure(RuntimeError):
+    """A write that dies part-way (ENOSPC, process kill) stood in by a raise."""
+
+
+def _fail_house_insert(monkeypatch, con):
+    real_execute = con.execute
+
+    def _execute(sql, parameters=None):
+        if "INSERT INTO house_seconds" in sql:
+            raise _InjectedWriteFailure("house_seconds insert failed")
+        return real_execute(sql, parameters)
+
+    monkeypatch.setattr(con, "execute", _execute)
+
+
+def _fail_mint_insert(monkeypatch, con):
+    def _raise(*_args, **_kwargs):
+        raise _InjectedWriteFailure("frame_window_mints insert failed")
+
+    monkeypatch.setattr(frame_attention_accrual, "_record_window_mint", _raise)
+
+
+@pytest.mark.parametrize(
+    "inject_failure",
+    [_fail_house_insert, _fail_mint_insert],
+    ids=["house-row-insert", "mint-row-insert"],
+)
+def test_partial_write_failure_leaves_no_mint_for_the_next_flush_to_repeat(
+    con, monkeypatch, inject_failure
+):
+    """The window mint budget commits with the spend it guards. A flush that
+    dies after escrow was credited but before its budget row landed used to
+    leave the escrow credit durable (DuckDB autocommits each statement) and the
+    budget empty, and the emitter's next flush is always disjoint (it clears
+    its buffer on failure), so that flush minted the full settled value again:
+    escrow $20.00 against $10.00 settled. The failed flush must leave nothing
+    behind, and the next flush must mint the window exactly once."""
+    holder = ip_holders.create_pre_onboarded(con, display_name="Crash Press")
+    mapping = {"doc-a": holder}
+    first = _window("w-crash", 5, (_sample("doc-a"),), 1000)
+    second = WindowFrameBatch(
+        window_id="w-crash",
+        seconds=tuple(
+            FrameSecond(
+                second_index=second_index,
+                lens="read",
+                samples=(_sample("doc-a", area=0.51, prom=0.51, dwell=510),),
+            )
+            for second_index in range(5, 8)
+        ),
+        ad_value_usd_cents=1000,
+    )
+    accrue = {
+        "asset_to_ip_holder": mapping,
+        "owner_user_id": "u-1",
+        "dwell_cap_ms": 21_600_000,
+        "day_bucket": "2026-09-23",
+    }
+
+    # A scoped context: monkeypatch.undo() would also revert the conftest's
+    # ANTIEK_DUCKDB_PATH isolation, which shares this monkeypatch.
+    with monkeypatch.context() as patch:
+        inject_failure(patch, con)
+        with pytest.raises(_InjectedWriteFailure):
+            accrue_window(con, first, **accrue)
+
+    assert ip_holders.get(con, holder).escrow_balance_usd == Decimal("0")
+    for table in (
+        "frame_attention_accruals",
+        "house_seconds",
+        "frame_daily_dwell",
+        "frame_window_mints",
+    ):
+        assert con.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE window_id = 'w-crash'"
+        ).fetchone()[0] == 0, table
+
+    second_result = accrue_window(con, second, **accrue)
+
+    assert second_result.total_ad_value_cents == 1000
+    assert ip_holders.get(con, holder).escrow_balance_usd == Decimal("10.00")
+    assert window_reconciliation(con, "w-crash")["total_cents"] == 1000
+    assert con.execute(
+        "SELECT COUNT(*), SUM(minted_cents) FROM frame_window_mints "
+        "WHERE window_id = 'w-crash'"
+    ).fetchone() == (1, 1000)
