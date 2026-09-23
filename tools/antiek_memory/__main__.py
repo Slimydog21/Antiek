@@ -135,6 +135,11 @@ def _make_handlers(
         """
         query = args["query"]
         top_k = args.get("top_k", 5)
+        if type(top_k) is not int or not 1 <= top_k <= 50:
+            return _error_result("top_k must be an integer between 1 and 50", query=query)
+        include_private = args.get("include_private", True)
+        if not isinstance(include_private, bool):
+            return _error_result("include_private must be a boolean", query=query)
         owner = _authenticated_owner(auth_context)
         if owner is None:
             return _error_result(
@@ -154,14 +159,17 @@ def _make_handlers(
             ]
             hits: list[dict[str, Any]] = []
             if owned:
+                policy_tag = "private_research" if include_private else "attribution_eligible"
                 hits = search(
                     con,
                     query,
                     model=_model(),
                     top_k=top_k,
                     document_ids=owned,
-                    policy_tag="private_research",
+                    policy_tag=policy_tag,
                     owner_user_id=owner,
+                    content_classes=None if include_private else PUBLIC_SURFACE_CONTENT_CLASSES,
+                    require_term_match=True,
                 )["results"]
             # search() truncates chunk_text for prompt budgets; this surface
             # has always returned the whole chunk, so read it back by id.
@@ -190,7 +198,7 @@ def _make_handlers(
         ]
         return ToolResult(content=[{
             "type": "text",
-            "text": json.dumps({"chunks": chunks, "query": query}),
+            "text": json.dumps({"chunks": chunks, "query": query, "no_match": not chunks}),
         }])
 
     # ── search_public ─────────────────────────────────────────────
@@ -204,6 +212,8 @@ def _make_handlers(
         """
         query = args["query"]
         top_k = args.get("top_k", 5)
+        if type(top_k) is not int or not 1 <= top_k <= 50:
+            return _error_result("top_k must be an integer between 1 and 50", query=query)
         con = connect_read(db_path)
         try:
             hits = search(
@@ -213,6 +223,7 @@ def _make_handlers(
                 top_k=top_k,
                 policy_tag="attribution_eligible",
                 content_classes=PUBLIC_SURFACE_CONTENT_CLASSES,
+                require_term_match=True,
             )["results"]
             rows: dict[str, tuple[str, str | None, bool]] = {}
             if hits:
@@ -251,7 +262,7 @@ def _make_handlers(
             })
         return ToolResult(content=[{
             "type": "text",
-            "text": json.dumps({"chunks": chunks, "query": query}),
+            "text": json.dumps({"chunks": chunks, "query": query, "no_match": not chunks}),
         }])
 
     # ── cite_source ───────────────────────────────────────────────

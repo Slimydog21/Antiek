@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import duckdb
 import pytest
 
-from runtime.db_lock import connect_read, connect_write
+from runtime.db_lock import LockedConnection, connect_read, connect_write
 from substrate.graph.retrieval_gate import PERSONAL_ONLY_CONTENT_CLASSES, RESTRICTED_CONTENT_CLASSES
 from substrate.graph.schema import init_database_at_path
 from substrate.graph.search import search
@@ -38,7 +39,7 @@ _CASES = (
 
 
 def _insert_chunk(
-    con,
+    con: duckdb.DuckDBPyConnection | LockedConnection,
     *,
     name: str,
     content_class: str | None,
@@ -88,6 +89,44 @@ def test_search_public_serves_only_public_servable_classes(db_path: str) -> None
         assert body not in raw
 
 
+def test_query_matching_nothing_returns_an_honest_empty(db_path: str) -> None:
+    handlers, _resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    result = handlers["search_public"]({"query": "zzz-no-such-term", "top_k": 50})
+
+    assert result.is_error is False
+    body = json.loads(result.content[0]["text"])
+    assert body["query"] == "zzz-no-such-term"
+    assert body["chunks"] == []
+    assert body["no_match"] is True
+
+
+def test_non_matching_public_chunk_is_absent(db_path: str) -> None:
+    with connect_write(db_path, purpose="seed-nonmatching-public") as con:
+        _insert_chunk(
+            con, name="unrelated", content_class="public_domain", owner="__operator__",
+            body="Mitochondria generate cellular energy.",
+        )
+    handlers, _resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    result = handlers["search_public"]({"query": "quantum", "top_k": 50})
+
+    assert result.is_error is False
+    chunks = json.loads(result.content[0]["text"])["chunks"]
+    chunk_ids = {chunk["chunk_id"] for chunk in chunks}
+    assert "chunk-pd" in chunk_ids
+    assert "chunk-unrelated" not in chunk_ids
+
+
+@pytest.mark.parametrize("top_k", [0, 51, "5", True])
+def test_top_k_out_of_bounds_is_an_error(db_path: str, top_k: object) -> None:
+    handlers, _resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    result = handlers["search_public"]({"query": "quantum", "top_k": top_k})
+
+    assert result.is_error is True
+    assert json.loads(result.content[0]["text"])["error"] == (
+        "top_k must be an integer between 1 and 50"
+    )
+
+
 def test_search_public_query_changes_the_answer(db_path: str) -> None:
     with connect_write(db_path, purpose="seed-search-public-ranking") as con:
         _insert_chunk(
@@ -102,7 +141,8 @@ def test_search_public_query_changes_the_answer(db_path: str) -> None:
 
     def top_chunk(query: str) -> str:
         result = handlers["search_public"]({"query": query, "top_k": 1})
-        return json.loads(result.content[0]["text"])["chunks"][0]["chunk_id"]
+        chunk_id: str = json.loads(result.content[0]["text"])["chunks"][0]["chunk_id"]
+        return chunk_id
 
     assert top_chunk("bakery") == "chunk-bakery"
     assert top_chunk("garden") == "chunk-garden"

@@ -31,6 +31,8 @@ Deferred from the Researchmaxx version:
 from __future__ import annotations
 
 import os
+import re
+import string
 import sys
 from collections.abc import Collection, Sequence
 from typing import Any, Protocol
@@ -46,6 +48,18 @@ RESTRICTED_CONTENT_CLASSES = _retrieval_gate.RESTRICTED_CONTENT_CLASSES
 _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES = (
     _retrieval_gate._NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES
 )
+
+# Words too common for their presence to mean a chunk matches the query.
+_MATCH_STOPWORDS: frozenset[str] = frozenset({
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "can", "could",
+    "did", "do", "does", "for", "from", "had", "has", "have", "he", "her",
+    "his", "how", "i", "if", "in", "into", "is", "it", "its", "me", "my",
+    "no", "not", "of", "on", "or", "our", "she", "so", "than", "that",
+    "the", "their", "them", "then", "there", "these", "they", "this",
+    "those", "to", "us", "was", "we", "were", "what", "when", "where",
+    "which", "who", "why", "will", "with", "would", "you", "your",
+})
+_MAX_MATCH_TERMS = 32
 
 # ``..runtime.db_lock`` resolves to ``substrate.runtime.db_lock``, which does
 # NOT exist, so the try branch was permanently dead and the branch marked
@@ -128,6 +142,39 @@ def cosine_similarity_sql(
 # module — see the back-compat re-export block after the imports.)
 
 
+def query_match_terms(query: str) -> list[str]:
+    """Return distinct query words in order, without short or common words.
+
+    Split on whitespace, strip edge ``string.punctuation``, and keep at most
+    ``_MAX_MATCH_TERMS`` lower-case terms of two or more characters.
+    """
+    terms: list[str] = []
+    seen: set[str] = set()
+    for token in query.split():
+        term = token.strip(string.punctuation).lower()
+        if len(term) < 2 or term in _MATCH_STOPWORDS or term in seen:
+            continue
+        terms.append(term)
+        seen.add(term)
+        if len(terms) == _MAX_MATCH_TERMS:
+            break
+    return terms
+
+
+def _whole_word_pattern(term: str) -> str:
+    r"""Escape a term for RE2, bounding only ASCII alphanumeric edges.
+
+    RE2's ``\b`` is ASCII-only; a boundary after ``é`` in ``café`` would
+    prevent that word from matching.
+    """
+    pattern = re.escape(term)
+    if term[0].isascii() and term[0].isalnum():
+        pattern = r"\b" + pattern
+    if term[-1].isascii() and term[-1].isalnum():
+        pattern += r"\b"
+    return pattern
+
+
 def search(
     con: Any,
     query: str,
@@ -141,6 +188,7 @@ def search(
     policy_tag: str = "attribution_eligible",
     owner_user_id: str | None = None,
     content_classes: Collection[str] | None = None,
+    require_term_match: bool = False,
 ) -> dict[str, Any]:
     """Vector search over ``chunks.embedding``. Returns top-``k``
     chunks ordered by cosine similarity desc.
@@ -188,6 +236,9 @@ def search(
             replacement for it. NULL never matches ``IN``, so legacy rows are
             excluded (deny-by-default). ``None`` = no class scope; an empty set
             is an honest empty result, never the whole corpus.
+        require_term_match: Require a whole-word query term in each chunk;
+            cosine ranks only matching chunks. Cosine has no absolute
+            no-match threshold. The default leaves existing searches unchanged.
 
     Returns:
         ``{"query": ..., "top_k": ..., "results": [...], "node_matches": []}``
@@ -196,6 +247,10 @@ def search(
     """
     if top_k < 1:
         raise ValueError(f"top_k must be >= 1, got {top_k}")
+
+    terms = query_match_terms(query) if require_term_match else []
+    if require_term_match and not terms:
+        return {"query": query, "top_k": top_k, "results": [], "node_matches": []}
 
     # Union the single-id scope into the set scope (a caller may pass
     # either or both). An EXPLICITLY-EMPTY set means "no documents in
@@ -256,6 +311,10 @@ def search(
     if source_tier_max is not None:
         sql += " AND d.source_tier <= ?"
         params.append(int(source_tier_max))
+    if require_term_match:
+        predicates = " OR ".join("regexp_matches(c.text, ?, 'i')" for _ in terms)
+        sql += f" AND ({predicates})"
+        params.extend(_whole_word_pattern(term) for term in terms)
     # Sprint 18 retrieval-time gate (master-spec §9.0) + Personal-Reading Lane
     # SPR-01 — emitted only via retrieval_gate.non_privileged_chunk_sql_clause.
     gate_sql, gate_params = non_privileged_chunk_sql_clause(
