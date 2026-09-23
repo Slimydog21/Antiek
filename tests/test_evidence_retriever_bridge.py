@@ -399,7 +399,10 @@ async def test_provider_unavailable_falls_back(
     p = e.payload
     assert p.insufficient_evidence is True
     assert p.supporting_claims == []
-    assert p.answer == "(parse_failed)"
+    # W5 W01: this used to assert "(parse_failed)" — no model answered, so
+    # nothing failed to parse. The typed outcome is what the gates read.
+    assert p.answer == "(dispatch_failed)"
+    assert p.role_outcome == "dispatch_failed"
     assert e.policy_id == "evidence-retriever-fallback/no-provider"
 
 
@@ -437,6 +440,7 @@ async def test_parse_failure_falls_back_preserving_dispatch_policy_id(
     # stamp reflects the dispatched provider, NOT the no-provider fallback.
     assert e.policy_id == "stub-evidence/stub-flash-model"
     assert stub.call_count == 2
+    assert p.role_outcome == "parse_failed"
 
 
 @pytest.mark.asyncio

@@ -22,7 +22,9 @@ Failure-mode discipline (mirrors decomposer + synthesizer + grounder):
   ``answer="(parse_failed)"``. A validation marker is logged to
   stderr for forensics.
 - Provider unavailable → same fallback shape, policy_id stamped
-  ``evidence-retriever-fallback/no-provider``.
+  ``evidence-retriever-fallback/no-provider``. The two fallbacks differ in
+  ``role_outcome`` (``parse_failed`` vs ``dispatch_failed``) and in the
+  ``answer`` marker, so an outage never reads as the model's own decline.
 - Parser coerces ``answer: null`` / missing → ``""`` (Mini dogfood).
 
 The request payload carries ``chunks_block`` and ``subgraph_block``
@@ -64,10 +66,12 @@ from substrate.schemas import (  # noqa: E402
     EvidenceRetrieveDeliveredPayload,
     EvidenceRetrieveRequestedPayload,
     EvidentiaryGap,
+    RoleOutcome,
     SupportingClaim,
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
+from .dispatch_failure import RoleDispatchFailed  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -102,18 +106,20 @@ def _result_to_payload_lists(
 
 
 def _empty_delivered_payload(
-    sub_question: str, answer: str = "(parse_failed)",
+    sub_question: str, *, role_outcome: RoleOutcome = "parse_failed",
 ) -> EvidenceRetrieveDeliveredPayload:
     """Fallback shape when the dispatch / parser fails. The
     trajectory shows the request was answered (the bridge ran), the
-    answer is empty + ``insufficient_evidence=True``, downstream can
-    tell from the flag that this was a failure shape."""
+    answer is empty + ``insufficient_evidence=True``. ``role_outcome``
+    (echoed in ``answer``) says which failure it was: the flag alone
+    reads the same as a model that declined."""
     return EvidenceRetrieveDeliveredPayload(
         sub_question=sub_question,
-        answer=answer,
+        answer=f"({role_outcome})",
         supporting_claims=[],
         evidentiary_gaps=[],
         insufficient_evidence=True,
+        role_outcome=role_outcome,
     )
 
 
@@ -224,6 +230,9 @@ def _dispatch_and_parse(
     First call uses ``EVIDENCE_RETRIEVER_OUTPUT_MAX_TOKENS`` (8192) plus
     optional Xiaomi primary (faster flash on Mini). Length-retry stays
     safety; synthesizer-style self-repair still runs on parse failure.
+
+    Returns ``(None, policy_id)`` when the model answered but the answer
+    did not parse; raises ``RoleDispatchFailed`` when no model answered.
     """
     try:
         response_text, policy_id, finish = _dispatch_once(
@@ -255,7 +264,9 @@ def _dispatch_and_parse(
             f"{type(exc).__name__}: {exc}",
             flush=True,
         )
-        return None, "evidence-retriever-fallback/no-provider"
+        raise RoleDispatchFailed(
+            "evidence_retriever", "evidence-retriever-fallback/no-provider",
+        ) from exc
 
     try:
         parsed = parse_evidence_response(
@@ -297,7 +308,8 @@ def _dispatch_and_parse(
             f"{type(exc).__name__}: {exc}",
             flush=True,
         )
-        return None, policy_id
+        # The repair the H2.5 parse-failure verdict rests on never ran.
+        raise RoleDispatchFailed("evidence_retriever", policy_id) from exc
 
     try:
         parsed = parse_evidence_response(
@@ -344,14 +356,25 @@ def make_evidence_retriever_handler(
             subgraph_block=req.subgraph_block,
         )
 
-        result, policy_id = await asyncio.to_thread(
-            _dispatch_and_parse,
-            prompt,
-            event,
-            sub_question=sub_question,
-            semantic_call_id=getattr(req, "owner_semantic_call_id", None),
-            canonical_chunk_ids=canonical_chunk_ids,
-        )
+        try:
+            result, policy_id = await asyncio.to_thread(
+                _dispatch_and_parse,
+                prompt,
+                event,
+                sub_question=sub_question,
+                semantic_call_id=getattr(req, "owner_semantic_call_id", None),
+                canonical_chunk_ids=canonical_chunk_ids,
+            )
+        except RoleDispatchFailed as failed:
+            await _emit_delivered(
+                event,
+                payload=_empty_delivered_payload(
+                    sub_question=sub_question, role_outcome="dispatch_failed",
+                ),
+                policy_id=failed.policy_id,
+                broadcaster=broadcaster,
+            )
+            return
         if result is None:
             await _emit_delivered(
                 event,

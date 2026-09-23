@@ -581,6 +581,18 @@ class RubricScore(BaseModel):
     notes: str = ""
 
 
+# The HTTP status word for each terminal ``RunState`` (keyed by its string
+# value, which a ``RunState`` StrEnum hashes equal to). Both budget-halted and
+# operator-stopped runs read ``stopped``: the M1 vocabulary the list route and
+# the monitor already use.
+_INVESTIGATION_STATUS_BY_RUN_STATE: dict[str, str] = {
+    "done": "completed",
+    "failed": "failed",
+    "stopped": "stopped",
+    "budget_halted": "stopped",
+}
+
+
 class InvestigationStatusResponse(BaseModel):
     """Response from ``GET /investigations/{id}``. ``status`` is one of:
 
@@ -588,6 +600,8 @@ class InvestigationStatusResponse(BaseModel):
     - ``in_progress`` — start event present, no terminal event yet
     - ``completed`` — investigation.completed event present
     - ``failed`` — investigation.failed event present
+    - ``stopped`` — completed with a stopped/cancelled ``outcome``, or a
+      budget-halted chase with no completed/failed event
 
     ``current_phase`` is the most recent phase the phase_log entered;
     ``last_delivered_action_type`` is the most recent ``*.delivered``
@@ -2821,7 +2835,14 @@ def create_app(
         """Phase-progression + terminal-verdict summary for one
         investigation. Distinguishes ``not_found`` (no events at all)
         from ``in_progress`` (start event present, no terminal yet)
-        from terminal states ``completed`` / ``failed``."""
+        from terminal states ``completed`` / ``failed`` / ``stopped``.
+
+        The terminal state comes from ``runtime.research_runner.
+        terminal_event``, the reader the list route and the recovered
+        cascade session share: a stopped or cancelled run and a
+        budget-halted chase read ``stopped`` here too, never ``completed``
+        or ``in_progress`` forever."""
+        from runtime.research_runner import terminal_event
         from substrate.schemas import ActionType
 
         rows = trajectory(investigation_id)
@@ -2830,29 +2851,19 @@ def create_app(
                 investigation_id=investigation_id, status="not_found",
             )
 
-        completed_action = ActionType.INVESTIGATION_COMPLETED.value
-        failed_action = ActionType.INVESTIGATION_FAILED.value
-
-        # Walk newest-first to find the latest phase, latest delivered,
-        # and any terminal verdict.
+        # Walk newest-first to find the latest phase and latest delivered.
         last_phase: int | None = None
         last_delivered: str | None = None
-        terminal_row: dict[str, Any] | None = None
 
         for r in reversed(rows):
             at = r.get("action_type")
-            if terminal_row is None and at in (completed_action, failed_action):
-                terminal_row = r
             if last_delivered is None and isinstance(at, str) and at.endswith(".delivered"):
                 last_delivered = at
             if last_phase is None and r.get("phase") is not None:
                 last_phase = int(r["phase"])
-            if (
-                terminal_row is not None
-                and last_delivered is not None
-                and last_phase is not None
-            ):
+            if last_delivered is not None and last_phase is not None:
                 break
+        terminal = terminal_event(rows)
 
         # SPR-11 M3: surface the §14.4 inline-rubric verdict, READ from the
         # persisted rubric.scored event (never recomputed). Null when the
@@ -2880,15 +2891,11 @@ def create_app(
                         source_policy = [x for x in sp if isinstance(x, str)]
                 break
 
-        if terminal_row is not None:
-            status = (
-                "completed"
-                if terminal_row.get("action_type") == completed_action
-                else "failed"
-            )
+        if terminal is not None:
+            run_state, terminal_row = terminal
             return InvestigationStatusResponse(
                 investigation_id=investigation_id,
-                status=status,
+                status=_INVESTIGATION_STATUS_BY_RUN_STATE[run_state],
                 current_phase=last_phase,
                 last_delivered_action_type=last_delivered,
                 terminal_payload=terminal_row.get("payload"),
@@ -2949,6 +2956,7 @@ def create_app(
         import os as _os
 
         from orchestration.continuous.suggestions import policy_is_daemon
+        from runtime.research_runner import terminal_event
         from substrate.event_log import default_events_dir
         from substrate.schemas import ActionType
 
@@ -3038,26 +3046,20 @@ def create_app(
                     # The session parent's own row: no start_requested, so take
                     # its launch time so the group sorts by real freshness.
                     started_at = r.get("emitted_at")
-                elif at == completed_action:
-                    # Stop/cancel finishes through completed with an explicit
-                    # ``outcome`` — surface it honestly as ``stopped`` rather
-                    # than "done" (the M1 vocabulary lists them as distinct).
-                    if payload.get("outcome") in ("stopped", "cancelled"):
-                        terminal_status = "stopped"
-                    else:
-                        terminal_status = "completed"
-                    completed_at = r.get("emitted_at")
-                elif at == failed_action:
-                    terminal_status = "failed"
-                    completed_at = r.get("emitted_at")
-                elif at == halted_action:
-                    # Budget-halted: terminal (matches reconstruct_session's
-                    # BUDGET_HALTED), shown as stopped — never running forever.
-                    terminal_status = "stopped"
-                    completed_at = r.get("emitted_at")
                 elif at == "dispatch.call":
                     with contextlib.suppress(TypeError, ValueError):
                         cost_total += float(payload.get("cost_usd", 0.0))
+
+            # Stop/cancel finishes through completed with an explicit
+            # ``outcome`` and a budget halt writes only chase_halted; the
+            # shared reader maps both to ``stopped`` (the M1 vocabulary lists
+            # them as distinct from done), exactly as the single-status route
+            # and reconstruct_session do.
+            terminal = terminal_event(rows)
+            if terminal is not None:
+                run_state, terminal_row = terminal
+                terminal_status = _INVESTIGATION_STATUS_BY_RUN_STATE[run_state]
+                completed_at = terminal_row.get("emitted_at")
 
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)

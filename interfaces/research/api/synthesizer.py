@@ -24,11 +24,14 @@ them.
 
 Failure-mode discipline:
 
-- Provider unavailable on the FIRST dispatch → fallback Delivered
-  with empty thesis + ``insufficient_evidence``, policy stamped
-  ``synthesizer-fallback/no-provider``. No constraint loop runs.
-- Parse failure on the FIRST dispatch → same fallback shape;
-  dispatch policy_id preserved.
+- Provider unavailable on the FIRST dispatch (or on its self-repair
+  retry) → fallback Delivered with empty thesis + ``insufficient_evidence``,
+  policy stamped ``synthesizer-fallback/no-provider`` and
+  ``role_outcome="dispatch_failed"``. No constraint loop runs. The
+  orchestrator fails Phase 6 on it: an outage is not a verdict.
+- Parse failure on the FIRST dispatch (after the self-repair retry) →
+  same fallback shape with ``role_outcome="parse_failed"``; dispatch
+  policy_id preserved. H2.5 treats this as "no defensible thesis".
 - Provider/parse failure on a LOOP revision → the loop catches the
   ``None`` claims return and treats it as no-progress; the loop's
   own ``max_iterations_reached`` / ``regressed`` terminus fires.
@@ -72,6 +75,7 @@ from substrate.schemas import (  # noqa: E402
     ExecutionRisk,
     FalsificationCondition,
     ReasoningPathUsed,
+    RoleOutcome,
     SynthesizeDeliveredPayload,
     SynthesizeRequestedPayload,
     ThesisComponent,
@@ -79,6 +83,7 @@ from substrate.schemas import (  # noqa: E402
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
+from .dispatch_failure import RoleDispatchFailed  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -166,11 +171,13 @@ def _empty_delivered_payload(
     *,
     status: str = "single_pass",
     iterations: int = 1,
+    role_outcome: RoleOutcome = "parse_failed",
 ) -> SynthesizeDeliveredPayload:
     """Fallback shape — empty thesis with ``insufficient_evidence``
     recommendation. The trajectory shows the request was answered;
-    downstream consumers can tell from the empty components that the
-    synth failed."""
+    ``role_outcome`` says whether the model answered unparseably or no
+    model answered at all (the recommendation alone reads the same as a
+    model that declined)."""
     return SynthesizeDeliveredPayload(
         thesis_summary="",
         implicit_recommendation="insufficient_evidence",
@@ -186,6 +193,7 @@ def _empty_delivered_payload(
         conviction_level=None,
         constraint_loop_status=status,  # type: ignore[arg-type]
         constraint_loop_iterations=iterations,
+        role_outcome=role_outcome,
     )
 
 
@@ -427,10 +435,13 @@ def _dispatch_and_parse(
     user-template prefix. When omitted, the retry simply prepends to
     the original prompt — adequate for the parse-failure case where
     the model needs to see what was structurally wrong with its
-    previous attempt."""
+    previous attempt.
+
+    Raises ``RoleDispatchFailed`` when either dispatch reaches no model:
+    a parse-failure verdict needs the repair attempt to have run."""
     response_text, policy_id = _dispatch_once(prompt, event, attempt=0)
     if response_text is None:
-        return None, policy_id
+        raise RoleDispatchFailed("synthesizer", policy_id)
 
     try:
         return parse_synthesizer_response(
@@ -469,7 +480,7 @@ def _dispatch_and_parse(
 
     retry_text, retry_policy = _dispatch_once(retry_prompt, event, attempt=1)
     if retry_text is None:
-        return None, retry_policy
+        raise RoleDispatchFailed("synthesizer", retry_policy)
 
     try:
         return parse_synthesizer_response(
@@ -513,14 +524,23 @@ def make_synthesizer_handler(
             parameters_block=req.parameters_block,
             substrate_block=req.substrate_block,
         )
-        first_result, policy_id = await asyncio.to_thread(
-            _dispatch_and_parse,
-            first_prompt,
-            event,
-            canonical_chunk_ids=canonical_chunk_ids,
-            canonical_node_ids=canonical_node_ids,
-            canonical_edge_ids=canonical_edge_ids,
-        )
+        try:
+            first_result, policy_id = await asyncio.to_thread(
+                _dispatch_and_parse,
+                first_prompt,
+                event,
+                canonical_chunk_ids=canonical_chunk_ids,
+                canonical_node_ids=canonical_node_ids,
+                canonical_edge_ids=canonical_edge_ids,
+            )
+        except RoleDispatchFailed as failed:
+            await _emit_delivered(
+                event,
+                payload=_empty_delivered_payload(role_outcome="dispatch_failed"),
+                policy_id=failed.policy_id,
+                broadcaster=broadcaster,
+            )
+            return
         if first_result is None:
             await _emit_delivered(
                 event,
@@ -549,13 +569,16 @@ def make_synthesizer_handler(
                 substrate_block=req.substrate_block,
                 extra_user_prefix=prefix,
             )
-            revised_result, _revised_policy = _dispatch_and_parse(
-                revised_prompt,
-                event,
-                canonical_chunk_ids=canonical_chunk_ids,
-                canonical_node_ids=canonical_node_ids,
-                canonical_edge_ids=canonical_edge_ids,
-            )
+            try:
+                revised_result, _revised_policy = _dispatch_and_parse(
+                    revised_prompt,
+                    event,
+                    canonical_chunk_ids=canonical_chunk_ids,
+                    canonical_node_ids=canonical_node_ids,
+                    canonical_edge_ids=canonical_edge_ids,
+                )
+            except RoleDispatchFailed:
+                revised_result = None
             if revised_result is None:
                 # Loop receives the previous claims unchanged. The
                 # loop will detect no improvement and exit

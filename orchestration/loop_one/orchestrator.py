@@ -120,6 +120,7 @@ from substrate.schemas import (  # noqa: E402
     SynthesizeDeliveredPayload,
     SynthesizeRequestedPayload,
 )
+from substrate.schemas.events import ROLE_ANSWERED_OUTCOMES  # noqa: E402
 
 from .coordinator import InvestigationCoordinator, broadcast_emit  # noqa: E402
 
@@ -632,6 +633,23 @@ async def _drive_phase(
 # ---------------------------------------------------------------------------
 
 
+def _require_role_answered(role: str, role_outcome: str) -> None:
+    """Fail the phase when no model answered this role's call.
+
+    A bridge answers a failed dispatch with a fallback Delivered so the
+    phase never hangs, and that fallback is shaped like a model that
+    declined. Phase 1 already refuses its empty fallback; this is the same
+    refusal for the roles after it, read from the typed ``role_outcome``
+    the bridge stamps rather than from the payload's shape. Raised inside
+    a phase's ``work`` so ``_drive_phase`` records it as the phase failure.
+    """
+    if role_outcome not in ROLE_ANSWERED_OUTCOMES:
+        raise RuntimeError(
+            f"{role} dispatch failed ({role_outcome}): no model answered, "
+            "and a provider outage is not an insufficient-evidence verdict"
+        )
+
+
 def _research_dir_for(ctx: InvestigationContext) -> str:
     """Per-investigation research directory. Lazy import so test env
     vars take effect at call time."""
@@ -797,6 +815,8 @@ async def _run_phase_2(
         results = await asyncio.gather(*(
             _retrieve_one(index, sq) for index, sq in enumerate(sub_qs)
         ))
+        for payload in results:
+            _require_role_answered("evidence_retriever", payload.role_outcome)
         ctx.evidence.extend(results)
         # Render the evidence the retrievers actually returned.
         #
@@ -886,6 +906,9 @@ async def _run_phase_3(
             timeout=DEFAULT_ROLE_TIMEOUT,
         )
         if isinstance(delivered.payload, ParameterExtractDeliveredPayload):
+            _require_role_answered(
+                "parameter_extractor", delivered.payload.role_outcome,
+            )
             ctx.parameters = delivered.payload
         # Round 1 critique marker. The Phase 3 postcondition reads
         # this file and checks for the three dimension keywords.
@@ -932,6 +955,8 @@ async def _run_phase_4(
             _action_value(ActionType.CONNECTOR_DELIVERED),
             timeout=DEFAULT_ROLE_TIMEOUT,
         )
+        if isinstance(delivered.payload, ConnectorDeliveredPayload):
+            _require_role_answered("connector", delivered.payload.role_outcome)
         ctx.connector_result = delivered.payload
         # Round 2 deep-dive marker. The Phase 4 postcondition checks
         # for any round2-*.md (≠ critique) above the size floor.
@@ -1207,6 +1232,7 @@ async def _run_phase_6(
             timeout=SYNTHESIZER_TIMEOUT,
         )
         if isinstance(delivered.payload, SynthesizeDeliveredPayload):
+            _require_role_answered("synthesizer", delivered.payload.role_outcome)
             ctx.synthesis = delivered.payload
             # Inline quality scoring after Phase 6 — §14.4 form-axis
             # rubric (G5 follow-up 2026-05-23) + Foundation v2 SPR-02
@@ -2175,11 +2201,59 @@ def make_loop_one_handler(
         # further offloaded via asyncio.to_thread so --workers 1 uvicorn
         # keeps serving /health during Loop One.
         asyncio.create_task(
-            run_and_maybe_chase(),
+            _fail_on_cancel(ctx, broadcaster, run_and_maybe_chase()),
             name=f"loop_one:{event.investigation_id}",
         )
 
     return handle_investigation_start
+
+
+async def _fail_on_cancel(
+    ctx: InvestigationContext,
+    broadcaster: EventBroadcaster,
+    run: Awaitable[None],
+) -> None:
+    """Await ``run``; if the task is cancelled before the run wrote its own
+    terminal, write ``investigation.failed`` and re-raise.
+
+    uvicorn cancels leftover tasks at shutdown, so every run in flight during
+    a restart ends here. ``asyncio.CancelledError`` is a BaseException, and
+    each phase handler catches only ``Exception``, so without this the
+    trajectory stopped on its last in-flight event and every status reader
+    showed ``in_progress`` forever. The cascade runner already ends a
+    cancelled research with a terminal (``host_local._run``).
+
+    Keyed on the trajectory, not on in-memory state: a cancel that lands
+    after the run's own ``completed`` or ``failed`` (for example during the
+    chase decision) adds nothing. ``broadcast_emit`` writes the event
+    durably before its first await, so the terminal lands even if the
+    broadcast is interrupted."""
+    try:
+        await run
+    except asyncio.CancelledError:
+        from runtime.research_runner import terminal_event
+        from substrate.event_log import trajectory
+
+        if terminal_event(trajectory(ctx.investigation_id)) is None:
+            phase = min(ctx.last_completed_phase + 1, 9)
+            ctx.failed_phase = phase
+            ctx.fail_reason = (
+                f"cancelled during phase {phase}: the run's task was "
+                "cancelled (service shutdown or restart) before a terminal "
+                "verdict"
+            )
+            await broadcast_emit(
+                broadcaster,
+                ctx.investigation_id,
+                InvestigationFailedPayload(
+                    phase=phase,
+                    reason=ctx.fail_reason,
+                    last_completed_phase=(ctx.last_completed_phase or None),
+                ),
+                role="orchestrator",
+                policy_id="orchestrator-deterministic",
+            )
+        raise
 
 
 # ---------------------------------------------------------------------------

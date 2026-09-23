@@ -623,3 +623,201 @@ async def test_loop_one_synthesizer_unparseable_converges_via_insufficient_evide
     p = e.payload
     assert p.implicit_recommendation == "insufficient_evidence"
     assert p.thesis_summary == ""
+
+
+# ---------------------------------------------------------------------------
+# W5 run-honesty W01 — a provider outage is a failed phase, not a verdict.
+#
+# The bridges answer a dispatch failure with a fallback Delivered so the phase
+# does not hang. That fallback looks exactly like a model that declined
+# (insufficient_evidence), and the Phase 2/6/8 hatches accepted it as one: an
+# outage on every role after the decomposer ended investigation.completed with
+# 8 phases verified and a syntheses row stamped 'passed'. The module docstring
+# above always promised the opposite (item 3). A model that DID answer but
+# could not be parsed keeps the ratified H2.5 terminal (the test above).
+# ---------------------------------------------------------------------------
+
+
+def _syntheses_rows(investigation_id: str) -> list[tuple]:
+    from runtime.db_lock import connect_read
+    from substrate.graph import default_db_path
+
+    # connect_read, not a raw read-only connect: the app may hold the file
+    # open read-write in this process.
+    con = connect_read(default_db_path())
+    try:
+        return con.execute(
+            "SELECT status, implicit_recommendation FROM syntheses "
+            "WHERE investigation_id = ?", [investigation_id],
+        ).fetchall()
+    finally:
+        con.close()
+
+
+@pytest.mark.asyncio
+async def test_loop_one_synthesizer_provider_outage_fails_at_phase_6(
+    monkeypatch, async_client,
+):
+    inv = "inv-loop-synth-outage"
+    # Real evidence for phases 2-5 (as in the happy path), so the only role
+    # that fails is the synthesizer.
+    monkeypatch.setattr(
+        "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
+        lambda _q, top_k=5, policy_tag="attribution_eligible": (
+            "[chunk-1] Source tier: 1 | Document: PsiQuantum photonic quantum "
+            "roadmap | Section: Fixture | Similarity: 1.000\n\n"
+            "PsiQuantum photonic quantum roadmap evidence: Quantum X holds "
+            "at threshold.\n"
+        ),
+    )
+    register_provider(_RoleStubProvider({
+        "decomposer": _DECOMPOSER_RESPONSE,
+        "evidence_retriever": _evidence_response_for("(any)"),
+        "parameter_extractor": _PARAMETER_EXTRACTOR_RESPONSE,
+        "connector": _CONNECTOR_RESPONSE,
+        "knowledge_extractor": _KNOWLEDGE_EXTRACTION_RESPONSE,
+    }, raise_for={"synthesizer"}))
+    _patch_dispatch(monkeypatch, _all_role_config())
+
+    await _post_start(
+        async_client, investigation_id=inv,
+        question="PsiQuantum photonic quantum roadmap question.",
+    )
+
+    terminal = await _await_terminal(inv, timeout=90.0)
+    assert terminal is not None
+    assert terminal["action_type"] == ActionType.INVESTIGATION_FAILED.value, terminal
+    p = Event.model_validate(terminal).payload
+    assert isinstance(p, InvestigationFailedPayload)
+    assert p.phase == 6
+    assert p.last_completed_phase == 5
+    assert "synthesizer" in p.reason and "dispatch failed" in p.reason, p.reason
+    # Nothing downstream of the gate ran on the outage.
+    assert _syntheses_rows(inv) == []
+    status = (await async_client.get(f"/investigations/{inv}")).json()["status"]
+    assert status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_loop_one_research_roles_outage_fails_at_phase_2(
+    monkeypatch, async_client,
+):
+    inv = "inv-loop-roles-outage"
+    register_provider(_RoleStubProvider(
+        {"decomposer": _DECOMPOSER_RESPONSE},
+        raise_for={
+            "evidence_retriever", "parameter_extractor", "connector",
+            "synthesizer", "knowledge_extractor",
+        },
+    ))
+    _patch_dispatch(monkeypatch, _all_role_config())
+
+    await _post_start(
+        async_client, investigation_id=inv,
+        question="PsiQuantum photonic quantum roadmap question.",
+    )
+
+    terminal = await _await_terminal(inv, timeout=90.0)
+    assert terminal is not None
+    assert terminal["action_type"] == ActionType.INVESTIGATION_FAILED.value, terminal
+    p = Event.model_validate(terminal).payload
+    assert isinstance(p, InvestigationFailedPayload)
+    assert p.phase == 2
+    assert p.last_completed_phase == 1
+    assert "evidence_retriever" in p.reason and "dispatch failed" in p.reason, p.reason
+    assert _syntheses_rows(inv) == []
+    # The outage is never rendered as the retriever's own honest decline.
+    round1 = Path(os.environ["ANTIEK_RESEARCH_DIR"]) / inv / "round1-technical.md"
+    assert not round1.exists() or "Retriever declined" not in round1.read_text()
+
+
+# ---------------------------------------------------------------------------
+# W5 run-honesty W06 — a cancelled Loop One task still writes a terminal.
+#
+# The run is a detached create_task. asyncio.CancelledError is a BaseException,
+# so every ``except Exception`` in the phase driver let it through and the
+# trajectory stopped on the last in-flight event: GET /investigations/{id}
+# read in_progress forever after a service restart (uvicorn cancels leftover
+# tasks at shutdown).
+# ---------------------------------------------------------------------------
+
+
+class _SlowDecomposerProvider(_RoleStubProvider):
+    def call(self, **kw):
+        import time as _time
+
+        _time.sleep(1.0)
+        return super().call(**kw)
+
+
+@pytest.mark.asyncio
+async def test_loop_one_cancelled_task_writes_failed_terminal(
+    monkeypatch, async_client,
+):
+    inv = "inv-loop-cancelled"
+    register_provider(_SlowDecomposerProvider({"decomposer": _DECOMPOSER_RESPONSE}))
+    _patch_dispatch(monkeypatch, _all_role_config())
+
+    await _post_start(
+        async_client, investigation_id=inv,
+        question="PsiQuantum photonic quantum roadmap question.",
+    )
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 5.0
+    tasks: list[asyncio.Task] = []
+    while not tasks and loop.time() < deadline:
+        tasks = [t for t in asyncio.all_tasks() if t.get_name() == f"loop_one:{inv}"]
+        await asyncio.sleep(0.02)
+    assert len(tasks) == 1
+    await asyncio.sleep(0.3)  # phase 1 is in flight on the slow decomposer
+    tasks[0].cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    assert tasks[0].cancelled()  # the cancellation still propagates
+
+    terminal = await _await_terminal(inv, timeout=1.0)
+    assert terminal is not None, [r["action_type"] for r in trajectory(inv)]
+    assert terminal["action_type"] == ActionType.INVESTIGATION_FAILED.value
+    p = Event.model_validate(terminal).payload
+    assert isinstance(p, InvestigationFailedPayload)
+    assert p.phase == 1
+    assert p.reason.startswith("cancelled")
+    body = (await async_client.get(f"/investigations/{inv}")).json()
+    assert body["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_loop_one_cancel_after_terminal_adds_no_second_terminal(
+    async_client,
+):
+    """Cancellation can land after the run already ended (for example in the
+    chase decision that follows ``completed``). The run's own terminal stands;
+    a cancel never appends a contradicting ``failed``."""
+    from orchestration.loop_one.orchestrator import (
+        InvestigationContext,
+        _fail_on_cancel,
+    )
+    from substrate.event_log import log_event
+
+    inv = "inv-loop-cancel-late"
+    log_event(inv, ActionType.INVESTIGATION_START_REQUESTED,
+              payload={"question": "q"}, role="operator")
+    log_event(inv, ActionType.INVESTIGATION_COMPLETED,
+              payload={"implicit_recommendation": "proceed"}, role="orchestrator")
+
+    async def _cancelled_after_completion() -> None:
+        raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        await _fail_on_cancel(
+            InvestigationContext(investigation_id=inv, question="q"),
+            EventBroadcaster(),
+            _cancelled_after_completion(),
+        )
+    terminals = [
+        r["action_type"] for r in trajectory(inv)
+        if r["action_type"] in (
+            ActionType.INVESTIGATION_COMPLETED.value,
+            ActionType.INVESTIGATION_FAILED.value,
+        )
+    ]
+    assert terminals == [ActionType.INVESTIGATION_COMPLETED.value]

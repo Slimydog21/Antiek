@@ -54,6 +54,7 @@ from substrate.schemas import (
     MasterMdWrittenPayload,
     SynthesizeDeliveredPayload,
 )
+from substrate.schemas.events import ROLE_ANSWERED_OUTCOMES
 
 from ..phase_log import PhaseAssertionError, PhaseLog
 
@@ -298,7 +299,9 @@ def check_phase_2(
     # carries ``insufficient_evidence``, and the prompt treats an absent answer
     # as information rather than failure. So when EVERY delivery for this
     # investigation declined, a small round 1 is the correct outcome, not a
-    # defect.
+    # defect. A decline counts only when a model made it: the bridge's
+    # fallback for a failed dispatch carries the same flag, so the hatch
+    # reads ``role_outcome`` too (W5 W01).
     if too_small or padded:
         delivered = _events_of_type(
             investigation_id, ActionType.EVIDENCE_RETRIEVE_DELIVERED,
@@ -307,7 +310,10 @@ def check_phase_2(
             e.payload for e in delivered
             if isinstance(e.payload, EvidenceRetrieveDeliveredPayload)
         ]
-        if payloads and all(pl.insufficient_evidence for pl in payloads):
+        if payloads and all(
+            pl.insufficient_evidence and pl.role_outcome in ROLE_ANSWERED_OUTCOMES
+            for pl in payloads
+        ):
             return True, (
                 f"round-1 files are thin, and correctly so: all "
                 f"{len(payloads)} evidence deliveries reported "
@@ -504,6 +510,16 @@ def check_phase_6(
             continue
         if payload.constraint_loop_status not in _PHASE_6_VERIFY_STATUSES:
             continue
+        # A fallback for a failed dispatch is shaped like the H2.5 verdict
+        # below (empty thesis, insufficient_evidence) but no model reached
+        # it. The newest Delivered is the canonical one, so it fails here
+        # rather than falling through to an older payload (W5 W01).
+        if payload.role_outcome not in ROLE_ANSWERED_OUTCOMES:
+            return False, (
+                f"synthesize.delivered is a fallback with "
+                f"role_outcome={payload.role_outcome!r}: no model answered, "
+                f"so its insufficient_evidence is not a verdict"
+            )
         # 2026-05-18 H2.5: insufficient_evidence escape hatch.
         # The synthesizer's contract says: "if you cannot produce a
         # defensible thesis with non-vacuous falsifications, signal
@@ -645,7 +661,12 @@ def check_phase_8(
     for e in reversed(synth_events):
         payload = e.payload
         if isinstance(payload, SynthesizeDeliveredPayload):
-            if payload.implicit_recommendation == "insufficient_evidence":
+            # Only a verdict a model reached skips compounding; an outage
+            # fallback falls through to the ordinary A/B evidence (W5 W01).
+            if (
+                payload.implicit_recommendation == "insufficient_evidence"
+                and payload.role_outcome in ROLE_ANSWERED_OUTCOMES
+            ):
                 return True, (
                     "phase 8 skipped: upstream synthesis was "
                     "insufficient_evidence — no defensible thesis to "
