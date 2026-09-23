@@ -42,6 +42,10 @@ FIRST_COHORT_PUBLISHERS: tuple[str, ...] = (
 )
 
 
+class UnknownIpHolderError(LookupError):
+    """An escrow accrual named an ip_holder_id with no ip_holders row."""
+
+
 @dataclass
 class IpHolder:
     ip_holder_id: str
@@ -167,14 +171,46 @@ def accrue_escrow(con: Any, ip_holder_id: str, amount_usd: Decimal) -> None:
     Connect transfer that runs only when status='claimed'."""
     if amount_usd <= 0:
         raise ValueError(f"accrue_escrow amount must be positive, got {amount_usd}")
-    con.execute(
+    # RETURNING, because an UPDATE matching zero rows succeeds silently: an
+    # unknown id (documents.ip_holder_id has no FK) would drop the money while
+    # the caller records it as accrued.
+    updated = con.execute(
         """
         UPDATE ip_holders
         SET escrow_balance_usd = escrow_balance_usd + ?
         WHERE ip_holder_id = ?
+        RETURNING ip_holder_id
         """,
         [str(amount_usd), ip_holder_id],
-    )
+    ).fetchall()
+    if len(updated) != 1:
+        raise UnknownIpHolderError(
+            f"accrue_escrow: no ip_holders row for {ip_holder_id!r}; "
+            f"{amount_usd} USD not accrued"
+        )
+
+
+def require_holders(con: Any, ip_holder_ids: set[str]) -> None:
+    """Raise ``UnknownIpHolderError`` unless every id has an ip_holders row.
+
+    For a writer that records a credit in its own ledger BEFORE calling
+    ``accrue_escrow``: checking first lets it fail before any row is written,
+    instead of leaving a ledger credit that escrow never received."""
+    if not ip_holder_ids:
+        return
+    ordered = sorted(ip_holder_ids)
+    placeholders = ",".join("?" for _ in ordered)
+    found = {
+        r[0]
+        for r in con.execute(
+            f"SELECT ip_holder_id FROM ip_holders "
+            f"WHERE ip_holder_id IN ({placeholders})",
+            ordered,
+        ).fetchall()
+    }
+    missing = [i for i in ordered if i not in found]
+    if missing:
+        raise UnknownIpHolderError(f"no ip_holders row for {missing!r}")
 
 
 def get(con: Any, ip_holder_id: str) -> IpHolder | None:
