@@ -41,23 +41,53 @@ chrome would misreport the product. No PostHog voice, mascot, or palette.
 
 ## Canonical tokens
 
-`src/design/tokens.ts` is the source of truth. `tokens.css` mirrors it as CSS
-variables (for Storybook + raw CSS); `tailwind.config.js` exposes it as
-utilities. **These three must agree** — drift is a bug.
+`src/design/tokens.css` is the runtime source of truth; `tokens.ts` mirrors it
+(`primitive`, `semantic`) and `tailwind.config.js` exposes it. **Every Tailwind
+colour key resolves to a tokens.css variable** (never a hex), and
+`scripts/check_token_parity.ts` fails the build if the three disagree.
 
-- **Brand (invariant across modes):** `sun #F5DF24` (the constant edge + bottom-bar day accent — never softened), `sun-deep #9C8636` (day) / `#84722F` (night) (weathered SPR-09 hover/depth; night also casts the offset shadows), `sun-glow #F1E08F` (day) / `#F2DE9A` (night) (weathered highlight peaks).
-- **Weathered sun-light family (SPR-09):** `sun-light #E8D98C` (calm straw the chrome leans on), `sun-light-soft #F0E6B8`, `sun-light-deep #9C8636`. Theme-invariant by design.
-- **Chrome border + bar accent (SPR-01):** `rule #788596` (day) / `#606C7E` (night) — the default border is a calm neutral blue-grey, *not* yellow (adjudication D6: `border-sun` survives only on the ratified LemonCard primitive); `bar-accent` keeps the yellow loud on the bottom bar (`sun` day, pinned `#FFEC5F` night).
-- **Glass (scene panels):** `glass` — translucent panel fill/hairline/12px blur per mode, with an opaque `glass-solid` fallback; body text over glass must keep WCAG AA 4.5:1 (scrim contract in tokens.ts).
-- **Day surface ramp:** `ice-0 #FFFFFF` → `ice-4 #DCE5ED` → `glacial-1/2` → `shadow-1 #4F5F70` → `shadow-2 #384858` → `ink #0F1419`.
-- **Night surface ramp:** `void #040508` → `space-1/2` → `charcoal-1/2` → `slate-1/2` → `moonlight #6B7585` → `starlight #C4CCD7` → `bright #EEF1F6`.
-- **Muted-text hierarchy (Q1):** `ink-soft` (lede/secondary; day `#2A3441`, night `starlight #C4CCD7`) → `ink-mute` (metadata/tertiary; day `#647380`, night `#828C9C` — the AA-cleared steps; both clear WCAG AA 4.5:1 on their usual card/page surfaces in both modes).
-- **Shadows (chunky offset):** day `z1/z2/z3 = 3/5/8px 3/5/8px 0 0 ink`; night casts the same offsets in `sun-deep #84722F` (the edge glows, weathered).
-- **Radius:** `sm/md/lg = 4/6/10px` in tokens.ts; Tailwind exposes the two larger steps as `rounded-hog` (6px) / `rounded-hog-lg` (10px). **Edge width:** `2.5px` (`border-edge`).
-- **Type:** sans `Inter`, mono `JetBrains Mono`, **serif `Charter`** (prose — the notebook register).
-- **Brain mascot (shipped):** the mark is the coral brain — warm coral-pink body, soft-black eyes/stick limbs, rosy cheeks; full palette + hard rules in `src/brand/mascot-brain/PROFILE.md` (the Krea character bible). `BrainMascot.tsx` renders the four moods (`idle`/`thinking`/`empty`/`celebrate`); `BrainMark.tsx` is the geometric line-brain rail mark. The `mascot` palette still exported from tokens.ts is legacy mascot chrome, pending the batch rename pass.
-- **Reserved accents (sparingly, never substituting for sun):** `aurora #16C2C2` (day) / `#3FE0DC` (night) (AI cognition only — thinking AND emergent outputs such as questions and insights, one role per adjudication D11 widening D8; components telling questions from insights do so by label/icon, never a second colour), `emperor #CE3623` (day) / `#FF6155` (night) (danger only — also exposed under its semantic alias `danger`, same values day + night).
-- **State colours (Q3, adjudication D2):** `success #237242` (day) / `#6ECB8F` (night) — the done/met/passed green, AA-cleared as text on ice-0/ice-2 and space-2/charcoal-2 (aurora fails that floor and stays reserved for AI cognition, D8/D11); the research-state family aliases it (`--state-done` = `var(--success)`), with `working` = sun, `blocked` = emperor, `stopped/muted` = shadow-2.
+**"Paper, ink, and one sun" (2026-09-23).** Three layers:
+
+1. **Primitives** (theme-invariant): `--sun` `#F5DF24` (+ `--sun-hover`,
+   `--sun-press`, derived by lightness), the fixed pigments `--fixed-ink`
+   `#0F1419` / `--fixed-ink-2` / `--fixed-paper` (what stays dark or white in
+   both themes: ink on the sun, ink buttons, the dark rail, white text on a
+   danger fill), `--danger-fill`, and the night ramp `--void` … `--bright`.
+2. **Semantic** (what a colour is for, per theme; day is PAPER):
+
+   | token | day | night | job |
+   |---|---|---|---|
+   | `--bg-page` / `--bg-card` / `--bg-inset` | `#FBF9F4` / `#FFFEFB` / `#F4F1E8` | space-2 / charcoal-2 / charcoal-1 | canvas, bounded surfaces, wells |
+   | `--border-hairline` | `#E6E0D2` | `#262C38` | decorative dividers inside a surface |
+   | `--border-rule` | `#8A8473` | `#6A7689` | meaningful boundaries, >= 3:1 |
+   | `--text-1` / `--text-2` / `--text-3` | ink / `#4F5F70` / `#5F6B79` | bright / `#9AA3B2` / moonlight `#858F9F` | ink, secondary, metadata |
+   | `--sun-ink` | `#75620F` | the sun | the brand as TEXT (never `--sun` on paper) |
+   | `--teal` | `#0B7A7A` | `#3FE0DC` | links, evidence (aurora stays the AI fill) |
+   | `--danger` `--success` `--stale` `--not-run` | red / green / amber / violet | lifted for night | honesty states, always with a word + icon |
+   | `--focus` | ink | sun | the one `:focus-visible` ring |
+   | `--keycap-edge`, `--wash`, `--mark` | | | keycap frame, tertiary hover, highlighter |
+
+3. **Legacy aliases**: every older name (`--ice-*`, `--ink`, `--ink-mute`,
+   `--emperor`, `--rule`, Tailwind `moonlight`, `charcoal-*` …) points at a
+   semantic token, so call sites keep working and follow the theme. Where one
+   key had two jobs the Tailwind per-utility maps split it: `text-sun-deep` is
+   `--sun-ink`, `border-sun-deep` the weathered edge; `text-aurora` is teal,
+   `bg-aurora` the AI fill; `bg-emperor` the white-text-safe fill,
+   `text-emperor` the theme's danger; `dark:border-charcoal-1` the night rule.
+
+**Theme.** Light / Dark / System (Settings > Appearance; default System). The
+choice lives in `<html data-theme>`, set before first paint by the inline
+script in `index.html`; Tailwind's `dark:` keys on that attribute and
+`useTheme()` (`src/design/useTheme.ts`) is the one reactive reader. Motion has
+the same shape (`data-motion`, `useMotionPreference`, `usePrefersReducedMotion`).
+
+**Contrast is computed, not claimed.** `tokens.contrast.test.ts` resolves every
+semantic pair AND the Tailwind keys call sites use, in both themes, through the
+real tokens.css and config; a comment with a ratio in it is not evidence.
+
+**Type.** Inter (interface) and JetBrains Mono (data, provenance) ship as
+self-hosted variable woff2 under `src/assets/fonts` (OFL 1.1, licences beside
+them); Charter is the reading face. Minimum text is 11px (`text-xxs`).
 
 ### SPR-01 reconciliation (2026-05-25)
 `tokens.css` lagged the a11y-darkening that `tokens.ts` + `tailwind.config.js`
