@@ -2706,27 +2706,45 @@ def create_app(
                             break
                         raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         try:
+            start_payload = InvestigationStartRequestedPayload(
+                question=req.question,
+                context=req.context,
+                topic_slug=req.topic_slug,
+                max_sub_questions=req.max_sub_questions,
+                parent_investigation_id=req.parent_investigation_id,
+                spawn_context=req.spawn_context,
+                # SPR-01 M3: record the chosen research tier on the
+                # start event (queryable after the fact). The payload
+                # field is the same CLOSED set.
+                research_tier=req.research_tier,
+
+                source_policy=req.source_policy,
+                owner_user_id=owner_user_id,
+                owner_operation_id=operation_id,
+                owner_model_choices=parsed_choices,
+                owner_launch_digest=launch_digest,
+                owner_launch_version=1 if operation_id is not None else None,
+            )
+        except ValidationError:
+            raise HTTPException(status_code=422, detail="model_selection_invalid") from None
+        if operation_id is None:
+            # A house start is keyed on its investigation_id: a retry with the
+            # same id and the same request is a replay of the start event
+            # already on the trajectory, never a second paid run (the ACU
+            # charge is idempotent on the id, so a rerun would be unmetered,
+            # and two runs under one id steal each other's coordinator
+            # futures). The same id with a different request is refused.
+            for row in trajectory(investigation_id):
+                if row.get("action_type") != "investigation.start_requested":
+                    continue
+                if row.get("payload") != start_payload.model_dump(mode="json"):
+                    raise HTTPException(status_code=409, detail="investigation_id_conflict")
+                replay_event_id = str(row["event_id"])
+                break
+        try:
             event_id = replay_event_id or emit_typed(
                 investigation_id,
-                InvestigationStartRequestedPayload(
-                    question=req.question,
-                    context=req.context,
-                    topic_slug=req.topic_slug,
-                    max_sub_questions=req.max_sub_questions,
-                    parent_investigation_id=req.parent_investigation_id,
-                    spawn_context=req.spawn_context,
-                    # SPR-01 M3: record the chosen research tier on the
-                    # start event (queryable after the fact). The payload
-                    # field is the same CLOSED set.
-                    research_tier=req.research_tier,
-
-                    source_policy=req.source_policy,
-                    owner_user_id=owner_user_id,
-                    owner_operation_id=operation_id,
-                    owner_model_choices=parsed_choices,
-                    owner_launch_digest=launch_digest,
-                    owner_launch_version=1 if operation_id is not None else None,
-                ),
+                start_payload,
                 role="operator",
                 policy_id="operator-cli",
                 event_id=owner_start_event_id if operation_id is not None else None,
@@ -2759,8 +2777,8 @@ def create_app(
 
         # Sprint 11: emit the spawn-lineage event when parent provided.
         # Non-fatal if it fails; the start event already encodes the
-        # lineage in its own payload.
-        if req.parent_investigation_id:
+        # lineage in its own payload. A replay already emitted it.
+        if req.parent_investigation_id and replay_event_id is None:
             with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
                 emit_typed(
                     investigation_id,
@@ -2774,9 +2792,9 @@ def create_app(
                 )
 
         # Broadcast only a fresh or append-only launch. Once the durable
-        # journal says broadcast, an exact HTTP replay must not start a second
-        # paid run.
-        should_broadcast = operation_id is None
+        # journal says broadcast (owner) or the start event already exists
+        # (house), an exact HTTP replay must not start a second paid run.
+        should_broadcast = operation_id is None and replay_event_id is None
         if operation_id is not None:
             from .research_owner_dispatch import claim_owner_broadcast
             should_broadcast = claim_owner_broadcast(operation_id)
