@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from substrate.event_log import trajectory
+from substrate.event_log import trajectory, trajectory_read
 from substrate.provenance.pointers import (
     Pointer,
     collect_child_investigations,
@@ -50,6 +50,13 @@ class SynthesisTrail:
     ``synthesis_ids`` are the archived syntheses (whose manifests pin their
     sources) and ``node_ids`` the graph nodes inserted. A recorded id whose
     row is gone stays here, so the gate can count it as unresolved.
+
+    ``unreadable_investigation_ids`` are the investigations in the walk whose
+    events could not all be read: none stored (a deleted log, or a child that
+    never wrote one), a record that does not parse, an unreadable snapshot, or
+    an id that is not an event-storage name, which is never read. What those
+    stood on is unknown, so the gate withholds rather than clearing on the
+    rest.
     """
 
     excerpt: str | None = None
@@ -58,6 +65,7 @@ class SynthesisTrail:
     node_ids: tuple[str, ...] = ()
     pointers: tuple[Pointer, ...] = ()
     source_event_ids: list[str] = field(default_factory=list)
+    unreadable_investigation_ids: tuple[str, ...] = ()
 
 
 def _ordered_unique(values: list[str]) -> list[str]:
@@ -79,6 +87,7 @@ def synthesis_from_events(
     node_ids: list[str] = []
     pointers: dict[Pointer, None] = {}
     excerpt: str | None = None
+    unreadable: list[str] = []
     # The investigation, then every sub-investigation any of their events
     # hands work to, each read once.
     pending = [investigation_id]
@@ -89,7 +98,13 @@ def synthesis_from_events(
             continue
         walked[current] = None
         own = current == investigation_id
-        for row in trajectory(current, events_dir=events_dir):
+        try:
+            rows, complete = trajectory_read(current, events_dir=events_dir)
+        except (OSError, ValueError):  # a corrupt snapshot; pyarrow's errors subclass these
+            rows, complete = [], False
+        if not complete:
+            unreadable.append(current)
+        for row in rows:
             at = row.get("action_type")
             if own and row.get("event_id"):
                 source_ids.append(str(row["event_id"]))
@@ -118,4 +133,5 @@ def synthesis_from_events(
         node_ids=tuple(_ordered_unique(node_ids)),
         pointers=tuple(pointers),
         source_event_ids=_ordered_unique(source_ids)[-20:],
+        unreadable_investigation_ids=tuple(unreadable),
     )

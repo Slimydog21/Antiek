@@ -94,7 +94,10 @@ def _excerpt_cleared(
     its metadata and endpoints; a recorded synthesis whose row or manifest is
     gone counts as one unresolved source. A pointer that cannot be followed,
     or a document that is not servable, withholds the excerpt, and so does
-    having no traceable source at all."""
+    having no traceable source at all. So does an investigation in the walk
+    whose events cannot all be read, since what it stood on is unknown."""
+    if trail.unreadable_investigation_ids:
+        return False
     inv_ids = trail.investigation_ids or (investigation_id,)
     node_ids = dict.fromkeys([
         *(n for iid in inv_ids for n in distilled_node_ids(iid, events_dir=events_dir)),

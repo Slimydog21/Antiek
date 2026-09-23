@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -600,6 +601,78 @@ def test_excerpt_withheld_when_a_sub_investigation_retrieved_a_restricted_chunk(
     _retrieval(child, env["events"], chunk_ids=["c-rs"])
     _complete(inv, env["events"], f"Thesis. {PASSAGE}")
     _assert_withheld(env, inv)
+
+
+def _escalate(inv: str, child: str, events: str) -> None:
+    log_event(
+        inv, ActionType.QUESTION_ESCALATED_TO_RESEARCH,
+        payload={"question_id": f"q-{inv}", "child_investigation_id": child},
+        events_dir=events,
+    )
+
+
+@pytest.mark.parametrize("lost", ["missing", "corrupt", "torn"])
+def test_excerpt_withheld_when_a_sub_investigations_events_cannot_be_read(env, lost):
+    # The child's events are the only record of what it stood on. A deleted
+    # log, a log that no longer parses, or one record that no longer parses
+    # beside a readable public one leaves that record unknown, so the child
+    # stays unresolved instead of dropping out and letting the public parent
+    # clear the thesis.
+    inv, child = f"inv-lost-{lost}", f"inv-lost-{lost}-child"
+    _public_insight(inv)
+    _escalate(inv, child, env["events"])
+    _retrieval(child, env["events"], chunk_ids=["c-rs"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+    log = Path(env["events"]) / f"{child}.jsonl"
+    if lost == "missing":
+        log.unlink()
+    elif lost == "corrupt":
+        log.write_text("{broken JSON\n")
+    else:
+        log.unlink()
+        _retrieval(child, env["events"], chunk_ids=["c-pd"])
+        with log.open("a") as f:
+            f.write("{torn record\n")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_record_of_its_own_trajectory_cannot_be_read(env):
+    inv = "inv-own-torn"
+    _public_insight(inv)
+    _retrieval(inv, env["events"], chunk_ids=["c-pd"])
+    _complete(inv, env["events"], f"Thesis. {PUBLIC}")
+    with (Path(env["events"]) / f"{inv}.jsonl").open("a") as f:
+        f.write("{torn record\n")
+    _assert_withheld(env, inv)
+
+
+def test_a_child_id_that_is_not_an_event_storage_name_is_unresolved(env, tmp_path):
+    # Child ids come from event payloads. An absolute path used to be joined
+    # onto the events dir (os.path.join keeps the absolute part) and read, so
+    # a public-only log planted outside the events dir cleared the thesis.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _retrieval("decoy", str(outside), chunk_ids=["c-pd"])
+    inv = "inv-escape"
+    _public_insight(inv)
+    _escalate(inv, str(outside / "decoy"), env["events"])
+    _complete(inv, env["events"], f"Thesis. {PUBLIC}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_cleared_when_a_readable_sub_investigation_stood_on_public_sources(env):
+    # Positive control for the three tests above: a child whose events all
+    # read, and whose sources are public, does not withhold.
+    inv, child = "inv-child-ok", "inv-child-ok-child"
+    _public_insight(inv)
+    _escalate(inv, child, env["events"])
+    _retrieval(child, env["events"], chunk_ids=["c-pd"])
+    summary = "A thesis the child grounded on the public pamphlet."
+    _complete(inv, env["events"], summary)
+    body = _body(env, inv)
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
 
 
 def test_excerpt_withheld_when_a_cited_edge_endpoint_names_a_restricted_document(env):

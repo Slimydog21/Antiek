@@ -21,6 +21,7 @@ from .events import (
     PhysicalEventPage,
     PhysicalStorageCursor,
     PhysicalTrajectoryError,
+    TrajectoryRead,
     action_counts,
     default_events_dir,
     emit_typed,
@@ -33,6 +34,7 @@ from .events import (
     read_physical_event_page,
     seal_investigation,
     trajectory,
+    trajectory_read,
     validate_trajectory,
 )
 
@@ -58,6 +60,8 @@ __all__ = [
     "read_physical_event_page",
     "query_worker_identity",
     "seal_investigation",
+    "TrajectoryRead",
     "trajectory",
+    "trajectory_read",
     "validate_trajectory",
 ]
