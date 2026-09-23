@@ -23,6 +23,7 @@ import { useParams } from "react-router-dom";
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import LemonButton from "../../components/lemon/LemonButton";
+import { openWindow } from "../../components/windows/openWindow";
 import {
   approvePlan,
   createPlan,
@@ -402,6 +403,20 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
   const [openNode, setOpenNode] = useState<DistilledNode | null>(null);
   const monitorHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
+  const openEvidenceSource = useCallback((node: DistilledNode) => {
+    const documentId = node.source_document_id;
+    if (!documentId?.trim()) return;
+    openWindow(
+      "reader",
+      { documentId },
+      {
+        id: `win:reader:${encodeURIComponent(documentId)}`,
+        title: "Research source",
+        replaceOldestAtLimit: true,
+      },
+    );
+  }, []);
+
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
     try {
@@ -442,7 +457,11 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           </span>
         </div>
         <div className="relative min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
-          <Canvas investigationId={canvasFor} onOpenDetail={setOpenNode} />
+          <Canvas
+            investigationId={canvasFor}
+            onOpenDetail={setOpenNode}
+            onCiteSource={openEvidenceSource}
+          />
           {/* SPR-04: the block detail is the SECOND live FloatMenu host. It
               opens off a BlockCard click as an overlay over the canvas (the
               canvas stays mounted underneath — non-breaking) and dismisses

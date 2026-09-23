@@ -24,3 +24,16 @@ declaration that these packages are staged ahead of their wiring.
 - `substrate/memory` is imported by a product path (prompt assembly / research pipeline).
 - `substrate/agent_skills` is imported by a product path (agent execution / prime-agent kernel).
 Removing the entry then makes the gate re-assert reachability for real.
+
+## Reconsider-condition fired: `substrate/agent_skills` (2026-09-22)
+
+The second condition is now true. `substrate/agent_skills` is imported by product paths on
+three routes: `services/html_projection/widgets/sketch.py` (the `sketch` widget kind renders
+through `sketch_svg`), `roles/thought_partner/prompt.py` (the skill catalog is rendered from
+`registry.list_skills()` into the thought-partner prompt) and `interfaces/research/api/app.py`
+(`GET /deliverables` summarizes its read-only projection through `py_analysis.summarize_rows`).
+The gate reported the entry as STALE once the widget import landed, and the
+`package:unimported:agent_skills` entry is removed in the same commit as the prompt and route
+wiring, so the gate re-asserts reachability for real: with the entry removed on a tree where
+the package is still unimported (pristine main, measured before the wiring) the gate exits 1;
+after the wiring it exits 0. The `substrate/memory` entry and its condition are unchanged.
