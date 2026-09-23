@@ -141,6 +141,10 @@ def test_every_source_kind_has_a_shape():
 
 @pytest.mark.parametrize("kind", list(SourceKind), ids=lambda kind: kind.value)
 def test_serve_time_ad_eligible_equals_payout_time_accruability(con, kind):
+    """Serve-time eligibility equals the payout predicate for every shape.
+    For an arXiv shape that is what the ledger accrues on (next tests); for
+    the others the ledger never reaches the predicate, so this pins only what
+    it would decide (test_the_ledger_turns_every_non_arxiv_document_away)."""
     for shape in SHAPES[kind]:
         doc_id = _make(con, kind, shape)
         serve = serve_full_text_guarded(con, doc_id).ad_eligible
@@ -196,6 +200,30 @@ def test_the_ledger_accrues_exactly_when_payout_eligible(con):
         assert decision is not None
         assert result.accruable is decision.eligible, f"{kind.value}/{shape.name}"
         assert result.accruable is shape.expected, f"{kind.value}/{shape.name}"
+
+
+def test_the_ledger_turns_every_non_arxiv_document_away(con):
+    """The agreement stops at arXiv: the ledger refuses a non-arXiv document
+    before the predicate, ad-eligible or not. If this starts failing, the
+    ledger has begun accruing non-arXiv revenue and the agreement claims in
+    ad_eligibility.ad_eligibility need re-checking."""
+    non_arxiv_shapes = [
+        (kind, shape)
+        for kind in SourceKind
+        for shape in SHAPES[kind]
+        if not (shape.metadata and "arxiv_id" in shape.metadata)
+    ]
+    assert any(shape.expected for _kind, shape in non_arxiv_shapes)
+    for kind, shape in non_arxiv_shapes:
+        doc_id = _make(con, kind, shape)
+        result = accrue_paper_read(
+            con,
+            document_id=doc_id,
+            revenue_cents=100,
+            ad_event_id=f"evt-{doc_id}",
+        )
+        assert result.accruable is False, f"{kind.value}/{shape.name}"
+        assert result.reason == "not_an_arxiv_paper", f"{kind.value}/{shape.name}"
 
 
 def test_ad_eligibility_requires_servable_without_a_tier():

@@ -105,9 +105,17 @@ def ad_eligibility(tier: RightsTier | None, *, servable: bool | None) -> AdEligi
     """THE ad-eligibility predicate.
 
     ``serve_guard.serve_full_text_guarded`` stamps
-    ``ServeResult.ad_eligible`` from it and ``payouts.ledger`` gates accrual
-    on it, so the reader can never mount an ad border on a document whose
-    revenue the ledger then refuses (or the reverse).
+    ``ServeResult.ad_eligible`` from it, and ``payouts.ledger.accrue_paper_read``
+    gates arXiv author accrual on it, so for an arXiv paper the reader cannot
+    mount an ad border on a document whose revenue the ledger then refuses
+    (or the reverse). The agreement is only that wide. The ledger turns any
+    non-arXiv document away (``not_an_arxiv_paper``) before it consults this
+    predicate, and book escrow (``book_escrow.accrue_reading_session``) does
+    not consult it at all. Neither gap moves money today:
+    ``accrue_reading_session`` is the only caller of ``accrue_paper_read`` and
+    has no production caller, because the impressions endpoint it served
+    returns 410. Whoever wires a settled-fill path to escrow must decide
+    whether escrow accrual follows this predicate.
 
     - A licence tier decides on its own: eligible iff ``ads_allowed(tier)``
       (T1 only). servability is not consulted (a T1 paper is ad-eligible even

@@ -52,10 +52,13 @@ class SourceKind(StrEnum):
     substrate.books.ingest.register_book tags every Read-workflow book
     LICENSED_PUBLISHER (arXiv papers and public-domain books included).
     substrate.rights.ad_eligibility.ad_eligibility decides it from what IS
-    persisted (the licence tier in documents.metadata, else body servability),
-    and both the serve guard and the payouts ledger call it;
-    tests/rights/test_ad_eligibility_agreement.py holds every member of this
-    enum to that agreement.
+    persisted (the licence tier in documents.metadata, else body servability).
+    The serve guard calls it for every document; the payouts ledger calls it
+    only for arXiv papers, turning any other document away first
+    (``not_an_arxiv_paper``). tests/rights/test_ad_eligibility_agreement.py
+    checks every member of this enum against the predicate. For a non-arXiv
+    document that check reaches ``payout_ad_eligibility`` directly, a path no
+    production accrual takes (see ``ad_eligibility.ad_eligibility``).
     """
 
     LICENSED_PUBLISHER = "licensed_publisher"  # a book claimed via the §9.10 opt-in flow

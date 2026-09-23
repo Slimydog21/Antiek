@@ -250,9 +250,12 @@ def payout_ad_eligibility(
     """Payout-time ad-eligibility of ``document_id``: the SAME predicate over
     the SAME facts the serve guard stamps as ``ServeResult.ad_eligible``
     (licence tier from ``documents.metadata`` via ``licence_tier_of``, else
-    body servability). ``accrue_paper_read`` gates on it. None when the
-    document does not exist. ``metadata`` lets a caller that already parsed
-    the row skip a second read."""
+    body servability). ``accrue_paper_read`` gates on it only after its arXiv
+    check, so for accrual the servability branch is reached only by an arXiv
+    paper without a licence signal; for any other document it answers what
+    the ledger WOULD decide, not what it does. None when the document does
+    not exist. ``metadata`` lets a caller that already parsed the row skip a
+    second read."""
     meta = metadata if metadata is not None else _load_metadata(con, document_id)
     if meta is None:
         return None
