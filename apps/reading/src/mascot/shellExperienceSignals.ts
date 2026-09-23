@@ -27,9 +27,9 @@ export function notifyShellFailure(): void {
   emitMascotExperience("fail");
 }
 
-/** A decoded and parsed 2xx thought-partner reply is ready to be shown. */
-export function notifyThoughtPartnerReplyReceived(): void {
-  emitMascotExperience("thought_partner_reply_received");
+/** Call only after the first HTMLMediaElement.play() promise resolves. */
+export function notifyVoicePlaybackStarted(): void {
+  emitMascotExperience("voice_playback_started");
 }
 
 export function notifyResearchStarted(sessionId: string): void {
@@ -77,4 +77,8 @@ export function notifyResearchPhaseEdge(
   if (current === "complete") emitMascotExperience("deep_research_complete");
   if (current === "error") emitMascotExperience("deep_research_error");
   return true;
+}
+
+export function notifyThoughtPartnerReplyReceived(): void {
+  emitMascotExperience("thought_partner_reply_received");
 }

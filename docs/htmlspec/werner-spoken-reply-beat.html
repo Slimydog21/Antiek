@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Werner SpokenReply playback beat</title></head>
+<body>
+  <main>
+    <h1>Werner SpokenReply playback beat</h1>
+    <p><strong>Parent:</strong> Werner thought-partner response beat.</p>
+    <p><strong>Intent:</strong> Spoken model replies make Werner visibly listen only when browser playback has actually begun.</p>
+    <h2>Truth boundary</h2>
+    <ol>
+      <li>Reuse <code>voice_playback_started</code>; do not add a synonym or a new pose.</li>
+      <li>Emit once, after the initial <code>audio.play()</code> promise resolves for the current attempt.</li>
+      <li>Never emit for synthesis failure, rejected playback, stop, unmount, or a superseded request.</li>
+      <li>The Werner observer is best-effort: an animation failure cannot alter narration state.</li>
+    </ol>
+    <h2>Lifecycle contract</h2>
+    <ul>
+      <li>A monotonically increasing attempt owns every async continuation and media callback.</li>
+      <li>Stop, replacement, and unmount invalidate ownership before cleanup.</li>
+      <li>Cleanup detaches callbacks, pauses audio, and revokes the owned object URL.</li>
+      <li>Stale success and failure paths are silent and cannot resurrect UI state.</li>
+    </ul>
+    <h2>Proof</h2>
+    <p>Focused hook tests cover successful truth, rejected play, stop during fetch/play, supersession, unmount, observer isolation, and resource cleanup; typecheck and production build remain green.</p>
+  </main>
+</body>
+</html>

@@ -77,6 +77,7 @@ export {
 export {
   emoteForExperience,
   emitMascotExperience,
+  notifyThoughtPartnerReplyReceived,
   installReactionBus,
   isProductExperience,
   PRODUCT_EXPERIENCES,
@@ -92,7 +93,7 @@ export {
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
-  notifyThoughtPartnerReplyReceived,
+  notifyVoicePlaybackStarted,
   type ResearchReactionPhase,
 } from "./shellExperienceSignals";
 

@@ -43,11 +43,17 @@ def compute_verdict(events: list[dict], *, operator_user_id: str) -> Verdict:
     round-trip counting (the documented n=1 confound — the operator loving the
     artifacts is not evidence). Download/open/compliment events are ignored
     entirely (they measure 'nicer app', not 'new format')."""
+    # NON-operator only — and a round-trip with NO recorded actor is not
+    # admissible either: "unknown" is not "someone other than the operator".
+    # (The detector's own event carried no user_id at all, so the exclusion
+    # was satisfied by construction and the operator re-importing their own
+    # file counted as organic demand.)
     organic_roundtrips = [
         e
         for e in events
         if e.get("action_type") == ROUNDTRIP
-        and e.get("user_id") != operator_user_id  # NON-operator only
+        and e.get("user_id") is not None
+        and e.get("user_id") != operator_user_id
     ]
     third_party = [e for e in events if e.get("action_type") == THIRD_PARTY_READER]
     agent = [e for e in events if e.get("action_type") == AGENT_UNPROMPTED]

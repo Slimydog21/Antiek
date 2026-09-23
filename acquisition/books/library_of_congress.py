@@ -27,6 +27,8 @@ import logging
 import re
 from typing import Any
 
+from acquisition.books.pd_jurisdiction import non_serving_pd_qualification
+
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
 logger = logging.getLogger("acquisition.books.library_of_congress")
@@ -103,6 +105,10 @@ def loc_rights_input(item: dict[str, Any]) -> tuple[str | None, str | None]:
         if any(tok in r.lower() for tok in _PD_LICENSE_URL_TOKENS):
             return r, None
 
+    # A PD statement limited to a jurisdiction other than the one we serve
+    # from ("Public domain in the United Kingdom only") is not PD for us.
+    if non_serving_pd_qualification(haystack) is not None:
+        return None, None
     if any(tok in haystack for tok in _PD_RIGHTS_TOKENS):
         stmt = "; ".join(s for s in rights if s)
         return None, f"Library of Congress rights statement: {stmt}"
