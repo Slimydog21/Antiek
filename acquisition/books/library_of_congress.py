@@ -24,8 +24,9 @@ NO raw ``requests``/``httpx``: every fetch is via the SPR-03 throttle.
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
+
+from acquisition.books.rights_denial import pd_denied_reason
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
@@ -48,27 +49,9 @@ _PD_RIGHTS_TOKENS = (
 # Deny-first: any of these in the rights statement disqualifies the item
 # BEFORE a PD token can accept it. Broad on purpose — a false negation only
 # conservatively GATES a genuinely-PD item (the §9.0-safe direction).
-_NEGATIVE_TOKENS = (
-    "all rights reserved",
-    "rights reserved",
-    "in copyright",
-    "in-copyright",
-    "copyrighted",
-    "under copyright",
-    "rights restricted",
-    "permission required",
-    "not in the public domain",
-)
-_NEGATED_PD_RE = re.compile(
-    r"\b(?:not|no|isn't|is not)\s+(?:in\s+(?:the\s+)?)?public\s+domain"
-)
 # Any ©/(c) symbol, "copyright <year>", or a hedged copyright assertion denies
 # PD even alongside a "public domain" substring — the higher-cost false
 # positive.
-_COPYRIGHT_CLAIM_RE = re.compile(
-    r"©|\bcopyright\s+(?:\(c\)\s*)?\d{4}|\(c\)\s*\d{4}"
-    r"|\b(?:may\s+be|still|possibly|likely)\s+(?:in\s+|under\s+|protected\s+by\s+)?copyright"
-)
 
 
 def _rights_strings(item: dict[str, Any]) -> list[str]:
@@ -92,11 +75,8 @@ def loc_rights_input(item: dict[str, Any]) -> tuple[str | None, str | None]:
     rights = _rights_strings(item)
     haystack = " ".join(rights).lower()
 
-    if any(tok in haystack for tok in _NEGATIVE_TOKENS):
-        return None, None
-    if _NEGATED_PD_RE.search(haystack):
-        return None, None
-    if _COPYRIGHT_CLAIM_RE.search(haystack):
+    # Deny-first, from the ONE shared rule — see rights_denial.py.
+    if pd_denied_reason(haystack) is not None:
         return None, None
 
     for r in rights:

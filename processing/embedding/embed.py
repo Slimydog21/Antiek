@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import sys
 from typing import Protocol, cast
 
 # Default dimension when nothing else is configured. Matches MiniLM-L6-v2
@@ -168,8 +169,51 @@ class SentenceTransformerEmbedding:
         self._model = SentenceTransformer(model_name)
         self.dimension = int(self._model.get_sentence_embedding_dimension() or DEFAULT_EMBEDDING_DIM)
         self._model_name = model_name
+        # Truncation accounting (audit wave 3, #2). The model reads at most
+        # ``max_seq_length`` word-pieces (256 for MiniLM-L6-v2) and SILENTLY
+        # drops the rest, while chunk_markdown's default is 2000 words: a
+        # long chunk is embedded by its opening words only, yet the vector
+        # is stored, ranked and served as if it stood for the whole text.
+        # Every encode counts; the first truncation in a process warns once
+        # with the numbers; ``truncation_ratio`` exposes the running rate.
+        self.encode_count = 0
+        self.truncated_count = 0
+        self._warned_truncation = False
+
+    @property
+    def max_seq_length(self) -> int | None:
+        value = getattr(self._model, "max_seq_length", None)
+        return int(value) if value else None
+
+    @property
+    def truncation_ratio(self) -> float:
+        return (self.truncated_count / self.encode_count) if self.encode_count else 0.0
+
+    def _token_count(self, text: str) -> int | None:
+        tokenizer = getattr(self._model, "tokenizer", None)
+        if tokenizer is None:
+            return None
+        try:
+            ids = tokenizer(text, add_special_tokens=True, truncation=False)["input_ids"]
+        except Exception:  # noqa: BLE001 — accounting must never break encode
+            return None
+        return len(ids)
 
     def encode(self, text: str) -> list[float]:
+        self.encode_count += 1
+        window = self.max_seq_length
+        n_tokens = self._token_count(text) if window else None
+        if window and n_tokens is not None and n_tokens > window:
+            self.truncated_count += 1
+            if not self._warned_truncation:
+                self._warned_truncation = True
+                print(
+                    f"[embed] {self._model_name}: input of {n_tokens} word-pieces exceeds "
+                    f"the model window of {window}; the vector represents the first "
+                    f"{window} only. Further truncations are counted, not printed "
+                    f"(see SentenceTransformerEmbedding.truncation_ratio).",
+                    file=sys.stderr,
+                )
         vec = self._model.encode([text])[0]
         return [float(x) for x in vec]
 
@@ -220,10 +264,24 @@ def default_embedding_provider() -> EmbeddingProvider:
         )
     try:
         _DEFAULT_PROVIDER = SentenceTransformerEmbedding(model_name)
-    except RuntimeError:  # sentence-transformers not installed
+    except RuntimeError as exc:
+        # Fall back to HashEmbedding ONLY when the package is genuinely
+        # absent. ``SentenceTransformerEmbedding.__init__`` raises
+        # ``RuntimeError(...) from ImportError`` for that case, so the cause
+        # is the discriminator. Every other RuntimeError — torch OOM, a corrupt
+        # weight file, a device that failed to initialise — used to take this
+        # same branch, print "sentence-transformers unavailable" (false), and
+        # silently make every subsequent chunk a 384-dim HASH vector: the same
+        # dimension as MiniLM, so nothing downstream could tell, and retrieval
+        # degraded to "lexical/hash collisions, not meaning" (see
+        # tools/reembed_chunks.py, which records this having happened in prod).
+        # A provider that cannot be constructed for any other reason is an
+        # error, not a configuration choice.
+        if not isinstance(exc.__cause__, ImportError):
+            raise
         import sys as _sys
         _sys.stderr.write(
-            "antiek: sentence-transformers unavailable; falling back to "
+            "antiek: sentence-transformers not installed; falling back to "
             "HashEmbedding. Install via `pip install sentence-transformers` "
             "to enable semantic search.\n"
         )

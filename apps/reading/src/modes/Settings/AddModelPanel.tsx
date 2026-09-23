@@ -54,6 +54,9 @@ export default function AddModelPanel() {
   const [kind, setKind] = useState<ProviderKind>("openai_compat");
   const [displayName, setDisplayName] = useState("");
   const [modelId, setModelId] = useState("");
+  // Extra preset variants registered under the SAME key as `modelId` (one
+  // credential, one ledger row — SPR-03 Task 2). Empty means single-variant.
+  const [extraVariantIds, setExtraVariantIds] = useState<string[]>([]);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -155,6 +158,7 @@ export default function AddModelPanel() {
     providerChoiceTouchedRef.current = true;
     clearEditorTransientState();
     setProvider(next);
+    setExtraVariantIds([]);
     const nextPreset = catalog?.find((item) => item.catalog_id === next);
     if (nextPreset) {
       setKind(nextPreset.provider_kind);
@@ -173,9 +177,17 @@ export default function AddModelPanel() {
   function selectModel(nextModelId: string) {
     clearEditorTransientState();
     setModelId(nextModelId);
+    // The primary cannot also be an extra.
+    setExtraVariantIds((prev) => prev.filter((id) => id !== nextModelId));
     const model = preset?.models.find((item) => item.id === nextModelId);
     if (model) setDisplayName(model.label);
     queueMicrotask(() => keyRef.current?.focus());
+  }
+
+  function toggleExtraVariant(variantId: string) {
+    setExtraVariantIds((prev) =>
+      prev.includes(variantId) ? prev.filter((id) => id !== variantId) : [...prev, variantId],
+    );
   }
 
   async function onAdd(event: FormEvent<HTMLFormElement>) {
@@ -189,10 +201,18 @@ export default function AddModelPanel() {
     const key = apiKey;
     clearSecret();
     try {
+      // Extras ride under the same key as `model_ids` (primary first); a
+      // single-variant registration sends exactly the pre-variant body.
+      const extras = preset
+        ? extraVariantIds.filter(
+            (id) => id !== modelId && preset.models.some((model) => model.id === id),
+          )
+        : [];
       await addUserModel({
         provider_kind: kind,
         ...(preset ? { provider_catalog_id: preset.catalog_id } : {}),
         model_id: modelId,
+        ...(extras.length > 0 ? { model_ids: [modelId, ...extras] } : {}),
         display_name: displayName.trim(),
         api_key: key,
         ...(preset?.provider_kind === "openai_compat"
@@ -472,6 +492,35 @@ export default function AddModelPanel() {
                 ))}
               </select>
             </label>
+          )}
+
+          {preset && preset.models.length > 1 && (
+            <fieldset className="flex flex-col gap-1">
+              <legend className="text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
+                Also drive with this key
+              </legend>
+              <p className="text-xxs text-ink-mute dark:text-moonlight">
+                One credential, one usage ledger; each checked variant becomes a
+                sub-row of this key in every model dropdown.
+              </p>
+              {preset.models
+                .filter((model) => model.id !== modelId)
+                .map((model) => (
+                  <label
+                    key={model.id}
+                    className="flex items-center gap-2 text-sm text-ink dark:text-bright"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={extraVariantIds.includes(model.id)}
+                      onChange={() => toggleExtraVariant(model.id)}
+                      aria-label={`Also drive ${model.label} with this key`}
+                    />
+                    <span>{model.label}</span>
+                    <span className="font-mono text-xxs text-ink-mute">{model.id}</span>
+                  </label>
+                ))}
+            </fieldset>
           )}
 
           <div className="space-y-3">

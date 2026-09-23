@@ -20,8 +20,8 @@ vi.mock("../../lib/api", () => ({
   searchBlocks: (...args: unknown[]) => searchBlocks(...args),
 }));
 
-vi.mock("../../brand/werner/animated", () => ({
-  WernerThinking: () => <span data-testid="thinking" />,
+vi.mock("../../brand/mascot/animated", () => ({
+  BrainThinking: () => <span data-testid="thinking" />,
 }));
 
 vi.mock("../../components/ai/ContextPicker", () => ({
@@ -92,6 +92,27 @@ describe("ThoughtPartnerPanel (Surface E)", () => {
     expect(String(apiFetch.mock.calls[0][0])).toContain("/thought-partner");
     const body = JSON.parse(apiFetch.mock.calls[0][1].body);
     expect(body.prompt).toBe("Challenge these notes");
+  });
+
+  it("mounts the driver dropdown (SPR-03 Task 3) and sends no model fields on the house route", async () => {
+    apiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ shape: "SYNTHESIS", text: "ok" }),
+    });
+    render(<ThoughtPartnerPanel />);
+    const trigger = await screen.findByLabelText("Model for this brainstorm");
+    await waitFor(() => expect(trigger.textContent).toContain("Default"));
+    fireEvent.change(screen.getByLabelText("Thought partner prompt"), {
+      target: { value: "Challenge these notes" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    const call = apiFetch.mock.calls.find(([u]) => String(u).includes("/thought-partner"));
+    expect(call).toBeTruthy();
+    const body = JSON.parse((call![1] as { body: string }).body);
+    // Both fields or neither: the house route sends neither.
+    expect("model_choice" in body).toBe(false);
+    expect("operation_id" in body).toBe(false);
   });
 
   it("seeds the composer from antiek:thought-partner:seed", async () => {

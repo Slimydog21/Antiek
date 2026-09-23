@@ -7,7 +7,7 @@
  *    the SAME roles/labels, and the SAME accessible home control — only the
  *    layout axis differs (no parallel nav, no dropped destination);
  *  - the home control is a real, labelled, keyboard-focusable button that
- *    routes to /home (the igloo replaced the static penguin but the control
+ *    routes to /home (the igloo replaced the static mascot but the control
  *    semantics are unchanged);
  *  - every keyboard shortcut + the active-route accent are untouched (those
  *    live in shortcuts.ts + workflowTaxonomy and are not re-implemented per
@@ -22,7 +22,7 @@ import { WORKFLOW_ORDER, WORKFLOWS } from "./workflowTaxonomy";
 
 // SPR-08 — the rail now renders on-bar KeyChips, which read
 // usePrefersReducedMotion (matchMedia). jsdom lacks matchMedia; stub it
-// exactly as the hotkey/ad/penguin suites already do. This adds no new
+// exactly as the hotkey/ad/mascot suites already do. This adds no new
 // assertion — it only lets the real rail render its real children.
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -106,7 +106,7 @@ describe("NavRail SPR-06 — bottom orientation + igloo home", () => {
     }
   });
 
-  it("the home control is an accessible, keyboard-focusable button labelled for /home (igloo replaced the penguin, semantics intact)", () => {
+  it("the home control is an accessible, keyboard-focusable button labelled for /home (igloo replaced the mascot, semantics intact)", () => {
     render(
       <MemoryRouter>
         <NavRail />
@@ -117,7 +117,7 @@ describe("NavRail SPR-06 — bottom orientation + igloo home", () => {
     // visible focus ring is the focus-visible:outline class on it.
     expect(home.tagName).toBe("BUTTON");
     expect(home.className).toContain("focus-visible:outline");
-    // The igloo mark renders inside it (an <svg>), the penguin <img> does not.
+    // The igloo mark renders inside it (an <svg>), the mascot <img> does not.
     expect(home.querySelector("svg")).toBeTruthy();
     expect(home.querySelector("img")).toBeNull();
     // No accessible name leaks onto the decorative mark itself.

@@ -41,6 +41,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
+import duckdb
+
 if TYPE_CHECKING:
     from orchestration.cascade_session import CascadeSession
     from orchestration.session_evidence_pack import SessionEvidencePack
@@ -73,6 +75,7 @@ from roles.thought_partner import (  # noqa: E402
     compose_thought_partner_prompt,
     parse_thought_partner_response,
 )
+from substrate.agent_skills.py_analysis import summarize_rows  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
@@ -159,12 +162,16 @@ class HealthResponse(BaseModel):
     # TurboPuffer SERVABLE hybrid (dogfood) — honest, never faked.
     # hybrid_ready requires env+key+active pointer; production_default_mount
     # stays False until deliberately flipped in a future decision.
-    turbopuffer_servable_enabled: bool = False
-    turbopuffer_shadow_enabled: bool = False
-    turbopuffer_api_key_present: bool = False
-    turbopuffer_active_pointer: bool = False
+    # None on these five means the probe did not run or raised — a crashed
+    # probe used to be byte-identical to "TurboPuffer is switched off". The
+    # error text rides on turbopuffer_probe_error.
+    turbopuffer_servable_enabled: bool | None = False
+    turbopuffer_shadow_enabled: bool | None = False
+    turbopuffer_api_key_present: bool | None = False
+    turbopuffer_active_pointer: bool | None = False
     turbopuffer_pointer_context_ok: bool | None = None
-    turbopuffer_hybrid_ready: bool = False
+    turbopuffer_hybrid_ready: bool | None = False
+    turbopuffer_probe_error: str | None = None
     turbopuffer_resolved_kind: str = "brute_force"
     turbopuffer_indexed_row_count: int | None = None
     turbopuffer_content_hash: str | None = None
@@ -185,6 +192,89 @@ class HealthResponse(BaseModel):
     duckdb_wal_present: bool = False
     duckdb_wal_bytes: int = 0
     duckdb_error: str | None = None
+    # Verified-backup freshness (pass46 / production-audit P1). A green
+    # /health must not hide a missing or stale backup marker. Mirrors
+    # tools/backup_freshness.py: fresh=False + backup_reason when the
+    # marker is missing/unreadable/stale; never raises.
+    backup_fresh: bool = False
+    backup_completed_at: str | None = None
+    backup_age_hours: float | None = None
+    backup_marker_path: str = ""
+    backup_reason: str = ""
+
+
+    # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
+    # these fields existed /health said nothing about Prime or RLM, so an
+    # operator could flip ANTIEK_PRIME_AGENT_RLM_ENABLED + ANTIEK_RLM_RATIFIED
+    # and have the lane silently do nothing. ``prime_agent_binary_present``
+    # is a RESOLVE (which + identity snapshot), never a spawn.
+    # ``prime_agent_invocations_attempted`` is the process-wide count of
+    # backend runs that reached the spawn path, whatever their outcome.
+    # Resolved per request by ``_probe_prime_lane``; never raises.
+    prime_agent_enabled: bool = False
+    rlm_ratified: bool = False
+    prime_agent_binary_present: bool = False
+    prime_agent_invocations_attempted: int = 0
+
+
+def _probe_backup_freshness() -> dict[str, Any]:
+    """Read-only backup freshness for /health. Never raises."""
+    try:
+        from tools.backup_freshness import evaluate, resolve_marker_path
+
+        verdict = evaluate(resolve_marker_path(None), 26.0)
+        return {
+            "backup_fresh": verdict.fresh,
+            "backup_completed_at": verdict.completed_at,
+            "backup_age_hours": verdict.age_hours,
+            "backup_marker_path": verdict.marker_path,
+            "backup_reason": verdict.reason,
+        }
+    except Exception as exc:
+        return {
+            "backup_fresh": False,
+            "backup_completed_at": None,
+            "backup_age_hours": None,
+            "backup_marker_path": "",
+            "backup_reason": f"probe_exception: {type(exc).__name__}: {exc}",
+        }
+def _probe_prime_lane() -> dict[str, bool | int]:
+    """Resolve-only readiness of the Prime Agent RLM lane for ``/health``.
+
+    Mirrors ``_resolve_build_sha``'s swallow-to-default: any failure resolves
+    to False/0. Reads the same flag spellings the lane itself uses — the
+    backend factory's truthy set for the enable flag, the bridge's literal
+    "1" for ratification — so /health cannot disagree with the code path.
+    """
+    from orchestration.rlm.bridge import is_ratified
+    from orchestration.rlm.prime_agent_backend import (
+        prime_agent_invocations_attempted,
+    )
+    from runtime.prime_agent.installation import resolve_prime_agent_binary
+
+    enabled = (
+        os.environ.get("ANTIEK_PRIME_AGENT_RLM_ENABLED", "").strip().lower()
+        in {"1", "true", "yes"}
+    )
+    try:
+        resolve_prime_agent_binary()
+        binary_present = True
+    except Exception:
+        binary_present = False
+    try:
+        ratified = is_ratified()
+    except Exception:
+        ratified = False
+    try:
+        attempted = prime_agent_invocations_attempted()
+    except Exception:
+        attempted = 0
+    return {
+        "prime_agent_enabled": enabled,
+        "rlm_ratified": ratified,
+        "prime_agent_binary_present": binary_present,
+        "prime_agent_invocations_attempted": attempted,
+    }
 
 
 def _resolve_build_sha() -> str:
@@ -277,6 +367,16 @@ def _probe_flywheel() -> tuple[bool, int]:
         # (False, 0) rather than failing the whole /health over a probe,
         # mirroring _resolve_build_sha's swallow-to-"unknown".
         return (False, 0)
+
+
+def _tp_flag(app: Any, key: str) -> bool | None:
+    """A TurboPuffer health flag for /health. None (not False) when the probe
+    raised — the dict then carries ``error`` — or never ran; a crashed probe
+    must not read as "switched off"."""
+    tp = getattr(app.state, "turbopuffer_health", None) or {}
+    if not tp or tp.get("error"):
+        return None
+    return bool(tp.get(key))
 
 
 def _probe_turbopuffer() -> dict[str, Any]:
@@ -591,9 +691,27 @@ class DeliverableSummary(BaseModel):
     section_count: int = 0
 
 
+class SeriesStats(BaseModel):
+    """One column of a read-only projection, summarized by the
+    ``py_analysis`` kernel skill (``substrate.agent_skills``): stdlib-only
+    and pure, so the projection is read through ``connect_read`` and no
+    writer handle is opened."""
+
+    name: str
+    kind: str
+    count: int
+    mean: float | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    total: float | None = None
+
+
 class DeliverableListResponse(BaseModel):
     count: int
     deliverables: list[DeliverableSummary] = Field(default_factory=list)
+    # ``section_count`` across the listed deliverables via
+    # ``py_analysis.summarize_rows``; None when the projection is empty.
+    section_stats: SeriesStats | None = None
 
 
 class CreateSectionRequest(BaseModel):
@@ -782,6 +900,12 @@ class ProviderRatioResponse(BaseModel):
     openrouter_fraction: float = 0.0
     alert_recommended: bool = False
     alert_reason: str | None = None
+    # An alarm must be able to say "I could not measure". Without these two,
+    # a dead sensor and a quiet system are the SAME payload
+    # (total_dispatches=0, alert_recommended=false) and the cron reads silence
+    # as health.
+    evidence_readable: bool = True
+    unreadable_event_files: int = 0
 
 
 # ── Sprint 16 partial: IP attribution telemetry ───────────────────────
@@ -2147,6 +2271,9 @@ def create_app(
         from .settings_budget import route_ready_provider_ids
 
         route_ready_providers = route_ready_provider_ids(registered_providers)
+        # Resolve-only (which + identity snapshot of a small file); never a
+        # spawn, never raises — see _probe_prime_lane.
+        prime_lane = _probe_prime_lane()
         return HealthResponse(
             drw_gather_mode=_resolved_gather_mode(),
             status="ok",
@@ -2158,35 +2285,18 @@ def create_app(
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
             knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
-            turbopuffer_servable_enabled=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "servable_enabled"
-                )
-            ),
-            turbopuffer_shadow_enabled=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "shadow_enabled"
-                )
-            ),
-            turbopuffer_api_key_present=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "api_key_present"
-                )
-            ),
-            turbopuffer_active_pointer=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "active_pointer_file"
-                )
-            ),
+            turbopuffer_servable_enabled=_tp_flag(app, "servable_enabled"),
+            turbopuffer_shadow_enabled=_tp_flag(app, "shadow_enabled"),
+            turbopuffer_api_key_present=_tp_flag(app, "api_key_present"),
+            turbopuffer_active_pointer=_tp_flag(app, "active_pointer_file"),
             turbopuffer_pointer_context_ok=(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
                     "active_pointer_context_ok"
                 )
             ),
-            turbopuffer_hybrid_ready=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "hybrid_ready"
-                )
+            turbopuffer_hybrid_ready=_tp_flag(app, "hybrid_ready"),
+            turbopuffer_probe_error=(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get("error")
             ),
             turbopuffer_resolved_kind=str(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
@@ -2229,6 +2339,13 @@ def create_app(
             duckdb_wal_present=duckdb_health.wal_present,
             duckdb_wal_bytes=duckdb_health.wal_bytes,
             duckdb_error=duckdb_health.error,
+            **_probe_backup_freshness(),
+            prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
+            rlm_ratified=bool(prime_lane["rlm_ratified"]),
+            prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
+            prime_agent_invocations_attempted=int(
+                prime_lane["prime_agent_invocations_attempted"]
+            ),
         )
 
     # ── POST typed event ────────────────────────────────────────
@@ -3421,6 +3538,11 @@ def create_app(
             ).fetchall()
         finally:
             con.close()
+        # The projection is already in hand (read-only); summarize its one
+        # numeric column through the kernel skill rather than re-querying.
+        section_summary = summarize_rows(
+            [{"section_count": r[7] or 0} for r in rows]
+        ).summary("section_count")
         return DeliverableListResponse(
             count=len(rows),
             deliverables=[
@@ -3430,6 +3552,19 @@ def create_app(
                     created_at=r[5], updated_at=r[6], section_count=r[7] or 0,
                 ) for r in rows
             ],
+            section_stats=(
+                SeriesStats(
+                    name=section_summary.name,
+                    kind=section_summary.kind,
+                    count=section_summary.count,
+                    mean=section_summary.mean,
+                    minimum=section_summary.minimum,
+                    maximum=section_summary.maximum,
+                    total=section_summary.total,
+                )
+                if section_summary is not None
+                else None
+            ),
         )
 
     @app.get("/deliverables/{deliverable_id}", response_model=DeliverableDetailResponse)
@@ -3958,7 +4093,9 @@ def create_app(
             # ``pip install -e '.[export]'`` and retries.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from xhtml2pdf import pisa  # type: ignore[import-not-found]
+                from xhtml2pdf import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                    pisa,
+                )
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -4031,7 +4168,9 @@ def create_app(
             # as PDF. Same 503 fallback when the extra isn't installed.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from ebooklib import epub  # type: ignore[import-not-found]
+                from ebooklib import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                    epub,
+                )
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -4161,13 +4300,24 @@ def create_app(
 
         events_dir = default_events_dir()
         if not _os.path.isdir(events_dir):
+            # NOT "zero dispatches". We could not look. Fail CLOSED: an alarm
+            # whose sensor is unplugged must page, not report health.
             return ProviderRatioResponse(
-                window_minutes=window_minutes, total_dispatches=0,
+                window_minutes=window_minutes,
+                total_dispatches=0,
+                evidence_readable=False,
+                alert_recommended=True,
+                alert_reason=(
+                    f"event log directory is unreadable ({events_dir!r}); this "
+                    "is NOT a statement that no dispatches occurred — the "
+                    "provider-ratio sensor could not read its own data source."
+                ),
             )
         cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
 
         per_provider: dict[str, dict[str, int]] = {}
         total = 0
+        unreadable_files = 0
         for filename in _os.listdir(events_dir):
             if not filename.endswith(".jsonl"):
                 continue
@@ -4177,6 +4327,7 @@ def create_app(
                     _os.path.getmtime(path), tz=UTC,
                 )
             except OSError:
+                unreadable_files += 1
                 continue
             # Skip files entirely older than the cutoff window — saves
             # an open() on the long tail of historical investigations.
@@ -4218,6 +4369,7 @@ def create_app(
                             bucket["success"] += 1
                         total += 1
             except OSError:
+                unreadable_files += 1
                 continue
 
         breakdown = []
@@ -4260,6 +4412,17 @@ def create_app(
                 f"Hermes-primary is likely silently failing."
             )
 
+        if unreadable_files:
+            # Evidence we KNOW we could not read. Unlike the zero-dispatch case
+            # below, there is no ambiguity here to defer to another probe: the
+            # measurement is incomplete and the ratio may be wrong. Page.
+            alert = True
+            unread_note = (
+                f"{unreadable_files} event file(s) could not be read; the "
+                "provider ratio is computed over incomplete evidence."
+            )
+            reason = f"{reason} {unread_note}" if reason else unread_note
+
         return ProviderRatioResponse(
             window_minutes=window_minutes,
             total_dispatches=total,
@@ -4268,6 +4431,8 @@ def create_app(
             openrouter_fraction=openrouter_fraction,
             alert_recommended=alert,
             alert_reason=reason,
+            evidence_readable=unreadable_files == 0,
+            unreadable_event_files=unreadable_files,
         )
 
     # ── Sprint 16 partial: attribution telemetry ───────────────────
@@ -6202,8 +6367,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[OutcomeRecentRow] = []
         for r in rows:
             out.append(OutcomeRecentRow(
@@ -6608,8 +6792,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[PayoutTransferResponse] = []
         for r in rows:
             out.append(PayoutTransferResponse(
@@ -6893,8 +7096,26 @@ def create_app(
                     "WHERE user_id = ? ORDER BY requested_at DESC",
                     [user_id],
                 ).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # Table not created yet — genuinely no requests have been filed.
             rows = []
+        except Exception as exc:
+            # GDPR/CCPA surface (master-spec 13.3/13.7). Returning [] told a
+            # user who HAD filed an erasure request that they never did — and
+            # the client cannot tell, so it hid their cancel control while the
+            # cancellation window ran down. Never impersonate "none" here.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "deletion_ledger_unavailable",
+                        "message": (
+                            "Your deletion requests could not be read. This is "
+                            "NOT a statement that none are pending."
+                        ),
+                    }
+                },
+            ) from exc
         return DeletionRequestListResponse(
             requests=[
                 _deletion_request_row_to_response(r) for r in rows
@@ -7076,8 +7297,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[DocumentSummary] = []
         for r in rows:
             out.append(DocumentSummary(
@@ -7205,10 +7445,15 @@ def create_app(
                         else (str(r[7]) if r[7] is not None else None)
                     ),
                 ))
-        except Exception:
+        except duckdb.CatalogException:
             # The skill_rules table is created lazily by the writer.
             # An empty/missing table is a normal pre-promotion state;
             # return an empty list rather than 500.
+            #
+            # NARROWED from `except Exception`: that also swallowed a genuinely
+            # unreadable store, so corruption was reported as "no rules yet".
+            # Only the missing-table case is a normal state; anything else is a
+            # real failure and must surface.
             rules = []
 
         return SkillRuleListResponse(rules=rules)

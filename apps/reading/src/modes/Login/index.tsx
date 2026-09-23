@@ -51,6 +51,33 @@ function PasskeyMark({ active = false }: { active?: boolean }) {
   );
 }
 
+/**
+ * Constrain a post-login redirect to a path INSIDE this app.
+ *
+ * `?next=` is attacker-controllable and was passed to `navigate()` unchecked,
+ * so `…/login?next=\\evil.com` sent an authenticated user off-site — the
+ * post-auth moment being exactly when a phishing landing is most convincing.
+ * That is GHSA-wrjc-x8rr-h8h6 ("open redirect via backslash in <Link> and
+ * useNavigate", CVE-2025-68470 bypass), which react-router only patches in
+ * 7.18.0 while this app is on 6.30.x.
+ *
+ * Validating here is not a stopgap for that upgrade — navigating to an
+ * unvalidated user-supplied target is wrong on any router version, and this
+ * keeps the guarantee even if the dependency regresses again.
+ *
+ * Rejected, all collapsing to "/":
+ *   - anything not starting with "/"        → "https://evil.com", "javascript:…"
+ *   - protocol-relative "//host"            → browser reads it as a host
+ *   - backslash forms "/\\host", "\\\\host"  → normalised to a host by the router
+ * `searchParams.get` returns the DECODED value, so "%5C" is already "\\" here.
+ */
+export function internalPathOnly(raw: string): string {
+  if (!raw.startsWith("/")) return "/";
+  if (raw.includes("\\")) return "/";
+  if (raw.startsWith("//")) return "/";
+  return raw;
+}
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [emailStatus, setEmailStatus] = useState<EmailStatus>("idle");
@@ -75,9 +102,11 @@ export default function Login() {
   const approvalCode = searchParams.get("code");
   const nextPath = useMemo(
     () =>
-      searchParams.get("next") ??
-      (location.state as { from?: string } | null)?.from ??
-      "/",
+      internalPathOnly(
+        searchParams.get("next") ??
+          (location.state as { from?: string } | null)?.from ??
+          "/",
+      ),
     [location.state, searchParams],
   );
 
@@ -294,7 +323,7 @@ export default function Login() {
     return (
       <ReceiptShell>
         <section className="handoff-receipt" aria-labelledby="handoff-title">
-          <div className="handoff-receipt__werner">
+          <div className="handoff-receipt__mascot">
             <SketchCanvas
               render={renderConstellation}
               params={{ ...DEFAULT_CONSTELLATION_PARAMS, seed: "antiek-access-desk", mode: "night" }}
@@ -331,7 +360,7 @@ export default function Login() {
     return (
       <ReceiptShell>
         <section className="handoff-receipt handoff-receipt--approved" role="status">
-          <div className="handoff-receipt__werner">
+          <div className="handoff-receipt__mascot">
             <SketchCanvas
               render={renderConstellation}
               params={{ ...DEFAULT_CONSTELLATION_PARAMS, seed: "antiek-access-desk", mode: "night" }}

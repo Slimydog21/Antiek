@@ -101,6 +101,22 @@ def resolve_or_create_ip_holder(con: LockedConnection, display_name: str) -> str
     return str(ip_holders.create_pre_onboarded(con, display_name=display_name))
 
 
+def resolve_content_class(content_class: str | None) -> str:
+    """The class a source document is registered under: the gated default
+    when none is given, otherwise the given class — which must be a KNOWN
+    class (a typo raises rather than silently gating). Pure, so a producer
+    can resolve BEFORE its first write and insert the row already classed:
+    a document must never exist with content_class NULL between the insert
+    and the registration that classifies it."""
+    resolved_class = content_class or GATED_DEFAULT_CONTENT_CLASS
+    if resolved_class not in VALID_CONTENT_CLASSES:
+        raise ValueError(
+            f"unrecognised content_class {resolved_class!r}; expected one of "
+            f"{sorted(VALID_CONTENT_CLASSES)}"
+        )
+    return resolved_class
+
+
 def register_source_document(
     con: LockedConnection,
     *,
@@ -160,12 +176,7 @@ def register_source_document(
             "registering its rights (acquisition inserts, then registers)."
         )
 
-    resolved_class = content_class or GATED_DEFAULT_CONTENT_CLASS
-    if resolved_class not in VALID_CONTENT_CLASSES:
-        raise ValueError(
-            f"unrecognised content_class {resolved_class!r}; expected one of "
-            f"{sorted(VALID_CONTENT_CLASSES)}"
-        )
+    resolved_class = resolve_content_class(content_class)
 
     # user_content is escrow-excluded BY CONSTRUCTION: the operator's own / -captured
     # media has no external rights holder to ever pay, so passing an explicit
