@@ -197,6 +197,27 @@ describe("ThinkingStream — honest no-key / failed state (M4)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(onRetry).toHaveBeenCalledOnce();
   });
+
+  it("a failed trajectory FETCH says it couldn't load and retries the fetch (audit wave4 C15)", () => {
+    const retry = vi.fn();
+    const onRetry = vi.fn();
+    render(
+      <ThinkingStream
+        investigation={state({
+          status: "error",
+          events: [],
+          loadError: { code: "backend_unreachable", retryable: true },
+          retry,
+        })}
+        onRetry={onRetry}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("Couldn’t load this research");
+    expect(screen.queryByText(/research didn’t complete/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(retry).toHaveBeenCalledOnce();
+    expect(onRetry).not.toHaveBeenCalled();
+  });
 });
 
 describe("ThinkingStream — live cost + steer (M3)", () => {

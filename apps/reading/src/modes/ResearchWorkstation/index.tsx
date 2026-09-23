@@ -6,6 +6,7 @@ import { markSeen } from "../../workspace/seen";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import type { ResearchSourcePolicy } from "../../lib/api";
 import { parseSynthesis } from "../../lib/synthesisParser";
+import AIActionFailure from "../../shared/AIActionFailure";
 import GlassSurface from "../../shell/GlassSurface";
 import { PanelHost } from "../../workspace/PanelHost";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
@@ -181,6 +182,18 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-ink-mute dark:text-moonlight font-serif italic">
         Loading investigation…
+      </div>
+    );
+  }
+  if (investigation.status === "error") {
+    return (
+      <div className="h-full flex items-center justify-center px-4">
+        <AIActionFailure
+          title="Couldn’t load this research"
+          code={investigation.loadError?.code ?? "unknown"}
+          retryable
+          onRetry={() => investigation.retry?.()}
+        />
       </div>
     );
   }
