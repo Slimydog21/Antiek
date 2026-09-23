@@ -523,6 +523,25 @@ def check_phase_6(
                 f"Empty/vacuous falsifications are acceptable under this "
                 f"recommendation."
             )
+        # Any recommendation OTHER than insufficient_evidence is a claim that a
+        # defensible thesis EXISTS — the other half of the contract quoted
+        # above. This gate verified the falsifications were non-vacuous but
+        # never checked there was a thesis to falsify, so a payload with
+        # thesis_summary="" and ZERO thesis_components recommending "proceed"
+        # at conviction 0.9 reached `return True`.
+        #
+        # Only thesis_summary is required. `thesis_components` is deliberately
+        # NOT checked: the contract asks for "a defensible thesis with
+        # non-vacuous falsifications", not a component breakdown, and
+        # tests/test_phase_runner_postconditions.py emits a real thesis with
+        # thesis_components=[] as a legitimate shape.
+        if not payload.thesis_summary.strip():
+            return False, (
+                f"synthesize.delivered recommends "
+                f"{payload.implicit_recommendation!r} but thesis_summary is "
+                f"empty. Any recommendation other than insufficient_evidence "
+                f"asserts a defensible thesis; there is none here to falsify."
+            )
         vacuous, why = _falsifications_are_vacuous(payload.falsification_conditions)
         if vacuous:
             return False, (

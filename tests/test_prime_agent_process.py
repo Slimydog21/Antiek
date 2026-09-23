@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import stat
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -13,6 +14,7 @@ import runtime.prime_agent.process as process_module
 from runtime.prime_agent.installation import (
     MAXIMUM_VERSION,
     MINIMUM_VERSION,
+    PrimeAgentInstallation,
     PrimeAgentUnavailable,
     prime_agent_artifact_digest,
     resolve_prime_agent_binary,
@@ -212,6 +214,60 @@ def test_only_allowlisted_provider_credential_is_injected(tmp_path: Path) -> Non
         _config(binary, tmp_path, provider_environment={"SECRET": "token"})
 
 
+
+def _runner_cannot_execute_esm_via_env_node(tmp_path: Path) -> str | None:
+    """An INDEPENDENT control for the capability probe's environment.
+
+    Two of the tests below write their own fake ``cli.js`` and run the real
+    ``verify_prime_agent_installation`` over it. That probe once failed on a
+    CI runner where node and the bundle were both present (the two guarded
+    preconditions), so the failure read as a test failure and reddened a
+    REQUIRED shard on PRs that touch no Python. The probe needs a THIRD
+    precondition: that this runner can execute an ES-module script through
+    ``/usr/bin/env node`` inside the probe's own timeout.
+
+    Returns the reason to SKIP when the runner provably cannot; ``None`` when
+    it can — in which case a probe failure is a real defect and must FAIL.
+    The skip is earned by this control, never inferred from the failure.
+    """
+    from runtime.prime_agent.installation import _PROBE_TIMEOUT_SECONDS
+
+    probe_dir = tmp_path / "_env_control"
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    (probe_dir / "package.json").write_text('{"type":"module"}\n')
+    (probe_dir / "chunk.js").write_text("export default 'env-ok';\n")
+    script = probe_dir / "control.js"
+    script.write_text(
+        "#!/usr/bin/env node\nimport value from './chunk.js';\nconsole.log(value);\n"
+    )
+    script.chmod(script.stat().st_mode | stat.S_IXUSR)
+    try:
+        done = subprocess.run(
+            [str(script)], capture_output=True, timeout=_PROBE_TIMEOUT_SECONDS,
+            cwd=probe_dir, env={"PATH": os.environ["PATH"]}, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return f"this runner cannot run an ES-module script via /usr/bin/env node within {_PROBE_TIMEOUT_SECONDS}s"
+    except OSError as exc:
+        return f"this runner cannot execute a node script: {type(exc).__name__}: {exc}"
+    if done.returncode != 0 or done.stdout.strip() != b"env-ok":
+        return (
+            "this runner cannot run an ES-module script via /usr/bin/env node "
+            f"(exit {done.returncode}, stderr {done.stderr[:120]!r})"
+        )
+    return None
+
+
+def _verify_or_skip_on_proven_env(binary: Path, tmp_path: Path) -> PrimeAgentInstallation:
+    try:
+        return verify_prime_agent_installation(binary, environ={"PATH": os.environ["PATH"]})
+    except PrimeAgentUnavailable as exc:
+        reason = _runner_cannot_execute_esm_via_env_node(tmp_path)
+        if reason is None:
+            raise  # node works here: the probe itself is broken — a real failure
+        pytest.skip(f"{reason}; capability probe said: {exc}")
+
+
 def test_staged_javascript_bundle_preserves_relative_imports(tmp_path: Path) -> None:
     if not Path("/usr/bin/env").exists() or not shutil.which("node"):
         pytest.skip("node is not installed")
@@ -228,9 +284,7 @@ def test_staged_javascript_bundle_preserves_relative_imports(tmp_path: Path) -> 
         "else console.log(value);\n"
     )
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
-    installation = verify_prime_agent_installation(
-        binary.resolve(), environ={"PATH": os.environ["PATH"]}
-    )
+    installation = _verify_or_skip_on_proven_env(binary.resolve(), tmp_path)
     result = run_prime_agent_process(
         PrimeAgentProcessConfig(
             installation=installation,
@@ -381,7 +435,7 @@ def test_live_lazy_import_survives_shared_generation_rebuild(tmp_path: Path) -> 
         "process.stdin.once('data', async () => console.log((await import('./chunk.js')).default));\n"
     )
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
-    installation = verify_prime_agent_installation(binary.resolve(), environ={"PATH": os.environ["PATH"]})
+    installation = _verify_or_skip_on_proven_env(binary.resolve(), tmp_path)
     config = PrimeAgentProcessConfig(
         installation=installation,
         cwd=tmp_path.resolve(),

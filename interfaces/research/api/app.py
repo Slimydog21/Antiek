@@ -161,12 +161,16 @@ class HealthResponse(BaseModel):
     # TurboPuffer SERVABLE hybrid (dogfood) — honest, never faked.
     # hybrid_ready requires env+key+active pointer; production_default_mount
     # stays False until deliberately flipped in a future decision.
-    turbopuffer_servable_enabled: bool = False
-    turbopuffer_shadow_enabled: bool = False
-    turbopuffer_api_key_present: bool = False
-    turbopuffer_active_pointer: bool = False
+    # None on these five means the probe did not run or raised — a crashed
+    # probe used to be byte-identical to "TurboPuffer is switched off". The
+    # error text rides on turbopuffer_probe_error.
+    turbopuffer_servable_enabled: bool | None = False
+    turbopuffer_shadow_enabled: bool | None = False
+    turbopuffer_api_key_present: bool | None = False
+    turbopuffer_active_pointer: bool | None = False
     turbopuffer_pointer_context_ok: bool | None = None
-    turbopuffer_hybrid_ready: bool = False
+    turbopuffer_hybrid_ready: bool | None = False
+    turbopuffer_probe_error: str | None = None
     turbopuffer_resolved_kind: str = "brute_force"
     turbopuffer_indexed_row_count: int | None = None
     turbopuffer_content_hash: str | None = None
@@ -187,6 +191,38 @@ class HealthResponse(BaseModel):
     duckdb_wal_present: bool = False
     duckdb_wal_bytes: int = 0
     duckdb_error: str | None = None
+    # Verified-backup freshness (pass46 / production-audit P1). A green
+    # /health must not hide a missing or stale backup marker. Mirrors
+    # tools/backup_freshness.py: fresh=False + backup_reason when the
+    # marker is missing/unreadable/stale; never raises.
+    backup_fresh: bool = False
+    backup_completed_at: str | None = None
+    backup_age_hours: float | None = None
+    backup_marker_path: str = ""
+    backup_reason: str = ""
+
+
+def _probe_backup_freshness() -> dict[str, Any]:
+    """Read-only backup freshness for /health. Never raises."""
+    try:
+        from tools.backup_freshness import evaluate, resolve_marker_path
+
+        verdict = evaluate(resolve_marker_path(None), 26.0)
+        return {
+            "backup_fresh": verdict.fresh,
+            "backup_completed_at": verdict.completed_at,
+            "backup_age_hours": verdict.age_hours,
+            "backup_marker_path": verdict.marker_path,
+            "backup_reason": verdict.reason,
+        }
+    except Exception as exc:
+        return {
+            "backup_fresh": False,
+            "backup_completed_at": None,
+            "backup_age_hours": None,
+            "backup_marker_path": "",
+            "backup_reason": f"probe_exception: {type(exc).__name__}: {exc}",
+        }
 
 
 def _resolve_build_sha() -> str:
@@ -279,6 +315,16 @@ def _probe_flywheel() -> tuple[bool, int]:
         # (False, 0) rather than failing the whole /health over a probe,
         # mirroring _resolve_build_sha's swallow-to-"unknown".
         return (False, 0)
+
+
+def _tp_flag(app: Any, key: str) -> bool | None:
+    """A TurboPuffer health flag for /health. None (not False) when the probe
+    raised — the dict then carries ``error`` — or never ran; a crashed probe
+    must not read as "switched off"."""
+    tp = getattr(app.state, "turbopuffer_health", None) or {}
+    if not tp or tp.get("error"):
+        return None
+    return bool(tp.get(key))
 
 
 def _probe_turbopuffer() -> dict[str, Any]:
@@ -2166,35 +2212,18 @@ def create_app(
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
             knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
-            turbopuffer_servable_enabled=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "servable_enabled"
-                )
-            ),
-            turbopuffer_shadow_enabled=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "shadow_enabled"
-                )
-            ),
-            turbopuffer_api_key_present=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "api_key_present"
-                )
-            ),
-            turbopuffer_active_pointer=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "active_pointer_file"
-                )
-            ),
+            turbopuffer_servable_enabled=_tp_flag(app, "servable_enabled"),
+            turbopuffer_shadow_enabled=_tp_flag(app, "shadow_enabled"),
+            turbopuffer_api_key_present=_tp_flag(app, "api_key_present"),
+            turbopuffer_active_pointer=_tp_flag(app, "active_pointer_file"),
             turbopuffer_pointer_context_ok=(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
                     "active_pointer_context_ok"
                 )
             ),
-            turbopuffer_hybrid_ready=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "hybrid_ready"
-                )
+            turbopuffer_hybrid_ready=_tp_flag(app, "hybrid_ready"),
+            turbopuffer_probe_error=(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get("error")
             ),
             turbopuffer_resolved_kind=str(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
@@ -2237,6 +2266,7 @@ def create_app(
             duckdb_wal_present=duckdb_health.wal_present,
             duckdb_wal_bytes=duckdb_health.wal_bytes,
             duckdb_error=duckdb_health.error,
+            **_probe_backup_freshness(),
         )
 
     # ── POST typed event ────────────────────────────────────────
