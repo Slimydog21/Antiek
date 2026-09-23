@@ -57,6 +57,7 @@ try:
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        optional_count,
         response_contains_secret,
         usage_counts_reported,
     )
@@ -68,6 +69,7 @@ except ImportError:  # pragma: no cover
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        optional_count,
         response_contains_secret,
         usage_counts_reported,
     )
@@ -96,6 +98,10 @@ class AnthropicProvider:
     The router looks the instance up by ``name`` (``"anthropic"``,
     matching ``config.yaml``).
     """
+
+    # Anthropic bills prompt-cache WRITES at 1.25x base input, so the router's
+    # unreported-usage ceiling must price this adapter's input term as writes.
+    bills_cache_writes = True
 
     name = "anthropic"
 
@@ -328,12 +334,19 @@ class AnthropicProvider:
         # ``max(0, input - cached)`` double-subtracted and clamped to zero
         # on a normal cache hit — underbilling and dropping the premium
         # cache_creation writes entirely.
-        input_remainder = int(raw_usage.get("input_tokens", 0) or 0)
-        cache_read = int(raw_usage.get("cache_read_input_tokens", 0) or 0)
-        cache_creation = int(raw_usage.get("cache_creation_input_tokens", 0) or 0)
+        input_remainder = int(raw_usage["input_tokens"])
+        # The cache subsets are optional (absent = no cache on this call), but
+        # a PRESENT null / non-int one is the provider not reporting the split:
+        # unreported, so the router bills the ceiling. Never coerce it to 0
+        # (a paid cache write priced free) and never int() it (a string raises
+        # before the router can bill the call at all).
+        cache_read = optional_count(raw_usage, "cache_read_input_tokens")
+        cache_creation = optional_count(raw_usage, "cache_creation_input_tokens")
+        if cache_read is None or cache_creation is None:
+            return NormalizedUsage(input_tokens=0, output_tokens=0, reported=False)
         return NormalizedUsage(
             input_tokens=input_remainder + cache_read + cache_creation,
-            output_tokens=int(raw_usage.get("output_tokens", 0) or 0),
+            output_tokens=int(raw_usage["output_tokens"]),
             cached_input_tokens=cache_read,
             cache_creation_input_tokens=cache_creation,
         )

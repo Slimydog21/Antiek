@@ -788,9 +788,17 @@ def _dispatch_authoritative(
                 "dispatch: %s/%s reported no usage; billing the call ceiling",
                 provider_name, model_name,
             )
+            ceiling_input = max(1, len(prompt.encode("utf-8")))
+            # A ceiling must bound what this provider can actually charge. An
+            # adapter that can bill prompt-cache writes (Anthropic: 1.25x base
+            # input) has its whole input term priced as writes; the others
+            # have no write premium, so base input is already their bound.
             usage = NormalizedUsage(
-                input_tokens=max(1, len(prompt.encode("utf-8"))),
+                input_tokens=ceiling_input,
                 output_tokens=effective_max_tokens,
+                cache_creation_input_tokens=(
+                    ceiling_input if getattr(provider, "bills_cache_writes", False) else 0
+                ),
                 reported=False,
             )
         finish = normalize_finish_reason(raw.finish_reason)

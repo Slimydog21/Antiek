@@ -35,6 +35,10 @@ _PROMPT = "x " * 4000  # 8000 UTF-8 bytes
 _MAX_TOKENS = 1000
 _PRICING = TierPricing(input_per_mtok=1.0, output_per_mtok=4.0, cached_input_per_mtok=0.1)
 _CEILING_USD = (8000 / 1_000_000) * 1.0 + (_MAX_TOKENS / 1_000_000) * 4.0
+# Anthropic can bill prompt-cache writes at 1.25x base input, so its ceiling
+# prices the whole input term as writes (codex critic on #3415: the base-rate
+# ceiling was $0.012 against a real $0.014 for 8,000 cache-write tokens).
+_CEILING_USD_ANTHROPIC = (8000 / 1_000_000) * 1.0 * 1.25 + (_MAX_TOKENS / 1_000_000) * 4.0
 
 
 @pytest.fixture(autouse=True)
@@ -86,12 +90,32 @@ _OPENAI_UNREPORTED = [
     pytest.param({"prompt_tokens": None, "completion_tokens": None}, id="null-counts"),
     pytest.param({"prompt_tokens": 10, "completion_tokens": None}, id="null-completion"),
     pytest.param({"prompt_tokens": "", "completion_tokens": ""}, id="blank-counts"),
+    # A present but invalid cache count is the split not reported: never 0,
+    # never an int() that raises before the router can bill the call.
+    pytest.param({"prompt_tokens": 10, "completion_tokens": 5,
+                  "prompt_tokens_details": {"cached_tokens": None}}, id="null-cached"),
+    pytest.param({"prompt_tokens": 10, "completion_tokens": 5,
+                  "prompt_tokens_details": {"cached_tokens": "abc"}}, id="string-cached"),
+    pytest.param({"prompt_tokens": 10, "completion_tokens": 5,
+                  "prompt_tokens_details": "abc"}, id="non-object-details"),
+    pytest.param({"prompt_tokens": 10, "completion_tokens": 5,
+                  "prompt_cache_hit_tokens": None}, id="null-cache-hit"),
+    pytest.param({"prompt_tokens": 10, "completion_tokens": 5,
+                  "prompt_cache_hit_tokens": -3}, id="negative-cache-hit"),
 ]
 _ANTHROPIC_UNREPORTED = [
     pytest.param(None, id="omitted"),
     pytest.param({"input_tokens": None, "output_tokens": None}, id="null-counts"),
     pytest.param({"input_tokens": 10, "output_tokens": None}, id="null-output"),
     pytest.param({"input_tokens": "", "output_tokens": ""}, id="blank-counts"),
+    pytest.param({"input_tokens": 10, "output_tokens": 5,
+                  "cache_creation_input_tokens": None}, id="null-cache-write"),
+    pytest.param({"input_tokens": 10, "output_tokens": 5,
+                  "cache_creation_input_tokens": "abc"}, id="string-cache-write"),
+    pytest.param({"input_tokens": 10, "output_tokens": 5,
+                  "cache_read_input_tokens": None}, id="null-cache-read"),
+    pytest.param({"input_tokens": 10, "output_tokens": 5,
+                  "cache_read_input_tokens": 1.5}, id="float-cache-read"),
 ]
 
 
@@ -124,7 +148,48 @@ def test_anthropic_unreported_usage_is_billed_at_ceiling(usage) -> None:
         config=_config("anthropic", "claude-sonnet-5"),
     )
     assert result.usage.reported is False
-    assert result.cost_usd == pytest.approx(_CEILING_USD)
+    assert result.cost_usd == pytest.approx(_CEILING_USD_ANTHROPIC)
+
+
+def test_anthropic_ceiling_bounds_a_cache_write_heavy_call() -> None:
+    """The ceiling is an upper bound only if it covers the dearest shape the
+    provider can bill: every prompt token written to the cache at 1.25x."""
+    body = dict(_ANTHROPIC_TEXT)
+    body["usage"] = {"input_tokens": 0, "cache_creation_input_tokens": 8000,
+                     "output_tokens": _MAX_TOKENS}
+    register_provider(_anthropic(body))
+    actual = dispatch(
+        _PROMPT, "thought_partner", investigation_id="inv-usage",
+        config=_config("anthropic", "claude-sonnet-5"),
+    )
+    assert actual.usage.reported is True
+    assert actual.cost_usd == pytest.approx(0.014)
+    assert actual.cost_usd <= _CEILING_USD_ANTHROPIC + 1e-12
+
+
+def test_valid_cache_counts_are_priced_not_ceilinged() -> None:
+    """Positive control for the cache hardening: real cache counts price as
+    reported, in both adapters."""
+    body = dict(_OPENAI_TEXT)
+    body["usage"] = {"prompt_tokens": 100, "completion_tokens": 50,
+                     "prompt_tokens_details": {"cached_tokens": 40}}
+    register_provider(_openai(body))
+    oc = dispatch(_PROMPT, "thought_partner", investigation_id="inv-usage",
+                  config=_config("oc", "deepseek-chat"))
+    assert oc.usage.reported is True and oc.usage.cached_input_tokens == 40
+    assert oc.cost_usd == pytest.approx(60 / 1e6 * 1.0 + 40 / 1e6 * 0.1 + 50 / 1e6 * 4.0)
+
+    body = dict(_ANTHROPIC_TEXT)
+    body["usage"] = {"input_tokens": 10, "cache_read_input_tokens": 20,
+                     "cache_creation_input_tokens": 30, "output_tokens": 5}
+    reset_provider_registry()
+    register_provider(_anthropic(body))
+    an = dispatch(_PROMPT, "thought_partner", investigation_id="inv-usage",
+                  config=_config("anthropic", "claude-sonnet-5"))
+    assert an.usage.reported is True
+    assert an.cost_usd == pytest.approx(
+        10 / 1e6 * 1.0 + 20 / 1e6 * 0.1 + 30 / 1e6 * 1.0 * 1.25 + 5 / 1e6 * 4.0
+    )
 
 
 def test_reported_usage_is_billed_as_reported() -> None:
