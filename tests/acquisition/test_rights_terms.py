@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from acquisition.urls.rights_terms import parse_license_directive, parse_rsl_xml
+from acquisition.urls.rights_terms import parse_rsl_xml
+from acquisition.urls.robots import parse_robots
 
 
 def test_a_licence_with_no_payment_element_is_free() -> None:
@@ -33,4 +34,9 @@ def test_a_document_without_a_licence_declares_no_payment() -> None:
 
 
 def test_the_licence_directive_survives_a_byte_order_mark() -> None:
-    assert parse_license_directive("﻿License: /license.xml\n") == "/license.xml"
+    assert (
+        parse_robots(
+            "﻿License: /license.xml\nUser-agent: *\nAllow: /\n"
+        ).global_licenses
+        == ("/license.xml",)
+    )

@@ -38,8 +38,10 @@ Three guarantees, in priority order:
    :data:`UNREACHABLE_RETRY_S`. :func:`clear_robots_cache` exists for tests
    and for an operator who wants an immediate re-read.
 
-The RSL ``License:`` directive is read from the same body and, when it points
-at the same origin, the licence XML is fetched once and parsed into
+The RSL ``License:`` directive is selected per user-agent group (a group-
+scoped licence beats the global one, per RSL). When it points at the same
+origin, the licence XML is fetched lazily, once per agent token, by
+:meth:`RobotsPolicy.terms_for` and parsed into
 :class:`acquisition.urls.rights_terms.RightsTerms` — the free machine-readable
 "gate already dropped" signal this lane exists to surface. A cross-origin
 ``License:`` URL is recorded but NOT followed: a robots.txt must not be able
@@ -68,7 +70,6 @@ from urllib.parse import urljoin, urlsplit
 from acquisition.urls.rights_terms import (
     NO_TERMS,
     RightsTerms,
-    parse_license_directive,
     parse_rsl_xml,
 )
 
@@ -121,13 +122,15 @@ class RobotsGroup:
 
     agents: tuple[str, ...]
     rules: tuple[RobotsRule, ...]
+    licenses: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class ParsedRobots:
-    """The records relevant to Allow/Disallow matching."""
+    """The records relevant to Allow/Disallow matching and RSL selection."""
 
     groups: tuple[RobotsGroup, ...] = ()
+    global_licenses: tuple[str, ...] = ()
 
 
 NO_RULES = ParsedRobots()
@@ -139,8 +142,9 @@ def parse_robots(text: str) -> ParsedRobots:
     Consecutive user-agent lines open one group; allow/disallow lines add
     rules to the open group; a user-agent line that follows any other record
     starts a new group; allow/disallow before the first user-agent line are
-    ignored. Other records (sitemap, crawl-delay, license, ...) are ignored
-    for matching. Comments (#) and blank lines are skipped. Keys are
+    ignored. Other records (sitemap, crawl-delay, ...) are ignored for
+    matching; ``License:`` values are collected globally or for the open
+    group. Comments (#) and blank lines are skipped. Keys are
     case-insensitive. A user-agent value is reduced to its product token: the
     text before the first ``/`` or whitespace, lower-cased.
     """
@@ -148,14 +152,19 @@ def parse_robots(text: str) -> ParsedRobots:
     groups: list[RobotsGroup] = []
     agents: list[str] = []
     rules: list[RobotsRule] = []
+    group_licenses: list[str] = []
+    global_licenses: list[str] = []
     in_agent_run = False
 
     def close_group() -> None:
-        nonlocal agents, rules
+        nonlocal agents, rules, group_licenses
         if agents:
-            groups.append(RobotsGroup(tuple(agents), tuple(rules)))
+            groups.append(
+                RobotsGroup(tuple(agents), tuple(rules), tuple(group_licenses))
+            )
         agents = []
         rules = []
+        group_licenses = []
 
     for raw in text.splitlines():
         line = raw.split("#", 1)[0].strip()
@@ -173,11 +182,16 @@ def parse_robots(text: str) -> ParsedRobots:
             if agents:
                 rules.append(RobotsRule(key == "allow", value))
             in_agent_run = False
+        elif key == "license" and value:
+            if agents:
+                group_licenses.append(value)
+            else:
+                global_licenses.append(value)
         # Any other record (sitemap, crawl-delay, license, ...) neither opens
         # nor closes a group: RFC 9309 s2.2.4 says it must not interfere with
         # rule-group parsing.
     close_group()
-    return ParsedRobots(tuple(groups))
+    return ParsedRobots(tuple(groups), tuple(global_licenses))
 
 
 def _body_problem(text: str) -> str | None:
@@ -217,9 +231,12 @@ class RobotsDisallowed(Exception):
         )
 
 
+_terms_lock = threading.Lock()
+
+
 @dataclass(frozen=True)
 class RobotsPolicy:
-    """The parsed robots posture for one origin, plus the RSL terms it declared.
+    """The parsed robots posture for one origin.
 
     ``applied`` is True iff a robots.txt body was fetched and parsed and its
     rules govern :meth:`allows`. When False, ``fail_open_reason`` says why
@@ -230,15 +247,43 @@ class RobotsPolicy:
     robots_url: str
     applied: bool
     fail_open_reason: str | None
-    license_url: str | None
-    rights_terms: RightsTerms
     rules: ParsedRobots = field(default=NO_RULES, repr=False, compare=False)
+    _terms_by_agent: dict[str, RightsTerms] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     def allows(self, user_agent: str, url: str) -> bool:
         """True iff ``user_agent`` may fetch ``url`` under this policy."""
         if not self.applied:
             return True
         return robots_allows(self.rules, user_agent, url)
+
+    def terms_for(self, user_agent: str, *, fetch_text: FetchText) -> RightsTerms:
+        """The RSL terms that apply to ``user_agent`` on this origin: its
+        selected group's License, else the global one (RSL). Fetched at most
+        once per agent token per cached policy; never raises."""
+        if not self.applied:
+            return NO_TERMS
+        token = user_agent.split("/", 1)[0].strip().lower()
+        with _terms_lock:
+            hit = self._terms_by_agent.get(token)
+        if hit is not None:
+            return hit
+        try:
+            terms = _load_terms(
+                self.origin,
+                select_license(self.rules, user_agent),
+                fetch_text,
+                self.rules,
+                user_agent,
+            )
+        except Exception as exc:
+            terms = RightsTerms(
+                source="robots_license_directive",
+                parse_error=f"licence unreadable ({type(exc).__name__}: {exc})",
+            )
+        with _terms_lock:
+            return self._terms_by_agent.setdefault(token, terms)
 
 
 def origin_of(url: str) -> str:
@@ -252,46 +297,49 @@ def robots_url_for(url: str) -> str:
     return f"{origin_of(url)}/robots.txt"
 
 
+def _selected_groups(
+    robots: ParsedRobots,
+    user_agent: str,
+) -> tuple[RobotsGroup, ...]:
+    """The RFC 9309 groups that govern ``user_agent``.
+    Group selection (RFC 9309 s2.2.1, with the product-family fallback major
+    crawlers use): take the product token (the User-Agent up to the first
+    '/', lower-cased, e.g. "antiek-agent"); select the groups naming exactly
+    that token; if none, the groups naming its longest '-'-delimited prefix
+    ("antiek"), and so on; if none, the '*' group. All groups at the chosen
+    level are merged; an empty result means no group applies."""
+    token = user_agent.split("/", 1)[0].strip().lower()
+    parts = token.split("-")
+    candidates = ["-".join(parts[:i]) for i in range(len(parts), 0, -1)]
+    for candidate in candidates:
+        matched = tuple(group for group in robots.groups if candidate in group.agents)
+        if matched:
+            return matched
+    return tuple(group for group in robots.groups if "*" in group.agents)
+
+
 def robots_allows(
     robots: ParsedRobots,
     user_agent: str,
     url: str,
 ) -> bool:
     """RFC 9309 evaluation over :func:`parse_robots`' result.
-    Group selection (RFC 9309 s2.2.1, with the product-family fallback major
-    crawlers use): take our product token (the User-Agent up to the first '/',
-    lower-cased, e.g. "antiek-agent"); the groups naming exactly that token
-    apply; if none, the groups naming its longest '-'-delimited prefix
-    ("antiek"), and so on; if none, the '*' group; if none, everything is
-    allowed. All groups at the chosen level are merged.
+    :func:`_selected_groups` chooses the governing groups.
     Rule matching (RFC 9309 s2.2.2/s2.2.3): the longest matching rule path
     wins, Allow wins a tie, '*' matches any sequence and a trailing '$'
     anchors the end. No matching rule means allowed."""
-    token = user_agent.split("/", 1)[0].strip().lower()
-    parts = token.split("-")
-    candidates = ["-".join(parts[:i]) for i in range(len(parts), 0, -1)]
-    rules: tuple[RobotsRule, ...] = ()
-    for candidate in candidates:
-        matched = [
-            group
-            for group in robots.groups
-            if candidate in group.agents
-        ]
-        if matched:
-            rules = tuple(rule for group in matched for rule in group.rules)
-            break
-    else:
-        rules = tuple(
-            rule for group in robots.groups if "*" in group.agents for rule in group.rules
-        )
-        if not rules:
-            return True
+    selected_groups = _selected_groups(robots, user_agent)
+    if not selected_groups:
+        return True
+    rules = tuple(rule for group in selected_groups for rule in group.rules)
 
     parsed_url = urlsplit(url)
-    target = parsed_url.path or "/"
+    # Normalise first (which decodes %2E to "."), then resolve dot segments,
+    # so "/a/../x" and "/a/%2E%2E/x" are both judged as "/x": the path an
+    # HTTP client or a normalising server actually ends up at.
+    normalised = _remove_dot_segments(_normalise(parsed_url.path)) or "/"
     if parsed_url.query:
-        target = f"{target}?{parsed_url.query}"
-    normalised = _normalise(target)
+        normalised = f"{normalised}?{_normalise(parsed_url.query)}"
 
     matching: list[tuple[int, bool]] = []
     for rule in rules:
@@ -303,6 +351,44 @@ def robots_allows(
     if not matching:
         return True
     return max(matching)[1]
+
+
+def _remove_dot_segments(path: str) -> str:
+    """Remove literal ``.`` and ``..`` segments exactly as HTTP clients do.
+
+    Percent-encoded dots (``%2E``) are deliberately left alone, matching
+    ``httpx.URL``. The explicit leading-slash and trailing-slash repairs keep
+    absolute paths absolute and preserve the distinction between ``/a/..``
+    (a directory traversal) and ``/a/../`` (the resulting directory)."""
+    segments = path.split("/")
+    out: list[str] = []
+    for segment in segments:
+        if segment == ".":
+            continue
+        if segment == "..":
+            if len(out) > 1:
+                out.pop()
+            continue
+        out.append(segment)
+    result = "/".join(out)
+    if path.endswith(("/.", "/..")) and not result.endswith("/"):
+        result += "/"
+    if path.startswith("/") and not result.startswith("/"):
+        result = f"/{result}"
+    return result
+
+
+def select_license(robots: ParsedRobots, user_agent: str) -> str | None:
+    """The first RSL licence that applies to ``user_agent`` (RSL group scope).
+
+    A licence in any selected user-agent group beats every global licence;
+    when no selected group declares one, the global licences apply. ``None``
+    means no applicable licence was declared."""
+    selected_groups = _selected_groups(robots, user_agent)
+    licenses = tuple(
+        license_url for group in selected_groups for license_url in group.licenses
+    ) or robots.global_licenses
+    return next(iter(licenses), None)
 
 
 @lru_cache(maxsize=512)
@@ -430,8 +516,6 @@ def _fail_open(
         robots_url=robots_url,
         applied=False,
         fail_open_reason=reason,
-        license_url=None,
-        rights_terms=NO_TERMS,
         rules=NO_RULES,
     )
     return policy, ttl_s
@@ -474,22 +558,11 @@ def _build_policy(
     if problem:
         return _fail_open(origin, robots_url, problem, ROBOTS_CACHE_TTL_S)
     rules = parse_robots(text)
-    license_url = parse_license_directive(text)
-    try:
-        rights_terms = _load_terms(origin, license_url, fetch_text, rules, user_agent)
-    except Exception as exc:
-        rights_terms = RightsTerms(
-            source="robots_license_directive",
-            license_url=license_url,
-            parse_error=f"licence unreadable ({type(exc).__name__}: {exc})",
-        )
     policy = RobotsPolicy(
         origin=origin,
         robots_url=robots_url,
         applied=True,
         fail_open_reason=None,
-        license_url=license_url,
-        rights_terms=rights_terms,
         rules=rules,
     )
     return policy, ROBOTS_CACHE_TTL_S
@@ -594,4 +667,5 @@ __all__ = [
     "robots_allows",
     "robots_policy_for",
     "robots_url_for",
+    "select_license",
 ]

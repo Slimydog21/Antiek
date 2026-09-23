@@ -231,7 +231,11 @@ def fetch(
             content_type=content_type,
             charset=_detect_charset(content_type),
             body=r.content,
-            rights_terms=policy.rights_terms if policy is not None else NO_TERMS,
+            rights_terms=(
+                policy.terms_for(user_agent, fetch_text=_fetch_text)
+                if policy is not None
+                else NO_TERMS
+            ),
             robots_fail_open_reason=policy.fail_open_reason if policy is not None else None,
         )
 

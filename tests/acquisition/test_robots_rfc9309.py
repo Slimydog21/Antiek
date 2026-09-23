@@ -14,6 +14,7 @@ from acquisition.urls.robots import (
     RobotsRule,
     parse_robots,
     robots_allows,
+    select_license,
 )
 
 AGENT = "Antiek-Agent/0.1 (+https://antiek.ai/contact)"
@@ -66,6 +67,32 @@ def test_groups_for_the_same_token_are_merged() -> None:
     assert robots_allows(parser, AGENT, "https://x/a") is False
     assert robots_allows(parser, AGENT, "https://x/b") is False
     assert robots_allows(parser, AGENT, "https://x/c") is True
+
+
+def test_dot_segments_are_resolved_before_matching() -> None:
+    parser = _parser("User-agent: *\nDisallow: /private\n")
+
+    assert robots_allows(parser, AGENT, "https://x/public/../private") is False
+    assert robots_allows(parser, AGENT, "https://x/public/%2E%2E/private") is False
+    assert robots_allows(parser, AGENT, "https://x/public/./ok") is True
+
+
+def test_fetch_refuses_a_dot_segment_route_to_a_disallowed_path() -> None:
+    client, requested = _client(
+        {
+            ("d.example", "/robots.txt"): (
+                200,
+                b"User-agent: *\nDisallow: /private\n",
+            ),
+            ("d.example", "/private"): (200, b"<html>private</html>"),
+        },
+        {},
+    )
+
+    with pytest.raises(acquisition.urls.robots.RobotsDisallowed):
+        fetch("https://d.example/public/../private", client=client)
+
+    assert "https://d.example/private" not in requested
 
 
 def test_the_longest_matching_rule_wins() -> None:
@@ -191,6 +218,16 @@ def test_parse_robots_groups_records() -> None:
     )
 
 
+def test_a_group_licence_beats_the_global_one_and_falls_back_to_it() -> None:
+    parsed = _parser(
+        "License: /free.xml\nUser-agent: Antiek-Agent\nLicense: /paid.xml\nAllow: /\n\n"
+        "User-agent: Antiek-Search\nAllow: /\n"
+    )
+
+    assert select_license(parsed, AGENT) == "/paid.xml"
+    assert select_license(parsed, SEARCH) == "/free.xml"
+
+
 def _client(
     routes: dict[tuple[str, str], tuple[int, bytes]],
     redirects: dict[tuple[str, str], str],
@@ -224,8 +261,8 @@ def test_the_purpose_agent_is_used_for_the_licence_robots_check() -> None:
         {
             ("a.example", "/robots.txt"): (
                 200,
-                b"User-agent: Antiek-Agent\nDisallow: /license.xml\n\n"
-                b"User-agent: *\nAllow: /\nLicense: /license.xml\n",
+                b"User-agent: Antiek-Agent\nLicense: /license.xml\n"
+                b"Disallow: /license.xml\n\nUser-agent: *\nAllow: /\n",
             ),
             ("a.example", "/license.xml"): (200, b"<rsl />"),
             ("a.example", "/page"): (200, b"<html>ok</html>"),
@@ -238,6 +275,72 @@ def test_the_purpose_agent_is_used_for_the_licence_robots_check() -> None:
     assert page.status_code == 200
     assert "https://a.example/license.xml" not in requested
     assert "disallowed" in (page.rights_terms.parse_error or "")
+
+
+def test_each_purpose_gets_its_own_licence_terms() -> None:
+    free_rsl = (
+        b'<rsl><content url="/"><license><payment type="free"/></license>'
+        b"</content></rsl>"
+    )
+    paid_rsl = (
+        b'<rsl><content url="/"><license><payment type="purchase"/></license>'
+        b"</content></rsl>"
+    )
+    client, requested = _client(
+        {
+            ("l.example", "/robots.txt"): (
+                200,
+                b"License: /free.xml\nUser-agent: Antiek-Agent\n"
+                b"License: /paid.xml\nAllow: /\n\nUser-agent: *\nAllow: /\n",
+            ),
+            ("l.example", "/free.xml"): (200, free_rsl),
+            ("l.example", "/paid.xml"): (200, paid_rsl),
+            ("l.example", "/a"): (200, b"<html>a</html>"),
+            ("l.example", "/b"): (200, b"<html>b</html>"),
+        },
+        {},
+    )
+
+    search_page = fetch(
+        "https://l.example/a", client=client, purpose=FetchPurpose.SEARCH
+    )
+    agent_page = fetch(
+        "https://l.example/b", client=client, purpose=FetchPurpose.AGENT
+    )
+
+    assert search_page.rights_terms.payment_types == ("free",)
+    assert agent_page.rights_terms.payment_types == ("purchase",)
+    assert requested.count("https://l.example/robots.txt") == 1
+
+
+def test_a_licence_disallowed_for_one_purpose_does_not_poison_another() -> None:
+    client, _requested = _client(
+        {
+            ("p.example", "/robots.txt"): (
+                200,
+                b"License: /license.xml\nUser-agent: Antiek-Search\n"
+                b"Disallow: /license.xml\n\nUser-agent: *\nAllow: /\n",
+            ),
+            ("p.example", "/license.xml"): (
+                200,
+                b'<rsl><content url="/"><license><payment type="free"/></license>'
+                b"</content></rsl>",
+            ),
+            ("p.example", "/a"): (200, b"<html>a</html>"),
+            ("p.example", "/b"): (200, b"<html>b</html>"),
+        },
+        {},
+    )
+
+    search_page = fetch(
+        "https://p.example/a", client=client, purpose=FetchPurpose.SEARCH
+    )
+    agent_page = fetch(
+        "https://p.example/b", client=client, purpose=FetchPurpose.AGENT
+    )
+
+    assert "disallowed" in (search_page.rights_terms.parse_error or "")
+    assert agent_page.rights_terms.payment_types == ("free",)
 
 
 def test_a_licence_redirect_is_never_followed() -> None:

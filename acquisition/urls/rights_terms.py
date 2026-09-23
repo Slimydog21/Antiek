@@ -1,5 +1,7 @@
 """RSL (Really Simple Licensing) terms — a publisher's own machine-readable
-licence, read off ``robots.txt`` (SPR-10 task 4).
+licence. The robots.txt ``License:`` directive is read per user-agent group by
+:func:`acquisition.urls.robots.select_license`; this module parses the licence
+XML that directive selects (SPR-10 task 4).
 
 RSL (rslstandard.org) lets a site declare, in a form a crawler can read, what
 it permits and what it wants in return: a ``License:`` directive in
@@ -12,8 +14,9 @@ membership, which is why this — and not a per-fetch marketplace — is the
 bridge (``docs/decisions/tollbit-rejected-2026-09-20.md``).
 
 This module is pure parsing: stdlib only, no I/O, no knowledge of hosts. The
-fetch + per-host cache live in ``acquisition.urls.robots``; the fetcher
-surfaces the parsed :class:`RightsTerms` on ``FetchedHtml.rights_terms``.
+fetch + per-origin policy cache live in ``acquisition.urls.robots``; the
+fetcher surfaces the parsed :class:`RightsTerms` on
+``FetchedHtml.rights_terms``.
 
 What the record is NOT (intellectual honesty): a rights *decision*. The
 substrate's deny-by-default gates (``substrate.rights``, content_class) are
@@ -34,12 +37,6 @@ from typing import Literal
 # different namespace: element LOCAL names are matched, so a licence file
 # that omits ``xmlns`` still parses.
 RSL_NAMESPACE = "https://rslstandard.org/rsl"
-
-# The robots.txt directive name (matched case-insensitively). RSL also allows
-# discovery via an HTTP ``Link`` header and an HTML ``<link rel="license">``;
-# only the robots.txt directive is read here — it is the one channel that
-# needs no page fetch and is the one the standard puts first.
-LICENSE_DIRECTIVE = "license"
 
 # Payment types that mean "no money changes hands for use": the publisher has
 # already dropped the gate. Anything else in ``payment_types`` is a price.
@@ -97,25 +94,6 @@ class RightsTerms:
 
 
 NO_TERMS = RightsTerms(source="none")
-
-
-def parse_license_directive(robots_txt: str) -> str | None:
-    """Return the value of the first ``License:`` directive in a robots.txt
-    body, or ``None``. Comments (``#``) are stripped; the key is matched
-    case-insensitively; a directive with an empty value is skipped.
-    ``urllib.robotparser`` ignores the line as an unknown directive, so this
-    is the only reader of it."""
-    for raw in robots_txt.removeprefix("\ufeff").splitlines():
-        line = raw.split("#", 1)[0].strip()
-        if not line or ":" not in line:
-            continue
-        key, _, value = line.partition(":")
-        if key.strip().lower() != LICENSE_DIRECTIVE:
-            continue
-        value = value.strip()
-        if value:
-            return value
-    return None
 
 
 def _local_name(tag: str) -> str:
@@ -198,12 +176,10 @@ def parse_rsl_xml(xml_text: str, *, license_url: str | None = None) -> RightsTer
 
 
 __all__ = [
-    "LICENSE_DIRECTIVE",
     "NO_CHARGE_PAYMENT_TYPES",
     "NO_TERMS",
     "RSL_NAMESPACE",
     "RightsTerms",
     "TermsSource",
-    "parse_license_directive",
     "parse_rsl_xml",
 ]
