@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import pytest
@@ -12,6 +13,7 @@ from runtime.db_lock import LockedConnection, connect_read, connect_write
 from substrate.graph.retrieval_gate import PERSONAL_ONLY_CONTENT_CLASSES, RESTRICTED_CONTENT_CLASSES
 from substrate.graph.schema import init_database_at_path
 from substrate.graph.search import search
+from tools.antiek_memory import __main__ as memory_main
 from tools.antiek_memory.__main__ import PUBLIC_SURFACE_CONTENT_CLASSES, _make_handlers
 
 _TERMS = ("quantum", "bakery", "garden")
@@ -275,3 +277,31 @@ def test_non_public_chunks_cannot_starve_top_k(
     assert _unscoped_top_hit(path, "quantum") in {"chunk-uo", "chunk-null"}
 
     assert _search_public_ids(path, "quantum", 1) == (["chunk-pd"], False)
+
+
+def test_per_hit_check_withholds_if_the_sql_scope_regresses(
+    db_path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # search() now drops non-public classes and takedowns before LIMIT, so the
+    # handler's canonical body predicate only acts if that scope regresses.
+    assert vars(memory_main)["search"] is search
+    ranked: list[str] = []
+
+    def unscoped_search(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        kwargs["content_classes"] = None
+        kwargs["exclude_taken_down"] = False
+        found: dict[str, Any] = search(*args, **kwargs)
+        ranked.extend(hit["chunk_id"] for hit in found["results"])
+        return found
+
+    monkeypatch.setattr(memory_main, "search", unscoped_search)
+    handlers, _resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    result = handlers["search_public"]({"query": "quantum", "top_k": 50})
+
+    assert {"chunk-uo", "chunk-null", "chunk-td"} <= set(ranked)
+    raw = result.content[0]["text"]
+    assert {chunk["chunk_id"] for chunk in json.loads(raw)["chunks"]} == {
+        "chunk-pd", "chunk-upc", "chunk-oil", "chunk-sdo"
+    }
+    for body in ("USER OWNED BODY", "NULL RIGHTS BODY", "TAKEN DOWN BODY"):
+        assert body not in raw
