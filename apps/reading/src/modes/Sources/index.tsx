@@ -124,6 +124,8 @@ export default function Sources() {
     too_large: `Choose a file no larger than ${SOURCE_UPLOAD_MAX_LABEL}.`,
     unsupported: "Choose a supported document type.",
     book_ceremony: "EPUB files use the book acquisition flow.",
+    attestation_conflict:
+      "This file is already stored under a narrower rights attestation. An upload cannot widen it.",
     conversion_failed: "This document could not be converted.",
     cancelled: "Upload cancelled. The file was not added.",
     unavailable: "The upload service is unavailable. Try again.",
