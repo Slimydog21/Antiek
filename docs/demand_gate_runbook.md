@@ -61,7 +61,12 @@ record in the verdict, and it taints that tester's signal.
    print(v.verdict, v.counts, v.criteria_commit)
    ```
    A round-trip counts only when the re-importer (`user_id`) and at least one
-   exporter (`exported_by`) are pinned testers, inside the window. `GateNotRunnable` means no verdict exists: the window or
+   exporter (`exported_by`) are pinned testers, no exporter is the operator,
+   and it falls inside the window. An unmodified re-import is attributed to
+   whoever exported those exact bytes; an edited one to every exporter of the
+   document, so an operator export of any version refuses it. Tester ids that
+   differ only by case or whitespace are one person and raise
+   `GateNotRunnable`. `GateNotRunnable` means no verdict exists: the window or
    tester set breaks the pre-registration, or no `export_offered` event
    reached a pinned tester in the window (the offer was never instrumented).
    Do not sign either template; record it as a finding.
