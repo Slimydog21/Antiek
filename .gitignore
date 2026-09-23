@@ -67,7 +67,10 @@ runtime/byok/pipelines.json
 logs/
 
 # Node / TypeScript (apps/reading has its own .gitignore but belt-and-braces)
-node_modules/
+# No trailing slash: `node_modules/` matches directories only, so a worktree's
+# `node_modules -> /abs/path` symlink slipped past it onto main five times.
+# tests/test_no_tracked_symlink_escapes_repo.py is the backstop.
+node_modules
 .next/
 *.tsbuildinfo
 
