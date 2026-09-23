@@ -142,3 +142,48 @@ def test_malformed_metadata_falls_back_to_edge(graph_db):
     assert data.title == "Edge Source"
     assert data.source_document_id == "doc-edge"
     assert data.payload["statement"] == "Bad meta claim"
+
+
+def _add_claim(db_path: str, node_id: str, metadata: dict) -> None:
+    con = connect_write(db_path, purpose="substrate_refs_seed")
+    try:
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope, metadata) "
+            "VALUES (?, 'Mixed claim', 'claim', 'depth', ?)",
+            [node_id, json.dumps(metadata)],
+        )
+    finally:
+        con.close()
+
+
+def test_restricted_supported_by_edge_binds_over_public_metadata(graph_db):
+    # Every grounding pointer is read: a public metadata source does not hide
+    # a supported_by edge onto a personal-reading essay.
+    _add_claim(graph_db, "claim-mixed", {"source_document_id": "doc-pd"})
+    con = connect_write(graph_db, purpose="substrate_refs_seed")
+    try:
+        con.execute(
+            "INSERT INTO edges "
+            "(edge_id, source_node_id, target_node_id, relation, source_document_id, "
+            "source_tier, extraction_confidence, graph_scope) "
+            "VALUES ('e-mixed', 'claim-mixed', 'node-target', 'supported_by', "
+            "'doc-pr', 2, 0.9, 'depth')"
+        )
+    finally:
+        con.close()
+    data = resolve_refs(["claim-mixed"], db_path=graph_db)["claim-mixed"]
+    assert data.content_class == "personal_reading"
+    assert data.source_document_id == "doc-pr"
+    assert data.servable is False
+
+
+def test_missing_metadata_chunk_resolves_to_the_gated_default(graph_db):
+    from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
+
+    _add_claim(
+        graph_db, "claim-chunk-gone",
+        {"source_document_id": "doc-pd", "chunk_id": "chunk-gone"},
+    )
+    data = resolve_refs(["claim-chunk-gone"], db_path=graph_db)["claim-chunk-gone"]
+    assert data.content_class == GATED_DEFAULT_CONTENT_CLASS
+    assert data.servable is False

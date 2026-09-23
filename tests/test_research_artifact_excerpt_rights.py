@@ -321,3 +321,79 @@ def test_excerpt_gate_reads_the_events_dir_it_is_given(env, monkeypatch, tmp_pat
     assert [i.text[:10] for i in body.insights] == ["[cite-only"]
     assert body.synthesis_withheld is True
     assert PASSAGE not in body.model_dump_json()
+
+
+# ── every grounding pointer of a node, and every recorded synthesis ──
+
+
+def test_excerpt_withheld_when_a_public_insight_also_rests_on_an_earlier_restricted_edge(env):
+    # codex's reproduction: the insight's metadata names a public document, but
+    # a supported_by edge written by an EARLIER investigation grounds it on the
+    # paywalled essay too. Metadata alone cleared both the insight and the
+    # excerpt; every grounding pointer has to clear.
+    inv = "inv-x13"
+    node = _public_insight(inv)
+    con = connect_write(env["db"])
+    try:
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
+            "VALUES ('n-x13-target', 'target', 'entity', 'depth')"
+        )
+        con.execute(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "source_document_id, source_tier, extraction_confidence, graph_scope, "
+            "investigation_id) VALUES ('e-x13', ?, 'n-x13-target', 'supported_by', "
+            "'doc-pr', 1, 0.9, 'depth', 'inv-earlier')",
+            [node],
+        )
+    finally:
+        con.close()
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    body = _body(env, inv)
+    assert [i.text[:10] for i in body.insights] == ["[cite-only"]
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_node_metadata_chunk_is_gone(env):
+    # The node names a public document AND a grounding chunk; the chunk row is
+    # gone, so that pointer's rights are unknown.
+    inv = "inv-x14"
+    _public_insight(inv)
+    con = connect_write(env["db"])
+    try:
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope, "
+            "metadata) VALUES ('n-x14', 'a claim', 'claim', 'depth', ?)",
+            ['{"source_document_id": "doc-pd", "chunk_id": "c-deleted"}'],
+        )
+    finally:
+        con.close()
+    log_event(
+        inv, ActionType.GRAPH_NODE_INSERTED,
+        payload={"node_id": "n-x14", "canonical_label": "a claim",
+                 "node_type": "claim", "graph_scope": "depth", "has_embedding": False},
+        events_dir=env["events"],
+    )
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_recorded_synthesis_is_missing(env):
+    # codex's reproduction: one public insight, and a synthesis.archived event
+    # naming a synthesis whose row is gone. Its provenance is unknown, so the
+    # public insight must not clear the thesis written from it.
+    inv = "inv-x15"
+    _public_insight(inv)
+    log_event(
+        inv, ActionType.SYNTHESIS_ARCHIVED, synthesis_id="syn-gone",
+        payload={"thesis_summary": f"Archived. {PASSAGE}"}, events_dir=env["events"],
+    )
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_synthesis_manifest_is_empty(env):
+    inv = "inv-x16"
+    _public_insight(inv)
+    _archive(env, inv, "syn-x16", [])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
