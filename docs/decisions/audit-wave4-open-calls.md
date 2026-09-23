@@ -37,7 +37,9 @@ The verdict now refuses to run (`GateNotRunnable`) when no in-window `export_off
 
 The C06 repair makes `substrate/dispatch/router.py` bill any successful call whose usage is unreported at its ceiling: one input token per prompt byte plus `effective_max_tokens`, at the tier's pricing. Before the repair it recorded a definite $0. `providers/prime_agent.py` always returns `raw_usage={}`, because `prime-agent -p` reports no token counts, so every Prime Agent call now records that ceiling at its base tier's price. A fallback or override inherits the base tier's pricing. This is correct under the finding's principle (unknown usage is not a free call), but it moves the Prime lane's spend figures and budget headroom.
 
-**Recommendation:** if Prime is flat-rate for this operator, put it on a tier with zero pricing (explicitly free). If it is metered, surface real counts from `PrimeAgentRLMBackend`'s receipt as `raw_usage`. The one wrong answer is `reported=True` with zeros, which recreates C06. The owner of the Prime lane (#3399) has been told.
+**Recommendation:** if Prime is flat-rate for this operator, put it on a tier with zero pricing (explicitly free). If it is metered, surface real counts from `PrimeAgentRLMBackend`'s receipt as `raw_usage`. The one wrong answer is `reported=True` with zeros, which recreates C06.
+
+**Resolved direction (2026-09-23, Prime lane owner):** Prime Agent runs on the operator's metered DeepSeek/Kimi keys, so a zero-priced tier would be a false statement. Ceiling billing at the base tier's price is the honest interim. Surfacing real counts from the backend receipt is queued as its own follow-up on the #3399 seam. If the binary reports no counts, the ceiling stays and this record says why.
 
 ---
 
