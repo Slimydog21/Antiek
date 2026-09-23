@@ -74,8 +74,18 @@ python -c "from acquisition.arxiv.rate_governor import canonical_arxiv_throttle;
 
 1. **STOP all arXiv requests immediately.** The ban extends on each 429.
 2. Wait for `banned_until` to pass (check `~/.antiek/arxiv_throttle.json`).
+   The throttle clears an expired `banned_until` back to `0.0` on its next
+   permitted request, so a non-zero value there means a current or recent ban,
+   not history.
 3. Use the verifier: `python -m tools.arxiv_verify` — it reports the ban state.
-4. Once clear, resume operations. The incremental sync will catch up.
+4. Find out who drew it: `python -m tools.arxiv_verify --ban-events 10`. This is
+   offline (it never contacts arXiv) and prints one line per ban with the time,
+   source key, HTTP status, host, PID and `argv[0]` of the process that received
+   the 429/503. The log is `ANTIEK_BAN_EVENT_LOG_PATH`, else
+   `$ANTIEK_HOME/ban_events.jsonl`, else `~/.antiek/ban_events.jsonl`.
+   `ANTIEK_HOME` also redirects both sentinel files (`arxiv_throttle.json`,
+   `source_throttle.json`), so one variable moves all three together.
+5. Once clear, resume operations. The incremental sync will catch up.
 
 ---
 
@@ -253,6 +263,10 @@ python -m tools.arxiv_verify --json
 
 # Custom paths
 python -m tools.arxiv_verify --db-path /path/to/antiek.duckdb
+
+# Last N ban events (offline; skips every other check)
+python -m tools.arxiv_verify --ban-events 10
+python -m tools.arxiv_verify --ban-events 10 --json
 ```
 
 **Exit codes:**
