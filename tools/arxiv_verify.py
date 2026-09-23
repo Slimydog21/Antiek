@@ -32,10 +32,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from runtime.db_lock import connect_read
+from runtime.ssl_bootstrap import bootstrap as _ssl_bootstrap
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
+
+# A python.org interpreter ships no CA bundle (arxiv-missing-ssl-env); point at
+# certifi unless SSL_CERT_FILE is already set (systemd / ca-certificates win).
+_ssl_bootstrap()
 
 
 # ── State path resolution (honors env vars, same convention as oai_sync) ──
