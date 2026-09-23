@@ -60,34 +60,37 @@
     # running, while both deploy_backend runs had correctly SKIPPED. The gate
     # guarded one caller; it has to guard the action. Same script as the
     # workflow uses, so the two cannot drift.
+    # Automated deploys MUST pass the SHA that already passed the gate:
+    #   ansible-playbook ... -e antiek_target_sha=<sha>
+    # Resolving main here is a TOCTOU race. If main advances after the
+    # workflow gate verified SHA N, this task can resolve pending SHA N+1 and
+    # fail (or, worse, another caller could deploy an ungated tip). Direct
+    # operators may omit the variable; in that case this resolver preserves
+    # the existing fail-closed branch-deploy behavior.
     #
     # Tag selection must not separate the gate from the pull either: the gate
     # tasks carry every tag the pull carries (`--tags code` runs them), and
     # the pull's `version` is the fact the gate sets only once it cleared, so
     # `--skip-tags gate`, `--skip-tags deploy` or `--start-at-task "git pull"`
-    # fail the pull itself instead of deploying an unverified SHA.
-    #
-    # The SHA that is gated is the SHA that ships. deploy_backend.yml passes
-    # the commit it already gated as `antiek_deploy_sha`; a manual run
-    # resolves main's tip. The pull then checks out exactly that commit, never
-    # the branch tip. Re-resolving the tip here refused every deploy while
-    # merges outpaced CI: on 2026-09-23 the workflow cleared 0c458f8b1, main
-    # moved to 95093e84b (6 of 8 pending) before the job ran, the playbook
-    # gated the tip and refused, and prod sat 3 merges behind for 2h.
-    # require_green.sh still refuses a SHA that is not on main (exit 4).
+    # fail the pull itself instead of deploying an unverified SHA. That holds
+    # when antiek_target_sha is SUPPLIED too: supplying a SHA skips the
+    # resolver, never the gate (`-e antiek_target_sha=<any sha> --tags code`
+    # still runs require_green.sh on it). require_green.sh refuses a SHA that
+    # is not on main (exit 4).
     - name: resolve the SHA this deploy will pull
       ansible.builtin.command:
         cmd: git ls-remote --heads {{ antiek_repo_url }} {{ antiek_repo_branch }}
       delegate_to: localhost
       become: false
       changed_when: false
+      when: antiek_target_sha is not defined
       register: remote_head
       tags: [deploy, gate, code]
 
     - name: set antiek_target_sha
       ansible.builtin.set_fact:
-        antiek_target_sha: >-
-          {{ antiek_deploy_sha | default(((remote_head.stdout | trim).split() | first) | default(''), true) }}
+        antiek_target_sha: "{{ ((remote_head.stdout | trim).split() | first) | default('') }}"
+      when: antiek_target_sha is not defined
       tags: [deploy, gate, code]
 
     - name: require every main-required check green for the target SHA (fail-closed)
@@ -130,6 +133,10 @@
       ansible.builtin.git:
         repo: "{{ antiek_repo_url }}"
         dest: "{{ antiek_install_dir }}"
+        # Never substitute the branch here. The branch can move between
+        # the required-checks gate and this pull; the exact target cannot.
+        # The value is antiek_target_sha, but only as the fact the gate sets
+        # once it cleared (see "record the gate-cleared ref").
         version: >-
           {{ antiek_gate_cleared_ref | mandatory(msg='required-checks gate did not
           run or did not clear (tag selection or --start-at-task skipped it);

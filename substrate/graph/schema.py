@@ -1057,6 +1057,8 @@ CREATE INDEX IF NOT EXISTS idx_attribution_audit_impression_set
     ON attribution_audit(impression_set_ref);
 CREATE INDEX IF NOT EXISTS idx_attribution_audit_page
     ON attribution_audit(page_id);
+-- SPR-08 T3: which §9.3 module produced the vector.
+ALTER TABLE attribution_audit ADD COLUMN IF NOT EXISTS producer_module TEXT DEFAULT 'substrate.ad_inventory.attribution';
 """
 
 
@@ -2202,6 +2204,32 @@ def init_database(con: LockedConnection) -> None:
 # the process may touch more than one db_path (e.g. tests with temp DBs).
 _INITIALIZED_PATHS: set[str] = set()
 
+# Secondary indexes that ``init_database`` DROPS from the documents FK parent
+# (see the "Do not secondary-index mutable columns on the documents FK parent"
+# block): DuckDB refuses to UPDATE such a column once chunks/book_assets
+# reference the row. An older database can still carry them while every other
+# shape check passes, and ``tools/merge_staging.py`` used to re-create
+# ``idx_documents_ip_holder``, so the warm probe must treat their presence as
+# "schema not current" and let the cold path heal the file.
+_LEGACY_DOCUMENTS_FK_PARENT_INDEXES = (
+    "idx_documents_content_class",
+    "idx_documents_ip_holder",
+)
+
+
+def _legacy_documents_fk_parent_index_present(
+    con: ReadConnection | LockedConnection,
+) -> bool:
+    """True when the documents table still carries an index ``init_database``
+    removes. Read-only; used by the warm-path probe."""
+    placeholders = ",".join("?" for _ in _LEGACY_DOCUMENTS_FK_PARENT_INDEXES)
+    row = con.execute(
+        "SELECT count(*) FROM duckdb_indexes() WHERE schema_name = 'main' "
+        f"AND table_name = 'documents' AND index_name IN ({placeholders})",
+        list(_LEGACY_DOCUMENTS_FK_PARENT_INDEXES),
+    ).fetchone()
+    return bool(row and row[0])
+
 
 def _schema_is_present(db_path: str) -> bool:
     """Cheap read-only probe: is the Antiek schema already initialized at
@@ -2264,6 +2292,7 @@ def _schema_is_present(db_path: str) -> bool:
         ).fetchone()
         present = (
             bool(row and row[0])
+            and not _legacy_documents_fk_parent_index_present(con)
             and _v19_receipt_shape_is_valid(con)
             and _v19_frontier_shape_is_valid(con)
             and _v19_event_shape_is_valid(con)

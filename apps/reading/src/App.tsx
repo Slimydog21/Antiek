@@ -14,7 +14,6 @@ import Coordination from "./modes/Coordination";
 import CostConsent from "./modes/Coordination/CostConsent";
 import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
-import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
 import Home from "./modes/Home/Home";
 import Library from "./modes/Library";
@@ -64,6 +63,10 @@ import WrestleApp from "./modes/WrestleApp";
 // part of the first paint. Keeping it out of App's entry chunk preserves the
 // WP-12.2 700 KB gz budget as the routed surface set grows.
 const AccountMemory = lazy(() => import("./modes/AccountMemory"));
+// The documents listing is a secondary surface reached from navigation, and its
+// row preview pulls in the style wheel; lazy-loading it keeps both out of the
+// entry chunk, which sits within about 1 KB of the 700 KB gz ceiling.
+const DocumentsIndex = lazy(() => import("./modes/DocumentsIndex"));
 
 /**
  * Top-level route registry.
@@ -168,7 +171,20 @@ function AuthenticatedRoutes() {
         <Route path="/notebook/auto/:investigationId" element={<AutoNotebook />} />
         <Route path="/notebook/auto" element={<AutoNotebook />} />
         <Route path="/notebook/:notebookId" element={<Notebook />} />
-        <Route path="/documents" element={<DocumentsIndex />} />
+        <Route
+          path="/documents"
+          element={
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
+                  Loading documents…
+                </div>
+              }
+            >
+              <DocumentsIndex />
+            </Suspense>
+          }
+        />
         <Route path="/library" element={<Library />} />
         {/* SPR-09 M2 — the paginated browse view over the new /library catalog
             endpoint (Unit A). ADDITIVE: a static segment declared before any

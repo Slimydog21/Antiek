@@ -212,7 +212,7 @@ def test_pinned_deploy_ships_the_gated_sha_while_main_moves_on(box):
     # C and shipped nothing, and while merges outpaced CI it refused every
     # time: prod sat 3 merges behind for 2h on 2026-09-23 (run 35864752296).
     sha_c = _advance_main(box, "c — merged after B, checks pending\n")
-    proc = _deploy(box, "--tags", "code", "-e", f"antiek_deploy_sha={box['sha_b']}",
+    proc = _deploy(box, "--tags", "code", "-e", f"antiek_target_sha={box['sha_b']}",
                    green=True, green_only=box["sha_b"])
     out = proc.stdout + proc.stderr
     assert _head(box) == box["sha_b"], (
@@ -223,8 +223,34 @@ def test_pinned_deploy_ships_the_gated_sha_while_main_moves_on(box):
 
 
 @needs_ansible
+@pytest.mark.parametrize(
+    "selection",
+    [
+        ("--tags", "code"),
+        ("--skip-tags", "frontend,gate"),
+        ("--skip-tags", "frontend", "--start-at-task", "git pull"),
+    ],
+    ids=["tags-code", "skip-gate", "start-at-pull"],
+)
+def test_supplied_sha_is_gated_not_trusted(box, selection):
+    # Supplying antiek_target_sha skips the resolver, never the gate. Under
+    # #3423 alone, `-e antiek_target_sha=<pending> --tags code` pulled the
+    # pending SHA with zero gh calls and wrote it into ANTIEK_BUILD_SHA.
+    sha_c = _advance_main(box, "c — supplied, checks pending\n")
+    proc = _deploy(box, *selection, "-e", f"antiek_target_sha={sha_c}",
+                   green=True, green_only=box["sha_b"])
+    out = proc.stdout + proc.stderr
+    assert _head(box) == box["sha_a"], (
+        f"{' '.join(selection)} pulled supplied, pending {sha_c}.\n{out[-3000:]}"
+    )
+    assert proc.returncode != 0, out[-3000:]
+    assert "require_green:" in out or "required-checks gate did not" in out, out[-3000:]
+    assert "ANTIEK_BUILD_SHA=old" in box["secrets"].read_text()
+
+
+@needs_ansible
 def test_unpinned_run_gates_the_tip_it_resolves(box):
-    # Manual/runbook path (no antiek_deploy_sha): the tip is resolved, gated
+    # Manual/runbook path (no antiek_target_sha): the tip is resolved, gated
     # and pulled. A pending tip is refused; nothing moves.
     _advance_main(box, "c — tip, checks pending\n")
     proc = _deploy(box, "--tags", "code", green=True, green_only=box["sha_b"])
@@ -333,14 +359,12 @@ def test_only_the_gated_pull_can_move_an_existing_checkout():
 
 def test_the_gated_sha_is_the_sha_that_ships():
     # Static twin of the executed pinned-deploy test (CI shards lack ansible).
-    target = _task("set antiek_target_sha")["ansible.builtin.set_fact"]["antiek_target_sha"]
-    assert target.strip().startswith("{{ antiek_deploy_sha | default("), target
+    # The workflow -> playbook pin itself (#3423) is asserted in
+    # test_require_green_script.test_deploy_pins_the_exact_sha_verified_by_the_gate.
     cleared = _task("record the gate-cleared ref")
     assert cleared["ansible.builtin.set_fact"]["antiek_gate_cleared_ref"] == "{{ antiek_target_sha }}"
     assert "match('^[0-9a-f]{40}$')" in cleared["when"], cleared["when"]
 
     wf = yaml.safe_load((ROOT / ".github" / "workflows" / "deploy_backend.yml").read_text())
     step = next(s for s in wf["jobs"]["deploy"]["steps"] if s.get("name") == "Deploy")
-    assert step["env"]["DEPLOY_SHA"] == "${{ needs.gate.outputs.sha }}"
-    assert '-e "antiek_deploy_sha=$DEPLOY_SHA"' in step["run"], step["run"]
     assert "${{" not in step["run"], "event data must reach the playbook through env"
