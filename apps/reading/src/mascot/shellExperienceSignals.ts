@@ -86,3 +86,7 @@ export function notifyVoiceRecordingStarted(): void {
 export function notifyEvidenceSourceOpened(): void {
   emitMascotExperience("evidence_source_opened");
 }
+
+export function notifyThoughtPartnerReplyReceived(): void {
+  emitMascotExperience("thought_partner_reply_received");
+}
