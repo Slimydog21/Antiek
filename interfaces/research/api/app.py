@@ -3320,6 +3320,7 @@ def create_app(
     )
     async def post_ingest_source(
         req: IngestSourceRequest,
+        request: Request,
     ) -> IngestSourceResponse:
         """Ingest a URL into the substrate graph. Auto-detects source
         kind unless ``req.kind`` is set. Routes to the appropriate
@@ -3364,11 +3365,24 @@ def create_app(
                 )
             if detected == "youtube":
                 from acquisition.youtube import ingest_youtube
+                from acquisition.youtube.client import fetch_with_data_api
+                from interfaces.research.api import research_tool_search as _tool_lane
+
                 yt_kwargs: dict[str, Any] = {
                     "investigation_id": req.investigation_id
                 }
                 if req.source_tier is not None:
                     yt_kwargs["source_tier"] = req.source_tier
+                connector = _tool_lane.connected_tool_for_request(request, "youtube")
+                if connector is not None:
+                    # Metadata uses the owner's Data API key (videos.list, 1 unit).
+                    # Captions still use unofficial timedtext. The ToS question remains open.
+                    # A failing key is reported as an error, never retried through
+                    # yt-dlp: that would scrape for a user who chose the official API.
+                    try:
+                        yt_kwargs["video"] = fetch_with_data_api(connector, req.url)
+                    finally:
+                        connector.close()
                 yt_r = ingest_youtube(req.url, **yt_kwargs)
                 return IngestSourceResponse(
                     status=(

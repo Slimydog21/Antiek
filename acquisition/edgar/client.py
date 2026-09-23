@@ -180,6 +180,12 @@ class EdgarConnector(PasteKeyConnector):
     descriptive ``User-Agent`` and is sent through the host-global
     :class:`VendorRateGovernor` at :data:`EDGAR_RATE`.
 
+    Host-global on purpose, so there is no ``owner`` parameter. SEC limits by
+    IP, and every account's EDGAR request leaves this host from one address;
+    a window per account would let N accounts send 8N requests a second
+    between them and trip the block for all of them. The contact in the
+    User-Agent is per account; the rate window is not.
+
     Injection seams (tests): ``client`` (an ``httpx.Client`` over
     ``MockTransport`` — no network), ``governor`` (a governor with a fake
     clock), or ``state_dir`` + ``clock`` + ``sleeper`` to build one. An
