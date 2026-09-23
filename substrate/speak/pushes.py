@@ -21,6 +21,7 @@ from typing import Any
 
 from substrate.speak import async_interview
 from substrate.speak.schema import ensure_speak_schema
+from substrate.speak.takedown import NO_ACTIVE_TAKEDOWN_SQL
 
 
 @dataclass(frozen=True)
@@ -212,8 +213,11 @@ def list_public_opportunities(
     """
     if ensure:
         ensure_speak_schema(con)
+    # A project under active takedown is not an opportunity: this list is
+    # served unauthenticated at /speak/opportunities and discloses
+    # subject_ref, and /speak/feed already hides the same project.
     rows = con.execute(
-        """
+        f"""
         SELECT p.project_id, ip.title, p.subject_ref,
                (SELECT COUNT(*) FROM interviews i
                 WHERE i.project_id = p.project_id
@@ -222,6 +226,7 @@ def list_public_opportunities(
         FROM speak_projects p
         JOIN interview_projects ip ON ip.project_id = p.project_id
         WHERE p.publish_intent = 'will_be_public'
+          AND {NO_ACTIVE_TAKEDOWN_SQL}
         """
     ).fetchall()
     has_interest = bool(tokenize_interest(interest))

@@ -13,16 +13,18 @@ M3 — verification-before-publish (per-claim).
     A ``contradicted`` claim is never publishable. A claim covered by an
     active takedown is never publishable. A claim an interviewee makes
     about themselves (not third-party) needs no corroboration here (it
-    still needs that interviewee's publish-scope consent, enforced in
-    ``consent.py``).
+    still needs that interviewee's publish-scope consent, which the M6
+    gate below checks for every contributing interviewee).
 
 M6 — public-publishing gate (per-project).
     Public publishing is refused unless ALL hold: the legal gate
-    (G2/G3) is open; the subject permits public publishing
-    (``subject_consent.py``); no active takedown blocks the project; and
-    every third-party claim destined for the public output is
-    publishable under M3. Refusals carry the specific reason and are
-    audited (``speak.publish.blocked``).
+    (G2/G3) is open; no active takedown blocks the project; the project
+    names its subject and that subject permits public publishing
+    (``subject_consent.py``); every interviewee whose claims feed the
+    public output has granted the ``publish`` consent scope
+    (``consent.py``); and every third-party claim destined for the
+    public output is publishable under M3. Refusals carry the specific
+    reason and are audited (``speak.publish.blocked``).
 
 Honest scope: this REDUCES legal exposure; it does not make publishing
 safe. G2 counsel is the binding gate.
@@ -36,6 +38,7 @@ from typing import Any
 from . import gate_status
 from . import subject_consent as subject_consent_mod
 from . import takedown as takedown_mod
+from .consent import ConsentScope, has_consent
 from .events import SPEAK_PUBLISH_BLOCKED, record_speak_event
 from .schema import ensure_speak_schema
 from .third_party import ClaimRecord, get_claim, list_claims
@@ -133,12 +136,27 @@ def _project_subject_ref(con: Any, project_id: str) -> str | None:
     return row[0] if row else None
 
 
-def check_public_publish(
-    con: Any, *, project_id: str, subject_ref: str | None = None
-) -> PublishDecision:
+def interviewees_without_publish_consent(con: Any, project_id: str) -> tuple[str, ...]:
+    """Interviewees whose claims feed the project's public output but who
+    have not granted (or have revoked) the ``publish`` consent scope.
+    ``record`` is consent to be recorded, not to be published."""
+    rows = con.execute(
+        "SELECT DISTINCT interview_id FROM speak_claims "
+        "WHERE project_id = ? AND interview_id IS NOT NULL ORDER BY interview_id",
+        [project_id],
+    ).fetchall()
+    return tuple(
+        r[0] for r in rows if not has_consent(con, r[0], ConsentScope.PUBLISH)
+    )
+
+
+def check_public_publish(con: Any, *, project_id: str) -> PublishDecision:
     """The full public-publishing gate for a project. Deny-by-default;
     the FIRST failing condition wins so the reason is specific. Audits
-    refusals."""
+    refusals.
+
+    The subject is always the project's own ``speak_projects.subject_ref``;
+    no caller can name a different subject for the gate to check."""
     ensure_speak_schema(con)
 
     def refuse(reason: str, blocked: tuple[str, ...] = ()) -> PublishDecision:
@@ -158,16 +176,33 @@ def check_public_publish(
     if takedown_mod.active_takedowns(con, project_id):
         return refuse("an active takedown blocks publishing for this project")
 
-    # 3. Subject consent.
-    subj = subject_ref or _project_subject_ref(con, project_id)
-    if subj is not None:
-        decision = subject_consent_mod.public_publish_allowed_for_subject(
-            con, project_id=project_id, subject_ref=subj
+    # 3. Subject consent. A project that names no subject has nobody whose
+    #    consent (or documented deceased / non-identifiable rationale) can
+    #    be on record, so it is refused rather than skipped: an unknown
+    #    subject is treated as living.
+    subj = _project_subject_ref(con, project_id)
+    if subj is None:
+        return refuse(
+            "the project names no subject; record the subject and its "
+            "consent (or the documented deceased / non-identifiable "
+            "rationale) before public publishing"
         )
-        if not decision.allowed:
-            return refuse(decision.reason)
+    decision = subject_consent_mod.public_publish_allowed_for_subject(
+        con, project_id=project_id, subject_ref=subj
+    )
+    if not decision.allowed:
+        return refuse(decision.reason)
 
-    # 4. Every third-party claim must be publishable (M3).
+    # 4. Every contributing interviewee granted publish-scope consent.
+    unconsented = interviewees_without_publish_consent(con, project_id)
+    if unconsented:
+        return refuse(
+            f"{len(unconsented)} interviewee(s) have not granted publish "
+            f"consent: {', '.join(unconsented)}; their words cannot appear "
+            "in a public output"
+        )
+
+    # 5. Every third-party claim must be publishable (M3).
     blocked: list[str] = []
     for claim in list_claims(con, project_id, third_party_only=True):
         if is_blocked_by_takedown(con, claim):

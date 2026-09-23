@@ -18,6 +18,7 @@ import pytest
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
 from substrate.speak import biography, project, publish_gate
+from substrate.speak.consent import ConsentScope, record_consent
 from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.third_party import record_claim
 
@@ -39,6 +40,10 @@ def _con(db):
 
 def _seed_project(con):
     p = project.create_project(con, title="Dad's biography")
+    # Both speakers consent to publication, so public drafts exclude only
+    # on verification (the consent exclusion has its own test).
+    for iv in ("iv-a", "iv-b"):
+        record_consent(con, interview_id=iv, scopes=[ConsentScope.RECORD, ConsentScope.PUBLISH])
     # A publishable first-party claim.
     record_claim(con, project_id=p.project_id, interview_id="iv-a",
                  text="I learned to bake at his side every morning.", about_subject=False)

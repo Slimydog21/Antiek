@@ -57,7 +57,6 @@ def publish(
     *,
     project_id: str,
     deliverable_id: str | None = None,
-    subject_ref: str | None = None,
     ad_revenue_usd: Decimal = Decimal("0"),
     quality_scores: dict[str, float] | None = None,
     impression_ref: str | None = None,
@@ -72,11 +71,10 @@ def publish(
     publication_id = new_publication_id()
 
     if policy.publishing == "public":
-        # M3 — the full public gate (G2/G3 + subject consent +
-        # verification + no takedown). Refuse with the specific reason.
-        decision = publish_gate.check_public_publish(
-            con, project_id=project_id, subject_ref=subject_ref
-        )
+        # M3 — the full public gate (G2/G3 + the project's own subject
+        # consent + every contributor's publish consent + verification +
+        # no takedown). Refuse with the specific reason.
+        decision = publish_gate.check_public_publish(con, project_id=project_id)
         if not decision.allowed:
             raise PublishBlocked(decision.reason)
 

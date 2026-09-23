@@ -38,7 +38,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
 from runtime.db_lock import connect_read, connect_write
@@ -279,8 +279,11 @@ class DraftRequest(BaseModel):
 
 
 class PublishRequest(BaseModel):
+    # The gate checks the project's own subject; a body subject_ref once
+    # redirected it to any stand-in, so an unknown field is now a 422.
+    model_config = ConfigDict(extra="forbid")
+
     deliverable_id: str | None = None
-    subject_ref: str | None = None
     ad_revenue_usd: str = "0"
     quality_scores: dict[str, float] | None = None
 
@@ -429,12 +432,11 @@ async def public_feed() -> dict:
                 # An active takedown means STOP PUBLISHING. This feed is
                 # unauthenticated and returns subject_ref + subject_status,
                 # so without this predicate a project under takedown keeps
-                # disclosing its subject to anyone. substrate/speak/
-                # publish_gate.py:162 refuses to publish on exactly this
-                # condition; the browsable surface has to agree with the
-                # gate that governs it.
-                "AND NOT EXISTS (SELECT 1 FROM speak_takedowns t "
-                "WHERE t.project_id = p.project_id AND t.status = 'active') "
+                # disclosing its subject to anyone. check_public_publish
+                # (substrate/speak/publish_gate.py, step 2) refuses to
+                # publish on exactly this condition; the browsable surface
+                # has to agree with the gate that governs it.
+                f"AND {takedown_mod.NO_ACTIVE_TAKEDOWN_SQL} "
                 "ORDER BY p.created_at DESC"
             ).fetchall()
     except FileNotFoundError:
@@ -741,6 +743,7 @@ async def draft(project_id: str, req: DraftRequest) -> dict:
         "prose_text": d.prose_text,
         "cited_interview_ids": list(d.cited_interview_ids),
         "excluded_claim_ids": list(d.excluded_claim_ids),
+        "consent_excluded_claim_ids": list(d.consent_excluded_claim_ids),
         "unverified_marked_claim_ids": list(d.unverified_marked_claim_ids),
         "voice_style_score": d.voice_style_score,
         "voice_style_ok": d.voice_style_ok,
@@ -753,7 +756,7 @@ async def publish(project_id: str, req: PublishRequest) -> dict:
     with _translate(), _write("speak/api:publish") as con:
         result = publish_mod.publish(
             con, project_id=project_id, deliverable_id=req.deliverable_id,
-            subject_ref=req.subject_ref, ad_revenue_usd=ad_revenue,
+            ad_revenue_usd=ad_revenue,
             quality_scores=req.quality_scores,
         )
     return {
