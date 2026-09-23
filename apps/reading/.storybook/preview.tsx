@@ -10,15 +10,15 @@ import "../src/design/tokens.css";
 // U-05 motion system — the reduced-motion catch-all so stories honour the
 // OS reduce-motion setting exactly as the app does.
 import "../src/design/motion.css";
+import { applyTheme, type ThemePreference } from "../src/design/theme";
 
 /**
  * Global Storybook preview config. Wraps every story in a
  * MemoryRouter (several components use react-router hooks like
  * useNavigate / NavLink) and applies the global Tailwind CSS layer.
  *
- * Backgrounds expose the Antiek brand surface ramp so authors can
- * preview a story on a card, on the page, on a trough, or on the
- * deep ink. Default is `ice-2` (day page bg).
+ * Backgrounds expose the semantic grounds (page, card, inset, fixed ink)
+ * so authors can preview a story on each; they follow the theme.
  *
  * SPR-08 fix — opt-out for stories that own their router. A story that
  * needs a SPECIFIC initial route (Topbar mounts the chrome at a
@@ -39,21 +39,43 @@ const preview: Preview = {
         date: /Date$/i,
       },
     },
+    // Grounds are the semantic tokens, so each follows the Theme toolbar
+    // (a static day hex here used to put night stories on a day page).
     backgrounds: {
-      default: "ice-2",
+      default: "page",
       values: [
-        { name: "ice-0", value: "#FFFFFF" },
-        { name: "ice-1", value: "#FBFCFD" },
-        { name: "ice-2", value: "#F4F7FA" },
-        { name: "ice-3", value: "#EAEFF4" },
-        { name: "ink", value: "#0F1419" },
-        { name: "space-2 (night)", value: "#0D1019" },
-        { name: "charcoal-2 (night card)", value: "#1B202A" },
+        { name: "page", value: "var(--bg-page)" },
+        { name: "card", value: "var(--bg-card)" },
+        { name: "inset", value: "var(--bg-inset)" },
+        { name: "ink (fixed)", value: "var(--fixed-ink)" },
       ],
     },
     layout: "fullscreen",
   },
+  // Theme toolbar: System follows the OS (and Playwright's colorScheme), so
+  // the a11y and visual runs get night mode through the same <html
+  // data-theme> the app's boot script sets.
+  globalTypes: {
+    theme: {
+      description: "Theme",
+      defaultValue: "system",
+      toolbar: {
+        title: "Theme",
+        icon: "mirror",
+        items: [
+          { value: "system", title: "System" },
+          { value: "light", title: "Light" },
+          { value: "dark", title: "Dark" },
+        ],
+        dynamicTitle: true,
+      },
+    },
+  },
   decorators: [
+    (Story, context) => {
+      applyTheme((context.globals.theme as ThemePreference | undefined) ?? "system");
+      return <Story />;
+    },
     (Story, context) => {
       // A story that brings its own router opts out so the two don't nest.
       if (context.parameters?.router === false) return <Story />;

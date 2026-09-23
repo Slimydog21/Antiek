@@ -1,243 +1,207 @@
 /**
- * Antiek design tokens.
+ * Antiek design tokens: "paper, ink, and one sun".
  *
- *  sun-yellow outlining is the brand constant.
- *  day mode = layered off-whites + glacials.
- *  night mode = ten-layer off-black "majestic night sky".
- *  Brain's bill + feet match `sun.base` (the visual hook).
+ * The TS mirror of src/design/tokens.css. Three layers, as in the CSS:
  *
- * See:
- *   docs/ui_redesign_posthog/brand_werner.html §5 (sun), §6 (day), §7 (night)
- *   docs/ui_redesign_posthog/sprint_00_foundations.html WP-0.1
+ *   primitive  theme-invariant palette (the sun, fixed ink/paper, the night ramp)
+ *   semantic   what a colour is FOR, per theme: bgPage, text3, focus…
+ *   legacy     the older exports (surface, rule, inkMute, accent…), now derived
+ *              from `semantic` so a canvas painting `surface.day[2]` paints the
+ *              same page colour the CSS does.
+ *
+ * token-parity.test.ts asserts every semantic value here equals the resolved
+ * value in tokens.css for both themes; tokens.contrast.test.ts computes every
+ * text/background and UI pair from THIS module (no contrast figure in a
+ * comment is trusted; the test is the number).
  */
 
 export type Mode = "day" | "night";
+export type Theme = "light" | "dark";
+
+/** Theme-invariant palette. Mirrors tokens.css section 1. */
+export const primitive = {
+  sun: "#F5DF24",
+  sunHover: "#F6E33C",
+  sunPress: "#EFD80B",
+  fixedInk: "#0F1419",
+  fixedInk2: "#384858",
+  fixedPaper: "#FFFFFF",
+  dangerFill: "#B82E1C",
+  void: "#040508",
+  space1: "#080A10",
+  space2: "#0D1019",
+  charcoal1: "#13171F",
+  charcoal2: "#1B202A",
+  slate1: "#252B36",
+  slate2: "#323845",
+  moonlight: "#858F9F",
+  starlight: "#C4CCD7",
+  bright: "#EEF1F6",
+} as const;
+
+export type SemanticTokens = {
+  bgPage: string;
+  bgCard: string;
+  bgInset: string;
+  borderHairline: string;
+  borderRule: string;
+  text1: string;
+  text2: string;
+  text3: string;
+  sunInk: string;
+  sunDeep: string;
+  keycapEdge: string;
+  teal: string;
+  aurora: string;
+  danger: string;
+  success: string;
+  stale: string;
+  notRun: string;
+  focus: string;
+  wash: string;
+};
 
 /**
- * The single brand colour — invariant across modes.
- *
- * AMS-SPR-09 RE-TONE. The operator asked to dial the bold lemon back to a
- * softer, weathered "light" across the VAR-DRIVEN accent/highlight roles,
- * while keeping the bottom-tab yellow loud. So:
- *   - `base` (#F5DF24) is UNCHANGED — the brand constant, the bottom-tab value
- *     (via `barAccent`), and the Brain bill/foot. Never softened.
- *   - `deep`, `glow`, `highlight` are RE-TONED toward the new `sunLight`
- *     family below: lower chroma, sun-bleached gold. Each carries its
- *     derivation + the AA pair it must clear (see comments).
- * Sibling invariant: every value here is byte-identical to tokens.css.
- *
- * REACH — honest scope of this re-tone (rigor #1, intellectual honesty). The
- * re-tone is VAR-DEEP only. It softens the consumers that read the CSS custom
- * properties: the 4 `::selection` highlighter veils (`src/index.css`,
- * `--sun-hl-{day,night}`), the 1 `AssignHotkey.css` `var(--sun-deep)` color,
- * and the night offset-shadows (`--shadow-z*` read `var(--sun-deep)`). It does
- * NOT reach the 56 component consumers of the Tailwind utility classes
- * (`text-sun-deep` / `bg-sun-glow` / `border-sun-deep`, across
- * Research/Read/Write/Speak/Notebook — e.g. SceneChrome.tsx:200
- * `hover:bg-sun-glow`, dozens of `text-sun-deep` mono status labels), because
- * those resolve through `tailwind.config.js` (colors `sun-deep:#B89A00`,
- * `sun-glow:#FCE85E`, boxShadow `*-night:#8A7300` at lines 18-19/89-92), which
- * is config-layer-owned by another sprint and OUT OF SCOPE here. So the
- * on-screen `text-sun-deep` accent still renders the OLD loud `#B89A00` until
- * the Tailwind-owning sprint re-tones the var→tailwind mirror to match. The
- * sibling note in tokens.css restates this. The Tailwind header already says
- * "Source of truth: tokens.ts … Keep these in sync" — that mirror is now
- * intentionally divergent for the sun-deep/glow keys, with no CI guard
- * catching it; closing it is a follow-up for the Tailwind owner.
+ * The semantic layer, per theme. Day is PAPER; the `light` object is the one
+ * place to edit to change the day ground (glacial return values are listed in
+ * tokens.css). Mirrors tokens.css sections 2 / 2b.
  */
-export const sun = {
-  base: "#F5DF24", // sharp esoteric lemon, slightly green-leaning — UNCHANGED (brand/bar/Brain)
-  // was {day #B89A00, night #8A7300}; re-toned to weathered ochre. AA accent-
-  // edge (1.4.11 ≥3:1): day #9C8636 on #FFFFFF 3.57:1 / on page #F4F7FA 3.32:1;
-  // night #84722F on card #1B202A 3.44:1 / on page #0D1019 4.01:1. == sunLight.deep day.
-  deep: { day: "#9C8636", night: "#84722F" }, // hover / depth / dark-shadow (weathered)
-  // was {day #FCE85E, night #FFEC5F}; re-toned to a desaturated weathered glow
-  // (chroma ~0.38/0.40 vs base 0.82). The LOUD night bar value (#FFEC5F) is
-  // preserved separately as `barAccent.night` so the bar does NOT soften.
-  glow: { day: "#F1E08F", night: "#F2DE9A" }, // highlight peaks (weathered)
-  highlight: {
-    // re-toned to the weathered straw rgb (232,217,140 == sunLight.base
-    // #E8D98C). AA pair: prose --ink over [veil over surface] ≥4.5:1 →
-    // faint over #FFFFFF 17.40:1; day over #FFFFFF 15.83:1 / over #F4F7FA 15.17:1.
-    faint: "rgba(232,217,140,0.18)", // model-suggested highlights (weathered)
-    day: "rgba(232,217,140,0.45)", // operator highlighter, day (weathered)
-    // night rgb (242,222,154 == sun.glow.night #F2DE9A). AA pair: night --ink
-    // #EEF1F6 over [veil over surface] ≥4.5:1 → over card #1B202A 6.22:1 / over
-    // page #0D1019 7.38:1.
-    night: "rgba(242,222,154,0.30)", // operator highlighter, night (weathered)
+export const semantic: Record<Theme, SemanticTokens> = {
+  light: {
+    bgPage: "#FBF9F4",
+    bgCard: "#FFFEFB",
+    bgInset: "#F4F1E8",
+    borderHairline: "#E6E0D2",
+    borderRule: "#8A8473",
+    text1: primitive.fixedInk,
+    text2: "#4F5F70",
+    text3: "#5F6B79",
+    sunInk: "#75620F",
+    sunDeep: "#9C8636",
+    keycapEdge: primitive.fixedInk,
+    teal: "#0B7A7A",
+    aurora: "#16C2C2",
+    danger: primitive.dangerFill,
+    success: "#237242",
+    stale: "#8A5A00",
+    notRun: "#5B4BB7",
+    focus: primitive.fixedInk,
+    wash: "rgba(15,20,25,0.06)",
+  },
+  dark: {
+    bgPage: primitive.space2,
+    bgCard: primitive.charcoal2,
+    bgInset: primitive.charcoal1,
+    borderHairline: "#262C38",
+    borderRule: "#6A7689",
+    text1: primitive.bright,
+    text2: "#9AA3B2",
+    text3: primitive.moonlight,
+    sunInk: primitive.sun,
+    sunDeep: "#84722F",
+    keycapEdge: "#84722F",
+    teal: "#3FE0DC",
+    aurora: "#3FE0DC",
+    danger: "#FF6155",
+    success: "#6ECB8F",
+    stale: "#E0A84A",
+    notRun: "#A99BFF",
+    focus: primitive.sun,
+    wash: "rgba(238,241,246,0.08)",
   },
 } as const;
 
+const L = semantic.light;
+const D = semantic.dark;
+
 /**
- * The weathered "light" sun family (AMS-SPR-09). A LOWER-CHROMA, sun-bleached
- * gold the chrome leans on without shouting — the new "light" the operator
- * asked for, scoped to the YELLOW family (not a new palette). Chroma ~0.34–0.38
- * vs the brand lemon's 0.82, so it reads calm/aged beside the loud `sun.base`
- * (which the bar keeps). The re-toned `sun.deep`/`glow`/`highlight` are pulled
- * toward this family. Sibling of tokens.css `--sun-light{,-soft,-deep}`.
- *
- *   base — the weathered straw the chrome leans on.
- *   soft — the palest weathered wash (faint chrome veils).
- *   deep — the muted-ochre weathered depth/edge. AA accent-edge (1.4.11 ≥3:1):
- *          on #FFFFFF 3.57:1 ✓ ; on page #F4F7FA 3.32:1 ✓. == sun.deep.day.
+ * The brand. `base` is the constant (bottom tab, Brain bill, primary fill);
+ * `deep` is the weathered ochre EDGE (>= 3:1 as a line); text in the brand
+ * colour uses `semantic.*.sunInk`, never `deep` (3.3:1 as text).
  */
+export const sun = {
+  base: primitive.sun,
+  hover: primitive.sunHover,
+  press: primitive.sunPress,
+  deep: { day: L.sunDeep, night: D.sunDeep },
+  glow: { day: "#F1E08F", night: "#F2DE9A" },
+  highlight: {
+    faint: "rgba(232,217,140,0.18)", // model-suggested highlights
+    day: "rgba(232,217,140,0.45)", // operator highlighter, day
+    night: "rgba(242,222,154,0.30)", // operator highlighter, night (== glow.night rgb)
+  },
+} as const;
+
+/** The weathered "light" sun family (AMS-SPR-09). Theme-invariant. */
 export const sunLight = {
-  base: "#E8D98C", // weathered straw; the calm light chrome leans on
-  soft: "#F0E6B8", // palest weathered wash (faint chrome veils)
-  deep: "#9C8636", // muted ochre weathered depth/edge; == sun.deep.day
+  base: "#E8D98C",
+  soft: "#F0E6B8",
+  deep: L.sunDeep, // one weathered ochre, two names
 } as const;
 
-/**
- * The default chrome border — neutral "light" (AMS-SPR-01).
- *
- * Was `sun.base` (#F5DF24). The operator called the everywhere-yellow
- * border "a bit too much of a bold yellow" and asked to "replace that
- * yellowness with light." `rule` is that replacement: a calm, low-chroma
- * blue-grey line — neutral, not yellow, and far less assertive than the
- * lemon. Yellow is NOT gone from the brand: it survives as `sun` (Brain
- * bill/feet) and as `barAccent` (the bottom bar). This token only retires
- * yellow from the *default* border role.
- *
- * VALUE CHOICE — the honest contrast/calm tradeoff (rigor #1). The sprint's
- * milestone-1 acceptance requires the new border ≥3:1 against its adjacent
- * surfaces (WCAG 1.4.11 non-text contrast). A truly *pale* line (e.g.
- * #C2CEDA, glacial-1) measures only ~1.6:1 on a white card — it would look
- * "light" but FAIL the floor and effectively vanish, which is worse than the
- * status quo. So `rule` is the LIGHTEST blue-grey that still clears 3:1 on
- * the primary card surfaces, not the palest grey imaginable. Measured (see
- * handoff contrast table for the full grid):
- *   day   #788596 on ice-0 #FFFFFF → 3.75:1 ✓   on ice-1 #FBFCFD → 3.65:1 ✓
- *                  on ice-2 (page) #F4F7FA → 3.49:1 ✓ ; ice-4 divider 2.94 (n/a:
- *                  a border is drawn against card/page faces, not the divider band)
- *   night #606C7E on card #1B202A → 3.07:1 ✓   on space-2 (page) #0D1019 → 3.57:1 ✓
- * It reads calm and neutral next to the old lemon while remaining a definite,
- * accessible line. Where a component wants a high-contrast emphasis edge it
- * should use `ink`/`bright` or `barAccent`, never lean on the default rule.
- */
-export const rule = {
-  day: "#788596", // calm blue-grey, lightest neutral clearing 3:1 on white cards
-  night: "#606C7E", // calm slate, lightest neutral clearing 3:1 on the night card
-} as const;
+/** The meaningful boundary line (fields, keycap edges, tables). */
+export const rule = { day: L.borderRule, night: D.borderRule } as const;
+
+/** The bottom-bar accent. Stays LOUD in both themes (AMS-SPR-09). */
+export const barAccent = { day: primitive.sun, night: "#FFEC5F" } as const;
+
+/** The media well: dark in both themes so letterboxed media recedes. */
+export const mediaWell = { day: primitive.charcoal2, night: primitive.void } as const;
 
 /**
- * The preserved bottom-bar yellow accent (AMS-SPR-01, consumed by SPR-06).
- *
- * The operator kept yellow "in style for the bottom tab." This names that
- * intent so the NavRail/bottom bar can paint with a *semantic* accent token
- * rather than reaching for raw `sun`. Day = the lemon itself; night = a warm
- * glow legible on the dark sky. Decoupling this from the default border is the
- * deliberate compromise: the brand yellow concentrates on the one surface that
- * should carry it, instead of diffusing across every chrome edge.
- *
- * AMS-SPR-09 — STAYS LOUD. This is the bottom-tab value and MUST NOT soften
- * with the chrome re-tone.
- *   - day  = sun.base (#F5DF24), the brand lemon — UNCHANGED.
- *   - night was `sun.glow.night`; SPR-09 softened `sun.glow.night` to #F2DE9A,
- *     so the night bar would have softened too. It is now PINNED to the loud
- *     #FFEC5F literal (the pre-SPR-09 glow value) — decoupled from the softened
- *     glow. Mirrors tokens.css `--sun-bar-night` / night `--bar-accent`.
- */
-export const barAccent = {
-  day: sun.base, // #F5DF24 — the brand lemon (loud, unchanged)
-  night: "#FFEC5F", // loud warm night glow — PINNED, not the softened sun.glow.night
-} as const;
-
-/**
- * The media well (Q16; ui-audit 12-modes-c #63) — the ONE deliberate backdrop
- * behind players, candidates, and media frames. Wells were improvising four
- * answers (charcoal-2 in day mode, raw black, ink, hardcoded white); this is
- * the single one. A well stays dark in BOTH themes so letterboxed media
- * recedes: day borrows the charcoal card tone, night steps deeper to void so
- * the well sits below the card face. Text on a well is `bright` (#EEF1F6) —
- * 13.9:1 on the day tone, 17.4:1 on night void.
- *
- * EXCEPTION, documented: the KnowledgePanel twin iframe keeps `bg-white` on
- * purpose — its sandboxed srcDoc is light-authored HTML, so a white well
- * avoids a dark flash before the document paints. It is not a media
- * backdrop.
- *
- * Mirrors tokens.css `--media-well` (day :root + night block) and the
- * Tailwind `bg-media-well` color, which reads the var so the theme swap
- * cascades automatically.
- */
-export const mediaWell = {
-  day: "#1B202A", // charcoal-2 — the tone day playback surfaces already used
-  night: "#040508", // void — deepest night; the well recedes below the card
-} as const;
-
-/**
- * Glass / transparency surfaces (AMS-SPR-01, consumed by SPR-03/04/09).
- *
- * The mountainscape scene (SPR-04) sits behind the working surfaces; these
- * tokens are the semi-transparent panels + windows that let it show through.
- *
- *   bg          — the translucent panel fill (alpha tuned per mode).
- *   border      — the translucent hairline edge of a glass panel.
- *   blur        — the backdrop-filter blur radius.
- *   bgSolid     — OPAQUE fallback for prefers-reduced-motion / no-scene /
- *                 low-power: identical hue to `bg` at alpha 1 so a panel
- *                 degrades to a flat card without a layout/colour jump.
- *
- * LEGIBILITY CONTRACT (text contrast floor): body text over glass must meet
- * WCAG AA 4.5:1. Glass alone does NOT guarantee that — a busy scene behind
- * can drop effective contrast. The consumer (SPR-03/04/09) MUST place text
- * on a scrim: either (a) raise panel alpha toward `bgSolid`, or (b) add a
- * solid text-backing band. The token layer documents the floor; the scene
- * layer enforces it. Day glass is a near-white frost; night glass a deep
- * slate frost — both chosen so that AT THE STATED ALPHA, body `text`
- * (#0F1419 day / #EEF1F6 night) over the *solid* fallback already clears
- * 4.5:1, leaving the scrim only to recover what scene-bleed costs.
+ * Glass surfaces over the scene. `bgSolid` is the opaque reduced-motion /
+ * no-scene fallback (== the card). Body text over glass must keep AA 4.5:1;
+ * the consumer adds a scrim when the scene is busy (see GlassSurface).
  */
 export const glass = {
   day: {
-    bg: "rgba(251,252,253,0.72)", // card-soft (#FBFCFD) @ 0.72 — frost over scene
-    bgSolid: "#FBFCFD", // opaque fallback == card-soft, no colour jump
-    border: "rgba(15,20,25,0.12)", // ink (#0F1419) @ 0.12 — translucent hairline
-    blur: "12px", // backdrop-filter blur radius
+    bg: "rgba(255,254,251,0.72)", // bgCard @ 0.72
+    bgSolid: L.bgCard,
+    border: "rgba(15,20,25,0.12)", // fixed ink @ 0.12
+    blur: "12px",
   },
   night: {
-    bg: "rgba(27,32,42,0.66)", // charcoal-2 (#1B202A) @ 0.66 — frost over night sky
-    bgSolid: "#1B202A", // opaque fallback == charcoal-2 card
-    border: "rgba(238,241,246,0.14)", // bright (#EEF1F6) @ 0.14 — translucent hairline
+    bg: "rgba(27,32,42,0.66)", // charcoal-2 @ 0.66
+    bgSolid: D.bgCard,
+    border: "rgba(238,241,246,0.14)", // bright @ 0.14
     blur: "12px",
   },
 } as const;
 
 /**
- * 10-step surface ramps. Ordered light → dark for day,
- * void → starlight for night. Background, fill, and divider
- * tones all index into these.
+ * The 10-step ramps the canvases index into, now DERIVED from the semantic
+ * layer (they used to hold their own glacial hexes). Index meaning is
+ * unchanged: day [0] card … [2] page … [9] ink; night [2] page, [4] card,
+ * [7] muted text, [9] bright.
  */
 export const surface: Record<Mode, readonly string[]> = {
   day: [
-    "#FFFFFF", // 0  ice-0       pure white (top card face, rare)
-    "#FBFCFD", // 1  ice-1       default card
-    "#F4F7FA", // 2  ice-2       page background
-    "#EAEFF4", // 3  ice-3       trough / inset
-    "#DCE5ED", // 4  ice-4       divider band
-    "#C2D1DD", // 5  glacial-1   subdued surface
-    "#9AB0C0", // 6  glacial-2   disabled / muted
-    // S11 a11y: darkened from #64778A so opacity-blended descendants
-    // still hit WCAG AA 4.5:1 against ice-0/ice-1 backgrounds.
-    "#4F5F70", // 7  shadow-1    secondary text
-    "#384858", // 8  shadow-2    low-emphasis ink
-    "#0F1419", // 9  ink         primary text + hard borders
+    L.bgCard, // 0  ice-0      card face
+    L.bgCard, // 1  ice-1      card
+    L.bgPage, // 2  ice-2      page
+    L.bgInset, // 3  ice-3      inset / well
+    L.borderHairline, // 4  ice-4      hairline band
+    L.borderHairline, // 5  glacial-1
+    L.borderRule, // 6  glacial-2
+    L.text2, // 7  shadow-1   secondary text
+    primitive.fixedInk2, // 8  shadow-2   low-emphasis ink (fixed)
+    primitive.fixedInk, // 9  ink
   ],
   night: [
-    "#040508", // 0  void         deepest layer
-    "#080A10", // 1  space-1      sub-page
-    "#0D1019", // 2  space-2      page background
-    "#13171F", // 3  charcoal-1   trough
-    "#1B202A", // 4  charcoal-2   card (the "top plane" at night)
-    "#252B36", // 5  slate-1      elevated
-    "#323845", // 6  slate-2      higher plane
-    "#6B7585", // 7  moonlight    muted text
-    "#C4CCD7", // 8  starlight    body text
-    "#EEF1F6", // 9  bright       headlines
+    primitive.void, // 0
+    primitive.space1, // 1
+    primitive.space2, // 2  page
+    primitive.charcoal1, // 3  inset
+    primitive.charcoal2, // 4  card
+    primitive.slate1, // 5
+    primitive.slate2, // 6
+    primitive.moonlight, // 7  muted text (== night text-3)
+    primitive.starlight, // 8
+    primitive.bright, // 9
   ],
 } as const;
 
-/** Named aliases over the ramp for readability inside components. */
+/** Named aliases over the ramp (legacy shape; values from `semantic`). */
 export type SurfaceAliases = {
   page: string;
   card: string;
@@ -247,68 +211,29 @@ export type SurfaceAliases = {
   muted: string;
   textMuted: string;
   text: string;
-  border: string; // ← was always sun; re-pointed to neutral `rule` per AMS-SPR-01
+  border: string;
 };
 
 export function aliasFor(m: Mode): SurfaceAliases {
-  const r = surface[m];
-  if (m === "day") {
-    return {
-      page: r[2],
-      card: r[0],
-      cardSoft: r[1],
-      inset: r[3],
-      divider: r[4],
-      muted: r[6],
-      textMuted: r[7],
-      text: r[9],
-      border: rule.day, // was sun.base #F5DF24; toned to neutral light per AMS-SPR-01
-    };
-  }
+  const s = m === "day" ? L : D;
   return {
-    page: r[2],
-    card: r[4],
-    cardSoft: r[3],
-    inset: r[2],
-    divider: r[3],
-    muted: r[7],
-    textMuted: r[7],
-    text: r[9],
-    border: rule.night, // was sun.base #F5DF24; toned to neutral light per AMS-SPR-01
+    page: s.bgPage,
+    card: s.bgCard,
+    cardSoft: s.bgPage,
+    inset: s.bgInset,
+    divider: s.borderHairline,
+    muted: s.text3,
+    textMuted: s.text2,
+    text: s.text1,
+    border: s.borderRule,
   };
 }
 
-/**
- * Stepped muting of the ink ramp (Q1 — the muted-text hierarchy).
- *
- * Two distinct dimming levels below primary `ink`, each with a night
- * counterpart, exposed as the `text-ink-soft` / `text-ink-mute` utilities:
- *
- *   ink-soft — lede / secondary text. Day #2A3441 sits between shadow-2
- *              (#384858) and ink (#0F1419); night reuses starlight #C4CCD7,
- *              the night ramp's body-text step.
- *   ink-mute — metadata / tertiary text. Values are the WCAG-AA-cleared
- *              versions of the static mock's (public/redesign.html) --ink-soft/
- *              --ink-mute: the mock's day #6A7785 measures 4.25:1 on the ice-2
- *              page and night #7C8696 4.44:1 on the charcoal-2 card — both just
- *              under the AA 4.5:1 floor — so they were stepped toward the ramp
- *              until they clear it on every usual background:
- *                day   #647380 → 4.54:1 on ice-2, 4.88:1 on ice-0
- *                night #828C9C → 4.80:1 on charcoal-2, 5.59:1 on space-2
- *              (night moonlight #6B7585 is DIMMER than ink-mute and fails AA on
- *              a card — 3.50:1; ink-mute is the AA-passing tertiary step.)
- *
- * Sibling invariant: byte-identical to --ink-soft/--ink-mute in tokens.css
- * (day :root + night media block). tailwind.config.js exposes them via the
- * --ink-soft-rgb/--ink-mute-rgb channel vars so /opacity modifiers resolve.
- */
-export const inkSoft = { day: "#2A3441", night: "#C4CCD7" } as const;
-export const inkMute = { day: "#647380", night: "#828C9C" } as const;
+/** Legacy muted-text keys, now the semantic roles: ink-soft = text-2, ink-mute = text-3. */
+export const inkSoft = { day: L.text2, night: D.text2 } as const;
+export const inkMute = { day: L.text3, night: D.text3 } as const;
 
-/** Chunky offset shadows: ink-cast on day, sun-deep-glowing on night.
-    AMS-SPR-09: night shadows glow with the re-toned weathered `sun.deep.night`
-    (#84722F, was #8A7300) — they read `var(--sun-deep)` in tokens.css, so this
-    sibling carries the SAME re-toned hex (byte-identical invariant). */
+/** Chunky offset shadows: ink-cast by day, sun-deep-cast by night. */
 export const shadow = {
   day: {
     z1: "3px 3px 0 0 #0F1419",
@@ -326,19 +251,14 @@ export const shadow = {
 
 export type ShadowKey = keyof (typeof shadow)["day"];
 
-/** Brain mascot palette. Bill + feet lock to sun — the single constant that makes the mark the brand.
-
-   These five drive the canonical <Brain mood="..." /> (U-02). The component renders
-   at rail size (28px, mark fidelity) and hero (120px+, character fidelity) from the
-   same geometry. Abstract dot rejected: a stranger must call the rail mark "a cute
-   brain" not "a dot". See brand/README.md for the four-slot restraint rule. */
+/** Brain mascot palette. Bill + feet lock to the sun. */
 export const mascot = {
   day: {
-    coat: "#0F1419",
+    coat: primitive.fixedInk,
     belly: "#FBFCFD",
     bill: sun.base,
     foot: sun.base,
-    eye: "#0F1419",
+    eye: primitive.fixedInk,
   },
   night: {
     coat: "#0A0D14",
@@ -349,82 +269,45 @@ export const mascot = {
   },
 } as const;
 
-/** Exactly the four moods the restraint rule permits. Used only in the four named
-   slots; never mid-content, never more than one on screen. */
+/** Exactly the four moods the restraint rule permits. */
 export type MascotMood = "idle" | "thinking" | "empty" | "celebrate";
 
-/** Reserved-use accents — use sparingly; never substitute for sun. */
+/**
+ * Reserved accents. `aurora` is the AI-cognition FILL (never text: 2.2:1 on
+ * paper; text uses `teal`). `emperor` is danger (one red, one name).
+ */
 export const accent = {
-  aurora: { day: "#16C2C2", night: "#3FE0DC" }, // secondary, AI-thinking states
-  // emperor (danger). S11 a11y audit darkened day variant from
-  // #E33C2D → #CE3623 so white text hits the WCAG AA 4.5:1 floor.
-  emperor: { day: "#CE3623", night: "#FF6155" }, // danger only
+  aurora: { day: L.aurora, night: D.aurora },
+  emperor: { day: L.danger, night: D.danger },
 } as const;
 
-/**
- * Semantic danger alias (Q1). Danger IS emperor — the reserved red accent —
- * under the name danger-call sites already use (`text-danger`, `border-danger`,
- * `bg-danger/10`). One red, two names; the alias object IS accent.emperor so
- * the two can never drift. tokens.css mirrors it as --danger: var(--emperor)
- * plus the --danger-rgb channels (day 206 54 35 / night 255 97 85) that the
- * Tailwind `danger` color reads so bg-danger/10 resolves.
- */
+/** Danger: the emperor alias (same object, so the two can never drift). */
 export const danger = accent.emperor;
 
-/**
- * Semantic success token (Q3, adjudication D2) — the done/met/passed green.
- *
- * aurora was carrying these states (`state.done`) but fails WCAG AA as text
- * (1.9:1 on ice-0) and is RESERVED for AI-thinking (D8), so done/met/passed
- * gets its own hue: a calm forest green, low-chroma like the rest of the
- * weathered brand (chroma ~0.31, not a SaaS neon emerald).
- *
- * AA pairs (verified in tokens.contrast.test.ts):
- *   day   #237242 → 5.90:1 on ice-0, 5.49:1 on ice-2 (text); ice-0 white
- *         text over it 5.90:1 (filled success chips/buttons).
- *   night #6ECB8F → 9.59:1 on space-2, 8.24:1 on charcoal-2 (text); day-ink
- *         #0F1419 text over it ~10:1 (filled success chips/buttons at night).
- *
- * Sibling invariant: byte-identical to --success in tokens.css (day :root +
- * night media block). tailwind.config.js exposes it via the --success-rgb
- * channel vars so /opacity modifiers (bg-success/10) resolve.
- */
-export const success = { day: "#237242", night: "#6ECB8F" } as const;
+/** Done / met / passed / VERIFIED. */
+export const success = { day: L.success, night: D.success } as const;
 
 /**
- * Research-state family (herdr transfer P0-1). Mirrors tokens.css: semantic
- * ALIASES over the palette constants (var() references), so state colour is
- * a token, never a raw hex in a component. blocked=emperor (needs
- * attention), done=success (Q3/D2 — was aurora, which is reserved for
- * AI-thinking per D8), working=sun, stopped/muted=shadow-1. The
- * canonical dot classes live in shared/researchState.ts and consume these
- * tokens via Tailwind arbitrary values.
+ * Research + honesty states: semantic ALIASES (var() references), mirrored by
+ * tokens.css section 3. Each resolves to a colour that reads as TEXT in both
+ * themes, so one token serves the dot and the label; a state always carries a
+ * word (and an icon), never colour alone.
  */
 export const state = {
-  working: "var(--sun)",
-  blocked: "var(--emperor)",
+  working: "var(--sun-ink)",
+  blocked: "var(--danger)",
   done: "var(--success)",
-  stopped: "var(--shadow-2)",
-  muted: "var(--shadow-2)",
+  stopped: "var(--text-2)",
+  muted: "var(--text-3)",
+  verified: "var(--success)",
+  conflicting: "var(--danger)",
+  stale: "var(--stale)",
+  notRun: "var(--not-run)",
 } as const;
 
 /**
- * Motion scale (U-05). One small set of durations + easings so motion
- * timing is a token, not a magic number scattered across components.
- *
- * `fast`  — the press: the offset-shadow snap on a button/card tap.
- *           Short enough to read as tactile, not as travel.
- * `base`  — the everyday hover lift + colour/opacity transitions.
- * `slow`  — the ceiling for a signature delight beat. No flourish may
- *           run longer than this; Brain's 800 ms celebrate one-shot
- *           sits under it.
- *
- * `standard` is the default ease for interactions; `enter` (ease-out)
- * for elements arriving. GPU-cheap properties only — transform/opacity.
- * Brain's pose timings (idle 4200 ms, thinking 1200 ms, celebrate
- * 800 ms) live in mascot/animated/animations.css and predate this
- * scale; `slow` is set to 800 ms so the celebrate beat is the
- * longest sanctioned flourish rather than an outlier.
+ * Motion scale (U-05). `base` is also Tailwind's DEFAULT transition, so a
+ * bare `transition` utility runs on the token, not on Tailwind's constant.
  */
 export const motion = {
   duration: {
@@ -441,10 +324,7 @@ export const motion = {
 export type MotionDuration = keyof typeof motion.duration;
 export type MotionEasing = keyof typeof motion.easing;
 
-/** Pitch family (AI Role Lineup vertical, 2026-08-12) — the formation
- * field greens. Mirrors tokens.css --pitch-{base,mid,deep} (day) and the
- * night block; LineupPitch consumes the CSS vars so theme follows
- * prefers-color-scheme. Day = grass, night = deep turf. */
+/** Pitch family (AI Role Lineup): day grass, night deep turf. */
 export const pitch = {
   day: { base: "#4C8F4F", mid: "#3D7A41", deep: "#2F6633" },
   night: { base: "#2E5C33", mid: "#244A29", deep: "#1B3A20" },
@@ -461,7 +341,6 @@ export const type = {
   // reading prose only (MasterMdViewer, Notebook prose blocks)
   serif: '"Charter", "Iowan Old Style", Georgia, serif',
 } as const;
-
 
 /**
  * Link Monster — Weirdmageddon incinerator palette (feature-scoped).

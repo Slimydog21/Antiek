@@ -3,6 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Browser chrome follows the page ground (--bg-page); the boot script
+         below sets the value for the resolved theme. -->
+    <meta name="theme-color" content="#FBF9F4" />
+    <!-- Theme + motion before first paint. Preference keys: 'antiek.theme'
+         (light | dark | system, default system) and 'antiek.motion'
+         (system | reduce | full). src/design/theme.ts is the React side of the
+         same contract; theme.boot.test.ts runs this exact script. -->
+    <script>
+      (function () {
+        var d = document.documentElement;
+        var mm = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+        function read(k) {
+          try {
+            return window.localStorage.getItem(k);
+          } catch (e) {
+            return null;
+          }
+        }
+        function apply() {
+          var p = d.getAttribute("data-theme-pref");
+          var dark = p === "dark" || (p !== "light" && !!mm && mm.matches);
+          d.setAttribute("data-theme", dark ? "dark" : "light");
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", dark ? "#0D1019" : "#FBF9F4");
+        }
+        var t = read("antiek.theme");
+        d.setAttribute("data-theme-pref", t === "light" || t === "dark" ? t : "system");
+        var m = read("antiek.motion");
+        if (m === "reduce" || m === "full") d.setAttribute("data-motion", m);
+        apply();
+        if (mm && mm.addEventListener) mm.addEventListener("change", apply);
+      })();
+    </script>
     <!-- Browser-tab mark: the cute Krea brain. PNG is the
          primary icon; the geometric brain favicon.svg stays as a fallback for
          any client that prefers SVG. apple-touch-icon uses the 180px mark. -->
@@ -11,7 +45,7 @@
     <link rel="apple-touch-icon" href="/mark-180.png" />
     <title>Antiek — reading</title>
   </head>
-  <body class="bg-stone-50 text-stone-900 antialiased">
+  <body class="bg-page text-1 antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

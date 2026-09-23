@@ -1,178 +1,158 @@
 /** @type {import('tailwindcss').Config} */
-// Antiek design tokens.
-// Sun-yellow outlining WAS the brand default border; AMS-SPR-01 retuned the
-// DEFAULT border to a calm neutral "light" rule while keeping sun as the
-// Brain + bottom-bar accent. Day = layered off-whites + glacials. Night =
-// ten-layer off-black "majestic night sky".
-// Source of truth: src/design/tokens.ts (+ tokens.css for the rgba/var tokens).
-// Keep these in sync — every value carrying an AMS-SPR-01 note mirrors one there.
+// Antiek design tokens: "paper, ink, and one sun".
+//
+// Every colour key resolves to a CSS variable in src/design/tokens.css (the
+// single source of truth); none holds a hex. Keys that take an /opacity
+// modifier read the channel triplet: rgb(var(--x-rgb) / <alpha-value>).
+// check_token_parity.ts fails the build if a key ever holds a literal again.
+//
+// Theme: `dark:` is driven by <html data-theme="dark">, which index.html sets
+// before first paint from the stored preference (light | dark | system).
+//
+// Legacy keys keep their names and point at the semantic layer, so no call
+// site needs a rewrite. Where one key had two jobs, the per-utility maps below
+// split it: `text-sun-deep` is the brand as TEXT (--sun-ink) while
+// `border-sun-deep` stays the weathered edge; `text-aurora` is teal while
+// `bg-aurora` stays the AI-cognition fill; `bg-emperor` is a white-text-safe
+// fill while `text-emperor` is the theme's danger text colour.
+
+import defaultColors from "tailwindcss/colors.js";
+
+/** rgb(var(--<name>-rgb) / <alpha-value>) */
+const ch = (name) => `rgb(var(--${name}-rgb) / <alpha-value>)`;
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
-  darkMode: "media", // honours prefers-color-scheme
+  darkMode: ["selector", '[data-theme="dark"]'],
+  // Hover lifts must not stick after a tap on touch screens.
+  future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
       colors: {
-        // THE brand — invariant across modes
-        sun: "#F5DF24",
-        // Re-toned sun family (AMS-SPR-09 / CFEEL-FIX-1). These were the OLD
-        // loud hexes (sun-deep #B89A00, sun-glow #FCE85E) AFTER tokens.css /
-        // tokens.ts had already been re-toned to the weathered values — a
-        // HIGH-severity token drift ("lived feel ≠ designed feel"): the ~45
-        // utility consumers rendered the old loud values on screen. FIX: point
-        // these keys at the CSS vars so they resolve through tokens.css and
-        // cascade per theme automatically — day --sun-deep #9C8636 / night
-        // #84722F, day --sun-glow #F1E08F / night #F2DE9A. This is strictly
-        // MORE correct than a static day hex: several consumers (text-sun-deep
-        // in VoiceToDraft / FloatMenu / ResearchPanel) carry NO dark: override,
-        // so a static day hex would render the day ochre even at night; the
-        // var resolves to the night token there. And the drift can never recur
-        // — there is now ONE value, in tokens.css, the parity guard asserts.
-        // Mirror: tokens.ts `sun.deep`/`sun.glow`, tokens.css --sun-deep/--sun-glow.
-        "sun-deep": "var(--sun-deep)",
+        // ── the brand ─────────────────────────────────────────────
+        sun: ch("sun"),
+        "sun-hover": ch("sun-hover"),
+        "sun-press": ch("sun-press"),
+        // The brand as TEXT: day #75620F, night the sun itself.
+        "sun-ink": ch("sun-ink"),
+        // The weathered ochre EDGE (>= 3:1 as a line). text-sun-deep is
+        // remapped to sun-ink in textColor below.
+        "sun-deep": ch("sun-deep"),
         "sun-glow": "var(--sun-glow)",
-
-        // Neutral "light" chrome border (AMS-SPR-01). Was the default border
-        // = sun #F5DF24; the operator asked to "replace that yellowness with
-        // light." Day hex mirrors tokens.ts `rule.day` + tokens.css --rule
-        // (#788596 — a calm blue-grey; the lightest neutral that still clears
-        // WCAG 3:1 on white cards). Tailwind cannot media-swap a single color
-        // key, so border-rule renders this day hex statically; night is
-        // delivered via the CSS var (var(--border)/var(--rule) → #606C7E) on
-        // elements that read it, and components carry an explicit
-        // dark:border-charcoal-1 override. Keep in sync with tokens.ts/.css.
-        rule: "#788596",
-
-        // Preserved bottom-bar yellow accent (AMS-SPR-01; SPR-06 paints the
-        // bar with this). Resolves to the brand lemon. Mirrors tokens.ts
-        // `barAccent.day` + tokens.css --bar-accent. Night warmer glow is
-        // delivered via var(--bar-accent) (#FFEC5F) for var-driven consumers.
-        "bar-accent": "#F5DF24",
-
-        // Glass surfaces (AMS-SPR-01; SPR-03/04/09). Inherently mode-dependent
-        // rgba, so bg-glass / border-glass are wired to the CSS vars
-        // (tokens.css) rather than a static hex — they track day + night
-        // automatically. The contrast/scrim legibility contract lives in
-        // tokens.ts `glass`.
-        glass: "var(--glass-bg)",
-        "glass-solid": "var(--glass-bg-solid)",
-
-        // Day surface ramp (off-whites + glacials)
-        "ice-0": "#FFFFFF",
-        "ice-1": "#FBFCFD",
-        "ice-2": "#F4F7FA",
-        "ice-3": "#EAEFF4",
-        "ice-4": "#DCE5ED",
-        "glacial-1": "#C2D1DD",
-        "glacial-2": "#9AB0C0",
-        // shadow-1 was #64778A → 4.59:1 on white; opacity-blended
-        // descendants (panels with 95% opacity) dropped to 4.17 +
-        // failed the a11y audit. Darkened to #4F5F70 → 6.32:1 on
-        // white, ~5.4:1 even with 95% panel opacity. Brand-acceptable;
-        // the visual difference is one Munsell step darker.
-        "shadow-1": "#4F5F70",
-        "shadow-2": "#384858",
-        ink: "#0F1419",
-
-        // Stepped muting of the ink ramp (Q1) — the muted-text hierarchy:
-        // ink-soft = lede/secondary, ink-mute = metadata/tertiary. These keys
-        // were REFERENCED (~600 call sites) but DEFINED NOWHERE until Q1, so
-        // Tailwind emitted nothing and muted text silently rendered unstyled.
-        // Values live in tokens.css (--ink-soft/--ink-mute, day + night);
-        // these keys read the *-rgb channel triplets through <alpha-value> so
-        // /opacity modifiers (border-ink-mute/40) resolve and the theme swap
-        // cascades automatically. Mirrors tokens.ts `inkSoft`/`inkMute`:
-        // day #2A3441/#647380, night #C4CCD7/#828C9C.
-        "ink-soft": "rgb(var(--ink-soft-rgb) / <alpha-value>)",
-        "ink-mute": "rgb(var(--ink-mute-rgb) / <alpha-value>)",
-
-        // Semantic danger alias (Q1) — danger IS emperor under the name call
-        // sites use (text-danger / border-danger / bg-danger/10). Reads the
-        // --danger-rgb channels (day 206 54 35 == emperor #CE3623; night
-        // 255 97 85 == #FF6155) so bg-danger/10 resolves. Mirrors tokens.ts
-        // `danger` == accent.emperor + tokens.css --danger.
-        "danger": "rgb(var(--danger-rgb) / <alpha-value>)",
-
-        // Semantic success token (Q3, adjudication D2) — the done/met/passed
-        // green; aurora stays reserved for AI-thinking (D8). Reads the
-        // --success-rgb channels (day 35 114 66 == #237242; night 110 203 143
-        // == #6ECB8F) so bg-success/10 resolves and the theme swap cascades.
-        // Both values clear WCAG AA 4.5:1 as text on their card/page surfaces
-        // (pinned in tokens.contrast.test.ts). Mirrors tokens.ts `success`.
-        "success": "rgb(var(--success-rgb) / <alpha-value>)",
-
-        // Weathered "light" sun family mirrors (Q1, same drift class as
-        // CFEEL-FIX-1): tokens.css/tokens.ts have carried --sun-light* since
-        // AMS-SPR-09 but the Tailwind mirror was never added, so bg-sun-light /
-        // text-sun-light / bg-sun-light-soft rendered unstyled. Var-referenced
-        // (no night redeclaration — the weathered straw is theme-invariant by
-        // design; mascot-rod night deliberately reads --sun-light).
         "sun-light": "var(--sun-light)",
         "sun-light-soft": "var(--sun-light-soft)",
         "sun-light-deep": "var(--sun-light-deep)",
+        "bar-accent": ch("bar-accent"),
+        "keycap-edge": ch("keycap-edge"),
 
-        // Media well (Q16; ui-audit 12-modes-c #63) — the ONE deliberate
-        // media backdrop (players, candidates, frames). Reads the CSS var so
-        // the day/night swap cascades (day charcoal-2 tone, night void).
-        // Mirrors tokens.ts `mediaWell` + tokens.css --media-well.
+        // ── semantic surfaces, lines, text ────────────────────────
+        page: ch("bg-page"),
+        card: ch("bg-card"),
+        "card-soft": "var(--card-soft)",
+        hairline: ch("border-hairline"),
+        rule: ch("border-rule"),
+        focus: ch("focus"),
+        wash: "var(--wash)",
+
+        // ── legacy day ramp → semantic (follows the theme) ────────
+        "ice-0": ch("bg-card"),
+        "ice-1": ch("bg-card"),
+        "ice-2": ch("bg-page"),
+        "ice-3": ch("bg-inset"),
+        "ice-4": ch("border-hairline"),
+        "glacial-1": ch("border-hairline"),
+        "glacial-2": ch("border-rule"),
+        // shadow-1 is secondary text (text-2); as a fill it follows too.
+        "shadow-1": ch("text-2"),
+        // shadow-2 FILLS stay dark in both themes (the hover of an ink
+        // button, the dark float menu); its text use is text-2 (below).
+        "shadow-2": ch("fixed-ink-2"),
+        // ink is the fixed pigment: ink on the sun, ink buttons, the dark
+        // rail. It does not flip (text-ink dark:text-bright stays correct).
+        ink: ch("fixed-ink"),
+        "ink-soft": ch("ink-soft"),
+        "ink-mute": ch("ink-mute"),
+
+        // ── states ───────────────────────────────────────────────
+        danger: ch("danger"),
+        success: ch("success"),
+        stale: ch("stale"),
+        "not-run": ch("not-run"),
+        // Links and evidence. DEFAULT only: Tailwind's teal-50…950 steps
+        // stay available (no key disappears).
+        teal: { ...defaultColors.teal, DEFAULT: ch("teal") },
+        // AI-cognition fill (thinking, emergent outputs). Text → teal.
+        aurora: ch("aurora"),
+        // One red, one name: emperor is danger.
+        emperor: ch("danger"),
+
+        // ── glass + media ─────────────────────────────────────────
+        glass: "var(--glass-bg)",
+        "glass-solid": "var(--glass-bg-solid)",
         "media-well": "var(--media-well)",
 
-        // Night surface ramp (off-blacks + dark greys — majestic night sky)
-        void: "#040508",
-        "space-1": "#080A10",
-        "space-2": "#0D1019",
-        "charcoal-1": "#13171F",
-        "charcoal-2": "#1B202A",
-        "slate-1": "#252B36",
-        "slate-2": "#323845",
-        moonlight: "#6B7585",
-        starlight: "#C4CCD7",
-        bright: "#EEF1F6",
-
-        // Reserved-use accents (sparingly — never substitute for sun)
-        aurora: "#16C2C2",
-        // S11 a11y: previous #E33C2D × white text gave 4.24:1 (below
-        // WCAG AA 4.5:1 for small text). Darkened to #CE3623 → 4.51:1.
-        // Visual delta is ~5% red saturation — brand-acceptable.
-        emperor: "#CE3623",
+        // ── night ramp: primitives, used under dark: (and on the dark
+        //    islands that stay dark in both themes). Their values equal
+        //    the night semantic tokens: dark:bg-charcoal-2 is the night
+        //    card, dark:text-moonlight is the night text-3 (5.0:1). ──
+        void: ch("void"),
+        "space-1": ch("space-1"),
+        "space-2": ch("space-2"),
+        "charcoal-1": ch("charcoal-1"),
+        "charcoal-2": ch("charcoal-2"),
+        "slate-1": ch("slate-1"),
+        "slate-2": ch("slate-2"),
+        moonlight: ch("moonlight"),
+        starlight: ch("starlight"),
+        bright: ch("bright"),
+      },
+      // Per-utility splits: a key whose TEXT job differs from its fill/edge job.
+      textColor: {
+        "1": ch("text-1"),
+        "2": ch("text-2"),
+        "3": ch("text-3"),
+        "sun-deep": ch("sun-ink"),
+        aurora: ch("teal"),
+        "shadow-2": ch("text-2"),
+        starlight: ch("text-2"),
+        // text-ice-* is white text on a fill (danger, ink, the dark rail,
+        // a book spine): it must not flip with the card colour.
+        "ice-0": ch("fixed-paper"),
+        "ice-1": ch("fixed-paper"),
+        "ice-2": ch("fixed-paper"),
+        "ice-3": ch("fixed-paper"),
+        "ice-4": ch("fixed-paper"),
+      },
+      backgroundColor: {
+        inset: ch("bg-inset"),
+        // bg-emperor is a FILL under white text: 5.03:1 in both themes.
+        emperor: ch("danger-fill"),
+      },
+      borderColor: {
+        DEFAULT: ch("border-rule"),
+        rule: ch("border-rule"),
+        // 442 dark:border-charcoal-1 call sites meant "the night rule";
+        // they now get it (3.55:1 on the night card, was 1.10:1).
+        "charcoal-1": ch("border-rule"),
+        aurora: ch("teal"),
+        glass: "var(--glass-border)",
       },
       boxShadow: {
-        // Day: ink-cast chunky offset
-        z1: "3px 3px 0 0 #0F1419",
-        z2: "5px 5px 0 0 #0F1419",
-        z3: "8px 8px 0 0 #0F1419",
-        lift: "12px 12px 0 0 #0F1419",
-        // Night: sun-deep-cast glow. Every consumer applies these only behind a
-        // `dark:` variant (dark:shadow-z1-night …), so they fire ONLY in the
-        // night subtree where --sun-deep cascades to the night value #84722F.
-        // The cast colour was the OLD loud #8A7300 here AFTER tokens.css /
-        // tokens.ts had re-toned the night cast to the weathered #84722F
-        // (AMS-SPR-09) — the same drift as the sun-deep/glow keys. FIX: read
-        // var(--sun-deep), byte-identical to how tokens.css --shadow-z* read it
-        // (tokens.css:251-254), so these never drift from the night shadow
-        // again. Mirror: tokens.ts `shadow.night` (#84722F).
+        // Day: cast in the fixed ink (#0F1419)
+        z1: "3px 3px 0 0 var(--fixed-ink)",
+        z2: "5px 5px 0 0 var(--fixed-ink)",
+        z3: "8px 8px 0 0 var(--fixed-ink)",
+        lift: "12px 12px 0 0 var(--fixed-ink)",
+        // Night: cast in var(--sun-deep) (night value #84722F). Applied only
+        // behind dark:, byte-identical to tokens.css --shadow-z*.
         "z1-night": "3px 3px 0 0 var(--sun-deep)",
         "z2-night": "5px 5px 0 0 var(--sun-deep)",
         "z3-night": "8px 8px 0 0 var(--sun-deep)",
         "lift-night": "12px 12px 0 0 var(--sun-deep)",
       },
-      borderColor: {
-        // Default border = neutral "light" rule (AMS-SPR-01). Was the brand
-        // sun #F5DF24; re-pointed to rule #788596 so the everywhere-border
-        // reads calm and neutral, not bold yellow. Mirrors tokens.ts
-        // `rule.day` + tokens.css --rule. Night (#606C7E) is delivered via
-        // the CSS var on var(--border) consumers + dark:border-charcoal-1.
-        DEFAULT: "#788596",
-        // Explicit border-rule utility (mirror of colors.rule, day hex).
-        rule: "#788596",
-        // Translucent glass hairline (mode-tracking via the CSS var).
-        glass: "var(--glass-border)",
-      },
       borderWidth: {
         edge: "2.5px",
       },
-      // Glass backdrop blur (AMS-SPR-01; SPR-03/04/09 use backdrop-blur-glass).
-      // Mirrors tokens.css --glass-blur + tokens.ts `glass.*.blur` (12px).
       backdropBlur: {
         glass: "12px",
       },
@@ -180,17 +160,28 @@ export default {
         hog: "6px",
         "hog-lg": "10px",
       },
-      // Motion scale (U-05) — the named durations + easings the base
-      // interactions use, so `duration-fast/base/slow` replace magic
-      // `duration-75` numbers. Source of truth: src/design/motion.ts.
+      // Motion scale (U-05). DEFAULT makes a bare `transition` /
+      // `transition-colors` run on the token, not on Tailwind's constant.
       transitionDuration: {
+        DEFAULT: "var(--motion-base)",
         fast: "80ms", // press
         base: "150ms", // hover / colour
         slow: "800ms", // signature-beat ceiling
       },
       transitionTimingFunction: {
+        DEFAULT: "var(--ease-standard)",
         standard: "cubic-bezier(0.4, 0, 0.2, 1)",
         enter: "cubic-bezier(0, 0, 0.2, 1)",
+      },
+      // The z ladder (src/design/zIndex.ts == tokens.css --z-*).
+      zIndex: {
+        raised: "var(--z-raised)",
+        window: "var(--z-window)",
+        mascot: "var(--z-mascot)",
+        modal: "var(--z-modal)",
+        popover: "var(--z-popover)",
+        "ad-overlay": "var(--z-ad-overlay)",
+        toast: "var(--z-toast)",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
@@ -257,7 +248,8 @@ export default {
       // text should exceed it (reading-body/content is exempt — that's content,
       // not chrome). lint_type_scale.ts enforces the ceiling on chrome.
       fontSize: {
-        xxs: ["10px", "12px"],
+        // 11px is the legibility floor (PostHog's smallest step); 10px retired.
+        xxs: ["11px", "16px"],
         xs: ["12px", "16px"],
         sm: ["14px", "20px"],
         base: ["16px", "24px"],
