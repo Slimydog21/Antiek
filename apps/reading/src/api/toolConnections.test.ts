@@ -17,6 +17,7 @@ const row = {
   status: "configured_unverified",
   credential_present: true,
   status_note: null,
+  searchable: true,
   quota: {
     kind: "youtube_units",
     remaining: 9900,
@@ -38,6 +39,35 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 describe("toolConnections API", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("accepts the paste-key vendors the catalog lists but nothing calls yet", async () => {
+    // A vendor missing from the client's allowlist throws in parseConnection,
+    // which takes down the whole settings panel, not just that row.
+    const fred = {
+      ...row,
+      vendor: "fred",
+      display_name: "FRED (St. Louis Fed)",
+      docs_url: "https://fred.stlouisfed.org/docs/api/api_key.html",
+      searchable: false,
+      quota: {
+        kind: "rate_ceiling",
+        remaining: null,
+        limit: 100,
+        reset_at: null,
+        hard_exhausted: null,
+        note: "Antiek's own per-account brake on your key: 100 requests per minute. It is not a provider allowance.",
+        estimated_cost_usd: null,
+        cost_note: null,
+      },
+    };
+    const alphaVantage = { ...fred, vendor: "alpha_vantage", display_name: "Alpha Vantage" };
+    vi.mocked(apiFetch).mockResolvedValueOnce(jsonResponse({ connections: [fred, alphaVantage], count: 2 }));
+    const parsed = await fetchToolConnections();
+    expect(parsed.map((item) => [item.vendor, item.searchable])).toEqual([
+      ["fred", false],
+      ["alpha_vantage", false],
+    ]);
+  });
 
   it("reads an exact allowlisted inventory", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce(jsonResponse({ connections: [row], count: 1 }));

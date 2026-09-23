@@ -15,11 +15,20 @@ function statusLabel(row: ToolConnection): string {
   }
   if (row.status === "degraded") return "Needs attention";
   if (row.status === "configured_unverified") {
+    // A stored key that no research surface reads is not "configured" in
+    // any sense the user cares about; say what is true instead.
+    if (!row.searchable) return "Connected, not yet used";
     return row.credential_kind === "contact"
       ? "Contact stored · not yet verified"
       : "Credential stored · not yet verified";
   }
   return "Not configured";
+}
+
+/** Why a stored credential is labelled unused, or null when it is in use. */
+function unusedNote(row: ToolConnection): string | null {
+  if (row.status !== "configured_unverified" || row.searchable) return null;
+  return "Stored and scoped to your account, but no Antiek research surface reads this provider yet.";
 }
 
 function quotaText(row: ToolConnection): string {
@@ -222,6 +231,7 @@ export default function ToolConnectionsPanel() {
                           {costText(row)}
                         </p>
                       )}
+                      {unusedNote(row) && <p className="mt-1 text-xs text-ink-soft dark:text-starlight">{unusedNote(row)}</p>}
                       {row.status_note && <p className="mt-1 text-xs text-danger">{row.status_note}</p>}
                       <a className="mt-2 block w-fit text-xs font-semibold underline underline-offset-4" href={row.docs_url} target="_blank" rel="noreferrer">Provider setup guide</a>
                     </div>

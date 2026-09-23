@@ -28,14 +28,16 @@ from runtime.byok.store import (
     list_credentials,
     store_credential_with_metadata,
 )
+from runtime.connectors.alpha_vantage import ALPHA_VANTAGE_DESCRIPTOR
 from runtime.connectors.base import (
     ConnectorDescriptor,
     KeyShape,
     RateSpec,
     validate_key_shape,
 )
+from runtime.connectors.fred import FRED_DESCRIPTOR
 
-ToolVendor = Literal["youtube", "polygon", "fmp", "edgar", "x"]
+ToolVendor = Literal["youtube", "polygon", "fmp", "edgar", "x", "fred", "alpha_vantage"]
 CredentialKind = Literal["api_key", "contact"]
 ConnectionStatus = Literal["unconfigured", "configured_unverified", "degraded"]
 
@@ -64,6 +66,14 @@ class ToolDefinition:
     credential_kind: CredentialKind
     descriptor: ConnectorDescriptor
     quota_kind: Literal["youtube_units", "rate_ceiling", "unavailable"]
+    # True only when a product surface actually spends this credential today
+    # (``/research/tools/search``). A vendor that is connectable but has no
+    # call site is still listed, so the user can store the key, but the
+    # settings panel must not report it as anything more than stored: a
+    # green "configured" over zero behaviour is the vacuous-gate shape this
+    # repo keeps getting burned by. Flip this only when the consuming branch
+    # lands, in the same change.
+    searchable: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +109,7 @@ class ToolConnectionSnapshot:
     credential_present: bool
     status_note: str | None
     quota_kind: str
+    searchable: bool
 
 
 class ToolConnectionError(RuntimeError):
@@ -127,6 +138,7 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
             docs_url="https://console.cloud.google.com/apis/credentials",
         ),
         quota_kind="youtube_units",
+        searchable=True,
     ),
     "polygon": ToolDefinition(
         vendor="polygon",
@@ -141,6 +153,7 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
             docs_url="https://polygon.io/docs",
         ),
         quota_kind="unavailable",
+        searchable=False,
     ),
     "fmp": ToolDefinition(
         vendor="fmp",
@@ -155,6 +168,7 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
             docs_url="https://site.financialmodelingprep.com/developer/docs",
         ),
         quota_kind="unavailable",
+        searchable=False,
     ),
     "edgar": ToolDefinition(
         vendor="edgar",
@@ -169,6 +183,7 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
             docs_url="https://www.sec.gov/search-filings",
         ),
         quota_kind="rate_ceiling",
+        searchable=False,
     ),
     "x": ToolDefinition(
         vendor="x",
@@ -183,9 +198,33 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
             docs_url="https://developer.x.com/en/portal/dashboard",
         ),
         quota_kind="rate_ceiling",
+        searchable=True,
+    ),
+    # Two free, self-serve paste-key vendors that prove the chassis takes a
+    # new vendor without an OAuth app. Born per-owner: resolve_tool_connection
+    # hands each its owner, so its governor window is that user's alone.
+    # Nothing calls either yet, hence searchable=False: "connected, not yet
+    # used", never "configured".
+    "fred": ToolDefinition(
+        vendor="fred",
+        display_name="FRED (St. Louis Fed)",
+        credential_kind="api_key",
+        descriptor=FRED_DESCRIPTOR,
+        quota_kind="rate_ceiling",
+        searchable=False,
+    ),
+    "alpha_vantage": ToolDefinition(
+        vendor="alpha_vantage",
+        display_name="Alpha Vantage",
+        credential_kind="api_key",
+        descriptor=ALPHA_VANTAGE_DESCRIPTOR,
+        quota_kind="rate_ceiling",
+        searchable=False,
     ),
 }
-_VENDOR_ORDER: tuple[ToolVendor, ...] = ("youtube", "polygon", "fmp", "edgar", "x")
+_VENDOR_ORDER: tuple[ToolVendor, ...] = (
+    "youtube", "polygon", "fmp", "edgar", "x", "fred", "alpha_vantage",
+)
 
 
 def tool_catalog() -> tuple[ToolDefinition, ...]:
@@ -544,6 +583,7 @@ def _snapshot(
             else "Stored credential metadata is unavailable" if record else None
         ),
         quota_kind=item.quota_kind,
+        searchable=item.searchable,
     )
 
 
@@ -590,6 +630,8 @@ def resolve_tool_connection(
     if definition.vendor == "edgar":
         from acquisition.edgar.client import EdgarConnector
 
+        # No owner: EDGAR's rate window is the host's (SEC limits per IP, and
+        # every account sends from this one), so it stays host-shared.
         return EdgarConnector(
             contact_cred_id=record.cred_id,
             artifact_path=artifact_path,
@@ -602,13 +644,18 @@ def resolve_tool_connection(
         "polygon": ("acquisition.polygon.client", "PolygonConnector"),
         "fmp": ("acquisition.fmp.client", "FmpConnector"),
         "x": ("runtime.connectors.x_twitter", "XTwitterConnector"),
+        "fred": ("runtime.connectors.fred", "FredConnector"),
+        "alpha_vantage": ("runtime.connectors.alpha_vantage", "AlphaVantageConnector"),
     }
     module_name, class_name = connector_types[definition.vendor]
     from importlib import import_module
 
     connector_type = getattr(import_module(module_name), class_name)
+    # The owner rides into the connector so its rate window / quota meter is
+    # keyed to this user's key rather than shared host-wide.
     return connector_type(
         cred_id=record.cred_id,
+        owner=owner_user_id,
         artifact_path=artifact_path,
         key_bytes=key_bytes,
         key_file=key_file,
