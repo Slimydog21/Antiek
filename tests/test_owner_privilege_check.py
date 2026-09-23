@@ -68,6 +68,30 @@ def _write_tree(tmp_path: Path, rel: str, body: str) -> Path:
     return repo
 
 
+
+
+def test_internal_document_scoped_grounding_is_a_reviewed_allowlist_entry() -> None:
+    """The event-driven grounding consumer uses the owner path by design.
+    It cannot retain the HTTP request across the async bus, so the lint
+    allowlist documents this reviewed boundary instead of encouraging a
+    variable-shaped evasion. The call must remain limited to the event's
+    document_id and must not expose results directly."""
+    grounding = (
+        Path(__file__).resolve().parent.parent
+        / "interfaces" / "research" / "api" / "grounding.py"
+    ).read_text(encoding="utf-8")
+    assert "policy_tag=\"private_research\"" in grounding
+    assert "document_id=document_id" in grounding
+    assert "_ALLOWED_FILES" in (
+        Path(__file__).resolve().parent.parent
+        / "tools" / "lint" / "owner_privilege_check.py"
+    ).read_text(encoding="utf-8")
+    assert "interfaces/research/api/grounding.py" in (
+        Path(__file__).resolve().parent.parent
+        / "tools" / "lint" / "owner_privilege_check.py"
+    ).read_text(encoding="utf-8")
+
+
 def test_lint_catches_a_planted_privileged_literal(tmp_path: Path) -> None:
     """A non-allowlisted endpoint passing ``policy_tag="operator_only"`` straight
     into ``search(...)`` — the §9.0 bypass handed in WITHOUT an auth check — is
