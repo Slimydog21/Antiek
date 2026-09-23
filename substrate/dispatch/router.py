@@ -548,6 +548,7 @@ def _dispatch_authoritative(
     config_path: str | Path | None = None,
     provider_override: str | None = None,
     model_override: str | None = None,
+    operator_lineup: bool = True,
     nd_scope: object | None = None,
 ) -> DispatchResult:
     """Route an LLM call.
@@ -586,6 +587,12 @@ def _dispatch_authoritative(
             present (a half-specified override is a caller bug, so we
             refuse to guess the missing half and fall back to config).
         model_override: see ``provider_override``.
+        operator_lineup: consult the operator's AI Role Lineup registry
+            (``lineup_override.py``) when the caller passes no explicit
+            override. Owner-paid callers (``PayerPolicy.BYOT_ONLY``) pass
+            ``False``: there the payer decides the provider, and an
+            operator preference must never re-route the call onto a
+            house key the owner is not paying for.
 
     Returns:
         DispatchResult for the first successful call.
@@ -618,7 +625,9 @@ def _dispatch_authoritative(
     # caller did not. Explicit caller overrides win; an unregistered
     # override provider falls through the tier's fallback chain exactly
     # like any primary failure (preference, not a single point of failure).
-    if provider_override is None or model_override is None:
+    # ``operator_lineup=False`` skips the registry entirely: the tier's
+    # primary is then the route, and the receipt says so (no override).
+    if operator_lineup and (provider_override is None or model_override is None):
         from .lineup_override import effective_override_for_dispatch_role
 
         lineup = effective_override_for_dispatch_role(role)
@@ -888,6 +897,7 @@ def dispatch(
     config_path: str | Path | None = None,
     provider_override: str | None = None,
     model_override: str | None = None,
+    operator_lineup: bool = True,
 ) -> DispatchResult:
     """Evaluate optional ND shadow evidence, then run authoritative dispatch unchanged."""
     if config is None:
@@ -942,6 +952,7 @@ def dispatch(
             config=config,
             provider_override=provider_override,
             model_override=model_override,
+            operator_lineup=operator_lineup,
             nd_scope=nd_scope,
         )
     finally:
