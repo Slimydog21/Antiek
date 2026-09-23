@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
+import { LemonButton } from "../../components/lemon";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 /**
@@ -36,8 +37,11 @@ const STATUS_FILTERS = [
 ] as const;
 
 export default function PayoutsAudit() {
-  const [rows, setRows] = useState<PayoutRow[]>([]);
+  // null until the log answers, and again after a failed load: the totals
+  // and the list are unknown then, never zero or empty.
+  const [rows, setRows] = useState<PayoutRow[] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  // Raw failure detail; shown only as a title, never as the sentence.
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>("all");
   const [recipientFilter, setRecipientFilter] = useState<string>("");
@@ -59,6 +63,7 @@ export default function PayoutsAudit() {
       const data = await resp.json();
       setRows(data.transfers ?? []);
     } catch (e: unknown) {
+      setRows(null);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
@@ -70,6 +75,7 @@ export default function PayoutsAudit() {
   }, [reload]);
 
   const totals = useMemo(() => {
+    if (rows === null) return null;
     const acc: Record<string, { count: number; amount_cents: number }> = {};
     for (const r of rows) {
       const k = r.status;
@@ -132,21 +138,26 @@ export default function PayoutsAudit() {
                 className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2"
               >
                 <p className="text-base font-serif text-ink dark:text-bright">
-                  {totals[s]?.count ?? 0}
+                  {totals ? (totals[s]?.count ?? 0) : loading ? "…" : "—"}
                 </p>
                 <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
                   {s.replace(/_/g, " ")}
                 </p>
-                <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight">
-                  ${((totals[s]?.amount_cents ?? 0) / 100).toFixed(2)}
-                </p>
+                {totals && (
+                  <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight">
+                    ${((totals[s]?.amount_cents ?? 0) / 100).toFixed(2)}
+                  </p>
+                )}
               </div>
             ))}
           </section>
 
           {error && (
-            <ErrorBanner>
-              {error}
+            <ErrorBanner className="flex flex-wrap items-center justify-between gap-3">
+              <span title={error}>Transfers didn't load.</span>
+              <LemonButton variant="secondary" size="sm" type="button" onClick={() => void reload()}>
+                Try again
+              </LemonButton>
             </ErrorBanner>
           )}
 
@@ -154,13 +165,13 @@ export default function PayoutsAudit() {
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
-          {!loading && rows.length === 0 && !error && (
+          {!loading && rows !== null && rows.length === 0 && (
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">
               No transfers match this filter.
             </p>
           )}
 
-          {rows.length > 0 && (
+          {rows !== null && rows.length > 0 && (
             <section className="border border-rule dark:border-charcoal-1 rounded-md divide-y divide-rule dark:divide-charcoal-1">
               {rows.map((r) => (
                 <article

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { LemonButton } from "../../components/lemon";
 import { apiFetch } from "../../lib/api";
 
 interface PublisherSummary {
@@ -31,10 +32,22 @@ interface PayoutTransfer {
   initiated_at: string | null;
 }
 
+// null: that request has not answered, or failed. The value is unknown and
+// is never shown as a 0 or an empty list.
 interface CompositeSnapshot {
   stats: StatsResponse | null;
-  pendingDeletions: number;
-  recentPayouts: PayoutTransfer[];
+  pendingDeletions: number | null;
+  recentPayouts: PayoutTransfer[] | null;
+}
+
+/** GET a JSON body, or null when the request fails or answers non-ok. */
+async function getJson<T>(path: string): Promise<T | null> {
+  try {
+    const resp = await apiFetch(path);
+    return resp.ok ? ((await resp.json()) as T) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -50,67 +63,50 @@ interface CompositeSnapshot {
  * existing auth path; cross-user access not exposed here.
  */
 export default function OperatorDashboard() {
-  const [publishers, setPublishers] = useState<PublisherSummary[]>([]);
+  // null: not loaded (see CompositeSnapshot) — never "no publishers".
+  const [publishers, setPublishers] = useState<PublisherSummary[] | null>(null);
   const [snapshot, setSnapshot] = useState<CompositeSnapshot>({
     stats: null,
-    pendingDeletions: 0,
-    recentPayouts: [],
+    pendingDeletions: null,
+    recentPayouts: null,
   });
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [notifyError, setNotifyError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const [
-        publishersResp,
-        statsResp,
-        deletionsResp,
-        payoutsResp,
-      ] = await Promise.all([
-        apiFetch("/publishers"),
-        apiFetch("/stats").catch(() => null),
-        apiFetch("/trust-center/deletion-requests").catch(() => null),
-        apiFetch("/payouts/transfers?limit=5").catch(() => null),
-      ]);
-
-      if (!publishersResp.ok) {
-        throw new Error(`GET /publishers failed: HTTP ${publishersResp.status}`);
-      }
-      const pubData = await publishersResp.json();
-      setPublishers(pubData.publishers ?? []);
-
-      let stats: StatsResponse | null = null;
-      if (statsResp?.ok) stats = await statsResp.json();
-
-      let pendingDeletions = 0;
-      if (deletionsResp?.ok) {
-        const drData = await deletionsResp.json();
-        pendingDeletions = (drData.requests ?? []).filter(
-          (r: DeletionRequest) => r.status === "pending",
-        ).length;
-      }
-
-      let recentPayouts: PayoutTransfer[] = [];
-      if (payoutsResp?.ok) {
-        const pData = await payoutsResp.json();
-        recentPayouts = pData.transfers ?? [];
-      }
-
-      setSnapshot({ stats, pendingDeletions, recentPayouts });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+    // Each request settles on its own, so one failing leaves the others
+    // standing; a failed one is recorded as unknown (null).
+    const [pubData, stats, drData, pData] = await Promise.all([
+      getJson<{ publishers?: PublisherSummary[] }>("/publishers"),
+      getJson<StatsResponse>("/stats"),
+      getJson<{ requests?: DeletionRequest[] }>("/trust-center/deletion-requests"),
+      getJson<{ transfers?: PayoutTransfer[] }>("/payouts/transfers?limit=5"),
+    ]);
+    setPublishers(pubData ? (pubData.publishers ?? []) : null);
+    setSnapshot({
+      stats,
+      pendingDeletions: drData
+        ? (drData.requests ?? []).filter((r) => r.status === "pending").length
+        : null,
+      recentPayouts: pData ? (pData.transfers ?? []) : null,
+    });
+    setLoading(false);
   }, []);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
+  const anyFailed =
+    !loading &&
+    (publishers === null ||
+      snapshot.stats === null ||
+      snapshot.pendingDeletions === null ||
+      snapshot.recentPayouts === null);
+
   const handleNotify = async (id: string) => {
+    setNotifyError(null);
     try {
       const resp = await apiFetch(
         `/publishers/${encodeURIComponent(id)}/notify`,
@@ -121,15 +117,16 @@ export default function OperatorDashboard() {
       }
       await reload();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setNotifyError(e instanceof Error ? e.message : String(e));
     }
   };
 
+  const listed = publishers ?? [];
   const byStatus = {
-    pre_onboarded: publishers.filter((p) => p.status === "pre_onboarded"),
-    invited: publishers.filter((p) => p.status === "invited"),
-    claimed: publishers.filter((p) => p.status === "claimed"),
-    opted_out: publishers.filter((p) => p.status === "opted_out"),
+    pre_onboarded: listed.filter((p) => p.status === "pre_onboarded"),
+    invited: listed.filter((p) => p.status === "invited"),
+    claimed: listed.filter((p) => p.status === "claimed"),
+    opted_out: listed.filter((p) => p.status === "opted_out"),
   };
 
   return (
@@ -154,51 +151,83 @@ export default function OperatorDashboard() {
           {loading && (
             <p className="text-sm text-shadow-1 dark:text-moonlight">Loading publishers…</p>
           )}
-          {error && (
-            <p className="text-sm text-emperor">{error}</p>
+          {anyFailed && (
+            <div role="alert" className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-ink dark:text-bright">
+                Part of this dashboard didn't load.
+              </p>
+              <LemonButton variant="secondary" size="sm" type="button" onClick={() => void reload()}>
+                Try again
+              </LemonButton>
+            </div>
+          )}
+          {notifyError && (
+            <p className="text-sm text-emperor" role="alert" title={notifyError}>
+              Marking that publisher notified didn't go through.
+            </p>
           )}
 
-          <CompositeSnapshotSection snapshot={snapshot} />
+          <CompositeSnapshotSection snapshot={snapshot} loading={loading} />
 
-          <PublisherSection
-            title="Pre-onboarded (no notification sent)"
-            description={`§9.10 first-cohort targets are MIT Press, Cambridge University Press, Princeton University Press. Big Five last.`}
-            publishers={byStatus.pre_onboarded}
-            actionLabel="Mark notified"
-            onAction={handleNotify}
-          />
+          {publishers === null ? (
+            !loading && (
+              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5">
+                <p className="text-sm text-ink dark:text-bright">Publishers didn't load.</p>
+              </section>
+            )
+          ) : (
+            <>
+              <PublisherSection
+                title="Pre-onboarded (no notification sent)"
+                description={`§9.10 first-cohort targets are MIT Press, Cambridge University Press, Princeton University Press. Big Five last.`}
+                publishers={byStatus.pre_onboarded}
+                actionLabel="Mark notified"
+                onAction={handleNotify}
+              />
 
-          <PublisherSection
-            title="Invited (notification email sent)"
-            description="Escrow accrues; payouts gate strictly on claim. No money has moved."
-            publishers={byStatus.invited}
-            actionLabel={null}
-            onAction={null}
-          />
+              <PublisherSection
+                title="Invited (notification email sent)"
+                description="Escrow accrues; payouts gate strictly on claim. No money has moved."
+                publishers={byStatus.invited}
+                actionLabel={null}
+                onAction={null}
+              />
 
-          <PublisherSection
-            title="Claimed (payouts unlocked)"
-            description="Publisher opted in via documented process. Stripe Connect can route the accrued escrow."
-            publishers={byStatus.claimed}
-            actionLabel={null}
-            onAction={null}
-          />
+              <PublisherSection
+                title="Claimed (payouts unlocked)"
+                description="Publisher opted in via documented process. Stripe Connect can route the accrued escrow."
+                publishers={byStatus.claimed}
+                actionLabel={null}
+                onAction={null}
+              />
 
-          <PublisherSection
-            title="Opted out (content removal scheduled)"
-            description="30-day SLA for removal per §9.10 implementation requirement 4."
-            publishers={byStatus.opted_out}
-            actionLabel={null}
-            onAction={null}
-          />
+              <PublisherSection
+                title="Opted out (content removal scheduled)"
+                description="30-day SLA for removal per §9.10 implementation requirement 4."
+                publishers={byStatus.opted_out}
+                actionLabel={null}
+                onAction={null}
+              />
+            </>
+          )}
         </div>
       </main>
     </div>
   );
 }
 
-function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot }) {
-  const counts = snapshot.stats?.counts ?? {};
+function CompositeSnapshotSection({
+  snapshot,
+  loading,
+}: {
+  snapshot: CompositeSnapshot;
+  loading: boolean;
+}) {
+  // A value the server didn't give is unknown: "…" while loading, "—" after.
+  // /stats answers 200 with empty counts when its own read fails, so a
+  // missing key is unknown too, not zero.
+  const unknown = loading ? "…" : "—";
+  const counts = snapshot.stats?.counts;
   const headlineKeys: [string, string][] = [
     ["investigations", "Investigations"],
     ["notebooks", "Notebooks"],
@@ -227,7 +256,7 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
             className="border border-rule dark:border-charcoal-1 rounded-md px-2 py-2 text-center"
           >
             <p className="text-xl font-serif text-ink dark:text-bright">
-              {(counts[k] ?? 0).toLocaleString()}
+              {counts?.[k]?.toLocaleString() ?? unknown}
             </p>
             <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
               {label}
@@ -235,6 +264,9 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
           </div>
         ))}
       </div>
+      {!loading && snapshot.stats === null && (
+        <p className="text-sm text-ink dark:text-bright">Substrate counts didn't load.</p>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
@@ -242,8 +274,8 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
             Pending deletion requests
           </p>
           <p className="text-lg font-serif text-ink dark:text-bright">
-            {snapshot.pendingDeletions}
-            {snapshot.pendingDeletions > 0 && (
+            {snapshot.pendingDeletions ?? unknown}
+            {snapshot.pendingDeletions !== null && snapshot.pendingDeletions > 0 && (
               <Link
                 to="/privacy"
                 className="ml-2 text-xs font-mono text-shadow-1 dark:text-moonlight hover:underline"
@@ -252,12 +284,19 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
               </Link>
             )}
           </p>
+          {!loading && snapshot.pendingDeletions === null && (
+            <p className="text-xs text-ink dark:text-bright">Deletion requests didn't load.</p>
+          )}
         </div>
         <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
           <p className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
             Recent payouts
           </p>
-          {snapshot.recentPayouts.length === 0 ? (
+          {snapshot.recentPayouts === null ? (
+            <p className="text-sm text-ink dark:text-bright">
+              {loading ? "Loading…" : "Transfers didn't load."}
+            </p>
+          ) : snapshot.recentPayouts.length === 0 ? (
             <p className="text-sm italic text-shadow-1 dark:text-moonlight">No transfers yet.</p>
           ) : (
             <ul className="text-xs font-mono text-ink dark:text-bright space-y-0.5">
