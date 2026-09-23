@@ -57,12 +57,23 @@ DEFAULT_BAN_BACKOFF_S = 30 * 60.0
 
 
 def default_state_path() -> str:
-    """The cross-process state file. Honors ``ANTIEK_ARXIV_THROTTLE_PATH``
-    for tests / alternate homes; defaults under ~/.antiek/ alongside the
-    other Antiek runtime state."""
+    """The cross-process state file.
+
+    Precedence: ``ANTIEK_ARXIV_THROTTLE_PATH`` (non-empty) >
+    ``$ANTIEK_HOME/arxiv_throttle.json`` when ``ANTIEK_HOME`` is non-empty
+    after ``.strip()`` > ``~/.antiek/arxiv_throttle.json``. ``ANTIEK_HOME``
+    replaces the ``~/.antiek`` directory itself (it is NOT a home directory
+    to append ``.antiek`` to). Honouring ``ANTIEK_HOME`` here and in
+    ``substrate.source_throttle.default_state_path`` is one lever for both
+    sentinel files, so a half-redirected run cannot write one sentinel to
+    tmp and the other into the operator's live file.
+    """
     env = os.environ.get("ANTIEK_ARXIV_THROTTLE_PATH")
     if env:
         return env
+    home = os.environ.get("ANTIEK_HOME", "").strip()
+    if home:
+        return str(Path(home) / "arxiv_throttle.json")
     return str(Path.home() / ".antiek" / "arxiv_throttle.json")
 
 

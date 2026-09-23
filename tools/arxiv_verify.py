@@ -46,10 +46,10 @@ _ssl_bootstrap()
 # ── State path resolution (honors env vars, same convention as oai_sync) ──
 
 def _throttle_path() -> str:
-    env = os.environ.get("ANTIEK_ARXIV_THROTTLE_PATH")
-    if env:
-        return env
-    return str(Path.home() / ".antiek" / "arxiv_throttle.json")
+    """Delegates to the throttle resolver so the verifier reads the same file the throttle writes."""
+    from acquisition.arxiv.throttle import default_state_path
+
+    return default_state_path()
 
 
 def _harvest_state_path() -> str:

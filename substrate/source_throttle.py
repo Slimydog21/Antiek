@@ -94,14 +94,24 @@ DEFAULT_MAX_ATTEMPTS = 4
 
 
 def default_state_path() -> str:
-    """The cross-process state file. Honors ``ANTIEK_SOURCE_THROTTLE_PATH``
-    for tests / alternate homes; otherwise lands under ``~/.antiek/`` alongside
-    the other Antiek runtime state (the same convention ``ArxivThrottle`` and
-    the event log use). It is NOT the DuckDB path — this state never goes
-    through the single-writer lock."""
+    """The cross-process state file.
+
+    Precedence: ``ANTIEK_SOURCE_THROTTLE_PATH`` (non-empty) >
+    ``$ANTIEK_HOME/source_throttle.json`` when ``ANTIEK_HOME`` is non-empty
+    after ``.strip()`` > ``~/.antiek/source_throttle.json``. ``ANTIEK_HOME``
+    replaces the ``~/.antiek`` directory itself (it is NOT a home directory
+    to append ``.antiek`` to). Honouring ``ANTIEK_HOME`` here and in
+    ``acquisition.arxiv.throttle.default_state_path`` is one lever for both
+    sentinel files, so a half-redirected run cannot write one sentinel to
+    tmp and the other into the operator's live file. It is NOT the DuckDB
+    path — this state never goes through the single-writer lock.
+    """
     env = os.environ.get("ANTIEK_SOURCE_THROTTLE_PATH")
     if env:
         return env
+    home = os.environ.get("ANTIEK_HOME", "").strip()
+    if home:
+        return str(Path(home) / "source_throttle.json")
     return str(Path.home() / ".antiek" / "source_throttle.json")
 
 
