@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from html.parser import HTMLParser
 
 
 class ScriptViolation(Exception):
@@ -265,6 +266,201 @@ def _attr_names_only(tag: str) -> str:
     return _ATTR_VALUE_RE.sub("=", tag)
 
 
+# ── Second detector: the TOKENS a browser-grade tokenizer produces ──
+#
+# The regex checks above scan the BYTES, on purpose (see the module
+# docstring). But four evasions live exactly in the gap between bytes and
+# tokens, and a browser is a tokenizer, not a regex:
+#
+#   * a ``>`` inside a QUOTED attribute value ends the ``<[^>]*>`` tag
+#     interior early, so ``<div title="a>b" onerror=alert(1)>`` is never
+#     scanned for its handler (and ``<img alt="a>b" src="https://…">``
+#     never for its external src);
+#   * the scheme decoder above knows ``&#NNN;`` and ``&#xHH;`` only, so
+#     ``&colon;``, ``&#x006A;``, ``&#0106;`` and the semicolon-less
+#     ``&#106avascript:`` all decode to ``javascript:`` in a browser and
+#     to nothing here;
+#   * the CSS context is collected only from a double-quoted ``style="…"``,
+#     and the fetch tokens are matched literally, so a single-quoted or
+#     unquoted style attribute, a CSS identifier escape (``u\72l(``,
+#     ``@\69mport``) or ``image-set("https://…")`` fetch without a match;
+#   * the meta-refresh regex wants ``http-equiv`` BEFORE ``content``, a
+#     literal ``url=`` and an unquoted URL, while the declarative-refresh
+#     algorithm accepts any order, no ``url=`` at all, and quotes.
+#
+# So the gate runs BOTH detectors and unions them. ``html.parser`` is
+# stdlib (the SPR-07 ingest-side constraint holds), tokenizes attributes
+# the way a browser does (quotes respected, every HTML5 character
+# reference decoded, names case-folded) and hands ``<style>`` bodies over
+# as raw CDATA. The token layer only ADDS a class the byte layer missed,
+# so every verdict the byte layer already reaches is unchanged; the byte
+# layer still catches the malformed-byte tricks a tokenizer would repair.
+
+_URL_ATTRS = frozenset(
+    {"href", "src", "action", "formaction", "xlink:href", "data", "poster"}
+)
+_MEDIA_TAGS = frozenset(
+    {"img", "audio", "video", "source", "iframe", "embed", "track", "input"}
+)
+_FETCH_TAGS = frozenset({"object", "link", "svg", "use", "form", "button", "input"})
+_FETCH_ATTRS = frozenset({"data", "href", "xlink:href", "action", "formaction"})
+
+_CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_CSS_ESCAPE_RE = re.compile(r"\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?|\\(.)", re.DOTALL)
+_CSS_EXTERNAL_FETCH_RE = re.compile(
+    r"(?:@import|(?<![\w-])(?:url|image-set|src)\s*\()\s*\(?\s*[\"']?\s*(?:https?:)?//",
+    re.IGNORECASE,
+)
+
+
+def normalise_css(css: str) -> str:
+    """CSS as the engine reads it: comments removed, identifier escapes
+    (``\\72`` -> ``r``, ``\\i`` -> ``i``) decoded, NUL dropped, lower-cased.
+
+    Public so ``styles.validate_style`` can run its own denylist over the
+    same normalised text — a denylist over raw CSS is what ``u\\72l(``
+    walks past."""
+    css = _CSS_COMMENT_RE.sub("", css)
+
+    def _esc(m: re.Match[str]) -> str:
+        if m.group(1):
+            try:
+                return chr(int(m.group(1), 16))
+            except (ValueError, OverflowError):
+                return ""
+        return m.group(2)
+
+    css = _CSS_ESCAPE_RE.sub(_esc, css)
+    return css.replace("\x00", "").lower()
+
+
+def _url_as_browser(value: str) -> str:
+    """A URL the way the URL parser sees it: leading/trailing C0+space
+    stripped, tab/newline removed, backslashes folded to slashes (special
+    schemes), lower-cased."""
+    v = value.strip("\x00\t\n\r\f\v ")
+    v = re.sub(r"[\t\n\r\x00]", "", v)
+    return v.replace("\\", "/").lower()
+
+
+def _is_external(value: str) -> bool:
+    return _url_as_browser(value).startswith(("http://", "https://", "//"))
+
+
+def _is_script_scheme(value: str) -> bool:
+    # Same collapse the byte layer applies (all C0 + whitespace removed),
+    # on the ALREADY entity-decoded attribute value the tokenizer gives us.
+    v = re.sub(r"[\x00-\x20\x7f]+", "", value).lower()
+    return v.startswith(("javascript:", "vbscript:"))
+
+
+def _srcset_candidates(value: str) -> list[str]:
+    out: list[str] = []
+    for cand in value.split(","):
+        cand = cand.strip()
+        if cand:
+            out.append(cand.split()[0])
+    return out
+
+
+def _refresh_url(content: str) -> str:
+    """The URL a declarative ``<meta http-equiv=refresh>`` navigates to,
+    per the HTML "shared declarative refresh steps": digits/dots, then
+    whitespace and an optional ``;``/``,``, then an OPTIONAL ``url=``, then
+    an optionally quoted URL. Empty string when there is none."""
+    s = content.lstrip("\t\n\f\r ")
+    i = 0
+    while i < len(s) and (s[i].isdigit() or s[i] == "."):
+        i += 1
+    rest = s[i:].lstrip("\t\n\f\r ")
+    if rest[:1] in (";", ","):
+        rest = rest[1:].lstrip("\t\n\f\r ")
+    if rest[:3].lower() == "url":
+        rest = rest[3:].lstrip("\t\n\f\r ")
+        if rest[:1] == "=":
+            rest = rest[1:].lstrip("\t\n\f\r ")
+    if rest[:1] in ("'", '"'):
+        quote = rest[0]
+        rest = rest[1:]
+        end = rest.find(quote)
+        if end != -1:
+            rest = rest[:end]
+    return rest.strip()
+
+
+class _TokenScan(HTMLParser):
+    """Collect one sample per violation class from the token stream."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.found: dict[str, str] = {}
+        self._css: list[str] = []
+        self._style_buf: list[str] | None = None
+
+    def _hit(self, kind: str, sample: str) -> None:
+        self.found.setdefault(kind, _trunc(sample))
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        pairs = [(name, value or "") for name, value in attrs]
+        if tag == "script":
+            self._hit("script_tag", f"<{tag}")
+        if tag == "style":
+            self._style_buf = []
+        first: dict[str, str] = {}
+        for name, value in pairs:
+            first.setdefault(name, value)
+            if name.startswith("on") and len(name) > 2:
+                self._hit("event_handler", f"{name}=")
+            if name in _URL_ATTRS and _is_script_scheme(value):
+                self._hit("javascript_href", f"{name}={value}")
+            if name == "style":
+                self._css.append(value)
+            if tag in _MEDIA_TAGS and name == "src" and _is_external(value):
+                self._hit("external_img_src", f"<{tag} src={value}")
+            if tag in _MEDIA_TAGS and name == "srcset" and any(
+                _is_external(c) for c in _srcset_candidates(value)
+            ):
+                self._hit("external_img_src", f"<{tag} srcset={value}")
+            if tag in _FETCH_TAGS and name in _FETCH_ATTRS and _is_external(value):
+                self._hit("external_nav_redirect", f"<{tag} {name}={value}")
+            if tag == "base" and name == "href" and _is_external(value):
+                self._hit("external_nav_redirect", f"<base href={value}")
+        if tag == "meta" and first.get("http-equiv", "").strip().lower() == "refresh":
+            url = _refresh_url(first.get("content", ""))
+            if url and _is_external(url):
+                self._hit("external_nav_redirect", f"<meta refresh -> {url}")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "style" and self._style_buf is not None:
+            self._css.append("".join(self._style_buf))
+            self._style_buf = None
+
+    def handle_data(self, data: str) -> None:
+        if self._style_buf is not None:
+            self._style_buf.append(data)
+
+    def close(self) -> None:
+        super().close()
+        if self._style_buf is not None:  # unterminated <style>: still CSS
+            self._css.append("".join(self._style_buf))
+            self._style_buf = None
+        for css in self._css:
+            norm = normalise_css(css)
+            m = _CSS_EXPRESSION_RE.search(norm)
+            if m:
+                self._hit("css_expression", m.group(0))
+            m = _CSS_EXTERNAL_FETCH_RE.search(norm)
+            if m:
+                self._hit("external_css_src", m.group(0))
+
+
+def _token_layer(html: str) -> dict[str, str]:
+    scan = _TokenScan()
+    scan.feed(html)
+    scan.close()
+    return scan.found
+
+
 def find_violations(html: str) -> list[Violation]:
     """Return every script-violation found in ``html``. Empty list = clean.
 
@@ -355,6 +551,14 @@ def find_violations(html: str) -> list[Violation]:
         violations.append(Violation("external_nav_redirect", _trunc(m.group(0))))
         break
 
+    # 7. Token layer: the same classes on the tokenizer's view. Only a
+    # class the byte layer MISSED is added, so existing verdicts are
+    # byte-for-byte unchanged and the union is strictly stronger.
+    seen = {v.kind for v in violations}
+    for kind, sample in _token_layer(html).items():
+        if kind not in seen:
+            violations.append(Violation(kind, sample))
+
     return violations
 
 
@@ -383,4 +587,5 @@ __all__ = [
     "assert_script_free",
     "find_violations",
     "is_script_free",
+    "normalise_css",
 ]

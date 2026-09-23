@@ -566,6 +566,7 @@ echo "${LOG_PREFIX} writing freshness marker → ${STATE_DIR}/backup_freshness.j
 {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
 import json
 import os
+import pwd
 
 with open("${STAGING}/source_manifest.json") as f:
     counts = json.load(f)["counts"]
@@ -581,6 +582,12 @@ tmp = "${STATE_DIR}/backup_freshness.json.tmp"
 with open(tmp, "w") as f:
     json.dump(marker, f, indent=2)
     f.write("\n")
+# The service runs as root, but the substrate health probe runs as antiek and
+# must be able to read the freshness verdict. Set ownership before the atomic
+# replace so there is no window in which the marker is unreadable.
+owner = pwd.getpwnam("{{ antiek_user }}")
+os.chown(tmp, owner.pw_uid, owner.pw_gid)
+os.chmod(tmp, 0o640)
 os.replace(tmp, "${STATE_DIR}/backup_freshness.json")
 print("  marker written")
 PY
