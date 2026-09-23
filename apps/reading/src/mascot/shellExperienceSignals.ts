@@ -27,15 +27,6 @@ export function notifyShellFailure(): void {
   emitMascotExperience("fail");
 }
 
-/**
- * A microphone button press is intent, not evidence that recording began.
- * Call this only after MediaRecorder.start() returns successfully so Werner
- * never performs a listening beat for denied consent or failed hardware.
- */
-export function notifyVoiceRecordingStarted(): void {
-  emitMascotExperience("voice_recording_started");
-}
-
 /** Call only after the first HTMLMediaElement.play() promise resolves. */
 export function notifyVoicePlaybackStarted(): void {
   emitMascotExperience("voice_playback_started");

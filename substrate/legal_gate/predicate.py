@@ -81,7 +81,14 @@ def url_blocked_reason(
         return None
     if not parsed.netloc:
         return None
-    match = host_matches_banned_domain(parsed.netloc, banned_domains)
+    # Match on the HOST, not the netloc: userinfo, an explicit port and a DNS
+    # root trailing dot all decorate the netloc without changing the host, and
+    # each of them used to slip a banned domain past this gate. `hostname` is
+    # already lower-cased. A netloc with no host is refused, never allowed.
+    host = (parsed.hostname or "").rstrip(".")
+    if not host:
+        return "banned domain: (unparseable host)"
+    match = host_matches_banned_domain(host, banned_domains)
     if match:
         return f"banned domain: {match}"
     return None

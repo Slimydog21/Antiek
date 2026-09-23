@@ -11,7 +11,7 @@ is p5-style (a canvas, a palette, circles/lines driven by a PRNG, the
 by a seeded splitmix64 PRNG (``SeededRng``) — the same seed always
 renders the same bytes. Nothing here reads the clock, the environment,
 or the filesystem; the SVG is a pure function of ``(seed, width, height,
-title, data, palette)``, which is what makes it testable and stable
+title, data, palette, ink)``, which is what makes it testable and stable
 across regenerations.
 
 THE GATE IS REUSED, NOT REIMPLEMENTED: every emitted SVG is validated
@@ -32,8 +32,8 @@ ingest.
 SCULPT BOUNDS: ``data`` (when given) must be non-empty and finite, and
 is capped at 500 values — a sketch with more bars than that is
 unreadable, and the skill's mandate is a sketch, not a plot engine.
-``palette`` colors must be ``#RRGGBB``; ``width``/``height`` must be
-positive. Every violation is a loud ``ValueError`` naming the offending
+``palette`` and ``ink`` colors must be ``#RRGGBB``; ``width``/``height``
+must be positive. Every violation is a loud ``ValueError`` naming the offending
 input — this is the bounded-sculpting contract the kernel-skills spec
 asks for.
 """
@@ -68,6 +68,12 @@ DEFAULT_PALETTE: tuple[str, ...] = (
     "#a8e6cf",  # mint
     "#d8b4fe",  # lilac
 )
+
+# Label / caption ink for the data body. Pale, because the default ground is
+# dark; a caller on a light ground (the html_projection ``sketch`` widget on
+# ``LEMON_SURFACE``) passes its own so every emitted color traces to its
+# palette.
+DEFAULT_INK: str = "#e8e8f0"
 
 
 class SeededRng:
@@ -142,6 +148,11 @@ def _validate_palette(palette: Sequence[str]) -> None:
     for c in palette:
         if not _COLOR_RE.fullmatch(c):
             raise ValueError(f"sketch_svg: palette colors must be #RRGGBB, got {c!r}")
+
+
+def _validate_ink(ink: str) -> None:
+    if not isinstance(ink, str) or not _COLOR_RE.fullmatch(ink):
+        raise ValueError(f"sketch_svg: ink must be #RRGGBB, got {ink!r}")
 
 
 def _svg_document(
@@ -267,6 +278,7 @@ def _data_body(
     data: Sequence[float],
     palette: Sequence[str],
     title: str,
+    ink: str,
 ) -> str:
     """Data-driven body: a faithful bar sketch of ``data``.
 
@@ -351,7 +363,7 @@ def _data_body(
                         ("y", _num(label_y)),
                         ("font-family", "system-ui, sans-serif"),
                         ("font-size", "9"),
-                        ("fill", "#e8e8f0"),
+                        ("fill", ink),
                         ("text-anchor", "middle"),
                     ),
                     _num(v),
@@ -367,7 +379,7 @@ def _data_body(
                 ("y", _num(height - 10)),
                 ("font-family", "system-ui, sans-serif"),
                 ("font-size", "11"),
-                ("fill", "#e8e8f0"),
+                ("fill", ink),
                 ("text-anchor", "middle"),
             ),
             f"{escape(title)} — n {n} · min {_num(vmin)} · max {_num(vmax)} · mean {_num(mean)}",
@@ -384,6 +396,7 @@ def sketch_svg(
     title: str = "untitled sketch",
     data: Sequence[float] | None = None,
     palette: Sequence[str] | None = None,
+    ink: str | None = None,
 ) -> str:
     """Emit a deterministic, script-free SVG sketch.
 
@@ -405,6 +418,9 @@ def sketch_svg(
     palette:
         ``#RRGGBB`` colors, >= 2: palette[0] is the ground, the rest are
         voice colors.
+    ink:
+        ``#RRGGBB`` color for the data body's value labels and caption.
+        Defaults to ``DEFAULT_INK`` (pale, for the dark default ground).
 
     Returns
     -------
@@ -425,6 +441,8 @@ def sketch_svg(
     _validate_canvas(width, height)
     effective_palette = tuple(palette) if palette is not None else DEFAULT_PALETTE
     _validate_palette(effective_palette)
+    effective_ink = ink if ink is not None else DEFAULT_INK
+    _validate_ink(effective_ink)
     if data is None:
         body = _generative_body(width=width, height=height, seed=seed, palette=effective_palette)
         description = f"Generative sketch (seed {seed}): nested-circle nodes in a grid"
@@ -432,7 +450,14 @@ def sketch_svg(
             body, width=width, height=height, title=title, description=description
         )
     _validate_data(data)
-    body = _data_body(width=width, height=height, data=data, palette=effective_palette, title=title)
+    body = _data_body(
+        width=width,
+        height=height,
+        data=data,
+        palette=effective_palette,
+        title=title,
+        ink=effective_ink,
+    )
     description = (
         f"Data sketch of {len(data)} values: min {_num(min(data))} "
         f"max {_num(max(data))} mean {_num(statistics.fmean(data))}"
@@ -460,6 +485,7 @@ MANIFEST = SkillManifest(
         SkillParameter("title", "str = 'untitled sketch'", "Sketch title (escaped into <title>/caption).", required=False, default="'untitled sketch'"),
         SkillParameter("data", "Sequence[float] | None", "Series to sketch as bars (finite, non-empty, <= 500).", required=False, default="None"),
         SkillParameter("palette", "Sequence[str] | None", ">= 2 #RRGGBB colors; [0] is ground, rest are voices.", required=False, default="default palette"),
+        SkillParameter("ink", "str | None", "#RRGGBB label/caption ink for the data body.", required=False, default="default ink"),
     ),
     returns=(
         "str — the complete SVG document, verified via "
@@ -469,12 +495,12 @@ MANIFEST = SkillManifest(
     safety=(
         "SCRIPT-FREE by construction AND by the live gate: the zero-script gate is "
         "reused (not reimplemented) on every emitted document before it is returned.",
-        "Deterministic: pure function of (seed, width, height, title, data, palette) "
-        "— no clock, no environment, no filesystem.",
+        "Deterministic: pure function of (seed, width, height, title, data, palette, "
+        "ink) — no clock, no environment, no filesystem.",
         "Self-contained: presentation attributes only, no external src/href/style, no "
         "network fetch surface.",
-        "Bounded sculpt: data capped at 500 values, palette validated as #RRGGBB, "
-        "inputs named in loud ValueErrors.",
+        "Bounded sculpt: data capped at 500 values, palette and ink validated as "
+        "#RRGGBB, inputs named in loud ValueErrors.",
     ),
     examples=(
         "svg = sketch_svg(seed=7, title='price distribution', data=[1.5, 2.0, 2.5, 1.0])",

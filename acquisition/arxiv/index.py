@@ -62,6 +62,7 @@ def index_body(
             text=chunk.text,
             section_path=chunk.section or None,
             embedding=embedder.encode(chunk.text),
+            embedding_provider=embedder,
             token_count=chunk.token_count,
         )
         chunk_ids.append(chunk_id)
