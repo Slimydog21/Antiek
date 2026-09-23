@@ -39,7 +39,9 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
+
+from substrate.ban_events import append_ban_event as _append_ban_event
 
 # arXiv API terms of use: at most one request per three seconds. We space at 3.5s
 # — a deliberate 0.5s margin ABOVE the 3.0s ceiling — because clock skew, request
@@ -54,6 +56,9 @@ MIN_REQUEST_SPACING_S = 3.5
 # 30 minutes is a conservative floor that avoids hammering while not
 # stranding the operator for a full day.
 DEFAULT_BAN_BACKOFF_S = 30 * 60.0
+
+# Source key stamped on ban-event log lines drawn by this throttle.
+ARXIV_BAN_SOURCE_KEY = "arxiv"
 
 
 def default_state_path() -> str:
@@ -92,6 +97,20 @@ class _ResponseLike(Protocol):
 
     @property
     def headers(self) -> Mapping[str, str]: ...
+
+
+def _response_url(resp: object) -> str | None:
+    """Return the request URL attached to ``resp``, or None.
+
+    Structurally typed so this module stays free of an httpx import.
+    ``httpx.Response.request`` RAISES ``RuntimeError`` when no request is
+    attached (test fakes do this), so catch that alongside ``AttributeError``.
+    """
+    try:
+        inner = cast("Any", resp)
+        return str(inner.request.url)
+    except (AttributeError, RuntimeError):
+        return None
 
 
 class ArxivBanned(RuntimeError):
@@ -230,13 +249,22 @@ class ArxivThrottle:
         self._write_state(state)
 
     def note_response(
-        self, status_code: int, headers: Mapping[str, str] | None = None
+        self,
+        status_code: int,
+        headers: Mapping[str, str] | None = None,
+        *,
+        url: str | None = None,
     ) -> None:
         """Record the outcome of a request. On 429, set ``banned_until``.
 
         ``Retry-After`` (seconds, the form arXiv/most servers emit) is
         honored when present and parseable; otherwise we fall back to the
         conservative default back-off. A non-429 status is a no-op.
+
+        ``url`` is the request URL (optional) used only to attribute the
+        ban-event log line — the sentinel write is independent of it. The
+        sentinel is written FIRST; the append never raises and cannot block
+        the sentinel.
         """
         if status_code != 429:
             return
@@ -252,6 +280,12 @@ class ArxivThrottle:
         state = self._read_state()
         state.banned_until = self._now() + backoff
         self._write_state(state)
+        _append_ban_event(
+            source=ARXIV_BAN_SOURCE_KEY,
+            status=status_code,
+            url=url,
+            ts=self._now(),
+        )
 
     def request(
         self,
@@ -272,5 +306,5 @@ class ArxivThrottle:
         """
         self.wait_if_needed()
         resp = send()
-        self.note_response(resp.status_code, resp.headers)
+        self.note_response(resp.status_code, resp.headers, url=_response_url(resp))
         return resp

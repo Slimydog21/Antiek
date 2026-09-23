@@ -17,6 +17,9 @@ Two autouse fixtures, both function-scoped:
   ``~/.antiek/arxiv_throttle.json.governor.lock`` — measured: a three-hour
   ``pytest tests/`` run was the live holder of that lock while a real arXiv
   429 was drawn on the box. Same firewall, arXiv side.
+* ``_isolate_ban_event_log`` — points the append-only ban-event JSONL at
+  ``tmp_path`` and refuses (raises) if the resolved path is the operator's
+  real ``~/.antiek/ban_events.jsonl``. Same firewall, ban-attribution side.
 * ``_isolate_provider_keys`` — removes real provider API keys from the
   environment. Same firewall, egress side: without it a developer who has
   ``XIAOMI_API_KEY`` (or any of six siblings) exported gets REAL network
@@ -255,3 +258,35 @@ def _isolate_arxiv_governor(request, monkeypatch, tmp_path):
     yield
     _check_arxiv_isolated(arxiv_state_path(), real_state, node_id=node)
     _check_arxiv_isolated(arxiv_lock_path(), real_lock, node_id=node)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_ban_event_log(request, monkeypatch, tmp_path):
+    """Point the append-only ban-event JSONL at ``tmp_path`` (SPR-05 arXiv
+    task 5B). Same resolve-and-compare discipline as ``_check_arxiv_isolated``:
+    compute the REAL path from ``~/.antiek/ban_events.jsonl`` BEFORE yield, and
+    at setup and teardown raise ``AssertionError`` (never warn) if
+    ``default_ban_event_log_path()`` resolves to it.
+
+    No opt-out marker — a test probing the default resolution redirects
+    ``ANTIEK_HOME`` or ``HOME``, which this check permits (those redirects make
+    the resolved path differ from the operator's real file).
+    """
+    from substrate.ban_events import default_ban_event_log_path
+
+    real = os.path.realpath(os.path.expanduser("~/.antiek/ban_events.jsonl"))
+    monkeypatch.setenv("ANTIEK_BAN_EVENT_LOG_PATH", str(tmp_path / "ban_events.jsonl"))
+
+    def _check() -> None:
+        resolved = os.path.realpath(default_ban_event_log_path())
+        if resolved == real:
+            raise AssertionError(
+                "ban-event log isolation guard: default_ban_event_log_path() "
+                f"resolves to the REAL operator path ({real}) for "
+                f"{request.node.nodeid!r} — a ban-event log leak. Set "
+                "ANTIEK_BAN_EVENT_LOG_PATH to a tmp path."
+            )
+
+    _check()
+    yield
+    _check()

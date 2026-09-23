@@ -87,7 +87,9 @@ def _note_http_status(throttle: ArxivThrottle, exc: httpx.HTTPStatusError) -> bo
     sentinel — without it, the next invocation has no ban knowledge and
     re-hits the banned endpoint. Returns True iff the status was a 429."""
     status = exc.response.status_code
-    throttle.note_response(status, headers=exc.response.headers)
+    throttle.note_response(
+        status, headers=exc.response.headers, url=str(exc.request.url)
+    )
     return status == 429
 
 

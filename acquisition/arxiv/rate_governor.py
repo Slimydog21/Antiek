@@ -608,9 +608,11 @@ def _note_response_hop(
     lock_timeout_s: float,
     lock_poll_interval_s: float,
     lock_sleep: Callable[[float], None],
+    url: str | None = None,
 ) -> None:
     """Record one arXiv response hop's outcome (the 429 ``banned_until`` sentinel)
-    under the re-entrant governor flock — the note half of the per-hop gate."""
+    under the re-entrant governor flock — the note half of the per-hop gate.
+    ``url`` is forwarded so a ban-event line can name the host."""
     with _GovernorLock(
         lock_path,
         timeout_s=lock_timeout_s,
@@ -618,7 +620,7 @@ def _note_response_hop(
         purpose="arxiv-hook",
         sleep=lock_sleep,
     ):
-        throttle.note_response(status_code, headers)
+        throttle.note_response(status_code, headers, url=url)
 
 
 def install_arxiv_request_hook(
@@ -682,6 +684,7 @@ def install_arxiv_request_hook(
             lock_timeout_s=lock_timeout_s,
             lock_poll_interval_s=lock_poll_interval_s,
             lock_sleep=lock_sleep,
+            url=str(response.request.url),
         )
 
     hooks = client.event_hooks
