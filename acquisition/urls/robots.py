@@ -5,9 +5,11 @@ every host ``acquisition.urls.client.fetch`` touches.
 
 Three guarantees, in priority order:
 
-1. **An explicit rule is honoured.** When the host publishes a robots.txt and
-   it disallows the URL for our user agent, :meth:`RobotsPolicy.allows`
-   returns False and the fetcher raises :class:`RobotsDisallowed` BEFORE any
+1. **An explicit rule is honoured.** When the host publishes a robots.txt,
+   :func:`robots_allows` evaluates its rules per RFC 9309 (most specific
+   group, longest match, wildcards). A disallowed URL makes
+   :meth:`RobotsPolicy.allows` return False and the fetcher raises
+   :class:`RobotsDisallowed` BEFORE any
    request for the page is sent. This is the same posture as the paulgraham
    connector's ``robots_disallowed`` bucket.
 2. **A missing or broken robots.txt fails OPEN, loudly.** 404, 5xx, a
@@ -44,18 +46,22 @@ acquisition layer already guards against elsewhere).
 Redirects: the fetcher consults robots.txt again for every redirect hop's
 origin (acquisition.urls.client), so a page that redirects to a disallowed
 path on another host is refused before that host is asked for it. The licence
-file is fetched only if robots.txt allows it and only while it stays on the
-declaring origin.
+file is never fetched through a redirect; it is fetched only if robots.txt
+allows the declaring agent's direct licence URL.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
+import urllib.parse
 import urllib.robotparser
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import lru_cache
+from typing import Protocol, cast
 from urllib.parse import urljoin, urlsplit
 
 from acquisition.urls.rights_terms import (
@@ -84,12 +90,6 @@ UNREACHABLE_RETRY_S = 5 * 60.0
 # time without sleeping.
 _clock: Callable[[], float] = time.monotonic
 
-# The agent the purpose-neutral licence fetch is checked against.
-# urllib.robotparser applies a group to us when the group's token is a
-# substring of this one, so "*" and "Antiek" groups bind it; a
-# purpose-specific group (e.g. "Antiek-Agent") does not.
-LICENCE_FETCH_AGENT = "Antiek"
-
 # Directive names seen in real robots.txt files. A non-empty body with none of
 # them is not a robots file (typically an HTML error page served with 200).
 _KNOWN_DIRECTIVES = frozenset({
@@ -98,12 +98,12 @@ _KNOWN_DIRECTIVES = frozenset({
 })
 
 
-# ``url -> (status_code, text, final_url_after_redirects)``. The fetcher
+# ``(url, follow_redirects) -> (status_code, text, final_url)``. The fetcher
 # supplies a closure that GETs through its own (possibly injected /
 # arXiv-governed) client, so robots and licence fetches take exactly the
 # transport the page fetch takes. It may raise on a transport error; the
 # policy builder treats that as fail-open.
-FetchText = Callable[[str], tuple[int, str, str]]
+FetchText = Callable[[str, bool], tuple[int, str, str]]
 
 
 def _body_problem(text: str) -> str | None:
@@ -163,7 +163,7 @@ class RobotsPolicy:
         """True iff ``user_agent`` may fetch ``url`` under this policy."""
         if not self.applied:
             return True
-        return self.parser.can_fetch(user_agent, url)
+        return robots_allows(self.parser, user_agent, url)
 
 
 def origin_of(url: str) -> str:
@@ -175,6 +175,91 @@ def origin_of(url: str) -> str:
 
 def robots_url_for(url: str) -> str:
     return f"{origin_of(url)}/robots.txt"
+
+
+class _RobotsRule(Protocol):
+    """The RuleLine internals used by RFC 9309 evaluation."""
+
+    path: str
+    allowance: bool
+
+
+class _RobotsEntry(Protocol):
+    """The Entry internals used for group selection."""
+
+    useragents: list[str]
+    rulelines: list[_RobotsRule]
+
+
+class _ParsedRobotFileParser(Protocol):
+    """The parsed state urllib.robotparser does not expose in its stub."""
+
+    entries: list[_RobotsEntry]
+    default_entry: _RobotsEntry | None
+
+
+def robots_allows(
+    parser: urllib.robotparser.RobotFileParser,
+    user_agent: str,
+    url: str,
+) -> bool:
+    """RFC 9309 evaluation over urllib.robotparser's parse.
+    Group selection (RFC 9309 s2.2.1, with the product-family fallback major
+    crawlers use): take our product token (the User-Agent up to the first '/',
+    lower-cased, e.g. "antiek-agent"); the groups naming exactly that token
+    apply; if none, the groups naming its longest '-'-delimited prefix
+    ("antiek"), and so on; if none, the '*' group; if none, everything is
+    allowed. All groups at the chosen level are merged.
+    Rule matching (RFC 9309 s2.2.2/s2.2.3): the longest matching rule path
+    wins, Allow wins a tie, '*' matches any sequence and a trailing '$'
+    anchors the end. No matching rule means allowed."""
+    parsed = cast(_ParsedRobotFileParser, parser)
+    token = user_agent.split("/", 1)[0].strip().lower()
+    parts = token.split("-")
+    candidates = ["-".join(parts[:i]) for i in range(len(parts), 0, -1)]
+    rules: list[_RobotsRule] = []
+    for candidate in candidates:
+        matched = [
+            entry
+            for entry in parsed.entries
+            if any(agent.strip().lower() == candidate for agent in entry.useragents)
+        ]
+        if matched:
+            rules = [rule for entry in matched for rule in entry.rulelines]
+            break
+    else:
+        if parsed.default_entry is not None:
+            rules = list(parsed.default_entry.rulelines)
+        else:
+            return True
+
+    parsed_url = urllib.parse.urlparse(urllib.parse.unquote(url))
+    normalised = urllib.parse.urlunparse(
+        ("", "", parsed_url.path, parsed_url.params, parsed_url.query, parsed_url.fragment)
+    )
+    normalised = urllib.parse.quote(normalised)
+    if not normalised:
+        normalised = "/"
+
+    matching: list[tuple[int, bool]] = []
+    for rule in rules:
+        pattern, length = _compiled_rule(rule.path)
+        if pattern.match(normalised) is not None:
+            matching.append((length, rule.allowance))
+    if not matching:
+        return True
+    return max(matching)[1]
+
+
+@lru_cache(maxsize=512)
+def _compiled_rule(pattern_text: str) -> tuple[re.Pattern[str], int]:
+    text = re.sub("%2a", "*", pattern_text, flags=re.IGNORECASE)
+    text = re.sub("%24$", "$", text, flags=re.IGNORECASE)
+    anchored = text.endswith("$")
+    regex_text = re.escape(text).replace(r"\*", ".*")
+    if anchored:
+        regex_text = regex_text[:-2] + r"\Z"
+    return re.compile(regex_text), len(text)
 
 
 # origin -> (policy, monotonic expiry). See ROBOTS_CACHE_TTL_S / UNREACHABLE_RETRY_S.
@@ -195,7 +280,12 @@ def cached_origins() -> tuple[str, ...]:
         return tuple(_cache)
 
 
-def robots_policy_for(url: str, *, fetch_text: FetchText) -> RobotsPolicy:
+def robots_policy_for(
+    url: str,
+    *,
+    fetch_text: FetchText,
+    user_agent: str,
+) -> RobotsPolicy:
     """The policy for ``url``'s origin, building and caching it on first use
     and rebuilding it once the cached entry has expired.
 
@@ -209,7 +299,7 @@ def robots_policy_for(url: str, *, fetch_text: FetchText) -> RobotsPolicy:
         hit = _cache.get(origin)
     if hit is not None and hit[1] > _clock():
         return hit[0]
-    built, ttl_s = _build_policy(origin, fetch_text)
+    built, ttl_s = _build_policy(origin, fetch_text, user_agent)
     with _cache_lock:
         current = _cache.get(origin)
         if (
@@ -251,14 +341,18 @@ def _fail_open(
     return policy, ttl_s
 
 
-def _build_policy(origin: str, fetch_text: FetchText) -> tuple[RobotsPolicy, float]:
+def _build_policy(
+    origin: str,
+    fetch_text: FetchText,
+    user_agent: str,
+) -> tuple[RobotsPolicy, float]:
     """Fetch and parse ``origin``'s robots.txt; return the policy and how long
     it may be cached."""
     robots_url = f"{origin}/robots.txt"
     parser = urllib.robotparser.RobotFileParser()
     parser.set_url(robots_url)
     try:
-        status, text, _final_url = fetch_text(robots_url)
+        status, text, _final_url = fetch_text(robots_url, True)
     except Exception as exc:
         return _fail_open(
             origin, robots_url, parser,
@@ -295,7 +389,7 @@ def _build_policy(origin: str, fetch_text: FetchText) -> tuple[RobotsPolicy, flo
         )
     license_url = parse_license_directive(text)
     try:
-        rights_terms = _load_terms(origin, license_url, fetch_text, parser)
+        rights_terms = _load_terms(origin, license_url, fetch_text, parser, user_agent)
     except Exception as exc:
         rights_terms = RightsTerms(
             source="robots_license_directive",
@@ -319,6 +413,7 @@ def _load_terms(
     license_url: str | None,
     fetch_text: FetchText,
     parser: urllib.robotparser.RobotFileParser,
+    user_agent: str,
 ) -> RightsTerms:
     if license_url is None:
         return NO_TERMS
@@ -342,7 +437,7 @@ def _load_terms(
             license_url=license_url,
             parse_error=f"invalid licence URL ({exc})",
         )
-    if not parser.can_fetch(LICENCE_FETCH_AGENT, absolute):
+    if not robots_allows(parser, user_agent, absolute):
         logger.warning(
             "%s: robots.txt disallows its licence URL (%s); recorded, not fetched",
             origin,
@@ -354,12 +449,18 @@ def _load_terms(
             parse_error="licence URL is disallowed by robots.txt; not fetched",
         )
     try:
-        status, text, final_url = fetch_text(absolute)
+        status, text, final_url = fetch_text(absolute, False)
     except Exception as exc:
         return RightsTerms(
             source="robots_license_directive",
             license_url=absolute,
             parse_error=f"licence unreachable ({type(exc).__name__}: {exc})",
+        )
+    if 300 <= status < 400:
+        return RightsTerms(
+            source="robots_license_directive",
+            license_url=absolute,
+            parse_error=f"licence URL redirected (HTTP {status}); not followed",
         )
     if origin_of(final_url) != origin:
         logger.warning(
@@ -399,6 +500,7 @@ __all__ = [
     "cached_origins",
     "clear_robots_cache",
     "origin_of",
+    "robots_allows",
     "robots_policy_for",
     "robots_url_for",
 ]

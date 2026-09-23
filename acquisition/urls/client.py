@@ -37,9 +37,9 @@ class FetchPurpose(StrEnum):
     Each purpose sends its own User-Agent so a site, or a CDN such as
     Cloudflare (which since 2026-09-15 blocks mixed-use AI crawlers by default
     on ad-carrying pages), can allow or refuse each use separately. A
-    robots.txt group naming one product token binds only that use; a group
-    naming plain ``Antiek`` still binds all three, because urllib.robotparser
-    matches the rule's token as a substring of ours."""
+    robots.txt group naming a purpose's own token binds that purpose; a
+    purpose with no group of its own falls back to a group naming plain
+    ``Antiek``, then to ``*`` (acquisition.urls.robots.robots_allows)."""
 
     SEARCH = "search"                    # discovery: finding and citing pages, not answering a user
     AGENT = "agent-retrieval"            # user-initiated: fetched because a person's research asked for it
@@ -198,11 +198,11 @@ def fetch(
 
             return govern_if_arxiv(str(request.url), _send, throttle=canonical_arxiv_throttle())
 
-        def _fetch_text(target: str) -> tuple[int, str, str]:
-            resp = _get(target, follow=True)
+        def _fetch_text(target: str, follow: bool) -> tuple[int, str, str]:
+            resp = _get(target, follow=follow)
             return resp.status_code, resp.text, str(resp.url)
 
-        policy = None if _is_robots_txt(url) else robots_policy_for(url, fetch_text=_fetch_text)
+        policy = None if _is_robots_txt(url) else robots_policy_for(url, fetch_text=_fetch_text, user_agent=user_agent)
         if policy is not None and not policy.allows(user_agent, url):
             raise RobotsDisallowed(url, user_agent=user_agent, robots_url=policy.robots_url)
 
@@ -213,7 +213,9 @@ def fetch(
                 raise httpx.TooManyRedirects("Exceeded maximum allowed redirects.", request=r.request)
             nxt = r.next_request
             hop_url = str(nxt.url)
-            policy = None if _is_robots_txt(hop_url) else robots_policy_for(hop_url, fetch_text=_fetch_text)
+            policy = None if _is_robots_txt(hop_url) else robots_policy_for(
+                hop_url, fetch_text=_fetch_text, user_agent=user_agent,
+            )
             if policy is not None and not policy.allows(user_agent, hop_url):
                 raise RobotsDisallowed(hop_url, user_agent=user_agent, robots_url=policy.robots_url)
             r = _send_hop(nxt)

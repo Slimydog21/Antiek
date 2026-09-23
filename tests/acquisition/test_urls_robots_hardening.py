@@ -125,28 +125,32 @@ def test_a_licence_that_redirects_off_origin_is_not_used() -> None:
 
     page = fetch("https://a.example/page", client=client)
 
-    assert "https://evil.example/l.xml" in requested
+    assert "https://evil.example/l.xml" not in requested
     assert page.rights_terms.payment_types == ()
-    assert "off-origin" in (page.rights_terms.parse_error or "")
+    assert "redirected" in (page.rights_terms.parse_error or "")
 
 
 def test_an_applied_policy_beats_a_concurrently_stored_fail_open() -> None:
-    def failing(_url: str) -> tuple[int, str, str]:
+    def failing(_url: str, _follow: bool) -> tuple[int, str, str]:
         raise RuntimeError("the losing concurrent build failed")
 
-    def outer(url: str) -> tuple[int, str, str]:
-        robots_policy_for("https://race.example/y", fetch_text=failing)
+    def outer(url: str, follow: bool) -> tuple[int, str, str]:
+        robots_policy_for("https://race.example/y", fetch_text=failing, user_agent="Antiek-Agent/0.1")
         return 200, "User-agent: *\nDisallow: /x\n", url
 
-    policy = robots_policy_for("https://race.example/x", fetch_text=outer)
+    policy = robots_policy_for(
+        "https://race.example/x", fetch_text=outer, user_agent="Antiek-Agent/0.1",
+    )
 
     assert policy.applied is True
     assert policy.allows("Antiek-Agent/0.1", "https://race.example/x") is False
 
-    def must_not_fetch(_url: str) -> tuple[int, str, str]:
+    def must_not_fetch(_url: str, _follow: bool) -> tuple[int, str, str]:
         raise AssertionError("the applied winner should be cached")
 
-    cached = robots_policy_for("https://race.example/z", fetch_text=must_not_fetch)
+    cached = robots_policy_for(
+        "https://race.example/z", fetch_text=must_not_fetch, user_agent="Antiek-Agent/0.1",
+    )
     assert cached is policy
 
 
