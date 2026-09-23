@@ -23,6 +23,7 @@ import { useParams } from "react-router-dom";
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import LemonButton from "../../components/lemon/LemonButton";
+import { openWindow } from "../../components/windows/openWindow";
 import {
   approvePlan,
   createPlan,
@@ -437,6 +438,20 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
         title: "Research source",
         replaceOldestAtLimit: true,
         ...(rect ? { rect } : {}),
+      },
+    );
+  }, []);
+
+  const openEvidenceSource = useCallback((node: DistilledNode) => {
+    const documentId = node.source_document_id;
+    if (!documentId?.trim()) return;
+    openWindow(
+      "reader",
+      { documentId },
+      {
+        id: `win:reader:${encodeURIComponent(documentId)}`,
+        title: "Research source",
+        replaceOldestAtLimit: true,
       },
     );
   }, []);
