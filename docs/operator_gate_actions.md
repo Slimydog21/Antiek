@@ -451,9 +451,11 @@ These auto-cascade once G2 and G3 are checked:
 
 - `antiek.service` — FastAPI + Loop 1 orchestrator. Now emits
   `rubric.scored` after every Phase 6 synthesis (§14.4 substrate fix).
-- `antiek-continuous-research.service` — §7.3/§7.4 daemon. Scans
-  evidentiary gaps every 60s, spawn-budgeted at $5/day per §16. Live since
-  2026-05-23T16:35Z.
+- `antiek-continuous-research.service` — §7.3/§7.4 scan daemon. Scans
+  evidentiary gaps every 60s and publishes the gap view; it does **not**
+  spawn paid investigations. Production spawn wiring remains outstanding, so
+  the default `no_op_spawn` still applies. The §16 $5/day budget is
+  configured for that future path and cannot authorize a spawn today.
 
 ### §9 provenance + economics, surfaced — status (Product Depth SPR-10, 2026-05-26)
 
