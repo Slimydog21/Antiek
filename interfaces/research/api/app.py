@@ -2772,6 +2772,14 @@ def create_app(
         if canonical_owner_id is not None and req.investigation_id not in (None, canonical_owner_id):
             raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         investigation_id = req.investigation_id or canonical_owner_id or f"inv-{_uuid.uuid4().hex[:12]}"
+        # Meter 1 ACU for this start (gated, idempotent on investigation_id)
+        # BEFORE anything is claimed, appended or broadcast. A failed charge
+        # (503/429) must mean no run, never an unmetered run behind a 503.
+        post_gate = commit_start_acu(
+            request,
+            investigation_id=investigation_id,
+            reason="post_investigations",
+        )
         replay_event_id: str | None = None
         if operation_id is not None:
             from .research_owner_dispatch import OwnerLaunchConflict, claim_owner_launch
@@ -2893,12 +2901,6 @@ def create_app(
                         raise HTTPException(status_code=503, detail="owner_model_start_pending") from None
                 break
 
-        # Meter 1 ACU for this start (idempotent on investigation_id).
-        post_gate = commit_start_acu(
-            request,
-            investigation_id=investigation_id,
-            reason="post_investigations",
-        )
         warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
         attach_capacity_warn_header(response, warn_gate)
 

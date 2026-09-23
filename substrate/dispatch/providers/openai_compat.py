@@ -352,8 +352,8 @@ class OpenAICompatProvider:
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
-        if not raw_usage:
-            return NormalizedUsage(input_tokens=0, output_tokens=0)
+        if not raw_usage or not {"prompt_tokens", "completion_tokens"} <= raw_usage.keys():
+            return NormalizedUsage(input_tokens=0, output_tokens=0, reported=False)
         return NormalizedUsage(
             input_tokens=int(raw_usage.get("prompt_tokens", 0) or 0),
             output_tokens=int(raw_usage.get("completion_tokens", 0) or 0),
