@@ -166,9 +166,25 @@ fails OPEN.
    producer can insert a document without a class. Cheap; does not fix the
    existing rows.
 
-**Recommendation:** (1), with (3)'s guard test shipped first (it is the same
-shape as `tests/test_insert_chunk_names_its_provider.py` and can land now).
-The backfill is one operator command under the ingest-downtime window.
+**Recommendation:** (1), with (3)'s guard test shipped first. The backfill
+is one operator command under the ingest-downtime window.
+
+**Amended 2026-09-23 after trying it.** Widening `insert_document`'s
+deny-by-default from `THIRD_PARTY_DOCUMENT_TYPES` to every type broke 26
+tests in 8 suites, and they were right: NULL is an ACTIVE contract, not a
+legacy accident — `tools/license_library` discovers "unlicensed" documents
+*as* the NULL rows (the licensing queue), the T3 licence-drift self-check
+and the retrieval gate's grandfathering contract depend on it. A NULL that a
+tool selects on is a queue, not an absence. So option (2) is off the table
+as a function-level default, and (1) must backfill the queue's semantics
+too (an explicit `unlicensed` class, or the tool reading a separate flag)
+before the gate can deny NULL. What DID land: the only three producers that
+committed NULL without registering (Wrestle load, Wrestle region placeholder,
+research-bridge paste) now pass `personal_reading`, and
+`tests/test_operator_loaded_documents_are_personal_reading.py` holds an AST
+upper bound so no fourth appears. The enumeration also showed arxiv, podcasts,
+interview and voice register their class in the SAME transaction (no window),
+so the #13 residual is smaller than first recorded.
 
 ---
 
