@@ -60,8 +60,11 @@ def _exportable_text(nodes: list[DistilledNode], *, db_path: str) -> dict[str, s
     return out
 
 
-def _investigation_ids(con: Any, sql: str, investigation_id: str) -> list[str]:
-    rows = con.execute(sql, [investigation_id]).fetchall()
+def _investigation_ids(con: Any, sql: str, investigation_ids: tuple[str, ...]) -> list[str]:
+    if not investigation_ids:
+        return []
+    ph = ",".join("?" for _ in investigation_ids)
+    rows = con.execute(sql.format(ph=ph), list(investigation_ids)).fetchall()
     return [str(r[0]) for r in rows if r[0] is not None]
 
 
@@ -77,52 +80,59 @@ def _excerpt_cleared(
     The excerpt is prose written from the investigation's sources, so it can
     repeat any of them verbatim, and the per-node gate above never sees it.
     It clears only when the investigation has sources and every one resolves
-    to a servable document. The sources are everything the investigation is
-    recorded as standing on: the insight and question nodes it distilled
-    (including one whose row is gone), the graph nodes and edges it inserted,
-    the documents it gathered or its events anchor to, and every pin of the
-    syntheses it archived. A node counts every grounding pointer it carries
-    (metadata document and chunk, every supported_by edge), and a recorded
-    synthesis whose row or manifest is gone counts as one unresolved source.
-    A source whose rights cannot be resolved withholds the excerpt, and so
-    does having no traceable source at all."""
-    node_ids = dict.fromkeys(
-        [*distilled_node_ids(investigation_id, events_dir=events_dir), *trail.node_ids]
-    )
+    to a servable document.
+
+    The sources are everything the investigation, and every sub-investigation
+    it handed work to, is recorded as standing on. From the trajectories:
+    every chunk, document, edge and source pointer in any event (found by key
+    shape, so a pointer field no code names yet is still read), the syntheses
+    they name, the graph nodes they inserted and the insight and question
+    nodes they distilled (including one whose row is gone). From the graph:
+    the syntheses, documents and edges written under those investigation ids.
+    A node grounds on every pointer its metadata records and every
+    supported_by edge; an edge on its chunk, its document and the pointers of
+    its metadata and endpoints; a recorded synthesis whose row or manifest is
+    gone counts as one unresolved source. A pointer that cannot be followed,
+    or a document that is not servable, withholds the excerpt, and so does
+    having no traceable source at all."""
+    inv_ids = trail.investigation_ids or (investigation_id,)
+    node_ids = dict.fromkeys([
+        *(n for iid in inv_ids for n in distilled_node_ids(iid, events_dir=events_dir)),
+        *trail.node_ids,
+    ])
     con = connect_read(db_path)
     try:
         synthesis_ids = dict.fromkeys([
             *trail.synthesis_ids,
             *_investigation_ids(
                 con,
-                "SELECT synthesis_id FROM syntheses WHERE investigation_id = ?",
-                investigation_id,
+                "SELECT synthesis_id FROM syntheses WHERE investigation_id IN ({ph})",
+                inv_ids,
             ),
         ])
-        document_ids = dict.fromkeys([
-            *trail.document_ids,
-            *_investigation_ids(
-                con,
-                "SELECT document_id FROM documents WHERE investigation_id = ?",
-                investigation_id,
+        recorded: list[tuple[str, str]] = [
+            *trail.pointers,
+            *(
+                ("document", d)
+                for d in _investigation_ids(
+                    con,
+                    "SELECT document_id FROM documents WHERE investigation_id IN ({ph})",
+                    inv_ids,
+                )
             ),
-        ])
-        edge_ids = dict.fromkeys([
-            *trail.edge_ids,
-            *_investigation_ids(
-                con,
-                "SELECT edge_id FROM edges WHERE investigation_id = ?",
-                investigation_id,
+            *(
+                ("edge", e)
+                for e in _investigation_ids(
+                    con,
+                    "SELECT edge_id FROM edges WHERE investigation_id IN ({ph})",
+                    inv_ids,
+                )
             ),
-        ])
+        ]
         sources = [
             *resolve_pin_sources(
                 con,
-                [
-                    *(("node", n) for n in node_ids),
-                    *(("edge", e) for e in edge_ids),
-                    *(("document", d) for d in document_ids),
-                ],
+                [*(("node", n) for n in node_ids), *dict.fromkeys(recorded)],
             ),
             *resolve_synthesis_sources(con, list(synthesis_ids)),
         ]

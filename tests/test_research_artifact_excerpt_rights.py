@@ -397,3 +397,268 @@ def test_excerpt_withheld_when_a_synthesis_manifest_is_empty(env):
     _archive(env, inv, "syn-x16", [])
     _complete(inv, env["events"], f"Thesis. {PASSAGE}")
     _assert_withheld(env, inv)
+
+
+# ── round 2: every pointer-shaped field, wherever it is recorded ──
+#
+# The gate does not enumerate provenance fields. It walks every node's metadata
+# and every event payload on the trajectory and follows every value under a key
+# that names a chunk, document, edge or source. These tests pin the two
+# encodings codex found unread (retrieval-event supporting_claims and node
+# metadata source_chunk_ids), then prove a pointer field nobody has written yet
+# is caught with no code change.
+
+
+def _retrieval(inv: str, events: str, *, chunk_ids=(), edge_ids=()) -> None:
+    from substrate.event_log import emit_typed
+    from substrate.schemas.events import EvidenceRetrieveDeliveredPayload
+
+    emit_typed(
+        inv,
+        EvidenceRetrieveDeliveredPayload(
+            sub_question="What does the record say?",
+            answer="An answer.",
+            supporting_claims=[{
+                "claim": "A claim.", "evidence_type": "direct",
+                "chunk_ids": list(chunk_ids), "edge_ids": list(edge_ids),
+                "confidence": "high", "confidence_basis": "quoted",
+            }],
+        ),
+        role="evidence_retriever",
+        events_dir=events,
+    )
+
+
+def _edge(env: dict, edge_id: str, *, chunk_id: str | None) -> None:
+    con = connect_write(env["db"])
+    try:
+        for node_id in (f"{edge_id}-a", f"{edge_id}-b"):
+            con.execute(
+                "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
+                "VALUES (?, ?, 'entity', 'depth')",
+                [node_id, node_id],
+            )
+        con.execute(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "chunk_id, source_tier, extraction_confidence, graph_scope) "
+            "VALUES (?, ?, ?, 'rel', ?, 1, 0.9, 'depth')",
+            [edge_id, f"{edge_id}-a", f"{edge_id}-b", chunk_id],
+        )
+    finally:
+        con.close()
+
+
+def _metadata_insight(env: dict, inv: str, node_id: str, meta: str) -> None:
+    con = connect_write(env["db"])
+    try:
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope, "
+            "metadata) VALUES (?, ?, 'insight', 'depth', ?)",
+            [node_id, PASSAGE, meta],
+        )
+    finally:
+        con.close()
+    log_event(
+        inv, ActionType.GRAPH_NODE_INSERTED,
+        payload={"node_id": node_id, "canonical_label": PASSAGE,
+                 "node_type": "insight", "graph_scope": "depth", "has_embedding": False},
+        events_dir=env["events"],
+    )
+
+
+def test_excerpt_withheld_when_a_retrieval_event_cites_a_restricted_chunk(env):
+    # codex's reproduction: one public insight, and the retriever's delivered
+    # event cites the gated chunk through supporting_claims[].chunk_ids.
+    inv = "inv-r1"
+    _public_insight(inv)
+    _retrieval(inv, env["events"], chunk_ids=["c-rs"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_retrieval_event_cites_a_missing_chunk(env):
+    inv = "inv-r2"
+    _public_insight(inv)
+    _retrieval(inv, env["events"], chunk_ids=["c-pd", "c-gone"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_retrieval_event_cites_a_restricted_edge(env):
+    inv = "inv-r3"
+    _public_insight(inv)
+    _edge(env, "e-r3", chunk_id="c-rs")
+    _retrieval(inv, env["events"], edge_ids=["e-r3"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_retrieval_event_cites_a_missing_edge(env):
+    inv = "inv-r4"
+    _public_insight(inv)
+    _retrieval(inv, env["events"], chunk_ids=["c-pd"], edge_ids=["e-gone"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_cleared_when_every_retrieval_pointer_is_public(env):
+    # Positive control: the walker does not withhold what it can clear.
+    inv = "inv-r5"
+    _public_insight(inv)
+    _edge(env, "e-r5", chunk_id="c-pd")
+    _retrieval(inv, env["events"], chunk_ids=["c-pd"], edge_ids=["e-r5"])
+    summary = "A thesis the retriever grounded on the public pamphlet."
+    _complete(inv, env["events"], summary)
+    body = _body(env, inv)
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
+
+
+def test_insight_and_excerpt_withheld_when_source_chunk_ids_names_a_missing_chunk(env):
+    # codex's reproduction: document_pass persists source_chunk_ids beside a
+    # public source_document_id; one listed chunk is gone.
+    inv = "inv-r6"
+    _metadata_insight(
+        env, inv, "n-r6",
+        '{"source_document_id": "doc-pd", "source_chunk_ids": ["c-pd", "c-gone"]}',
+    )
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    body = _body(env, inv)
+    assert [i.text[:10] for i in body.insights] == ["[cite-only"]
+    _assert_withheld(env, inv)
+
+
+def test_insight_and_excerpt_withheld_when_source_chunk_ids_names_a_restricted_chunk(env):
+    inv = "inv-r7"
+    _metadata_insight(
+        env, inv, "n-r7",
+        '{"source_document_id": "doc-pd", "source_chunk_ids": ["c-pd", "c-rs"]}',
+    )
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    body = _body(env, inv)
+    assert [i.text[:10] for i in body.insights] == ["[cite-only"]
+    _assert_withheld(env, inv)
+
+
+def test_public_source_chunk_ids_export_the_insight_and_the_excerpt(env):
+    inv = "inv-r8"
+    _metadata_insight(
+        env, inv, "n-r8",
+        '{"source_document_id": "doc-pd", "source_chunk_ids": ["c-pd"]}',
+    )
+    summary = "A thesis over the pamphlet's chunks."
+    _complete(inv, env["events"], summary)
+    body = _body(env, inv)
+    assert [i.text for i in body.insights] == [PASSAGE]
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
+
+
+# ── the hard-to-vary proof: a pointer field no code names ──
+
+
+def test_an_unnamed_metadata_pointer_field_is_caught_without_code_changes(env):
+    # backup_chunk_ids appears nowhere in the codebase. It names the gated
+    # chunk, nested one level down, and both the insight and the excerpt stay
+    # withheld because the gate reads pointer-shaped keys, not a field list.
+    inv = "inv-r9"
+    _metadata_insight(
+        env, inv, "n-r9",
+        '{"source_document_id": "doc-pd", '
+        '"provenance": {"backup_chunk_ids": ["c-rs"]}}',
+    )
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    body = _body(env, inv)
+    assert [i.text[:10] for i in body.insights] == ["[cite-only"]
+    _assert_withheld(env, inv)
+
+
+def test_an_unnamed_event_pointer_field_is_caught_without_code_changes(env):
+    # An event type and payload shape no code names, with the pointer buried in
+    # a list of objects: an alternate document id for the paywalled essay.
+    inv = "inv-r10"
+    _public_insight(inv)
+    log_event(
+        inv, "experimental.reading.note",
+        payload={"trail": [{"step": 1, "alt_doc_id": "doc-pr"}]},
+        events_dir=env["events"],
+    )
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_sub_investigation_retrieved_a_restricted_chunk(env):
+    # The parent escalated a question into a child investigation; the child's
+    # retrieval stood on the gated chunk, and the parent thesis draws on it.
+    inv, child = "inv-r11", "inv-r11-child"
+    _public_insight(inv)
+    log_event(
+        inv, ActionType.QUESTION_ESCALATED_TO_RESEARCH,
+        payload={"question_id": "q-r11", "child_investigation_id": child},
+        events_dir=env["events"],
+    )
+    _retrieval(child, env["events"], chunk_ids=["c-rs"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_cited_edge_endpoint_names_a_restricted_document(env):
+    # The retrieved edge carries no chunk of its own; one endpoint node's
+    # metadata records the paywalled essay. An edge stands on its endpoints.
+    inv = "inv-r12"
+    _public_insight(inv)
+    _edge(env, "e-r12", chunk_id="c-pd")
+    con = connect_write(env["db"])
+    try:
+        con.execute(
+            "UPDATE nodes SET metadata = ? WHERE node_id = 'e-r12-b'",
+            ['{"source_document_id": "doc-pr"}'],
+        )
+    finally:
+        con.close()
+    _retrieval(inv, env["events"], edge_ids=["e-r12"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_source_pointer_names_no_row(env):
+    # A source_id's key does not say what it names; one that names no
+    # document, chunk or edge cannot be cleared.
+    inv = "inv-r13"
+    _public_insight(inv)
+    log_event(
+        inv, "experimental.reading.note",
+        payload={"source_ids": ["c-pd", "nowhere-1"]},
+        events_dir=env["events"],
+    )
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_unparseable_node_metadata_withholds_rather_than_hiding_its_pointers(env):
+    # Truncated metadata cannot be read, and what it cannot show may be the
+    # gated chunk; it counts as an unresolved pointer, not as no pointer.
+    inv = "inv-r14"
+    _metadata_insight(
+        env, inv, "n-r14",
+        '{"source_document_id": "doc-pd", "source_chunk_ids": ["c-rs"',
+    )
+    # A public supported_by edge, so the node is not merely source-less.
+    con = connect_write(env["db"])
+    try:
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
+            "VALUES ('n-r14-target', 'target', 'entity', 'depth')"
+        )
+        con.execute(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "source_document_id, source_tier, extraction_confidence, graph_scope) "
+            "VALUES ('e-r14', 'n-r14', 'n-r14-target', 'supported_by', 'doc-pd', "
+            "1, 0.9, 'depth')"
+        )
+    finally:
+        con.close()
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    body = _body(env, inv)
+    assert [i.text[:10] for i in body.insights] == ["[cite-only"]
+    _assert_withheld(env, inv)

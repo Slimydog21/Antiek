@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from substrate.event_log import trajectory
+from substrate.provenance.pointers import (
+    Pointer,
+    collect_child_investigations,
+    collect_pointers,
+    collect_syntheses,
+)
 from substrate.schemas.events import ActionType
 
 
@@ -31,18 +37,26 @@ class SynthesisTrail:
     ``excerpt`` is the raw thesis prose and is NOT cleared for export. It is
     written from the investigation's sources and can repeat a gated passage
     verbatim, so ``build_body`` puts it through the source-aware rights gate
-    before any surface carries it. The id tuples name what the thesis stood
-    on, as the trajectory records it: the archived syntheses (whose manifests
-    pin their sources), the documents events anchor to, and the graph nodes
-    and edges the investigation inserted. A recorded id whose row is gone
-    stays here, so the gate can count it as unresolved.
+    before any surface carries it.
+
+    The rest names what the thesis stood on, read from every event of the
+    investigation's trajectory and of every sub-investigation it handed work
+    to (``investigation_ids``, the investigation first). ``pointers`` is every
+    chunk, document, edge and source pointer ``collect_pointers`` finds in
+    those events, envelope and payload, at any depth: the retriever's
+    ``supporting_claims[].chunk_ids`` and ``edge_ids``, an edge's
+    ``source_document_id``, a reading event's ``document_id`` and any pointer
+    field a writer adds later, with no field list to fall behind.
+    ``synthesis_ids`` are the archived syntheses (whose manifests pin their
+    sources) and ``node_ids`` the graph nodes inserted. A recorded id whose
+    row is gone stays here, so the gate can count it as unresolved.
     """
 
     excerpt: str | None = None
+    investigation_ids: tuple[str, ...] = ()
     synthesis_ids: tuple[str, ...] = ()
-    document_ids: tuple[str, ...] = ()
     node_ids: tuple[str, ...] = ()
-    edge_ids: tuple[str, ...] = ()
+    pointers: tuple[Pointer, ...] = ()
     source_event_ids: list[str] = field(default_factory=list)
 
 
@@ -62,36 +76,46 @@ def synthesis_from_events(
 ) -> SynthesisTrail:
     source_ids: list[str] = []
     synthesis_ids: list[str] = []
-    document_ids: list[str] = []
     node_ids: list[str] = []
-    edge_ids: list[str] = []
+    pointers: dict[Pointer, None] = {}
     excerpt: str | None = None
-    for row in trajectory(investigation_id, events_dir=events_dir):
-        at = row.get("action_type")
-        eid = row.get("event_id")
-        if eid:
-            source_ids.append(str(eid))
-        _take(synthesis_ids, row.get("synthesis_id"))
-        _take(document_ids, row.get("document_id"))
-        payload = row.get("payload") or {}
-        if not isinstance(payload, dict):
-            payload = {}
-        if at == ActionType.GRAPH_NODE_INSERTED.value:
-            _take(node_ids, payload.get("node_id"))
-        elif at == ActionType.GRAPH_EDGE_INSERTED.value:
-            _take(edge_ids, payload.get("edge_id"))
-            _take(document_ids, payload.get("source_document_id"))
-        elif at == ActionType.INVESTIGATION_COMPLETED.value:
-            summary = (payload.get("thesis_summary") or "").strip()
-            if summary:
-                excerpt = summary
-        elif at == ActionType.SYNTHESIS_ARCHIVED.value and not excerpt:
-            excerpt = (payload.get("thesis_summary") or payload.get("summary") or "").strip() or None
+    # The investigation, then every sub-investigation any of their events
+    # hands work to, each read once.
+    pending = [investigation_id]
+    walked: dict[str, None] = {}
+    while pending:
+        current = pending.pop(0)
+        if current in walked:
+            continue
+        walked[current] = None
+        own = current == investigation_id
+        for row in trajectory(current, events_dir=events_dir):
+            at = row.get("action_type")
+            if own and row.get("event_id"):
+                source_ids.append(str(row["event_id"]))
+            synthesis_ids.extend(collect_syntheses(row))
+            pointers.update(dict.fromkeys(collect_pointers(row)))
+            pending.extend(collect_child_investigations(row))
+            payload = row.get("payload") or {}
+            if not isinstance(payload, dict):
+                payload = {}
+            if at == ActionType.GRAPH_NODE_INSERTED.value:
+                _take(node_ids, payload.get("node_id"))
+            elif not own:
+                continue
+            elif at == ActionType.INVESTIGATION_COMPLETED.value:
+                summary = (payload.get("thesis_summary") or "").strip()
+                if summary:
+                    excerpt = summary
+            elif at == ActionType.SYNTHESIS_ARCHIVED.value and not excerpt:
+                excerpt = (
+                    payload.get("thesis_summary") or payload.get("summary") or ""
+                ).strip() or None
     return SynthesisTrail(
         excerpt=excerpt,
+        investigation_ids=tuple(walked),
         synthesis_ids=tuple(_ordered_unique(synthesis_ids)),
-        document_ids=tuple(_ordered_unique(document_ids)),
         node_ids=tuple(_ordered_unique(node_ids)),
-        edge_ids=tuple(_ordered_unique(edge_ids)),
+        pointers=tuple(pointers),
         source_event_ids=_ordered_unique(source_ids)[-20:],
     )

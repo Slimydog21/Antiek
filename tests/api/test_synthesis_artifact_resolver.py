@@ -290,3 +290,93 @@ def test_node_pin_grounds_through_its_metadata_chunk(pinned):
     (claim,) = export.claims
     assert [s.document_id for s in claim.sources] == ["doc-pr"]
     assert SECRET not in _html("s-node-chunk-only")
+
+
+# ── a node pin grounds on every pointer-shaped metadata field ──
+
+
+def _pin_node(db: str, sid: str, node_id: str, meta: str, thesis: str) -> None:
+    con = connect_write(db)
+    try:
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope, "
+            "metadata) VALUES (?, 'an insight', 'insight', 'depth', ?)",
+            [node_id, meta],
+        )
+        con.execute(
+            "INSERT INTO syntheses (synthesis_id, target_question, "
+            "synthesis_timestamp, status, implicit_recommendation, thesis_text) "
+            "VALUES (?, ?, now(), 'passed', 'proceed', ?)",
+            [sid, f"Q {sid}", thesis],
+        )
+        con.execute(
+            "INSERT INTO synthesis_substrate_manifest "
+            "(synthesis_id, entity_kind, entity_id) VALUES (?, 'node', ?)",
+            [sid, node_id],
+        )
+    finally:
+        con.close()
+
+
+def test_node_pin_with_a_missing_source_chunk_ids_entry_is_unresolved(pinned):
+    # codex's probe: document_pass writes source_chunk_ids beside a public
+    # source_document_id. One listed chunk is gone; the pin was reported fully
+    # sourced because only source_document_id and chunk_id were read.
+    _pin_node(
+        pinned, "s-src-chunks-gone", "n-src-chunks-gone",
+        '{"source_document_id": "doc-ok", "source_chunk_ids": ["c-ok-1", "c-gone"]}',
+        "Thesis F",
+    )
+    export = mod.resolve_synthesis_export("s-src-chunks-gone", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [(s.document_id, s.resolved) for s in claim.sources] == [
+        ("doc-ok", True), (None, False),
+    ]
+    assert claim.fully_sourced is False
+    assert "Provenance incomplete" in _html("s-src-chunks-gone")
+
+
+def test_node_pin_with_a_restricted_source_chunk_ids_entry_withholds_the_thesis(pinned):
+    _pin_node(
+        pinned, "s-src-chunks-pr", "n-src-chunks-pr",
+        '{"source_document_id": "doc-ok", "source_chunk_ids": ["c-ok-1", "c-pr"]}',
+        f"Thesis quoting it: {SECRET}",
+    )
+    export = mod.resolve_synthesis_export("s-src-chunks-pr", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [s.document_id for s in claim.sources] == ["doc-ok", "doc-pr"]
+    html = _html("s-src-chunks-pr")
+    assert SECRET not in html
+    assert "withheld" in html
+
+
+def test_node_pin_with_an_unnamed_nested_pointer_field_is_caught(pinned):
+    # No code names backup_chunk_ids: the generic walker reads the key shape.
+    _pin_node(
+        pinned, "s-backup", "n-backup",
+        '{"source_document_id": "doc-ok", "extra": [{"backup_chunk_ids": ["c-pr"]}]}',
+        f"Thesis quoting it: {SECRET}",
+    )
+    export = mod.resolve_synthesis_export("s-backup", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [s.document_id for s in claim.sources] == ["doc-ok", "doc-pr"]
+    assert SECRET not in _html("s-backup")
+
+
+def test_node_pin_whose_every_listed_chunk_is_public_is_fully_sourced(pinned):
+    _pin_node(
+        pinned, "s-src-chunks-ok", "n-src-chunks-ok",
+        '{"source_document_id": "doc-ok", "source_chunk_ids": ["c-ok-1", "c-ok-2"]}',
+        "Thesis G",
+    )
+    export = mod.resolve_synthesis_export("s-src-chunks-ok", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [s.document_id for s in claim.sources] == ["doc-ok"]
+    assert claim.fully_sourced is True
+    html = _html("s-src-chunks-ok")
+    assert "Provenance incomplete" not in html
+    assert "Thesis G" in html
