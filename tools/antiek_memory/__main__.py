@@ -204,29 +204,37 @@ def _make_handlers(
                     exclude_taken_down=True,
                 )["results"]
             # search() truncates chunk_text for prompt budgets; this surface
-            # has always returned the whole chunk, so read it back by id.
-            full_text: dict[str, str] = {}
+            # has always returned the whole chunk, so read it back by id,
+            # with the takedown flag for the per-hit check below.
+            full_text: dict[str, tuple[str, bool]] = {}
             if hits:
                 placeholders = ",".join("?" for _ in hits)
                 full_text = {
-                    str(row[0]): str(row[1])
+                    str(row[0]): (str(row[1]), bool(row[2]))
                     for row in con.execute(
-                        f"SELECT chunk_id, text FROM chunks WHERE chunk_id IN ({placeholders})",
+                        "SELECT c.chunk_id, c.text, COALESCE(b.taken_down, FALSE) "
+                        "FROM chunks c LEFT JOIN book_assets b ON b.document_id = c.document_id "
+                        f"WHERE c.chunk_id IN ({placeholders})",
                         [hit["chunk_id"] for hit in hits],
                     ).fetchall()
                 }
         finally:
             con.close()
+        # Defence in depth over the SQL scope, which already excludes taken-down
+        # books: a takedown withholds the body even from the book's owner. The
+        # owner's personal and restricted classes stay servable here, so this
+        # checks takedown only, not the full is_chunk_body_withheld predicate.
         chunks = [
             {
                 "chunk_id": hit["chunk_id"],
-                "text": full_text.get(hit["chunk_id"], hit["chunk_text"]),
+                "text": full_text[hit["chunk_id"]][0],
                 "title": hit["document_title"],
                 "source_tier": hit["source_tier"],
                 "owner_user_id": owner,
                 "similarity": hit["similarity"],
             }
             for hit in hits
+            if hit["chunk_id"] in full_text and not full_text[hit["chunk_id"]][1]
         ]
         return ToolResult(content=[{
             "type": "text",

@@ -120,3 +120,33 @@ def test_search_personal_excludes_taken_down_books(
     handlers, _ = _make_handlers(db_path)
     handlers["search_personal"]({"query": "anything"}, auth_context={"user_id": "user-b"})
     assert calls and calls[0]["exclude_taken_down"] is True
+
+
+def test_search_personal_drops_a_taken_down_hit_the_sql_let_through(
+    db_path: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Seed an owned, taken-down book chunk, then have search() return it as if
+    # the SQL scope had failed: the per-hit takedown check must still drop it.
+    with connect_write(db_path, purpose="seed-taken-down") as con:
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, text, token_count) "
+            "VALUES ('chunk-b', 'doc-b', 0, 'TAKEN DOWN BODY', 3)"
+        )
+        con.execute(
+            "INSERT INTO book_assets (document_id, taken_down) VALUES ('doc-b', TRUE)"
+        )
+
+    def leaky_search(con: Any, query: str, **kwargs: Any) -> dict[str, Any]:
+        return {"results": [{
+            "chunk_id": "chunk-b", "chunk_text": "TAKEN DOWN BODY",
+            "document_title": "User B document", "source_tier": 1, "similarity": 1.0,
+        }]}
+
+    monkeypatch.setattr(memory_main, "search", leaky_search)
+    handlers, _ = _make_handlers(db_path)
+    result = handlers["search_personal"](
+        {"query": "anything"}, auth_context={"user_id": "user-b"}
+    )
+    body = json.loads(result.content[0]["text"])
+    assert body["chunks"] == []
+    assert "TAKEN DOWN BODY" not in json.dumps(body)
