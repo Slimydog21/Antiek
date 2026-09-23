@@ -69,7 +69,7 @@ def default_checkpoint_path() -> str:
     env = os.environ.get("ANTIEK_INGEST_CHECKPOINT_PATH")
     if env:
         return env
-    home = os.environ.get("ANTIEK_HOME", os.path.expanduser("~/.antiek"))
+    home = os.environ.get("ANTIEK_HOME", "").strip() or os.path.expanduser("~/.antiek")
     return str(Path(home) / "ingest_checkpoint.json")
 
 

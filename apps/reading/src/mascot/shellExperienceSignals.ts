@@ -7,7 +7,11 @@ const locallyStartedResearchExpiryTimers = new Map<
   ReturnType<typeof setTimeout>
 >();
 
-export type ResearchReactionPhase = "idle" | "running" | "complete" | "error";
+export type ResearchReactionPhase =
+  | "idle"
+  | "running"
+  | "complete"
+  | "error";
 
 export function notifyPointerIdleEdge(
   wasPointerIdle: boolean,
@@ -23,9 +27,9 @@ export function notifyShellFailure(): void {
   emitMascotExperience("fail");
 }
 
-/** A current, servable cited source is committed as readable modal content. */
-export function notifyEvidenceSourceOpened(): void {
-  emitMascotExperience("evidence_source_opened");
+/** Call only after the first HTMLMediaElement.play() promise resolves. */
+export function notifyVoicePlaybackStarted(): void {
+  emitMascotExperience("voice_playback_started");
 }
 
 export function notifyResearchStarted(sessionId: string): void {
@@ -50,9 +54,7 @@ export function notifyResearchStarted(sessionId: string): void {
  * a safety net for interrupted navigation: a historical reopen must not inherit
  * a launch animation merely because the original monitor never mounted.
  */
-export function consumeLocallyStartedResearchSession(
-  sessionId: string,
-): boolean {
+export function consumeLocallyStartedResearchSession(sessionId: string): boolean {
   const startedAt = locallyStartedResearchSessions.get(sessionId);
   locallyStartedResearchSessions.delete(sessionId);
   const expiryTimer = locallyStartedResearchExpiryTimers.get(sessionId);
@@ -75,4 +77,8 @@ export function notifyResearchPhaseEdge(
   if (current === "complete") emitMascotExperience("deep_research_complete");
   if (current === "error") emitMascotExperience("deep_research_error");
   return true;
+}
+
+export function notifyEvidenceSourceOpened(): void {
+  emitMascotExperience("evidence_source_opened");
 }

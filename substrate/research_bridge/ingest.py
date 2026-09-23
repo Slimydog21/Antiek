@@ -19,8 +19,18 @@ import os
 import sys
 from dataclasses import dataclass
 
+# Hoisted OUT of the try below. ``...runtime.db_lock`` resolves to
+# ``substrate.runtime.db_lock``, which does not exist, so that ONE line made
+# the whole try fail and every relative import in it dead. The ignore code
+# MATCHED what mypy emits, which is why it never looked wrong — but a
+# correctly-matched ignore suppresses just as thoroughly, and LockedConnection
+# was typed Any across this module.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+from runtime.db_lock import LockedConnection  # noqa: E402
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
+
 try:
-    from ...runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
     from ..graph.ops import (
         content_addressed_id,
         insert_chunk,
@@ -180,6 +190,10 @@ def ingest_paste(
         title=title,
         raw_text=raw_text,
         investigation_id=investigation_id,
+        # Text pasted from an outside research tool is third-party material
+        # the operator is reading, not content Antiek may serve: owner-
+        # readable, never public. NULL was grandfathered public.
+        content_class=PERSONAL_READING_CONTENT_CLASS,
         metadata={
             "research_bridge": {
                 "source": source,

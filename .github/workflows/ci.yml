@@ -141,10 +141,6 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Require every pytest shard
-        env:
-          PYTEST_SUITE_RESULT: ${{ needs.pytest-suite.result }}
-        run: test "$PYTEST_SUITE_RESULT" = success
 
       - name: Checkout
         uses: actions/checkout@v7
@@ -437,6 +433,32 @@ jobs:
         # See docs/decisions/unified-integration-health.md.
         run: |
           python tools/codegen/check_conformance.py
+      # MOVED TO LAST (was the FIRST step of this job).
+      #
+      # This job carries ~17 boundary/invariant gates — substrate/dispatch,
+      # one-owner-per-layer, serve-guard, arXiv egress + serve-invariants,
+      # retrieval-gate drift, owner-privilege, contact-guard, merge-age
+      # (anti-stranding), reachability x2, invariant-registry meta-check,
+      # source-gate, codegen staleness, contract-conformance — plus the
+      # html-projection and previously-uncollected suites.
+      #
+      # As the FIRST step this assertion skipped every one of them whenever a
+      # shard was cancelled, which `concurrency: cancel-in-progress` does
+      # routinely. Measured over 40 recent ci.yml runs: the boundary gates
+      # EXECUTED on 8 and were SKIPPED on 27 (the remaining 5 never reached
+      # this job). So the gates ran on roughly one CI run in five, and of 12
+      # sampled active PRs with a red `pytest`, 12 of 12 failed on THIS step —
+      # not on any gate.
+      #
+      # The job is `if: always()`, so it runs even when the suite is cancelled.
+      # Asserting last means the gates execute every time and their results are
+      # visible in the log, while a failed or cancelled suite still reds the
+      # job exactly as before. Order changed; verdict unchanged.
+      - name: Require every pytest shard
+        if: always()
+        env:
+          PYTEST_SUITE_RESULT: ${{ needs.pytest-suite.result }}
+        run: test "$PYTEST_SUITE_RESULT" = success
 
   keystone:
     name: keystone
@@ -465,7 +487,7 @@ jobs:
           python-version: '3.14'
           cache: 'pip'
       # ── write-lock async floor, ENFORCED ────────────────────────────────
-      # These three lints also run in write_lock_async_floor.yml, which emits
+      # These three lints used to also run in write_lock_async_floor.yml, which emitted
       # the `write-lock-async-gate` context. That workflow is PATH-FILTERED,
       # and a required check behind `paths:` is never reported on a PR that
       # misses the filter and so stays permanently pending — which is why it
@@ -483,9 +505,11 @@ jobs:
       # an injected raw read-only connect in runtime/ reds with
       # "1 NEW violation(s)", and removing it returns exit 0.
       #
-      # tests/test_write_lock_gate_parity.py READS both files and fails if the
-      # scope, baselines or lint names drift apart, so this copy cannot
-      # silently diverge from the one it mirrors.
+      # That standalone workflow and its parity test were retired in #3349 once
+      # this required copy made them redundant; tests/test_write_lock_gate_enforced.py
+      # asserts the workflow stays gone, and tests/test_baseline_lints_are_required.py
+      # asserts the stronger invariant that NO baselined lint may live only in an
+      # advisory workflow.
       - name: Enforce — write-lock async floor (required copy)
         env:
           SCOPE_DIRS: >-
@@ -503,6 +527,58 @@ jobs:
           python -m tools.lints.cli_with_baseline enforce indirect_write_in_async \
             --paths $SCOPE_DIRS \
             --baseline-file tools/lints/baselines/no_indirect_write_in_async.json \
+            --check-stale
+      # SPR-03 timeout discipline, promoted from resilience_floor.yml.
+      #
+      # The floor that owns this lint is advisory AND paths-filtered, so it
+      # neither blocks a merge nor runs on main. Measured consequence: seven
+      # PRs (#124, #125, #134, #148, #3127, #3135, #3182) merged with this
+      # exact step red on their merged head sha, and the floor has not run on
+      # main since 2026-07-02. main passes the lint today, so promoting it
+      # into the required keystone costs nothing and closes the hole.
+      #
+      # Verified by mutation: an injected `requests.get(url)` (no timeout) in
+      # substrate/ reds with "1 NEW violation(s)"; removing it returns exit 0.
+      #
+      # Stdlib-only (ast/json/pathlib/tomllib), so it runs before the dep
+      # install like the write-lock copy above.
+      #
+      # tests/test_timeout_discipline_required.py reads both this file and
+      # resilience_floor.yml and fails if the scope, baseline or lint name
+      # drift apart, so this copy cannot silently diverge from its source.
+      - name: Enforce — resilience floor (required copy)
+        env:
+          SCOPE_DIRS: >-
+            acquisition substrate interfaces roles runtime tools middleware
+        run: |
+          python -m tools.lints.cli_with_baseline enforce unbounded_external_call \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_unbounded_external_call.json \
+            --check-stale
+          python -m tools.lints.cli_with_baseline enforce seam_under_write_lock \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_seam_call_under_write_lock.json \
+            --check-stale
+      # The Wave-1 substrate floor's two lints, promoted from substrate_floor.yml
+      # for the same reason: that workflow is advisory and paths-filtered, so
+      # `no_raise` and `bypass` were enforced nowhere that blocks a merge.
+      # Their scope is three files, so this costs a few seconds.
+      #
+      # Mutation-verified: an appended `raise ValueError` in substrate/results.py
+      # reds with "NEW raise:ValueError", and an unwrapped `duckdb.connect` in
+      # substrate/errors.py reds with "NEW bypass:duckdb.connect".
+      - name: Enforce — Wave-1 substrate floor (required copy)
+        env:
+          SCOPE_FILES: >-
+            substrate/results.py substrate/errors.py substrate/escape_hatch.py
+        run: |
+          python -m tools.lints.cli_with_baseline enforce no_raise \
+            --paths $SCOPE_FILES \
+            --baseline-file tools/lints/baselines/no_raise.json \
+            --check-stale
+          python -m tools.lints.cli_with_baseline enforce bypass \
+            --paths $SCOPE_FILES \
+            --baseline-file tools/lints/baselines/bypass.json \
             --check-stale
       - name: Install Antiek + dev deps
         run: |
@@ -524,6 +600,45 @@ jobs:
           # Python binding, unlike `interview` above.
           pip install -c tools/lints/constraints.txt \
             -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss,docs,turbopuffer_shadow]'
+      # ACV SPR-06 ratified-scoring gate. docs/decisions/ratified-scoring-gate.md
+      # carried "NOT WIRED — the tool exists, the CI step does not" since its
+      # 2026-09-20 correction: the record claimed this step lived in the `pytest`
+      # job, but `git log -S ratified_gate -- .github/workflows/` returns zero
+      # commits. It never existed.
+      #
+      # It lands in keystone rather than `pytest` because `pytest` is NOT a
+      # required context — a deny-by-default gate in a job that cannot block a
+      # merge reproduces the gap the record describes.
+      #
+      # Mutation-verified: a correctly-shaped scored artifact (mock_run=false)
+      # with no `parameters_ratified` / `ratification_ref` reds it with
+      # "RATIFIED-SCORING GATE: BLOCKED"; removing it returns exit 0. It reports
+      # OK over zero scored artifacts today because none exist — deny-by-default
+      # working, and only the mutation distinguishes that from a dead gate.
+      - name: Ratified-scoring gate (ACV SPR-06)
+        run: python tools/ratified_gate.py
+      # SPR-08 usability keystone. docs/decisions/usability-keystone.md has read
+      # "NOT INSTALLED — the probe is written; nothing runs it" since its
+      # 2026-09-20 correction, which found none of the four artifacts it cited
+      # existed.
+      #
+      # It asserts the CONJUNCTION no other probe covers — login, launch,
+      # compound, read and §9 attribution as ONE journey through the real
+      # create_app() factory. Every other probe asserts a single leg, so "all
+      # five green individually" never proved the journey worked.
+      #
+      # ~13s, and needs NO credentials: verified REACHABLE twice with all seven
+      # provider keys unset, which is exactly CI's posture.
+      #
+      # Mutation-verified: injecting a 404 into the GET /chunks/{chunk_id}
+      # handler flips it to "BLOCKED ... read — GET /chunks", exit 1, naming the
+      # failing leg; reverting returns exit 0.
+      #
+      # --only keeps this to the one probe. `compounding` measures cost_cold vs
+      # cost_warm and both read 0 without provider credentials, so running the
+      # whole suite here would wire a permanently-red gate.
+      - name: Usability keystone probe (SPR-08)
+        run: python -m tools.reachability.probe_runner --only usability_keystone
       - name: Compounding benchmark (SPR-09 keystone)
         # The falsifiable compounding benchmark (compounding/benchmark/tests/).
         # `-m "not slow"` excludes the full n=20 multi-arm run. The seed-and-catch

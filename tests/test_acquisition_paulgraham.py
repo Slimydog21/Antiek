@@ -57,6 +57,7 @@ def temp_substrate(monkeypatch):
 
 
 class _StubEmbedder:
+    dimension = 16  # the EmbeddingProvider Protocol requires it; producers now pin it
     """Deterministic 16-d embedder — no model download in CI."""
 
     def encode(self, text: str) -> list[float]:
