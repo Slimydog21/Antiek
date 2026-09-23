@@ -14,7 +14,11 @@ import { semantic } from "./tokens";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const indexHtml = readFileSync(join(here, "..", "..", "index.html"), "utf8");
-const bootSource = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join("\n");
+/** Every <script> without a src, whatever its attributes: code that runs before the app. */
+const inlineScripts = [...indexHtml.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
+  .filter((m) => !/\bsrc\s*=/.test(m[1]))
+  .map((m) => m[2]);
+const bootSource = inlineScripts[0] ?? "";
 
 const html = document.documentElement;
 let changeListener: (() => void) | null = null;
@@ -57,6 +61,7 @@ afterEach(() => {
 
 describe("index.html boot script (runs before first paint)", () => {
   it("has exactly one inline script, and it is the theme boot", () => {
+    expect(inlineScripts).toHaveLength(1);
     expect(bootSource).toContain("antiek.theme");
     expect(bootSource).toContain("antiek.motion");
   });
