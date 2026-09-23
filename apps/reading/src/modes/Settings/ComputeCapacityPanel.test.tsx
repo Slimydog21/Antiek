@@ -75,8 +75,11 @@ describe("ComputeCapacityPanel", () => {
       is_default: false,
     });
     render(<ComputeCapacityPanel />);
-    await screen.findByTestId("compute-capacity-panel");
-    fireEvent.click(screen.getByRole("button", { name: /Starter/ }));
+    // The panel's wrapper renders before its tiers do (the tiers wait on the
+    // fetch); a sync getByRole right after the wrapper appears raced the
+    // fetch under CI load and reddened the REQUIRED vitest check on PRs that
+    // touch no frontend file. Wait for the button itself.
+    fireEvent.click(await screen.findByRole("button", { name: /Starter/ }));
     await waitFor(() => {
       expect(api.setComputeCapacity).toHaveBeenCalledWith({
         tier: "starter",

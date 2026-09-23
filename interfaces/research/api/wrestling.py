@@ -47,7 +47,10 @@ from runtime.db_lock import (  # noqa: E402
     connect_read,
     connect_write,  # noqa: E402
 )
-from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
+from substrate.constants import (  # noqa: E402
+    ANTIEK_PARAM_VERSION,
+    PERSONAL_READING_CONTENT_CLASS,
+)
 from substrate.context_pack import (  # noqa: E402
     LayerSource,
     WorkingMemoryIntegrityError,
@@ -485,6 +488,11 @@ def make_document_loaded_handler(
                     source_uri=p.source_uri,
                     title=p.title,
                     investigation_id=event.investigation_id,
+                    # A Wrestle-loaded file is the OPERATOR's reading material of
+                    # anyone's authorship: owner-readable, never publicly
+                    # servable. Left NULL it was grandfathered PUBLIC by the
+                    # chunk-search gate (audit wave 3, #13 residual).
+                    content_class=PERSONAL_READING_CONTENT_CLASS,
                     metadata={
                         "content_hash": p.content_hash,
                         "size_bytes": p.size_bytes,
@@ -670,6 +678,7 @@ def make_region_selected_handler(
                     source_tier=4,
                     document_type="pdf",
                     investigation_id=event.investigation_id,
+                    content_class=PERSONAL_READING_CONTENT_CLASS,  # same lane as the load
                     on_conflict="ignore",
                 )
                 insert_chunk(
