@@ -14,6 +14,13 @@ the tag selection, the box must stay at A unless the logged emergency
 override `antiek_force_deploy=true` is passed — which is also the positive
 control proving the harness can pull at all. The play itself fails later
 (no systemd, no root); only the pull is under test.
+
+setup.yml is a second entrypoint to the same state: its `clone Antiek repo`
+task (tagged [code]) used the git module's default update=yes, so re-running
+setup.yml on a provisioned box (the runbooks call it idempotent) fast-forwarded
+the checkout to the branch tip with no gate, then pip-installed that tree.
+It must only ever clone into an empty dest; moving an existing checkout is
+deploy.yml's gated pull alone.
 """
 
 from __future__ import annotations
@@ -28,7 +35,9 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-PLAYBOOK = ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy.yml"
+PLAYBOOKS = ROOT / "infrastructure" / "ansible" / "playbooks"
+PLAYBOOK = PLAYBOOKS / "deploy.yml"
+SETUP = PLAYBOOKS / "setup.yml"
 
 # Refuses by default (require_green.sh exits non-zero). With FAKE_GH_GREEN=1
 # it reports all eight main-required contexts `success`, in the TSV shape the
@@ -92,11 +101,14 @@ def box(tmp_path: Path) -> dict:
             "sha_a": sha_a, "sha_b": sha_b}
 
 
-def _deploy(box: dict, *selection: str, green: bool = False) -> subprocess.CompletedProcess:
+def _deploy(box: dict, *selection: str, green: bool = False,
+            playbook: Path = PLAYBOOK) -> subprocess.CompletedProcess:
     exe = shutil.which("ansible-playbook")
     assert exe
     env = {**os.environ, "PATH": f"{box['bin']}{os.pathsep}{os.environ['PATH']}",
            "FAKE_GH_LOG": str(box["gh_log"]), "FAKE_GH_GREEN": "1" if green else "0",
+           # setup.yml pip-installs after the clone; fail that offline, fast.
+           "PIP_NO_INDEX": "1",
            "ANSIBLE_NOCOLOR": "1",
            "ANSIBLE_LOCAL_TEMP": str(box["tmp"] / "ans-local"),
            "ANSIBLE_REMOTE_TEMP": str(box["tmp"] / "ans-remote"),
@@ -110,7 +122,7 @@ def _deploy(box: dict, *selection: str, green: bool = False) -> subprocess.Compl
         "-e", f"antiek_secrets_file={box['secrets']}",
     ]
     return subprocess.run(
-        [exe, "-i", str(box["inv"]), str(PLAYBOOK), *extra, *selection],
+        [exe, "-i", str(box["inv"]), str(playbook), *extra, *selection],
         env=env, capture_output=True, text=True, timeout=300,
     )
 
@@ -174,6 +186,37 @@ def test_force_override_still_pulls_positive_control(box):
     assert box["gh_log"].read_text() == ""
 
 
+def _setup_code_block(box: dict) -> subprocess.CompletedProcess:
+    # `--tags code --skip-tags deploy_key` is setup.yml's repo+venv block
+    # (the deploy key is the operator's real SSH key); a full re-run of
+    # setup.yml on a provisioned box goes through the same clone task.
+    group = subprocess.run(["id", "-gn"], capture_output=True, text=True,
+                           check=True).stdout.strip()
+    return _deploy(box, "--tags", "code", "--skip-tags", "deploy_key",
+                   "-e", f"antiek_group={group}", playbook=SETUP)
+
+
+@needs_ansible
+def test_setup_rerun_never_moves_an_existing_checkout(box):
+    proc = _setup_code_block(box)
+    out = proc.stdout + proc.stderr
+    assert "clone Antiek repo" in out, out[-3000:]
+    assert _head(box) == box["sha_a"], (
+        f"setup.yml moved the provisioned checkout to unverified {box['sha_b']} "
+        f"with no required-checks gate.\n{out[-3000:]}"
+    )
+    assert box["gh_log"].read_text() == ""
+
+
+@needs_ansible
+def test_setup_still_clones_a_fresh_box_positive_control(box):
+    shutil.rmtree(box["install"])
+    proc = _setup_code_block(box)
+    out = proc.stdout + proc.stderr
+    assert (box["install"] / ".git").is_dir(), out[-3000:]
+    assert _head(box) == box["sha_b"], out[-3000:]
+
+
 # ── static guard: runs where ansible-playbook is absent (CI test shards) ──
 def _deploy_tasks() -> list[dict]:
     plays = yaml.safe_load(PLAYBOOK.read_text())
@@ -204,3 +247,39 @@ def test_pull_version_is_only_resolvable_once_the_gate_cleared():
     set_i = names.index(setter["name"])
     pull_i = names.index(pull["name"])
     assert gate_i < set_i < pull_i
+
+
+def _git_tasks() -> list[tuple[str, dict]]:
+    found: list[tuple[str, dict]] = []
+
+    def walk(playbook: str, tasks: list[dict] | None) -> None:
+        for t in tasks or []:
+            if "ansible.builtin.git" in t or "git" in t:
+                found.append((playbook, t))
+            for key in ("block", "rescue", "always"):
+                walk(playbook, t.get(key))
+
+    for path in sorted(PLAYBOOKS.glob("*.yml")):
+        for play in yaml.safe_load(path.read_text()) or []:
+            for key in ("pre_tasks", "tasks", "post_tasks", "handlers"):
+                walk(path.name, play.get(key))
+    return found
+
+
+def test_only_the_gated_pull_can_move_an_existing_checkout():
+    git_tasks = _git_tasks()
+    assert any(pb == "setup.yml" for pb, _ in git_tasks), git_tasks
+    gated = 0
+    for pb, t in git_tasks:
+        args = t.get("ansible.builtin.git") or t.get("git")
+        if pb == "deploy.yml" and t.get("name", "").startswith("git pull"):
+            assert "mandatory" in args["version"], args["version"]
+            gated += 1
+            continue
+        # The git module defaults to update=yes, which fast-forwards an
+        # existing checkout to the branch tip: an ungated deploy.
+        assert args.get("update") is False, (
+            f"{pb}: '{t.get('name')}' can move an existing checkout past the "
+            "required-checks gate; set `update: false` (clone-if-absent only)."
+        )
+    assert gated == 1
