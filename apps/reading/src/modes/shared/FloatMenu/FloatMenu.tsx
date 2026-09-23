@@ -272,7 +272,7 @@ export default function FloatMenu({
       {hybridEnabled && view.kind === "menu" && (
         <div
           data-floatmenu-hybrid
-          className="px-3 py-1.5 border-t border-charcoal-2 text-sun-deep"
+          className="px-3 py-1.5 border-t border-charcoal-2 text-sun"
           title="Hybrid: the AI may ask clarifying questions before launching. Not yet functional — see HYBRID_DECISION.md."
         >
           Hybrid — coming (AI asks first)
@@ -369,7 +369,7 @@ function NotePanel({
           useVoiceCapture.start() does NOT re-throw a denial — it reflects in
           recorderState "denied" — so we read that AND voice.error (ASR/503). */}
       {voice.recorderState === "denied" && (
-        <p className="text-sun-deep mt-1" role="alert">
+        <p className="text-sun mt-1" role="alert">
           Microphone permission was denied. You can still type a note.
         </p>
       )}
@@ -500,7 +500,7 @@ function DialoguePanel({
         autoFocus
       />
       {voice.recorderState === "denied" && (
-        <p className="text-sun-deep mt-1" role="alert">
+        <p className="text-sun mt-1" role="alert">
           Microphone permission was denied. You can still type your question.
         </p>
       )}
@@ -567,7 +567,7 @@ function SearchPanel({
   return (
     <Panel title="Search the corpus" onClose={onClose}>
       {withheld ? (
-        <p className="text-sun-deep" role="alert">
+        <p className="text-sun" role="alert">
           {WITHHELD_OUTBOUND_REASON}
         </p>
       ) : pending ? (
@@ -671,7 +671,7 @@ function EditPanel({
     <Panel title="Edit selection" onClose={onClose}>
       <div data-floatmenu-edit className="flex flex-col gap-1.5">
         {safeText === null ? (
-          <p className="text-sun-deep" role="alert">
+          <p className="text-sun" role="alert">
             {WITHHELD_OUTBOUND_REASON}
           </p>
         ) : null}

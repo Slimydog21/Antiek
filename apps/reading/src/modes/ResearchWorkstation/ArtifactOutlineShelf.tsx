@@ -388,7 +388,7 @@ export default function ArtifactOutlineShelf({
               title="Drag to Write outline"
             >
               <span className="text-xxs uppercase text-sun-deep">{b.kind}</span>
-              <p className="line-clamp-2 text-ink">{b.label}</p>
+              <p className="line-clamp-2 text-ink dark:text-bright">{b.label}</p>
             </li>
           ))}
         </ul>
