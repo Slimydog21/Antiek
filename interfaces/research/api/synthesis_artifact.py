@@ -85,10 +85,15 @@ def resolve_synthesis_export(
         ).fetchone()
         if row is None:
             return None
+        # LEFT JOIN, and the document id comes from the documents row, never
+        # from the pin: a pin whose document is gone yields a source with no
+        # document, which the M4 gate counts as unresolved. An inner join
+        # dropped it before the gate, so a synthesis that lost some of its
+        # sources exported as "complete".
         doc_rows = con.execute(
-            "SELECT m.entity_id, d.title, d.content_class, d.ip_holder_id "
+            "SELECT d.document_id, d.title, d.content_class, d.ip_holder_id "
             "FROM synthesis_substrate_manifest m "
-            "JOIN documents d ON d.document_id = m.entity_id "
+            "LEFT JOIN documents d ON d.document_id = m.entity_id "
             "WHERE m.synthesis_id = ? AND m.entity_kind = 'document'",
             [synthesis_id],
         ).fetchall()
@@ -101,7 +106,7 @@ def resolve_synthesis_export(
             document_title=r[1],
             content_class=r[2],
             ip_holder_id=r[3],
-            locator=f"/read/{r[0]}",
+            locator=f"/read/{r[0]}" if r[0] else None,
             chunk_text=None,  # document-level source; chunk text resolved per-claim later
         )
         for r in doc_rows
