@@ -32,6 +32,7 @@ from services.html_projection.adapters.synthesis import (
 from services.html_projection.context import Provenance, RenderContext
 from services.html_projection.gate import ScriptViolation, assert_script_free
 from services.html_projection.renderer import render
+from services.html_projection.resolvers.substrate_refs import resolve_manifest_sources
 from substrate.contracts.anti_ek_honesty import html_projection_response_headers
 
 _log = logging.getLogger(__name__)
@@ -57,7 +58,8 @@ def resolve_synthesis_export(
 ) -> SynthesisExport | None:
     """Build a ``SynthesisExport`` from the graph, or None if it does not exist.
 
-    Reads the synthesis metadata + the substrate-manifest documents as
+    Reads the synthesis metadata and follows every substrate-manifest pin
+    (document, chunk, node, edge) to the document it stands on, as
     document-level provenance sources. The document-level rights data
     (``content_class`` + ``ip_holder_id``) comes straight from ``documents``;
     the rights FILTER is applied downstream in the adapter (single source of
@@ -85,32 +87,40 @@ def resolve_synthesis_export(
         ).fetchone()
         if row is None:
             return None
-        # LEFT JOIN, and the document id comes from the documents row, never
-        # from the pin: a pin whose document is gone yields a source with no
-        # document, which the M4 gate counts as unresolved. An inner join
-        # dropped it before the gate, so a synthesis that lost some of its
-        # sources exported as "complete".
-        doc_rows = con.execute(
-            "SELECT d.document_id, d.title, d.content_class, d.ip_holder_id "
-            "FROM synthesis_substrate_manifest m "
-            "LEFT JOIN documents d ON d.document_id = m.entity_id "
-            "WHERE m.synthesis_id = ? AND m.entity_kind = 'document'",
-            [synthesis_id],
-        ).fetchall()
+        # Every pin kind, not only document pins: the archive writer pins
+        # chunks and edges, so a document-only read left a real synthesis with
+        # no sources at all, and a missing chunk pin was dropped before the M4
+        # gate. A pin that cannot be followed to a live document reaches the
+        # gate as a source with no document, which it counts as unresolved.
+        pinned = resolve_manifest_sources(con, [synthesis_id])
     finally:
         con.close()
 
-    sources = [
-        SourceRef(
-            document_id=r[0],
-            document_title=r[1],
-            content_class=r[2],
-            ip_holder_id=r[3],
-            locator=f"/read/{r[0]}" if r[0] else None,
-            chunk_text=None,  # document-level source; chunk text resolved per-claim later
-        )
-        for r in doc_rows
-    ]
+    sources: list[SourceRef] = []
+    cited: set[str] = set()
+    for pin in pinned:
+        if pin.document_id is None:
+            sources.append(
+                SourceRef(
+                    document_id=None,
+                    document_title=f"missing {pin.entity_kind} {pin.entity_id}",
+                    content_class=None,
+                    ip_holder_id=None,
+                )
+            )
+        elif pin.document_id not in cited:
+            # Two chunks of one document cite that document once.
+            cited.add(pin.document_id)
+            sources.append(
+                SourceRef(
+                    document_id=pin.document_id,
+                    document_title=pin.title,
+                    content_class=pin.content_class,
+                    ip_holder_id=pin.ip_holder_id,
+                    locator=f"/read/{pin.document_id}",
+                    chunk_text=None,  # document-level source
+                )
+            )
     claims = [Claim(statement=row[2], sources=sources)] if row[2] else []
 
     return SynthesisExport(
