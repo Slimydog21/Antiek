@@ -28,6 +28,7 @@ from dataclasses import dataclass
 _here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
 from runtime.db_lock import LockedConnection  # noqa: E402
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 
 try:
     from ..graph.ops import (
@@ -189,6 +190,10 @@ def ingest_paste(
         title=title,
         raw_text=raw_text,
         investigation_id=investigation_id,
+        # Text pasted from an outside research tool is third-party material
+        # the operator is reading, not content Antiek may serve: owner-
+        # readable, never public. NULL was grandfathered public.
+        content_class=PERSONAL_READING_CONTENT_CLASS,
         metadata={
             "research_bridge": {
                 "source": source,
