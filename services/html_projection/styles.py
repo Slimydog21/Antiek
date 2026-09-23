@@ -75,7 +75,8 @@ _SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 # guard the CSS-specific escape hatches (@import and url() pull external bytes;
 # expression() is dead-IE script; behavior:/-moz-binding: bind script).
 _CSS_FORBIDDEN = re.compile(
-    r"@import|url\s*\(|expression\s*\(|behavior\s*:|-moz-binding|javascript:",
+    r"@import|url\s*\(|image-set\s*\(|src\s*\(|expression\s*\(|behavior\s*:"
+    r"|-moz-binding|javascript:|<\s*/\s*style",
     re.IGNORECASE,
 )
 
@@ -101,13 +102,19 @@ def validate_style(style: ProjectionStyle) -> None:
     if not style.label.strip():
         raise StyleError(f"style {style.name!r} needs a non-empty label")
 
-    css = style.theme_css
+    # Search the CSS as the engine READS it (comments stripped, identifier
+    # escapes decoded): ``u\72l(`` and ``@\69mport`` are ``url(`` and
+    # ``@import`` to a browser and must be to this denylist too. ``</style``
+    # is banned outright — a theme that closes the element the renderer
+    # wraps it in is planting markup, not styling.
+    css = gate.normalise_css(style.theme_css)
     m = _CSS_FORBIDDEN.search(css)
     if m is not None:
         raise StyleError(
             f"style {style.name!r} theme CSS contains a forbidden construct "
             f"({m.group(0)!r}): projection styles must be self-contained "
-            "(no @import/url()/expression()/behavior/binding/javascript:)",
+            "(no @import/url()/image-set()/src()/expression()/behavior/binding/"
+            "javascript:/</style)",
         )
     # The composed stylesheet, as the renderer will emit it, must pass the gate.
     violations = gate.find_violations(f"<style>\n{style.stylesheet()}</style>")

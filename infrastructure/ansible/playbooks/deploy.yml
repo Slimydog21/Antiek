@@ -50,6 +50,53 @@
 
   tasks:
     # ── 1. Pull code ─────────────────────────────────────────────────────
+    # ── Required-checks gate, at the layer that ACTUALLY deploys ──────────
+    # deploy_backend.yml gates its `deploy` job on all 8 required contexts
+    # being green for the target SHA. This playbook did NOT: it pulled
+    # whatever antiek_repo_branch pointed at. So every path that runs the
+    # playbook directly — the runbook's ssh + ansible-playbook, an agent
+    # session, a laptop — bypassed the gate entirely. Observed 2026-09-22:
+    # a408d2646 reached production ~17:49Z with 4 of 8 required checks still
+    # running, while both deploy_backend runs had correctly SKIPPED. The gate
+    # guarded one caller; it has to guard the action. Same script as the
+    # workflow uses, so the two cannot drift.
+    - name: resolve the SHA this deploy will pull
+      ansible.builtin.command:
+        cmd: git ls-remote --heads {{ antiek_repo_url }} {{ antiek_repo_branch }}
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: remote_head
+      tags: [deploy, gate]
+
+    - name: set antiek_target_sha
+      ansible.builtin.set_fact:
+        antiek_target_sha: "{{ ((remote_head.stdout | trim).split() | first) | default('') }}"
+      tags: [deploy, gate]
+
+    - name: require every main-required check green for the target SHA (fail-closed)
+      # Exit 1 = not green yet; exit 3 = could not verify. Both stop the play
+      # here, before anything on the box changes. `antiek_force_deploy=true`
+      # is the explicit, logged emergency override — mirrors deploy_backend's
+      # `force` input — and defaults to false.
+      ansible.builtin.command:
+        cmd: >-
+          bash {{ playbook_dir }}/../../../tools/deploy/require_green.sh
+          {{ antiek_repo_url }} {{ antiek_target_sha }}
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      when: not (antiek_force_deploy | default(false) | bool)
+      tags: [deploy, gate]
+
+    - name: WARN — required-checks gate bypassed by antiek_force_deploy
+      ansible.builtin.debug:
+        msg: >-
+          antiek_force_deploy=true: deploying {{ antiek_target_sha }} WITHOUT
+          verifying its required checks. Emergency override — must be deliberate.
+      when: antiek_force_deploy | default(false) | bool
+      tags: [deploy, gate]
+
     - name: git pull
       ansible.builtin.git:
         repo: "{{ antiek_repo_url }}"

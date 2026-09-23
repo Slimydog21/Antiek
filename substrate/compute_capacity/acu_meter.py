@@ -28,6 +28,7 @@ Idempotency: start row keys on ``investigation_id``; wall top-up keys on
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -41,6 +42,8 @@ from substrate.compute_capacity.store import (
     set_capacity,
 )
 from substrate.contracts.anti_ek_honesty import assert_capacity_exhausted_shape
+
+_log = logging.getLogger("antiek.compute_capacity.acu_meter")
 
 ACU_PER_INVESTIGATION_START = 1
 # Completion top-up: +1 ACU per full quantum of wall time (not dollars).
@@ -383,12 +386,20 @@ def maybe_commit_investigation_wall_topup(
 ) -> int:
     """Best-effort write-lock commit for runners. Returns ACU charged (0 if none).
 
-    Never raises — completion must not fail because metering failed.
+    Never raises — completion must not fail because metering failed. But a
+    charge that is DROPPED is logged at WARNING with the investigation id
+    and the cause: a silent ``return 0`` made a dropped wall-time charge
+    indistinguishable from a run under the top-up floor, so the capacity
+    gate then refused (or not) on an under-count it treated as known.
     """
     try:
         from runtime.db_lock import WriteLockTimeout, connect_write
         from substrate.graph import default_db_path
-    except Exception:
+    except Exception as exc:
+        _log.warning(
+            "wall-topup DROPPED for %s: metering imports unavailable (%s)",
+            investigation_id, exc,
+        )
         return 0
     path = db_path or default_db_path()
     try:
@@ -401,9 +412,19 @@ def maybe_commit_investigation_wall_topup(
                 owner_user_id=owner_user_id,
                 wall_seconds=wall_seconds,
             )
-    except WriteLockTimeout:
+    except WriteLockTimeout as exc:
+        _log.warning(
+            "wall-topup DROPPED for %s: write lock not acquired within 15s (%s) "
+            "— used_compute_units is now UNDER-counted for this investigation",
+            investigation_id, exc,
+        )
         return 0
-    except Exception:
+    except Exception as exc:
+        _log.warning(
+            "wall-topup DROPPED for %s: %s: %s — used_compute_units is now "
+            "UNDER-counted for this investigation",
+            investigation_id, type(exc).__name__, exc,
+        )
         return 0
     if result is None or result.replayed:
         return 0

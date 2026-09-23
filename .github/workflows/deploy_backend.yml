@@ -107,6 +107,21 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "Target SHA: $SHA"
 
+      # The gate job runs a script from the repository, so it must have the
+      # repository. Before this step existed the job had NO checkout: the
+      # call below failed with "No such file or directory" (exit 127), the
+      # else-branch read that as "not green yet", and every deploy was
+      # skipped — automated delivery was dead from the moment the gate
+      # merged. This checks out the TRUSTED copy (the default branch, which
+      # is what workflow_run/workflow_dispatch resolve to), sparse to the
+      # one directory the gate needs. tests/test_require_green_script.py
+      # asserts this step precedes the call.
+      - name: Check out the gate script (default branch, sparse)
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools/deploy
+          persist-credentials: false
+
       - name: Require every main-required check green for this SHA
         id: required
         env:
@@ -114,45 +129,34 @@ jobs:
           SHA: ${{ steps.resolve.outputs.sha }}
         run: |
           set -euo pipefail
-          # The contexts main's ruleset requires. Kept as a literal list so
-          # that a ruleset change which silently drops a context does not
-          # silently widen what may deploy.
-          printf '%s\n' \
-            'tsc' \
-            'vitest' \
-            'keystone' \
-            'mypy --strict + ruff (declared scope, baselined)' \
-            'pytest shard 0 of 4' \
-            'pytest shard 1 of 4' \
-            'pytest shard 2 of 4' \
-            'pytest shard 3 of 4' > required.txt
-
-          gh api --paginate \
-            "repos/${{ github.repository }}/commits/$SHA/check-runs?per_page=100" \
-            --jq '.check_runs[] | [.name, .status, (.conclusion // "pending")] | @tsv' \
-            > runs.tsv || true
-
-          echo "── check-runs reported for $SHA ──"
-          cat runs.tsv || true
-
-          missing=0
-          while IFS= read -r ctx; do
-            [ -z "$ctx" ] && continue
-            # Take the most recent conclusion for this context name.
-            concl=$(awk -F'\t' -v c="$ctx" '$1==c {v=$3} END {print v}' runs.tsv)
-            if [ "${concl:-}" != "success" ]; then
-              echo "NOT GREEN: '$ctx' => ${concl:-absent}"
-              missing=1
-            else
-              echo "green: '$ctx'"
+          test -x tools/deploy/require_green.sh || {
+            echo "::error::tools/deploy/require_green.sh is not on this runner — the gate cannot run; refusing to decide."
+            exit 3
+          }
+          # Single source of truth for the gate: tools/deploy/require_green.sh,
+          # shared with infrastructure/ansible/playbooks/deploy.yml so the
+          # manual / runbook deploy path is gated IDENTICALLY. The literal
+          # list of 8 required contexts now lives in that script.
+          #
+          # Exit codes are distinguished on purpose. Previously the gh call
+          # here was `|| true`, so a crashed/unauthenticated gh produced an
+          # empty runs.tsv, every context read "absent", and the gate said
+          # "not green yet" — safe, but indistinguishable from a real
+          # not-yet. A verification FAILURE now fails this job loudly.
+          if bash tools/deploy/require_green.sh "${{ github.repository }}" "$SHA"; then
+            echo "all_green=true" >> "$GITHUB_OUTPUT"
+          else
+            rc=$?
+            # ONLY exit 1 means "verified, and not all green yet". Every
+            # other code (3 = cannot verify, 127 = script missing, anything
+            # unexpected) is a verifier failure and fails this job loudly —
+            # a missing verifier must never read as "not yet".
+            if [ "$rc" -ne 1 ]; then
+              echo "::error::require_green could not VERIFY $SHA (exit $rc) — refusing to decide; fix the verifier, do not bypass it."
+              exit "$rc"
             fi
-          done < required.txt
-
-          if [ "$missing" -ne 0 ]; then
             echo "all_green=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Required checks not all green yet for $SHA — no deploy from this event."
-          else
-            echo "all_green=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Skip if production already runs this SHA
@@ -307,6 +311,11 @@ jobs:
         env:
           ANSIBLE_HOST_KEY_CHECKING: "True"
           ANSIBLE_FORCE_COLOR: "1"
+          # The playbook re-runs the fail-closed required-checks gate just
+          # before git pull. That gate calls `gh api` and must be
+          # authenticated even when invoked from the deploy job, not only
+          # from the earlier gate job.
+          GH_TOKEN: ${{ github.token }}
         run: ansible-playbook -i inventory.ini playbooks/deploy.yml
 
       # The playbook already asserts /health + prod-parity internally. This
@@ -352,7 +361,16 @@ jobs:
       - name: Assert production is on main's line, and providers are live
         run: |
           set -euo pipefail
-          MAIN_SHA=$(git rev-parse origin/main)
+          # Fetch main's tip NOW, at the last possible moment. Without this,
+          # MAIN_SHA comes from the job-start checkout (T0), while the box's
+          # `git pull` happens later (T1) inside the ansible Deploy step. A
+          # merge landing in (T0, T1] makes prod ship a DESCENDANT of the
+          # runner's stale origin/main, and check.py's non-ancestor guard
+          # reddens it as "fork or rolled back" — the same false-red class
+          # #3326 removed, in a narrower window with a scarier message.
+          # Proven 2026-09-22 against real repo history (agent-31 review).
+          git fetch origin main
+          MAIN_SHA=$(git rev-parse FETCH_HEAD)
           # --max-lag-hours is deliberately LARGE here, and that is not a
           # weakened gate: per check.py's own contract (and its unit test
           # test_staleness_non_ancestor_fails_regardless_of_budget) a fork or
