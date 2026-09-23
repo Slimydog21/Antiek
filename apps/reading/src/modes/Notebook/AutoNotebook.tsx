@@ -146,6 +146,23 @@ function AutoNotebookForInvestigation({
     );
   }
 
+  // The trajectory fetch failed, so whether this research exists is unknown:
+  // a retryable failure, never the definite not-found sentence below.
+  if (investigation.status === "error") {
+    return (
+      <AutoNotebookShell>
+        <div className="px-4 py-6">
+          <AIActionFailure
+            title="Couldn’t load this research"
+            code={investigation.loadError?.code ?? "unknown"}
+            retryable
+            onRetry={() => investigation.retry?.()}
+          />
+        </div>
+      </AutoNotebookShell>
+    );
+  }
+
   if (investigation.status === "not_found") {
     return (
       <AutoNotebookShell>

@@ -122,6 +122,20 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
   //    failure surface, never a perpetual "thinking…". `not_found` is the
   //    same shape (an id with no trajectory — also what a keyless start
   //    leaves behind). ──
+  // The trajectory fetch itself failed: nothing is known about the run, so
+  // say that and retry the fetch — never "the research didn't complete".
+  if (investigation.status === "error") {
+    return (
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <AIActionFailure
+          title="Couldn’t load this research"
+          code={investigation.loadError?.code ?? "unknown"}
+          retryable
+          onRetry={investigation.retry ?? onRetry ?? (() => window.location.reload())}
+        />
+      </div>
+    );
+  }
   if (investigation.status === "failed" || investigation.status === "not_found") {
     const reason =
       investigation.status === "failed"

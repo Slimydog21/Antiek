@@ -6,8 +6,9 @@ import type { MutableRefObject } from "react";
 import type { Editor as TipTapEditor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/core";
 
+import LemonButton from "../../components/lemon/LemonButton";
 import { toast } from "../../components/lemon/LemonToast";
-import { API_BASE, apiFetch, getNotebookContent } from "../../lib/api";
+import { API_BASE, ApiError, apiFetch, getNotebookContent } from "../../lib/api";
 import { ChatExchangeBlock } from "./blocks/ChatExchangeBlock";
 import { ClaimCardBlock } from "./blocks/ClaimCardBlock";
 import { CrossDocLinkBlock } from "./blocks/CrossDocLinkBlock";
@@ -55,6 +56,20 @@ function lsEtagKey(notebookId: string): string {
 }
 
 type Stored = { html: string; etag: number };
+
+// PUT statuses that mean the substrate was NOT reached (or holds no row for
+// this notebook: scratch / claim-* notebooks are local-only), so the draft
+// saved to localStorage is the honest outcome. Every other non-2xx is the
+// server REFUSING the save (401/403 auth, 409 guard, 422 invalid, 500) and
+// must never read as "saved to local". Allowlist: an unlisted status fails
+// toward "not saved".
+const PUT_OFFLINE_STATUSES: ReadonlySet<number> = new Set([404, 502, 503, 504]);
+
+function rejectedLabel(status: number): string {
+  if (status === 401 || status === 403) return "not saved — sign in again";
+  if (status === 409) return "not saved — reload";
+  return `not saved — server refused (HTTP ${status})`;
+}
 
 function readStored(notebookId: string): Stored | null {
   if (typeof window === "undefined") return null;
@@ -144,8 +159,12 @@ export function NotebookEditor({
     query: "",
   });
   const [saved, setSaved] = useState<
-    "idle" | "saving" | "saved" | "offline" | "conflict"
+    "idle" | "saving" | "saved" | "offline" | "conflict" | "rejected"
   >("idle");
+  // HTTP status of the last refused save (drives the "not saved" label). The
+  // ref mirrors it so a run of identical refusals toasts once, not per save.
+  const [rejectedStatus, setRejectedStatus] = useState<number | null>(null);
+  const rejectedStatusRef = useRef<number | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Etag the operator's local edits are based on. Bumped on every
   // successful save. If another tab writes between our reads, the
@@ -159,6 +178,10 @@ export function NotebookEditor({
   // ``hydrated`` state exists only to surface the status + reflect a DOM flag.
   const hydratedRef = useRef<boolean>(false);
   const [hydrated, setHydrated] = useState<boolean>(false);
+  // Hydration failed over an EMPTY editor: the gate stays shut and the editor
+  // is read-only until a retry succeeds (see the hydration effect).
+  const [hydrationFailed, setHydrationFailed] = useState<boolean>(false);
+  const [hydrationAttempt, setHydrationAttempt] = useState<number>(0);
 
   // Seed the initial etag from the existing stored snapshot (if any).
   const initialStored = readStored(notebookId);
@@ -227,22 +250,33 @@ export function NotebookEditor({
             body: JSON.stringify({ doc }),
           });
           if (!r.ok) {
-            throw new Error(`HTTP ${r.status}`);
+            throw new ApiError(
+              `PUT /notebooks/${notebookId}/content failed: HTTP ${r.status}`,
+              r.status,
+              "",
+            );
           }
           setSaved("saved");
+          rejectedStatusRef.current = null;
+          setRejectedStatus(null);
           // Keep a local mirror so a reload while offline shows the
           // last-known-good state.
           writeStored(notebookId, e.getHTML(), etagRef.current);
           etagRef.current += 1;
         } catch (err) {
-          // Offline / network error vs. true etag conflict are
-          // semantically different states — the operator sees them
-          // differently.
+          // Offline / network error, server rejection and true etag
+          // conflict are semantically different states — the operator
+          // sees them differently.
           //
-          // Offline (substrate unreachable, 4xx, 5xx): the local etag
-          // advances + the draft survives in localStorage. Indicator
-          // shows "saved to local" so the operator knows the file
-          // isn't lost.
+          // Offline (fetch threw, or a PUT_OFFLINE_STATUSES status): the
+          // local etag advances + the draft survives in localStorage.
+          // Indicator shows "saved to local" so the operator knows the
+          // file isn't lost.
+          //
+          // Rejected (any other non-2xx: 401/403, 409, 422, 500): the
+          // draft is still kept locally, but the indicator says "not
+          // saved" + a toast, because the server refused it and nothing
+          // reconciles it until the operator acts.
           //
           // Conflict (writeStored returned null because another tab
           // raced ahead of our baseline etag): the local write was
@@ -253,8 +287,22 @@ export function NotebookEditor({
             toast.err(
               "Notebook conflict: another tab edited this notebook. Reload to see the latest.",
             );
+          } else if (
+            err instanceof ApiError &&
+            !PUT_OFFLINE_STATUSES.has(err.status)
+          ) {
+            etagRef.current = nextEtag;
+            setSaved("rejected");
+            if (rejectedStatusRef.current !== err.status) {
+              toast.err(
+                `Notebook ${rejectedLabel(err.status)}. Your draft is kept in this browser.`,
+              );
+            }
+            rejectedStatusRef.current = err.status;
+            setRejectedStatus(err.status);
           } else {
             etagRef.current = nextEtag;
+            rejectedStatusRef.current = null;
             setSaved("offline");
             if (import.meta.env.DEV) {
               // eslint-disable-next-line no-console
@@ -291,13 +339,17 @@ export function NotebookEditor({
   // a cache/offline mirror now: we only overwrite the editor from the
   // substrate when it is still effectively empty (a fresh mount), so we
   // never clobber cached content or an in-flight local edit. If the fetch
-  // fails (offline), we keep whatever we have and still mark hydrated so
-  // autosave can resume — the offline localStorage path is preserved.
+  // fails while the editor shows real content (the localStorage cache), we
+  // keep it and still mark hydrated so autosave can resume — the offline
+  // path is preserved. If it fails over an EMPTY editor we fail closed:
+  // see the catch below.
   useEffect(() => {
     if (!editor) return;
     let cancelled = false;
+    let failClosed = false;
     hydratedRef.current = false;
     setHydrated(false);
+    setHydrationFailed(false);
     (async () => {
       try {
         const { doc } = await getNotebookContent(notebookId);
@@ -309,21 +361,35 @@ export function NotebookEditor({
           });
           setSaved("saved");
         }
-      } catch {
-        // Offline / no substrate doc: keep the cached (localStorage) or
-        // empty content. Hydration still "completes" so the operator can
-        // keep editing offline; the draft survives in localStorage.
+      } catch (err) {
+        // A 404 means the substrate has no row for this notebook, so no
+        // save can destroy anything: hydrate over what we have. Any other
+        // failure (5xx, 401, network) leaves the persisted blocks UNKNOWN.
+        // With cached content on screen the operator keeps editing it
+        // offline, as before. Over an EMPTY editor, opening the gate would
+        // let the first word typed PUT a one-paragraph doc, which passes the
+        // server's empty-doc floor and atomically replaces every stored
+        // block — so keep the gate shut, lock the editor, offer a retry.
+        const noServerRow = err instanceof ApiError && err.status === 404;
+        if (!noServerRow && !docHasRealContent(editor.getJSON())) {
+          failClosed = true;
+        }
       } finally {
-        if (!cancelled) {
-          hydratedRef.current = true;
-          setHydrated(true);
+        if (!cancelled && !editor.isDestroyed) {
+          // emitUpdate:false — toggling editability must not autosave.
+          editor.setEditable(!failClosed, false);
+          setHydrationFailed(failClosed);
+          if (!failClosed) {
+            hydratedRef.current = true;
+            setHydrated(true);
+          }
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [editor, notebookId]);
+  }, [editor, notebookId, hydrationAttempt]);
 
   // S8 WP-8.4 follow-through — when the AI tool-call protocol's
   // `add_to_notebook` action writes to our localStorage key, it
@@ -373,6 +439,26 @@ export function NotebookEditor({
       data-notebook-editor
       data-hydrated={hydrated ? "true" : "false"}
     >
+      {hydrationFailed && (
+        <div
+          role="alert"
+          className="mx-6 mt-6 text-xs font-mono text-emperor flex flex-col gap-2"
+        >
+          <p className="leading-relaxed">
+            Couldn’t load this notebook from the server, so editing is paused:
+            a save now could overwrite the notes stored there.
+          </p>
+          <div>
+            <LemonButton
+              variant="secondary"
+              size="sm"
+              onClick={() => setHydrationAttempt((n) => n + 1)}
+            >
+              Try again
+            </LemonButton>
+          </div>
+        </div>
+      )}
       <EditorContent editor={editor} className="px-6 py-6 max-w-3xl mx-auto" />
       {slash.open && (
         <div className="absolute left-6 bottom-6">
@@ -386,7 +472,7 @@ export function NotebookEditor({
       <div
         className={
           "absolute top-2 right-3 font-mono text-xxs " +
-          (saved === "conflict"
+          (saved === "conflict" || saved === "rejected"
             ? "text-emperor"
             : "text-ink-mute dark:text-moonlight")
         }
@@ -399,7 +485,9 @@ export function NotebookEditor({
               ? "saved to local"
               : saved === "conflict"
                 ? "conflict — reload"
-                : ""}
+                : saved === "rejected" && rejectedStatus !== null
+                  ? rejectedLabel(rejectedStatus)
+                  : ""}
       </div>
     </div>
   );
