@@ -122,10 +122,43 @@ def test_the_fragment_is_not_matched() -> None:
 
 
 def test_a_percent_encoded_asterisk_is_literal() -> None:
+    """"%2A" is an encoded reserved character: it is not a wildcard, and (RFC
+    3986) it is not equivalent to a bare "*" either, so it matches only
+    "%2A"."""
     parser = _parser("User-agent: *\nDisallow: /public/%2A\n")
 
     assert robots_allows(parser, AGENT, "https://x/public/foo") is True
-    assert robots_allows(parser, AGENT, "https://x/public/*") is False
+    assert robots_allows(parser, AGENT, "https://x/public/%2a") is False
+
+
+def test_an_encoded_reserved_slash_is_not_a_path_separator() -> None:
+    parser = _parser(
+        "User-agent: *\nDisallow: /private%2Fadmin\nAllow: /private/admin/public\n"
+    )
+
+    assert robots_allows(parser, AGENT, "https://x/private%2Fadmin/public") is False
+    assert robots_allows(parser, AGENT, "https://x/private/admin/public") is True
+
+
+def test_an_unrelated_record_does_not_split_a_user_agent_run() -> None:
+    parser = _parser(
+        "User-agent: Antiek-Agent\nSitemap: https://x/s.xml\n"
+        "User-agent: OtherBot\nDisallow: /private\n"
+    )
+
+    assert robots_allows(parser, AGENT, "https://x/private") is False
+
+
+def test_equivalent_spellings_tie_and_allow_wins() -> None:
+    parser = _parser("User-agent: *\nDisallow: /caf%C3%A9\nAllow: /café\n")
+
+    assert robots_allows(parser, AGENT, "https://x/café") is True
+
+
+def test_an_encoded_unreserved_character_is_decoded() -> None:
+    parser = _parser("User-agent: *\nDisallow: /~joe\n")
+
+    assert robots_allows(parser, AGENT, "https://x/%7Ejoe") is False
 
 
 def test_consecutive_user_agent_lines_share_a_group() -> None:

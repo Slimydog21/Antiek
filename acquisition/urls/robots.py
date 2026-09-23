@@ -57,9 +57,9 @@ from __future__ import annotations
 
 import logging
 import re
+import string
 import threading
 import time
-import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -172,8 +172,9 @@ def parse_robots(text: str) -> ParsedRobots:
             if agents:
                 rules.append(RobotsRule(key == "allow", value))
             in_agent_run = False
-        else:
-            in_agent_run = False
+        # Any other record (sitemap, crawl-delay, license, ...) neither opens
+        # nor closes a group: RFC 9309 s2.2.4 says it must not interfere with
+        # rule-group parsing.
     close_group()
     return ParsedRobots(tuple(groups))
 
@@ -311,15 +312,41 @@ def _compiled_rule(pattern_text: str) -> tuple[re.Pattern[str], int]:
     )
     if anchored:
         regex_text = f"{regex_text}\\Z"
-    return re.compile(regex_text), len(pattern_text)
+    # Precedence is by the octets of the NORMALISED rule (RFC 9309 s2.2.2), so
+    # two spellings of the same path ("/caf%C3%A9" and "/café") tie and Allow
+    # wins the tie.
+    specificity = len("*".join(_normalise(seg) for seg in body.split("*")))
+    return re.compile(regex_text), specificity + (1 if anchored else 0)
+
+
+_UNRESERVED = frozenset(string.ascii_letters + string.digits + "-._~")
+_HEX = frozenset(string.hexdigits)
 
 
 def _normalise(value: str) -> str:
-    """Make equivalent percent-encodings comparable without erasing ``*``."""
-    return urllib.parse.quote(
-        urllib.parse.unquote(value),
-        safe="!#$&'()*+,/:;=?@[]-._~",
-    )
+    """Put a path in the one form RFC 9309 s2.2.2 compares.
+
+    A percent-encoded octet is decoded only when it is an unreserved
+    character (RFC 3986 s2.3); any other stays encoded, upper-cased, so
+    ``%2F`` never collapses into ``/`` and ``%2A`` never becomes a ``*``.
+    Non-ASCII characters are UTF-8 percent-encoded. Every other ASCII
+    character is kept as written."""
+    out: list[str] = []
+    i = 0
+    while i < len(value):
+        char = value[i]
+        pair = value[i + 1 : i + 3]
+        if char == "%" and len(pair) == 2 and set(pair) <= _HEX:
+            decoded = chr(int(pair, 16))
+            out.append(decoded if decoded in _UNRESERVED else "%" + pair.upper())
+            i += 3
+            continue
+        if ord(char) > 127:
+            out.append("".join(f"%{byte:02X}" for byte in char.encode("utf-8")))
+        else:
+            out.append(char)
+        i += 1
+    return "".join(out)
 
 
 # origin -> (policy, monotonic expiry). See ROBOTS_CACHE_TTL_S / UNREACHABLE_RETRY_S.
