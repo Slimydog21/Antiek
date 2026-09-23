@@ -137,6 +137,21 @@ def pinned(monkeypatch):
             "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
             "VALUES ('n-unsourced', 'an unsupported claim', 'claim', 'depth')"
         )
+        for node_id, meta in (
+            ("n-meta-chunk-gone", '{"source_document_id": "doc-ok", "chunk_id": "c-gone"}'),
+            ("n-mixed", '{"source_document_id": "doc-ok"}'),
+            ("n-chunk-only", '{"chunk_id": "c-pr"}'),
+        ):
+            con.execute(
+                "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope, "
+                "metadata) VALUES (?, 'a claim', 'claim', 'depth', ?)",
+                [node_id, meta],
+            )
+        con.execute(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "source_document_id, source_tier, extraction_confidence, graph_scope) "
+            "VALUES ('e-mixed', 'n-mixed', 'n-b', 'supported_by', 'doc-pr', 1, 0.9, 'depth')"
+        )
         con.execute(
             "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
             "chunk_id, source_tier, extraction_confidence, graph_scope) "
@@ -160,6 +175,10 @@ def pinned(monkeypatch):
                                               ("node", "n-unsourced"))),
             ("s-restricted", f"Thesis quoting it: {SECRET}",
              (("chunk", "c-ok-1"), ("chunk", "c-pr"))),
+            ("s-node-chunk-gone", "Thesis E", (("node", "n-meta-chunk-gone"),)),
+            ("s-node-mixed", f"Thesis quoting it: {SECRET}", (("node", "n-mixed"),)),
+            ("s-node-chunk-only", f"Thesis quoting it: {SECRET}",
+             (("node", "n-chunk-only"),)),
         ):
             con.execute(
                 "INSERT INTO syntheses (synthesis_id, target_question, "
@@ -234,3 +253,40 @@ def test_thesis_standing_on_a_restricted_chunk_is_withheld(pinned):
     assert SECRET not in html
     assert "cite-only" in html
     assert "withheld" in html
+
+
+# ── a node pin grounds on every pointer it carries, not only the first ──
+
+
+def test_node_pin_with_a_missing_metadata_chunk_is_unresolved(pinned):
+    # codex's reproduction: the node names a live public document and a chunk
+    # that is gone. The document alone reported the claim fully sourced.
+    export = mod.resolve_synthesis_export("s-node-chunk-gone", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [(s.document_id, s.resolved) for s in claim.sources] == [
+        ("doc-ok", True), (None, False),
+    ]
+    assert claim.fully_sourced is False
+    assert "Provenance incomplete" in _html("s-node-chunk-gone")
+
+
+def test_node_pin_follows_every_supported_by_edge(pinned):
+    # Metadata names doc-ok; a supported_by edge grounds the same node on the
+    # personal-reading essay. The thesis quoting it must not export.
+    export = mod.resolve_synthesis_export("s-node-mixed", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [s.document_id for s in claim.sources] == ["doc-ok", "doc-pr"]
+    html = _html("s-node-mixed")
+    assert SECRET not in html
+    assert "withheld" in html
+
+
+def test_node_pin_grounds_through_its_metadata_chunk(pinned):
+    # The inbox/substack ingest link: the node records only its chunk.
+    export = mod.resolve_synthesis_export("s-node-chunk-only", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [s.document_id for s in claim.sources] == ["doc-pr"]
+    assert SECRET not in _html("s-node-chunk-only")

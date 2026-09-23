@@ -13,9 +13,9 @@ from runtime.db_lock import connect_read
 from services.html_projection.adapters.notebook import RightsAwareResolver
 from services.html_projection.context import ResolvedRef
 from services.html_projection.resolvers.substrate_refs import (
-    resolve_manifest_sources,
     resolve_pin_sources,
     resolve_refs,
+    resolve_synthesis_sources,
 )
 from substrate.graph.insight_question import graph_db_path
 
@@ -81,8 +81,11 @@ def _excerpt_cleared(
     recorded as standing on: the insight and question nodes it distilled
     (including one whose row is gone), the graph nodes and edges it inserted,
     the documents it gathered or its events anchor to, and every pin of the
-    syntheses it archived. A source whose rights cannot be resolved withholds
-    the excerpt, and so does having no traceable source at all."""
+    syntheses it archived. A node counts every grounding pointer it carries
+    (metadata document and chunk, every supported_by edge), and a recorded
+    synthesis whose row or manifest is gone counts as one unresolved source.
+    A source whose rights cannot be resolved withholds the excerpt, and so
+    does having no traceable source at all."""
     node_ids = dict.fromkeys(
         [*distilled_node_ids(investigation_id, events_dir=events_dir), *trail.node_ids]
     )
@@ -121,7 +124,7 @@ def _excerpt_cleared(
                     *(("document", d) for d in document_ids),
                 ],
             ),
-            *resolve_manifest_sources(con, list(synthesis_ids)),
+            *resolve_synthesis_sources(con, list(synthesis_ids)),
         ]
     finally:
         con.close()
