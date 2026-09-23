@@ -18,10 +18,21 @@ from collections.abc import Callable
 from typing import Any
 
 from interfaces.research.api.account_memory_identity import FORBIDDEN_OWNERS
+from processing.embedding.embed import default_embedding_provider
 from runtime.db_lock import connect_read, connect_write
+from substrate.ad_inventory.attribution import (
+    PRIVATE_GRAPH_CONTENT_CLASS,
+    PUBLIC_GRAPH_CONTENT_CLASSES,
+)
+from substrate.constants import SERVABLE_CONTENT_CLASSES
 from substrate.graph import default_db_path
+from substrate.graph.retrieval_gate import (
+    PERSONAL_ONLY_CONTENT_CLASSES,
+    RESTRICTED_CONTENT_CLASSES,
+    is_chunk_body_withheld,
+)
 from substrate.graph.schema import init_database_at_path
-from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding, search
+from substrate.graph.search import EmbeddingModel, search
 
 from .server import (
     CANONICAL_TOOLS,
@@ -32,6 +43,22 @@ from .server import (
 )
 
 _TRUSTED_FALSE = '<antiek:content trusted="false">{}</antiek:content>'
+
+# Content classes whose chunk BODY this public MCP surface may return: in the
+# public graph (ad_inventory.attribution) AND full-text servable (constants §I).
+PUBLIC_SURFACE_CONTENT_CLASSES: frozenset[str] = frozenset(
+    PUBLIC_GRAPH_CONTENT_CLASSES & SERVABLE_CONTENT_CLASSES
+)
+# The §9.0 gate (non_privileged_chunk_sql_clause) only removes restricted and
+# personal_reading bodies: it still passes every user's private user_owned
+# chunks and legacy NULL-rights rows. This allowlist is what makes the surface
+# public; NULL is excluded because full-text serving is deny-by-default.
+assert PUBLIC_SURFACE_CONTENT_CLASSES.isdisjoint(
+    RESTRICTED_CONTENT_CLASSES | PERSONAL_ONLY_CONTENT_CLASSES
+), "public MCP chunk bodies must exclude restricted and personal content"
+assert PRIVATE_GRAPH_CONTENT_CLASS not in PUBLIC_SURFACE_CONTENT_CLASSES, (
+    "public MCP chunk bodies must exclude private graph content"
+)
 
 # Longest owner id the handler will bind; mirrors account_memory_identity.
 _MAX_OWNER_LENGTH = 256
@@ -73,16 +100,16 @@ def _error_result(message: str, *, query: str) -> ToolResult:
 def _make_handlers(
     db_path: str,
     *,
-    embedding_model: Callable[[], EmbeddingModel] = SentenceTransformerEmbedding,
+    embedding_model: Callable[[], EmbeddingModel] = default_embedding_provider,
 ) -> tuple[dict[str, Callable[..., ToolResult]], Callable[[str], ResourceContent | None]]:
     """Build handler closures bound to *db_path*.
 
     ``embedding_model`` is a zero-argument factory for the ranked-retrieval
-    model. Production keeps the default (the same sentence-transformers wrapper
-    the thought partner's library grounding uses); tests inject a deterministic
-    stub. It is constructed lazily on the first ``search_personal`` call so the
-    server still starts where the model is not installed, and an owner who owns
-    no documents gets an honest empty answer without ever loading it.
+    model. Production resolves the process-singleton provider used to embed
+    stored chunks; tests inject a deterministic stub. It is constructed lazily
+    on the first search call so the server still starts where the model is not
+    installed, and an owner who owns no documents gets an honest empty answer
+    without ever loading it.
     """
     model_slot: list[EmbeddingModel] = []
 
@@ -163,32 +190,60 @@ def _make_handlers(
         }])
 
     # ── search_public ─────────────────────────────────────────────
-    def search_public(args: dict) -> ToolResult:
+    def search_public(args: dict[str, Any]) -> ToolResult:
+        """Rank public chunks through search()'s §9.0 retrieval gate.
+
+        The public content-class allowlist also excludes user_owned and NULL
+        rights state. Read full text only for ranked hits, then check the
+        canonical body predicate and book takedown flag before returning it.
+        The prompt-injection envelope is applied after those rights checks.
+        """
         query = args["query"]
         top_k = args.get("top_k", 5)
         con = connect_read(db_path)
         try:
-            rows = con.execute(
-                """
-                SELECT c.chunk_id, c.text, d.title, d.source_tier
-                FROM chunks c
-                JOIN documents d ON c.document_id = d.document_id
-                ORDER BY c.chunk_index
-                LIMIT ?
-                """,
-                [top_k],
-            ).fetchall()
+            hits = search(
+                con,
+                query,
+                model=_model(),
+                top_k=top_k,
+                policy_tag="attribution_eligible",
+                content_classes=PUBLIC_SURFACE_CONTENT_CLASSES,
+            )["results"]
+            rows: dict[str, tuple[str, str | None, bool]] = {}
+            if hits:
+                placeholders = ",".join("?" for _ in hits)
+                rows = {
+                    str(row[0]): (str(row[1]), row[2], bool(row[3]))
+                    for row in con.execute(
+                        "SELECT c.chunk_id, c.text, d.content_class, "
+                        "COALESCE(b.taken_down, FALSE) "
+                        "FROM chunks c JOIN documents d ON c.document_id = d.document_id "
+                        "LEFT JOIN book_assets b ON b.document_id = d.document_id "
+                        f"WHERE c.chunk_id IN ({placeholders})",
+                        [hit["chunk_id"] for hit in hits],
+                    ).fetchall()
+                }
         finally:
             con.close()
-        # §13.8.3: wrap public content in prompt-injection envelope
         chunks = []
-        for r in rows:
-            envelope = _TRUSTED_FALSE.format(r[1])
+        for hit in hits:
+            row = rows.get(hit["chunk_id"])
+            if row is None:
+                continue
+            full_text, content_class, taken_down = row
+            # Defence in depth over the SQL scope: a book_assets takedown can
+            # sit on a document whose class still reads public_domain, and the
+            # canonical body predicate is the one that decides that case.
+            withheld, _label = is_chunk_body_withheld(content_class, taken_down=taken_down)
+            if withheld or content_class not in PUBLIC_SURFACE_CONTENT_CLASSES:
+                continue
             chunks.append({
-                "chunk_id": r[0],
-                "text": envelope,
-                "title": r[2],
-                "source_tier": r[3],
+                "chunk_id": hit["chunk_id"],
+                "text": _TRUSTED_FALSE.format(full_text),
+                "title": hit["document_title"],
+                "source_tier": hit["source_tier"],
+                "similarity": hit["similarity"],
             })
         return ToolResult(content=[{
             "type": "text",

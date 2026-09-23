@@ -26,6 +26,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from processing.embedding.embed import HashEmbedding
 from substrate.graph.schema import init_database_at_path
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -110,6 +111,27 @@ def memory_db(tmp_path: Path) -> Path:
             """,
             ["chunk-2", "doc-1", 1, "The second chunk with more content.", 7],
         )
+        embed = HashEmbedding()
+        public_search_cases = (
+            ("doc-pd", "public_domain", "chunk-pd",
+             "Photosynthesis converts light into chemical energy in chloroplasts."),
+            ("doc-r", "restricted_pending_opt_in", "chunk-r",
+             "RESTRICTED BODY photosynthesis in a gated book."),
+            ("doc-pr", "personal_reading", "chunk-pr",
+             "PERSONAL BODY photosynthesis in a fetched essay."),
+        )
+        for document_id, content_class, chunk_id, text in public_search_cases:
+            con.execute(
+                "INSERT INTO documents (document_id, title, source_tier, "
+                "document_type, owner_user_id, content_class) "
+                "VALUES (?, ?, 1, 'article', '__operator__', ?)",
+                [document_id, f"Title {document_id}", content_class],
+            )
+            con.execute(
+                "INSERT INTO chunks (chunk_id, document_id, chunk_index, text, "
+                "embedding, token_count) VALUES (?, ?, 0, ?, ?, 8)",
+                [chunk_id, document_id, text, embed.encode(text)],
+            )
         con.execute(
             """
             INSERT INTO notebooks
@@ -142,6 +164,8 @@ def server_proc(memory_db: Path, tmp_path: Path):
     # The owner this server process is launched for (the stdio transport's
     # only source of a verified identity).
     env["ANTIEK_MEMORY_OWNER"] = "testuser"
+    # Deterministic embeddings in the subprocess; use the fixture's provider.
+    env["ANTIEK_EMBEDDING_PROVIDER"] = "hash"
     # Also set ANTIEK_HOME to avoid touching the real home
     env["ANTIEK_HOME"] = str(tmp_path / "home")
 
@@ -374,25 +398,30 @@ class TestToolsCallSearchPersonal:
 
 
 class TestToolsCallSearchPublic:
-    """tools/call search_public — wraps results in prompt-injection envelope."""
+    """tools/call search_public returns public bodies through the rights gate."""
 
-    def test_search_public_wraps_in_envelope(self, server_proc):
+    def test_search_public_serves_public_chunk_and_withholds_gated_bodies(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
         resp = _send_and_recv(
             server_proc,
             "tools/call",
             {
                 "name": "search_public",
-                "arguments": {"query": "test", "top_k": 10},
+                "arguments": {"query": "photosynthesis", "top_k": 10},
             },
             rpc_id=5,
         )
         assert resp["result"]["isError"] is False
-        body = json.loads(resp["result"]["content"][0]["text"])
-        assert len(body["chunks"]) >= 1
-        # §13.8: public results must be wrapped in prompt-injection envelope
+        raw = resp["result"]["content"][0]["text"]
+        body = json.loads(raw)
+        chunk_ids = {chunk["chunk_id"] for chunk in body["chunks"]}
+        assert "chunk-pd" in chunk_ids
+        assert "chunk-r" not in chunk_ids
+        assert "chunk-pr" not in chunk_ids
         for chunk in body["chunks"]:
-            assert '<antiek:content trusted="false">' in chunk["text"]
+            assert chunk["text"].startswith('<antiek:content trusted="false">')
+        assert "RESTRICTED BODY" not in raw
+        assert "PERSONAL BODY" not in raw
 
 
 class TestToolsCallCiteSource:

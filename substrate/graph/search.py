@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Any, Protocol
 
 from substrate.graph import retrieval_gate as _retrieval_gate
@@ -140,6 +140,7 @@ def search(
     with_edges: bool = False,
     policy_tag: str = "attribution_eligible",
     owner_user_id: str | None = None,
+    content_classes: Collection[str] | None = None,
 ) -> dict[str, Any]:
     """Vector search over ``chunks.embedding``. Returns top-``k``
     chunks ordered by cosine similarity desc.
@@ -181,6 +182,12 @@ def search(
             non-negotiable: payouts on an ungated graph are explicitly forbidden
             by §16.2; and personal_reading (the owner's private third-party
             reading) must never reach a monetized / public read.
+        content_classes: Allowlist scope for a public surface: only chunks
+            whose document ``content_class`` is IN this set are ranked. It is
+            ADDITIVE to the §9.0 gate above (which is still emitted), never a
+            replacement for it. NULL never matches ``IN``, so legacy rows are
+            excluded (deny-by-default). ``None`` = no class scope; an empty set
+            is an honest empty result, never the whole corpus.
 
     Returns:
         ``{"query": ..., "top_k": ..., "results": [...], "node_matches": []}``
@@ -207,6 +214,15 @@ def search(
                 "results": [],
                 "node_matches": [],
             }
+
+    scoped_classes = sorted(content_classes) if content_classes is not None else None
+    if scoped_classes == []:
+        return {
+            "query": query,
+            "top_k": top_k,
+            "results": [],
+            "node_matches": [],
+        }
 
     query_vec = list(model.encode(query))
     dim = model.dimension
@@ -249,6 +265,10 @@ def search(
     )
     sql += gate_sql
     params.extend(gate_params)
+    if scoped_classes is not None:
+        placeholders = ",".join("?" for _ in scoped_classes)
+        sql += f" AND d.content_class IN ({placeholders})"
+        params.extend(scoped_classes)
     sql += " ORDER BY similarity DESC LIMIT ?"
     params.append(int(top_k))
 
