@@ -61,6 +61,10 @@ export interface ReadingColumnProps {
  * Render a page's markdown body as readable prose: `#`/`##`/`###` lines become
  * headings, blank-line-separated runs become paragraphs. Deliberately light —
  * the served body is already cleaned text, not rich markup.
+ *
+ * Heading level n renders as h(n+1): the reader's own title is the page's h1,
+ * so a book's `#` is the next level down. (It used to collapse all three
+ * levels into one h2.) Sizes, weights and rhythm come from the prose layer.
  */
 function renderBlocks(text: string) {
   const blocks = text
@@ -70,17 +74,11 @@ function renderBlocks(text: string) {
   return blocks.map((block, i) => {
     const heading = block.match(/^(#{1,3})\s+(.*)$/);
     if (heading) {
-      return (
-        <h2
-          key={i}
-          className="font-serif font-semibold text-lg mt-4 mb-2 text-ink dark:text-bright"
-        >
-          {heading[2]}
-        </h2>
-      );
+      const Tag = `h${heading[1].length + 1}` as "h2" | "h3" | "h4";
+      return <Tag key={i}>{heading[2]}</Tag>;
     }
     return (
-      <p key={i} className="mb-3 whitespace-pre-wrap">
+      <p key={i} className="whitespace-pre-wrap">
         {block}
       </p>
     );
@@ -107,16 +105,14 @@ export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
         // chunk stays asset-level (the contract's cover/title-card case).
         {...(assetId ? { "data-akb-asset-id": assetId } : {})}
         {...(assetId && chunkId ? { "data-akb-chunk-id": chunkId } : {})}
-        className="flex-1 font-serif text-base leading-[1.7] text-ink dark:text-bright"
+        className="prose-antiek flex-1"
       >
         {text.trim() ? (
           contentFormat === "html" ? (
             <div data-antiek-html-body dangerouslySetInnerHTML={{ __html: text }} />
           ) : renderBlocks(text)
         ) : (
-          <p className="text-shadow-1 dark:text-moonlight italic">
-            This book has no readable pages.
-          </p>
+          <p className="text-2">This book has no readable pages.</p>
         )}
       </article>
     );

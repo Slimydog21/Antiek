@@ -183,11 +183,10 @@ export function NotebookEditor({
       MasterSectionBlock,
     ],
     content: initialStored?.html ?? initialContent ?? "<p></p>",
+    // The prose layer (index.css) owns face, size, measure and rhythm.
     editorProps: {
       attributes: {
-        class:
-          "tiptap font-serif text-base leading-relaxed text-ink dark:text-bright " +
-          "focus:outline-none min-h-[120px]",
+        class: "tiptap prose-antiek focus:outline-none min-h-[120px]",
       },
     },
     onUpdate: ({ editor: e }) => {

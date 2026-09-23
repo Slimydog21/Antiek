@@ -143,3 +143,120 @@ html, body, #root {
 .group:focus-within .group-hover\:opacity-100 {
   opacity: 1;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   PROSE LAYER (.prose-antiek) — design wave 3 (shell, states, prose).
+   Wave 1 owns everything above this banner; this block is wave 3's.
+
+   One reading voice for the three long-form surfaces: the Notebook editor,
+   the Write editor and the reader (markdown and sanitized HTML). Tailwind's
+   preflight zeroes headings, paragraph gaps and list markers; without this
+   layer an h1 set at 16px/400 like body text and a list had no bullets
+   (audit-type-copy T2). Charter 19px/1.6 capped at 30em: the spec's
+   60-72 characters a line (lines ran 85-142). The cap is in em, not ch:
+   a Charter "0" is wider than its average glyph (0.44em), so 66ch would
+   allow about 83 characters. In @layer components so a
+   utility class on a node view still wins; selectors use :where() to stay
+   at one class of specificity.
+   ════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  .prose-antiek {
+    font-family: Charter, "Iowan Old Style", "Source Serif 4", Georgia, serif;
+    font-size: 1.1875rem;
+    line-height: 1.6;
+    max-width: 30em;
+    color: var(--text-1);
+    overflow-wrap: break-word;
+  }
+  .prose-antiek :where(p, ul, ol, blockquote, pre, table, figure, hr) {
+    margin: 0;
+  }
+  /* Paragraph rhythm: space between blocks, not around them. */
+  .prose-antiek :where(p, ul, ol, blockquote, pre, table, figure, hr) + :where(p, ul, ol, blockquote, pre, table, figure, hr) {
+    margin-top: 0.85em;
+  }
+  .prose-antiek :where(h1, h2, h3, h4) {
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--text-1);
+    margin: 1.5em 0 0.45em;
+    text-wrap: balance;
+  }
+  .prose-antiek :where(h1:first-child, h2:first-child, h3:first-child, h4:first-child) {
+    margin-top: 0;
+  }
+  .prose-antiek :where(h1) {
+    font-size: 1.45em;
+  }
+  .prose-antiek :where(h2) {
+    font-size: 1.15em;
+  }
+  .prose-antiek :where(h3) {
+    font-size: 1.05em;
+  }
+  .prose-antiek :where(h4) {
+    font-size: 1em;
+  }
+  .prose-antiek :where(ul) {
+    list-style: disc;
+    padding-left: 1.4em;
+  }
+  .prose-antiek :where(ol) {
+    list-style: decimal;
+    padding-left: 1.6em;
+  }
+  .prose-antiek :where(li + li) {
+    margin-top: 0.3em;
+  }
+  .prose-antiek :where(li)::marker {
+    color: var(--text-3);
+  }
+  .prose-antiek :where(blockquote) {
+    border-left: 3px solid var(--border-rule);
+    padding-left: 1em;
+    color: var(--text-2);
+  }
+  .prose-antiek :where(code) {
+    font-family: "JetBrains Mono", "JetBrains Mono Fallback", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.84em;
+    padding: 0.1em 0.3em;
+    border-radius: 4px;
+    background: var(--bg-inset);
+  }
+  .prose-antiek :where(pre) {
+    padding: 0.8em 1em;
+    border-radius: 6px;
+    background: var(--bg-inset);
+    overflow-x: auto;
+    line-height: 1.5;
+  }
+  .prose-antiek :where(pre code) {
+    padding: 0;
+    background: none;
+  }
+  .prose-antiek :where(a) {
+    color: var(--teal);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .prose-antiek :where(hr) {
+    border: 0;
+    border-top: 1px solid var(--border-hairline);
+    margin: 1.8em 0;
+  }
+  .prose-antiek :where(img) {
+    max-width: 100%;
+    height: auto;
+  }
+}
+/* The TipTap Placeholder extension marks the empty first block and hands
+   over its text as data-placeholder; nothing drew it until now. Outside
+   @layer so the purge never drops it (the class is added at runtime). */
+.prose-antiek p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: rgb(var(--text-3-rgb));
+}
+/* ═══ end PROSE LAYER ═══ */

@@ -401,9 +401,9 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
 
       {/* Reading column */}
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-6 py-6 flex flex-col gap-4 min-h-full">
+        <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-4 min-h-full">
           <header className="flex items-center justify-between gap-3">
-            <h1 className="text-xl font-serif text-ink dark:text-bright truncate">
+            <h1 className="text-2xl font-serif font-semibold text-ink dark:text-bright truncate">
               {book.title ?? documentId}
             </h1>
             <LemonTag colour={colour} dot>

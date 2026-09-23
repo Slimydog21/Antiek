@@ -650,7 +650,6 @@ function SectionCard({
               // SPR-02: persist coarse prose_text on edit (mirrors the shape
               // CreationStudio uses), debounced, with an honest save indicator.
               onContentChange={handleContentChange}
-              className="font-serif text-base leading-relaxed text-ink dark:text-bright"
             />
           </div>
           {/* The SHARED FloatMenu (imported), extended with Write's rewrite

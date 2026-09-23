@@ -105,6 +105,8 @@ export function WriteEditor({
       InlineComplete,
     ],
     content: initialContent ?? "",
+    // The prose layer (index.css) gives headings, lists and rhythm back.
+    editorProps: { attributes: { class: "prose-antiek focus:outline-none" } },
     onCreate: ({ editor: ed }) => {
       prevBlocks.current = docToBlocks(ed.getJSON());
     },
