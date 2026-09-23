@@ -777,6 +777,14 @@ function SourceCitation({
 
   return (
     <button
+      // SPR-08 T2: the frame-attention markers, with ReadingColumn's
+      // discipline. Only this SERVABLE branch is tagged (the restricted span
+      // above never is), each attribute only when its value is truthy, and the
+      // chunk id is the representative chunk getChunk actually resolved.
+      {...(source.documentId ? { "data-akb-asset-id": source.documentId } : {})}
+      {...(source.documentId && source.representativeChunkId
+        ? { "data-akb-chunk-id": source.representativeChunkId }
+        : {})}
       onClick={(e) => {
         // ⌘/Ctrl-click opens the source jumped to its page; plain click
         // previews the chunk inline first (the modal path).
