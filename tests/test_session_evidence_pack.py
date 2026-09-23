@@ -237,10 +237,10 @@ def test_builder_cites_only_substrate_chunks_and_document_ip_holder(env):
         researches=[("leaf-0", "sub one")],
     )
     assert [
-        (c.chunk_id, c.document_id, c.ip_holder_id, c.text, c.note) for c in pack.chunks
+        (c.chunk_id, c.document_id, c.ip_holder_id, c.text) for c in pack.chunks
     ] == [
         ("chunk-real", "doc-real", "iph-real",
-         "Photonic qubit loss dominates the error budget.", None),
+         "Photonic qubit loss dominates the error budget."),
     ]
     assert [(d.document_id, d.title, d.ip_holder_id) for d in pack.documents] == [
         ("doc-real", "Real Source", "iph-real"),

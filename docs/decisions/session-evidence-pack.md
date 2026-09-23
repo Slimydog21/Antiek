@@ -17,8 +17,8 @@ wrong shape for the synthesizer constraint loop.
 - ``session_id`` — parent investigation id (synthesis tail target)
 - ``problem_question`` — plan root question
 - ``chunks[]`` — each with ``chunk_id``, ``document_id``, ``ip_holder_id``
-  (nullable), ``text`` (the chunk's substrate text), ``note`` (nullable),
-  ``source_investigation_id``, ``sub_question``
+  (nullable), ``text`` (the chunk's substrate text; the generated note is not
+  carried), ``source_investigation_id``, ``sub_question``
 - ``documents[]`` — each chunk's document with matching ``ip_holder_id``
 - ``leaf_investigation_ids`` — gather-only children
 - ``content_hash`` — SHA-256 over canonical body (immutable artifact)
@@ -74,17 +74,26 @@ document's chunk, and the tail handed it to the synthesizer as a `direct`
 claim citing a chunk that says something else.
 
 `text` is now the cited chunk's own substrate text, read from the `chunks`
-row. The gather note moves to a separate `note` field and is set only when
-that chunk supports it: the note clears the groundedness bar against the one
-chunk and every word of the note, stopwords included, occurs in it. The bar
-alone admits a note that is half source words and half invention, or flips
-meaning through a stopword the scorer ignores. `PackChunk` re-checks this on
-construction, so no pack can carry an unsupported note. The tail presents the
-chunk excerpt as `direct` evidence and a supported note as `inferred`, beside
-the source text. A stored `groundedness_score` is never read. The field
-meaning changed, so `schema_version` is 2 and a v1 pack is refused.
+row, and it is the only text a pack chunk carries. The generated note is not
+in the pack. A first version of this fix kept the note in a `note` field when
+it cleared the lexical groundedness bar and every one of its words occurred in
+the chunk. That check treats words as an unordered set: against "Alpha
+acquired Beta for cash." it scored "Beta acquired Alpha for cash." 1.0, and it
+passed figures reassigned between years. Presenting a note as a supporting
+claim needs evidence that the chunk entails it, and this path has none (the
+offline NLI backend in `substrate/eval/groundedness/nli_backend.py` is not
+wired here and hard-stops when its model is not cached). So every supporting
+claim the tail builds is a verbatim excerpt of the chunk it cites, typed
+`direct`. `PackChunk` forbids extra fields, so a pack carrying a `note` is
+refused. Without the note, two notes of one leaf citing the same chunk would
+repeat one excerpt, so the builder keeps one chunk per (leaf, chunk). A stored
+`groundedness_score` is never read. The field meaning changed, so
+`schema_version` is 2 and a v1 pack is refused.
 
-Reconsider if: the lexical bar is replaced by an entailment verifier, at which
-point a supported note could be presented as `direct`. A note built only by
-recombining its chunk's own words still passes the word check; that residue
-is why the note is typed `inferred` and never shown without its source.
+The funnel still cites the substantive chunk that best supports a note
+lexically, not the longest chunk. That picks which excerpt the pack quotes; it
+does not certify the note.
+
+Reconsider if: an entailment verifier that fails closed is wired onto this
+path. A note it accepts could then ride beside its source excerpt, typed
+`inferred`.

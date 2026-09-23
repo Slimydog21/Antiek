@@ -119,8 +119,9 @@ def _resolve_chunk_id(
     Among those substantive chunks the note cites the one that supports it
     best on its own (``best_supporting_chunk``, the same choice the note-event
     and document-pass deposits make), not simply the longest: the longest
-    chunk may say something else entirely, and the evidence pack only presents
-    a note its cited chunk supports. Candidates are ordered longest first, so
+    chunk may say something else entirely, and the evidence pack hands the
+    synthesizer the cited chunk's text, not the note. This choice picks which
+    excerpt to cite; it does not certify the note. Candidates are ordered longest first, so
     a note no chunk supports (an Exa source pointer) keeps the old choice.
 
     Read-only (a SELECT on the write connection, before the INSERT); it never

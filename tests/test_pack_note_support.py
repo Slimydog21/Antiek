@@ -1,4 +1,4 @@
-"""W5 provenance — a pack chunk never certifies text its chunk does not contain.
+"""W5 provenance — a pack never presents a generated note as evidence.
 
 ``build_session_evidence_pack`` admitted an insight node when its ``chunk_id``
 resolved to a real ``chunks`` row, then set ``PackChunk.text`` to the node's
@@ -7,12 +7,14 @@ label: the generated note, not the chunk. A remote sandbox names a real
 and the pack handed the synthesizer "The moon is made of green cheese" as a
 ``direct`` supporting claim citing a chunk about neutral-atom qubits.
 
-The pack now carries the chunk's own substrate text as ``text`` and the
-generated note, separately, as ``note`` only when the cited chunk supports it
-at the groundedness bar (re-scored at build time, never read from metadata).
-The funnel cites the substantive chunk that best supports a note instead of
-the longest one. These tests drive the real remote runner → funnel → pack →
-Loop 1 context path with a fake sandbox; no provider is ever called.
+A first fix kept the note beside the chunk text when a lexical check said the
+chunk supported it. A lexical check treats words as an unordered set, so
+"Beta acquired Alpha for cash." passed against "Alpha acquired Beta for
+cash." with score 1.0, and swapped figures passed the same way. The platform
+has no entailment verifier on this path, so the pack carries no note at all:
+every supporting claim is a verbatim excerpt of the chunk it cites. These
+tests drive the real remote runner → funnel → pack → Loop 1 context path with
+a fake sandbox; no provider is ever called.
 """
 
 from __future__ import annotations
@@ -164,101 +166,70 @@ def _presented_text(ctx) -> str:
     )
 
 
-@pytest.mark.asyncio
-async def test_forged_remote_note_is_not_certified_by_a_real_chunk(graph, emb):
-    """Codex repro: a forged remote note naming a real document is grounded on
-    that document's chunk by the funnel. The pack cites the chunk; its text
-    must be the chunk's substrate text, the forged note must not ride along,
-    and nothing the synthesizer is shown may carry the forged sentence."""
-    await _remote_note(graph, emb, "inv-forged", _FORGED, {"document_id": "doc-pd-1"})
-
-    pack = build_session_evidence_pack(
-        "session-forged", events_dir=graph["events"], db_path=graph["db"],
-        researches=[("inv-forged", "neutral atom error rates")],
-    )
-    assert pack.chunks, "the real source chunk stays admissible as verbatim evidence"
+def _assert_only_source_text_presented(pack, ctx, db: str, note: str) -> None:
+    """Every chunk and every claim the synthesizer sees is the substrate's own
+    text: pack text is the chunk row, each claim is a verbatim excerpt of the
+    chunk it cites, and the generated note appears nowhere."""
     for c in pack.chunks:
-        assert c.text == _chunk_text(graph["db"], c.chunk_id)
-        assert "green cheese" not in c.text
-        assert c.note is None
-
-    ctx = _investigation_context_from_pack(pack)
-    assert "green cheese" not in _presented_text(ctx)
-    for ev in ctx.evidence:
-        for claim in ev.supporting_claims:
-            assert claim.claim in _chunk_text(graph["db"], claim.chunk_ids[0])
-
-
-@pytest.mark.asyncio
-async def test_supported_remote_note_is_presented_beside_its_source_text(graph, emb):
-    """An honest note the cited chunk supports is presented as the claim, and
-    the source text stays in its own field, so the two are never conflated."""
-    await _remote_note(graph, emb, "inv-honest", _HONEST, {"document_id": "doc-pd-1"})
-
-    pack = build_session_evidence_pack(
-        "session-honest", events_dir=graph["events"], db_path=graph["db"],
-        researches=[("inv-honest", "neutral atom error rates")],
-    )
-    assert [(c.chunk_id, c.note) for c in pack.chunks] == [("chunk-pd-1", _HONEST)]
-    assert pack.chunks[0].text == _BODY
-
-    ctx = _investigation_context_from_pack(pack)
-    [ev] = ctx.evidence
-    assert [c.claim for c in ev.supporting_claims] == [_HONEST]
-    # A generated restatement is typed "inferred"; only source text is direct.
-    assert ev.supporting_claims[0].evidence_type == "inferred"
-    assert _BODY[:200] in ev.answer
+        assert c.text == _chunk_text(db, c.chunk_id)
+    claims = [c for e in ctx.evidence for c in e.supporting_claims]
+    assert claims, "the real source chunk stays admissible as verbatim evidence"
+    for claim in claims:
+        assert claim.evidence_type == "direct"
+        assert claim.claim in _chunk_text(db, claim.chunk_ids[0])
+        assert "verbatim excerpt" in claim.confidence_basis
+    assert note not in _presented_text(ctx)
+    assert all("note" not in c.model_dump() for c in pack.chunks)
 
 
-# Nearest variants of the forged note: each clears the lexical groundedness
-# bar on its own (asserted below), so a bar-only check presents it.
+# Nearest variants of a generated note. Each shares its source's words; the
+# reversal and the swapped figures use no word the source lacks, so a
+# bag-of-words check scores them as fully supported.
+_DEAL_BODY = (
+    "Alpha acquired Beta for cash. The deal closed in March after a long review. "
+    "Revenue was 12 million in 2023 and 30 million in 2024, the filing shows. "
+) * 4
+_REVERSED = "Beta acquired Alpha for cash."
+_NUMBERS_SWAPPED = "Revenue was 30 million in 2023 and 12 million in 2024."
 _APPENDED = _HONEST + " The moon is made of green cheese."
 _STOPWORD_FLIP = (
     "Neutral atom two-qubit gate error rate fell over the 1e-3 threshold."
 )
 
+_NOTES = [
+    pytest.param("doc-pd-1", _FORGED, id="forged"),
+    pytest.param("doc-deal", _REVERSED, id="reversed-relationship"),
+    pytest.param("doc-deal", _NUMBERS_SWAPPED, id="reassigned-numbers"),
+    pytest.param("doc-pd-1", _APPENDED, id="appended-forgery"),
+    pytest.param("doc-pd-1", _STOPWORD_FLIP, id="stopword-flip"),
+    pytest.param("doc-pd-1", _HONEST, id="honest-paraphrase"),
+]
 
-@pytest.mark.parametrize("note", [_APPENDED, _STOPWORD_FLIP])
-def test_note_that_clears_the_bar_but_adds_words_is_not_presented(graph, emb, note):
-    """An honest prefix with an invented sentence appended, or a meaning flip
-    through a stopword the bar ignores (below -> over), scores at or above the
-    groundedness bar. Neither is presented: the chunk stays a verbatim
-    excerpt and the synthesizer never sees the note."""
-    from orchestration.session_evidence_pack import note_support
-    from substrate.eval.groundedness import DEFAULT_SUPPORTED_THRESHOLD
-    from substrate.graph.insight_question import promote_insight
 
-    assert note_support(note, _BODY) >= DEFAULT_SUPPORTED_THRESHOLD
-    promote_insight(
-        text=note, investigation_id="leaf-variant",
-        source_document_id="doc-pd-1", chunk_id="chunk-pd-1",
-        embedding_provider=emb,
-    )
+@pytest.mark.asyncio
+@pytest.mark.parametrize("doc_id, note", _NOTES)
+async def test_remote_note_is_never_presented_as_evidence(graph, emb, doc_id, note):
+    """Codex repros: a remote note naming a real document is grounded on that
+    document's chunk by the funnel. Whatever the note says, including a
+    reversed relationship or reassigned figures built only from the source's
+    own words, the pack and the synthesis context carry the chunk's text and
+    never the note."""
+    _seed(graph["db"], emb, [("doc-deal", "chunk-deal-1", 0, _DEAL_BODY)])
+    await _remote_note(graph, emb, "inv-note", note, {"document_id": doc_id})
+
     pack = build_session_evidence_pack(
-        "session-variant", events_dir=graph["events"], db_path=graph["db"],
-        researches=[("leaf-variant", "sub")],
+        "session-note", events_dir=graph["events"], db_path=graph["db"],
+        researches=[("inv-note", "sub")],
     )
-    assert [(c.chunk_id, c.text, c.note) for c in pack.chunks] == [
-        ("chunk-pd-1", _BODY, None),
-    ]
+    assert {c.document_id for c in pack.chunks} == {doc_id}
     ctx = _investigation_context_from_pack(pack)
-    presented = _presented_text(ctx)
-    assert "green cheese" not in presented
-    assert "fell over" not in presented
-    [claim] = ctx.evidence[0].supporting_claims
-    assert claim.evidence_type == "direct"
-    assert claim.claim in _BODY
-    with pytest.raises(ValidationError, match="not supported"):
-        PackChunk(
-            chunk_id="chunk-pd-1", document_id="doc-pd-1", text=_BODY,
-            note=note, source_investigation_id="leaf", sub_question="sq",
-        )
+    _assert_only_source_text_presented(pack, ctx, graph["db"], note)
 
 
-def test_builder_rescores_and_ignores_a_stored_groundedness_score(graph, emb):
+def test_builder_ignores_a_stored_groundedness_score(graph, emb):
     """Sibling entrypoint: a node written straight through ``promote_insight``
     (backfill, ``min_groundedness=None``) with a real chunk and a self-asserted
-    0.99 score. The builder re-scores the note against the chunk text."""
+    0.99 score still yields only the chunk's text."""
     from substrate.graph.insight_question import promote_insight
 
     promote_insight(
@@ -270,24 +241,52 @@ def test_builder_rescores_and_ignores_a_stored_groundedness_score(graph, emb):
         "session-direct", events_dir=graph["events"], db_path=graph["db"],
         researches=[("leaf-direct", "sub")],
     )
-    assert [(c.chunk_id, c.text, c.note) for c in pack.chunks] == [
-        ("chunk-pd-1", _BODY, None),
-    ]
+    assert [(c.chunk_id, c.text) for c in pack.chunks] == [("chunk-pd-1", _BODY)]
+    ctx = _investigation_context_from_pack(pack)
+    _assert_only_source_text_presented(pack, ctx, graph["db"], _FORGED)
 
 
-def test_pack_chunk_rejects_a_note_its_text_does_not_support():
-    """The model itself refuses a chunk presenting an unsupported note, so a
-    pack parsed or built by any other path cannot conflate the two."""
-    with pytest.raises(ValidationError, match="not supported"):
+def test_notes_citing_one_chunk_yield_one_excerpt(graph, emb):
+    """With the note gone, two notes of one leaf citing the same chunk would
+    hand the synthesizer the same excerpt twice as two supporting claims. The
+    pack keeps one chunk per (leaf, chunk)."""
+    from substrate.graph.insight_question import promote_insight
+
+    for text in (_HONEST, _STOPWORD_FLIP):
+        promote_insight(
+            text=text, investigation_id="leaf-dup",
+            source_document_id="doc-pd-1", chunk_id="chunk-pd-1",
+            embedding_provider=emb,
+        )
+    pack = build_session_evidence_pack(
+        "session-dup", events_dir=graph["events"], db_path=graph["db"],
+        researches=[("leaf-dup", "sub")],
+    )
+    assert [c.chunk_id for c in pack.chunks] == ["chunk-pd-1"]
+    ctx = _investigation_context_from_pack(pack)
+    assert len(ctx.evidence[0].supporting_claims) == 1
+
+
+def test_pack_refuses_a_chunk_carrying_a_note():
+    """No parse or build path can put a generated note into a pack: the chunk
+    model has no such field, so a pack dict carrying one is refused."""
+    with pytest.raises(SessionEvidencePackError, match="note"):
+        parse_session_evidence_pack({
+            "schema_version": 2, "session_id": "s", "problem_question": "q",
+            "chunks": [{
+                "chunk_id": "chunk-pd-1", "document_id": "doc-pd-1",
+                "ip_holder_id": None, "text": _BODY, "note": _HONEST,
+                "source_investigation_id": "leaf", "sub_question": "sq",
+            }],
+            "documents": [{"document_id": "doc-pd-1", "title": "d",
+                           "ip_holder_id": None}],
+            "leaf_investigation_ids": ["leaf"],
+        })
+    with pytest.raises(ValidationError, match="note"):
         PackChunk(
             chunk_id="chunk-pd-1", document_id="doc-pd-1", text=_BODY,
-            note=_FORGED, source_investigation_id="leaf", sub_question="sq",
+            note=_HONEST, source_investigation_id="leaf", sub_question="sq",
         )
-    ok = PackChunk(
-        chunk_id="chunk-pd-1", document_id="doc-pd-1", text=_BODY,
-        note=_HONEST, source_investigation_id="leaf", sub_question="sq",
-    )
-    assert ok.note == _HONEST
 
 
 def test_schema_v1_pack_is_refused():
@@ -304,8 +303,8 @@ def test_schema_v1_pack_is_refused():
 async def test_funnel_cites_the_supporting_chunk_not_the_longest(graph, emb):
     """Funnel sibling: the note cites the substantive chunk that supports it.
     The document's longest chunk says something else; citing it (the old
-    ``ORDER BY length DESC``) left an honest note unpresentable and pinned
-    every note to whatever that chunk said."""
+    ``ORDER BY length DESC``) put an unrelated excerpt in the pack for every
+    note on that document."""
     longest = (
         "Trapped ion systems demonstrated long coherence times across a larger "
         "register this year, with sympathetic cooling keeping motional heating low. "
@@ -325,4 +324,4 @@ async def test_funnel_cites_the_supporting_chunk_not_the_longest(graph, emb):
         "session-cite", events_dir=graph["events"], db_path=graph["db"],
         researches=[("inv-cite", "sub")],
     )
-    assert [(c.chunk_id, c.note) for c in pack.chunks] == [("chunk-pd-1", _HONEST)]
+    assert [(c.chunk_id, c.text) for c in pack.chunks] == [("chunk-pd-1", _BODY)]
