@@ -18,6 +18,7 @@ describe("Brain product reaction bus", () => {
     ["deep_research_start", "thinking"],
     ["deep_research_complete", "happy"],
     ["deep_research_error", "dizzy"],
+    ["voice_playback_started", "thinking"],
     ["idle", "sleeping"],
     ["fail", "dizzy"],
   ];
