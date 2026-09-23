@@ -36,6 +36,8 @@ from substrate.graph.retrieval_gate import (
     PERSONAL_ONLY_CONTENT_CLASSES,
     RESTRICTED_CONTENT_CLASSES,
     is_chunk_body_withheld,
+    node_owner_sql_clause,
+    non_privileged_node_provenance_clause,
 )
 from substrate.graph.schema import init_database_at_path
 from substrate.graph.search import EmbeddingModel, search
@@ -93,6 +95,16 @@ def _authenticated_owner(auth_context: object) -> str | None:
     if not owner or len(owner) > _MAX_OWNER_LENGTH or owner.casefold() in FORBIDDEN_OWNERS:
         return None
     return owner
+
+
+def _document_citable(
+    content_class: str | None, owner_user_id: str, caller: str | None
+) -> bool:
+    return (
+        content_class is None
+        or content_class in PUBLIC_GRAPH_CONTENT_CLASSES
+        or (caller is not None and owner_user_id == caller)
+    )
 
 
 def _error_result(message: str, *, query: str) -> ToolResult:
@@ -270,39 +282,145 @@ def _make_handlers(
         }])
 
     # ── cite_source ───────────────────────────────────────────────
-    def cite_source(args: dict[str, Any]) -> ToolResult:
-        src_id = args["id"]
-        id_type = args.get("id_type", "chunk")
-        con = connect_read(db_path)
-        try:
-            if id_type == "chunk":
-                row = con.execute(
-                    """
-                    SELECT c.chunk_id, d.document_id, d.title, d.source_tier,
-                           d.author, c.section_path
-                    FROM chunks c
-                    JOIN documents d ON c.document_id = d.document_id
-                    WHERE c.chunk_id = ?
-                    """,
-                    [src_id],
-                ).fetchone()
-            else:
-                row = None
-        finally:
-            con.close()
-        if row is None:
+    def cite_source(args: dict[str, Any], *, auth_context: object = None) -> ToolResult:
+        def reject(message: str) -> ToolResult:
             return ToolResult(
-                content=[{"type": "text", "text": json.dumps({"error": "not found"})}],
+                content=[{"type": "text", "text": json.dumps({"error": message})}],
                 is_error=True,
             )
-        citation = {
-            "chunk_id": row[0],
-            "document_id": row[1],
-            "title": row[2],
-            "source_tier": row[3],
-            "author": row[4],
-            "section_path": row[5],
+
+        src_id = args.get("id")
+        if not isinstance(src_id, str) or not src_id.strip() or len(src_id.strip()) > 256:
+            return reject("id must be a non-empty string of at most 256 characters")
+        src_id = src_id.strip()
+        id_type = args.get("id_type", "chunk")
+        if id_type not in ("chunk", "claim", "note", "document"):
+            return reject("id_type must be chunk, claim, note, or document")
+        caller = _authenticated_owner(auth_context)
+        citation: dict[str, Any] = {
+            "id_type": id_type,
+            "id": src_id,
+            "chunk_id": None,
+            "document_id": None,
+            "title": None,
+            "source_tier": None,
+            "author": None,
+            "section_path": None,
+            "ip_holder_id": None,
+            "servable": None,
+            "servability": None,
         }
+        con = connect_read(db_path)
+        try:
+            def chunk_document_id(chunk_id: str) -> str | None:
+                row = con.execute(
+                    "SELECT document_id FROM chunks WHERE chunk_id = ?", [chunk_id]
+                ).fetchone()
+                return str(row[0]) if row is not None else None
+
+            def document_fields(
+                document_id: str, chunk_id: str | None = None
+            ) -> dict[str, Any] | None:
+                row = con.execute(
+                    """
+                    SELECT d.document_id, d.title, d.source_tier, d.author,
+                           c.section_path, d.ip_holder_id, d.content_class,
+                           d.owner_user_id, COALESCE(b.taken_down, FALSE)
+                    FROM documents d
+                    LEFT JOIN chunks c ON c.document_id = d.document_id AND c.chunk_id = ?
+                    LEFT JOIN book_assets b ON b.document_id = d.document_id
+                    WHERE d.document_id = ?
+                    """,
+                    [chunk_id, document_id],
+                ).fetchone()
+                if row is None or not _document_citable(row[6], row[7], caller):
+                    return None
+                withheld, label = is_chunk_body_withheld(row[6], taken_down=bool(row[8]))
+                return {
+                    "chunk_id": chunk_id,
+                    "document_id": row[0],
+                    "title": row[1],
+                    "source_tier": row[2],
+                    "author": row[3],
+                    "section_path": row[4],
+                    "ip_holder_id": row[5] if not withheld else None,
+                    "servable": not withheld,
+                    "servability": label,
+                }
+
+            if id_type == "chunk":
+                document_id = chunk_document_id(src_id)
+                fields = document_fields(document_id, src_id) if document_id else None
+            elif id_type == "document":
+                fields = document_fields(src_id)
+            elif id_type == "claim":
+                owner_sql, owner_params = node_owner_sql_clause(
+                    node_alias="n", owner_user_id=caller
+                )
+                provenance_sql, provenance_params = non_privileged_node_provenance_clause(
+                    node_alias="n", policy_tag="attribution_eligible"
+                )
+                node = con.execute(
+                    "SELECT n.canonical_label, "
+                    "json_extract_string(n.metadata, '$.chunk_id') "
+                    "FROM nodes n WHERE n.node_type = 'claim' AND n.node_id = ?"
+                    + owner_sql + provenance_sql,
+                    [src_id, *owner_params, *provenance_params],
+                ).fetchone()
+                fields = None
+                if node is not None:
+                    chunk_id = node[1]
+                    document_id = chunk_document_id(chunk_id) if chunk_id else None
+                    if document_id is None:
+                        edge = con.execute(
+                            "SELECT e.chunk_id, c.document_id FROM edges e "
+                            "JOIN chunks c ON c.chunk_id = e.chunk_id "
+                            "WHERE e.source_node_id = ? OR e.target_node_id = ? "
+                            "ORDER BY e.edge_id LIMIT 1",
+                            [src_id, src_id],
+                        ).fetchone()
+                        if edge is not None:
+                            chunk_id, document_id = edge
+                    if document_id is None:
+                        edge = con.execute(
+                            "SELECT e.source_document_id FROM edges e "
+                            "WHERE (e.source_node_id = ? OR e.target_node_id = ?) "
+                            "AND e.source_document_id IS NOT NULL "
+                            "ORDER BY e.edge_id LIMIT 1",
+                            [src_id, src_id],
+                        ).fetchone()
+                        if edge is not None:
+                            document_id = edge[0]
+                            chunk_id = None
+                    if document_id is not None:
+                        fields = document_fields(document_id, chunk_id)
+                    citation.update({"claim_id": src_id, "claim_text": node[0]})
+            else:
+                note = con.execute(
+                    "SELECT nb.block_id, n.notebook_id, n.title, n.document_id, "
+                    "n.content_class, n.owner_user_id "
+                    "FROM notebook_blocks nb JOIN notebooks n "
+                    "ON nb.notebook_id = n.notebook_id WHERE nb.block_id = ?",
+                    [src_id],
+                ).fetchone()
+                fields = None
+                if note is not None and (
+                    note[4] == "user_public_contribution"
+                    or (caller is not None and note[5] == caller)
+                ):
+                    citation.update({
+                        "note_id": note[0],
+                        "notebook_id": note[1],
+                        "notebook_title": note[2],
+                    })
+                    # A visible note is citable on its own; its document's
+                    # fields appear only when that document is citable too.
+                    fields = (document_fields(note[3]) if note[3] else None) or {}
+        finally:
+            con.close()
+        if fields is None:
+            return reject("not found")
+        citation.update(fields)
         return ToolResult(content=[{
             "type": "text",
             "text": json.dumps(citation),

@@ -497,6 +497,23 @@ class TestToolsCallCiteSource:
         assert citation["title"] == "Test Paper"
         assert citation["source_tier"] == 1
         assert citation["author"] == "Alice"
+        assert "ip_holder_id" in citation
+
+    def test_cite_source_resolves_document_id(self, server_proc):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        resp = _send_and_recv(
+            server_proc,
+            "tools/call",
+            {
+                "name": "cite_source",
+                "arguments": {"id": "doc-1", "id_type": "document"},
+            },
+            rpc_id=5,
+        )
+        assert resp["result"]["isError"] is False
+        citation = json.loads(resp["result"]["content"][0]["text"])
+        assert citation["document_id"] == "doc-1"
+        assert citation["chunk_id"] is None
 
     def test_cite_source_nonexistent_returns_error(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
