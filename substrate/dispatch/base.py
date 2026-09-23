@@ -111,7 +111,8 @@ class NormalizedUsage:
     Adapters MUST NOT compute cost themselves — keep pricing in one place.
 
     ``reported`` is False when the provider did not report the counts (no
-    usage block, or one missing the input/output count). Zero tokens and
+    usage block, or an input/output count that is missing, null or not an
+    int; see ``usage_counts_reported``). Zero tokens and
     unknown tokens are different facts: the router bills an unreported call
     at its worst-case ceiling rather than as a free 0-token call.
     """
@@ -121,6 +122,21 @@ class NormalizedUsage:
     cached_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
     reported: bool = True
+
+
+def usage_counts_reported(raw_usage: dict[str, Any], keys: tuple[str, ...]) -> bool:
+    """True only when every required count in ``raw_usage`` is a real count.
+
+    Key presence is not enough: ``{"prompt_tokens": null}`` or a blank ``""``
+    is the provider saying nothing, and an adapter's ``int(x or 0)`` would
+    turn it into a definite 0 that prices a paid call as free. A count must
+    be a non-negative ``int`` (``bool`` excluded, since it subclasses int).
+    """
+    for key in keys:
+        value = raw_usage.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return False
+    return True
 
 
 # ---------------------------------------------------------------------------

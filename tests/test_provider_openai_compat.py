@@ -192,6 +192,12 @@ def test_openai_compat_normalize_handles_missing_usage():
     # Unknown is not zero: the router bills an unreported call at its ceiling.
     assert u.reported is False
     assert p.normalize_usage({"prompt_tokens": 5}).reported is False
+    # A present-but-null (or non-int) count is unknown, not zero.
+    assert p.normalize_usage({"prompt_tokens": None, "completion_tokens": None}).reported is False
+    assert p.normalize_usage({"prompt_tokens": 5, "completion_tokens": None}).reported is False
+    assert p.normalize_usage({"prompt_tokens": "", "completion_tokens": ""}).reported is False
+    assert p.normalize_usage({"prompt_tokens": True, "completion_tokens": 1}).reported is False
+    assert p.normalize_usage({"prompt_tokens": -5, "completion_tokens": 1}).reported is False
     assert p.normalize_usage({"prompt_tokens": 5, "completion_tokens": 0}).reported is True
 
 
