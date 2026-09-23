@@ -135,6 +135,7 @@ def ingest_inbox_file(
                 chunk_index=index,
                 text=chunk.text,
                 embedding=provider.encode(chunk.text),
+                embedding_provider=provider,
                 token_count=getattr(chunk, "token_count", 0) or 0,
             )
             # Node label = first non-empty line (mirrors acquisition/substack).

@@ -44,7 +44,10 @@ class IngestResult:
 
 
 def ingest_antiek(
-    data: bytes, *, export_registry: ExportRegistry | None = None
+    data: bytes,
+    *,
+    export_registry: ExportRegistry | None = None,
+    user_id: str | None = None,
 ) -> IngestResult:
     """Ingest a returning born-Antiek artifact, island-only.
 
@@ -79,7 +82,10 @@ def ingest_antiek(
         roundtrip = None
         if export_registry is not None:
             rt = classify_roundtrip(
-                result.document_id, result.content_tiptap, export_registry
+                result.document_id,
+                result.content_tiptap,
+                export_registry,
+                user_id=user_id,
             )
             roundtrip = rt.classification if rt.is_roundtrip else None
         # The SIGNED structured content — NOT the rendered projection.html.

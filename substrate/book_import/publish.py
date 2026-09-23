@@ -659,6 +659,7 @@ def publish_converted_book(
                     embedding=(
                         list(embedder.encode(chunk.text)) if embedder else None
                     ),
+                    embedding_provider=embedder,
                     token_count=chunk.token_count,
                 )
             )
