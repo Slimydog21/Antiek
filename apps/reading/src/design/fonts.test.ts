@@ -54,6 +54,15 @@ describe("font fallbacks: the swap does not re-wrap", () => {
       }
     });
 
+    it(`${family}: "${fallback}" covers exactly the web face's unicode-range`, () => {
+      // Wider, and a glyph the latin subset lacks (≥, →) would set in the
+      // scaled local face instead of the system face after the swap.
+      const range = (f: string) =>
+        faces.find((x) => x.family === f)?.body.match(/unicode-range:\s*([^;]+);/)?.[1].replace(/\s+/g, " ");
+      expect(range(family)).toBeTruthy();
+      expect(range(fallback)).toBe(range(family));
+    });
+
     it(`${family}: every stack names "${fallback}" right after it`, () => {
       const key = family === "Inter" ? "sans" : "mono";
       const cssStack = tokensCss.match(new RegExp(`--${key}:\\s*([^;]+);`))?.[1] ?? "";
