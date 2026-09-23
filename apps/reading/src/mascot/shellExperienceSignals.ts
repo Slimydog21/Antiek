@@ -79,6 +79,10 @@ export function notifyResearchPhaseEdge(
   return true;
 }
 
+export function notifyVoiceRecordingStarted(): void {
+  emitMascotExperience("voice_recording_started");
+}
+
 export function notifyEvidenceSourceOpened(): void {
   emitMascotExperience("evidence_source_opened");
 }

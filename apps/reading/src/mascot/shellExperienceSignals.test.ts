@@ -6,7 +6,8 @@ import {
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
-  notifyEvidenceSourceOpened,
+  notifyVoiceRecordingStarted,
+  notifyVoicePlaybackStarted,
 } from "./shellExperienceSignals";
 import {
   MASCOT_EXPERIENCE_EVENT,
@@ -63,10 +64,17 @@ describe("Brain shell experience edges", () => {
     capture.teardown();
   });
 
-  it("maps readable cited evidence to one curious experience", () => {
+  it("maps a proven recording start to one listening experience", () => {
     const capture = captureExperiences();
-    notifyEvidenceSourceOpened();
-    expect(capture.seen).toEqual(["evidence_source_opened"]);
+    notifyVoiceRecordingStarted();
+    expect(capture.seen).toEqual(["voice_recording_started"]);
+    capture.teardown();
+  });
+
+  it("maps proven narration playback to one listening experience", () => {
+    const capture = captureExperiences();
+    notifyVoicePlaybackStarted();
+    expect(capture.seen).toEqual(["voice_playback_started"]);
     capture.teardown();
   });
 
@@ -74,12 +82,8 @@ describe("Brain shell experience edges", () => {
     const capture = captureExperiences();
     notifyResearchStarted("session-signal-test");
     expect(capture.seen).toEqual(["deep_research_start"]);
-    expect(consumeLocallyStartedResearchSession("session-signal-test")).toBe(
-      true,
-    );
-    expect(consumeLocallyStartedResearchSession("session-signal-test")).toBe(
-      false,
-    );
+    expect(consumeLocallyStartedResearchSession("session-signal-test")).toBe(true);
+    expect(consumeLocallyStartedResearchSession("session-signal-test")).toBe(false);
     capture.teardown();
   });
 
