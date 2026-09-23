@@ -6,15 +6,15 @@ download + transcription when captions don't exist. The transcript
 fetch is read-only and unauthenticated; YouTube doesn't require an
 API key for this surface.
 
-The video metadata path uses ``yt-dlp`` for the same reason — no API
-key, no rate limit dance for one-off fetches.
+The default video metadata path uses ``yt-dlp``. When an owner has a
+connected Data API key, ``fetch_with_data_api`` uses that key for metadata.
 
 ────────────────────────────────────────────────────────────────────
 ToS RISK — read before using this connector (SPR-07)
 ────────────────────────────────────────────────────────────────────
 This connector's transcript-fetch path (``youtube-transcript-api`` over
-YouTube's unofficial ``timedtext`` endpoint) and its metadata path
-(``yt-dlp``) **violates YouTube's Terms of Service regardless of
+YouTube's unofficial ``timedtext`` endpoint) and its default metadata path
+(``yt-dlp``) **violate YouTube's Terms of Service regardless of
 personal use** — the ToS prohibit accessing content other than through
 the public interface / the official API, and personal/non-commercial
 intent does NOT cure that breach. The Personal-Reading Lane
@@ -138,6 +138,8 @@ CAPTION_KIND_HUMAN = "human"
 CAPTION_KIND_AUTO = "auto"
 CAPTION_KIND_UNKNOWN = "unknown"
 CAPTION_KIND_MISSING = "missing"
+METADATA_SOURCE_YT_DLP = "yt_dlp"
+METADATA_SOURCE_DATA_API = "youtube_data_api"
 
 
 @dataclass(frozen=True)
@@ -163,6 +165,7 @@ class YouTubeVideo:
     transcript_source: str = "unknown"  # "youtube" | "whisper" | "missing"
     watch_url: str = ""
     caption_kind: str = CAPTION_KIND_MISSING  # see CAPTION_KIND_* above
+    metadata_source: str = METADATA_SOURCE_YT_DLP
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +339,7 @@ def fetch(url_or_id: str, *, want_transcript: bool = True) -> YouTubeVideo:
         transcript_source=transcript_source,
         watch_url=f"https://www.youtube.com/watch?v={video_id}",
         caption_kind=caption_kind,
+        metadata_source=METADATA_SOURCE_YT_DLP,
     )
 
 
@@ -401,4 +405,5 @@ def fetch_with_data_api(
         transcript_source=transcript_source,
         watch_url=f"https://www.youtube.com/watch?v={video_id}",
         caption_kind=caption_kind,
+        metadata_source=METADATA_SOURCE_DATA_API,
     )

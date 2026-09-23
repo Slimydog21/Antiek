@@ -21,7 +21,7 @@ import sqlite3
 import stat
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol
 
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
@@ -165,6 +165,28 @@ def _owner(request: Request) -> str:
     if derived is None:
         raise _PublicError(401, "authenticated user identity required")
     return derived
+
+
+class ClosableToolConnector(Protocol):
+    def close(self) -> None: ...
+
+
+def connected_tool_for_request(
+    request: Request, vendor: Literal["youtube", "x"]
+) -> ClosableToolConnector | None:
+    """The caller's own connected ``vendor`` connector, or None.
+
+    Uses the one owner derivation the tool lane spends under (``_owner``), so
+    a surface outside this router cannot key a credential differently from
+    search and ingest. None when there is no signed-in person (machine auth,
+    local unauthenticated dev) or no connection for that vendor; the caller
+    then keeps its uncredentialed path. The caller must close the connector.
+    """
+    try:
+        connector: ClosableToolConnector = resolve_tool_connection(_owner(request), vendor)
+    except (_PublicError, ToolConnectionUnavailable):
+        return None
+    return connector
 
 
 def _journal_path() -> Path:
@@ -586,4 +608,8 @@ def register_research_tool_search_routes(app: FastAPI) -> None:
     app.include_router(router)
 
 
-__all__ = ["register_research_tool_search_routes"]
+__all__ = [
+    "ClosableToolConnector",
+    "connected_tool_for_request",
+    "register_research_tool_search_routes",
+]
