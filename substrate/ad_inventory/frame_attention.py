@@ -290,6 +290,9 @@ class WindowFrameBatch:
     NEVER trusted: it is accepted, logged as ``client_hint``, and ignored. The
     value is apportioned per-second-equally across ``len(seconds)`` seconds
     before per-asset weighting, so the window reconciles exactly (M6).
+    The emitter flushes one window many times, so ``accrue_window`` treats
+    this as the window's settled value and mints it at most once per
+    (owner, window): each flush apportions only the unminted remainder.
 
     ``schema_version`` is stamped so a batch flushed by an old emitter is
     identifiable. ``window_id`` is the trace anchor for every accrual derived

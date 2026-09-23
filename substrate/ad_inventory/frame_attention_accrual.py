@@ -73,7 +73,9 @@ def _batch_ref(window_id: str, inputs_json: str) -> str:
     """Deterministic ref for a window batch from (window_id, canonical inputs).
     An identical batch collapses to the same accrual rows (idempotent
     re-record); a changed input produces distinct rows — never an in-place
-    mutation (append-only)."""
+    mutation (append-only). The ref is computed over the OFFERED inputs, the
+    window's settled value as resolved, while the persisted ``inputs_json``
+    carries the value the batch actually minted."""
     h = hashlib.sha256(
         f"{window_id}\x00{inputs_json}".encode()
     ).hexdigest()[:24]
@@ -217,6 +219,27 @@ def ensure_tables(con: Any) -> None:
         con.execute(
             "CREATE INDEX IF NOT EXISTS idx_frame_daily_dwell_identity "
             "ON frame_daily_dwell(owner_user_id, asset_id, day_bucket)"
+        )
+        # One row per accrued batch, recording what the batch minted out of its
+        # (owner, window)'s settled value and the prior it was minted against,
+        # so the budget is auditable and replay-independent of row order.
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS frame_window_mints (
+                mint_id             TEXT PRIMARY KEY,
+                owner_user_id       TEXT NOT NULL,
+                window_id           TEXT NOT NULL,
+                batch_ref           TEXT NOT NULL,
+                window_value_cents  INTEGER NOT NULL,
+                prior_minted_cents  INTEGER NOT NULL,
+                minted_cents        INTEGER NOT NULL,
+                recorded_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        con.execute(
+            "CREATE INDEX IF NOT EXISTS idx_frame_window_mints_owner_window "
+            "ON frame_window_mints(owner_user_id, window_id)"
         )
     except Exception:
         pass
@@ -610,7 +633,13 @@ def accrue_window(
 
     ``classification`` is the frame_ivt classification of ``batch``, computed
     ONCE by the caller (the frame-telemetry route) so the response and the money
-    path share one verdict; omitted → computed here."""
+    path share one verdict; omitted → computed here.
+
+    Window mint budget: settled value mints once per ``(owner_user_id,
+    window_id)``; ``owner_user_id`` None means identity ``""``. Disjoint flushes
+    of the same window each receive only the unminted remainder, and a flush
+    after the budget is exhausted apportions zero.
+    """
     ensure_tables(con)
     asset_to_ip_holder = asset_to_ip_holder or {}
 
@@ -627,6 +656,25 @@ def accrue_window(
     ).fetchone()
     if existing is not None:
         return _load_window_accrual(con, batch_ref)
+
+    # W08: the value side of idempotency is the (owner, window), not the batch.
+    # The emitter flushes one window repeatedly (every 30s plus
+    # visibilitychange/pagehide), and each disjoint flush gets a distinct
+    # batch_ref. Without a window-scoped budget, every flush would mint the full
+    # settled value again. Each flush mints only ``settled - already minted``,
+    # never more; after the window is fully minted a later flush apportions 0
+    # while its seconds still flow through the filter and dwell cap, so the
+    # cap's meter continues to grow.
+    identity = owner_user_id or ""
+    window_value_cents = batch.ad_value_usd_cents
+    prior_minted_cents = _prior_minted_cents(con, identity, batch.window_id)
+    minted_cents = max(0, window_value_cents - prior_minted_cents)
+    if minted_cents != window_value_cents:
+        batch = replace(batch, ad_value_usd_cents=minted_cents)
+        # The persisted snapshot carries the value this batch actually
+        # apportioned so replay() re-derives it exactly; batch_ref stays keyed
+        # on the offered inputs so an identical re-post still collapses.
+        inputs_json = _canonical_json(_batch_inputs(batch, asset_to_ip_holder))
 
     result = aggregate_window(
         batch,
@@ -705,6 +753,16 @@ def accrue_window(
         ],
     )
 
+    _record_window_mint(
+        con,
+        batch_ref,
+        identity=identity,
+        window_id=result.window_id,
+        window_value_cents=window_value_cents,
+        prior_minted_cents=prior_minted_cents,
+        minted_cents=minted_cents,
+    )
+
     return result
 
 
@@ -771,6 +829,48 @@ def _prior_counted_dwell(
         [identity, asset_id, day_bucket],
     ).fetchone()
     return int(row[0]) if row is not None else 0
+
+
+def _prior_minted_cents(con: Any, identity: str, window_id: str) -> int:
+    """Return the (owner, window)'s already-minted settled cents."""
+    row = con.execute(
+        "SELECT COALESCE(SUM(minted_cents), 0) FROM frame_window_mints "
+        "WHERE owner_user_id = ? AND window_id = ?",
+        [identity, window_id],
+    ).fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def _record_window_mint(
+    con: Any,
+    batch_ref: str,
+    *,
+    identity: str,
+    window_id: str,
+    window_value_cents: int,
+    prior_minted_cents: int,
+    minted_cents: int,
+) -> None:
+    """Append the batch's mint decision to the window's auditable budget."""
+    mint_key = f"{batch_ref}\x00mint".encode()
+    mint_id = f"frame-mint-{hashlib.sha256(mint_key).hexdigest()[:20]}"
+    con.execute(
+        """
+        INSERT INTO frame_window_mints (
+            mint_id, owner_user_id, window_id, batch_ref, window_value_cents,
+            prior_minted_cents, minted_cents
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            mint_id,
+            identity,
+            window_id,
+            batch_ref,
+            window_value_cents,
+            prior_minted_cents,
+            minted_cents,
+        ],
+    )
 
 
 def _apply_dwell_caps(

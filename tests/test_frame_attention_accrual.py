@@ -284,3 +284,71 @@ def test_record_client_hint_has_no_economic_effect(con):
     ).fetchone()[0]
     assert after_acc == before_acc
     assert ip_holders.get(con, holder).escrow_balance_usd == before_escrow
+
+
+def test_window_value_mints_once_across_distinct_batches(con):
+    """W08 writer regression: two DIFFERENT batches of one window (distinct
+    batch_refs, the shape of two emitter flushes) apportion the window's value
+    once between them, and the budgeted batch still replays identically. The
+    budget is per (owner, window): a second owner's batch of the same window id
+    mints its own settled value."""
+    holder =ip_holders.create_pre_onboarded(con, display_name="Flush Press")
+    mapping = {"doc-a": holder}
+    first = _window("w-flush", 5, (_sample("doc-a"),), 1000)
+    second = WindowFrameBatch(
+        window_id="w-flush",
+        seconds=tuple(
+            FrameSecond(
+                second_index=second_index,
+                lens="read",
+                samples=(_sample("doc-a", area=0.51, prom=0.51, dwell=510),),
+            )
+            for second_index in range(5, 8)
+        ),
+        ad_value_usd_cents=1000,
+    )
+
+    first_result = accrue_window(
+        con, first, asset_to_ip_holder=mapping, owner_user_id="u-1"
+    )
+    second_result = accrue_window(
+        con, second, asset_to_ip_holder=mapping, owner_user_id="u-1"
+    )
+    assert first_result.total_ad_value_cents == 1000
+    assert second_result.total_ad_value_cents == 0
+    assert first_result.reconciles()
+    assert second_result.reconciles()
+    assert window_reconciliation(con, "w-flush")["total_cents"] == 1000
+    assert ip_holders.get(con, holder).escrow_balance_usd == Decimal("10.00")
+    assert replay(con, second_result.batch_ref).identical is True
+
+    third = WindowFrameBatch(
+        window_id="w-flush",
+        seconds=tuple(
+            FrameSecond(
+                second_index=second_index,
+                lens="read",
+                samples=(_sample("doc-a", area=0.52, prom=0.52, dwell=520),),
+            )
+            for second_index in range(9, 12)
+        ),
+        ad_value_usd_cents=1000,
+    )
+    third_result = accrue_window(
+        con, third, asset_to_ip_holder=mapping, owner_user_id="u-2"
+    )
+    assert third_result.total_ad_value_cents == 1000
+    assert window_reconciliation(con, "w-flush")["total_cents"] == 2000
+    assert ip_holders.get(con, holder).escrow_balance_usd == Decimal("20.00")
+
+
+def test_identical_repost_does_not_record_second_mint(con):
+    """The idempotent re-post returns the stored accrual before the budget is
+    consulted, so it writes no second mint row."""
+    batch =_window("w-idem-mint", 5, (_sample("doc-a"),), 500)
+    accrue_window(con, batch, owner_user_id="u-1")
+    accrue_window(con, batch, owner_user_id="u-1")
+    count = con.execute(
+        "SELECT COUNT(*) FROM frame_window_mints"
+    ).fetchone()[0]
+    assert count == 1

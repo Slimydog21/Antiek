@@ -133,7 +133,13 @@ class FrameTelemetryResponse(BaseModel):
     * ``verdict_signals`` — the window verdict's signal name → detail (why the
       window was held/blocked; a SIVT heuristic's name lives here).
     * ``clamped_dwell_ms`` / ``clamped_cents`` — the per-identity saturation
-      cap's reported exclusions for this window (0 when no cap is defined)."""
+      cap's reported exclusions for this window (0 when no cap is defined).
+    * ``reconciles``: the batch conserves its minted cents AND the window
+      ledger total equals the server-minted settled window value;
+      ``total_ad_value_cents`` is what THIS flush minted, 0 once the window is
+      fully minted. The ledger side sums every row for ``window_id``, so a
+      window id that two owners both post reads False (loud, never a silent
+      True)."""
 
     batch_ref: str
     window_id: str
@@ -475,14 +481,15 @@ def register_ad_routes(app: FastAPI) -> None:
             ) as con_w:
                 fill_decisions.ensure_table(con_w)
                 try:
+                    window_value_cents = resolve_window_value_cents(
+                        owner_user_id=owner_user_id,
+                        window_id=batch_in.window_id,
+                        con=con_w,
+                    )
                     batch = WindowFrameBatch(
                         window_id=batch_in.window_id,
                         seconds=seconds,
-                        ad_value_usd_cents=resolve_window_value_cents(
-                            owner_user_id=owner_user_id,
-                            window_id=batch_in.window_id,
-                            con=con_w,
-                        ),
+                        ad_value_usd_cents=window_value_cents,
                         schema_version=batch_in.schema_version,
                     )
                 except ValueError as exc:
@@ -523,7 +530,14 @@ def register_ad_routes(app: FastAPI) -> None:
                     contributor_cents=recon["contributor_cents"],
                     house_cents=recon["house_cents"],
                     asset_count=len(result.asset_lines),
-                    reconciles=result.reconciles(),
+                    # The batch must conserve its own minted cents AND the
+                    # window's ledger (every flush of this window) must hold
+                    # exactly the settled revenue. A per-batch check alone
+                    # reported True while the ledger held 4x the settled amount.
+                    reconciles=(
+                        result.reconciles()
+                        and recon["total_cents"] == window_value_cents
+                    ),
                     telemetry_version=result.telemetry_version,
                     weighting_version=result.weighting_version,
                     fraud_verdict=cast(

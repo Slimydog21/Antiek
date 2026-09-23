@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -704,3 +705,159 @@ def test_no_gated_body_in_telemetry_payload(isolated_db, monkeypatch):
     # Gated-but-public earns to escrow → it is a contributor, not house.
     assert body["asset_count"] == 1
     assert body["contributor_cents"] > 0
+
+
+def test_frame_telemetry_disjoint_flushes_mint_settled_window_once(isolated_db):
+    """W08 regression. The Read-app emitter flushes ONE window every 30s (plus
+    visibilitychange/pagehide), each flush carrying only the seconds not yet
+    sent, so every flush is a distinct batch_ref. The value is keyed on
+    (owner, window): the settled 1000 cents mint once, on the first flush, and
+    the next three flushes mint 0. Before the fix each flush re-minted the
+    whole window, escrow grew by $40.00 against $10.00 settled, and every
+    response still said reconciles=True."""
+    _seed_book(
+        isolated_db,
+        document_id="pd-earner",
+        title="Earner",
+        author="A",
+        content_class="public_domain",
+        raw_text="body",
+        rights_holder_name="Earner Estate",
+    )
+    _seed_fill_record(
+        isolated_db,
+        owner_user_id="__operator__",
+        window_id="win-reflush",
+        revenue_usd_cents=1000,
+        price_status="settled",
+    )
+    holder = _ip_holder_of(isolated_db, "pd-earner")
+    before = _escrow_of(isolated_db, holder)
+    client = _client()
+
+    responses = []
+    for flush_index in range(4):
+        responses.append(
+            client.post(
+                "/api/ad/frame-telemetry",
+                json={
+                    "window_id": "win-reflush",
+                    "schema_version": FRAME_TELEMETRY_SCHEMA_VERSION,
+                    "seconds": [
+                        {
+                            "second_index": second_index,
+                            "lens": "read",
+                            "samples": [
+                                {
+                                    "asset_id": "pd-earner",
+                                    "viewport_area_fraction": (
+                                        0.5 + 0.01 * flush_index
+                                    ),
+                                    "prominence": 0.5,
+                                    "focused_dwell_ms": 400 + 10 * flush_index,
+                                }
+                            ],
+                        }
+                        for second_index in range(
+                            3 * flush_index, 3 * flush_index + 3
+                        )
+                    ],
+                },
+            )
+        )
+
+    assert all(response.status_code == 202 for response in responses)
+    bodies = [response.json() for response in responses]
+    assert all(body["reconciles"] is True for body in bodies)
+    assert [body["total_ad_value_cents"] for body in bodies] == [1000, 0, 0, 0]
+    assert (
+        bodies[-1]["contributor_cents"] + bodies[-1]["house_cents"] == 1000
+    )
+    assert _escrow_of(isolated_db, holder) - before == Decimal("10.00")
+
+    from runtime.db_lock import connect_read
+
+    con = connect_read(isolated_db)
+    try:
+        assert con.execute(
+            "SELECT COUNT(*), SUM(minted_cents) FROM frame_window_mints "
+            "WHERE window_id = 'win-reflush'"
+        ).fetchone() == (4, 1000)
+    finally:
+        con.close()
+
+
+def test_frame_telemetry_reconciles_false_when_window_ledger_exceeds_settled(
+    isolated_db,
+):
+    """W08 regression for the producer-satisfied flag. ``reconciles`` must
+    compare the window's ledger (every flush of it) to the settled revenue, not
+    just the batch to its own minted total. A planted 1000-cent house row the
+    mint budget never saw leaves the window ledger at 2000 against 1000
+    settled, and the response has to say so."""
+    _seed_book(
+        isolated_db,
+        document_id="pd-earner",
+        title="Earner",
+        author="A",
+        content_class="public_domain",
+        raw_text="body",
+        rights_holder_name="Earner Estate",
+    )
+    _seed_fill_record(
+        isolated_db,
+        owner_user_id="__operator__",
+        window_id="win-over",
+        revenue_usd_cents=1000,
+        price_status="settled",
+    )
+
+    from runtime.db_lock import connect_write
+    from substrate.ad_inventory import frame_attention_accrual
+
+    with connect_write(isolated_db, purpose="test:plant-overmint") as con:
+        frame_attention_accrual.ensure_tables(con)
+        con.execute(
+            """
+            INSERT INTO house_seconds (
+                house_id, batch_ref, window_id, n_seconds, amount_cents,
+                reason, telemetry_version, weighting_version, inputs_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "planted",
+                "planted",
+                "win-over",
+                1,
+                1000,
+                "planted",
+                "x",
+                "x",
+                "{}",
+            ],
+        )
+
+    response = _client().post(
+        "/api/ad/frame-telemetry",
+        json={
+            "window_id": "win-over",
+            "schema_version": FRAME_TELEMETRY_SCHEMA_VERSION,
+            "seconds": [
+                {
+                    "second_index": second_index,
+                    "lens": "read",
+                    "samples": [
+                        {
+                            "asset_id": "pd-earner",
+                            "viewport_area_fraction": 0.5,
+                            "prominence": 0.5,
+                            "focused_dwell_ms": 400,
+                        }
+                    ],
+                }
+                for second_index in range(3)
+            ],
+        },
+    )
+    assert response.status_code == 202
+    assert response.json()["reconciles"] is False
