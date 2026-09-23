@@ -76,16 +76,35 @@ _ANTHROPIC_TEXT = {
 }
 
 
-@pytest.mark.parametrize(
-    "usage",
-    [None, {}, {"prompt_tokens": 10}],
-    ids=["omitted", "empty", "no-completion-count"],
-)
-def test_openai_compat_unreported_usage_is_billed_at_ceiling(usage) -> None:
-    body = dict(_OPENAI_TEXT)
+# A count that is present but is not an int is "usage unknown" too. JSON null
+# arrives as None and a blank count as "", and ``int(x or 0)`` would launder
+# either into a definite 0 that prices the call as free.
+_OPENAI_UNREPORTED = [
+    pytest.param(None, id="omitted"),
+    pytest.param({}, id="empty"),
+    pytest.param({"prompt_tokens": 10}, id="no-completion-count"),
+    pytest.param({"prompt_tokens": None, "completion_tokens": None}, id="null-counts"),
+    pytest.param({"prompt_tokens": 10, "completion_tokens": None}, id="null-completion"),
+    pytest.param({"prompt_tokens": "", "completion_tokens": ""}, id="blank-counts"),
+]
+_ANTHROPIC_UNREPORTED = [
+    pytest.param(None, id="omitted"),
+    pytest.param({"input_tokens": None, "output_tokens": None}, id="null-counts"),
+    pytest.param({"input_tokens": 10, "output_tokens": None}, id="null-output"),
+    pytest.param({"input_tokens": "", "output_tokens": ""}, id="blank-counts"),
+]
+
+
+def _with_usage(text_body: dict[str, Any], usage: dict[str, Any] | None) -> dict[str, Any]:
+    body = dict(text_body)
     if usage is not None:
         body["usage"] = usage
-    register_provider(_openai(body))
+    return body
+
+
+@pytest.mark.parametrize("usage", _OPENAI_UNREPORTED)
+def test_openai_compat_unreported_usage_is_billed_at_ceiling(usage) -> None:
+    register_provider(_openai(_with_usage(_OPENAI_TEXT, usage)))
     result = dispatch(
         _PROMPT, "thought_partner", investigation_id="inv-usage",
         config=_config("oc", "deepseek-chat"),
@@ -97,8 +116,9 @@ def test_openai_compat_unreported_usage_is_billed_at_ceiling(usage) -> None:
     assert result.cost_usd == pytest.approx(_CEILING_USD)
 
 
-def test_anthropic_unreported_usage_is_billed_at_ceiling() -> None:
-    register_provider(_anthropic(dict(_ANTHROPIC_TEXT)))
+@pytest.mark.parametrize("usage", _ANTHROPIC_UNREPORTED)
+def test_anthropic_unreported_usage_is_billed_at_ceiling(usage) -> None:
+    register_provider(_anthropic(_with_usage(_ANTHROPIC_TEXT, usage)))
     result = dispatch(
         _PROMPT, "thought_partner", investigation_id="inv-usage",
         config=_config("anthropic", "claude-sonnet-5"),
@@ -147,16 +167,39 @@ def test_router_does_not_trust_zero_usage_from_an_empty_raw_block() -> None:
     assert result.cost_usd == pytest.approx(_CEILING_USD)
 
 
+@pytest.mark.parametrize(
+    ("adapter", "usage"),
+    [
+        pytest.param("openai", None, id="openai-omitted"),
+        pytest.param(
+            "openai", {"prompt_tokens": None, "completion_tokens": None},
+            id="openai-null-counts",
+        ),
+        pytest.param(
+            "anthropic", {"input_tokens": None, "output_tokens": None},
+            id="anthropic-null-counts",
+        ),
+    ],
+)
 def test_owner_byot_missing_usage_settles_at_reserved_ceiling_not_zero(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, adapter: str,
+    usage: dict[str, Any] | None,
 ) -> None:
     """End to end through dispatch_talk_to_book_byot: the owner's key used_cents
     must move by the reserved ceiling when the provider hides its usage."""
     import test_talk_to_book_owner_byot as T
 
     app, record, _, fake, _house = T._authority_fixture(monkeypatch)
-    real = _openai(dict(_OPENAI_TEXT), name=record.id)
-    real._user_model_authority_fingerprint = fake._user_model_authority_fingerprint  # type: ignore[attr-defined]
+    real: Any
+    if adapter == "openai":
+        real = _openai(_with_usage(_OPENAI_TEXT, usage), name=record.id)
+    else:
+        # The owner route resolves its provider by the record id, so the real
+        # Anthropic adapter is registered under that name to drive its
+        # normalize_usage through the same reserve/settle path.
+        real = _anthropic(_with_usage(_ANTHROPIC_TEXT, usage))
+        real.name = record.id
+    real._user_model_authority_fingerprint = fake._user_model_authority_fingerprint
     register_provider(real)
     ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
     result, _authority = dispatch_talk_to_book_byot(

@@ -222,6 +222,12 @@ def test_anthropic_normalize_usage_handles_missing_fields():
     assert u.cache_creation_input_tokens == 0
     assert u.reported is False
     assert p.normalize_usage({"input_tokens": 5}).reported is False
+    # A present-but-null (or non-int) count is unknown, not zero.
+    assert p.normalize_usage({"input_tokens": None, "output_tokens": None}).reported is False
+    assert p.normalize_usage({"input_tokens": 5, "output_tokens": None}).reported is False
+    assert p.normalize_usage({"input_tokens": "", "output_tokens": ""}).reported is False
+    assert p.normalize_usage({"input_tokens": True, "output_tokens": 1}).reported is False
+    assert p.normalize_usage({"input_tokens": 5, "output_tokens": -1}).reported is False
     assert p.normalize_usage({"input_tokens": 5, "output_tokens": 0}).reported is True
 
 
