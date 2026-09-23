@@ -50,7 +50,13 @@ def test_weekly_benchmark_reads_validated_server_report(tmp_path, monkeypatch) -
     body = _client().get("/settings/antiek-bench/weekly").json()
     assert body["authority"] == "advisory"
     assert body["status"] == "measured"
-    assert body["week_id"].startswith(str(datetime.now(UTC).year))
+    # ISO WEEK-YEAR, not calendar year. substrate/antiek_bench/scorecards.py
+    # builds week_id as f"{now.isocalendar().year}-W{week:02d}", and the ISO
+    # week-year diverges from the calendar year around New Year — 2025-12-29,
+    # 30 and 31 all fall in ISO year 2026, and 2027-01-01 falls in ISO 2026.
+    # Asserting the calendar year would red this test for several days each
+    # turn of the year (10 such dates in 2024-2028).
+    assert body["week_id"].startswith(str(datetime.now(UTC).isocalendar().year))
     assert body["measurements"][0]["score"] == 0.91
 
 

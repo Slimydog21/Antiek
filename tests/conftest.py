@@ -9,6 +9,16 @@ Two autouse fixtures, both function-scoped:
   test at a TMP store so no test can mutate the real ``~/.antiek`` store. This
   is the test/prod firewall that closes the test-residue pollution gap at its
   source.
+* ``_isolate_provider_keys`` — removes real provider API keys from the
+  environment. Same firewall, egress side: without it a developer who has
+  ``XIAOMI_API_KEY`` (or any of six siblings) exported gets REAL network
+  providers registered by ``register_default_providers``, which then outrank a
+  test's own stubs. Measured: ``tests/test_loop_one_orchestrator.py`` — whose
+  docstring says "the fixtures stub every role's provider" — dispatched to the
+  live ``api.mimo.xiaomi.com`` and failed, while passing in CI where no key
+  exists. Three tests behaved that way. A test that reaches a real provider
+  bills a real key and egresses real data, so this is a cost and privacy
+  boundary, not only a flakiness one.
 
 ``substrate.dispatch.breaker.default_breaker`` is a process-wide singleton the
 router consults on every dispatch. Without isolation, any test that exercises
@@ -64,6 +74,44 @@ def _isolate_default_breaker():
     default_breaker.reset()
     yield
     default_breaker.reset()
+
+
+# Every env var `substrate/dispatch/providers/bootstrap.py` consults via
+# `resolve_provider_key(handle, env_var)`. tests/test_provider_key_isolation.py
+# re-derives this set FROM THAT SOURCE and fails if the two drift, so adding a
+# provider cannot silently reopen the hole.
+PROVIDER_KEY_ENV_VARS = (
+    "ANTHROPIC_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "HERMES_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "XIAOMI_API_KEY",
+    "Z_AI_API_KEY",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_provider_keys(request, monkeypatch):
+    """No test reaches a real provider because the developer happens to have keys.
+
+    `register_default_providers()` registers every provider whose key resolves,
+    and a registered real provider outranks a stub the test installed. On CI no
+    key exists so the stubs win; on a developer machine they do not. That is a
+    test that passes in CI and fails locally for a reason the author never sees
+    — and worse, one that silently bills a live API from a unit test.
+
+    BYOK lookups already land in the tmp store via `_isolate_antiek_store`, so
+    the environment is the remaining channel.
+
+    Opt out with `@pytest.mark.live_provider` for a test that genuinely needs
+    real credentials (a live smoke check). The marker is opt-in, registered in
+    pyproject.toml, and grants exactly nothing else.
+    """
+    if request.node.get_closest_marker("live_provider"):
+        return
+    for var in PROVIDER_KEY_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
 
 
 @pytest.fixture(scope="session")

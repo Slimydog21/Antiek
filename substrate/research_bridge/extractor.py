@@ -21,8 +21,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+# Hoisted OUT of the try below. ``...runtime.db_lock`` resolves to
+# ``substrate.runtime.db_lock``, which does not exist, so that ONE line made
+# the whole try fail and every relative import in it dead. The ignore code
+# MATCHED what mypy emits, which is why it never looked wrong — but a
+# correctly-matched ignore suppresses just as thoroughly, and LockedConnection
+# was typed Any across this module.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+from runtime.db_lock import LockedConnection  # noqa: E402
+
 try:
-    from ...runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
     from ..constants import SYSTEM_INVESTIGATION_ID
     from ..graph.ops import insert_node, new_random_id
 except ImportError:  # pragma: no cover

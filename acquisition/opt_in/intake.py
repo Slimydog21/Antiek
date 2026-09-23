@@ -301,6 +301,22 @@ def ingest_entry(
         embedder=embedder,
     )
 
+    if result.ingest.skipped_reason is not None:
+        # ingest_pdf wrote NO documents row (e.g. below the word floor). The
+        # work is not servable — there is nothing to serve — so nothing
+        # accrues, and no document_id is reported for a row that does not
+        # exist. Reported as a skip, not as a gated or servable work.
+        return WorkOutcome(
+            title=entry.title,
+            document_id=None,
+            content_class=classification.content_class,
+            license_basis=basis,
+            servable=False,
+            ip_holder_id=ip_holder_id,
+            identity_basis=ikey_basis,
+            skipped_reason=f"ingest skipped: {result.ingest.skipped_reason}",
+        )
+
     accrued = False
     if classification.servable:
         # A servable opt-in work begins accruing to its publisher's holder via

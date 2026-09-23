@@ -1,7 +1,7 @@
 """Lemon-UI widget library (HPRJ SPR-03).
 
-Seven pure-function widgets, each ``widget(data) -> str``: a stat_chip,
-bar_chart, sparkline, donut, timeline, dep_graph, and cite_block. Each
+Eight pure-function widgets, each ``widget(data) -> str``: a stat_chip,
+bar_chart, sparkline, donut, timeline, dep_graph, cite_block, and sketch. Each
 takes a plain ``dict`` (the "input contract" below), returns a single
 script-free HTML/SVG string, and reads its palette + geometry from
 ``services.html_projection.tokens`` (the Lemon-UI constants:
@@ -193,6 +193,29 @@ defensively and never assumes a hostile caller's types.
      - ``tone``    : str | None — OPTIONAL. Accent rule tone (default
                        ``"accent"``).
 
+8. sketch(data) -> str
+   A Processing/p5-style sketch: a faithful bar sketch of a series, or,
+   with no series, a seeded generative composition (nested circles in a
+   grid). A THIN renderer over the research agents' kernel skill
+   ``substrate.agent_skills.sketch_svg`` — the first product importer of
+   that package — so the same bytes an agent emits into an artifact are
+   what the projection renders. Palette (ground, voices, label ink) is
+   fixed to ``tokens.LEMON_*``; the skill's live zero-script gate is the
+   same gate the partial dispatch enforces.
+   ``data`` shape:
+     - ``data``    : list[int|float] | None — OPTIONAL. The series.
+                       Non-numeric / non-finite entries dropped; more than
+                       500 values -> the first 500. Empty/absent -> the
+                       generative composition.
+     - ``seed``    : int | None — OPTIONAL. PRNG seed, default 0. Same
+                       seed + data -> identical bytes.
+     - ``title``   : str | None — OPTIONAL. Escaped into <title> and the
+                       data caption. Default ``"sketch"``.
+     - ``width``   : int | None — OPTIONAL. Canvas px, default 640.
+     - ``height``  : int | None — OPTIONAL. Canvas px, default 400.
+   A title the gate rejects renders a deterministic "no sketch"
+   placeholder (never a crash).
+
 PUBLIC API
 ----------
 Each widget is exposed as a submodule with a ``render(data) -> str``
@@ -214,11 +237,12 @@ from . import bar_chart as _bar_chart_module
 from . import cite_block as _cite_block_module
 from . import dep_graph as _dep_graph_module
 from . import donut as _donut_module
+from . import sketch as _sketch_module
 from . import sparkline as _sparkline_module
 from . import stat_chip as _stat_chip_module
 from . import timeline as _timeline_module
 
-# The seven widget kinds, in the canonical order the spec lists them.
+# The eight widget kinds, in the canonical order the spec lists them.
 # Used by the fan-out builders + any registry/dispatch. A tuple (not a
 # set) so the order is deterministic.
 WIDGET_KINDS = (
@@ -229,6 +253,7 @@ WIDGET_KINDS = (
     "timeline",
     "dep_graph",
     "cite_block",
+    "sketch",
 )
 
 stat_chip = _stat_chip_module.render
@@ -238,6 +263,7 @@ donut = _donut_module.render
 timeline = _timeline_module.render
 dep_graph = _dep_graph_module.render
 cite_block = _cite_block_module.render
+sketch = _sketch_module.render
 
 
 def _stat_chip_adapter(kind: str, attrs: dict) -> str:
@@ -268,6 +294,10 @@ def _cite_block_adapter(kind: str, attrs: dict) -> str:
     return _cite_block_module.render(attrs)
 
 
+def _sketch_adapter(kind: str, attrs: dict) -> str:
+    return _sketch_module.render(attrs)
+
+
 tokens.register_widget("stat_chip", _stat_chip_adapter)
 tokens.register_widget("bar_chart", _bar_chart_adapter)
 tokens.register_widget("sparkline", _sparkline_adapter)
@@ -275,6 +305,7 @@ tokens.register_widget("donut", _donut_adapter)
 tokens.register_widget("timeline", _timeline_adapter)
 tokens.register_widget("dep_graph", _dep_graph_adapter)
 tokens.register_widget("cite_block", _cite_block_adapter)
+tokens.register_widget("sketch", _sketch_adapter)
 
 __all__ = [
     "WIDGET_KINDS",
@@ -285,4 +316,5 @@ __all__ = [
     "timeline",
     "dep_graph",
     "cite_block",
+    "sketch",
 ]

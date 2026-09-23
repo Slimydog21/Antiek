@@ -333,6 +333,8 @@ class TestSketchSvg:
             sketch_svg(palette=("#fff", "#000"))
         with pytest.raises(ValueError, match=">= 2"):
             sketch_svg(palette=("#ffffff",))
+        with pytest.raises(ValueError, match="ink must be #RRGGBB"):
+            sketch_svg(data=[1.0, 2.0], ink="white")
 
     def test_seeded_rng_is_deterministic(self) -> None:
         r1, r2 = SeededRng(9), SeededRng(9)
