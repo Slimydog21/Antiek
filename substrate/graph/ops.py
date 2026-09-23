@@ -41,6 +41,12 @@ from typing import Any
 # the dead branch and typed the write-lock API as Any.
 _here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+# SPR-08 T1: the ip_holder resolver is stdlib-only (no substrate import), so
+# this is a leaf import with no cycle back into the graph package.
+from middleware.ip_holder_resolver import (  # noqa: E402
+    isbn_from_metadata,
+    resolve_and_apply,
+)
 from runtime.db_lock import LockedConnection  # noqa: E402
 
 try:
@@ -248,6 +254,20 @@ def insert_document(
             twin_source_envelope,
         ],
     )
+
+    # SPR-08 T1 — populate ``ip_holder_id`` on the persist path, on THIS locked
+    # connection (never a second connect). The resolver is conservative (ISBN →
+    # domain → author, exact matches only) and leaves NULL on no match. An
+    # explicit ``ip_holder_id`` from the caller is authoritative and is never
+    # re-resolved; ``apply_resolved_ip_holder`` also refuses to overwrite.
+    if ip_holder_id is None:
+        resolve_and_apply(
+            con,
+            document_id=document_id,
+            source_uri=source_uri,
+            isbn=isbn_from_metadata(metadata),
+            author=author,
+        )
 
     # Typed event AFTER the row commits (and only on a real insert) — records the
     # deny-by-default classification so it is reconstructable. The Event envelope
