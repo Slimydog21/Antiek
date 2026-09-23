@@ -12,17 +12,21 @@ against the real substrate, and serves JSON-RPC over stdio.
 from __future__ import annotations
 
 import json
+import math
 import os
-import uuid
 from collections.abc import Callable
 from typing import Any
 
 from interfaces.research.api.account_memory_identity import FORBIDDEN_OWNERS
 from processing.embedding.embed import default_embedding_provider
 from runtime.db_lock import connect_read, connect_write
+from substrate.ad_inventory import attribution_audit
 from substrate.ad_inventory.attribution import (
+    ATTRIBUTION_ALGORITHM_VERSION,
     PRIVATE_GRAPH_CONTENT_CLASS,
     PUBLIC_GRAPH_CONTENT_CLASSES,
+    compute_attribution_option_a,
+    monetization_eligible,
 )
 from substrate.books.servability import servability_of
 from substrate.constants import SERVABLE_CONTENT_CLASSES
@@ -305,34 +309,77 @@ def _make_handlers(
         }])
 
     # ── record_attribution ────────────────────────────────────────
-    def record_attribution(args: dict[str, Any]) -> ToolResult:
-        chunk_id = args["chunk_id"]
-        investigation_id = args["investigation_id"]
-        dwell = args.get("session_dwell_seconds", 0)
-        audit_id = str(uuid.uuid4())
-        con = connect_write(db_path, purpose="mcp_record_attribution")
-        try:
-            con.execute(
-                """
-                INSERT INTO attribution_audit
-                    (audit_id, impression_set_ref, page_id, algorithm,
-                     algorithm_version, inputs_json, shares_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                [audit_id, investigation_id, chunk_id,
-                 "equal_split_per_chunk_citation", "1.0",
-                 json.dumps({"chunk_id": chunk_id, "investigation_id": investigation_id, "dwell_seconds": dwell}),
-                 json.dumps({chunk_id: 1.0})],
+    def record_attribution(args: dict[str, Any], *, auth_context: object = None) -> ToolResult:
+        """Record a public-graph chunk's attribution for the authenticated owner.
+
+        Validate the owner, identifiers, and dwell before opening the database.
+        The canonical recorder stores replayable equal-split inputs and shares.
+        Its deterministic audit ID makes retries for one investigation idempotent.
+        Dwell is returned to the caller but is not an attribution input.
+        """
+        def reject(message: str) -> ToolResult:
+            return ToolResult(
+                content=[{"type": "text", "text": json.dumps({
+                    "status": "rejected", "error": message,
+                })}],
+                is_error=True,
             )
-        finally:
-            con.close()
+
+        owner = _authenticated_owner(auth_context)
+        if owner is None:
+            return reject(
+                "record_attribution requires an authenticated per-user owner "
+                "in auth_context.user_id"
+            )
+
+        chunk_id = args.get("chunk_id")
+        if not isinstance(chunk_id, str) or not chunk_id.strip() or len(chunk_id.strip()) > 256:
+            return reject("chunk_id must be a non-empty string of at most 256 characters")
+        chunk_id = chunk_id.strip()
+        investigation_id = args.get("investigation_id")
+        if (not isinstance(investigation_id, str) or not investigation_id.strip()
+                or len(investigation_id.strip()) > 256):
+            return reject("investigation_id must be a non-empty string of at most 256 characters")
+        investigation_id = investigation_id.strip()
+        dwell = args.get("session_dwell_seconds", 0)
+        if isinstance(dwell, bool) or not isinstance(dwell, (int, float)):
+            return reject("session_dwell_seconds must be a finite non-negative number")
+        try:
+            finite_dwell = math.isfinite(dwell)
+        except OverflowError:
+            finite_dwell = False
+        if not finite_dwell or dwell < 0:
+            return reject("session_dwell_seconds must be a finite non-negative number")
+
+        with connect_write(db_path, purpose="mcp_record_attribution") as con:
+            row = con.execute(
+                "SELECT c.document_id, d.content_class FROM chunks c "
+                "JOIN documents d ON c.document_id = d.document_id "
+                "WHERE c.chunk_id = ?",
+                [chunk_id],
+            ).fetchone()
+            if row is None or not monetization_eligible(row[1]):
+                return reject("chunk_id is not a public-graph chunk")
+            document_id = row[0]
+            inputs = {"chunk_to_document": {chunk_id: document_id}}
+            result = compute_attribution_option_a(
+                page_id=chunk_id, chunk_to_document=inputs["chunk_to_document"]
+            )
+            impression_set_ref = f"mcp:{owner}:{investigation_id}"
+            audit_id = attribution_audit.record_attribution(
+                con, impression_set_ref=impression_set_ref, result=result, inputs=inputs
+            )
         return ToolResult(content=[{
             "type": "text",
             "text": json.dumps({
                 "status": "recorded",
                 "audit_id": audit_id,
                 "chunk_id": chunk_id,
+                "document_id": document_id,
                 "investigation_id": investigation_id,
+                "impression_set_ref": impression_set_ref,
+                "algorithm": result.algorithm.value,
+                "algorithm_version": ATTRIBUTION_ALGORITHM_VERSION,
                 "dwell_seconds": dwell,
             }),
         }])
