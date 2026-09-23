@@ -139,6 +139,26 @@ def usage_counts_reported(raw_usage: dict[str, Any], keys: tuple[str, ...]) -> b
     return True
 
 
+def optional_count(container: Any, key: str) -> int | None:
+    """An OPTIONAL usage count (a cache subset): 0 when the key is absent (a
+    call with no cache genuinely reports none), the count when it is a real
+    non-negative ``int``, and None when it is present but not one (``null``,
+    a string, a float, a bool, a negative).
+
+    None means the provider did not really report the split, and the adapter
+    must return ``reported=False`` so the router bills the ceiling. Coercing
+    it to 0 prices a paid cache write as free, and ``int(value)`` on a string
+    raises before the router can bill the call at all."""
+    if not isinstance(container, dict):
+        return None
+    if key not in container:
+        return 0
+    value = container[key]
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        return None
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Raw response wrapper
 # ---------------------------------------------------------------------------

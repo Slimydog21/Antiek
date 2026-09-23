@@ -45,6 +45,7 @@ try:
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        optional_count,
         response_contains_secret,
         usage_counts_reported,
     )
@@ -56,6 +57,7 @@ except ImportError:  # pragma: no cover
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        optional_count,
         response_contains_secret,
         usage_counts_reported,
     )
@@ -72,20 +74,29 @@ _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _DEFAULT_TIMEOUT_S = 120.0
 
 
-def _extract_cached_tokens(usage: dict[str, Any]) -> int:
+def _extract_cached_tokens(usage: dict[str, Any]) -> int | None:
     """Read the cached-input-token count from the provider's usage shape.
 
     Watch-item: providers diverge on this field name. Add new shapes
     here when they appear; never let the router compute cost without
     knowing how many tokens were cached.
+
+    Returns 0 when no cache field is present, the count when it is a real
+    count, and None when a cache field is present but is not one (a null,
+    a string, a non-object ``prompt_tokens_details``): the caller reports
+    the whole usage as unreported rather than pricing it as uncached or
+    raising before the router can bill the call.
     """
     # OpenAI shape (dominant, also adopted by DeepSeek v3+ and MiMo)
-    details = usage.get("prompt_tokens_details") or {}
-    if "cached_tokens" in details:
-        return int(details["cached_tokens"] or 0)
+    if "prompt_tokens_details" in usage and usage["prompt_tokens_details"] is not None:
+        details = usage["prompt_tokens_details"]
+        if not isinstance(details, dict):
+            return None
+        if "cached_tokens" in details:
+            return optional_count(details, "cached_tokens")
     # DeepSeek legacy / explicit field
     if "prompt_cache_hit_tokens" in usage:
-        return int(usage["prompt_cache_hit_tokens"] or 0)
+        return optional_count(usage, "prompt_cache_hit_tokens")
     return 0
 
 
@@ -317,10 +328,13 @@ class OpenAICompatProvider:
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
         if not raw_usage or not usage_counts_reported(raw_usage, ("prompt_tokens", "completion_tokens")):
             return NormalizedUsage(input_tokens=0, output_tokens=0, reported=False)
+        cached = _extract_cached_tokens(raw_usage)
+        if cached is None:
+            return NormalizedUsage(input_tokens=0, output_tokens=0, reported=False)
         return NormalizedUsage(
-            input_tokens=int(raw_usage.get("prompt_tokens", 0) or 0),
-            output_tokens=int(raw_usage.get("completion_tokens", 0) or 0),
-            cached_input_tokens=_extract_cached_tokens(raw_usage),
+            input_tokens=int(raw_usage["prompt_tokens"]),
+            output_tokens=int(raw_usage["completion_tokens"]),
+            cached_input_tokens=cached,
         )
 
     def close(self) -> None:
