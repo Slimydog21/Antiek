@@ -190,14 +190,16 @@ def run_deepening(
 class Draft:
     prose_text: str
     cited_interview_ids: tuple[str, ...]
-    excluded_claim_ids: tuple[str, ...]            # public: unverified 3rd-party or no publish consent
+    excluded_claim_ids: tuple[str, ...]            # uncorroborated 3rd-party, public output
     unverified_marked_claim_ids: tuple[str, ...]   # included-but-marked, private draft
     voice_style_score: float
     voice_style_ok: bool
     # block_id → contributing interviewee ids. Feeds the SPR-06 split.
     block_contributors: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    # The subset of excluded_claim_ids left out because a contributing
-    # interviewee has not granted the ``publish`` consent scope.
+    # Public output: blocks left out because a contributing interviewee has
+    # not granted the ``publish`` consent scope. Kept apart from
+    # excluded_claim_ids, which the UI explains as "not corroborated"; a
+    # consent exclusion is a different reason and gets its own sentence.
     consent_excluded_claim_ids: tuple[str, ...] = ()
 
 
@@ -229,7 +231,6 @@ def generate_draft(
         if public and not all(
             has_consent(con, iv, ConsentScope.PUBLISH) for iv in b.contributor_interview_ids
         ):
-            excluded.append(b.block_id)
             consent_excluded.append(b.block_id)
             continue
         claim = get_claim(con, b.block_id)
