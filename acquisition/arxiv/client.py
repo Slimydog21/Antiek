@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from acquisition.arxiv.ids import looks_like_error_feed, split_id_version
+from acquisition.contact import ANTIEK_CONTACT_URL
 
 if TYPE_CHECKING:
     from acquisition.arxiv.throttle import ArxivThrottle
@@ -52,7 +53,7 @@ DEFAULT_TIMEOUT_S = 15.0
 # this box). The contact is env-configurable — never a hardcoded personal address
 # in a shared codebase — and defaults to the project contact page when unset. The
 # ``~/.claude/skills/arxiv`` port carries the same polite-pool discipline.
-_DEFAULT_CONTACT = "+https://antiek.ai/contact"
+_DEFAULT_CONTACT = f"+{ANTIEK_CONTACT_URL}"
 
 
 def default_user_agent() -> str:

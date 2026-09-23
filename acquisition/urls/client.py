@@ -13,16 +13,88 @@ canonical slug.
 
 from __future__ import annotations
 
+import logging
+import threading
+from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from urllib.parse import urlsplit
 
 import httpx
 
+from acquisition.contact import ANTIEK_CONTACT_URL
 from acquisition.urls.rights_terms import NO_TERMS, RightsTerms
 from acquisition.urls.robots import RobotsDisallowed, robots_policy_for
 
-DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.urls)"
+logger = logging.getLogger("acquisition.urls.client")
 DEFAULT_TIMEOUT_S = 20.0
+
+
+class FetchPurpose(StrEnum):
+    """Why Antiek is fetching a page.
+
+    Each purpose sends its own User-Agent so a site, or a CDN such as
+    Cloudflare (which since 2026-09-15 blocks mixed-use AI crawlers by default
+    on ad-carrying pages), can allow or refuse each use separately. A
+    robots.txt group naming one product token binds only that use; a group
+    naming plain ``Antiek`` still binds all three, because urllib.robotparser
+    matches the rule's token as a substring of ours."""
+
+    SEARCH = "search"                    # discovery: finding and citing pages, not answering a user
+    AGENT = "agent-retrieval"            # user-initiated: fetched because a person's research asked for it
+    INGEST = "ingest-no-training"        # corpus acquisition for reading/retrieval; never used to train a model
+
+
+_USER_AGENTS: Mapping[FetchPurpose, str] = {
+    FetchPurpose.SEARCH: f"Antiek-Search/0.1 (+{ANTIEK_CONTACT_URL}; purpose=search)",
+    FetchPurpose.AGENT: f"Antiek-Agent/0.1 (+{ANTIEK_CONTACT_URL}; purpose=agent-retrieval; user-initiated)",
+    FetchPurpose.INGEST: f"Antiek-Ingest/0.1 (+{ANTIEK_CONTACT_URL}; purpose=ingest; no-ai-training)",
+}
+
+
+def user_agent_for(purpose: FetchPurpose) -> str:
+    """The User-Agent string sent for ``purpose``."""
+    return _USER_AGENTS[purpose]
+
+
+DEFAULT_PURPOSE = FetchPurpose.AGENT
+# Kept for importers (acquisition/urls/paulgraham.py): the agent a plain fetch() sends.
+DEFAULT_USER_AGENT = user_agent_for(DEFAULT_PURPOSE)
+
+
+REFUSAL_STATUSES: frozenset[int] = frozenset({401, 402, 403})
+_refusals: Counter[tuple[str, int]] = Counter()
+_refusals_lock = threading.Lock()
+
+
+def _record_refusal(host: str, status: int, purpose: FetchPurpose) -> None:
+    with _refusals_lock:
+        _refusals[(host, status)] += 1
+        total = sum(n for (h, _s), n in _refusals.items() if h == host)
+    logger.warning(
+        "%s refused %s with HTTP %d (%d refusal(s) from this host in this process); "
+        "coverage from this host is being lost, not failing loudly",
+        host, user_agent_for(purpose), status, total,
+    )
+
+
+def refusal_counts() -> dict[str, dict[int, int]]:
+    """Per-host 401/402/403 refusal counts seen by fetch() in this process, as
+    ``{host: {status: n}}``. In-process only: nothing is written to DuckDB, so
+    the single-writer invariant is untouched. A host that starts refusing is
+    coverage silently lost; this is where it becomes a number."""
+    with _refusals_lock:
+        out: dict[str, dict[int, int]] = {}
+        for (host, status), n in _refusals.items():
+            out.setdefault(host, {})[status] = n
+        return out
+
+
+def clear_refusal_counts() -> None:
+    """Reset the refusal counts (tests; or an operator starting a fresh window)."""
+    with _refusals_lock:
+        _refusals.clear()
 
 
 @dataclass(frozen=True)
@@ -69,11 +141,16 @@ def fetch(
     client: httpx.Client | None = None,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     follow_redirects: bool = True,
+    purpose: FetchPurpose = DEFAULT_PURPOSE,
 ) -> FetchedHtml:
     """GET ``url``. Raises ``httpx.HTTPStatusError`` on 4xx/5xx.
 
-    Per-host robots.txt is consulted for DEFAULT_USER_AGENT before the page is
-    requested; an explicit disallow raises ``RobotsDisallowed``. A missing,
+    ``purpose`` selects the User-Agent; a 401/402/403 response is counted per
+    host (``refusal_counts()``) and logged at WARNING before ``raise_for_status``
+    raises; the count is in-process only and opens no database connection.
+
+    Per-host robots.txt is consulted for the purpose's User-Agent before the
+    page is requested; an explicit disallow raises ``RobotsDisallowed``. A missing,
     unreachable, or unparseable robots.txt fails OPEN with a WARNING and never
     blocks ingest. The policy is cached in-process once per origin, and any
     RSL licence declared by robots.txt surfaces on ``rights_terms``.
@@ -98,8 +175,9 @@ def fetch(
         install_arxiv_request_hook,
     )
 
+    user_agent = user_agent_for(purpose)
     headers = {
-        "User-Agent": DEFAULT_USER_AGENT,
+        "User-Agent": user_agent,
         "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
     }
 
@@ -118,10 +196,12 @@ def fetch(
             return resp.status_code, resp.text
 
         policy = None if _is_robots_txt(url) else robots_policy_for(url, fetch_text=_fetch_text)
-        if policy is not None and not policy.allows(DEFAULT_USER_AGENT, url):
-            raise RobotsDisallowed(url, user_agent=DEFAULT_USER_AGENT, robots_url=policy.robots_url)
+        if policy is not None and not policy.allows(user_agent, url):
+            raise RobotsDisallowed(url, user_agent=user_agent, robots_url=policy.robots_url)
 
         r = _get(url)
+        if r.status_code in REFUSAL_STATUSES:
+            _record_refusal((r.url.host or urlsplit(url).hostname or "").lower(), r.status_code, purpose)
         r.raise_for_status()
         content_type = r.headers.get("content-type", "") or ""
         return FetchedHtml(
