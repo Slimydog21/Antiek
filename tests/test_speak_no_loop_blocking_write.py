@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import ast
 import inspect
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 _ROOT = Path(__file__).resolve().parents[1]
 _MODULE = _ROOT / "interfaces" / "research" / "api" / "speak_routes.py"
@@ -41,9 +43,14 @@ _WRITE_ENTRIES = {"_write", "connect_write"}
 _TWO_HOP_WRITE_ENTRIES = frozenset({
     "submit_answer",
     "next_followups",
+    "decline",
     "list_private_repings_at",
     "prepare_reping",
 })
+
+#: Calls that run their callable argument off the event loop. A nested sync
+#: def only counts as offloaded when the coroutine hands it to one of these.
+_DISPATCHERS = frozenset({"_off_loop", "to_thread", "run_in_executor"})
 
 
 def _module() -> ast.Module:
@@ -70,20 +77,50 @@ def _write_entry_name(call: ast.Call) -> str | None:
     return None
 
 
-def _offenders() -> list[tuple[str, int, str]]:
+def _call_name(call: ast.Call) -> str | None:
+    func = call.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _offloaded_lines(coro: ast.AsyncFunctionDef) -> set[int]:
+    """Lines of the nested sync defs this coroutine really runs off the loop.
+
+    That is the `def _sync(): ...; await _off_loop(_sync)` idiom. Being a
+    nested def is not enough: the def must be passed to a dispatcher
+    (``_DISPATCHERS``), and the coroutine body must not also call it
+    directly, which would run the same writes on the loop.
+    """
+    nested = [n for n in ast.walk(coro) if isinstance(n, ast.FunctionDef)]
+    nested_lines: set[int] = set()
+    for d in nested:
+        nested_lines.update(range(d.lineno, (d.end_lineno or d.lineno) + 1))
+    dispatched: set[str] = set()
+    called_on_loop: set[str] = set()
+    for sub in ast.walk(coro):
+        if not isinstance(sub, ast.Call):
+            continue
+        if _call_name(sub) in _DISPATCHERS:
+            dispatched.update(a.id for a in sub.args if isinstance(a, ast.Name))
+        elif isinstance(sub.func, ast.Name) and sub.lineno not in nested_lines:
+            called_on_loop.add(sub.func.id)
+    offloaded: set[int] = set()
+    for d in nested:
+        if d.name in dispatched and d.name not in called_on_loop:
+            offloaded.update(range(d.lineno, (d.end_lineno or d.lineno) + 1))
+    return offloaded
+
+
+def _offenders(tree: ast.Module | None = None) -> list[tuple[str, int, str]]:
     """(coroutine, line, callee) for every write entry ON the loop."""
     out: list[tuple[str, int, str]] = []
-    for node in ast.walk(_module()):
+    for node in ast.walk(tree if tree is not None else _module()):
         if not isinstance(node, ast.AsyncFunctionDef):
             continue
-        # Lines belonging to a nested SYNC def are off the loop: that is the
-        # `def _sync(): ...; await asyncio.to_thread(_sync)` idiom.
-        offloaded: set[int] = set()
-        for inner in ast.walk(node):
-            if isinstance(inner, ast.FunctionDef):
-                offloaded.update(
-                    range(inner.lineno, (inner.end_lineno or inner.lineno) + 1)
-                )
+        offloaded = _offloaded_lines(node)
         for sub in ast.walk(node):
             if not isinstance(sub, ast.Call):
                 continue
@@ -111,6 +148,54 @@ def test_the_premise_still_holds() -> None:
     )
 
 
+def test_offload_requires_dispatch_not_just_a_nested_def() -> None:
+    """A nested def only counts as off the loop when it is dispatched.
+
+    The earlier version of ``_offenders`` treated every line inside a
+    nested sync def as offloaded, so `rows = _sync()` (the dispatch
+    dropped) passed this file. These shapes pin the rule.
+    """
+    src = """
+async def direct():
+    def _sync():
+        with _write("x") as con:
+            return con
+    return _sync()
+
+async def dispatched():
+    def _sync():
+        with _write("x") as con:
+            return con
+    return await _off_loop(_sync)
+
+async def to_thread_dispatched():
+    def _sync():
+        return submit_answer("db")
+    return await asyncio.to_thread(_sync)
+
+async def dispatched_and_called():
+    def _sync():
+        return speak_pushes.prepare_reping("db")
+    _sync()
+    return await _off_loop(_sync)
+"""
+    offenders = {name for name, _line, _entry in _offenders(ast.parse(src))}
+    assert offenders == {"direct", "dispatched_and_called"}, offenders
+
+
+def test_the_real_module_dispatches_its_nested_defs() -> None:
+    """Premise for the rule above: the migrated routes are recognised as
+    dispatched, so the guard's zero comes from dispatch, not from an empty
+    walk."""
+    coros = [n for n in ast.walk(_module()) if isinstance(n, ast.AsyncFunctionDef)]
+    with_dispatch = [c.name for c in coros if _offloaded_lines(c)]
+    assert len(with_dispatch) >= 24, (
+        f"only {len(with_dispatch)} coroutines dispatch a nested def; 28 did "
+        "when this was written (18 migrated authenticated routes, the 6 "
+        "unauthenticated ones, the 4 two-hop handlers)"
+    )
+
+
 def test_two_hop_entries_really_take_the_write_lock() -> None:
     """Premise: every _TWO_HOP_WRITE_ENTRIES name really reaches connect_write.
 
@@ -121,9 +206,10 @@ def test_two_hop_entries_really_take_the_write_lock() -> None:
     """
     from substrate.speak import async_interview, pushes
 
-    owners = {
+    owners: dict[str, Callable[..., Any]] = {
         "submit_answer": async_interview.submit_answer,
         "next_followups": async_interview.next_followups,
+        "decline": async_interview.decline,
         "list_private_repings_at": pushes.list_private_repings_at,
         "prepare_reping": pushes.prepare_reping,
     }
