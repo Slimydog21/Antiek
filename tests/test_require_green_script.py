@@ -3,7 +3,9 @@
 Exercised end to end against a fake ``gh`` on PATH (no network, no token):
 every exit code the two callers branch on (0 green / 1 not yet / 3 cannot
 verify), the newest-run-wins rule for a re-run context, the three repo
-spellings, and — because the CI gate job once called a script it had never
+spellings, the ``--wait`` bounded-poll mode the ansible playbook uses
+(poll-until-green, budget expiry, failure fast-fail, exits 3/4 staying
+immediate), and — because the CI gate job once called a script it had never
 checked out and read the resulting exit 127 as "not green yet" — a
 structural guard on the workflow that calls it.
 """
@@ -51,7 +53,16 @@ case "$cmd" in
         jq -r "$jqexpr" < "$FAKE_GH_COMPARE" ;;
       *)
         [ "${FAKE_GH_API_RC:-0}" -eq 0 ] || exit "${FAKE_GH_API_RC}"
-        jq -r "$jqexpr" < "$FAKE_GH_CHECKRUNS" ;;
+        runsfile="$FAKE_GH_CHECKRUNS"
+        if [ -n "${FAKE_GH_CHECKRUNS_DIR:-}" ]; then
+          # Sequenced responses for --wait tests: serve N.json on the Nth
+          # check-runs call (the call above was already logged), then
+          # last.json once the sequence is exhausted.
+          n=$(grep -c 'check-runs' "${FAKE_GH_CALLS}")
+          runsfile="$FAKE_GH_CHECKRUNS_DIR/$n.json"
+          [ -f "$runsfile" ] || runsfile="$FAKE_GH_CHECKRUNS_DIR/last.json"
+        fi
+        jq -r "$jqexpr" < "$runsfile" ;;
     esac
     ;;
   *) exit 2 ;;
@@ -61,10 +72,11 @@ esac
 
 def _run(tmp_path: Path, runs: list[dict], *, repo="Slimydog21/Antiek", sha=SHA,
          auth_rc=0, api_rc=0, with_gh=True, compare_status="identical",
-         compare_rc=0) -> tuple[int, str, str, list[str]]:
+         compare_rc=0, extra_args: list[str] | None = None,
+         env_extra: dict[str, str] | None = None) -> tuple[int, str, str, list[str]]:
     binw = tmp_path / "bin"
     binw.mkdir(exist_ok=True)
-    for tool in ("bash", "sed", "awk", "jq"):
+    for tool in ("bash", "sed", "awk", "jq", "grep", "date", "sleep"):
         real = shutil.which(tool)
         assert real, tool
         link = binw / tool
@@ -89,8 +101,9 @@ def _run(tmp_path: Path, runs: list[dict], *, repo="Slimydog21/Antiek", sha=SHA,
         "FAKE_GH_COMPARE_RC": str(compare_rc),
         "FAKE_GH_CALLS": str(calls),
         "HOME": str(tmp_path),
+        **(env_extra or {}),
     }
-    p = subprocess.run([str(binw / "bash"), str(SCRIPT), repo, sha],
+    p = subprocess.run([str(binw / "bash"), str(SCRIPT), repo, sha, *(extra_args or [])],
                        capture_output=True, text=True, env=env, cwd=ROOT)
     return p.returncode, p.stdout, p.stderr, calls.read_text().split()
 
@@ -202,6 +215,87 @@ def test_all_green_commit_not_on_main_exits_4(tmp_path, status):
 def test_compare_failure_exits_3(tmp_path):
     rc, _, err, _ = _run(tmp_path, _green(), compare_rc=1)
     assert rc == 3 and "cannot compare" in err
+
+
+# ── --wait: bounded polling for the deploy-time merge race ──
+# The ansible playbook resolves main's tip AT DEPLOY TIME, so it can race a
+# merge that landed after the workflow's gate job passed; the new tip's
+# contexts are still pending. --wait turns that transient pending into a
+# bounded poll instead of an instant red run. Poll interval is injected via
+# REQUIRE_GREEN_POLL_SECONDS so these tests don't sleep 30s.
+
+def _pending_vitest() -> list[dict]:
+    runs = _green()
+    runs[1] = {"name": "vitest", "status": "in_progress", "conclusion": None, "started_at": "2026-09-22T20:00:00Z"}
+    return runs
+
+
+def _seq_dir(tmp_path: Path, payloads: list[list[dict]]) -> str:
+    d = tmp_path / "seq"
+    d.mkdir(exist_ok=True)
+    for i, runs in enumerate(payloads, start=1):
+        (d / f"{i}.json").write_text(json.dumps({"check_runs": runs}))
+    (d / "last.json").write_text(json.dumps({"check_runs": payloads[-1]}))
+    return str(d)
+
+
+def _check_calls(calls: list[str]) -> list[str]:
+    return [c for c in calls if "check-runs" in c]
+
+
+def test_wait_repolls_until_green_then_exits_0(tmp_path):
+    seq = _seq_dir(tmp_path, [_pending_vitest(), _pending_vitest(), _green()])
+    rc, out, _, calls = _run(tmp_path, _green(), extra_args=["--wait", "300"],
+                             env_extra={"FAKE_GH_CHECKRUNS_DIR": seq,
+                                        "REQUIRE_GREEN_POLL_SECONDS": "1"})
+    assert rc == 0, out
+    assert len(_check_calls(calls)) == 3  # two pending polls, then green
+    assert "all 8 required contexts are success" in out
+
+
+def test_wait_budget_expires_still_pending_exits_1(tmp_path):
+    rc, out, err, calls = _run(tmp_path, _pending_vitest(), extra_args=["--wait", "2"],
+                               env_extra={"REQUIRE_GREEN_POLL_SECONDS": "1"})
+    assert rc == 1
+    assert "NOT deployable" in out
+    assert "giving up" in err
+    assert len(_check_calls(calls)) >= 2  # it really polled, not instant
+
+
+def test_wait_fails_fast_on_a_terminal_failure(tmp_path):
+    runs = _green()
+    runs[4]["conclusion"] = "failure"
+    rc, out, err, calls = _run(tmp_path, runs, extra_args=["--wait", "300"],
+                               env_extra={"REQUIRE_GREEN_POLL_SECONDS": "1"})
+    assert rc == 1
+    assert "NOT GREEN: 'pytest shard 0 of 4' => failure" in out
+    assert "waiting cannot help" in err
+    assert len(_check_calls(calls)) == 1  # no point waiting on a failure
+
+
+def test_wait_never_polls_exit_3(tmp_path):
+    rc, _, err, calls = _run(tmp_path, _green(), api_rc=1, extra_args=["--wait", "300"],
+                             env_extra={"REQUIRE_GREEN_POLL_SECONDS": "1"})
+    assert rc == 3 and "query failed" in err
+    assert len(_check_calls(calls)) == 1  # cannot verify: immediate
+
+
+@pytest.mark.parametrize("status", ["behind", "diverged"])
+def test_wait_never_polls_exit_4(tmp_path, status):
+    rc, _, err, calls = _run(tmp_path, _green(), compare_status=status,
+                             extra_args=["--wait", "300"],
+                             env_extra={"REQUIRE_GREEN_POLL_SECONDS": "1"})
+    assert rc == 4 and "not on main" in err
+    assert not _check_calls(calls)  # refused before any check-runs call
+
+
+def test_no_wait_still_exits_1_immediately_when_pending(tmp_path):
+    # The default path (workflow gate job, manual/runbook) is unchanged:
+    # one poll, instant exit 1.
+    rc, out, _, calls = _run(tmp_path, _pending_vitest())
+    assert rc == 1
+    assert "NOT GREEN: 'vitest' => pending" in out
+    assert len(_check_calls(calls)) == 1
 
 
 # ── the workflow that calls it ──

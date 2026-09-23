@@ -79,9 +79,19 @@
       # here, before anything on the box changes. `antiek_force_deploy=true`
       # is the explicit, logged emergency override — mirrors deploy_backend's
       # `force` input — and defaults to false.
+      #
+      # --wait 900 cures the two-gate merge race: this playbook resolves
+      # main's tip at DEPLOY time, so a merge landing after the workflow's
+      # gate job passed leaves this task checking a NEW sha whose required
+      # contexts are still pending — which used to red the whole run
+      # (observed 2026-09-24: runs 35916451078 and 35920220639). Wait up to
+      # 15 min for those pending contexts instead (deploy job timeout is 40
+      # min; frontend build + rsync take ~10). Fail-closed is unchanged:
+      # exit 3/4 stay immediate and a failed context fails fast.
       ansible.builtin.command:
         cmd: >-
           bash {{ playbook_dir }}/../../../tools/deploy/require_green.sh
+          --wait 900
           {{ antiek_repo_url }} {{ antiek_target_sha }}
       delegate_to: localhost
       become: false
