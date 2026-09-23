@@ -176,6 +176,17 @@ describe("C13 — a server rejection is not 'saved to local'", () => {
     await waitFor(() => expect(screen.getByText("saved to local")).toBeTruthy());
   });
 
+  // The substrate implements PUT /notebooks/{id}/content, so a 405 or 501 is
+  // never its refusal: the host that answered is not the substrate (a static
+  // host, a proxy, a wrong base URL). That is the offline class. The e2e
+  // smoke and operator-day specs run the editor against exactly such a host
+  // (Storybook's static server) and pin "saved to local".
+  it.each([405, 501])("CONTROL: HTTP %i (host is not the substrate) reads 'saved to local'", async (status) => {
+    await saveWith({ ok: false, status });
+    await waitFor(() => expect(screen.getByText("saved to local")).toBeTruthy());
+    expect(screen.queryByText(/^not saved/)).toBeNull();
+  });
+
   it("CONTROL: a 200 reads 'saved'", async () => {
     await saveWith({ ok: true, status: 200 });
     await waitFor(() => expect(screen.getByText("saved")).toBeTruthy());

@@ -59,11 +59,13 @@ type Stored = { html: string; etag: number };
 
 // PUT statuses that mean the substrate was NOT reached (or holds no row for
 // this notebook: scratch / claim-* notebooks are local-only), so the draft
-// saved to localStorage is the honest outcome. Every other non-2xx is the
-// server REFUSING the save (401/403 auth, 409 guard, 422 invalid, 500) and
-// must never read as "saved to local". Allowlist: an unlisted status fails
-// toward "not saved".
-const PUT_OFFLINE_STATUSES: ReadonlySet<number> = new Set([404, 502, 503, 504]);
+// saved to localStorage is the honest outcome. 405/501 belong here too: the
+// substrate implements this PUT, so "method not allowed / not implemented"
+// means whatever answered is not the substrate (a static host, a proxy, a
+// wrong base URL). Every other non-2xx is the server REFUSING the save
+// (401/403 auth, 409 guard, 422 invalid, 500) and must never read as "saved
+// to local". Allowlist: an unlisted status fails toward "not saved".
+const PUT_OFFLINE_STATUSES: ReadonlySet<number> = new Set([404, 405, 501, 502, 503, 504]);
 
 function rejectedLabel(status: number): string {
   if (status === 401 || status === 403) return "not saved — sign in again";
