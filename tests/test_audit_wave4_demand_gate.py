@@ -161,6 +161,63 @@ def test_registry_records_the_exporter_and_the_event_carries_it():
         reg.record_export("doc-1", doc, exporter_id="  ")
 
 
+# Exporter attribution is per exported CONTENT, not per document: a tester
+# re-importing the operator's exact bytes is the operator's export coming back,
+# not "exported by a non-operator" (REWORK: the registry keyed exporters by
+# document_id only, so t1 having exported some other version laundered it).
+_VERSION_A = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "A"}]}]}
+_VERSION_B = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "B"}]}]}
+_VERSION_C = {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "C"}]}]}
+
+
+def _two_version_registry():
+    reg = ExportRegistry()
+    reg.record_export("d", _VERSION_A, exporter_id="tester-1")
+    reg.record_export("d", _VERSION_B, exporter_id=OP)
+    return reg
+
+
+def test_unmodified_reimport_of_the_operators_export_does_not_sustain():
+    rt = classify_roundtrip("d", _VERSION_B, _two_version_registry(), user_id="tester-2")
+    assert rt.classification == "returned_unmodified"
+    assert rt.event is not None and rt.event["exported_by"] == [OP]
+    assert _verdict([{**rt.event, "emitted_at": IN}]).verdict == RETIRE
+
+
+def test_unmodified_reimport_of_a_testers_export_is_attributed_to_that_tester():
+    # Positive control on the same registry: the tester's own bytes coming back
+    # are attributed to that tester alone and still sustain.
+    rt = classify_roundtrip("d", _VERSION_A, _two_version_registry(), user_id="tester-2")
+    assert rt.classification == "returned_unmodified"
+    assert rt.event is not None and rt.event["exported_by"] == ["tester-1"]
+    assert _verdict([{**rt.event, "emitted_at": IN}]).verdict == SUSTAIN
+
+
+def test_changed_reimport_with_an_operator_among_the_exporters_does_not_sustain():
+    # Edited bytes match no export, so the source is ambiguous: every exporter of
+    # the document rides along, and an operator among them refuses the signal.
+    rt = classify_roundtrip("d", _VERSION_C, _two_version_registry(), user_id="tester-2")
+    assert rt.classification == "traveled_and_changed"
+    assert rt.event is not None and rt.event["exported_by"] == [OP, "tester-1"]
+    assert _verdict([{**rt.event, "emitted_at": IN}]).verdict == RETIRE
+
+
+@pytest.mark.parametrize("operator_variant", [OP, "OPERATOR", " operator "])
+def test_roundtrip_exported_by_a_tester_and_the_operator_does_not_count(operator_variant):
+    v = _verdict([_rt("tester-3", exported_by=("tester-2", operator_variant))])
+    assert v.verdict == RETIRE and v.counts["organic_roundtrip"] == 0
+
+
+def test_tester_set_cannot_pad_n_with_spellings_of_one_id():
+    variants = frozenset({"alice", "Alice", "ALICE", " alice", "alice "})
+    assert len(variants) == 5  # meets N >= 5 on raw strings
+    # One real person, fully instrumented, "round-tripping" to herself: without
+    # the collision check this is a SUSTAIN from a panel of one.
+    events = [{**OFFERED, "user_id": "alice"}, _rt("Alice", exported_by=("alice",))]
+    with pytest.raises(analysis.GateNotRunnable, match="variants"):
+        _verdict(events, tester_ids=variants)
+
+
 def test_builder_rejects_a_blank_actor():
     with pytest.raises(ValueError):
         build_re_import_detected("d", "returned_unmodified", "h", user_id="")

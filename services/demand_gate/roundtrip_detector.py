@@ -56,12 +56,15 @@ class ExportRegistry:
     """What Antiek has exported, and BY WHOM, so a re-import is classifiable
     mechanically and "exported by a non-operator" (pre-registered criterion 1)
     is checkable. Keyed document_id -> set of exported content hashes, plus
-    document_id -> set of exporter ids. In-memory only: no production caller
-    persists it yet. Storage-agnostic + deterministic so it is unit-testable."""
+    exporter ids per (document_id, content_hash): WHO exported WHICH bytes, so
+    an unmodified re-import is attributed to the exporters of exactly that
+    content, not to everyone who ever exported some version of the document.
+    In-memory only: no production caller persists it yet. Storage-agnostic +
+    deterministic so it is unit-testable."""
 
     def __init__(self) -> None:
         self._by_doc: dict[str, set[str]] = {}
-        self._exporters: dict[str, set[str]] = {}
+        self._exporters: dict[tuple[str, str], set[str]] = {}
 
     def record_export(self, document_id: str, content_tiptap: dict, *, exporter_id: str) -> str:
         """Record an export by ``exporter_id``; returns the content hash recorded.
@@ -70,11 +73,18 @@ class ExportRegistry:
             raise ValueError("record_export requires a non-blank exporter_id")
         h = content_hash(content_tiptap)
         self._by_doc.setdefault(document_id, set()).add(h)
-        self._exporters.setdefault(document_id, set()).add(exporter_id)
+        self._exporters.setdefault((document_id, h), set()).add(exporter_id)
         return h
 
-    def exporters_of(self, document_id: str) -> list[str]:
-        return sorted(self._exporters.get(document_id, set()))
+    def exporters_of(self, document_id: str, hash_: str | None = None) -> list[str]:
+        """Exporters of that exact content when ``hash_`` is given; otherwise
+        everyone who exported ANY version of the document (the only honest
+        answer when the source export is ambiguous)."""
+        if hash_ is not None:
+            return sorted(self._exporters.get((document_id, hash_), set()))
+        return sorted(
+            {x for (doc, _), ids in self._exporters.items() if doc == document_id for x in ids}
+        )
 
     def knows_document(self, document_id: str) -> bool:
         return document_id in self._by_doc
@@ -94,17 +104,26 @@ def classify_roundtrip(
     """Classify a re-imported artifact against the export registry.
 
     ``user_id`` is WHO re-imported it and rides on the event, with the
-    document's exporters (``exported_by``) and the detection time
-    (``emitted_at``, default now): the verdict admits a round-trip only when
-    both actors are pinned testers and the time is inside the window (see
-    ``compute_verdict``)."""
+    exporters (``exported_by``) and the detection time (``emitted_at``,
+    default now): the verdict admits a round-trip only when both actors are
+    pinned testers and the time is inside the window (see
+    ``compute_verdict``).
+
+    ``exported_by`` is the exporters of the matched content for
+    ``returned_unmodified``. For ``traveled_and_changed`` the source export is
+    ambiguous (the edited bytes match no export), so it is every exporter of
+    the document; the verdict refuses such a round-trip if any of them is the
+    operator."""
     h = content_hash(content_tiptap)
     if registry.knows_exact(document_id, h):
         classification = "returned_unmodified"
+        exported_by = registry.exporters_of(document_id, h)
     elif registry.knows_document(document_id):
         classification = "traveled_and_changed"
+        exported_by = registry.exporters_of(document_id)
     else:
         classification = "novel"
+        exported_by = []
 
     is_roundtrip = classification != "novel"
     event: dict | None = None
@@ -115,7 +134,7 @@ def classify_roundtrip(
             "classification": classification,
             "content_hash": h,
             "user_id": user_id,
-            "exported_by": registry.exporters_of(document_id),
+            "exported_by": exported_by,
             "emitted_at": (emitted_at or datetime.now(UTC)).isoformat(),
         }
     return RoundTripResult(
