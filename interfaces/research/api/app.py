@@ -428,9 +428,11 @@ def _probe_graph_duckdb() -> DuckDBHealth:
 
 class InvestigationStartRequest(BaseModel):
     """POST body for ``/investigations``. Operator-facing cold-question
-    entry point. ``investigation_id`` is auto-generated when omitted —
-    use a stable id when retrying the same question for backtest
-    correlation.
+    entry point. ``investigation_id`` is auto-generated when omitted. A known
+    id is an idempotent replay of that start, not a new run: the same body
+    returns the ORIGINAL ``start_event_id`` and runs nothing (so polling reads
+    the earlier run's result), and a different body is 409
+    ``investigation_id_conflict``. To ask the same question again, omit the id.
 
     Sprint 11: ``parent_investigation_id`` + ``spawn_context`` are
     optional metadata for the web app's highlight-to-chase mechanic.
