@@ -191,6 +191,13 @@ def accrue_reading_session(
     revenue_cents = total_revenue_cents(book_imps)
     attention = sum(1 for i in book_imps if i.counted_attention)
 
+    # documents.ip_holder_id has no FK. A dangling id would make accrue_escrow
+    # raise AFTER the payouts ledger below was written (a partial accrual), so
+    # check the holder before ANY write, as the other escrow writers do.
+    holder_id = _resolve_ip_holder(con, document_id)
+    if holder_id is not None and revenue_cents > 0:
+        ip_holders.require_holders(con, {holder_id})
+
     # SPR-06 (arxiv-ingest) — additive internal author-attribution hook.
     # For a T1 arXiv paper, ALSO accrue this session's ad revenue to the
     # INTERNAL (arxiv_id, author_position) payouts ledger (an additive
@@ -212,7 +219,6 @@ def accrue_reading_session(
         impression_ids=sorted(i.impression_id for i in book_imps),
     )
 
-    holder_id = _resolve_ip_holder(con, document_id)
     unattributed = holder_id is None
     bucket = holder_id if holder_id is not None else UNATTRIBUTED_RIGHTS_BUCKET
 
