@@ -83,7 +83,11 @@ def refusal_counts() -> dict[str, dict[int, int]]:
     """Per-host 401/402/403 refusal counts seen by fetch() in this process, as
     ``{host: {status: n}}``. In-process only: nothing is written to DuckDB, so
     the single-writer invariant is untouched. A host that starts refusing is
-    coverage silently lost; this is where it becomes a number."""
+    coverage silently lost. The WARNING line fetch() logs for each refusal,
+    with the running per-host total, is what an operator can see today. Nothing
+    exports this count as a metric: no production code reads it, and the tree
+    has no metrics sink yet (runtime/monitoring describes a planned one). It
+    resets when the process restarts."""
     with _refusals_lock:
         out: dict[str, dict[int, int]] = {}
         for (host, status), n in _refusals.items():
