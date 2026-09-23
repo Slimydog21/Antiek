@@ -213,6 +213,82 @@ def test_ingest_explicit_title_used(temp_substrate):
     assert r.title == "My research thought"
 
 
+class _Refused(Exception):
+    pass
+
+
+def _voice_rows(db_path: str) -> dict[str, int]:
+    from runtime.db_lock import connect_write
+
+    with connect_write(db_path, purpose="test:voice-rows") as con:
+        return {t: int(con.execute(f"SELECT count(*) FROM {t}").fetchone()[0])
+                for t in ("documents", "chunks", "nodes")}
+
+
+def _loaded_events(events_dir: str, investigation_id: str) -> list[str]:
+    path = os.path.join(events_dir, f"{investigation_id}.jsonl")
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as fh:
+        return [ln for ln in fh if '"document.loaded"' in ln]
+
+
+@pytest.mark.parametrize("transcript,min_words", [
+    (_LONG_TRANSCRIPT, 8), ("two words", 8),
+])
+def test_write_guard_refusal_leaves_nothing(temp_substrate, transcript, min_words):
+    """A guard that refuses under the ingest's lock leaves no event,
+    document, chunk or node: the check a caller passes here is the last
+    word, even for a note too short to store."""
+    from substrate.graph import ensure_initialized
+
+    ensure_initialized(temp_substrate["db_path"])
+    before = _voice_rows(temp_substrate["db_path"])
+    seen: list[object] = []
+
+    def _refuse(con: object) -> None:
+        seen.append(con)
+        raise _Refused
+
+    with pytest.raises(_Refused):
+        ingest_voice_note(
+            transcript, investigation_id="inv-voice-guard",
+            db_path=temp_substrate["db_path"], embedder=_StubEmbedder(),
+            min_word_count=min_words, write_guard=_refuse,
+        )
+    assert len(seen) == 1
+    assert _voice_rows(temp_substrate["db_path"]) == before
+    assert _loaded_events(temp_substrate["events_dir"], "inv-voice-guard") == []
+
+
+@pytest.mark.parametrize("transcript,min_words,chunks", [
+    (_LONG_TRANSCRIPT, 8, True), ("two words", 8, False),
+])
+def test_guard_pass_then_after_write_under_one_lock(
+    temp_substrate, transcript, min_words, chunks,
+):
+    """A passing guard writes the note (event included); ``after_write``
+    sees the finished result on the same locked connection the guard saw."""
+    cons: list[object] = []
+    results: list[object] = []
+
+    def _after(con: object, res: object) -> None:
+        cons.append(con)
+        results.append(res)
+
+    r = ingest_voice_note(
+        transcript, investigation_id="inv-voice-hooks",
+        db_path=temp_substrate["db_path"], embedder=_StubEmbedder(),
+        min_word_count=min_words, write_guard=cons.append, after_write=_after,
+    )
+    assert len(cons) == 2 and cons[0] is cons[1]
+    assert results == [r]
+    assert r.document_loaded_event_id is not None
+    assert bool(r.chunk_ids) is chunks
+    assert (r.skipped_reason is None) is chunks
+    assert len(_loaded_events(temp_substrate["events_dir"], "inv-voice-hooks")) == 1
+
+
 # ─────────────────────────────────────────────────────────────────────
 # 3. transcribe_and_ingest (end-to-end with stub)
 # ─────────────────────────────────────────────────────────────────────

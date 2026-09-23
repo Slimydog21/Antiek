@@ -30,6 +30,7 @@ path that distills the raw transcript behind the corrected one.
 
 from __future__ import annotations
 
+import functools
 import json
 import uuid
 from collections.abc import Callable
@@ -38,7 +39,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 # Reused, NOT forked: the voice substrate + interviewer role.
-from acquisition.voice import ingest_voice_note  # noqa: E402
+from acquisition.voice import IngestVoiceNoteResult, ingest_voice_note  # noqa: E402
 from orchestration.interview.orchestrator import ConsentRequired
 from runtime.db_lock import connect_read, connect_write
 
@@ -302,11 +303,15 @@ def submit_answer(
     (the existing gate; SPR-01's ``record`` scope sets it). Raises
     ``ConsentRequired`` otherwise.
 
+    The voice-note ingest and the answer turn are written under ONE lock
+    (the ingest's), so an answer lands whole or not at all.
+
     ``door_token`` is the invite token of an invitee-driven answer. When
-    given, the door is re-checked under the lock that gates the ingest and
-    again under the lock that records the turn (``require_open_door``), so a
-    takedown that lands after the caller resolved the token still stops the
-    answer; ``InviteDoorClosed`` is raised.
+    given, the door is checked with the consent gate and again under the
+    ingest's lock before anything is written (``require_open_door`` as the
+    ingest's ``write_guard``), so a takedown that lands after the caller
+    resolved the token raises ``InviteDoorClosed`` and leaves no document,
+    chunk, node, event or turn behind.
 
     ``transcript`` is the text to distill — pass the CORRECTED text.
     Distillation (note-taking over the voice note) happens inside
@@ -330,6 +335,25 @@ def submit_answer(
                 "consent (SPR-01 'record' scope) before submitting answers"
             )
 
+    # Runs under the ingest's lock, before its first write: a takedown that
+    # landed since the check above refuses the answer with nothing written.
+    door_still_open = (
+        functools.partial(require_open_door, token=door_token, interview_id=interview_id)
+        if door_token is not None else None
+    )
+
+    def _record_turn(con: Any, ingest: IngestVoiceNoteResult) -> None:
+        # Runs under the same lock, after the ingest wrote the note.
+        turns = _load_turns(con, interview_id)
+        turns.append({
+            "role": "informant",
+            "text": transcript,
+            "ts": _now_iso(),
+            "question_id": question_id,
+            "document_id": ingest.document_id,
+        })
+        _save_turns(con, interview_id, turns, status="in_progress")
+
     # ingest_voice_note acquires its OWN write lock — do it OUTSIDE ours.
     ingest = ingest_voice_note(
         transcript,
@@ -340,24 +364,9 @@ def submit_answer(
         db_path=db_path,
         embedder=embedder,
         min_word_count=min_word_count,
+        write_guard=door_still_open,
+        after_write=_record_turn,
     )
-
-    # Now record the answer turn under our own (sequential) lock.
-    with connect_write(db_path, purpose="speak/async_interview.answer") as con:
-        if door_token is not None:
-            # A takedown that landed during the ingest keeps the turn out of
-            # the transcript. The voice-note document the ingest already
-            # wrote stays, like an answer submitted just before a takedown.
-            require_open_door(con, door_token, interview_id)
-        turns = _load_turns(con, interview_id)
-        turns.append({
-            "role": "informant",
-            "text": transcript,
-            "ts": _now_iso(),
-            "question_id": question_id,
-            "document_id": ingest.document_id,
-        })
-        _save_turns(con, interview_id, turns, status="in_progress")
 
     return AnswerResult(
         interview_id=interview_id,

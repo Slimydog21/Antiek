@@ -440,3 +440,107 @@ def test_door_guard_holds_inside_the_substrate_write(db_path: str) -> None:
     assert _turns(db_path, inv.interview_id, "informant") == []
     assert _documents_mentioning(db_path, "borrowed door") == 0
     assert _documents_mentioning(db_path, "words after the takedown") == 0
+
+
+# ---------------------------------------------------------------------------
+# Race inside submit_answer: its door check and the voice-note ingest used to
+# take separate locks, so a takedown landing between them was only noticed
+# AFTER ingest_voice_note had written the answer's document, chunks and
+# nodes. The route then answered 404 while the substrate kept the refused
+# transcript. The door is now checked under the ingest's own lock, and the
+# answer turn is recorded under that same lock, so an answer either lands
+# whole (document + turn) or leaves nothing behind.
+# ---------------------------------------------------------------------------
+
+_RACE_WORDS = "words the takedown caught at the ingest"
+
+
+class _RaceTranscriber:
+    def transcribe(self, audio: bytes, **_: object) -> str:
+        return _RACE_WORDS
+
+
+def _post_answer(client: TestClient, token: str, route: str) -> Any:
+    if route == "answer":
+        return client.post(f"/speak/invite/{token}/answer",
+                           json={"question_id": "q1", "transcript": _RACE_WORDS})
+    return client.post(
+        f"/speak/invite/{token}/voice", params={"question_id": "q1"},
+        content=b"audio", headers={"content-type": "audio/webm"},
+    )
+
+
+def _substrate_counts(db_path: str) -> dict[str, int]:
+    with connect_write(db_path, purpose="test:counts") as con:
+        return {t: int(con.execute(f"SELECT count(*) FROM {t}").fetchone()[0])
+                for t in ("documents", "chunks", "nodes")}
+
+
+def _document_loaded_events(db_path: str, pid: str, interview_id: str) -> list[str]:
+    path = os.path.join(os.path.dirname(db_path), "events", f"{pid}.jsonl")
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as fh:
+        return [ln for ln in fh if '"document.loaded"' in ln and interview_id in ln]
+
+
+@pytest.mark.parametrize("route", ["answer", "voice"])
+def test_takedown_between_door_check_and_ingest_leaves_no_document(
+    client: TestClient, db_path: str, monkeypatch: pytest.MonkeyPatch, route: str,
+) -> None:
+    """The reviewer's reproduction: a committed takedown lands after
+    submit_answer's first door check, at the entry of the real ingest. The
+    refusal must leave no document, chunk, node, turn or document_loaded
+    event behind."""
+    subject = "the-dad"
+    pid, token, interview_id = _consented_open_token(client, subject)
+    monkeypatch.setattr(speak_routes, "_INVITEE_TRANSCRIBER", _RaceTranscriber())
+    real_ingest = async_interview.ingest_voice_note
+
+    def _takedown_then_ingest(*args: Any, **kwargs: Any) -> Any:
+        _take_down_now(db_path, pid, subject)
+        return real_ingest(*args, **kwargs)
+
+    monkeypatch.setattr(async_interview, "ingest_voice_note", _takedown_then_ingest)
+    before = _substrate_counts(db_path)
+
+    r = _post_answer(client, token, route)
+
+    assert r.status_code == 404, r.text
+    assert _RACE_WORDS not in r.text and subject not in r.text
+    assert _turns(db_path, interview_id, "informant") == []
+    assert _documents_mentioning(db_path, _RACE_WORDS) == 0
+    assert _substrate_counts(db_path) == before
+    assert _document_loaded_events(db_path, pid, interview_id) == []
+
+
+@pytest.mark.parametrize("route", ["answer", "voice"])
+def test_answer_document_and_turn_land_together(
+    client: TestClient, db_path: str, monkeypatch: pytest.MonkeyPatch, route: str,
+) -> None:
+    """The other side of the same window: a takedown landing just AFTER the
+    ingest wrote the document. That answer went through an open door, so it
+    completes (turn recorded, 201) instead of answering 404 while its
+    document stays in the substrate. A refusal never leaves a document."""
+    subject = "the-dad"
+    pid, token, interview_id = _consented_open_token(client, subject)
+    monkeypatch.setattr(speak_routes, "_INVITEE_TRANSCRIBER", _RaceTranscriber())
+    real_ingest = async_interview.ingest_voice_note
+
+    def _ingest_then_takedown(*args: Any, **kwargs: Any) -> Any:
+        result = real_ingest(*args, **kwargs)
+        _take_down_now(db_path, pid, subject)
+        return result
+
+    monkeypatch.setattr(async_interview, "ingest_voice_note", _ingest_then_takedown)
+
+    r = _post_answer(client, token, route)
+
+    docs = _documents_mentioning(db_path, _RACE_WORDS)
+    turns = _turns(db_path, interview_id, "informant")
+    assert (r.status_code, docs, len(turns)) == (201, 1, 1), (r.status_code, r.text)
+    assert turns[0]["document_id"] == r.json()["document_id"]
+    # The event probe used by the refusal test sees an accepted answer.
+    assert len(_document_loaded_events(db_path, pid, interview_id)) == 1
+    # The takedown still closes the door for everything after it.
+    assert client.get(f"/speak/invite/{token}").status_code == 404
