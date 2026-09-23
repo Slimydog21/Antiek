@@ -8,7 +8,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict
 
-from runtime.connectors.base import KeyShapeError
+from runtime.connectors.base import KeyShapeError, RateSpec
 from runtime.connectors.quota_meter import QuotaMeter
 from runtime.connectors.registry import (
     ToolConnectionIntegrityError,
@@ -17,6 +17,7 @@ from runtime.connectors.registry import (
     connect_tool,
     disconnect_tool,
     list_tool_connections,
+    tool_catalog,
 )
 from runtime.connectors.x_twitter import (
     SEARCH_MAX_RESULTS,
@@ -74,7 +75,7 @@ class ToolQuotaResponse(BaseModel):
 
 class ToolConnectionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    vendor: Literal["youtube", "x", "polygon", "fmp", "edgar"]
+    vendor: Literal["youtube", "x", "polygon", "fmp", "edgar", "fred", "alpha_vantage"]
     display_name: str
     credential_kind: Literal["api_key", "contact"]
     auth: str
@@ -97,7 +98,7 @@ class ToolConnectionsResponse(BaseModel):
 
 class ToolDisconnectResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    removed: Literal["youtube", "x", "polygon", "fmp", "edgar"]
+    removed: Literal["youtube", "x", "polygon", "fmp", "edgar", "fred", "alpha_vantage"]
 
 
 def _owner(request: Request) -> str:
@@ -142,14 +143,17 @@ def _quota(snapshot: ToolConnectionSnapshot, owner_user_id: str) -> ToolQuotaRes
         )
     if snapshot.quota_kind == "rate_ceiling":
         is_x = snapshot.vendor == "x"
-        limit = 25 if is_x else 8
-        window = "15 minutes" if is_x else "second"
+        rate = _catalog_rate(snapshot.vendor)
+        if rate is None:
+            return ToolQuotaResponse(kind="unavailable", note="No Antiek brake is set for this tool")
+        limit = rate.max_calls
         return ToolQuotaResponse(
             kind="rate_ceiling",
             limit=limit,
             note=(
                 "Antiek's own per-account brake on your key: "
-                f"{limit} requests per {window}. It is not a provider allowance."
+                f"{limit} request{'' if limit == 1 else 's'} per {_window_phrase(rate.window_s)}. "
+                "It is not a provider allowance."
             ),
             estimated_cost_usd=_X_SEARCH_COST_USD if is_x else None,
             cost_note=_X_COST_NOTE if is_x else None,
@@ -158,6 +162,29 @@ def _quota(snapshot: ToolConnectionSnapshot, owner_user_id: str) -> ToolQuotaRes
         kind="unavailable",
         note="Provider quota is not available to Antiek",
     )
+
+
+def _catalog_rate(vendor: str) -> RateSpec | None:
+    """The brake a vendor's connector actually runs, read from the catalog.
+
+    This used to be hardcoded as ``25 if x else 8``, which was true only while
+    X and EDGAR were the two rate-limited vendors; a third would have been
+    shown EDGAR's "8 requests per second" whatever its governor did.
+    """
+    for definition in tool_catalog():
+        if definition.vendor == vendor:
+            return definition.descriptor.rate
+    return None
+
+
+def _window_phrase(window_s: float) -> str:
+    if window_s == 1.0:
+        return "second"
+    if window_s == 60.0:
+        return "minute"
+    if window_s % 60 == 0:
+        return f"{int(window_s // 60)} minutes"
+    return f"{window_s:g} seconds"
 
 
 def _response(snapshot: ToolConnectionSnapshot, owner_user_id: str) -> ToolConnectionResponse:

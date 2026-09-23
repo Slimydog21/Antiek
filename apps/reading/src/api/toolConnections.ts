@@ -1,6 +1,6 @@
 import { API_BASE, apiFetch } from "../lib/api";
 
-export type ToolVendor = "youtube" | "x" | "polygon" | "fmp" | "edgar";
+export type ToolVendor = "youtube" | "x" | "polygon" | "fmp" | "edgar" | "fred" | "alpha_vantage";
 export type ToolConnectionStatus =
   | "unconfigured"
   | "configured_unverified"
@@ -40,7 +40,7 @@ export interface ToolConnection {
   searchable: boolean;
 }
 
-const VENDORS = new Set<ToolVendor>(["youtube", "x", "polygon", "fmp", "edgar"]);
+const VENDORS = new Set<ToolVendor>(["youtube", "x", "polygon", "fmp", "edgar", "fred", "alpha_vantage"]);
 const STATUSES = new Set<ToolConnectionStatus>([
   "unconfigured",
   "configured_unverified",

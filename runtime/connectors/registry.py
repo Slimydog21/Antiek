@@ -28,14 +28,16 @@ from runtime.byok.store import (
     list_credentials,
     store_credential_with_metadata,
 )
+from runtime.connectors.alpha_vantage import ALPHA_VANTAGE_DESCRIPTOR
 from runtime.connectors.base import (
     ConnectorDescriptor,
     KeyShape,
     RateSpec,
     validate_key_shape,
 )
+from runtime.connectors.fred import FRED_DESCRIPTOR
 
-ToolVendor = Literal["youtube", "polygon", "fmp", "edgar", "x"]
+ToolVendor = Literal["youtube", "polygon", "fmp", "edgar", "x", "fred", "alpha_vantage"]
 CredentialKind = Literal["api_key", "contact"]
 ConnectionStatus = Literal["unconfigured", "configured_unverified", "degraded"]
 
@@ -198,8 +200,31 @@ _CATALOG: dict[ToolVendor, ToolDefinition] = {
         quota_kind="rate_ceiling",
         searchable=True,
     ),
+    # Two free, self-serve paste-key vendors that prove the chassis takes a
+    # new vendor without an OAuth app. Born per-owner: resolve_tool_connection
+    # hands each its owner, so its governor window is that user's alone.
+    # Nothing calls either yet, hence searchable=False: "connected, not yet
+    # used", never "configured".
+    "fred": ToolDefinition(
+        vendor="fred",
+        display_name="FRED (St. Louis Fed)",
+        credential_kind="api_key",
+        descriptor=FRED_DESCRIPTOR,
+        quota_kind="rate_ceiling",
+        searchable=False,
+    ),
+    "alpha_vantage": ToolDefinition(
+        vendor="alpha_vantage",
+        display_name="Alpha Vantage",
+        credential_kind="api_key",
+        descriptor=ALPHA_VANTAGE_DESCRIPTOR,
+        quota_kind="rate_ceiling",
+        searchable=False,
+    ),
 }
-_VENDOR_ORDER: tuple[ToolVendor, ...] = ("youtube", "polygon", "fmp", "edgar", "x")
+_VENDOR_ORDER: tuple[ToolVendor, ...] = (
+    "youtube", "polygon", "fmp", "edgar", "x", "fred", "alpha_vantage",
+)
 
 
 def tool_catalog() -> tuple[ToolDefinition, ...]:
@@ -618,6 +643,8 @@ def resolve_tool_connection(
         "polygon": ("acquisition.polygon.client", "PolygonConnector"),
         "fmp": ("acquisition.fmp.client", "FmpConnector"),
         "x": ("runtime.connectors.x_twitter", "XTwitterConnector"),
+        "fred": ("runtime.connectors.fred", "FredConnector"),
+        "alpha_vantage": ("runtime.connectors.alpha_vantage", "AlphaVantageConnector"),
     }
     module_name, class_name = connector_types[definition.vendor]
     from importlib import import_module

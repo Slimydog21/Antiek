@@ -47,7 +47,7 @@ def test_inventory_connect_replace_disconnect_and_no_secret_echo(client, tmp_pat
     assert initial.status_code == 200
     assert initial.headers["cache-control"] == "private, no-store"
     assert [item["vendor"] for item in initial.json()["connections"]] == [
-        "youtube", "polygon", "fmp", "edgar", "x",
+        "youtube", "polygon", "fmp", "edgar", "x", "fred", "alpha_vantage",
     ]
 
     created = client.put(
@@ -276,6 +276,8 @@ def test_tool_connections_inventory_marks_which_vendors_are_searchable(client) -
         "polygon": False,
         "fmp": False,
         "edgar": False,
+        "fred": False,
+        "alpha_vantage": False,
     }
 
     # Storing a key does not promote the vendor: the row a PUT hands back
@@ -288,3 +290,25 @@ def test_tool_connections_inventory_marks_which_vendors_are_searchable(client) -
     assert stored.status_code == 200, stored.text
     assert stored.json()["status"] == "configured_unverified"
     assert stored.json()["searchable"] is False
+
+
+def test_rate_ceiling_note_comes_from_the_catalog_rate(client) -> None:
+    """The brake a user is told about is the one their connector runs.
+
+    The note was hardcoded as "25 if x else 8", which was true only while X
+    and EDGAR were the two rate-limited vendors: FRED would have been shown
+    EDGAR's "8 requests per second". It now reads each vendor's RateSpec.
+    """
+    payload = client.get("/settings/tools", cookies=_cookie("user-a")).json()
+    quotas = {item["vendor"]: item["quota"] for item in payload["connections"]}
+    assert quotas["fred"]["kind"] == "rate_ceiling"
+    assert quotas["fred"]["limit"] == 100
+    assert "100 requests per minute" in quotas["fred"]["note"]
+    assert quotas["alpha_vantage"]["limit"] == 1
+    assert "1 request per second" in quotas["alpha_vantage"]["note"]
+    # The two vendors that were right before stay byte-identical.
+    assert "25 requests per 15 minutes" in quotas["x"]["note"]
+    assert "8 requests per second" in quotas["edgar"]["note"]
+    # Only X quotes a sourced price.
+    assert quotas["fred"]["estimated_cost_usd"] is None
+    assert quotas["alpha_vantage"]["cost_note"] is None
