@@ -5,7 +5,6 @@ import { AdBorderMount } from "./components/ad/AdBorderMount";
 import { NavRail } from "./shell/NavRail";
 import { MascotStation } from "./shell/MascotStation";
 import { Scene } from "./scene/Scene";
-import BrainPresence from "./brand/BrainPresence";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport, setToastNavigator } from "./components/lemon/LemonToast";
@@ -116,7 +115,9 @@ export function AppShell({ children }: Props) {
       // ramp), so there is no colour jump — the shell still reads ice by day,
       // space by night, but now it can MOVE. text tokens stay on the frame so
       // any chrome that doesn't set its own colour inherits readable ink.
-      className="h-screen w-screen bg-transparent text-ink dark:text-bright overflow-hidden"
+      // relative + overflow-hidden: anything absolutely positioned inside the
+      // frame is clipped by it and can never widen the page.
+      className="relative h-screen w-screen bg-transparent text-ink dark:text-bright overflow-hidden"
       style={{
         paddingTop: "var(--akb-border-inset-top)",
         paddingRight: "var(--akb-border-inset-right)",
@@ -134,7 +135,10 @@ export function AppShell({ children }: Props) {
           on a hidden tab. (It lives INSIDE the seam frame so the ad border's
           reserved band, when SPR-07 lights it up, frames the scene too.) */}
       <Scene />
-      <BrainPresence />
+      {/* No ambient brain here. BrainPresence (a 420px ghost brain anchored
+          past the frame's corner) bled 77px sideways at 1280 and tinted the
+          content; the mascot now appears only in hero, empty and error
+          states, plus its station in the dock (design wave 3). */}
 
       {/* Vertical column: topbar · full-width working region · bottom rail.
           The working region carries NO left gutter — it spans the full
@@ -164,27 +168,21 @@ export function AppShell({ children }: Props) {
         <NavRail />
       </div>
 
-      {/* SPR-12 M3 — the Mascot IS the floating project home, now an
-          AUTONOMOUS WADDLER (SPR-06 M5): it roams the viewport on its own,
-          bounded + reduced-motion-safe. Mounted at shell level so it floats
-          over the whole app (any route), not inside one surface. Single-click
-          floats the project tree panel, double-click opens the project home,
-          drag moves it (clamped on-screen). This supersedes the old NavRail
-          "+ project / Project tree" button — the tree is reached through the
-          Mascot. (It sits OUTSIDE the seam frame on purpose: a free agent
-          roaming the whole window, not a chrome element constrained by the
-          ad-border inset.) */}
+      {/* SPR-12 M3 — the Mascot IS the floating project home. Mounted at shell
+          level so it floats over the whole app (any route), not inside one
+          surface. Single-click floats the project tree panel, double-click
+          opens the project home, drag re-stations it (clamped on-screen).
+          It seats itself in the dock's reserved station ([data-mascot-station]
+          in NavRail), so it never covers the working area (design wave 3). */}
       <MascotStation />
 
-      {/* SPR-07 — the always-on, four-edge "Times-Square" ad border. Mounted
-          ONCE here so it wraps every lens — Read / Research / Write / Speak —
-          with ONE code path. Its DOM position inside this frame is irrelevant
-          to layout: the border itself is `position: fixed` (inset-0), and it
-          SETS the `--akb-border-inset-*` vars on the document root (default 0
-          in tokens.css), which the seam frame `div` above inherits and reads as
-          padding — so the working region shrinks into the reserved band while
-          the fixed border paints in that band and never overlaps, clips, or
-          shifts the working region. */}
+      {/* SPR-07 — the one labelled house-ad slot (a single top rail since
+          design wave 3; it was a four-edge border). Mounted ONCE here so it
+          serves every lens with ONE code path. It is `position: fixed` and SETS
+          the `--akb-border-inset-*` vars on the document root (default 0 in
+          tokens.css), which the seam frame above reads as padding — so the
+          working region shrinks into the reserved band while the slot paints
+          in that band and never overlaps, clips, or shifts the working region. */}
       <AdBorderMount />
 
       {/* Toast viewport — single mount-point for the whole app */}

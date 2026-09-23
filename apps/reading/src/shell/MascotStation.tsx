@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { clampRectToViewport } from "../workspace/panelLayoutLogic";
@@ -109,6 +109,20 @@ function initialMascotPos(): { x: number; y: number } {
   );
 }
 
+/** The dock's reserved station (NavRail renders `[data-mascot-station]`, a
+ *  64px slot at its trailing end): Brain sits in chrome, never over the
+ *  working area, where he used to cover inputs, cards and the breadcrumb
+ *  (design wave 3). Null outside the shell (stories, tests), where the
+ *  seeded corner above still applies. */
+function dockStation(): { x: number; y: number } | null {
+  const r = document.querySelector("[data-mascot-station]")?.getBoundingClientRect();
+  if (!r || !r.width) return null;
+  return {
+    x: Math.round(r.left + (r.width - MASCOT_SIZE) / 2),
+    y: Math.round(r.top + (r.height - MASCOT_SIZE) / 2),
+  };
+}
+
 export function MascotStation() {
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
@@ -129,6 +143,9 @@ export function MascotStation() {
   // operator drags him, re-clamped on resize. This is where he lives and where
   // a directed excursion returns him to.
   const stationPos = useRef(initialMascotPos());
+  // TRUE while Brain lives in the dock's station; a drag re-stations him
+  // wherever the operator drops him and ends docking for this session.
+  const docked = useRef(true);
   // The LIVE rendered position (the one source of record). Equal to the station
   // at rest; equals the target button during a choreography excursion; written
   // straight to the DOM during a drag (pointer-capture, like PanelHandle) so
@@ -202,7 +219,7 @@ export function MascotStation() {
     if (typeof window === "undefined") return;
     const onResize = () => {
       const bounds = { width: window.innerWidth, height: window.innerHeight };
-      stationPos.current = clampRectToViewport(
+      stationPos.current = (docked.current && dockStation()) || clampRectToViewport(
         { ...stationPos.current, width: MASCOT_SIZE, height: MASCOT_SIZE },
         bounds,
       );
@@ -218,6 +235,17 @@ export function MascotStation() {
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+  }, [applyPos]);
+
+  // Seat Brain on the dock's station once the shell has laid out (the slot
+  // does not exist during this component's first render). Layout effect, so
+  // the first painted frame already shows him docked.
+  useLayoutEffect(() => {
+    const d = dockStation();
+    if (!d) return;
+    stationPos.current = d;
+    pos.current = { ...d };
+    applyPos();
   }, [applyPos]);
 
   // ── The stroll primitive (shared by directed excursions + return-home). ──
@@ -503,6 +531,7 @@ export function MascotStation() {
       // Commit the drop as the new STATION home (re-station), so Brain lives
       // where the operator put him and future excursions return there.
       stationPos.current = { ...pos.current };
+      if (moved.current) docked.current = false;
     }
     dragStart.current = null;
   }, []);

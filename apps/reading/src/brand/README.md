@@ -37,14 +37,23 @@ line brain** owns in-app chrome marks; the **Krea raster** owns the mascot
 poses, favicon, avatars, and social cards. Two idioms of one mark — do not
 mix them on one surface.
 
-## BrainPresence.tsx — ambient presence
+## BrainPresence.tsx — ambient presence (not mounted)
 
 A large (default 420 px), very-low-opacity (0.08) brain drifting slowly
-behind app content, mounted in AppShell above the living scene and below the
-content column; `aria-hidden` and `pointer-events: none`. It is ambience,
-not chrome — and because it is always mounted, no route may add a second
-large mascot: the restraint rule's "never more than one on screen" includes
-the presence layer.
+behind content; `aria-hidden` and `pointer-events: none`. Design wave 3
+(2026-09-23) took it out of AppShell: anchored past the frame's corner it
+bled 77 px of sideways scroll at 1280 and tinted every route's content, and
+the design spec keeps the mascot to hero, empty and error states. The
+component stays for a hero surface that wants it; nothing mounts it today.
+
+## Placement (design wave 3)
+
+- The floating project home (shell/MascotStation.tsx) seats itself in the
+  dock's reserved station, a 64 px slot at the NavRail's trailing end
+  (`[data-mascot-station]`), so it never covers the working area. A drag
+  re-stations it wherever the operator drops it, as before.
+- Empty states carry the `empty` pose through the shared `EmptyState`
+  (components/states). Error and loading states carry none.
 
 ## Motion (CSS only)
 
@@ -60,7 +69,7 @@ below.)
 ```text
 BrainMascot.tsx           Canonical live mark and four-mood pose map.
 BrainMark.tsx             Geometric line-brain rail mark (NavRail home).
-BrainPresence.tsx         Ambient low-opacity background brain (AppShell).
+BrainPresence.tsx         Ambient low-opacity background brain (unmounted).
 mascotSceneMap.ts         Scene mood → mascot mood map. Note: no call site
                           passes `scene` today; the map is exercised only by
                           tests (dead public seam, pending wire-or-delete).
@@ -89,6 +98,7 @@ The brain appears in exactly four slots and nowhere else:
   and save success. Celebrate is a one-shot beat (CelebrateBurst), never a
   persistent pose.
 
-Never mid-content. Never over controls. Never more than one on screen
-(BrainPresence counts). Adding a fifth surface or mood is a brand decision,
+Never mid-content. Never over controls. Never more than one pose in the
+content at once. The station mascot in the dock is chrome, not content: it
+sits in its reserved slot and never over the working area. Adding a fifth surface or mood is a brand decision,
 not an import.
