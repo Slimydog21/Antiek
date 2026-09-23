@@ -965,7 +965,7 @@ def _fetch_paper_pdf(rec, *, throttle, source: str) -> bytes:
     ) as c:
         r = c.get(url, headers={"User-Agent": "Antiek/0.1 (acquisition.papers)"}, timeout=30.0)
     if r.status_code in (429, 503):
-        throttle.note_response(throttle_key, r.status_code, dict(r.headers))
+        throttle.note_response(throttle_key, r.status_code, dict(r.headers), url=url)
     r.raise_for_status()
     content = r.content
     assert_pdf(content, content_type=r.headers.get("content-type"), url=url)

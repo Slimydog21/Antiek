@@ -410,3 +410,31 @@ def test_arxiv_verify_help_lists_ban_events_flag() -> None:
     from tools.arxiv_verify import build_parser
 
     assert "--ban-events" in build_parser().format_help()
+
+
+def test_bulk_pdf_429_event_names_the_pdf_host(tmp_path: Path) -> None:
+    """The per-source SourceThrottle writers used to log ``host=""`` because
+    no production caller passed ``url=``; the bulk PDF path now does."""
+    from datetime import UTC, datetime
+
+    from acquisition.arxiv.bulk import ARXIV_PDF_SOURCE_KEY, fetch_bulk_pdf
+    from acquisition.arxiv.client import ArxivPaper
+
+    when = datetime(2026, 9, 1, tzinfo=UTC)
+    paper = ArxivPaper(
+        arxiv_id="2409.00001", version="v1", title="t", authors=["a"], abstract="",
+        categories=["cs.LG"], primary_category="cs.LG", published_at=when,
+        updated_at=when, abs_url="https://arxiv.org/abs/2409.00001",
+        pdf_url="https://arxiv.org/pdf/2409.00001",
+    )
+    source_throttle = SourceThrottle(state_path=str(tmp_path / "s.json"))
+    arxiv_throttle = ArxivThrottle(state_path=str(tmp_path / "a.json"), min_spacing_s=0.0)
+    with httpx.Client(transport=_always_429([])) as client, pytest.raises(httpx.HTTPStatusError):
+        fetch_bulk_pdf(
+            paper, throttle=source_throttle, client=client, _arxiv_throttle=arxiv_throttle
+        )
+
+    pdf_events = [e for e in read_ban_events() if e["source"] == ARXIV_PDF_SOURCE_KEY]
+    assert len(pdf_events) == 1, read_ban_events()
+    assert pdf_events[0]["host"] == "arxiv.org"
+
