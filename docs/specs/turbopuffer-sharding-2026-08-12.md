@@ -1,7 +1,7 @@
 # Turbopuffer Namespace Sharding — Integration Addendum (2026-08-12)
 
-> **SUPERSEDED (§3 Decision, §4 Integration points) by
-> `docs/decisions/tpuf-sharding-verdict-2026-09-20.md`.** The verdict is
+> **SUPERSEDED by `docs/decisions/tpuf-sharding-verdict-2026-09-20.md`** (§3
+> Decision, §4 Integration points). The verdict is
 > **DEFER**: do not set `sharding: {num_shards: N}` on any namespace and do not
 > add `shard_count` to the adapter factory. Wedge 1 shipped unsharded with 4,837
 > rows servable, 0.00097 percent of one shard's 500M-document ceiling, and the

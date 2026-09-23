@@ -44,8 +44,9 @@ returns nothing. This task touches no Turbopuffer code; it only records why.
 **1. Scale.** Production reports `turbopuffer_indexed_row_count: 4837` (read from
 `/health` on 2026-09-20 during spec-writing, re-read on 2026-09-22 and again on
 2026-09-23, when production reported `build_sha` 0222ed443, equal to `origin/main`). The
-addendum's own sizing line, `docs/specs/turbopuffer-sharding-2026-08-12.md:22`,
-gives the per-shard ceiling as **≤1 TB and ≤500M documents**. 4,837 / 500,000,000
+addendum's own sizing line, `docs/specs/turbopuffer-sharding-2026-08-12.md:32`
+(line 22 before the SUPERSEDED banner was added), gives the per-shard ceiling
+as **≤1 TB and ≤500M documents**. 4,837 / 500,000,000
 = 0.0000097, i.e. **0.00097 percent of a single shard's document capacity**. The
 addendum's rule of thumb, `num_shards ≈ ceil(expected_size / 1 TB)`, evaluates to
 1 for anything under a terabyte, and its own §5 says "2 shards until data is
