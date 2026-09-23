@@ -42,6 +42,7 @@ from acquisition.voice import ingest_voice_note  # noqa: E402
 from orchestration.interview.orchestrator import ConsentRequired
 from runtime.db_lock import connect_read, connect_write
 
+from .invitations import require_open_door
 from .schema import ensure_speak_schema
 
 # ---------------------------------------------------------------------------
@@ -293,12 +294,19 @@ def submit_answer(
     duration_seconds: float = 0.0,
     embedder: Any | None = None,
     min_word_count: int = 1,
+    door_token: str | None = None,
 ) -> AnswerResult:
     """Submit a (corrected) transcript as the answer to ``question_id``.
 
     Consent gate (M4): substantive answers require ``consent_recorded``
     (the existing gate; SPR-01's ``record`` scope sets it). Raises
     ``ConsentRequired`` otherwise.
+
+    ``door_token`` is the invite token of an invitee-driven answer. When
+    given, the door is re-checked under the lock that gates the ingest and
+    again under the lock that records the turn (``require_open_door``), so a
+    takedown that lands after the caller resolved the token still stops the
+    answer; ``InviteDoorClosed`` is raised.
 
     ``transcript`` is the text to distill — pass the CORRECTED text.
     Distillation (note-taking over the voice note) happens inside
@@ -314,6 +322,8 @@ def submit_answer(
         if prow is None:
             raise ValueError(f"interview {interview_id!r} not found")
         project_id = prow[0]
+        if door_token is not None:
+            require_open_door(con, door_token, interview_id)
         if not _consent_recorded(con, interview_id):
             raise ConsentRequired(
                 f"interview {interview_id} has no consent recorded; record "
@@ -334,6 +344,11 @@ def submit_answer(
 
     # Now record the answer turn under our own (sequential) lock.
     with connect_write(db_path, purpose="speak/async_interview.answer") as con:
+        if door_token is not None:
+            # A takedown that landed during the ingest keeps the turn out of
+            # the transcript. The voice-note document the ingest already
+            # wrote stays, like an answer submitted just before a takedown.
+            require_open_door(con, door_token, interview_id)
         turns = _load_turns(con, interview_id)
         turns.append({
             "role": "informant",
@@ -366,16 +381,24 @@ def next_followups(
     interview_id: str,
     dispatch_fn: Callable[..., Any] | None = None,
     max_followups: int = 3,
+    door_token: str | None = None,
 ) -> list[FollowupQuestion]:
     """Generate the next async follow-up question(s) from accumulated
     answers via the interviewer role, persist them as pending
     interviewer turns, and return them.
+
+    ``door_token``: as in ``submit_answer``. The door is checked before any
+    question is generated and again under the lock that persists them;
+    ``InviteDoorClosed`` is raised instead of persisting or returning them.
 
     ``dispatch_fn`` is injected for testability (production passes
     ``substrate.dispatch.dispatch``); with ``None`` a deterministic stub
     drives the next must-cover item or a generic deepening follow-up so
     the lifecycle is testable without a live model.
     """
+    if door_token is not None:
+        with connect_read(db_path) as con:
+            require_open_door(con, door_token, interview_id)
     session = resume(db_path, interview_id)
     pending = session.pending_questions()
 
@@ -430,6 +453,8 @@ def next_followups(
     # already-asked must-cover ids).
     if generated:
         with connect_write(db_path, purpose="speak/async_interview.followups") as con:
+            if door_token is not None:
+                require_open_door(con, door_token, interview_id)
             turns = _load_turns(con, interview_id)
             asked = {t["question_id"] for t in turns
                      if t.get("role") == "interviewer" and t.get("question_id")}
