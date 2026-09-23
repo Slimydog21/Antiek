@@ -189,6 +189,7 @@ def search(
     owner_user_id: str | None = None,
     content_classes: Collection[str] | None = None,
     require_term_match: bool = False,
+    exclude_taken_down: bool = False,
 ) -> dict[str, Any]:
     """Vector search over ``chunks.embedding``. Returns top-``k``
     chunks ordered by cosine similarity desc.
@@ -239,6 +240,12 @@ def search(
         require_term_match: Require a whole-word query term in each chunk;
             cosine ranks only matching chunks. Cosine has no absolute
             no-match threshold. The default leaves existing searches unchanged.
+        exclude_taken_down: Rank only chunks whose document carries no
+            ``book_assets`` takedown. A takedown is orthogonal to
+            ``content_class`` (a taken-down public-domain book stays
+            public_domain), so a class allowlist still admits it; dropping it
+            after ``LIMIT`` would let it use up ``top_k``. The default leaves
+            existing searches unchanged.
 
     Returns:
         ``{"query": ..., "top_k": ..., "results": [...], "node_matches": []}``
@@ -328,6 +335,11 @@ def search(
         placeholders = ",".join("?" for _ in scoped_classes)
         sql += f" AND d.content_class IN ({placeholders})"
         params.extend(scoped_classes)
+    if exclude_taken_down:
+        sql += (
+            " AND NOT EXISTS (SELECT 1 FROM book_assets b"
+            " WHERE b.document_id = d.document_id AND b.taken_down)"
+        )
     sql += " ORDER BY similarity DESC LIMIT ?"
     params.append(int(top_k))
 

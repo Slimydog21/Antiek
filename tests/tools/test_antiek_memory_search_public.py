@@ -58,21 +58,49 @@ def _insert_chunk(
     )
 
 
-@pytest.fixture
-def db_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    path = str(tmp_path / "graph.duckdb")
-    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+def _seed(
+    path: str,
+    cases: tuple[tuple[str, str | None, str, str], ...],
+    *,
+    taken_down: tuple[str, ...] = (),
+) -> str:
     init_database_at_path(path)
     with connect_write(path, purpose="seed-search-public") as con:
-        for name, content_class, owner, body in _CASES:
+        for name, content_class, owner, body in cases:
             _insert_chunk(
                 con, name=name, content_class=content_class, owner=owner, body=body
             )
-        con.execute(
-            "INSERT INTO book_assets (document_id, taken_down) VALUES (?, TRUE)",
-            ["doc-td"],
-        )
+        for name in taken_down:
+            con.execute(
+                "INSERT INTO book_assets (document_id, taken_down) VALUES (?, TRUE)",
+                [f"doc-{name}"],
+            )
     return path
+
+
+@pytest.fixture
+def db_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    return _seed(str(tmp_path / "graph.duckdb"), _CASES, taken_down=("td",))
+
+
+def _search_public_ids(path: str, query: str, top_k: int) -> tuple[list[str], bool]:
+    handlers, _resources = _make_handlers(path, embedding_model=_BagOfWordsEmbedding)
+    result = handlers["search_public"]({"query": query, "top_k": top_k})
+    assert result.is_error is False
+    body = json.loads(result.content[0]["text"])
+    return [chunk["chunk_id"] for chunk in body["chunks"]], body["no_match"]
+
+
+def _unscoped_top_hit(path: str, query: str) -> str:
+    # Control: the chunk plain cosine ranks first with only the §9.0 gate.
+    with connect_read(path) as con:
+        hits = search(
+            con, query, model=_BagOfWordsEmbedding(), top_k=1,
+            policy_tag="attribution_eligible", require_term_match=True,
+        )["results"]
+    chunk_id: str = hits[0]["chunk_id"]
+    return chunk_id
 
 
 def test_search_public_serves_only_public_servable_classes(db_path: str) -> None:
@@ -187,4 +215,44 @@ def test_search_content_classes_scopes_the_ranking_in_sql(db_path: str) -> None:
 
     assert {hit["chunk_id"] for hit in scoped["results"]} == {
         "chunk-pd", "chunk-upc", "chunk-td"
+    }
+
+
+def test_taken_down_chunk_cannot_starve_top_k(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A book_assets takedown leaves content_class at public_domain, so the
+    # class allowlist admits the chunk. It must be excluded before LIMIT, or
+    # it takes the only slot and a servable match reads as no_match.
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    path = _seed(
+        str(tmp_path / "graph.duckdb"),
+        (
+            ("td", "public_domain", "__operator__", "TAKEN DOWN BODY quantum"),
+            ("pd", "public_domain", "__operator__", "Servable quantum garden notes"),
+        ),
+        taken_down=("td",),
+    )
+    assert _unscoped_top_hit(path, "quantum") == "chunk-td"
+
+    assert _search_public_ids(path, "quantum", 1) == (["chunk-pd"], False)
+
+
+def test_search_exclude_taken_down_scopes_the_ranking_in_sql(db_path: str) -> None:
+    with connect_read(db_path) as con:
+        kept = search(
+            con, "quantum", model=_BagOfWordsEmbedding(), top_k=50,
+            policy_tag="attribution_eligible",
+            content_classes=PUBLIC_SURFACE_CONTENT_CLASSES,
+        )
+        excluded = search(
+            con, "quantum", model=_BagOfWordsEmbedding(), top_k=50,
+            policy_tag="attribution_eligible",
+            content_classes=PUBLIC_SURFACE_CONTENT_CLASSES,
+            exclude_taken_down=True,
+        )
+
+    assert "chunk-td" in {hit["chunk_id"] for hit in kept["results"]}
+    assert {hit["chunk_id"] for hit in excluded["results"]} == {
+        "chunk-pd", "chunk-upc", "chunk-oil", "chunk-sdo"
     }

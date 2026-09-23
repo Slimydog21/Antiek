@@ -226,9 +226,11 @@ def _make_handlers(
         """Rank public chunks through search()'s §9.0 retrieval gate.
 
         The public content-class allowlist also excludes user_owned and NULL
-        rights state. Read full text only for ranked hits, then check the
-        canonical body predicate and book takedown flag before returning it.
-        The prompt-injection envelope is applied after those rights checks.
+        rights state, and taken-down books are excluded in the same SQL, so
+        every one of the top_k slots holds a servable chunk. Read full text
+        only for ranked hits, then re-check the canonical body predicate and
+        takedown flag before returning it. The prompt-injection envelope is
+        applied after those rights checks.
         """
         query = args["query"]
         top_k = args.get("top_k", 5)
@@ -244,6 +246,7 @@ def _make_handlers(
                 policy_tag="attribution_eligible",
                 content_classes=PUBLIC_SURFACE_CONTENT_CLASSES,
                 require_term_match=True,
+                exclude_taken_down=True,
             )["results"]
             rows: dict[str, tuple[str, str | None, bool]] = {}
             if hits:
@@ -267,9 +270,8 @@ def _make_handlers(
             if row is None:
                 continue
             full_text, content_class, taken_down = row
-            # Defence in depth over the SQL scope: a book_assets takedown can
-            # sit on a document whose class still reads public_domain, and the
-            # canonical body predicate is the one that decides that case.
+            # Defence in depth over the SQL scope, which already excludes these
+            # rows before LIMIT: the canonical body predicate has the last word.
             withheld, _label = is_chunk_body_withheld(content_class, taken_down=taken_down)
             if withheld or content_class not in PUBLIC_SURFACE_CONTENT_CLASSES:
                 continue
