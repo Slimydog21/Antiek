@@ -139,6 +139,9 @@ def server_proc(memory_db: Path, tmp_path: Path):
     """Spawn the Antiek Memory MCP server as a subprocess."""
     env = os.environ.copy()
     env["ANTIEK_DUCKDB_PATH"] = str(memory_db)
+    # The owner this server process is launched for (the stdio transport's
+    # only source of a verified identity).
+    env["ANTIEK_MEMORY_OWNER"] = "testuser"
     # Also set ANTIEK_HOME to avoid touching the real home
     env["ANTIEK_HOME"] = str(tmp_path / "home")
 
@@ -329,7 +332,9 @@ class TestToolsCallSearchPersonal:
     chunks that this tool used to return to everyone.
     """
 
-    def test_search_personal_without_auth_context_fails_closed(self, server_proc):
+    def test_search_personal_claiming_another_owner_fails_closed(self, server_proc):
+        # The process is launched for ``testuser``; a client naming anyone
+        # else over stdio is refused rather than answered as that owner.
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
         resp = _send_and_recv(
             server_proc,
@@ -337,6 +342,7 @@ class TestToolsCallSearchPersonal:
             {
                 "name": "search_personal",
                 "arguments": {"query": "test", "top_k": 10},
+                "auth_context": {"user_id": "someone-else"},
             },
             rpc_id=5,
         )

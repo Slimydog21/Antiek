@@ -3,7 +3,8 @@
 Run with: python -m tools.antiek_memory
 
 Reads ANTIEK_DUCKDB_PATH from the environment (falls back to
-~/.antiek/research_graph.duckdb).  Initialises the schema on cold
+~/.antiek/research_graph.duckdb) and ANTIEK_MEMORY_OWNER, the owner this
+process serves (unset: search_personal refuses every call).  Initialises the schema on cold
 start, wires the four canonical tool handlers + resource handler
 against the real substrate, and serves JSON-RPC over stdio.
 """
@@ -11,6 +12,7 @@ against the real substrate, and serves JSON-RPC over stdio.
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -378,6 +380,9 @@ def main() -> None:
         tools=list(CANONICAL_TOOLS),
         handler_fns=handlers,
         resource_handler=res_handler,
+        bound_owner=_authenticated_owner(
+            {"user_id": os.environ.get("ANTIEK_MEMORY_OWNER")}
+        ),
     )
     serve_stdio(server)
 

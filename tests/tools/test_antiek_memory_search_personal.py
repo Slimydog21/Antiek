@@ -142,7 +142,9 @@ def test_owner_with_no_documents_gets_an_honest_empty_answer(db_path: str) -> No
 
 def test_server_threads_transport_auth_context_and_ignores_argument_claims(db_path: str) -> None:
     handlers, resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
-    server = AntiekMemoryServer(handler_fns=handlers, resource_handler=resources)
+    server = AntiekMemoryServer(
+        handler_fns=handlers, resource_handler=resources, bound_owner="owner-a"
+    )
 
     def call(params: dict) -> dict:
         response = server.handle_request(
@@ -151,13 +153,15 @@ def test_server_threads_transport_auth_context_and_ignores_argument_claims(db_pa
         assert response is not None
         return response["result"]
 
-    # A self-asserted owner inside ``arguments`` proves nothing: error, no chunks.
+    # A self-asserted owner inside ``arguments`` proves nothing: the server
+    # answers for the owner it was launched for, never the one claimed there.
     forged = call({
         "name": "search_personal",
-        "arguments": {"query": "quantum", "auth_context": {"user_id": "owner-a"}},
+        "arguments": {"query": "quantum bakery", "top_k": 10, "auth_context": {"user_id": "owner-b"}},
     })
-    assert forged["isError"] is True
-    assert json.loads(forged["content"][0]["text"])["chunks"] == []
+    assert forged["isError"] is False
+    forged_ids = [c["chunk_id"] for c in json.loads(forged["content"][0]["text"])["chunks"]]
+    assert forged_ids and all(cid.startswith("chunk-a-") for cid in forged_ids)
 
     # The transport-level field is the one that counts.
     genuine = call({
@@ -167,4 +171,54 @@ def test_server_threads_transport_auth_context_and_ignores_argument_claims(db_pa
     })
     assert genuine["isError"] is False
     body = json.loads(genuine["content"][0]["text"])
+    assert [chunk["chunk_id"] for chunk in body["chunks"]] == ["chunk-a-quantum"]
+
+
+def _server_call(server: AntiekMemoryServer, params: dict) -> dict:
+    response = server.handle_request(
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params}
+    )
+    assert response is not None
+    return response["result"]
+
+
+def test_client_claim_cannot_impersonate_another_owner(db_path: str) -> None:
+    """Over stdio the client writes ``params``; naming someone else's owner id
+    must yield nothing, not that owner's private chunks."""
+    handlers, resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    server = AntiekMemoryServer(
+        handler_fns=handlers, resource_handler=resources, bound_owner="owner-a"
+    )
+    result = _server_call(server, {
+        "name": "search_personal",
+        "arguments": {"query": "bakery", "top_k": 10},
+        "auth_context": {"user_id": "owner-b"},
+    })
+    assert result["isError"] is True
+    assert json.loads(result["content"][0]["text"])["chunks"] == []
+
+
+def test_unbound_server_verifies_no_one(db_path: str) -> None:
+    handlers, resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    server = AntiekMemoryServer(handler_fns=handlers, resource_handler=resources)
+    result = _server_call(server, {
+        "name": "search_personal",
+        "arguments": {"query": "quantum", "top_k": 1},
+        "auth_context": {"user_id": "owner-a"},
+    })
+    assert result["isError"] is True
+    assert json.loads(result["content"][0]["text"])["chunks"] == []
+
+
+def test_bound_server_serves_its_owner_without_a_client_claim(db_path: str) -> None:
+    handlers, resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    server = AntiekMemoryServer(
+        handler_fns=handlers, resource_handler=resources, bound_owner="owner-a"
+    )
+    result = _server_call(server, {
+        "name": "search_personal",
+        "arguments": {"query": "quantum", "top_k": 1},
+    })
+    assert result["isError"] is False
+    body = json.loads(result["content"][0]["text"])
     assert [chunk["chunk_id"] for chunk in body["chunks"]] == ["chunk-a-quantum"]

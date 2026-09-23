@@ -69,14 +69,16 @@ class AntiekMemoryServer:
 
     The four canonical tools (per master-spec §13.8):
       - search_personal: search the user's personal graph (private +
-        public partitions). Requires per-user OAuth scope; the
-        scope claim is read from the request's `auth_context` field
-        (which the transport layer fills from the bearer token).
-        `auth_context` is a sibling of `name`/`arguments` inside
-        `params`, never a member of `arguments`: the caller controls
-        `arguments`, the transport controls `auth_context`, and a
-        handler that declares an `auth_context` keyword receives only
-        the transport's value (see `_call_handler`).
+        public partitions). Requires a verified owner. Over stdio the
+        JSON-RPC client writes every byte of `params`, so a client
+        `auth_context` proves nothing on its own: the owner is bound
+        when the server is launched (`bound_owner`, from
+        ANTIEK_MEMORY_OWNER) and the server stamps `auth_context` from
+        that binding (see `_transport_auth_context`). A client claim
+        naming anyone else is refused; an unbound server verifies no
+        one and search_personal fails closed. A handler that declares
+        an `auth_context` keyword receives only this server-derived
+        value (see `_call_handler`), never anything from `arguments`.
       - search_public: search the collective graph. Per-query cost
         flows through IP attribution to publishers (§9) and creators
         (§13.9).
@@ -95,10 +97,26 @@ class AntiekMemoryServer:
     tools: list[ToolDescription] = field(default_factory=list)
     handler_fns: dict[str, Callable[..., ToolResult]] = field(default_factory=dict)
     resource_handler: Callable[[str], ResourceContent | None] | None = None
+    # The owner this process was launched for; None verifies no one.
+    bound_owner: str | None = None
     server_info: dict = field(default_factory=lambda: {
         "name": "antiek-memory",
         "version": "0.1.0",
     })
+
+    def _transport_auth_context(self, claimed: Any) -> dict[str, str] | None:
+        """The verified caller for this request, derived from the launch
+        binding rather than from the client.
+
+        A client may restate its owner; a claim naming a different owner is
+        an impersonation attempt and yields no identity at all.
+        """
+        if self.bound_owner is None:
+            return None
+        if claimed is not None:
+            if not isinstance(claimed, dict) or claimed.get("user_id") != self.bound_owner:
+                return None
+        return {"user_id": self.bound_owner}
 
     def handle_request(self, request: dict) -> dict | None:
         """Process one JSON-RPC request and return the response dict.
@@ -135,7 +153,7 @@ class AntiekMemoryServer:
         if method == "tools/call":
             tool_name = params.get("name")
             tool_args = params.get("arguments") or {}
-            auth_context = params.get("auth_context")
+            auth_context = self._transport_auth_context(params.get("auth_context"))
             handler = self.handler_fns.get(tool_name)
             if handler is None:
                 return _err(rpc_id, -32601, f"Tool not found: {tool_name}")
