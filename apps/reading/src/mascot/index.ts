@@ -20,6 +20,7 @@ tegrator + reel/roam constants) was removed
  */
 
 export {
+  notifyThoughtPartnerReplyReceived,
   mascotReducer,
   isBusy,
   INITIAL_MASCOT_STATE,
@@ -77,7 +78,6 @@ export {
 export {
   emoteForExperience,
   emitMascotExperience,
-  notifyThoughtPartnerReplyReceived,
   installReactionBus,
   isProductExperience,
   PRODUCT_EXPERIENCES,
@@ -95,7 +95,7 @@ export {
   notifyShellFailure,
   notifyVoicePlaybackStarted,
   type ResearchReactionPhase,
-} from "./shellExperienceSignals";
+} ;
 
 
 // SPR-01 — the station-activity surface. Importing this registers the built-in
