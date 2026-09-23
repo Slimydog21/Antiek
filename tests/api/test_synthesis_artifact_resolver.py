@@ -380,3 +380,161 @@ def test_node_pin_whose_every_listed_chunk_is_public_is_fully_sourced(pinned):
     html = _html("s-src-chunks-ok")
     assert "Provenance incomplete" not in html
     assert "Thesis G" in html
+
+
+
+# ── an edge pin stands on its endpoints' complete grounding ──
+
+
+def _pin_edge_with_endpoint_support(
+    db: str, sid: str, *, support_chunk: str | None, support_meta: str | None,
+    thesis: str,
+) -> None:
+    """``e-{sid}`` joins an entity to a claim over a public chunk; the claim's
+    supported_by edge (another investigation's) carries the variant."""
+    con = connect_write(db)
+    try:
+        for node_id, node_type in ((f"a-{sid}", "entity"), (f"b-{sid}", "claim"),
+                                   (f"c-{sid}", "entity")):
+            con.execute(
+                "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
+                "VALUES (?, ?, ?, 'depth')",
+                [node_id, node_id, node_type],
+            )
+        con.execute(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "chunk_id, source_tier, extraction_confidence, graph_scope) "
+            "VALUES (?, ?, ?, 'rel', 'c-ok-1', 1, 0.9, 'depth')",
+            [f"e-{sid}", f"a-{sid}", f"b-{sid}"],
+        )
+        con.execute(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "chunk_id, metadata, source_tier, extraction_confidence, graph_scope, "
+            "investigation_id) VALUES (?, ?, ?, 'supported_by', ?, ?, 1, 0.9, "
+            "'depth', 'earlier')",
+            [f"s-{sid}", f"b-{sid}", f"c-{sid}", support_chunk, support_meta],
+        )
+        con.execute(
+            "INSERT INTO syntheses (synthesis_id, target_question, "
+            "synthesis_timestamp, status, implicit_recommendation, thesis_text) "
+            "VALUES (?, ?, now(), 'passed', 'proceed', ?)",
+            [sid, f"Q {sid}", thesis],
+        )
+        con.execute(
+            "INSERT INTO synthesis_substrate_manifest "
+            "(synthesis_id, entity_kind, entity_id) VALUES (?, 'edge', ?)",
+            [sid, f"e-{sid}"],
+        )
+    finally:
+        con.close()
+
+
+def test_edge_pin_whose_endpoint_support_is_restricted_withholds_the_thesis(pinned):
+    # codex's probe at the manifest-edge entrypoint: the pinned edge's own
+    # chunk is public; its claim endpoint's earlier supported_by edge is not.
+    _pin_edge_with_endpoint_support(
+        pinned, "s-ep-pr", support_chunk="c-pr", support_meta=None,
+        thesis=f"Thesis quoting it: {SECRET}",
+    )
+    export = mod.resolve_synthesis_export("s-ep-pr", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [s.document_id for s in claim.sources] == ["doc-ok", "doc-pr"]
+    html = _html("s-ep-pr")
+    assert SECRET not in html
+    assert "withheld" in html
+
+
+def test_edge_pin_whose_endpoint_support_names_a_missing_chunk_is_unresolved(pinned):
+    _pin_edge_with_endpoint_support(
+        pinned, "s-ep-gone", support_chunk=None,
+        support_meta='{"source_chunk_ids": ["c-gone"]}', thesis="Thesis H",
+    )
+    export = mod.resolve_synthesis_export("s-ep-gone", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [(s.document_id, s.resolved) for s in claim.sources] == [
+        ("doc-ok", True), (None, False),
+    ]
+    assert claim.fully_sourced is False
+    assert "Provenance incomplete" in _html("s-ep-gone")
+
+
+def test_edge_pin_whose_endpoint_support_is_public_is_fully_sourced(pinned):
+    _pin_edge_with_endpoint_support(
+        pinned, "s-ep-ok", support_chunk="c-ok-2", support_meta=None,
+        thesis="Thesis I",
+    )
+    export = mod.resolve_synthesis_export("s-ep-ok", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [s.document_id for s in claim.sources] == ["doc-ok"]
+    assert claim.fully_sourced is True
+    assert "Thesis I" in _html("s-ep-ok")
+
+
+def test_an_edge_reports_everything_its_endpoint_reports(pinned):
+    # codex's probe shape at the resolver: the endpoint resolved directly
+    # reported the restricted source while the edge reaching it did not.
+    from services.html_projection.resolvers.substrate_refs import resolve_pin_sources
+
+    _pin_edge_with_endpoint_support(
+        pinned, "s-ep-agree", support_chunk="c-pr", support_meta=None,
+        thesis="Thesis J",
+    )
+    con = connect_write(pinned)
+    try:
+        direct = resolve_pin_sources(con, [("node", "b-s-ep-agree")])
+        via_edge = resolve_pin_sources(con, [("edge", "e-s-ep-agree")])
+    finally:
+        con.close()
+    assert {s.document_id for s in direct} == {"doc-pr"}
+    assert {s.document_id for s in via_edge} == {"doc-ok", "doc-pr"}
+
+
+def _supported_by_chain(db: str, prefix: str, hops: int) -> None:
+    """``{prefix}-0`` supported_by ``{prefix}-1`` ... each hop over a public
+    chunk, ending at an entity that needs no source."""
+    con = connect_write(db)
+    try:
+        con.executemany(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
+            "VALUES (?, ?, ?, 'depth')",
+            [[f"{prefix}-{i}", f"{prefix}-{i}", "claim" if i < hops else "entity"]
+             for i in range(hops + 1)],
+        )
+        con.executemany(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "chunk_id, source_tier, extraction_confidence, graph_scope) "
+            "VALUES (?, ?, ?, 'supported_by', 'c-ok-1', 1, 0.9, 'depth')",
+            [[f"{prefix}-e{i}", f"{prefix}-{i}", f"{prefix}-{i + 1}"] for i in range(hops)],
+        )
+    finally:
+        con.close()
+
+
+def test_a_short_supported_by_chain_resolves_to_its_documents(pinned):
+    from services.html_projection.resolvers.substrate_refs import resolve_pin_sources
+
+    _supported_by_chain(pinned, "short", 10)
+    con = connect_write(pinned)
+    try:
+        sources = resolve_pin_sources(con, [("edge", "short-e0")])
+    finally:
+        con.close()
+    assert [(s.document_id, s.resolved) for s in sources] == [("doc-ok", True)]
+
+
+def test_a_chain_deeper_than_the_walk_bound_withholds_instead_of_crashing(pinned):
+    # 400 hops would exhaust the interpreter stack in a recursive walk; the
+    # bound stops it and counts the unwalked remainder as unresolved.
+    from services.html_projection.resolvers.substrate_refs import resolve_pin_sources
+
+    _supported_by_chain(pinned, "deep", 400)
+    con = connect_write(pinned)
+    try:
+        sources = resolve_pin_sources(con, [("node", "deep-0")])
+    finally:
+        con.close()
+    assert ("doc-ok", True) in [(s.document_id, s.resolved) for s in sources]
+    assert any(not s.resolved for s in sources)

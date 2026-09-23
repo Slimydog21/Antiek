@@ -36,10 +36,19 @@ _SOURCED_KINDS: frozenset[str] = frozenset({"claim", "insight", "evidence"})
 # source whose rights are unknown, never a missing source.
 Grounding = list[str | None]
 
-# The (kind, id) rows one grounding walk has already followed. Edges name
-# nodes and node metadata can name edges, so the walk stops at a row it has
-# seen instead of cycling.
-_Seen = set[tuple[str, str]]
+# How many edges deep one grounding walk follows (an edge leads to its
+# endpoints, whose supported_by edges lead on). Past this the walk stops and
+# counts one unresolved source, so a pathologically deep chain withholds the
+# text instead of exhausting the interpreter stack mid-export.
+_MAX_EDGE_DEPTH = 64
+
+
+class _Seen(set[tuple[str, str]]):
+    """The (kind, id) rows one grounding walk has already followed, and how
+    many edges deep it currently is. Edges name nodes and node metadata can
+    name edges, so the walk stops at a row it has seen instead of cycling."""
+
+    depth: int = 0
 
 
 def _payload_for_kind(node_type: str, canonical_label: str) -> dict[str, str]:
@@ -61,38 +70,66 @@ def _row_exists(con: Any, table: str, column: str, value: str) -> bool:
     )
 
 
-def _metadata_grounding(con: Any, metadata_raw: object, seen: _Seen) -> Grounding:
-    """The documents every pointer recorded in a row's ``metadata`` names.
+def _metadata_pointers(metadata_raw: object) -> list[tuple[str, str]] | None:
+    """Every pointer recorded in a row's ``metadata``, or None when metadata
+    is present but cannot be parsed.
 
     The pointers are found by ``collect_pointers`` from the shape of their
     keys, at any depth, never from a list of known fields: a writer that adds
-    a new pointer field is read without a change here. Metadata that is
-    present but cannot be parsed may hold any pointer, so it is one
-    unresolved pointer rather than none."""
+    a new pointer field is read without a change here. Unparseable metadata
+    may hold any pointer, so the caller counts it as one unresolved pointer
+    rather than as none."""
     if metadata_raw is None or (isinstance(metadata_raw, str) and not metadata_raw.strip()):
         return []
     try:
         meta = json.loads(metadata_raw) if isinstance(metadata_raw, str) else metadata_raw
     except (TypeError, ValueError):
+        return None
+    return list(collect_pointers(meta))
+
+
+def _metadata_grounding(con: Any, metadata_raw: object, seen: _Seen) -> Grounding:
+    """The documents every pointer recorded in a row's ``metadata`` names
+    (``[None]`` for metadata that cannot be parsed)."""
+    pointers = _metadata_pointers(metadata_raw)
+    if pointers is None:
         return [None]
     docs: Grounding = []
-    for kind, ref in collect_pointers(meta):
+    for kind, ref in pointers:
         docs.extend(_pointer_grounding(con, kind, ref, seen))
     return docs
 
 
+def _endpoint_grounding(con: Any, node_id: str, seen: _Seen) -> Grounding:
+    """The documents an edge's endpoint node stands on, under the same rules
+    as any node (``_node_grounding``): every pointer in its metadata and every
+    ``supported_by`` edge out of it, followed transitively. An endpoint the
+    walk has already reached adds nothing again; an endpoint whose row is
+    gone is one unresolved pointer, since the text it held is unknown."""
+    if ("node", node_id) in seen:
+        return []
+    row = con.execute(
+        "SELECT node_type, metadata FROM nodes WHERE node_id = ?", [node_id]
+    ).fetchone()
+    if row is None:
+        seen.add(("node", node_id))
+        return [None]
+    return _node_grounding(con, node_id, str(row[0]), row[1], seen)
+
+
 def _edge_grounding(con: Any, edge_id: str, seen: _Seen) -> Grounding:
     """The documents an edge stands on: its chunk's document, its own
-    ``source_document_id``, every pointer in its metadata, and every pointer
-    its two endpoint nodes record in their metadata. An edge row that is gone
-    is one unresolved pointer; an edge that names nothing is structural
-    (``[]``)."""
+    ``source_document_id``, every pointer in its metadata, and the complete
+    grounding of both endpoint nodes (``_endpoint_grounding``). An edge row
+    that is gone, or one past ``_MAX_EDGE_DEPTH``, is one unresolved pointer;
+    an edge that names nothing and joins nodes that stand on nothing is
+    structural (``[]``)."""
     row = con.execute(
         "SELECT chunk_id, source_document_id, metadata, source_node_id, "
         "target_node_id FROM edges WHERE edge_id = ?",
         [edge_id],
     ).fetchone()
-    if row is None:
+    if row is None or seen.depth >= _MAX_EDGE_DEPTH:
         return [None]
     chunk_id, document_id, metadata_raw, source_node, target_node = row
     docs: Grounding = []
@@ -100,16 +137,14 @@ def _edge_grounding(con: Any, edge_id: str, seen: _Seen) -> Grounding:
         docs.append(_chunk_document(con, str(chunk_id)))
     if document_id is not None:
         docs.append(str(document_id))
-    docs.extend(_metadata_grounding(con, metadata_raw, seen))
-    for endpoint in (source_node, target_node):
-        if endpoint is None or ("node", str(endpoint)) in seen:
-            continue
-        seen.add(("node", str(endpoint)))
-        meta_row = con.execute(
-            "SELECT metadata FROM nodes WHERE node_id = ?", [str(endpoint)]
-        ).fetchone()
-        if meta_row is not None:
-            docs.extend(_metadata_grounding(con, meta_row[0], seen))
+    seen.depth += 1
+    try:
+        docs.extend(_metadata_grounding(con, metadata_raw, seen))
+        for endpoint in (source_node, target_node):
+            if endpoint is not None:
+                docs.extend(_endpoint_grounding(con, str(endpoint), seen))
+    finally:
+        seen.depth -= 1
     return list(dict.fromkeys(docs))
 
 
@@ -146,7 +181,7 @@ def _node_grounding(
     con: Any,
     node_id: str,
     node_type: str,
-    metadata_raw: str | None,
+    metadata_raw: object,
     seen: _Seen | None = None,
 ) -> Grounding:
     """Every document a node stands on, in a stable order.
@@ -157,20 +192,32 @@ def _node_grounding(
     ``source_chunk_ids`` and any pointer field a writer adds later), and every
     ``supported_by`` edge out of the node whichever investigation wrote it,
     through ``_edge_grounding``. Other relations do not establish grounding.
+    The same rules apply wherever the node is reached from: a pin, a ref, or
+    the endpoint of an edge being followed.
+
     A sourced kind with no pointer at all is an unsupported claim whose
     rights are unknown (``[None]``); any other kind with no pointer is the
-    operator's own content (``[]``)."""
-    seen = set() if seen is None else seen
+    operator's own content (``[]``). A pointer the walk is already following
+    (the edge this node was reached through, say) is not "no pointer": its
+    documents are counted where that walk reaches them."""
+    seen = _Seen() if seen is None else seen
     seen.add(("node", node_id))
-    docs: Grounding = _metadata_grounding(con, metadata_raw, seen)
-    for (edge_id,) in con.execute(
-        "SELECT edge_id FROM edges "
-        "WHERE source_node_id = ? AND relation = 'supported_by' "
-        "ORDER BY edge_id",
-        [node_id],
-    ).fetchall():
-        docs.extend(_pointer_grounding(con, "edge", str(edge_id), seen))
-    if not docs and str(node_type) in _SOURCED_KINDS:
+    pointers = _metadata_pointers(metadata_raw)
+    edge_ids = [
+        str(e)
+        for (e,) in con.execute(
+            "SELECT edge_id FROM edges "
+            "WHERE source_node_id = ? AND relation = 'supported_by' "
+            "ORDER BY edge_id",
+            [node_id],
+        ).fetchall()
+    ]
+    grounding = [*(pointers or []), *(("edge", e) for e in edge_ids)]
+    already_followed = any(p in seen for p in grounding)
+    docs: Grounding = [None] if pointers is None else []
+    for kind, ref in grounding:
+        docs.extend(_pointer_grounding(con, kind, ref, seen))
+    if not docs and not already_followed and str(node_type) in _SOURCED_KINDS:
         return [None]
     return list(dict.fromkeys(docs))
 
@@ -292,7 +339,7 @@ def _pin_grounding(con: Any, kind: str, entity_id: str) -> Grounding:
             return [None]
         return _node_grounding(con, entity_id, str(row[0]), row[1])
     if kind in ("document", "chunk", "edge", "source"):
-        return list(dict.fromkeys(_pointer_grounding(con, kind, entity_id, set())))
+        return list(dict.fromkeys(_pointer_grounding(con, kind, entity_id, _Seen())))
     return [None]  # an entity_kind outside the manifest CHECK list
 
 

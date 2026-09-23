@@ -662,3 +662,155 @@ def test_unparseable_node_metadata_withholds_rather_than_hiding_its_pointers(env
     body = _body(env, inv)
     assert [i.text[:10] for i in body.insights] == ["[cite-only"]
     _assert_withheld(env, inv)
+
+
+
+# ── round 3: an edge stands on its endpoints' complete grounding ──
+#
+# A cited edge (from a retrieval event or a synthesis manifest pin) grounds on
+# its endpoint nodes, and an endpoint grounds by the same rules as any node:
+# every metadata pointer AND every supported_by edge out of it, followed
+# transitively with cycle protection. Round 2 read only the endpoints'
+# metadata, so an endpoint whose restricted or missing source was recorded on
+# an earlier supported_by edge exported the thesis.
+
+
+def _endpoint_support(
+    env: dict, edge_id: str, node_id: str, *,
+    chunk_id: str | None = None, meta: str | None = None, target: str | None = None,
+) -> None:
+    """A supported_by edge out of ``node_id`` that an earlier investigation
+    wrote, grounded on ``chunk_id`` and/or pointers in ``meta``."""
+    con = connect_write(env["db"])
+    try:
+        con.execute(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "chunk_id, metadata, source_tier, extraction_confidence, graph_scope, "
+            "investigation_id) VALUES (?, ?, ?, 'supported_by', ?, ?, 1, 0.9, "
+            "'depth', 'earlier-investigation')",
+            [edge_id, node_id, target or node_id, chunk_id, meta],
+        )
+    finally:
+        con.close()
+
+
+def _node(env: dict, node_id: str, node_type: str = "entity", meta: str | None = None) -> None:
+    con = connect_write(env["db"])
+    try:
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope, "
+            "metadata) VALUES (?, ?, ?, 'depth', ?)",
+            [node_id, node_id, node_type, meta],
+        )
+    finally:
+        con.close()
+
+
+@pytest.mark.parametrize(
+    ("chunk_id", "meta"),
+    [("c-rs", None), (None, '{"source_chunk_ids": ["c-gone"]}')],
+    ids=["restricted-chunk", "missing-source-chunk"],
+)
+def test_excerpt_withheld_when_a_retrieved_edge_endpoint_rests_on_an_earlier_edge(
+    env, chunk_id, meta
+):
+    # codex's reproduction: the retrieved edge's own chunk is public; its
+    # endpoint's earlier supported_by edge references the gated chunk, or a
+    # chunk that is gone.
+    inv = "inv-e1"
+    _public_insight(inv)
+    _edge(env, "e-read", chunk_id="c-pd")
+    _endpoint_support(env, "e-support", "e-read-b", chunk_id=chunk_id, meta=meta,
+                      target="e-read-a")
+    _retrieval(inv, env["events"], edge_ids=["e-read"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+@pytest.mark.parametrize(
+    ("chunk_id", "meta"),
+    [("c-rs", None), (None, '{"source_chunk_ids": ["c-gone"]}')],
+    ids=["restricted-chunk", "missing-source-chunk"],
+)
+def test_excerpt_withheld_when_a_pinned_edge_endpoint_rests_on_an_earlier_edge(
+    env, chunk_id, meta
+):
+    # The manifest-edge entrypoint: an archived synthesis pins the public
+    # edge, and nothing else on the trajectory names the endpoint's support.
+    inv = "inv-e2"
+    _public_insight(inv)
+    _edge(env, "e-pin", chunk_id="c-pd")
+    _endpoint_support(env, "e-pin-support", "e-pin-a", chunk_id=chunk_id, meta=meta,
+                      target="e-pin-b")
+    _archive(env, inv, "syn-e2", [("edge", "e-pin")])
+    log_event(
+        inv, ActionType.SYNTHESIS_ARCHIVED, synthesis_id="syn-e2",
+        payload={"thesis_summary": f"Archived. {PASSAGE}"}, events_dir=env["events"],
+    )
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_the_restricted_support_is_two_hops_from_the_edge(env):
+    # e-read-b is supported by a claim node whose own supported_by edge
+    # stands on the gated chunk: grounding is followed transitively.
+    inv = "inv-e3"
+    _public_insight(inv)
+    _edge(env, "e-read", chunk_id="c-pd")
+    _node(env, "n-evidence", "claim")
+    _node(env, "n-quote")
+    _endpoint_support(env, "e-hop-1", "e-read-b", chunk_id="c-pd", target="n-evidence")
+    _endpoint_support(env, "e-hop-2", "n-evidence", chunk_id="c-rs", target="n-quote")
+    _retrieval(inv, env["events"], edge_ids=["e-read"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_an_unnamed_pointer_field_two_hops_from_the_edge_is_caught(env):
+    # The hard-to-vary proof at the endpoint: a pointer key no code names
+    # (backup_chunk_ids), nested in the metadata of the node an endpoint's
+    # supported_by edge leads to.
+    inv = "inv-e4"
+    _public_insight(inv)
+    _edge(env, "e-read", chunk_id="c-pd")
+    _node(env, "n-evidence", "claim",
+          '{"source_document_id": "doc-pd", "notes": [{"backup_chunk_ids": ["c-rs"]}]}')
+    _endpoint_support(env, "e-hop-1", "e-read-b", chunk_id="c-pd", target="n-evidence")
+    _retrieval(inv, env["events"], edge_ids=["e-read"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_cleared_when_every_endpoint_support_is_public(env):
+    # Positive control: the transitive walk withholds nothing it can clear,
+    # and a supported_by cycle between the endpoints terminates. Both
+    # entrypoints (a retrieval event and a manifest pin) name the edge.
+    inv = "inv-e5"
+    _public_insight(inv)
+    _edge(env, "e-read", chunk_id="c-pd")
+    _endpoint_support(env, "e-cycle-1", "e-read-b", chunk_id="c-pd", target="e-read-a")
+    _endpoint_support(env, "e-cycle-2", "e-read-a", chunk_id="c-pd", target="e-read-b")
+    _archive(env, inv, "syn-e5", [("edge", "e-read")])
+    _retrieval(inv, env["events"], edge_ids=["e-read"])
+    summary = "A thesis standing only on the public pamphlet."
+    _complete(inv, env["events"], summary)
+    body = _body(env, inv)
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
+
+
+def test_a_claim_endpoint_grounded_only_by_the_followed_edge_is_not_unsupported(env):
+    # Positive control: the retrieved edge IS the claim's supported_by edge.
+    # Reaching the claim through that edge must not read the claim as having
+    # no source just because its only edge is already being followed.
+    inv = "inv-e6"
+    _public_insight(inv)
+    _node(env, "n-claim-e6", "claim")
+    _node(env, "n-evidence-e6", "entity", '{"source_document_id": "doc-pd"}')
+    _endpoint_support(env, "e-claim-e6", "n-claim-e6", chunk_id="c-pd",
+                      target="n-evidence-e6")
+    _retrieval(inv, env["events"], edge_ids=["e-claim-e6"])
+    summary = "A thesis over the supported claim."
+    _complete(inv, env["events"], summary)
+    body = _body(env, inv)
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
