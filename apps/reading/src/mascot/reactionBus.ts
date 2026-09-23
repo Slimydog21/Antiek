@@ -6,9 +6,10 @@ export const PRODUCT_EXPERIENCES = [
   "deep_research_start",
   "deep_research_complete",
   "deep_research_error",
-  "evidence_source_opened",
+  "voice_playback_started",
   "idle",
   "fail",
+  "evidence_source_opened",
 ] as const;
 
 export type ProductExperience = (typeof PRODUCT_EXPERIENCES)[number];
@@ -18,9 +19,10 @@ const REACTION_MAP: Readonly<Record<ProductExperience, EmoteKind>> = {
   deep_research_start: "thinking",
   deep_research_complete: "happy",
   deep_research_error: "dizzy",
-  evidence_source_opened: "curious",
+  voice_playback_started: "thinking",
   idle: "sleeping",
   fail: "dizzy",
+  evidence_source_opened: "curious",
 };
 
 export const MASCOT_EXPERIENCE_EVENT = "antiek:mascot-experience";

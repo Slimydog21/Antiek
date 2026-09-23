@@ -138,12 +138,14 @@ def create_multimedia_research_intent(
             question=body.question,
             claim=claim,
         )
+    # KeyError is a LookupError: it must be caught BEFORE the LookupError
+    # clause or a ledger conflict reports 404 "unavailable" instead of 409.
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="research intent authority conflicts", headers=_PRIVATE) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="research intent authority is unavailable", headers=_PRIVATE) from exc
     except ResearchIntentError as exc:
         raise HTTPException(status_code=409, detail=str(exc), headers=_PRIVATE) from exc
-    except (KeyError, ValueError) as exc:
-        raise HTTPException(status_code=409, detail="research intent authority conflicts", headers=_PRIVATE) from exc
     response.status_code = 201 if created else 200
     response.headers.update(_PRIVATE)
     return _response(intent)

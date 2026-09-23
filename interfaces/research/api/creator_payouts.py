@@ -64,8 +64,14 @@ def _load_kyc_state(con: ReadConnection, recipient_ref: str) -> str | None:
             "ORDER BY row_inserted_at DESC LIMIT 1",
             [recipient_ref],
         ).fetchone()
-    except duckdb.Error:
-        return None
+    except duckdb.Error as exc:
+        # A read FAILURE is not "this recipient never started KYC". Returning
+        # None here made schema drift indistinguishable from an honest absence.
+        raise _refuse(
+            503,
+            "kyc_ledger_unavailable",
+            "KYC state could not be read; this is not a statement that none exists.",
+        ) from exc
     return row[0] if row else None
 
 
@@ -83,8 +89,16 @@ def _load_transfers(con, recipient_ref: str) -> list[tuple]:
             "ORDER BY initiated_at DESC",
             [recipient_ref],
         ).fetchall()
-    except duckdb.Error:
-        return []
+    except duckdb.Error as exc:
+        # A read FAILURE is not "this creator was never paid". payout_transfers
+        # is created with CREATE TABLE IF NOT EXISTS and never widened, so a
+        # table predating a column makes this SELECT raise forever — and the
+        # creator-facing surface would report $0 over real, present transfers.
+        raise _refuse(
+            503,
+            "payout_ledger_unavailable",
+            "Payout ledger could not be read; this is not a statement that no payouts exist.",
+        ) from exc
     return rows
 
 

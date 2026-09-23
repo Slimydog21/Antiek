@@ -2,7 +2,7 @@
 
 The gallery is the visual-review surface; these keep it honest:
 - it passes the zero-script gate (it is itself a projection artifact);
-- it renders all 7x3 = 21 cells (no silent drop);
+- it renders all 8x3 = 24 cells (no silent drop);
 - the committed ``gallery.html`` byte-matches a fresh regeneration.
 
 Regenerate the committed file (orchestrator, after review):
@@ -27,8 +27,8 @@ def test_gallery_is_script_free() -> None:
 
 def test_gallery_renders_all_cells() -> None:
     html = gallery.build_gallery()
-    # 7 widgets x 3 shapes; one <figcaption> per cell.
-    assert html.count("<figcaption>") == 21
+    # 8 widgets x 3 shapes; one <figcaption> per cell.
+    assert html.count("<figcaption>") == 24
 
 
 def test_gallery_matches_committed() -> None:

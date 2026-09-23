@@ -27,10 +27,11 @@ export function notifyShellFailure(): void {
   emitMascotExperience("fail");
 }
 
-/** A current gate-served cited source is committed as readable content. */
-export function notifyEvidenceSourceOpened(): void {
-  emitMascotExperience("evidence_source_opened");
+/** Call only after the first HTMLMediaElement.play() promise resolves. */
+export function notifyVoicePlaybackStarted(): void {
+  emitMascotExperience("voice_playback_started");
 }
+
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();
   locallyStartedResearchSessions.set(sessionId, startedAt);
@@ -76,4 +77,8 @@ export function notifyResearchPhaseEdge(
   if (current === "complete") emitMascotExperience("deep_research_complete");
   if (current === "error") emitMascotExperience("deep_research_error");
   return true;
+}
+
+export function notifyEvidenceSourceOpened(): void {
+  emitMascotExperience("evidence_source_opened");
 }

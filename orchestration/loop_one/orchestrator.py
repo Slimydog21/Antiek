@@ -88,6 +88,9 @@ from orchestration.phase_runner import (  # noqa: E402
     run_check,
     verify_phase,
 )
+from orchestration.phase_runner.postconditions import (  # noqa: E402
+    NO_PRIOR_GRAPH_KNOWLEDGE,
+)
 from orchestration.session_evidence_pack import SessionEvidencePack  # noqa: E402
 
 # connect_read replaces the two lazy `import duckdb` + raw read-only connects below.
@@ -98,6 +101,7 @@ from skills.domain import (  # noqa: E402
 )
 from substrate.schemas import (  # noqa: E402
     ActionType,
+    ConnectorDeliveredPayload,
     ConnectorRequestedPayload,
     DecomposeQuestionDeliveredPayload,
     DecomposeQuestionRequestedPayload,
@@ -449,10 +453,13 @@ def _prior_graph_knowledge_section(question: str) -> str:
             f"- {cid} cited from substrate graph search for orientation."
             for cid in ids
         )
-    return (
-        "chunk_orientation_marker and node_orchestrator_start seed the "
-        "connector substrate when the graph has no servable hits yet.\n"
-    )
+    # Say the graph had nothing. Do NOT manufacture citation-shaped tokens:
+    # the previous return value ("chunk_orientation_marker and
+    # node_orchestrator_start seed the connector substrate ...") matched the
+    # Phase 1 citation regex while referring to no chunk and no node, so a
+    # cold-start investigation passed the gate by claiming knowledge it did
+    # not have.
+    return NO_PRIOR_GRAPH_KNOWLEDGE + "\n"
 
 
 async def _render_chunks_block_for_sub_question_async(
@@ -678,11 +685,29 @@ async def _run_phase_1(
                 "decomposer returned no sub-questions "
                 "(bridge fallback or empty role response)"
             )
+        # Render the decomposer's actual sub-questions.
+        #
+        # This block used to splice in
+        # ``("Loop 1 orchestrator orienting on the cold question. " * 30)`` —
+        # 1560 characters of one sentence, whose only function was to clear the
+        # Phase 1 minimum-length check. The decomposition was already in hand
+        # and was not written down, so the orientation file recorded the
+        # orchestrator's padding instead of the role's output.
+        decomposition_lines: list[str] = []
+        for index, sq in enumerate(ctx.decomposition.decomposition, start=1):
+            decomposition_lines.append(
+                f"{index}. **{sq.sub_question.strip()}** "
+                f"({sq.category}, needs {sq.evidence_type_required})"
+            )
+            # The prompt treats a deletable rationale as the signal that a
+            # sub-question is performative, so it is recorded, not summarised.
+            decomposition_lines.append(f"   - _Why independent_: {sq.rationale.strip()}")
         body = (
             "# Orientation\n\n"
             f"Investigation: `{ctx.investigation_id}`\n\n"
             f"Question: {ctx.question}\n\n"
-            + ("Loop 1 orchestrator orienting on the cold question. " * 30)
+            "## Decomposition\n\n"
+            + "\n".join(decomposition_lines)
             + "\n\n## Prior Graph Knowledge\n\n"
             + await _prior_graph_knowledge_section_async(ctx.question)
         )
@@ -773,14 +798,60 @@ async def _run_phase_2(
             _retrieve_one(index, sq) for index, sq in enumerate(sub_qs)
         ))
         ctx.evidence.extend(results)
-        # Write the three round-1 dimension markers so the file-
-        # artifact postcondition for Phase 2 passes. The markers
-        # carry the evidence summaries the orchestrator already has.
-        body_base = (
-            f"# Round 1 — {ctx.investigation_id}\n\n"
-            f"Question: {ctx.question}\n\n"
-            + ("Evidence-grounded round 1 content. " * 50)
-        )
+        # Render the evidence the retrievers actually returned.
+        #
+        # This block used to append ``("Evidence-grounded round 1 content. "
+        # * 50)`` — one constant sentence, fifty times — and its own comment
+        # said why: "so the file-artifact postcondition for Phase 2 passes".
+        # The postcondition checks the three files exist and clear
+        # ``_ROUND1_MIN_BYTES``, and 1700 characters of one repeated sentence
+        # clears it. So Phase 2 verified the orchestrator's padding, not any
+        # role's output: the producer and the checker were written to the same
+        # weak spec, and the gate could not tell a real investigation from an
+        # empty one.
+        #
+        # The same comment also claimed the markers "carry the evidence
+        # summaries the orchestrator already has". They did not — ``results``
+        # was collected, appended to ``ctx.evidence``, and then discarded here.
+        # This makes the claim true.
+        lines: list[str] = [
+            f"# Round 1 — {ctx.investigation_id}",
+            "",
+            f"Question: {ctx.question}",
+            "",
+        ]
+        for payload in results:
+            lines.append(f"## {payload.sub_question}")
+            lines.append("")
+            if payload.insufficient_evidence:
+                lines.append(
+                    "_Retriever declined: insufficient evidence. A gap is "
+                    "first-class output, not a failure._"
+                )
+            elif payload.answer.strip():
+                lines.append(payload.answer.strip())
+            else:
+                lines.append("_No answer returned._")
+            lines.append("")
+            for claim in payload.supporting_claims:
+                cites = ", ".join(
+                    [f"chunk_{c}" for c in claim.chunk_ids]
+                    + [f"edge_{e}" for e in claim.edge_ids]
+                ) or "no citation"
+                lines.append(
+                    f"- **{claim.claim.strip()}** "
+                    f"({claim.evidence_type}, confidence={claim.confidence}; "
+                    f"{cites}) — {claim.confidence_basis.strip()}"
+                )
+            for gap in payload.evidentiary_gaps:
+                suggestion = (
+                    f" Suggested: {gap.additional_retrieval_suggested.strip()}"
+                    if gap.additional_retrieval_suggested
+                    else ""
+                )
+                lines.append(f"- _Gap_: {gap.gap_description.strip()}{suggestion}")
+            lines.append("")
+        body_base = "\n".join(lines)
         for name in (
             "round1-technical.md", "round1-competitive.md",
             "round1-strategic.md",
@@ -864,12 +935,43 @@ async def _run_phase_4(
         ctx.connector_result = delivered.payload
         # Round 2 deep-dive marker. The Phase 4 postcondition checks
         # for any round2-*.md (≠ critique) above the size floor.
+        # Render what the Connector actually returned. This used to be
+        # ``("Cross-domain connector substrate surfaced. " * 50)`` — one
+        # sentence, fifty times, sized to clear the Phase 4 floor while
+        # `ctx.connector_result` sat unread one line above.
+        relational_lines: list[str] = []
+        _cr = ctx.connector_result
+        if isinstance(_cr, ConnectorDeliveredPayload):
+            relational_lines.append(
+                f"Algorithm: `{_cr.selected_algorithm}`"
+                + (
+                    f" — {_cr.algorithm_rationale.strip()}"
+                    if _cr.algorithm_rationale else ""
+                )
+            )
+            relational_lines.append("")
+            relational_lines.append(
+                f"{len(_cr.paths)} graph path(s) traversed."
+            )
+            relational_lines.append("")
+            for rel in _cr.natural_language_relationships:
+                # `source_path_index` is the cite-back into `paths`; keeping it
+                # is what lets a reader check the claim against the traversal.
+                relational_lines.append(
+                    f"- {rel.text.strip()} (path #{rel.source_path_index})"
+                )
+            for km in _cr.keyword_mappings:
+                relational_lines.append(f"- _Mapping_: {km}")
+        else:
+            relational_lines.append(
+                "_No connector payload was delivered for this round._"
+            )
         _write_marker(
             ctx, "round2-relational.md",
             (
                 "# Round 2 — Relational Deep Dive\n\n"
                 f"Investigation: `{ctx.investigation_id}`\n\n"
-                + ("Cross-domain connector substrate surfaced. " * 50)
+                + "\n".join(relational_lines)
             ),
         )
     return await _drive_phase(ctx, phase=4, work=work())

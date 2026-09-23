@@ -1,4 +1,4 @@
-"""Golden-file byte tests (HPRJ SPR-03 M2): 7 widgets x 3 shapes = 21 goldens.
+"""Golden-file byte tests (HPRJ SPR-03 M2): 8 widgets x 3 shapes = 24 goldens.
 
 Each widget output is byte-compared against a committed golden under
 ``widget_goldens/<kind>__<shape>.html``. The goldens are GENERATED from the
