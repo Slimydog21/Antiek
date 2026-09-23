@@ -256,3 +256,22 @@ def test_search_exclude_taken_down_scopes_the_ranking_in_sql(db_path: str) -> No
     assert {hit["chunk_id"] for hit in excluded["results"]} == {
         "chunk-pd", "chunk-upc", "chunk-oil", "chunk-sdo"
     }
+
+
+def test_non_public_chunks_cannot_starve_top_k(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The per-hit class check alone would still withhold these bodies, so the
+    # SQL allowlist is what keeps them from taking the ranked slots.
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    path = _seed(
+        str(tmp_path / "graph.duckdb"),
+        (
+            ("uo", "user_owned", "user-b", "USER OWNED BODY quantum"),
+            ("null", None, "user-b", "NULL RIGHTS BODY quantum"),
+            ("pd", "public_domain", "__operator__", "Servable quantum garden notes"),
+        ),
+    )
+    assert _unscoped_top_hit(path, "quantum") in {"chunk-uo", "chunk-null"}
+
+    assert _search_public_ids(path, "quantum", 1) == (["chunk-pd"], False)
