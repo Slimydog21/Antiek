@@ -60,6 +60,19 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
+  // The reader stays mounted across /read/A → /read/B. Drop A's book and body
+  // during the render that sees the new id, before any effect runs, so nothing
+  // downstream (pages, servability, the TP reading focus) pairs B's id with
+  // A's text — not on B's error screen, and not for one frame while B loads.
+  const [loadedFor, setLoadedFor] = useState(documentId);
+  if (loadedFor !== documentId) {
+    setLoadedFor(documentId);
+    setBook(null);
+    setBody(null);
+    setLoading(true);
+    setError(null);
+  }
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -71,6 +84,11 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
           getBookFullText(documentId),
         ]);
         if (cancelled) return;
+        // Fail closed if the gate answered for a different document: its body
+        // must never be shown or published under this id.
+        if (detail.document_id !== documentId || full.document_id !== documentId) {
+          throw new Error("book_identity_mismatch");
+        }
         setBook(detail);
         setBody(full);
         // House-state candidates for the zero-buyer ad border.
@@ -208,9 +226,12 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
 
   // TP SERVABLE mount — BEFORE any early returns (Rules of Hooks).
   // Gated books never publish page body (dual structure / issue-3135 class).
+  // Each reader mount publishes under its own token, so closing one reader
+  // window never clears another's focus.
+  const [focusOwner] = useState(() => ({}));
   useEffect(() => {
     if (!documentId) {
-      clearReadingFocus();
+      clearReadingFocus(focusOwner);
       return;
     }
     const pageText =
@@ -223,11 +244,11 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
       title: book?.title ?? null,
       pageText,
       servable: ownerReadable,
-    });
+    }, focusOwner);
     return () => {
-      clearReadingFocus();
+      clearReadingFocus(focusOwner);
     };
-  }, [documentId, pageIndex, book?.title, ownerReadable, pages]);
+  }, [documentId, pageIndex, book?.title, ownerReadable, pages, focusOwner]);
 
 
   const selection = useFloatMenuSelection({

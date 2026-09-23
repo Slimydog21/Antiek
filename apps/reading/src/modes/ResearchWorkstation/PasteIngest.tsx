@@ -7,6 +7,7 @@ import {
   ApiError,
 } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { ingestVerdict, type IngestVerdict } from "./ingestVerdict";
 
 /**
  * PasteIngest — drop or paste a file / URL / passage into a research and
@@ -53,6 +54,16 @@ type Outcome =
 
 const TEXT_EXTENSIONS = /\.(txt|md|markdown|csv|json|log|rtf)$/i;
 
+/** A non-absorbed ingest verdict as an outcome: a skip that wrote nothing
+ *  reads as a plain note, an engine error as the failure surface. */
+function verdictOutcome(
+  verdict: Exclude<IngestVerdict, { kind: "absorbed" }>,
+): Outcome {
+  return verdict.kind === "failed"
+    ? { kind: "failed", reason: verdict.reason }
+    : { kind: "rejected", why: verdict.why };
+}
+
 export default function PasteIngest({
   investigationId,
 }: {
@@ -76,9 +87,14 @@ export default function PasteIngest({
           investigation_id: investigationId,
           title,
         });
+        const verdict = ingestVerdict(r, title);
+        if (verdict.kind !== "absorbed") {
+          setOutcome(verdictOutcome(verdict));
+          return;
+        }
         setOutcome({
           kind: "absorbed",
-          title: r.title ?? title,
+          title: verdict.title,
           oversize: exceedsContext(text),
         });
       } catch (e) {
@@ -94,15 +110,12 @@ export default function PasteIngest({
       setOutcome({ kind: "absorbing" });
       try {
         const r = await ingestSource({ url, investigation_id: investigationId });
-        if (r.status === "error") {
-          setOutcome({ kind: "failed", reason: r.error_message });
-          return;
-        }
-        setOutcome({
-          kind: "absorbed",
-          title: r.title ?? url,
-          oversize: false,
-        });
+        const verdict = ingestVerdict(r, url);
+        setOutcome(
+          verdict.kind === "absorbed"
+            ? { kind: "absorbed", title: verdict.title, oversize: false }
+            : verdictOutcome(verdict),
+        );
       } catch (e) {
         const reason = e instanceof ApiError ? e.body || null : null;
         setOutcome({ kind: "failed", reason });
