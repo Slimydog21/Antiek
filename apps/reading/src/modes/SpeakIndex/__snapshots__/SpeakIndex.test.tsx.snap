@@ -62,7 +62,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           value=""
         />
         <button
-          class="inline-flex items-center justify-center gap-2 font-mono font-semibold border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-sm  "
+          class="inline-flex items-center justify-center gap-2 font-sans font-medium border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-sm  "
           disabled=""
           type="submit"
         >
@@ -274,7 +274,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           value=""
         />
         <button
-          class="inline-flex items-center justify-center gap-2 font-mono font-semibold border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-sm  "
+          class="inline-flex items-center justify-center gap-2 font-sans font-medium border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-sm  "
           disabled=""
           type="submit"
         >
@@ -389,7 +389,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           value=""
         />
         <button
-          class="inline-flex items-center justify-center gap-2 font-mono font-semibold border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-sm  "
+          class="inline-flex items-center justify-center gap-2 font-sans font-medium border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-sm  "
           disabled=""
           type="submit"
         >

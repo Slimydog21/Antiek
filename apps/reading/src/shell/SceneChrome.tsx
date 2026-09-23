@@ -184,11 +184,11 @@ export function SceneChrome({
     <div className="h-full w-full flex flex-col min-h-0">
       {/* Action bar — workflow verbs + in-scene tabs. */}
       <div
-        className="shrink-0 border-b-edge border-sun bg-ice-1 dark:bg-charcoal-2"
+        className="shrink-0 border-b border-hairline bg-card"
         data-testid={`scene-chrome-${wf}`}
       >
         <div className="h-10 px-4 flex items-center gap-3">
-          <span className="font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight shrink-0">
+          <span className="font-mono text-xxs font-semibold uppercase tracking-[0.08em] text-3 shrink-0">
             {meta.label}
           </span>
           <div className="flex-1" />
@@ -204,9 +204,7 @@ export function SceneChrome({
                   aria-busy={busy || undefined}
                   className={
                     "px-2.5 py-1 rounded text-xs disabled:opacity-60 " +
-                    (a.primary
-                      ? "bg-sun text-ink hover:bg-sun-glow"
-                      : "text-ink-soft dark:text-starlight hover:bg-ice-3 dark:hover:bg-charcoal-1")
+                    (a.primary ? "bg-sun text-ink hover:bg-sun-hover" : "text-2 hover:bg-wash hover:text-1")
                   }
                 >
                   {busy ? "Creating…" : a.label}
@@ -231,9 +229,7 @@ export function SceneChrome({
                   aria-current={active ? "page" : undefined}
                   className={
                     "px-3 py-1.5 text-xs border-b-2 " +
-                    (active
-                      ? "border-sun text-ink dark:text-bright font-medium"
-                      : "border-transparent text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright")
+                    (active ? "border-current text-1 font-medium" : "border-transparent text-2 hover:text-1")
                   }
                 >
                   {t.label}

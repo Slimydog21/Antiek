@@ -268,6 +268,11 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const isMobile = tier === "sm" || tier === "md";
   const showRail = !isMobile || !collapsed;
   const isBottom = orientation === "bottom";
+  // Phone width: the bottom dock reduces to five equal keys (the four doors
+  // + More) with no keycap chips, and stays in the page flow. Home is the
+  // mascot's double-tap and Search is More's filter at this width.
+  const compact = isBottom && tier === "sm";
+  const onHome = pathname === "/home";
 
   // herdr transfer P0-2 — the rail badge: how many research FAMILIES need
   // the operator right now. Counted per family root (countSummoningGroups):
@@ -308,7 +313,9 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     // path emits (source differs only). This is the click≡hotkey parity the
     // mascot (SPR-10) depends on. Navigation is AUGMENTED, not replaced.
     emitProductActivate({ productId: wf, route, source: "click" });
-    if (isMobile) setCollapsed(true);
+    // Only the legacy left rail collapses behind a toggle; the bottom dock
+    // is always in the flow.
+    if (isMobile && !isBottom) setCollapsed(true);
   };
 
   if (isMobile && collapsed) {
@@ -356,10 +363,11 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         // SPR-08/SPR-10 click≡hotkey parity (the ⌘O home binding).
         emitProductActivate({ productId: "home", route: "/home", source: "click" });
       }}
+      aria-current={onHome ? "page" : undefined}
       className={
-        "shrink-0 flex flex-col items-center justify-center gap-0.5 bg-sun/95 hover:bg-sun text-ink " +
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink " +
-        (isBottom ? "w-16 h-full border-r-edge border-sun" : "h-16 w-full border-b-edge border-sun")
+        "shrink-0 flex flex-col items-center justify-center gap-0.5 " +
+        (onHome ? "bg-sun text-ink " : "text-ice-2/80 hover:bg-white/10 ") +
+        (isBottom ? "w-16 h-full" : "h-16 w-full")
       }
     >
       <BrainMark size={24} />
@@ -403,7 +411,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const workflowGroup = (
     <nav
       className={
-        "flex gap-1 " + (isBottom ? "flex-row items-stretch" : "flex-1 flex-col")
+        compact ? "grid flex-1 grid-cols-4" : "flex gap-1 " + (isBottom ? "flex-row items-stretch" : "flex-1 flex-col")
       }
       aria-label="Workflows"
       data-testid="navrail-workflows"
@@ -414,12 +422,14 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
           icon={<I d={WF_ICONS[wf]} />}
           label={WORKFLOWS[wf].label}
           title={`${WORKFLOWS[wf].label} - ${WORKFLOWS[wf].tagline}`}
-          active={activeWorkflow === wf}
+          // /home belongs to the research workflow, but there the Home key is
+          // the active one: one lit key, never two.
+          active={!onHome && activeWorkflow === wf}
           onClick={() => selectWorkflow(wf)}
           variant="workflow"
           orientation={orientation}
           productId={wf}
-          binding={bindingForProduct(wf)?.spec}
+          binding={compact ? undefined : bindingForProduct(wf)?.spec}
           badge={wf === "research" ? researchSummons : undefined}
         />
       ))}
@@ -441,7 +451,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       variant="more"
       orientation={orientation}
       productId="more"
-      binding={bindingForProduct("more")?.spec}
+      binding={compact ? undefined : bindingForProduct("more")?.spec}
     />
   );
 
@@ -450,33 +460,35 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   // eye lands on them; Search + More cluster on the trailing edge as
   // overflow. The accent border is on TOP (its inner edge, toward the
   // working region) — symmetric with the left rail's right border.
+  // The dock is a dark island in both themes, drawn without a sun edge (the
+  // sun marks only the active key). It stays in the page flow at every width,
+  // and its focus ring is the sun (the ink ring would vanish on ink). The
+  // trailing 64px slot is the mascot's station: MascotStation seats itself
+  // there, so Brain sits in reserved chrome and never over the working area.
   if (isBottom) {
     return (
       <>
         <aside
-          className={
-            "h-14 w-full shrink-0 flex items-stretch bg-ink dark:bg-void border-t-edge border-sun " +
-            (isMobile ? "absolute bottom-0 left-0 shadow-z3" : "") +
-            (showRail ? "" : " hidden")
-          }
-          // Mobile-only overlay elevation (was a z-40 literal): the named
-          // `mobileRail` rung, at the window-band base. Desktop stays in-flow
-          // with no z, exactly as before.
-          style={isMobile ? { zIndex: zIndex.mobileRail } : undefined}
+          className="h-16 w-full shrink-0 flex items-stretch bg-ink dark:bg-void [--focus:var(--sun)]"
           aria-label="Primary navigation"
         >
-          {homeButton}
-          <nav className="flex items-center px-1.5" aria-label="Utilities">
-            {searchButton}
-          </nav>
-          <div className="mx-1.5 my-2 border-l border-white/10" aria-hidden="true" />
-          <div className="flex-1 flex items-center justify-center">
+          {!compact && (
+            <>
+              {homeButton}
+              <nav className="flex items-center px-1.5" aria-label="Utilities">
+                {searchButton}
+              </nav>
+              <div className="mx-1.5 my-2 border-l border-white/10" aria-hidden="true" />
+            </>
+          )}
+          <div className={compact ? "flex flex-[4]" : "flex-1 flex items-center justify-center"}>
             {workflowGroup}
           </div>
-          <div className="mx-1.5 my-2 border-l border-white/10" aria-hidden="true" />
-          <nav className="flex items-center px-1.5" aria-label="More">
+          {!compact && <div className="mx-1.5 my-2 border-l border-white/10" aria-hidden="true" />}
+          <nav className={compact ? "grid flex-1" : "flex items-center px-1.5"} aria-label="More">
             {moreButton}
           </nav>
+          <span data-mascot-station aria-hidden="true" className="w-16 shrink-0" />
         </aside>
 
         <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
@@ -489,7 +501,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     <>
       <aside
         className={
-          "w-[72px] shrink-0 h-full flex flex-col bg-ink dark:bg-void border-r-edge border-sun " +
+          "w-[72px] shrink-0 h-full flex flex-col bg-ink dark:bg-void " +
           (isMobile ? "absolute top-0 left-0 shadow-z3" : "") +
           (showRail ? "" : " hidden")
         }

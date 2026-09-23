@@ -22,7 +22,7 @@ import { useAuth } from "../../lib/auth";
  * S4 ships the default-derived crumbs only; per-route overrides come
  * online as S5+ mode ports happen.
  */
-export type Crumb = { label: string; to?: string };
+export type Crumb = { label: string; to?: string; id?: boolean };
 
 /** Generate breadcrumbs from the current pathname. */
 function defaultBreadcrumbsFor(pathname: string): Crumb[] {
@@ -67,8 +67,12 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
   let acc = "";
   for (const seg of segments) {
     acc += "/" + seg;
-    const label = known[seg] ?? seg;
-    crumbs.push({ label, to: acc });
+    // A route word reads as a sentence-case label ("my-research" → "My
+    // research"); a segment carrying digits is a record id and stays
+    // verbatim, set as data.
+    const id = !known[seg] && /\d/.test(seg);
+    const label = known[seg] ?? (id ? seg : seg[0].toUpperCase() + seg.slice(1).replace(/-/g, " "));
+    crumbs.push({ label, to: acc, id });
   }
   return crumbs;
 }
@@ -76,35 +80,34 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
 export function Topbar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { state, signOut } = useAuth();
   const crumbs = defaultBreadcrumbsFor(pathname);
+  // The account shows the first letter of the signed-in email; with no
+  // email, a drawn person glyph. Never an emoji (they render per-OS).
+  const email = state.status === "authenticated" ? state.identity.email : null;
+  const initial = email?.trim()[0]?.toUpperCase();
 
   return (
     <header
-      className="h-11 shrink-0 flex items-center gap-3 px-4 bg-ice-1 dark:bg-charcoal-2 border-b-edge border-sun"
+      className="h-11 shrink-0 flex items-center gap-3 px-4 bg-card border-b border-hairline"
       role="banner"
     >
-      {/* breadcrumbs */}
+      {/* breadcrumbs: the page named in words (sans); ids stay data (mono) */}
       <nav aria-label="Breadcrumb" className="flex-1 min-w-0">
-        <ol className="flex items-center gap-1.5 text-xs font-mono text-ink-soft dark:text-moonlight overflow-x-auto whitespace-nowrap">
+        <ol className="flex items-center gap-1.5 text-sm text-2 overflow-x-auto whitespace-nowrap">
           {crumbs.map((c, i) => (
             <li key={i} className="flex items-center gap-1.5">
               {i > 0 && (
-                <span aria-hidden="true" className="text-ink-mute dark:text-moonlight/60">
+                <span aria-hidden="true" className="text-3">
                   ›
                 </span>
               )}
               {c.to && i < crumbs.length - 1 ? (
-                <Link
-                  to={c.to}
-                  className="text-ink dark:text-bright hover:underline"
-                >
+                <Link to={c.to} className={`hover:text-1 hover:underline ${c.id ? "font-mono text-xs" : ""}`}>
                   {c.label}
                 </Link>
               ) : (
-                <span className="text-ink dark:text-bright font-semibold">
-                  {c.label}
-                </span>
+                <span className={`text-1 font-medium ${c.id ? "font-mono text-xs" : ""}`}>{c.label}</span>
               )}
             </li>
           ))}
@@ -121,8 +124,17 @@ export function Topbar() {
       <LemonDropdown
         align="below-right"
         trigger={
-          <LemonButton variant="tertiary" size="sm" aria-label="Account">
-            👤
+          <LemonButton variant="tertiary" size="sm" aria-label="Account" className="!px-1">
+            {initial ? (
+              <span className="grid h-6 w-6 place-items-center rounded-full bg-inset font-sans text-xs font-semibold text-1">
+                {initial}
+              </span>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                <circle cx="8" cy="5.5" r="2.75" />
+                <path d="M2.75 14c.6-2.75 2.7-4.25 5.25-4.25s4.65 1.5 5.25 4.25" strokeLinecap="round" />
+              </svg>
+            )}
           </LemonButton>
         }
       >

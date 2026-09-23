@@ -80,7 +80,7 @@ export function ThreadJump({
 
   return (
     <div className="flex flex-col min-h-0" data-testid="thread-jump">
-      <div className="shrink-0 border-b-edge border-sun bg-ice-1 dark:bg-charcoal-2 py-1.5">
+      <div className="shrink-0 border-b border-hairline bg-card py-1.5">
         <ThreadBreadcrumb
           thread={thread}
           activeEntityId={activeEntityId}

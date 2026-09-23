@@ -107,31 +107,19 @@ export function PanelLayout({ mainSlot }: Props) {
     startRef.current = null;
   }, []);
 
-  // S11 acceptance: tier `sm` (< 768px) renders a "use a larger
-  // screen" splash; the workspace shell is not designed for phone
-  // widths. The mainSlot still renders so the operator sees real
-  // content if they ignore the splash; the workspace primitives
-  // are hidden so they don't fight the layout at this size.
+  // Tier `sm` (< 768px) is the phone layout: one column, the route view
+  // alone and scrollable. The docks and floating panels stay out of it (a
+  // 320px dock cannot fit), and there is no "use a larger screen" banner:
+  // the shell around it (5-key dock, quiet header) is the phone design.
   if (tier === "sm") {
-    return (
-      <div className="h-full w-full flex flex-col bg-ice-2 dark:bg-space-2 overflow-hidden">
-        <div className="px-4 py-3 bg-sun text-ink font-mono text-xs flex items-center gap-3">
-          <span aria-hidden="true">⚠</span>
-          <span className="flex-1">
-            Antiek is designed for ≥ 1024 px viewports. Open a larger
-            screen for the workspace chrome.
-          </span>
-        </div>
-        <div className="flex-1 min-h-0 overflow-auto">{mainSlot}</div>
-      </div>
-    );
+    return <div className="h-full w-full overflow-auto">{mainSlot}</div>;
   }
 
   return (
     <div className="relative h-full w-full flex bg-transparent overflow-hidden">{/* SPR-04: root made transparent (was bg-ice-2 dark:bg-space-2) so the z-0 living mountainscape shows through the glassy route surface; the docks below keep their opaque chrome bg for legibility. */}
       {/* LEFT DOCK */}
       <aside
-        className={`flex flex-col shrink-0 border-r-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}
+        className={`flex flex-col shrink-0 ${dockLeftIds.length ? "border-r border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}
         style={{ width: dockSide("left", dockLeftIds.length) }}
         aria-label="Left dock"
       >
@@ -159,7 +147,7 @@ export function PanelLayout({ mainSlot }: Props) {
         {/* BOTTOM DOCK */}
         {dockBottomIds.length > 0 && (
           <aside
-            className="flex flex-row shrink-0 border-t-edge border-sun bg-ice-1 dark:bg-charcoal-1 relative"
+            className="flex flex-row shrink-0 border-t border-hairline bg-ice-1 dark:bg-charcoal-1 relative"
             style={{ height: dockBottomHeight }}
             aria-label="Bottom dock"
           >
@@ -185,7 +173,7 @@ export function PanelLayout({ mainSlot }: Props) {
 
       {/* RIGHT DOCK */}
       <aside
-        className={`flex flex-col shrink-0 border-l-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}
+        className={`flex flex-col shrink-0 ${dockRightIds.length ? "border-l border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}
         style={{ width: dockSide("right", dockRightIds.length) }}
         aria-label="Right dock"
       >

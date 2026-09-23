@@ -157,7 +157,7 @@ export function PanelLayoutPanel({ id }: Props) {
         }}
         className={
           "bg-ice-0 dark:bg-charcoal-2 " +
-          "border-edge border-sun rounded-hog " +
+          "border border-rule rounded-hog " +
           "flex flex-col overflow-hidden " +
           shadow +
           (isFocused

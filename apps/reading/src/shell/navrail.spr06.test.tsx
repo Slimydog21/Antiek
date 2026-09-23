@@ -61,13 +61,13 @@ describe("NavRail SPR-06 — bottom orientation + igloo home", () => {
       </MemoryRouter>,
     );
     const rail = screen.getByLabelText("Primary navigation");
-    // The bottom rail is a fixed-height horizontal bar with the accent on its
-    // TOP edge (its inner edge, toward the working region). The left rail is a
+    // The bottom rail is a fixed-height horizontal bar; the left rail is a
     // fixed-WIDTH vertical bar. We assert the bottom-rail shape so a silent
-    // revert to the left rail reddens.
-    expect(rail.className).toContain("h-14");
+    // revert to the left rail reddens. (Design wave 3 dropped the sun rule on
+    // its top edge: the sun marks only the active key.)
+    expect(rail.className).toContain("h-16");
     expect(rail.className).toContain("w-full");
-    expect(rail.className).toContain("border-t-edge");
+    expect(rail.className).not.toContain("border-sun");
     expect(rail.className).not.toContain("w-[72px]");
   });
 
@@ -114,9 +114,10 @@ describe("NavRail SPR-06 — bottom orientation + igloo home", () => {
     );
     const home = screen.getByRole("button", { name: "Antiek home" });
     // A real <button> is keyboard-focusable + activatable by default; the
-    // visible focus ring is the focus-visible:outline class on it.
+    // visible focus ring is the global :focus-visible outline in --focus,
+    // which the dark dock sets to the sun (an ink ring would vanish on ink).
     expect(home.tagName).toBe("BUTTON");
-    expect(home.className).toContain("focus-visible:outline");
+    expect(home.closest('[aria-label="Primary navigation"]')!.className).toContain("[--focus:var(--sun)]");
     // The igloo mark renders inside it (an <svg>), the mascot <img> does not.
     expect(home.querySelector("svg")).toBeTruthy();
     expect(home.querySelector("img")).toBeNull();
