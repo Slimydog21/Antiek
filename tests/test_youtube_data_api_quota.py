@@ -50,6 +50,7 @@ from runtime.connectors.quota_meter import (  # noqa: E402
     QuotaExhausted,
     QuotaMeter,
 )
+from runtime.connectors.youtube import YouTubeDataConnector  # noqa: E402
 
 _TEST_KEY_BYTES = b"0" * nacl.secret.SecretBox.KEY_SIZE  # 32 bytes, test-injected
 # A GCP-shaped API key (the descriptor's prefix class is "AIza").
@@ -452,3 +453,107 @@ def test_meter_rejects_bad_arguments(tmp_path: Path) -> None:
     meter = _small_meter(tmp_path, clock, units_per_day=100)
     with pytest.raises(ValueError):
         meter.check_and_reserve(0)
+
+
+# ── SPR-04 task 4: the meter is keyed per owner ──────────────────────────
+
+
+def test_owner_b_reserve_succeeds_after_owner_a_exhausts(tmp_path: Path) -> None:
+    """YouTube's quota is per GCP project, so it is per connected key.
+
+    The meter used to key its sidecar by vendor alone, so owner B was
+    refused once owner A had spent 10,000 units on a key that was not B's.
+    Exhaust A, then reserve as B on the same state dir and the same day.
+    """
+    clock = _FakeClock(_pt_epoch(2026, 8, 7, 12, 0))
+    state_dir = str(tmp_path / "quota")
+
+    def meter(owner: str) -> QuotaMeter:
+        return QuotaMeter(
+            "youtube", owner=owner, units_per_day=100, state_dir=state_dir, clock=clock.now
+        )
+
+    a = meter("owner-a")
+    b = meter("owner-b")
+    print("owner-a sidecar:", a.state_path)
+    print("owner-b sidecar:", b.state_path)
+    assert a.state_path != b.state_path
+    assert Path(a.state_path).parent == tmp_path / "quota" / "youtube"
+    assert "owner-a" not in a.state_path  # hashed, never the id
+
+    a.check_and_reserve(100)
+    with pytest.raises(QuotaExhausted):
+        a.check_and_reserve(1)
+    assert a.remaining().remaining == 0
+
+    b.check_and_reserve(100)  # B's day is untouched by A's spend
+    assert b.remaining().remaining == 0
+    assert Path(a.state_path).exists() and Path(b.state_path).exists()
+
+    # The vendor's own 403 hard-set is per owner as well.
+    a.mark_exhausted()
+    assert meter("owner-b").remaining().hard_exhausted is False
+
+    # The connector the registry resolves builds its meter on the same key.
+    conn = YouTubeDataConnector(owner="owner-a", state_dir=state_dir, clock=clock.now)
+    assert conn.meter.state_path == a.state_path
+    assert conn.meter.owner == "owner-a"
+    # And the host-shared layout survives only for an owner-less meter.
+    host = QuotaMeter("youtube", state_dir=state_dir, clock=clock.now)
+    assert Path(host.state_path).parent == tmp_path / "quota"
+    assert Path(host.state_path).name.startswith("youtube_quota_")
+
+
+def test_credentialed_metadata_path_costs_exactly_one_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from acquisition.youtube.client import (
+        fetch_with_data_api,
+        reset_youtube_fetch_counter,
+    )
+
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/youtube/v3/videos"
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "items": [{
+                    "snippet": {
+                        "title": "Data API title",
+                        "description": "Data API description",
+                        "publishedAt": "2026-08-12T00:00:00Z",
+                        "channelTitle": "Data API channel",
+                    },
+                    "contentDetails": {"duration": "PT3M12S"},
+                }],
+            },
+        )
+
+    conn = YouTubeDataConnector(
+        owner="owner-a",
+        state_dir=str(tmp_path / "quota"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        artifact_path=str(tmp_path / "byok_artifact.json"),
+        key_bytes=_TEST_KEY_BYTES,
+    )
+    try:
+        conn.attach_key(_SECRET)
+        monkeypatch.setattr(
+            "acquisition.youtube.client._fetch_transcript",
+            lambda _video_id: ([], "missing"),
+        )
+        reset_youtube_fetch_counter()
+        before = conn.meter.remaining().remaining
+        video = fetch_with_data_api(conn, "dQw4w9WgXcQ")
+        after = conn.meter.remaining().remaining
+
+        assert before - after == 1
+        assert len(requests) == 1
+        assert video.metadata_source == "youtube_data_api"
+        assert Path(conn.meter.state_path).parent == tmp_path / "quota" / "youtube"
+        print("meter path:", conn.meter.state_path)
+    finally:
+        conn.close()
