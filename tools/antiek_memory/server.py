@@ -362,9 +362,10 @@ CANONICAL_TOOLS: list[ToolDescription] = [
     ToolDescription(
         name="cite_source",
         description=(
-            "Resolve a chunk_id or claim_id to its full source "
+            "Resolve a chunk, claim, note, or document ID to source "
             "metadata (document title, source_tier, ip_holder_id, "
-            "page or timestamp anchor). Returns the canonical citation "
+            "page or timestamp anchor). ip_holder_id is withheld when the "
+            "source body is withheld. Returns the canonical citation "
             "format used by the synthesizer."
         ),
         input_schema={
