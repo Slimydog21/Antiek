@@ -345,6 +345,37 @@ class TestResourcesRead:
         assert "error" in resp
 
 
+class TestResourcesReadBooks:
+    """§9.0: antiek://books returns a licensing-required error, never a gated body."""
+
+    def test_restricted_body_returns_licensing_error(self, server_proc):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        resp = _send_and_recv(
+            server_proc,
+            "resources/read",
+            {"uri": "antiek://books/doc-r/chunk-r"},
+            rpc_id=4,
+        )
+        assert resp["error"]["code"] == -32001
+        assert resp["error"]["data"]["servability"] == "restricted"
+        assert "RESTRICTED BODY" not in json.dumps(resp)
+
+    def test_public_domain_body_is_enveloped(self, server_proc):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        resp = _send_and_recv(
+            server_proc,
+            "resources/read",
+            {"uri": "antiek://books/doc-pd/chunk-pd"},
+            rpc_id=4,
+        )
+        body = json.loads(resp["result"]["contents"][0]["text"])
+        assert body["text"] == (
+            '<antiek:content trusted="false">'
+            "Photosynthesis converts light into chemical energy in chloroplasts."
+            "</antiek:content>"
+        )
+
+
 class TestToolsCallSearchPersonal:
     """tools/call search_personal — owner-scoped, fail-closed over the wire.
 

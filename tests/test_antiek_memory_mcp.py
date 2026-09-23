@@ -6,7 +6,9 @@ import io
 import json
 
 from tools.antiek_memory import (
+    LICENSING_REQUIRED,
     ResourceContent,
+    ResourceError,
     ToolResult,
     compute_tool_hash,
     render_well_known_manifest,
@@ -113,6 +115,30 @@ def test_resources_read_resolves_via_handler():
     contents = response["result"]["contents"]
     assert len(contents) == 1
     assert "note_text" in contents[0]["text"]
+
+
+def test_resources_read_reports_resource_error_data():
+    server = make_default_server()
+
+    def resolver(uri: str) -> ResourceContent:
+        raise ResourceError(
+            LICENSING_REQUIRED, "Licensing required", {"servability": "restricted"}
+        )
+
+    server.resource_handler = resolver
+    response = server.handle_request({
+        "jsonrpc": "2.0", "id": 8, "method": "resources/read",
+        "params": {"uri": "antiek://books/doc-r/chunk-r"},
+    })
+    assert response == {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "error": {
+            "code": -32001,
+            "message": "Licensing required",
+            "data": {"servability": "restricted"},
+        },
+    }
 
 
 def test_unknown_method_returns_error():

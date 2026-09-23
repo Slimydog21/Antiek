@@ -24,7 +24,9 @@ from substrate.ad_inventory.attribution import (
     PRIVATE_GRAPH_CONTENT_CLASS,
     PUBLIC_GRAPH_CONTENT_CLASSES,
 )
+from substrate.books.servability import servability_of
 from substrate.constants import SERVABLE_CONTENT_CLASSES
+from substrate.dedup import normalize_isbn
 from substrate.graph import default_db_path
 from substrate.graph.retrieval_gate import (
     PERSONAL_ONLY_CONTENT_CLASSES,
@@ -36,8 +38,10 @@ from substrate.graph.search import EmbeddingModel, search
 
 from .server import (
     CANONICAL_TOOLS,
+    LICENSING_REQUIRED,
     AntiekMemoryServer,
     ResourceContent,
+    ResourceError,
     ToolResult,
     serve_stdio,
 )
@@ -251,7 +255,7 @@ def _make_handlers(
         }])
 
     # ── cite_source ───────────────────────────────────────────────
-    def cite_source(args: dict) -> ToolResult:
+    def cite_source(args: dict[str, Any]) -> ToolResult:
         src_id = args["id"]
         id_type = args.get("id_type", "chunk")
         con = connect_read(db_path)
@@ -290,7 +294,7 @@ def _make_handlers(
         }])
 
     # ── record_attribution ────────────────────────────────────────
-    def record_attribution(args: dict) -> ToolResult:
+    def record_attribution(args: dict[str, Any]) -> ToolResult:
         chunk_id = args["chunk_id"]
         investigation_id = args["investigation_id"]
         dwell = args.get("session_dwell_seconds", 0)
@@ -389,29 +393,67 @@ def _make_handlers(
 
             if uri.startswith("antiek://books/"):
                 parts = uri.split("/")
-                isbn = parts[3] if len(parts) > 3 else None
-                chunk_id = parts[4] if len(parts) > 4 else None
+                if len(parts) != 5 or parts[:3] != ["antiek:", "", "books"]:
+                    return None
+                isbn, chunk_id = parts[3:]
                 if not isbn or not chunk_id:
                     return None
                 row = con.execute(
                     """
-                    SELECT c.chunk_id, c.text, d.title
+                    SELECT c.chunk_id, c.text, c.document_id, d.title,
+                           d.content_class, d.ip_holder_id, d.metadata,
+                           COALESCE(b.taken_down, FALSE)
                     FROM chunks c
                     JOIN documents d ON c.document_id = d.document_id
+                    LEFT JOIN book_assets b ON b.document_id = d.document_id
                     WHERE c.chunk_id = ?
                     """,
                     [chunk_id],
                 ).fetchone()
                 if row is None:
                     return None
+                recorded_isbns: set[str] = set()
+                try:
+                    metadata = json.loads(row[6]) if row[6] else None
+                except (ValueError, TypeError):
+                    metadata = None
+                if isinstance(metadata, dict):
+                    for key in ("isbn", "isbn13", "ISBN"):
+                        value = metadata.get(key)
+                        if isinstance(value, str):
+                            normalized = normalize_isbn(value)
+                            if normalized is not None:
+                                recorded_isbns.add(normalized)
+                if isbn != row[2] and normalize_isbn(isbn) not in recorded_isbns:
+                    return None
+                content_class = row[4]
+                if content_class == PRIVATE_GRAPH_CONTENT_CLASS:
+                    return None
+                taken_down = bool(row[7])
+                withheld, label = is_chunk_body_withheld(content_class, taken_down=taken_down)
+                if withheld or content_class not in PUBLIC_SURFACE_CONTENT_CLASSES:
+                    raise ResourceError(
+                        LICENSING_REQUIRED,
+                        "Licensing required",
+                        {
+                            "uri": uri,
+                            "chunk_id": row[0],
+                            "document_id": row[2],
+                            "title": row[3],
+                            "servability": label if withheld else servability_of(content_class).value,
+                        },
+                    )
                 return ResourceContent(
                     uri=uri,
                     mime_type="application/json",
                     text=json.dumps({
                         "chunk_id": row[0],
                         "isbn": isbn,
-                        "text": row[1],
-                        "title": row[2],
+                        "document_id": row[2],
+                        "title": row[3],
+                        "ip_holder_id": row[5],
+                        "servability": servability_of(content_class, taken_down=False).value,
+                        "text": _TRUSTED_FALSE.format(row[1]),
                     }),
                 )
 
