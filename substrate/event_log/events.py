@@ -106,10 +106,10 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))  # substrate/
-    from constants import (  # type: ignore[no-redef,import-not-found]
+    from constants import (  # type: ignore
         ANTIEK_PARAM_VERSION,
     )
-    from schemas.events import (  # type: ignore[no-redef,import-not-found]
+    from schemas.events import (  # type: ignore
         DEFAULT_POLICY_ID,
         EVENT_SCHEMA_VERSION,
         ActionType,
@@ -670,8 +670,8 @@ def _seal_investigation_unlocked(
         raise PhysicalTrajectoryError("cannot seal an incomplete JSONL append")
 
     try:
-        import pyarrow as pa  # type: ignore[import-not-found, import-untyped, unused-ignore]
-        import pyarrow.parquet as pq_writer  # type: ignore[import-not-found, import-untyped, unused-ignore]
+        import pyarrow as pa  # type: ignore
+        import pyarrow.parquet as pq_writer  # type: ignore
     except ImportError:
         print(
             "events.seal_investigation: pyarrow not installed; "
@@ -1311,7 +1311,7 @@ def emit_worker_identity(
         parent_worker_id=parent_worker_id,
         role=role,
         session_id=session_id,
-        spawn_kind=spawn_kind,  # type: ignore[arg-type]
+        spawn_kind=spawn_kind,  # type: ignore
         expected_lifetime_s=expected_lifetime_s,
         context_hash=context_hash,
     )

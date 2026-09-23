@@ -3973,7 +3973,7 @@ def create_app(
             # ``pip install -e '.[export]'`` and retries.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from xhtml2pdf import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                from xhtml2pdf import (  # type: ignore
                     pisa,
                 )
             except ImportError as e:
@@ -4048,7 +4048,7 @@ def create_app(
             # as PDF. Same 503 fallback when the extra isn't installed.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from ebooklib import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
+                from ebooklib import (  # type: ignore
                     epub,
                 )
             except ImportError as e:
@@ -5752,7 +5752,7 @@ def create_app(
                 )
 
                 payload = QualityGateEvaluatedPayload(
-                    target_kind=req.target_kind,  # type: ignore[arg-type]
+                    target_kind=req.target_kind,  # type: ignore
                     target_id=req.target_id,
                     accepted=verdict.accepted,
                     verification_passed=verdict.verification.passed,

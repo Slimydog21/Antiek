@@ -77,7 +77,7 @@ def _load_sdk() -> Any:
     not installed — byte-for-byte the same shape as Browserbase's
     ``_default_session_factory`` import guard."""
     try:
-        from daytona_sdk import Daytona  # type: ignore[import-not-found, unused-ignore]
+        from daytona_sdk import Daytona  # type: ignore
     except ImportError as e:
         raise RemoteExecUnavailable(
             "daytona-sdk not installed. Run `pip install -e '.[remote_exec]'` "
