@@ -14,6 +14,7 @@ from orchestration.rlm.bridge import (
     maybe_escalate_to_rlm,
 )
 from orchestration.rlm.prime_agent_backend import PrimeAgentRLMBackend
+from orchestration.rlm.session import create_session
 
 # ── Token estimator ──────────────────────────────────────────────────
 
@@ -124,23 +125,27 @@ def test_threshold_override_respected(monkeypatch):
 
 
 def test_above_threshold_ratified_prime_backend_switches_root_executor(monkeypatch, tmp_path):
+    """The label selection, plus what SPR-01 Task 3 added: the bridge now drives
+    the Prime-rooted session. With no binary on PATH the drive resolves to
+    UNAVAILABLE without spawning, and that attempt is still recorded as the
+    session's first iteration so the log carries the failure. The spawn-count
+    proof lives in tests/test_rlm_prime_bridge_executes.py."""
     monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
     monkeypatch.setenv("ANTIEK_PRIME_AGENT_RLM_ENABLED", "1")
-    backend = PrimeAgentRLMBackend(enabled=True, cwd=tmp_path)
+    backend = PrimeAgentRLMBackend(
+        enabled=True, executable="absent-prime", cwd=tmp_path, environ={}
+    )
 
     captured = {}
+    sessions = []
 
-    class _SessionStub:
-        class _State:
-            session_id = "rlm-stub"
-
-        state = _State()
-
-    def _fake_create_session(**kwargs):
+    def _capturing_create_session(**kwargs):
         captured.update(kwargs)
-        return _SessionStub()
+        session = create_session(**kwargs)
+        sessions.append(session)
+        return session
 
-    monkeypatch.setattr("orchestration.rlm.bridge.create_session", _fake_create_session)
+    monkeypatch.setattr("orchestration.rlm.bridge.create_session", _capturing_create_session)
 
     d = maybe_escalate_to_rlm(
         document_id="doc-long-prime",
@@ -150,6 +155,23 @@ def test_above_threshold_ratified_prime_backend_switches_root_executor(monkeypat
     )
 
     assert d.escalated is True
-    assert d.session_id == "rlm-stub"
+    assert d.session_id == sessions[0].state.session_id
     assert captured["root_executor"] == "prime_agent"
     assert captured["prime_goal_brief"] is not None
+    assert d.prime_state == "unavailable"
+    assert d.iteration_count == 1
+    assert sessions[0].iterations[0]["summary"].startswith("prime_agent unavailable")
+
+
+def test_dispatch_rooted_session_is_not_driven_by_the_bridge(monkeypatch):
+    """Without the Prime flag the bridge creates the session and stops, as before."""
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    monkeypatch.delenv("ANTIEK_PRIME_AGENT_RLM_ENABLED", raising=False)
+    d = maybe_escalate_to_rlm(
+        document_id="doc-long-dispatch",
+        investigation_id="inv-dispatch",
+        estimated_tokens=128_000,
+    )
+    assert d.escalated is True
+    assert d.prime_state is None
+    assert d.iteration_count == 0

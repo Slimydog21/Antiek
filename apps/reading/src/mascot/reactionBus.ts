@@ -9,6 +9,8 @@ export const PRODUCT_EXPERIENCES = [
   "voice_playback_started",
   "idle",
   "fail",
+  "voice_recording_started",
+  "voice_playback_started",
   "evidence_source_opened",
 ] as const;
 
@@ -22,6 +24,7 @@ const REACTION_MAP: Readonly<Record<ProductExperience, EmoteKind>> = {
   voice_playback_started: "thinking",
   idle: "sleeping",
   fail: "dizzy",
+  voice_recording_started: "thinking",
   evidence_source_opened: "curious",
 };
 

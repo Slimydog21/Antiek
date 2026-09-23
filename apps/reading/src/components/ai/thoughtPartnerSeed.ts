@@ -12,6 +12,10 @@ export interface ThoughtPartnerSeedDetail {
   prompt?: string;
   system_context?: string;
   source_label?: string;
+  /** SPR-03 Task 3: a driver choice made elsewhere (the CommandPalette's
+   *  picker) for the sidecar's thought partner. `row_id` is the registered
+   *  key's row id ("" = house route); `model_id` names a variant under it. */
+  owner_model?: { row_id: string; model_id?: string };
 }
 
 /**
