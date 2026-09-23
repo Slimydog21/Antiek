@@ -9,11 +9,11 @@
  *  - each rail re-enables pointer events on ITSELF only (its creative link is
  *    clickable) — the working region under it is not occluded because the rail
  *    lives in the reserved inset band;
- *  - it SETS the SPR-06 `--akb-border-inset-*` vars to its thickness for the
- *    active edges (so the seam frame shrinks the working region) and clears
- *    them to 0 on unmount (no phantom inset);
- *  - on a wide viewport all four edges render; on a narrow viewport only
- *    top/bottom (the reading column is never narrowed);
+ *  - it SETS the SPR-06 `--akb-border-inset-*` var for its one slot (so the
+ *    seam frame shrinks the working region), releases the other edges, and
+ *    clears them to 0 on unmount (no phantom inset);
+ *  - it renders ONE labelled slot at every width (design spec §5; it used
+ *    to wrap the app in four rails whose side text clipped);
  *  - house fill is the DEFAULT (no advertiser → a real house card, never
  *    blank), and it renders no animation regardless of motion preference
  *    (static creatives, reduced-motion-safe by construction).
@@ -118,39 +118,58 @@ describe("AdBorder — non-interference (M6)", () => {
   });
 });
 
-describe("AdBorder — edge-reservation seam (M2)", () => {
-  it("sets the four inset vars to its thickness on a wide viewport, all edges active", () => {
-    setWidth(1400);
-    render(
-      <AdBorder lens="read" windowId="w1" samplingEnabled={false} fillFetcher={houseFetcher} />,
-    );
-    const s = document.documentElement.style;
-    expect(s.getPropertyValue("--akb-border-inset-top")).toBe("36px");
-    expect(s.getPropertyValue("--akb-border-inset-bottom")).toBe("36px");
-    expect(s.getPropertyValue("--akb-border-inset-left")).toBe("96px");
-    expect(s.getPropertyValue("--akb-border-inset-right")).toBe("96px");
-  });
-
-  it("reserves only top/bottom on a narrow viewport (the reading column is never narrowed)", () => {
-    setWidth(800); // md: top/bottom only
+describe("AdBorder — one labelled slot (design spec §5)", () => {
+  // The border used to wrap the app in four rails ("Times-Square"), the side
+  // rails 96px wide and clipping their text ("ore the antiek li"). The design
+  // spec allows ONE labelled house-ad slot in one designated rail. The seam
+  // contract is unchanged: the slot reserves its band through the SPR-06
+  // --akb-border-inset-* vars, and every other edge is released to 0.
+  it.each([1400, 800, 390])("renders exactly one slot, on the top edge, at %ipx", (w) => {
+    setWidth(w);
     const { container } = render(
       <AdBorder lens="read" windowId="w1" samplingEnabled={false} fillFetcher={houseFetcher} />,
     );
-    const s = document.documentElement.style;
-    expect(s.getPropertyValue("--akb-border-inset-top")).toBe("36px");
-    expect(s.getPropertyValue("--akb-border-inset-bottom")).toBe("36px");
-    expect(s.getPropertyValue("--akb-border-inset-left")).toBe("0px");
-    expect(s.getPropertyValue("--akb-border-inset-right")).toBe("0px");
-    // Exactly two rails render (no left/right).
-    expect(container.querySelectorAll("[data-akb-ad-edge]").length).toBe(2);
+    const slots = container.querySelectorAll("[data-akb-ad-edge]");
+    expect(slots.length).toBe(1);
+    expect(slots[0].getAttribute("data-akb-ad-edge")).toBe("top");
   });
 
-  it("clears the insets to 0 on unmount (no phantom inset left behind)", () => {
+  it("reserves only the slot's band and releases the other three edges", () => {
+    setWidth(1400);
+    render(<AdBorder lens="read" windowId="w1" samplingEnabled={false} fillFetcher={houseFetcher} />);
+    const s = document.documentElement.style;
+    expect(s.getPropertyValue("--akb-border-inset-top")).toBe("32px");
+    expect(s.getPropertyValue("--akb-border-inset-bottom")).toBe("0px");
+    expect(s.getPropertyValue("--akb-border-inset-left")).toBe("0px");
+    expect(s.getPropertyValue("--akb-border-inset-right")).toBe("0px");
+  });
+
+  it("asks the fill route for exactly the one slot it shows", async () => {
+    setWidth(1400);
+    const fetcher = vi.fn(houseFetcher);
+    render(<AdBorder lens="read" windowId="w1" samplingEnabled={false} fillFetcher={fetcher} />);
+    await waitFor(() => expect(fetcher).toHaveBeenCalled());
+    expect(fetcher.mock.calls[0][0].positions).toEqual(["top"]);
+  });
+
+  it("labels the slot and draws it in hairline, never in sun", async () => {
+    setWidth(1400);
+    const { container, findByText } = render(
+      <AdBorder lens="read" windowId="w1" samplingEnabled={false} fillFetcher={houseFetcher} />,
+    );
+    expect(await findByText("Sponsored · house")).toBeTruthy();
+    const slot = container.querySelector("[data-akb-ad-edge]") as HTMLElement;
+    expect(slot.getAttribute("aria-label")).toBe("Sponsored");
+    expect(slot.outerHTML).not.toContain("border-sun");
+    expect(slot.className).toContain("border-hairline");
+  });
+
+  it("clears the inset to 0 on unmount (no phantom inset left behind)", () => {
     setWidth(1400);
     const { unmount } = render(
       <AdBorder lens="read" windowId="w1" samplingEnabled={false} fillFetcher={houseFetcher} />,
     );
-    expect(document.documentElement.style.getPropertyValue("--akb-border-inset-left")).toBe("96px");
+    expect(document.documentElement.style.getPropertyValue("--akb-border-inset-top")).toBe("32px");
     unmount();
     (["top", "right", "bottom", "left"] as BorderPosition[]).forEach((side) =>
       expect(document.documentElement.style.getPropertyValue(`--akb-border-inset-${side}`)).toBe("0px"),
@@ -166,7 +185,7 @@ describe("AdBorder — house fill is the default (M5)", () => {
       <AdBorder lens="read" windowId="w1" samplingEnabled={false} fillFetcher={houseFetcher} />,
     );
     // Neutral house promo (no HousePromo payload) → the library on-ramp link.
-    const links = await findAllByText("Explore the antiek library");
+    const links = await findAllByText("Explore the Antiek library");
     expect(links.length).toBeGreaterThan(0);
   });
 
