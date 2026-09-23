@@ -97,3 +97,29 @@ does not certify the note.
 Reconsider if: an entailment verifier that fails closed is wired onto this
 path. A note it accepts could then ride beside its source excerpt, typed
 `inferred`.
+
+## Amendment — the whole chunk reaches the synthesizer (2026-09-24, audit wave 5 provenance, round 2)
+
+The tail built each answer and each supporting claim from the first 500
+characters of the chunk. A source whose measurement followed its introduction
+lost the measurement on the way to the synthesizer, while the sub-question
+still reported `insufficient_evidence=false` with no evidentiary gap.
+
+`_investigation_context_from_pack` now passes every chunk's full text. The one
+bound is the synthesizer's context window: `context_budget_tokens` less
+`max_tokens` of the dispatch tier the `synthesizer` role runs on, of which the
+evidence block may use half, at three characters per token, with each shown
+character counted twice because it appears in the answer and in its claim. For
+the production `synthesis` tier that is 179,712 characters of chunk text, about
+45 of the funnel's largest (4,000-character) citable chunks. When the pack
+exceeds it, the budget is split max-min fairly so only the longest chunks are
+cut, each cut backs off to a word boundary so no figure is split, and every
+truncated or omitted chunk gets an `evidentiary_gaps` entry naming the chunk,
+its document, the characters shown and the characters dropped. The claim's
+`confidence_basis` and an inline marker in the answer say the same. A
+sub-question left with no shown chunk is `insufficient_evidence`.
+
+Reconsider if: the operator's AI Role Lineup routes the synthesizer onto a
+model whose window is smaller than the tier's declared `context_budget_tokens`.
+The budget reads the tier, not the lineup override, so it would then overstate
+the room; the fix is a per-model window on the lineup entry.

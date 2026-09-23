@@ -91,7 +91,10 @@ from orchestration.phase_runner import (  # noqa: E402
 from orchestration.phase_runner.postconditions import (  # noqa: E402
     NO_PRIOR_GRAPH_KNOWLEDGE,
 )
-from orchestration.session_evidence_pack import SessionEvidencePack  # noqa: E402
+from orchestration.session_evidence_pack import (  # noqa: E402
+    PackChunk,
+    SessionEvidencePack,
+)
 
 # connect_read replaces the two lazy `import duckdb` + raw read-only connects below.
 from runtime.db_lock import ReadConnection, connect_read  # noqa: E402
@@ -108,6 +111,7 @@ from substrate.schemas import (  # noqa: E402
     Event,
     EvidenceRetrieveDeliveredPayload,
     EvidenceRetrieveRequestedPayload,
+    EvidentiaryGap,
     InvestigationChaseHaltedPayload,
     InvestigationCompletedPayload,
     InvestigationFailedPayload,
@@ -1683,11 +1687,102 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _investigation_context_from_pack(pack: SessionEvidencePack) -> InvestigationContext:
-    """Hydrate Loop 1 state for phases 6–9 from a DRW merge pack."""
-    by_sub_q: dict[str, list[Any]] = {}
-    for chunk in pack.chunks:
-        by_sub_q.setdefault(chunk.sub_question, []).append(chunk)
+# Path A hands the synthesizer every cited chunk whole. The one bound is the
+# synthesizer's own context window: ``context_budget_tokens`` of the dispatch
+# tier the ``synthesizer`` role runs on, less the ``max_tokens`` reserved for
+# its answer. The evidence block may use half of that input window (the rest
+# holds the system prompt, template, decomposition, parameters, substrate
+# paths and any constraint-loop revision prefix), at a conservative three
+# characters per token (JSON-escaped figures and identifiers tokenize densely).
+# Each shown character appears twice in the block, once in the sub-question's
+# answer and once in its supporting claim, so the chunk-text budget is half the
+# block's character budget.
+_PACK_EVIDENCE_WINDOW_SHARE = 0.5
+_PACK_CHARS_PER_TOKEN = 3
+_PACK_TEXT_COPIES = 2
+# The router's own defaults for a tier that declares no window.
+_ROUTER_DEFAULT_CONTEXT_TOKENS = 32_000
+_ROUTER_DEFAULT_MAX_TOKENS = 4_096
+_LAST_WHITESPACE = re.compile(r"\s(?=\S*\Z)")
+
+
+def _pack_evidence_char_budget() -> int:
+    """Characters of chunk text the synthesizer can be shown on Path A.
+
+    Read from the same ``config.yaml`` the dispatch router loads for the
+    ``synthesizer`` role, so the bound moves with the configured window. A
+    config the router could not route the synthesizer through anyway falls
+    back to the router's own tier defaults rather than to no bound."""
+    from substrate.dispatch import DispatchConfig
+
+    context_tokens = _ROUTER_DEFAULT_CONTEXT_TOKENS
+    max_tokens = _ROUTER_DEFAULT_MAX_TOKENS
+    try:
+        import substrate.dispatch.router as _router
+
+        config = DispatchConfig.from_yaml(Path(_router.__file__).parent / "config.yaml")
+        tier = config.tiers[config.role_tiers["synthesizer"]]
+        context_tokens, max_tokens = tier.context_budget_tokens, tier.max_tokens
+    except Exception:  # an unreadable config still leaves a bound, and says so
+        _log.warning(
+            "path-A evidence budget: synthesizer tier unreadable; using the "
+            "router defaults (%d context, %d output tokens)",
+            context_tokens, max_tokens, exc_info=True,
+        )
+    input_tokens = max(context_tokens - max_tokens, 0)
+    return int(
+        input_tokens * _PACK_EVIDENCE_WINDOW_SHARE * _PACK_CHARS_PER_TOKEN
+        / _PACK_TEXT_COPIES
+    )
+
+
+def _allot_pack_text(texts: Sequence[str], budget: int) -> list[str]:
+    """The verbatim part of each text the synthesizer is shown.
+
+    Every text is shown whole when the texts fit ``budget`` together. When
+    they do not, the budget is split max-min fairly: texts shorter than an
+    equal share stay whole and hand the rest of their share on, so only the
+    longest texts are cut, each to about the same length. A cut backs off to the
+    last whitespace inside the allotment, so the shown part never ends inside
+    a word or a figure ("0.00071" is never shown as "0.000"); a text with no
+    whitespace inside its allotment is not shown at all. The caller names
+    every text returned shorter than it came in."""
+    shown = [""] * len(texts)
+    remaining = max(budget, 0)
+    order = sorted(range(len(texts)), key=lambda i: (len(texts[i]), i))
+    for left, i in zip(range(len(order), 0, -1), order, strict=True):
+        text = texts[i]
+        share = remaining // left
+        if len(text) <= share:
+            shown[i] = text
+        else:
+            cut = text[:share]
+            if not text[share].isspace():
+                last_gap = _LAST_WHITESPACE.search(cut)
+                cut = cut[:last_gap.start()] if last_gap else ""
+            shown[i] = cut.rstrip()
+        remaining -= len(shown[i])
+    return shown
+
+
+def _investigation_context_from_pack(
+    pack: SessionEvidencePack,
+    *,
+    evidence_char_budget: int | None = None,
+) -> InvestigationContext:
+    """Hydrate Loop 1 state for phases 6–9 from a DRW merge pack.
+
+    ``evidence_char_budget`` is how many characters of chunk text the
+    synthesizer may be shown in total; ``None`` derives it from the
+    synthesizer's dispatch tier (``_pack_evidence_char_budget``)."""
+    budget = (
+        _pack_evidence_char_budget() if evidence_char_budget is None
+        else evidence_char_budget
+    )
+    excerpts = _allot_pack_text([c.text for c in pack.chunks], budget)
+    by_sub_q: dict[str, list[tuple[PackChunk, str]]] = {}
+    for chunk, excerpt in zip(pack.chunks, excerpts, strict=True):
+        by_sub_q.setdefault(chunk.sub_question, []).append((chunk, excerpt))
 
     decomposition = [
         SubQuestion(
@@ -1711,31 +1806,65 @@ def _investigation_context_from_pack(pack: SessionEvidencePack) -> Investigation
     # ``c.text`` is the cited chunk's source text, the only text a pack chunk
     # carries (the generated gather note is not in the pack). Every answer and
     # claim quotes the source verbatim, so a claim citing a chunk is always
-    # something that chunk says.
+    # something that chunk says. The whole chunk goes through: the only bound
+    # is the synthesizer's context window, and a cut that bound forces is
+    # named in the sub-question's evidentiary gaps, never made silently.
     evidence: list[EvidenceRetrieveDeliveredPayload] = []
     for sq, chunks in sorted(by_sub_q.items()):
-        answer = "\n".join(c.text[:500] for c in chunks)
+        answer_parts: list[str] = []
+        claims: list[SupportingClaim] = []
+        gaps: list[EvidentiaryGap] = []
+        for c, excerpt in chunks:
+            total = len(c.text)
+            basis = (
+                f"DRW gather from {c.source_investigation_id}: "
+                "verbatim excerpt of the cited chunk"
+            )
+            if len(excerpt) < total:
+                dropped = total - len(excerpt)
+                gaps.append(EvidentiaryGap(
+                    gap_description=(
+                        f"Chunk {c.chunk_id} (document {c.document_id}) was "
+                        + ("omitted" if not excerpt else "truncated")
+                        + " to fit the synthesizer's context budget: "
+                        f"{len(excerpt)} of {total} characters shown, "
+                        f"{dropped} dropped"
+                        + (f" after character {len(excerpt)}" if excerpt else "")
+                        + ". Findings or qualifications in the dropped text "
+                        "are not in this evidence."
+                    ),
+                    additional_retrieval_suggested=(
+                        f"Read chunk {c.chunk_id} in full."
+                    ),
+                ))
+                basis += (
+                    f", truncated to its first {len(excerpt)} of {total} "
+                    "characters by the context budget"
+                )
+                if excerpt:
+                    answer_parts.append(
+                        f"{excerpt} [{c.chunk_id}: truncated, {dropped} of "
+                        f"{total} characters not shown]"
+                    )
+            else:
+                answer_parts.append(excerpt)
+            if excerpt:
+                claims.append(SupportingClaim(
+                    claim=excerpt,
+                    evidence_type="direct",
+                    chunk_ids=[c.chunk_id],
+                    edge_ids=[],
+                    source_tier_min=3,
+                    confidence="moderate",
+                    confidence_basis=basis,
+                ))
         evidence.append(
             EvidenceRetrieveDeliveredPayload(
                 sub_question=sq,
-                answer=answer or "(no gathered evidence)",
-                supporting_claims=[
-                    SupportingClaim(
-                        claim=c.text[:500],
-                        evidence_type="direct",
-                        chunk_ids=[c.chunk_id],
-                        edge_ids=[],
-                        source_tier_min=3,
-                        confidence="moderate",
-                        confidence_basis=(
-                            f"DRW gather from {c.source_investigation_id}: "
-                            "verbatim excerpt of the cited chunk"
-                        ),
-                    )
-                    for c in chunks
-                ],
-                evidentiary_gaps=[],
-                insufficient_evidence=not chunks,
+                answer="\n".join(answer_parts) or "(no gathered evidence)",
+                supporting_claims=claims,
+                evidentiary_gaps=gaps,
+                insufficient_evidence=not claims,
             ),
         )
 
