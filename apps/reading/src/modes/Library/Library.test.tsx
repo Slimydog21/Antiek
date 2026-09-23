@@ -218,6 +218,19 @@ describe("Library", () => {
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-pd");
   });
 
+  it("a failed catalog load states no count and no empty shelf", async () => {
+    // Rubric veto: the page printed "0 books readable in full" while the
+    // catalog request had failed — an invented zero from an unknown.
+    fetchLibraryCatalogMock.mockRejectedValue(new Error("HTTP 503"));
+    renderLibrary();
+    await waitFor(() =>
+      expect(screen.getByText("The library catalog is unavailable. Try again.")).toBeTruthy(),
+    );
+    expect(screen.getByText(/The shelf didn't load, so the count is unknown\./)).toBeTruthy();
+    expect(screen.queryByText(/0 books readable in full/)).toBeNull();
+    expect(screen.queryByText(/No books|nothing on the shelf|shelf is empty/i)).toBeNull();
+  });
+
   it("switching to Preview reloads the gated set", async () => {
     fetchLibraryCatalogMock
       .mockResolvedValueOnce({ works: [servableBook], total: 1, page: 1, page_size: 20 })

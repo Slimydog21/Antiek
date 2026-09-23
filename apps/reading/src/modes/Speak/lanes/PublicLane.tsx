@@ -56,6 +56,12 @@ export interface PublicLaneProps {
   feed: FeedItem[];
   /** Logged-out browse: no invite mint, no operator console links. */
   visitorMode?: boolean;
+  /** The feed request failed: the list is unknown, so the lane must not
+   *  claim it is empty. Optional so the `{ feedLoading, feed }` contract
+   *  holds for callers that predate it. */
+  feedFailed?: boolean;
+  /** Re-run the feed request (shown as "Try again" when the feed failed). */
+  onRetry?: () => void;
 }
 
 /**
@@ -121,7 +127,13 @@ function ContributionInviteCta({
   );
 }
 
-export default function PublicLane({ feedLoading, feed, visitorMode = false }: PublicLaneProps) {
+export default function PublicLane({
+  feedLoading,
+  feed,
+  visitorMode = false,
+  feedFailed = false,
+  onRetry,
+}: PublicLaneProps) {
   const [query, setQuery] = useState("");
 
   // FIX 2 — LIVE G2/G3 read. `getEconomics` is per-project but G2/G3 are GLOBAL
@@ -228,6 +240,18 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
         <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
           Loading…
         </p>
+      ) : feedFailed ? (
+        // A failed request is an unknown, never an empty feed.
+        <div role="alert" className="space-y-2">
+          <p className="font-serif text-sm text-ink dark:text-bright">
+            Public remembrances didn't load, so we can't say what's here yet.
+          </p>
+          {onRetry && (
+            <LemonButton variant="secondary" size="sm" type="button" onClick={onRetry}>
+              Try again
+            </LemonButton>
+          )}
+        </div>
       ) : feed.length === 0 ? (
         // Honest empty — copy unchanged from the shipped surface.
         <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">

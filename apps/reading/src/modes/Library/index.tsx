@@ -85,6 +85,9 @@ export default function Library() {
   const [investigations, setInvestigations] = useState<InvestigationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The catalog load itself failed (distinct from a curation or publish error
+  // sharing `error`): no count or empty-shelf claim may be made.
+  const [catalogFailed, setCatalogFailed] = useState(false);
 
   // Prompt-to-curate (SPR-04): an ordered list of servable document_ids,
   // or null when no prompt is active. Curated books are a re-ranked subset
@@ -162,6 +165,7 @@ export default function Library() {
     const generation = ++requestGeneration.current;
     setLoading(true);
     setError(null);
+    setCatalogFailed(false);
     setBooks([]);
     try {
       const data = await fetchLibraryCatalog(
@@ -192,6 +196,7 @@ export default function Library() {
       }
     } catch (e: unknown) {
       if (generation !== requestGeneration.current || signal.aborted) return;
+      setCatalogFailed(true);
       setError("The library catalog is unavailable. Try again.");
     } finally {
       if (generation === requestGeneration.current && !signal.aborted) setLoading(false);
@@ -565,10 +570,13 @@ export default function Library() {
 
   const subtitle = useMemo(() => {
     if (loading) return "Loading the shelf…";
+    // A failed load leaves `total` at its last value (0 on first load); a
+    // count is only stated when the catalog actually answered.
+    if (catalogFailed) return "The shelf didn't load, so the count is unknown";
     if (status === "servable") return `${total} books readable in full`;
     if (status === "gated") return `${total} preview-only titles`;
     return `${total} titles`;
-  }, [loading, status, total]);
+  }, [catalogFailed, loading, status, total]);
 
   // The Library shelf body. Two surfaces:
   //  - inWindow (SPR-09 contract): a WorkspaceWindow already owns the glass, so

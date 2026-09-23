@@ -59,6 +59,7 @@ export default function SpeakIndex() {
   const [tab, setTab] = useState<Tab>("yours");
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
+  const [feedFailed, setFeedFailed] = useState(false);
 
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -78,10 +79,12 @@ export default function SpeakIndex() {
 
   const reloadFeed = useCallback(async () => {
     setFeedLoading(true);
+    setFeedFailed(false);
     try {
       setFeed(await listPublicFeed());
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      // Shown inside the Public lane as an unknown, not as an empty feed.
+      setFeedFailed(true);
     } finally {
       setFeedLoading(false);
     }
@@ -225,7 +228,12 @@ export default function SpeakIndex() {
         {tab === "yours" ? (
           <YoursLane loading={loading} people={people} />
         ) : tab === "public" ? (
-          <PublicLane feedLoading={feedLoading} feed={feed} />
+          <PublicLane
+            feedLoading={feedLoading}
+            feed={feed}
+            feedFailed={feedFailed}
+            onRetry={() => void reloadFeed()}
+          />
         ) : (
           <PushesLane />
         )}
