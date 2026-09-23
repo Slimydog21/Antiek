@@ -223,9 +223,9 @@ describe("ModelDecisionBar", () => {
   it("renders the budget bar fill when cap and spent are known", () => {
     render(<ModelDecisionBar projection={baseProjection()} />);
     const fill = screen.getByTestId("budget-bar-fill") as HTMLDivElement;
-    // jsdom/browsers normalize the CSS percentage (30.0% -> 30%); assert the
-    // normalized rendered value, not the pre-normalization toFixed(1) string.
-    expect(fill.style.width).toBe("30%"); // 3.0 / 10.0
+    // The fill is a full-width bar scaled from its left edge (a transform, so
+    // a budget change animates without a layout per frame).
+    expect(fill.style.transform).toBe("scaleX(0.3)"); // 3.0 / 10.0
   });
 
   it("clamps the fill to 100% when over cap", () => {
@@ -234,8 +234,8 @@ describe("ModelDecisionBar", () => {
     });
     render(<ModelDecisionBar projection={proj} />);
     const fill = screen.getByTestId("budget-bar-fill") as HTMLDivElement;
-    // 120% unclamped would render as "120%"; "100%" proves the clamp fired.
-    expect(fill.style.width).toBe("100%");
+    // 120% unclamped would render as scaleX(1.2); scaleX(1) proves the clamp.
+    expect(fill.style.transform).toBe("scaleX(1)");
   });
 
   it("fails an invalid non-finite budget closed instead of rendering NaN", () => {

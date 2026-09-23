@@ -136,12 +136,13 @@ export default function Billing() {
               </h2>
               <div className="h-3 bg-ice-3 dark:bg-charcoal-1 rounded overflow-hidden">
                 <div
-                  className={`h-full transition-all ${
+                  // scaleX, not width: the fill moves without a layout per frame.
+                  className={`h-full w-full origin-left transition-transform duration-base ease-standard ${
                     pctConsumed >= 90
                       ? "bg-sun/100"
                       : "bg-shadow-2"
                   }`}
-                  style={{ width: `${pctConsumed}%` }}
+                  style={{ transform: `scaleX(${pctConsumed / 100})` }}
                 />
               </div>
               <p className="text-xs font-mono text-ink-soft dark:text-starlight">

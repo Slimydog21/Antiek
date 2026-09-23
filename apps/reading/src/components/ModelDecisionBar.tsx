@@ -298,14 +298,15 @@ export default function ModelDecisionBar({
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-ice-3 dark:bg-charcoal-1">
             <div
               data-testid="budget-bar-fill"
-              className={`h-full transition-[width] duration-300 ${
+              // scaleX, not width: the fill moves without a layout per frame.
+              className={`h-full w-full origin-left transition-transform duration-base ease-standard ${
                 budgetPct >= 100
                   ? "bg-emperor"
                   : budgetPct >= 80
                     ? "bg-sun"
                     : "bg-success"
               }`}
-              style={{ width: `${budgetPct.toFixed(1)}%` }}
+              style={{ transform: `scaleX(${budgetPct / 100})` }}
             />
           </div>
         )}

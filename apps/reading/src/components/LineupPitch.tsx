@@ -287,7 +287,7 @@ export default function LineupPitch({
                       role="option"
                       aria-selected={isCurrent}
                       onClick={() => pickBench(b)}
-                      className={`w-full rounded-md border-2 p-2 text-left transition-all ${
+                      className={`w-full rounded-md border-2 p-2 text-left transition-[transform,border-color,background-color] duration-base ease-standard ${
                         isCurrent
                           ? "border-sun bg-sun/10"
                           : "border-emperor/30 bg-ice-1 hover:-translate-y-px hover:border-sun/70 dark:bg-charcoal-2"

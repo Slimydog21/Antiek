@@ -43,8 +43,9 @@ export default function CostMeter({ cost }: { cost: SessionCost | null }) {
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-ice-3 dark:bg-charcoal-1">
         <div
-          className={`h-full ${barColor} transition-[width] duration-300`}
-          style={{ width: `${(frac * 100).toFixed(1)}%` }}
+          // scaleX, not width: the fill moves without a layout per frame.
+          className={`h-full w-full origin-left ${barColor} transition-transform duration-base ease-standard`}
+          style={{ transform: `scaleX(${frac})` }}
         />
       </div>
       {atCap && (
