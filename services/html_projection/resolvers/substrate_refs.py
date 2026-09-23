@@ -21,6 +21,13 @@ _KIND_PAYLOAD_KEYS: dict[str, str] = {
     "insight": "statement",
 }
 
+# Node kinds that are DERIVED FROM SOURCES. One of these with no source
+# document at all (no metadata pointer, no supported_by edge) is an
+# unsupported claim, not the operator's own words: its rights are unknown
+# and it resolves to the gated default. A question (the operator asked it)
+# or any other kind keeps None — genuinely own content.
+_SOURCED_KINDS: frozenset[str] = frozenset({"claim", "insight", "evidence"})
+
 
 def _parse_metadata(raw: str | None) -> dict[str, Any]:
     if not raw:
@@ -100,6 +107,8 @@ def resolve_refs(ref_ids: list[str], *, db_path: str) -> dict[str, ResolvedRefDa
             title: str | None = None
             content_class: str | None = None
             ip_holder_id: str | None = None
+            if not source_doc_id and str(node_type) in _SOURCED_KINDS:
+                content_class = GATED_DEFAULT_CONTENT_CLASS
             if source_doc_id:
                 title, content_class, ip_holder_id = _document_rights(
                     con, source_doc_id
