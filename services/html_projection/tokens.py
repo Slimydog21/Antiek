@@ -56,19 +56,74 @@ from typing import Any, Final, Protocol
 # per-render — determinism requires the same doc-model to always produce
 # the same bytes, and a per-render theme argument would be a
 # nondeterminism source. Theme overrides are an SPR-04 shell concern.
+#
+# Day, night and print live in the SAME bytes. Every colour literal is
+# declared once, in the ``:root`` block, as a ``--antiek-day-*`` or
+# ``--antiek-night-*`` value; the working ``--antiek-*`` names only ever
+# point at one of those sets. The dark-scheme media block re-points them at
+# the night set, the print block pins them back to day (paper is light at
+# any hour), and no rule below the ``:root`` block carries a hex literal.
+#
+# The two surface tints — ``--antiek-inset`` behind voice/region/note/image
+# blocks and table headers, ``--antiek-code-bg`` behind code and LaTeX — are
+# not literals at all. They are DERIVED: the page surface with a small share
+# (``--antiek-lift``) of the accent, or of the ink, mixed in. That is what the
+# old near-white literals were by eye (white with a whisper of the blue accent,
+# or of the ink), stated as the rule instead of the result. It means a
+# theme or a user fork that repaints the surface or the accent gets coherent
+# insets without naming them, and the night palette gets its lifted panels
+# from the same two rules with a larger share. ``color-mix()`` is baseline in
+# every evergreen browser; a viewer without it draws those panels
+# transparent inside their still-present borders, never the wrong colour.
+# ``test_tokens_css_derives.py`` enforces the whole contract.
 
 TOKENS_CSS: Final[str] = """\
 :root{
-  --antiek-surface:#ffffff;
-  --antiek-ink:#1f1f2e;
-  --antiek-muted:#5a5a6e;
-  --antiek-rule:#e4e4ec;
-  --antiek-accent:#5b6cff;
-  --antiek-accent-soft:#eef0ff;
-  --antiek-warn:#8a5a00;
-  --antiek-warn-bg:#fff7e6;
+  --antiek-day-surface:#ffffff;
+  --antiek-day-ink:#1f1f2e;
+  --antiek-day-muted:#5a5a6e;
+  --antiek-day-rule:#e4e4ec;
+  --antiek-day-accent:#5b6cff;
+  --antiek-day-accent-soft:#eef0ff;
+  --antiek-day-warn:#8a5a00;
+  --antiek-day-warn-bg:#fff7e6;
+  --antiek-day-lift:3%;
+  --antiek-night-surface:#0f1419;
+  --antiek-night-ink:#e6e1d8;
+  --antiek-night-muted:#a3a7b3;
+  --antiek-night-rule:#2a303a;
+  --antiek-night-accent:#7aa2ff;
+  --antiek-night-accent-soft:#1a2340;
+  --antiek-night-warn:#e0b45a;
+  --antiek-night-warn-bg:#2e2410;
+  --antiek-night-lift:8%;
+  --antiek-surface:var(--antiek-day-surface);
+  --antiek-ink:var(--antiek-day-ink);
+  --antiek-muted:var(--antiek-day-muted);
+  --antiek-rule:var(--antiek-day-rule);
+  --antiek-accent:var(--antiek-day-accent);
+  --antiek-accent-soft:var(--antiek-day-accent-soft);
+  --antiek-warn:var(--antiek-day-warn);
+  --antiek-warn-bg:var(--antiek-day-warn-bg);
+  --antiek-lift:var(--antiek-day-lift);
+  --antiek-inset:color-mix(in srgb,var(--antiek-surface),var(--antiek-accent) var(--antiek-lift));
+  --antiek-code-bg:color-mix(in srgb,var(--antiek-surface),var(--antiek-ink) var(--antiek-lift));
   --antiek-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
+@media (prefers-color-scheme: dark){
+  :root{
+    --antiek-surface:var(--antiek-night-surface);
+    --antiek-ink:var(--antiek-night-ink);
+    --antiek-muted:var(--antiek-night-muted);
+    --antiek-rule:var(--antiek-night-rule);
+    --antiek-accent:var(--antiek-night-accent);
+    --antiek-accent-soft:var(--antiek-night-accent-soft);
+    --antiek-warn:var(--antiek-night-warn);
+    --antiek-warn-bg:var(--antiek-night-warn-bg);
+    --antiek-lift:var(--antiek-night-lift);
+  }
+}
+body{background:var(--antiek-surface);}
 .antiek-doc{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--antiek-ink);background:var(--antiek-surface);max-width:760px;margin:0 auto;padding:2rem 1.25rem;line-height:1.6;}
 .antiek-doc h1{font-size:1.6rem;margin:0 0 1rem;}
 .antiek-block{margin:0 0 1.25rem;}
@@ -76,7 +131,7 @@ TOKENS_CSS: Final[str] = """\
 .antiek-highlight{border-left:3px solid var(--antiek-accent);background:var(--antiek-accent-soft);padding:.75rem 1rem;border-radius:.25rem;}
 .antiek-highlight-passage{font-style:italic;}
 .antiek-highlight-framing{margin-top:.5rem;color:var(--antiek-muted);font-size:.9rem;}
-.antiek-voice{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;background:#fafaff;}
+.antiek-voice{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;background:var(--antiek-inset);}
 .antiek-voice-meta{color:var(--antiek-muted);font-size:.85rem;font-family:var(--antiek-mono);}
 .antiek-voice-transcript{margin-top:.5rem;}
 .antiek-qa{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;}
@@ -85,11 +140,11 @@ TOKENS_CSS: Final[str] = """\
 .antiek-qa-attr{margin-top:.4rem;color:var(--antiek-muted);font-size:.85rem;font-style:italic;}
 .antiek-cite{font-family:var(--antiek-mono);font-size:.9rem;}
 .antiek-crossdoc{font-family:var(--antiek-mono);font-size:.9rem;color:var(--antiek-muted);}
-.antiek-region{border:1px dashed var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;background:#fafaff;}
+.antiek-region{border:1px dashed var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;background:var(--antiek-inset);}
 .antiek-region-ref{font-family:var(--antiek-mono);font-size:.85rem;color:var(--antiek-muted);}
 .antiek-claim{border:1px solid var(--antiek-rule);border-left:3px solid var(--antiek-ink);border-radius:.375rem;padding:.75rem 1rem;}
 .antiek-claim-statement{font-weight:500;}
-.antiek-note{background:#fafaff;border-radius:.375rem;padding:.6rem .9rem;font-size:.95rem;}
+.antiek-note{background:var(--antiek-inset);border-radius:.375rem;padding:.6rem .9rem;font-size:.95rem;}
 .antiek-question{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;}
 .antiek-question-q{font-weight:600;}
 .antiek-chat{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.75rem 1rem;}
@@ -98,9 +153,9 @@ TOKENS_CSS: Final[str] = """\
 .antiek-chat-role{font-weight:600;font-size:.85rem;color:var(--antiek-muted);}
 .antiek-mdsection{border-top:1px solid var(--antiek-rule);padding-top:.75rem;}
 .antiek-mdsection-head{font-weight:600;color:var(--antiek-muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.04em;}
-.antiek-image{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.6rem;background:#fafaff;text-align:center;}
+.antiek-image{border:1px solid var(--antiek-rule);border-radius:.375rem;padding:.6rem;background:var(--antiek-inset);text-align:center;}
 .antiek-image-alt{color:var(--antiek-muted);font-size:.85rem;font-style:italic;}
-.antiek-latex{font-family:var(--antiek-mono);background:#f6f6fa;border-radius:.25rem;padding:.6rem .8rem;overflow-x:auto;font-size:.95rem;}
+.antiek-latex{font-family:var(--antiek-mono);background:var(--antiek-code-bg);border-radius:.25rem;padding:.6rem .8rem;overflow-x:auto;font-size:.95rem;}
 .antiek-tombstone{border:1px solid var(--antiek-warn);background:var(--antiek-warn-bg);color:var(--antiek-warn);border-radius:.375rem;padding:.6rem .9rem;font-size:.9rem;}
 .antiek-tombstone-label{font-weight:600;}
 .antiek-unsupported{border:1px dashed var(--antiek-warn);background:var(--antiek-warn-bg);color:var(--antiek-warn);border-radius:.375rem;padding:.6rem .9rem;font-size:.9rem;font-family:var(--antiek-mono);}
@@ -118,13 +173,28 @@ TOKENS_CSS: Final[str] = """\
 .antiek-list li{margin:0 0 .35rem;}
 .antiek-list .antiek-list{margin:.35rem 0 0;}
 .antiek-quote{margin:0 0 1.25rem;padding:.1rem 0 .1rem 1rem;border-left:3px solid var(--antiek-rule);color:var(--antiek-muted);}
-.antiek-code{font-family:var(--antiek-mono);background:#f6f6fa;border-radius:.25rem;padding:.7rem .9rem;margin:0 0 1.25rem;overflow-x:auto;font-size:.9rem;}
+.antiek-code{font-family:var(--antiek-mono);background:var(--antiek-code-bg);border-radius:.25rem;padding:.7rem .9rem;margin:0 0 1.25rem;overflow-x:auto;font-size:.9rem;}
 .antiek-rule{border:0;border-top:1px solid var(--antiek-rule);margin:1.75rem 0;}
 .antiek-table-wrap{overflow-x:auto;margin:0 0 1.25rem;}
 .antiek-table{border-collapse:collapse;width:100%;font-size:.95rem;}
 .antiek-table caption{caption-side:top;text-align:left;color:var(--antiek-muted);font-size:.85rem;padding:0 0 .4rem;}
 .antiek-table th,.antiek-table td{border:1px solid var(--antiek-rule);padding:.4rem .6rem;text-align:left;vertical-align:top;}
-.antiek-table th{background:#fafaff;font-weight:600;}
+.antiek-table th{background:var(--antiek-inset);font-weight:600;}
+@media print{
+  :root{
+    --antiek-surface:var(--antiek-day-surface);
+    --antiek-ink:var(--antiek-day-ink);
+    --antiek-muted:var(--antiek-day-muted);
+    --antiek-rule:var(--antiek-day-rule);
+    --antiek-accent:var(--antiek-day-accent);
+    --antiek-accent-soft:var(--antiek-day-accent-soft);
+    --antiek-warn:var(--antiek-day-warn);
+    --antiek-warn-bg:var(--antiek-day-warn-bg);
+    --antiek-lift:var(--antiek-day-lift);
+  }
+  .antiek-voice,.antiek-qa,.antiek-region,.antiek-claim,.antiek-note,.antiek-question,.antiek-chat,.antiek-image,.antiek-code,.antiek-latex,.antiek-table{break-inside:avoid;}
+  .antiek-footer a{color:inherit;text-decoration:none;}
+}
 """
 
 
