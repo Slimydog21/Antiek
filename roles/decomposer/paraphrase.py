@@ -60,12 +60,15 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
 
 
 def _load_default_embedder() -> EmbeddingModel:
-    """Lazy default — only constructed when the caller didn't inject
-    an embedder. Keeps test paths free of the sentence-transformers
-    dependency."""
-    from substrate.graph.search import SentenceTransformerEmbedding
+    """Lazy default — only resolved when the caller didn't inject an
+    embedder. Uses the process's configured provider (the one every other
+    embedding path uses): MiniLM in production, and whatever
+    ``ANTIEK_EMBEDDING_PROVIDER`` / the lineup binding selects otherwise.
+    Constructing sentence-transformers directly here ignored that setting,
+    so tests that asked for the hash embedder still loaded the model."""
+    from processing.embedding.embed import default_embedding_provider
 
-    return SentenceTransformerEmbedding()
+    return default_embedding_provider()
 
 
 def check_paraphrases(
