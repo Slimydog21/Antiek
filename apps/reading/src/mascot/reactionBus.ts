@@ -11,6 +11,7 @@ export const PRODUCT_EXPERIENCES = [
   "fail",
   "voice_recording_started",
   "voice_playback_started",
+  "evidence_source_opened",
 ] as const;
 
 export type ProductExperience = (typeof PRODUCT_EXPERIENCES)[number];
@@ -24,6 +25,7 @@ const REACTION_MAP: Readonly<Record<ProductExperience, EmoteKind>> = {
   idle: "sleeping",
   fail: "dizzy",
   voice_recording_started: "thinking",
+  evidence_source_opened: "curious",
 };
 
 export const MASCOT_EXPERIENCE_EVENT = "antiek:mascot-experience";
