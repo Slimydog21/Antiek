@@ -115,6 +115,12 @@ export interface SessionStatus {
   researches: ResearchStatus[];
   cost?: SessionCost | null;
   all_terminal?: boolean;
+  /** Parent terminal (SPR-DRL-09 M3): true only when the session parent
+   * reached DeepResearchComplete. null on the recovered path, where the
+   * backend cannot recompute it. Leaf DONE is not session success. */
+  deep_research_complete?: boolean | null;
+  /** The captured join/synthesis-tail failure, or null. */
+  synthesis_tail_error?: string | null;
 
   source_policy?: ResearchSourcePolicy[];
   source_policy_execution?: "metadata_only" | "runner_consumed";

@@ -20,6 +20,7 @@ import { fetchUserModels, type UserModelRow } from "../../api/settingsModels";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
+import { ingestVerdict, type IngestVerdict } from "./ingestVerdict";
 
 /**
  * StartResearch — the Research HOME (S5 redesign fix → Living-Roadmap SPR-05).
@@ -291,8 +292,19 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // that; wiring the doc into the launched investigation is the documented SPR-05
   // follow-up). On success, if the prompt is still empty we DERIVE one (operator
   // decision) and mark it derived; the operator sees + can edit it before Ask.
-  const onAbsorbed = useCallback(
-    (title: string) => {
+  // A skip that wrote no chunks is not success: it is reported plainly and no
+  // prompt is derived for a source the research could not cite.
+  const onVerdict = useCallback(
+    (verdict: IngestVerdict) => {
+      if (verdict.kind === "failed") {
+        setAttach({ kind: "failed", reason: verdict.reason });
+        return;
+      }
+      if (verdict.kind === "not_added") {
+        setAttach({ kind: "rejected", why: verdict.why });
+        return;
+      }
+      const { title } = verdict;
       setAttach({ kind: "absorbed", title });
       setQuestion((q) => {
         if (q.trim().length > 0) return q; // keep an explicit prompt
@@ -308,16 +320,12 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       setAttach({ kind: "absorbing" });
       try {
         const r = await ingestSource({ url }); // no investigation_id on the home
-        if (r.status === "error") {
-          setAttach({ kind: "failed", reason: r.error_message });
-          return;
-        }
-        onAbsorbed(r.title ?? url);
+        onVerdict(ingestVerdict(r, url));
       } catch (e) {
         setAttach({ kind: "failed", reason: e instanceof ApiError ? e.body || null : null });
       }
     },
-    [onAbsorbed],
+    [onVerdict],
   );
 
   const absorbText = useCallback(
@@ -325,12 +333,12 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       setAttach({ kind: "absorbing" });
       try {
         const r = await ingestVoiceNote({ transcript: text, title });
-        onAbsorbed(r.title ?? title);
+        onVerdict(ingestVerdict(r, title));
       } catch (e) {
         setAttach({ kind: "failed", reason: e instanceof ApiError ? e.body || null : null });
       }
     },
-    [onAbsorbed],
+    [onVerdict],
   );
 
   const handleFile = useCallback(

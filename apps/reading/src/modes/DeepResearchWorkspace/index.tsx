@@ -53,7 +53,7 @@ import ResearchPanel from "./ResearchPanel";
 import SessionSourceReceipt from "./SessionSourceReceipt";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
-import { useResearchSession } from "./useResearchSession";
+import { useResearchSession, type SessionParentState } from "./useResearchSession";
 import { useMascotResearchReactions } from "./useMascotResearchReactions";
 import { emitMascotExperience, notifyResearchStarted } from "../../mascot";
 import { mascotResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
@@ -375,6 +375,15 @@ function ComposeBar({
   );
 }
 
+const PARENT_LABEL: Record<SessionParentState["kind"], string> = {
+  complete: "complete",
+  synthesis_failed: "synthesis failed",
+  // Not "synthesizing": a hard-ceiling run never schedules the tail, and the
+  // response cannot yet tell that apart from a tail still running.
+  pending: "synthesis not confirmed",
+  unknown: "synthesis status unknown",
+};
+
 export function Monitor({ sessionId, sessionGeneration, busy }: {
   sessionId: string;
   sessionGeneration: number;
@@ -387,6 +396,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
     allTerminal: session.allTerminal,
     error: session.error,
     researchStates: session.researches.map((research) => research.state),
+    parent: session.parent,
   });
   const [steering, setSteering] = useState<string | null>(null);
   // SPR-03: the "organism" canvas branch. When set to a completed
@@ -492,8 +502,11 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           {!session.allTerminal && session.researches.length > 0 && (
             <span className="ml-2 text-xs font-normal text-sun-deep dark:text-sun">live</span>
           )}
+          {/* Leaf DONE is not session success: the label follows the parent. */}
           {session.allTerminal && (
-            <span className="ml-2 text-xs font-normal text-shadow-1 dark:text-moonlight">complete</span>
+            <span className="ml-2 text-xs font-normal text-shadow-1 dark:text-moonlight">
+              {PARENT_LABEL[session.parent.kind]}
+            </span>
           )}
         </h2>
         <div className="flex items-center gap-3">
@@ -520,6 +533,12 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
       </div>
       {session.error && (
         <p className="text-xs text-shadow-1 dark:text-moonlight">reconnecting… ({session.error})</p>
+      )}
+      {session.parent.kind === "synthesis_failed" && (
+        <p role="alert" className="text-xs font-medium text-emperor">
+          The researches finished, but the session’s synthesis did not, so there
+          is no combined result. {session.parent.error}
+        </p>
       )}
       {session.hardCeiling && (
         <HardCeilingEvidence sessionId={sessionId} snapshot={session.hardCeiling} />

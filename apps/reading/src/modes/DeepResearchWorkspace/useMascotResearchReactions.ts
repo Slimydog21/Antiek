@@ -6,6 +6,7 @@ import {
   notifyResearchPhaseEdge,
   type ResearchReactionPhase,
 } from "../../mascot";
+import type { SessionParentState } from "./useResearchSession";
 
 export interface ResearchReactionSnapshot {
   sessionId: string;
@@ -13,14 +14,17 @@ export interface ResearchReactionSnapshot {
   allTerminal: boolean;
   error: string | null;
   researchStates: readonly ResearchRunState[];
+  parent: SessionParentState;
 }
 
 export function deriveResearchReactionPhase({
   allTerminal,
   error,
   researchStates,
+  parent,
 }: ResearchReactionSnapshot): ResearchReactionPhase {
   if (error) return "error";
+  if (parent.kind === "synthesis_failed") return "error";
   if (
     researchStates.some(
       (state) => state === "failed" || state === "budget_halted",
@@ -28,7 +32,13 @@ export function deriveResearchReactionPhase({
   )
     return "error";
   if (allTerminal && researchStates.length > 0) {
-    if (researchStates.every((state) => state === "done")) return "complete";
+    if (researchStates.every((state) => state === "done")) {
+      // Leaf DONE is not session success: only the parent's affirmed
+      // completion is. A pending parent is still synthesizing; an unknown one
+      // claims nothing.
+      if (parent.kind === "complete") return "complete";
+      return parent.kind === "pending" ? "running" : "idle";
+    }
     // A wholly/mixed stopped session is terminal but neither success nor
     // failure. Staying idle avoids claiming an outcome the user cancelled.
     return "idle";

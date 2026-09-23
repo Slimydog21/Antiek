@@ -136,6 +136,10 @@ describe("DeepResearchWorkspace deterministic session relaunch", () => {
         },
       ],
       all_terminal: true,
+      // The parent reached DeepResearchComplete: the success the mascot's
+      // complete edge stands for (leaf DONE alone is not session success).
+      deep_research_complete: true,
+      synthesis_tail_error: null,
       cost: null,
     });
     const experiences: string[] = [];
