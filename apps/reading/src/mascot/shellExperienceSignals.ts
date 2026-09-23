@@ -78,3 +78,7 @@ export function notifyResearchPhaseEdge(
   if (current === "error") emitMascotExperience("deep_research_error");
   return true;
 }
+
+export function notifyVoiceRecordingStarted(): void {
+  emitMascotExperience("voice_recording_started");
+}
