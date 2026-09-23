@@ -4,6 +4,7 @@ import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
 import LemonButton from "../lemon/LemonButton";
 import { toast } from "../lemon/LemonToast";
 import { useAuth } from "../../lib/auth";
+import "./topbar.css";
 
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
@@ -30,39 +31,16 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
     return [{ label: "Research" }];
 
   const segments = pathname.split("/").filter(Boolean);
+  // Only labels the slug cannot spell itself. Every other route word reads
+  // as its sentence-case form ("my-research" → "My research", "skill-rules"
+  // → "Skill rules"); a segment with digits is a record id and stays data.
   const known: Record<string, string> = {
-    wrestle: "Wrestle",
-    sources: "Sources",
-    create: "Create",
-    brainstorm: "Brainstorm",
-    notebooks: "Notebooks",
-    notebook: "Notebook",
-    documents: "Documents",
-    billing: "Billing",
-    stats: "Stats",
-    map: "Map",
-    backtest: "Backtest",
-    privacy: "Privacy",
-    pricing: "Pricing",
-    operator: "Operator",
-    outcomes: "Outcomes",
-    replay: "Replay",
-    interview: "Interview",
-    interviews: "Interviews",
     "loop-3": "Loop 3",
-    "skill-rules": "Skill Rules",
-    federation: "Federation",
     "cross-graph": "Cross-graph",
-    citations: "Citations",
-    investigations: "Investigations",
-    payouts: "Payouts",
     trust: "Trust Center",
     inv: "Investigation",
-    // Own Your Mind P0 — the three read-only surfaces (10-p0-implementation-brief.md).
-    explain: "Explain",
-    objective: "Objective",
-    signals: "Signals",
   };
+
   const crumbs: Crumb[] = [];
   let acc = "";
   for (const seg of segments) {
@@ -130,10 +108,7 @@ export function Topbar() {
                 {initial}
               </span>
             ) : (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                <circle cx="8" cy="5.5" r="2.75" />
-                <path d="M2.75 14c.6-2.75 2.7-4.25 5.25-4.25s4.65 1.5 5.25 4.25" strokeLinecap="round" />
-              </svg>
+              <span className="acct-glyph" aria-hidden="true" />
             )}
           </LemonButton>
         }

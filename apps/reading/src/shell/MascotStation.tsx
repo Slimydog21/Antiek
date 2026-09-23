@@ -115,12 +115,9 @@ function initialMascotPos(): { x: number; y: number } {
  *  (design wave 3). Null outside the shell (stories, tests), where the
  *  seeded corner above still applies. */
 function dockStation(): { x: number; y: number } | null {
+  // The slot is exactly the mascot's 64px footprint, so its corner is his.
   const r = document.querySelector("[data-mascot-station]")?.getBoundingClientRect();
-  if (!r || !r.width) return null;
-  return {
-    x: Math.round(r.left + (r.width - MASCOT_SIZE) / 2),
-    y: Math.round(r.top + (r.height - MASCOT_SIZE) / 2),
-  };
+  return r?.width ? { x: Math.round(r.left), y: Math.round(r.top) } : null;
 }
 
 export function MascotStation() {

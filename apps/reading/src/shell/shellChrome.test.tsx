@@ -123,7 +123,7 @@ describe("the header names the page in words", () => {
     authRef.current = { status: "authenticated", identity: { user_id: "u", email: null, auth_method: "local" } };
     at("/", <Topbar />);
     const account = screen.getByRole("button", { name: "Account" });
-    expect(account.querySelector("svg")).toBeTruthy();
+    expect(account.querySelector(".acct-glyph")).toBeTruthy();
     expect(account.textContent).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 });
