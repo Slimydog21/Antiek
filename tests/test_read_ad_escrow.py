@@ -208,3 +208,33 @@ def test_reconciliation_no_double_count_on_reemit(db):
     # Escrow reflects one impression's publisher share, not two.
     from decimal import Decimal
     assert holder_after.escrow_balance_usd <= Decimal("10.00")
+
+
+def test_dangling_holder_refuses_before_any_ledger_write(db, monkeypatch):
+    """Codex critic on #3415: documents.ip_holder_id has no FK, so a dangling
+    id reaches accrue_reading_session. accrue_escrow raises on it (C09), but the
+    payouts ledger was already written by then: a partial accrual. The holder
+    must be checked before ANY write, as the other escrow writers do."""
+    import substrate.marketplace_metrics.book_escrow as be
+
+    _book_with_publisher(db, "doc-dangle", "MIT Press")
+    con = connect_write(db, purpose="dangle")
+    try:
+        con.execute("UPDATE documents SET ip_holder_id = 'iph-gone' WHERE document_id = 'doc-dangle'")
+    finally:
+        con.close()
+    ledger_calls: list[str] = []
+    monkeypatch.setattr(be, "_accrue_payouts_ledger",
+                        lambda con, **kw: ledger_calls.append(kw["document_id"]))
+
+    con = connect_write(db, purpose="accrue")
+    try:
+        with pytest.raises(ip_holders.UnknownIpHolderError):
+            accrue_reading_session(
+                con, document_id="doc-dangle", session_id="s-dangle",
+                impressions=[_imp("doc-dangle", "slot:doc-dangle:p0:top", 1000,
+                                  session="s-dangle")],
+            )
+    finally:
+        con.close()
+    assert ledger_calls == [], "the payouts ledger was written before the holder check"
