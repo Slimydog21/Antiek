@@ -72,6 +72,11 @@ def default_state_path() -> str:
     ``substrate.source_throttle.default_state_path`` is one lever for both
     sentinel files, so a half-redirected run cannot write one sentinel to
     tmp and the other into the operator's live file.
+
+    arXiv bans the IP, so this file is host-scoped state. A long-running
+    process that sets ``ANTIEK_HOME`` for per-worktree isolation must pin
+    ``ANTIEK_ARXIV_THROTTLE_PATH`` (and the governor lock) back to the shared
+    home, as ``scripts/start-shared-duckdb-mac-mini.sh`` does.
     """
     env = os.environ.get("ANTIEK_ARXIV_THROTTLE_PATH")
     if env:

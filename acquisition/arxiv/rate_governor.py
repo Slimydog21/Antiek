@@ -32,7 +32,8 @@ Scope of the guarantee (honesty bar 1 — see
 
   * MECHANICAL: the >= 3s spacing + 429 ban sentinel are now enforced GLOBALLY
     across every arXiv job ON THIS HOST (any process that routes its send through
-    ``governed_request`` blocks on the same flock + shares the same JSON state),
+    ``governed_request`` blocks on the same flock + shares the same JSON state,
+    provided it resolves the same state and lock paths; see ``default_lock_path``),
     and a CI lint (``tools/lint/rate_governor_check.py``) reds a NEW direct
     arxiv.org egress that bypasses this seam.
   * OPERATIONAL, NOT MECHANICAL: "no multi-IP circumvention" cannot be enforced
@@ -171,7 +172,13 @@ def default_lock_path() -> str:
 
     All host arXiv jobs that share the same throttle state file
     (``~/.antiek/arxiv_throttle.json`` by default) also share this one lock,
-    which is what makes the gate host-global.
+    which is what makes the gate host-global. It is host-global only while
+    every arXiv process resolves the same path. ``ANTIEK_HOME`` moves the
+    default (through ``default_state_path``), which is what tests rely on for
+    isolation. A long-running process that sets ``ANTIEK_HOME`` for per-worktree
+    state must also pin ``ANTIEK_ARXIV_THROTTLE_PATH`` and this variable to the
+    shared home, as ``scripts/start-shared-duckdb-mac-mini.sh`` does. Otherwise
+    it gets a private lock and ban sentinel and ignores a ban the host armed.
     """
     env = os.environ.get("ANTIEK_ARXIV_GOVERNOR_LOCK_PATH")
     if env:

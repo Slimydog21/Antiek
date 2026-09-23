@@ -10,9 +10,11 @@ Two autouse fixtures, both function-scoped:
   is the test/prod firewall that closes the test-residue pollution gap at its
   source.
 * ``_isolate_arxiv_governor`` — points the arXiv throttle state file AND the
-  host-global governor flock at ``tmp_path``. ``ANTIEK_HOME`` (which
-  ``_isolate_antiek_store`` sets) redirects NEITHER arXiv path, so before this
-  fixture a test that reached ``ArxivRateGovernor(lock_path=None)`` took an
+  host-global governor flock at ``tmp_path``. When this fixture landed,
+  ``ANTIEK_HOME`` (which ``_isolate_antiek_store`` sets) redirected NEITHER
+  arXiv path (SPR-05 task 5 later made it redirect both, so the two now
+  overlap as belt-and-braces), and a test that reached
+  ``ArxivRateGovernor(lock_path=None)`` took an
   exclusive ``fcntl`` flock on the operator's real
   ``~/.antiek/arxiv_throttle.json.governor.lock`` — measured: a three-hour
   ``pytest tests/`` run was the live holder of that lock while a real arXiv
@@ -224,9 +226,11 @@ def _isolate_arxiv_governor(request, monkeypatch, tmp_path):
 
     ``ArxivThrottle()`` resolves its state file from ``ANTIEK_ARXIV_THROTTLE_PATH``
     and ``ArxivRateGovernor(lock_path=None)`` resolves its flock from
-    ``ANTIEK_ARXIV_GOVERNOR_LOCK_PATH``; neither honours ``ANTIEK_HOME``, so the
-    store fixture above leaves both pointing at the operator's real
-    ``~/.antiek``. Passing ``state_path=`` to a throttle does not redirect the
+    ``ANTIEK_ARXIV_GOVERNOR_LOCK_PATH``. When this fixture landed neither
+    honoured ``ANTIEK_HOME``, so the store fixture above left both pointing at
+    the operator's real ``~/.antiek``. SPR-05 task 5 made ``ANTIEK_HOME``
+    redirect both; the explicit variables here stay as the first defence, and a
+    test that deletes them still lands in ``tmp_path``. Passing ``state_path=`` to a throttle does not redirect the
     lock either. What broke: a test run blocked up to 300s behind a live
     harvest, a live harvest stalled for the length of the test, and
     ``_stale_pid_check`` could unlink the operator's live lock file.

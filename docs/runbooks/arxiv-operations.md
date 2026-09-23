@@ -84,7 +84,15 @@ python -c "from acquisition.arxiv.rate_governor import canonical_arxiv_throttle;
    the 429/503. The log is `ANTIEK_BAN_EVENT_LOG_PATH`, else
    `$ANTIEK_HOME/ban_events.jsonl`, else `~/.antiek/ban_events.jsonl`.
    `ANTIEK_HOME` also redirects both sentinel files (`arxiv_throttle.json`,
-   `source_throttle.json`), so one variable moves all three together.
+   `source_throttle.json`) and the governor lock, so one variable moves all of
+   them together. That is right for a test and wrong for a long-running process:
+   arXiv bans the IP, not the worktree. The dev launcher
+   `scripts/start-shared-duckdb-mac-mini.sh` sets a per-worktree `ANTIEK_HOME`
+   and therefore pins `ANTIEK_ARXIV_THROTTLE_PATH`,
+   `ANTIEK_ARXIV_GOVERNOR_LOCK_PATH`, `ANTIEK_SOURCE_THROTTLE_PATH` and
+   `ANTIEK_BAN_EVENT_LOG_PATH` back to the shared home. Any other launcher that
+   sets `ANTIEK_HOME` must do the same, or its process ignores a ban the host
+   armed and logs its own bans where this command never looks.
 5. Once clear, resume operations. The incremental sync will catch up.
 
 ---
