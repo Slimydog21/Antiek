@@ -24,7 +24,7 @@ const meta = {
   title: "Design / Moodboard",
   parameters: {
     layout: "padded",
-    backgrounds: { default: "ice-2" },
+    backgrounds: { default: "page" },
   },
   tags: ["autodocs"],
 } satisfies Meta;
@@ -131,7 +131,7 @@ export const PaletteDay: Story = {
 
 export const PaletteNight: Story = {
   name: "Palette · Night (majestic night sky)",
-  parameters: { backgrounds: { default: "space-2 (night)" } },
+  parameters: { backgrounds: { default: "ink (fixed)" } },
   render: () => (
     <div style={{
       background: "#0D1019",
@@ -173,7 +173,7 @@ export const PaletteNight: Story = {
 
 export const Shadows: Story = {
   render: () => (
-    <div style={{ background: "#F4F7FA", padding: 32 }}>
+    <div style={{ background: "#F4F7FA", padding: 32, color: "var(--fixed-ink)" }}>
       <Heading>Chunky offset shadows · z1 · z2 · z3 · lift</Heading>
       <p style={{ margin: "0 24px 18px", color: "#384858", fontSize: 14 }}>
         Day mode casts in ink; night mode casts in sun-deep (glowing).
@@ -410,7 +410,7 @@ export const BeforeAfter: Story = {
   render: () => (
     <div style={{
       display: "grid", gridTemplateColumns: "1fr 1fr",
-      gap: 32, padding: 32, background: "#F4F7FA",
+      gap: 32, padding: 32, background: "#F4F7FA", color: "var(--fixed-ink)",
     }}>
       <div>
         <div style={{
@@ -437,6 +437,7 @@ export const BeforeAfter: Story = {
               outline: "none",
               resize: "none",
               minHeight: 80,
+              background: "var(--fixed-paper)",
             }}
           />
           <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
