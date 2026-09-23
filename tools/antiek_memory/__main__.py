@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import math
 import os
-from collections.abc import Callable
+import sys
+from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any
 
 from interfaces.research.api.account_memory_identity import FORBIDDEN_OWNERS
@@ -48,9 +50,11 @@ from .server import (
     AntiekMemoryServer,
     ResourceContent,
     ResourceError,
+    ToolDescription,
     ToolResult,
     serve_stdio,
 )
+from .signing import load_pinned_manifest, manifest_drift
 
 _TRUSTED_FALSE = '<antiek:content trusted="false">{}</antiek:content>'
 
@@ -645,7 +649,27 @@ def _make_handlers(
     }, resource_handler
 
 
+def _load_pinned_manifest_or_exit(path: Path | None = None) -> dict[str, Any]:
+    try:
+        return load_pinned_manifest(path)
+    except (OSError, ValueError) as exc:
+        print(f"antiek-memory: refusing to serve: tool manifest unreadable: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+
+def _verify_tool_manifest(tools: Sequence[ToolDescription], pinned: dict[str, Any]) -> None:
+    drift = manifest_drift(tools, pinned)
+    if drift:
+        print(
+            "antiek-memory: refusing to serve tool descriptions the published manifest "
+            "does not certify:\n" + "\n".join(drift),
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+
 def main() -> None:
+    _verify_tool_manifest(CANONICAL_TOOLS, _load_pinned_manifest_or_exit())
     db_path = default_db_path()
     init_database_at_path(db_path)
     handlers, res_handler = _make_handlers(db_path)

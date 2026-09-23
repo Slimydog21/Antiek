@@ -18,7 +18,9 @@ Four tools:
 - record_attribution
 
 Security architecture per §13.8 + Invariant Labs April 2025 disclosures:
-- Signed tool descriptions in .well-known/mcp-tools.json
+- Tool hashes pinned in a committed manifest, served verbatim at
+  .well-known/mcp-tools.json; CI checks drift and the stdio server refuses
+  to start on drift. This is not a key signature.
 - Prompt-injection envelopes (<antiek:content trusted="false">...</antiek:content>)
 - Rug-pull defense via tool description hashes
 - Per-user OAuth scope on the private resource
@@ -38,7 +40,12 @@ from .server import (
     ToolResult,
     serve_stdio,
 )
-from .signing import compute_tool_hash, render_well_known_manifest
+from .signing import (
+    compute_tool_hash,
+    load_pinned_manifest,
+    manifest_drift,
+    render_well_known_manifest,
+)
 
 __all__ = [
     "LICENSING_REQUIRED",
@@ -48,6 +55,8 @@ __all__ = [
     "ToolDescription",
     "ToolResult",
     "compute_tool_hash",
+    "load_pinned_manifest",
+    "manifest_drift",
     "render_well_known_manifest",
     "serve_stdio",
 ]
