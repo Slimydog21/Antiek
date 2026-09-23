@@ -23,6 +23,7 @@ learns the one-hop rule, this test is the guard for this module.
 from __future__ import annotations
 
 import ast
+import inspect
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -31,9 +32,42 @@ _MODULE = _ROOT / "interfaces" / "research" / "api" / "speak_routes.py"
 #: Names that acquire the single-writer flock, directly or one hop away.
 _WRITE_ENTRIES = {"_write", "connect_write"}
 
+#: Plain substrate functions that open ``connect_write`` THEMSELVES — two
+#: hops from the route. The repo's one-hop lint keys on a direct
+#: ``connect_write`` entry or a ``@contextmanager`` wrapper, so a plain
+#: function call is invisible to it; this list is how the guard sees the
+#: two-hop shape. Each name is premise-checked by
+#: ``test_two_hop_entries_really_take_the_write_lock`` below.
+_TWO_HOP_WRITE_ENTRIES = frozenset({
+    "submit_answer",
+    "next_followups",
+    "list_private_repings_at",
+    "prepare_reping",
+})
+
 
 def _module() -> ast.Module:
     return ast.parse(_MODULE.read_text(encoding="utf-8"))
+
+
+def _write_entry_name(call: ast.Call) -> str | None:
+    """The write-lock entry a call reaches, or None if it reaches none.
+
+    One-hop entries are bare names (``_write``, ``connect_write``). The
+    two-hop substrate helpers appear either as a bare name
+    (``submit_answer(...)``) or through the ``speak_pushes`` module alias
+    (``speak_pushes.prepare_reping(...)``), so attribute calls match on
+    their attribute.
+    """
+    func = call.func
+    if (
+        isinstance(func, ast.Name)
+        and func.id in _WRITE_ENTRIES | _TWO_HOP_WRITE_ENTRIES
+    ):
+        return func.id
+    if isinstance(func, ast.Attribute) and func.attr in _TWO_HOP_WRITE_ENTRIES:
+        return func.attr
+    return None
 
 
 def _offenders() -> list[tuple[str, int, str]]:
@@ -51,13 +85,11 @@ def _offenders() -> list[tuple[str, int, str]]:
                     range(inner.lineno, (inner.end_lineno or inner.lineno) + 1)
                 )
         for sub in ast.walk(node):
-            if (
-                isinstance(sub, ast.Call)
-                and isinstance(sub.func, ast.Name)
-                and sub.func.id in _WRITE_ENTRIES
-                and sub.lineno not in offloaded
-            ):
-                out.append((node.name, sub.lineno, sub.func.id))
+            if not isinstance(sub, ast.Call):
+                continue
+            entry = _write_entry_name(sub)
+            if entry is not None and sub.lineno not in offloaded:
+                out.append((node.name, sub.lineno, entry))
     return sorted(out)
 
 
@@ -77,6 +109,34 @@ def test_the_premise_still_holds() -> None:
         "no write-lock entry found in speak_routes.py at all — if _write() was "
         "renamed, update _WRITE_ENTRIES rather than letting this pass"
     )
+
+
+def test_two_hop_entries_really_take_the_write_lock() -> None:
+    """Premise: every _TWO_HOP_WRITE_ENTRIES name really reaches connect_write.
+
+    The list exists because these are PLAIN functions that open
+    ``connect_write`` themselves — one hop beyond what the repo lint sees.
+    If a name stops writing (refactor, rename), matching it stops guarding
+    anything; fail so the list gets pruned instead of rotting.
+    """
+    from substrate.speak import async_interview, pushes
+
+    owners = {
+        "submit_answer": async_interview.submit_answer,
+        "next_followups": async_interview.next_followups,
+        "list_private_repings_at": pushes.list_private_repings_at,
+        "prepare_reping": pushes.prepare_reping,
+    }
+    assert set(owners) == set(_TWO_HOP_WRITE_ENTRIES), (
+        "_TWO_HOP_WRITE_ENTRIES and the owners map drifted apart — every "
+        "entry needs an owner here so the premise check covers it"
+    )
+    for name, fn in sorted(owners.items()):
+        assert "connect_write" in inspect.getsource(fn), (
+            f"{name} no longer calls connect_write — remove it from "
+            "_TWO_HOP_WRITE_ENTRIES; a matched name that does not write "
+            "is a guard over nothing"
+        )
 
 
 #: Reachable with NO session — the operator-auth middleware waves through

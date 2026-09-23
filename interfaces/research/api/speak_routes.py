@@ -691,11 +691,17 @@ async def get_interview(interview_id: str) -> dict:
 
 @speak_router.post("/interviews/{interview_id}/answers", status_code=201)
 async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict:
-    with _translate():
-        result = submit_answer(
-            _db(), interview_id=interview_id, question_id=req.question_id,
-            transcript=req.transcript, duration_seconds=req.duration_seconds,
-        )
+    # Two-hop write: submit_answer opens connect_write itself
+    # (purpose="speak/async_interview.answer"), which _write's bound
+    # timeout — and the one-hop lint — cannot see.
+    def _sync() -> Any:
+        with _translate():
+            return submit_answer(
+                _db(), interview_id=interview_id, question_id=req.question_id,
+                transcript=req.transcript, duration_seconds=req.duration_seconds,
+            )
+
+    result = await _off_loop(_sync)
     return {
         "interview_id": result.interview_id, "question_id": result.question_id,
         "document_id": result.document_id, "skipped_reason": result.skipped_reason,
@@ -704,8 +710,13 @@ async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict
 
 @speak_router.post("/interviews/{interview_id}/followups")
 async def interview_followups(interview_id: str) -> dict:
-    with _translate():
-        fus = next_followups(_db(), interview_id=interview_id)
+    # Two-hop write: next_followups opens connect_write itself
+    # (purpose="speak/async_interview.followups").
+    def _sync() -> list[Any]:
+        with _translate():
+            return next_followups(_db(), interview_id=interview_id)
+
+    fus = await _off_loop(_sync)
     return {"followups": [
         {"question_id": f.question_id, "text": f.text,
          "follow_up_for_prior_turn": f.follow_up_for_prior_turn}
@@ -1030,7 +1041,14 @@ async def list_pushes() -> dict[str, Any]:
         if "speak_projects" not in str(exc) and "Catalog" not in type(exc).__name__:
             raise
         pubs = []
-    privates = speak_pushes.list_private_repings_at(_db())
+    # Two-hop write: list_private_repings_at opens connect_write itself
+    # (purpose="speak/pushes.list_private"); _db() can too on a cold DB.
+    # No _translate() — the inline call had none, and the exception
+    # mapping must not change.
+    def _sync() -> list[Any]:
+        return speak_pushes.list_private_repings_at(_db())
+
+    privates = await _off_loop(_sync)
     return {
         "honesty": {
             "public_ranking": speak_pushes.RANKING_HONESTY_ID,
@@ -1071,15 +1089,21 @@ async def reping_invitee(req: RepingRequest) -> dict[str, Any]:
     Optional email: when ``send_email`` and ``ANTIEK_SPEAK_REPING_EMAIL``,
     deliver invite_path via AgentMail/Resend/Mock; degrade honestly if unset.
     """
-    with _translate():
-        try:
-            result = speak_pushes.prepare_reping(
-                _db(),
-                interview_id=req.interview_id,
-                send_email=req.send_email,
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e)) from e
+    # Two-hop write: prepare_reping opens connect_write itself
+    # (purpose="speak/pushes.reping_gate") and then reaches next_followups
+    # plus an optional email send — none of it belongs on the loop.
+    def _sync() -> Any:
+        with _translate():
+            try:
+                return speak_pushes.prepare_reping(
+                    _db(),
+                    interview_id=req.interview_id,
+                    send_email=req.send_email,
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e)) from e
+
+    result = await _off_loop(_sync)
     return {
         "interview_id": result.interview_id,
         "token": result.token,
