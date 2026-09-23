@@ -21,6 +21,13 @@ import defaultColors from "tailwindcss/colors.js";
 /** rgb(var(--<name>-rgb) / <alpha-value>) */
 const ch = (name) => `rgb(var(--${name}-rgb) / <alpha-value>)`;
 
+// ice-* as a PIGMENT is paper in both themes: white text on a fill (danger,
+// ink, the dark rail, a book spine) and the white of a drawn mark (BrainMark's
+// lobes under ink folds, on the sun key). Only bg-ice-* is a surface that
+// follows the theme. fill-ice-0 once followed it too, and the brand mark on
+// the dock went dark on dark at night (1.13:1).
+const icePigment = Object.fromEntries([0, 1, 2, 3, 4].map((n) => [`ice-${n}`, ch("fixed-paper")]));
+
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   darkMode: ["selector", '[data-theme="dark"]'],
@@ -115,14 +122,10 @@ export default {
         aurora: ch("teal"),
         "shadow-2": ch("text-2"),
         starlight: ch("text-2"),
-        // text-ice-* is white text on a fill (danger, ink, the dark rail,
-        // a book spine): it must not flip with the card colour.
-        "ice-0": ch("fixed-paper"),
-        "ice-1": ch("fixed-paper"),
-        "ice-2": ch("fixed-paper"),
-        "ice-3": ch("fixed-paper"),
-        "ice-4": ch("fixed-paper"),
+        ...icePigment,
       },
+      fill: icePigment,
+      stroke: icePigment,
       backgroundColor: {
         inset: ch("bg-inset"),
         // bg-emperor is a FILL under white text: 5.03:1 in both themes.

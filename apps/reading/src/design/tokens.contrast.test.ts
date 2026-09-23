@@ -56,9 +56,10 @@ function tok(theme: ThemeName, name: string): Rgba {
 }
 
 /** What a Tailwind utility renders, e.g. util("dark", "text", "moonlight"). */
-function util(theme: ThemeName, kind: "text" | "bg" | "border", key: string): Rgba {
+function util(theme: ThemeName, kind: "text" | "bg" | "border" | "fill" | "stroke", key: string): Rgba {
   const ext = tw.theme.extend;
-  const perUtility = { text: ext.textColor, bg: ext.backgroundColor, border: ext.borderColor }[kind] ?? {};
+  const perUtility =
+    { text: ext.textColor, bg: ext.backgroundColor, border: ext.borderColor, fill: ext.fill, stroke: ext.stroke }[kind] ?? {};
   const pick = (v: string | Record<string, string> | undefined) => (typeof v === "object" ? v.DEFAULT : v);
   const value = pick(perUtility[key]) ?? pick(ext.colors[key]);
   const c = value === undefined ? null : resolveTailwindColor(sheet, theme, value);
@@ -139,6 +140,20 @@ describe("fills: what sits on the sun, on a danger fill, on the fixed ink", () =
       expect(ratio(util(theme, "text", "bright"), util(theme, "bg", "ink"))).toBeGreaterThanOrEqual(AA_TEXT);
       expect(ratio(util(theme, "text", "moonlight"), util(theme, "bg", "ink"))).toBeGreaterThanOrEqual(AA_TEXT);
       expect(ratio(util(theme, "text", "bright"), util(theme, "bg", "shadow-2"))).toBeGreaterThanOrEqual(AA_TEXT);
+    });
+  }
+
+  for (const theme of THEMES) {
+    it(`${theme}: the brand mark keeps paper lobes under ink folds (BrainMark: fill-ice-0 stroke-ink)`, () => {
+      // It sits on the dock's sun key and on cards in both themes; the folds
+      // are only drawn if the lobes stay paper (UI 3:1, WCAG 1.4.11).
+      expect(ratio(util(theme, "stroke", "ink"), util(theme, "fill", "ice-0"))).toBeGreaterThanOrEqual(AA_UI);
+      // ice as a pigment is one colour whatever the utility: text, fill, stroke.
+      for (const n of [0, 1, 2, 3, 4]) {
+        for (const kind of ["fill", "stroke"] as const) {
+          expect(util(theme, kind, `ice-${n}`), `${kind}-ice-${n}`).toEqual(util(theme, "text", `ice-${n}`));
+        }
+      }
     });
   }
 
