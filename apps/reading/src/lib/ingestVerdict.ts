@@ -1,6 +1,6 @@
 /**
- * What an ingest response means for the attach surfaces (PasteIngest,
- * StartResearch).
+ * What an ingest response means for every surface that reports one
+ * (PasteIngest, StartResearch, the CreationStudio VoiceNoteCapture).
  *
  * The ingest routes answer `skipped` with `chunks_written: 0` whenever nothing
  * reached the graph: a paywalled or script-rendered page, a video without a

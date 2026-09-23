@@ -7,7 +7,7 @@ import {
   ApiError,
 } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
-import { ingestVerdict, type IngestVerdict } from "./ingestVerdict";
+import { ingestVerdict, type IngestVerdict } from "../../lib/ingestVerdict";
 
 /**
  * PasteIngest — drop or paste a file / URL / passage into a research and

@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { track } from "../../lib/analytics";
 import { ingestVoiceNote } from "../../lib/api";
+import { ingestVerdict } from "../../lib/ingestVerdict";
 import { LemonButton } from "../../components/lemon/LemonButton";
 
 type RecordingState = "idle" | "recording" | "transcribing" | "ingested";
@@ -13,17 +14,34 @@ type RecordingState = "idle" | "recording" | "transcribing" | "ingested";
  * audio→whisper round trip stays a Sprint-13-end stretch (no
  * audio-upload endpoint yet — the operator pastes the transcript
  * for now).
+ *
+ * The response is read through the shared ingest verdict: only a note the
+ * backend actually chunked counts as ingested. A note skipped with no chunks
+ * written (too short to keep) gets a plain not-added message and the
+ * transcript stays in the box, so the operator can extend it and try again.
  */
 export function VoiceNoteCapture() {
   const [state, setState] = useState<RecordingState>("idle");
   const [transcript, setTranscript] = useState("");
   const [lastDocId, setLastDocId] = useState<string | null>(null);
+  const [notAdded, setNotAdded] = useState<string | null>(null);
 
   async function handleIngest() {
     if (!transcript.trim()) return;
     setState("transcribing");
+    setNotAdded(null);
     try {
       const r = await ingestVoiceNote({ transcript: transcript.trim() });
+      const verdict = ingestVerdict(r, "your voice note");
+      if (verdict.kind !== "absorbed") {
+        setNotAdded(
+          verdict.kind === "not_added"
+            ? verdict.why
+            : "The voice note could not be added.",
+        );
+        setState("idle");
+        return;
+      }
       track("voice_note_ingested");
       setLastDocId(r.document_id);
       setState("ingested");
@@ -67,6 +85,11 @@ export function VoiceNoteCapture() {
           </span>
         )}
       </div>
+      {notAdded && (
+        <p role="status" className="mt-2 text-xs text-shadow-1 dark:text-moonlight">
+          {notAdded}
+        </p>
+      )}
     </div>
   );
 }

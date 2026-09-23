@@ -20,7 +20,7 @@ import { fetchUserModels, type UserModelRow } from "../../api/settingsModels";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
-import { ingestVerdict, type IngestVerdict } from "./ingestVerdict";
+import { ingestVerdict, type IngestVerdict } from "../../lib/ingestVerdict";
 
 /**
  * StartResearch — the Research HOME (S5 redesign fix → Living-Roadmap SPR-05).
