@@ -1708,9 +1708,13 @@ def _investigation_context_from_pack(pack: SessionEvidencePack) -> Investigation
             ),
         ]
 
+    # ``c.text`` is the cited chunk's source text, the only text a pack chunk
+    # carries (the generated gather note is not in the pack). Every answer and
+    # claim quotes the source verbatim, so a claim citing a chunk is always
+    # something that chunk says.
     evidence: list[EvidenceRetrieveDeliveredPayload] = []
     for sq, chunks in sorted(by_sub_q.items()):
-        answer = "\n".join(c.text for c in chunks)
+        answer = "\n".join(c.text[:500] for c in chunks)
         evidence.append(
             EvidenceRetrieveDeliveredPayload(
                 sub_question=sq,
@@ -1724,7 +1728,8 @@ def _investigation_context_from_pack(pack: SessionEvidencePack) -> Investigation
                         source_tier_min=3,
                         confidence="moderate",
                         confidence_basis=(
-                            f"DRW gather from {c.source_investigation_id}"
+                            f"DRW gather from {c.source_investigation_id}: "
+                            "verbatim excerpt of the cited chunk"
                         ),
                     )
                     for c in chunks

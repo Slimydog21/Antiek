@@ -449,6 +449,7 @@ class CascadeSession:
             role="user_agent",
             events_dir=self._events_dir,
         )
+        payload: dict[str, Any]
         if reason is SynthesisTailSkip.NO_LEAF_DONE:
             action, payload = _no_leaf_done_terminal(states)
         else:
