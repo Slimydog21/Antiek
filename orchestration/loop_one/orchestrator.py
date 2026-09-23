@@ -1768,8 +1768,27 @@ async def run_synthesis_tail_from_pack(
     broadcaster: EventBroadcaster,
     coordinator: InvestigationCoordinator,
 ) -> InvestigationContext:
-    """Run Loop 1 phases 6–9 only — DRW gather already happened."""
+    """Run Loop 1 phases 6–9 only — DRW gather already happened.
+
+    Guarded like the Loop One handler: the tail runs as a detached task
+    (``cascade_routes._run_to_completion``), so a cancel mid-phase would
+    otherwise leave the session parent's trajectory without a terminal."""
     ctx = _investigation_context_from_pack(pack)
+    await _fail_on_cancel(
+        ctx,
+        broadcaster,
+        _run_synthesis_tail(ctx, broadcaster, coordinator),
+        policy_id="orchestrator-cascade-tail",
+        first_phase=6,
+    )
+    return ctx
+
+
+async def _run_synthesis_tail(
+    ctx: InvestigationContext,
+    broadcaster: EventBroadcaster,
+    coordinator: InvestigationCoordinator,
+) -> None:
     phases: list[Callable[[], Coroutine[Any, Any, bool]]] = [
         lambda: _run_phase_6(ctx, broadcaster, coordinator),
         lambda: _run_phase_7(ctx),
@@ -1801,7 +1820,7 @@ async def run_synthesis_tail_from_pack(
                         "cascade-tail path (audit is best-effort; run continues)",
                         ctx.investigation_id,
                     )
-            return ctx
+            return
 
     try:
         from orchestration.invariants.deep_research_complete import (
@@ -1829,7 +1848,7 @@ async def run_synthesis_tail_from_pack(
             role="orchestrator",
             policy_id="orchestrator-cascade-tail",
         )
-        return ctx
+        return
 
     assert ctx.synthesis is not None
     # Persist BEFORE announcing. `_deposit_synthesis_to_substrate` used to be
@@ -1858,7 +1877,6 @@ async def run_synthesis_tail_from_pack(
         policy_id="orchestrator-cascade-tail",
     )
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
-    return ctx
 
 
 # ---------------------------------------------------------------------------
@@ -2212,9 +2230,16 @@ async def _fail_on_cancel(
     ctx: InvestigationContext,
     broadcaster: EventBroadcaster,
     run: Awaitable[None],
+    *,
+    policy_id: str = "orchestrator-deterministic",
+    first_phase: int = 1,
 ) -> None:
     """Await ``run``; if the task is cancelled before the run wrote its own
     terminal, write ``investigation.failed`` and re-raise.
+
+    ``first_phase`` is the phase a run that completed none of its own phases
+    is in: 1 for a full Loop One run, 6 for the cascade synthesis tail, which
+    starts from a gathered evidence pack.
 
     uvicorn cancels leftover tasks at shutdown, so every run in flight during
     a restart ends here. ``asyncio.CancelledError`` is a BaseException, and
@@ -2235,7 +2260,7 @@ async def _fail_on_cancel(
         from substrate.event_log import trajectory
 
         if terminal_event(trajectory(ctx.investigation_id)) is None:
-            phase = min(ctx.last_completed_phase + 1, 9)
+            phase = min(max(ctx.last_completed_phase + 1, first_phase), 9)
             ctx.failed_phase = phase
             ctx.fail_reason = (
                 f"cancelled during phase {phase}: the run's task was "
@@ -2251,7 +2276,7 @@ async def _fail_on_cancel(
                     last_completed_phase=(ctx.last_completed_phase or None),
                 ),
                 role="orchestrator",
-                policy_id="orchestrator-deterministic",
+                policy_id=policy_id,
             )
         raise
 
