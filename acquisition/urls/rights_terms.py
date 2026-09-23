@@ -105,7 +105,7 @@ def parse_license_directive(robots_txt: str) -> str | None:
     case-insensitively; a directive with an empty value is skipped.
     ``urllib.robotparser`` ignores the line as an unknown directive, so this
     is the only reader of it."""
-    for raw in robots_txt.splitlines():
+    for raw in robots_txt.removeprefix("\ufeff").splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line or ":" not in line:
             continue
@@ -136,7 +136,8 @@ def parse_rsl_xml(xml_text: str, *, license_url: str | None = None) -> RightsTer
     with ``source="robots_license_directive"`` (the directive was real; the
     file was not usable) and ``parse_error`` set. Only the FIRST ``<content>``
     element's ``url`` is recorded; every ``<payment>``, ``<permits>``,
-    ``<prohibits>`` and ``<standard>`` in the document is collected in order.
+    ``<prohibits>`` and ``<standard>`` in the document is collected in order,
+    and each ``<license>`` with no ``<payment>`` adds ``free`` (RSL 1.0 s3.7).
     """
     degraded_source: TermsSource = "robots_license_directive" if license_url else "none"
     try:
@@ -176,6 +177,14 @@ def parse_rsl_xml(xml_text: str, *, license_url: str | None = None) -> RightsTer
             text = (el.text or "").strip()
             if text:
                 standards.append(text)
+
+    # RSL 1.0 s3.7: "If omitted, the license is assumed to be free." A
+    # <license> with no <payment> is a free licence, not an unknown one.
+    for lic in root.iter():
+        if _local_name(lic.tag) != "license":
+            continue
+        if not any(_local_name(d.tag) == "payment" for d in lic.iter() if d is not lic):
+            payment.append("free")
 
     return RightsTerms(
         source="rsl_license_xml",

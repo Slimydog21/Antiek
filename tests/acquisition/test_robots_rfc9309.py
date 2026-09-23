@@ -122,13 +122,13 @@ def test_the_fragment_is_not_matched() -> None:
 
 
 def test_a_percent_encoded_asterisk_is_literal() -> None:
-    """"%2A" is an encoded reserved character: it is not a wildcard, and (RFC
-    3986) it is not equivalent to a bare "*" either, so it matches only
-    "%2A"."""
+    """"%2A" is not a wildcard: it matches only an asterisk (written "*" or
+    "%2A" in the URI), never an arbitrary segment."""
     parser = _parser("User-agent: *\nDisallow: /public/%2A\n")
 
     assert robots_allows(parser, AGENT, "https://x/public/foo") is True
     assert robots_allows(parser, AGENT, "https://x/public/%2a") is False
+    assert robots_allows(parser, AGENT, "https://x/public/*") is False
 
 
 def test_an_encoded_reserved_slash_is_not_a_path_separator() -> None:
@@ -295,3 +295,21 @@ def test_fetch_decides_pages_by_the_longest_matching_rule() -> None:
     assert fetch("https://m.example/public/a", client=client).status_code == 200
     with pytest.raises(acquisition.urls.robots.RobotsDisallowed):
         fetch("https://m.example/other", client=client)
+
+
+def test_a_literal_special_character_in_the_uri_matches_its_encoded_pattern() -> None:
+    """RFC 9309 s2.2.3's own examples: "%2A" in a pattern matches a literal
+    "*" in the URI, and "%24" matches a literal "$"."""
+    star = _parser("User-agent: *\nDisallow: /path/file-with-a-%2A.html\n")
+    dollar = _parser("User-agent: *\nDisallow: /path/foo-%24\n")
+
+    assert robots_allows(star, AGENT, "https://x/path/file-with-a-*.html") is False
+    assert robots_allows(star, AGENT, "https://x/path/file-with-a-b.html") is True
+    assert robots_allows(dollar, AGENT, "https://x/path/foo-$") is False
+    assert robots_allows(dollar, AGENT, "https://x/path/foo-") is True
+
+
+def test_a_byte_order_mark_does_not_hide_the_first_group() -> None:
+    parser = _parser("﻿User-agent: *\nDisallow: /private\n")
+
+    assert robots_allows(parser, AGENT, "https://x/private") is False

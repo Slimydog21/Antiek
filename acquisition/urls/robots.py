@@ -144,6 +144,7 @@ def parse_robots(text: str) -> ParsedRobots:
     case-insensitive. A user-agent value is reduced to its product token: the
     text before the first ``/`` or whitespace, lower-cased.
     """
+    text = text.removeprefix(_BOM)
     groups: list[RobotsGroup] = []
     agents: list[str] = []
     rules: list[RobotsRule] = []
@@ -182,6 +183,7 @@ def parse_robots(text: str) -> ParsedRobots:
 def _body_problem(text: str) -> str | None:
     """Why a 200 robots.txt body is not a robots file, or None when it is one.
     An empty or comment-only file IS one: it simply declares no rules."""
+    text = text.removeprefix(_BOM)
     if "\x00" in text:
         return "robots.txt contains NUL bytes (binary, not a robots file)"
     directive_lines = 0
@@ -321,6 +323,11 @@ def _compiled_rule(pattern_text: str) -> tuple[re.Pattern[str], int]:
 
 _UNRESERVED = frozenset(string.ascii_letters + string.digits + "-._~")
 _HEX = frozenset(string.hexdigits)
+_SPECIAL_ENCODED = {"*": "%2A", "$": "%24"}
+
+# A UTF-8 byte-order mark some servers prepend. Left in place it glues onto
+# the first key ("\ufeffuser-agent") and silently drops the first group.
+_BOM = "\ufeff"
 
 
 def _normalise(value: str) -> str:
@@ -328,9 +335,13 @@ def _normalise(value: str) -> str:
 
     A percent-encoded octet is decoded only when it is an unreserved
     character (RFC 3986 s2.3); any other stays encoded, upper-cased, so
-    ``%2F`` never collapses into ``/`` and ``%2A`` never becomes a ``*``.
-    Non-ASCII characters are UTF-8 percent-encoded. Every other ASCII
-    character is kept as written."""
+    ``%2F`` never collapses into ``/``. Non-ASCII characters are UTF-8
+    percent-encoded. The two robots special characters are compared in
+    encoded form (RFC 9309 s2.2.3: pattern ``/file-with-a-%2A.html`` matches
+    URI ``/file-with-a-*.html``): a literal ``*`` or ``$`` becomes ``%2A`` /
+    ``%24``. A rule's wildcard ``*`` and trailing ``$`` are split off before
+    this runs, so they never reach it. Every other ASCII character is kept as
+    written."""
     out: list[str] = []
     i = 0
     while i < len(value):
@@ -344,7 +355,7 @@ def _normalise(value: str) -> str:
         if ord(char) > 127:
             out.append("".join(f"%{byte:02X}" for byte in char.encode("utf-8")))
         else:
-            out.append(char)
+            out.append(_SPECIAL_ENCODED.get(char, char))
         i += 1
     return "".join(out)
 
