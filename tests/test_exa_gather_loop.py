@@ -464,8 +464,24 @@ async def test_exa_gather_pack_uses_doc_url_not_placeholder(graph_env, monkeypat
     seq = {"n": 0}
 
     def fake_ingest(url, **kwargs):
+        # Like the real ingest_url, write the document and its chunk: the
+        # pack admits only evidence whose chunk and document exist (W03).
+        from runtime.db_lock import connect_write
+        from substrate.graph.ops import insert_chunk, insert_document
+
         seq["n"] += 1
-        return FakeIngestResult(document_id=f"doc-url-pack{seq['n']:02d}")
+        doc_id = f"doc-url-pack{seq['n']:02d}"
+        text = f"Source {seq['n']} body on the pack fidelity problem. " * 12
+        with connect_write(graph_env["db"], purpose="test/fake_ingest") as con:
+            insert_document(
+                con, document_id=doc_id, source_tier=3, document_type="web",
+                title=f"Source {seq['n']}", raw_text=text,
+                content_class="public_domain",
+            )
+            chunk_id = insert_chunk(
+                con, document_id=doc_id, chunk_index=0, text=text,
+            )
+        return FakeIngestResult(document_id=doc_id, chunk_ids=(chunk_id,))
 
     _patch_ingest_url(monkeypatch, fake_ingest)
 
@@ -526,7 +542,9 @@ async def test_exa_gather_pack_uses_doc_url_not_placeholder(graph_env, monkeypat
     await session.join_and_merge()
 
     pack = session.build_evidence_pack(plan_root_node_id=root_id)
-    assert len(pack.chunks) >= 1
+    assert sorted(c.document_id for c in pack.chunks) == [
+        "doc-url-pack01", "doc-url-pack02",
+    ]
     assert all(c.document_id.startswith("doc-url-") for c in pack.chunks)
     assert not any(c.document_id.startswith("doc-gather-") for c in pack.chunks)
 
