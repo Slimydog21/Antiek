@@ -94,8 +94,9 @@ export {
   notifyResearchStarted,
   notifyShellFailure,
   notifyVoicePlaybackStarted,
+  notifyThoughtPartnerReplyReceived,
   type ResearchReactionPhase,
-, notifyThoughtPartnerReplyReceived} from "./shellExperienceSignals";
+} from "./shellExperienceSignals";
 
 
 // SPR-01 — the station-activity surface. Importing this registers the built-in
