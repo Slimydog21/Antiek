@@ -48,7 +48,9 @@ from substrate.event_log import trajectory
 from substrate.schemas import (
     ActionType,
     AutoPatchAppliedPayload,
+    ConnectorDeliveredPayload,
     Event,
+    EvidenceRetrieveDeliveredPayload,
     MasterMdWrittenPayload,
     SynthesizeDeliveredPayload,
 )
@@ -148,6 +150,24 @@ def _events_of_type(investigation_id: str, action_type: ActionType) -> list[Even
 # ---------------------------------------------------------------------------
 
 
+# The one sentence a Phase 1 orientation may use to say the graph had nothing.
+#
+# The orchestrator used to satisfy the citation requirement below by emitting
+# "chunk_orientation_marker and node_orchestrator_start seed the connector
+# substrate when the graph has no servable hits yet" — tokens shaped like
+# citations but referring to nothing. That let a cold-start investigation claim
+# prior knowledge it did not have, which is worse than failing: the gate was
+# not merely weak, it was reading a fabrication.
+#
+# A cold question legitimately has no prior graph knowledge, so the gate needs
+# a way to say so. This is that way — an explicit declaration of ABSENCE,
+# which is auditable, rather than invented evidence, which is not. Same shape
+# as the `insufficient_evidence` hatch in Phases 2, 6 and 8.
+NO_PRIOR_GRAPH_KNOWLEDGE = (
+    "No prior graph knowledge: substrate search returned no servable hits "
+    "for this question."
+)
+
 def check_phase_1(
     investigation_id: str,
     *,
@@ -183,9 +203,14 @@ def check_phase_1(
         text[section_start: section_start + next_header.start()]
         if next_header else text[section_start:]
     )
+    if NO_PRIOR_GRAPH_KNOWLEDGE in section:
+        return True, (
+            "orientation.md OK (explicit no-prior-graph-knowledge declaration)"
+        )
     if not re.search(r"\bchunk[-_][A-Za-z0-9_-]+|\bnode[-_][A-Za-z0-9_-]+", section):
         return False, (
-            "Prior Graph Knowledge section has no chunk/node regex citation"
+            "Prior Graph Knowledge section has neither a chunk/node citation "
+            "nor the explicit no-prior-graph-knowledge declaration"
         )
     return True, "orientation.md OK (regex citation in Prior Graph Knowledge)"
 
@@ -193,6 +218,43 @@ def check_phase_1(
 # ---------------------------------------------------------------------------
 # Phase 2 — Round 1 landscape
 # ---------------------------------------------------------------------------
+
+
+def _repetition_filler(body: str) -> str | None:
+    """Return a reason when ``body`` is one fragment repeated to clear a floor.
+
+    A size floor alone cannot distinguish an investigation from padding: the
+    orchestrator used to satisfy Phase 2 with
+    ``"Evidence-grounded round 1 content. " * 50`` — 1700 characters, one
+    sentence. A byte count says that is substantial; a reader says it is empty.
+
+    This does NOT prescribe what a round file must contain, which would put the
+    checker back in step with whatever the producer happens to emit. It asks
+    only that the bytes are not the same fragment over and over.
+    """
+    text = body.strip()
+    if not text:
+        return "empty"
+    frags = [f.strip() for f in re.split(r"[.\n]+", text) if f.strip()]
+    if not frags:
+        return "no sentence-like content"
+    counts: dict[str, int] = {}
+    for f in frags:
+        counts[f] = counts.get(f, 0) + 1
+    frag, n = max(counts.items(), key=lambda kv: kv[1] * len(kv[0]))
+    # 0.8, not 0.6, and the number is measured rather than chosen. The three
+    # real filler strings in this repo land at 92%, 96% and 95%. A legitimate
+    # body can repeat a fragment well above half: when several sub-questions
+    # share one supporting claim the renderer writes it once per sub-question,
+    # which measured 65% on a real run. A 0.6 bar rejected that. The gap
+    # between 65% and 92% is where the line belongs.
+    if n > 3 and (n * len(frag)) > 0.8 * len(text):
+        pct = int(100 * n * len(frag) / len(text))
+        return (
+            f"{frag[:48]!r} repeated {n}x = {pct}% of the body — "
+            f"this is padding, not content"
+        )
+    return None
 
 
 def check_phase_2(
@@ -207,6 +269,7 @@ def check_phase_2(
     )
     missing: list[str] = []
     too_small: list[str] = []
+    padded: list[str] = []
     for name in required:
         p = os.path.join(research_dir, name)
         if not os.path.exists(p):
@@ -214,10 +277,46 @@ def check_phase_2(
             continue
         if os.path.getsize(p) <= _ROUND1_MIN_BYTES:
             too_small.append(f"{p} ({os.path.getsize(p)} bytes)")
+            continue
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                reason = _repetition_filler(fh.read())
+        except OSError as exc:
+            return False, f"{p} unreadable: {exc!r}"
+        if reason is not None:
+            padded.append(f"{p}: {reason}")
     if missing:
         return False, "missing: " + ", ".join(missing)
+
+    # Honest-decline hatch, mirroring Phase 6 and Phase 8.
+    #
+    # Removing the orchestrator's padding makes a genuinely thin round 1 fall
+    # UNDER _ROUND1_MIN_BYTES — real evidence for a couple of sub-questions can
+    # be 100-400 bytes, where 50 copies of one sentence was 1700. Failing those
+    # runs would just trade a gate that passes on nothing for one that fails on
+    # honesty. The retriever already reports this: EvidenceRetrieveDelivered
+    # carries ``insufficient_evidence``, and the prompt treats an absent answer
+    # as information rather than failure. So when EVERY delivery for this
+    # investigation declined, a small round 1 is the correct outcome, not a
+    # defect.
+    if too_small or padded:
+        delivered = _events_of_type(
+            investigation_id, ActionType.EVIDENCE_RETRIEVE_DELIVERED,
+        )
+        payloads = [
+            e.payload for e in delivered
+            if isinstance(e.payload, EvidenceRetrieveDeliveredPayload)
+        ]
+        if payloads and all(pl.insufficient_evidence for pl in payloads):
+            return True, (
+                f"round-1 files are thin, and correctly so: all "
+                f"{len(payloads)} evidence deliveries reported "
+                f"insufficient_evidence"
+            )
     if too_small:
         return False, f"≤{_ROUND1_MIN_BYTES} bytes: " + ", ".join(too_small)
+    if padded:
+        return False, "padding, not content: " + "; ".join(padded)
     return True, f"3 round-1 files OK under {research_dir}"
 
 
@@ -266,6 +365,7 @@ def check_phase_4(
     if not os.path.isdir(research_dir):
         return False, f"{research_dir} not a directory"
     candidates: list[str] = []
+    present_but_small: list[str] = []
     for name in os.listdir(research_dir):
         if (
             not name.startswith("round2-")
@@ -274,9 +374,40 @@ def check_phase_4(
         ):
             continue
         full = os.path.join(research_dir, name)
-        if os.path.getsize(full) > _ROUND2_DEEP_DIVE_MIN_BYTES:
-            candidates.append(full)
+        if os.path.getsize(full) <= _ROUND2_DEEP_DIVE_MIN_BYTES:
+            present_but_small.append(full)
+            continue
+        try:
+            with open(full, encoding="utf-8", errors="replace") as fh:
+                if _repetition_filler(fh.read()) is not None:
+                    present_but_small.append(f"{full} (padding)")
+                    continue
+        except OSError:
+            continue
+        candidates.append(full)
     if not candidates:
+        # Honest-no-paths hatch, mirroring Phase 2 / 6 / 8.
+        #
+        # The round-2 marker used to be
+        # ``("Cross-domain connector substrate surfaced. " * 50)`` — ~2100
+        # bytes that cleared this floor whatever the Connector returned. Now
+        # that the file renders the real payload, a traversal that legitimately
+        # found no cross-domain paths produces a short file, and failing that
+        # would punish an honest empty result. So: if the Connector DELIVERED
+        # and reported no paths, a thin round 2 is the correct outcome.
+        if present_but_small:
+            delivered = _events_of_type(
+                investigation_id, ActionType.CONNECTOR_DELIVERED,
+            )
+            payloads = [
+                e.payload for e in delivered
+                if isinstance(e.payload, ConnectorDeliveredPayload)
+            ]
+            if payloads and not any(pl.paths for pl in payloads):
+                return True, (
+                    "round-2 deep dive is thin, and correctly so: the "
+                    "connector delivered and found no cross-domain paths"
+                )
         return False, (
             f"no round2-*.md (≠ critique) >{_ROUND2_DEEP_DIVE_MIN_BYTES} "
             f"bytes in {research_dir}"
@@ -391,6 +522,25 @@ def check_phase_6(
                 f"iterations={payload.constraint_loop_iterations}). "
                 f"Empty/vacuous falsifications are acceptable under this "
                 f"recommendation."
+            )
+        # Any recommendation OTHER than insufficient_evidence is a claim that a
+        # defensible thesis EXISTS — the other half of the contract quoted
+        # above. This gate verified the falsifications were non-vacuous but
+        # never checked there was a thesis to falsify, so a payload with
+        # thesis_summary="" and ZERO thesis_components recommending "proceed"
+        # at conviction 0.9 reached `return True`.
+        #
+        # Only thesis_summary is required. `thesis_components` is deliberately
+        # NOT checked: the contract asks for "a defensible thesis with
+        # non-vacuous falsifications", not a component breakdown, and
+        # tests/test_phase_runner_postconditions.py emits a real thesis with
+        # thesis_components=[] as a legitimate shape.
+        if not payload.thesis_summary.strip():
+            return False, (
+                f"synthesize.delivered recommends "
+                f"{payload.implicit_recommendation!r} but thesis_summary is "
+                f"empty. Any recommendation other than insufficient_evidence "
+                f"asserts a defensible thesis; there is none here to falsify."
             )
         vacuous, why = _falsifications_are_vacuous(payload.falsification_conditions)
         if vacuous:
@@ -554,6 +704,19 @@ def check_phase_8(
         cutoff = cutoff.replace(tzinfo=UTC)
     cutoff_ts = cutoff.timestamp()
 
+    # Scope to THIS investigation. The knowledge-skills root is SHARED across
+    # every investigation — `default_knowledge_skills_dir()` takes no
+    # investigation argument and resolves to one
+    # `$ANTIEK_HOME/knowledge_skills` — so an mtime test alone asks "did
+    # ANYTHING compound recently?", not the keystone's actual question, "did
+    # THIS investigation compound?". With concurrent investigations, A's skill
+    # write satisfied B's keystone. The existing test could not catch that: it
+    # runs under `tmp_path`, an isolation production does not have.
+    #
+    # The file carries its own provenance. `skills/domain/auto_patch.render_patch`
+    # writes "### From investigation `<id>` (<date>)" into the skill body, so
+    # membership is checkable rather than inferred from wall-clock.
+    provenance_marker = f"From investigation `{investigation_id}`"
     for entry in sorted(os.listdir(knowledge_skills_dir)):
         if not entry.endswith("-knowledge"):
             continue
@@ -564,17 +727,23 @@ def check_phase_8(
             for fname in files:
                 p = os.path.join(root, fname)
                 try:
-                    if os.stat(p).st_mtime > cutoff_ts:
-                        return True, (
-                            f"skill file {p!r} modified after "
-                            f"{cutoff.isoformat()}"
-                        )
+                    if os.stat(p).st_mtime <= cutoff_ts:
+                        continue
+                    with open(p, encoding="utf-8", errors="replace") as fh:
+                        body = fh.read()
                 except OSError:
                     continue
+                if provenance_marker in body:
+                    return True, (
+                        f"skill file {p!r} carries this investigation's "
+                        f"patch marker and was modified after "
+                        f"{cutoff.isoformat()}"
+                    )
 
     return False, (
         f"no auto_patch_applied event with patched domains, AND no "
-        f"skill file modified after {cutoff.isoformat()} under "
+        f"skill file carrying this investigation's patch marker was "
+        f"modified after {cutoff.isoformat()} under "
         f"{knowledge_skills_dir}"
     )
 

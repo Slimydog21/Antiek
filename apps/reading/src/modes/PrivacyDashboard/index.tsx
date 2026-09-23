@@ -75,7 +75,9 @@ export default function PrivacyDashboard() {
   const [data, setData] = useState<TrustCenterData | null>(null);
   const [privacy, setPrivacy] = useState<PrivacySurface[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pendingDeletion, setPendingDeletion] = useState<DeletionRequest | null>(null);
+  const [pendingDeletion, setPendingDeletion] = useState<
+    DeletionRequest | null | "unknown"
+  >(null);
   const [savingSurface, setSavingSurface] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -97,6 +99,16 @@ export default function PrivacyDashboard() {
           (r: DeletionRequest) => r.status === "pending",
         );
         setPendingDeletion(pending ?? null);
+      } else {
+        // Could NOT read the deletion ledger. Leaving this null renders the
+        // "Request deletion" button - telling a user inside their cancellation
+        // window that nothing is scheduled, and hiding the cancel control.
+        // Unknown must never impersonate none on an irreversible action.
+        setPendingDeletion("unknown");
+        setError(
+          "Could not read your deletion-request status. This is not a statement " +
+            "that none is pending - reload before acting.",
+        );
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -149,7 +161,7 @@ export default function PrivacyDashboard() {
   };
 
   const cancelDeletion = async () => {
-    if (!pendingDeletion) return;
+    if (!pendingDeletion || pendingDeletion === "unknown") return;
     try {
       const resp = await apiFetch(
         `/trust-center/deletion-requests/${encodeURIComponent(pendingDeletion.request_id)}/cancel`,
@@ -367,7 +379,7 @@ function DeleteEverything({
   onRequest,
   onCancel,
 }: {
-  pendingDeletion: DeletionRequest | null;
+  pendingDeletion: DeletionRequest | null | "unknown";
   deletionSlaDays: number;
   onRequest: () => void;
   onCancel: () => void;
@@ -382,7 +394,12 @@ function DeleteEverything({
         unless you also opt out of cross-user surfacing (separate
         setting). Master-spec §13.3 commits the substrate to this SLA.
       </p>
-      {pendingDeletion ? (
+      {pendingDeletion === "unknown" ? (
+        <p className="text-sm text-danger">
+          Deletion status unavailable - we could not read your request ledger.
+          Reload before requesting or cancelling a deletion.
+        </p>
+      ) : pendingDeletion ? (
         <div className="space-y-2">
           <p className="text-sm font-mono text-danger">
             Pending — request_id = {pendingDeletion.request_id} ·

@@ -41,6 +41,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
+import duckdb
+
 if TYPE_CHECKING:
     from orchestration.cascade_session import CascadeSession
     from orchestration.session_evidence_pack import SessionEvidencePack
@@ -73,6 +75,7 @@ from roles.thought_partner import (  # noqa: E402
     compose_thought_partner_prompt,
     parse_thought_partner_response,
 )
+from substrate.agent_skills.py_analysis import summarize_rows  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
@@ -159,12 +162,16 @@ class HealthResponse(BaseModel):
     # TurboPuffer SERVABLE hybrid (dogfood) — honest, never faked.
     # hybrid_ready requires env+key+active pointer; production_default_mount
     # stays False until deliberately flipped in a future decision.
-    turbopuffer_servable_enabled: bool = False
-    turbopuffer_shadow_enabled: bool = False
-    turbopuffer_api_key_present: bool = False
-    turbopuffer_active_pointer: bool = False
+    # None on these five means the probe did not run or raised — a crashed
+    # probe used to be byte-identical to "TurboPuffer is switched off". The
+    # error text rides on turbopuffer_probe_error.
+    turbopuffer_servable_enabled: bool | None = False
+    turbopuffer_shadow_enabled: bool | None = False
+    turbopuffer_api_key_present: bool | None = False
+    turbopuffer_active_pointer: bool | None = False
     turbopuffer_pointer_context_ok: bool | None = None
-    turbopuffer_hybrid_ready: bool = False
+    turbopuffer_hybrid_ready: bool | None = False
+    turbopuffer_probe_error: str | None = None
     turbopuffer_resolved_kind: str = "brute_force"
     turbopuffer_indexed_row_count: int | None = None
     turbopuffer_content_hash: str | None = None
@@ -185,6 +192,38 @@ class HealthResponse(BaseModel):
     duckdb_wal_present: bool = False
     duckdb_wal_bytes: int = 0
     duckdb_error: str | None = None
+    # Verified-backup freshness (pass46 / production-audit P1). A green
+    # /health must not hide a missing or stale backup marker. Mirrors
+    # tools/backup_freshness.py: fresh=False + backup_reason when the
+    # marker is missing/unreadable/stale; never raises.
+    backup_fresh: bool = False
+    backup_completed_at: str | None = None
+    backup_age_hours: float | None = None
+    backup_marker_path: str = ""
+    backup_reason: str = ""
+
+
+def _probe_backup_freshness() -> dict[str, Any]:
+    """Read-only backup freshness for /health. Never raises."""
+    try:
+        from tools.backup_freshness import evaluate, resolve_marker_path
+
+        verdict = evaluate(resolve_marker_path(None), 26.0)
+        return {
+            "backup_fresh": verdict.fresh,
+            "backup_completed_at": verdict.completed_at,
+            "backup_age_hours": verdict.age_hours,
+            "backup_marker_path": verdict.marker_path,
+            "backup_reason": verdict.reason,
+        }
+    except Exception as exc:
+        return {
+            "backup_fresh": False,
+            "backup_completed_at": None,
+            "backup_age_hours": None,
+            "backup_marker_path": "",
+            "backup_reason": f"probe_exception: {type(exc).__name__}: {exc}",
+        }
 
 
 def _resolve_build_sha() -> str:
@@ -277,6 +316,16 @@ def _probe_flywheel() -> tuple[bool, int]:
         # (False, 0) rather than failing the whole /health over a probe,
         # mirroring _resolve_build_sha's swallow-to-"unknown".
         return (False, 0)
+
+
+def _tp_flag(app: Any, key: str) -> bool | None:
+    """A TurboPuffer health flag for /health. None (not False) when the probe
+    raised — the dict then carries ``error`` — or never ran; a crashed probe
+    must not read as "switched off"."""
+    tp = getattr(app.state, "turbopuffer_health", None) or {}
+    if not tp or tp.get("error"):
+        return None
+    return bool(tp.get(key))
 
 
 def _probe_turbopuffer() -> dict[str, Any]:
@@ -591,9 +640,27 @@ class DeliverableSummary(BaseModel):
     section_count: int = 0
 
 
+class SeriesStats(BaseModel):
+    """One column of a read-only projection, summarized by the
+    ``py_analysis`` kernel skill (``substrate.agent_skills``): stdlib-only
+    and pure, so the projection is read through ``connect_read`` and no
+    writer handle is opened."""
+
+    name: str
+    kind: str
+    count: int
+    mean: float | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    total: float | None = None
+
+
 class DeliverableListResponse(BaseModel):
     count: int
     deliverables: list[DeliverableSummary] = Field(default_factory=list)
+    # ``section_count`` across the listed deliverables via
+    # ``py_analysis.summarize_rows``; None when the projection is empty.
+    section_stats: SeriesStats | None = None
 
 
 class CreateSectionRequest(BaseModel):
@@ -2173,35 +2240,18 @@ def create_app(
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
             knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
-            turbopuffer_servable_enabled=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "servable_enabled"
-                )
-            ),
-            turbopuffer_shadow_enabled=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "shadow_enabled"
-                )
-            ),
-            turbopuffer_api_key_present=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "api_key_present"
-                )
-            ),
-            turbopuffer_active_pointer=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "active_pointer_file"
-                )
-            ),
+            turbopuffer_servable_enabled=_tp_flag(app, "servable_enabled"),
+            turbopuffer_shadow_enabled=_tp_flag(app, "shadow_enabled"),
+            turbopuffer_api_key_present=_tp_flag(app, "api_key_present"),
+            turbopuffer_active_pointer=_tp_flag(app, "active_pointer_file"),
             turbopuffer_pointer_context_ok=(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
                     "active_pointer_context_ok"
                 )
             ),
-            turbopuffer_hybrid_ready=bool(
-                (getattr(app.state, "turbopuffer_health", {}) or {}).get(
-                    "hybrid_ready"
-                )
+            turbopuffer_hybrid_ready=_tp_flag(app, "hybrid_ready"),
+            turbopuffer_probe_error=(
+                (getattr(app.state, "turbopuffer_health", {}) or {}).get("error")
             ),
             turbopuffer_resolved_kind=str(
                 (getattr(app.state, "turbopuffer_health", {}) or {}).get(
@@ -2244,6 +2294,7 @@ def create_app(
             duckdb_wal_present=duckdb_health.wal_present,
             duckdb_wal_bytes=duckdb_health.wal_bytes,
             duckdb_error=duckdb_health.error,
+            **_probe_backup_freshness(),
         )
 
     # ── POST typed event ────────────────────────────────────────
@@ -3436,6 +3487,11 @@ def create_app(
             ).fetchall()
         finally:
             con.close()
+        # The projection is already in hand (read-only); summarize its one
+        # numeric column through the kernel skill rather than re-querying.
+        section_summary = summarize_rows(
+            [{"section_count": r[7] or 0} for r in rows]
+        ).summary("section_count")
         return DeliverableListResponse(
             count=len(rows),
             deliverables=[
@@ -3445,6 +3501,19 @@ def create_app(
                     created_at=r[5], updated_at=r[6], section_count=r[7] or 0,
                 ) for r in rows
             ],
+            section_stats=(
+                SeriesStats(
+                    name=section_summary.name,
+                    kind=section_summary.kind,
+                    count=section_summary.count,
+                    mean=section_summary.mean,
+                    minimum=section_summary.minimum,
+                    maximum=section_summary.maximum,
+                    total=section_summary.total,
+                )
+                if section_summary is not None
+                else None
+            ),
         )
 
     @app.get("/deliverables/{deliverable_id}", response_model=DeliverableDetailResponse)
@@ -6247,8 +6316,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[OutcomeRecentRow] = []
         for r in rows:
             out.append(OutcomeRecentRow(
@@ -6653,8 +6741,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[PayoutTransferResponse] = []
         for r in rows:
             out.append(PayoutTransferResponse(
@@ -6938,8 +7045,26 @@ def create_app(
                     "WHERE user_id = ? ORDER BY requested_at DESC",
                     [user_id],
                 ).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # Table not created yet — genuinely no requests have been filed.
             rows = []
+        except Exception as exc:
+            # GDPR/CCPA surface (master-spec 13.3/13.7). Returning [] told a
+            # user who HAD filed an erasure request that they never did — and
+            # the client cannot tell, so it hid their cancel control while the
+            # cancellation window ran down. Never impersonate "none" here.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "deletion_ledger_unavailable",
+                        "message": (
+                            "Your deletion requests could not be read. This is "
+                            "NOT a statement that none are pending."
+                        ),
+                    }
+                },
+            ) from exc
         return DeletionRequestListResponse(
             requests=[
                 _deletion_request_row_to_response(r) for r in rows
@@ -7121,8 +7246,27 @@ def create_app(
         try:
             with connect_read(default_db_path()) as con:
                 rows = con.execute(sql, params).fetchall()
-        except Exception:
+        except duckdb.CatalogException:
+            # The table has not been created yet — a genuinely empty state,
+            # not a failure. This is the ONLY exception that legitimately
+            # means "there are none".
             rows = []
+        except Exception as exc:
+            # A read FAILURE is not an empty result set. Returning [] made
+            # "there are none" and "we could not read" the same 200, with no
+            # log and no field able to carry the difference.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": {
+                        "code": "read_unavailable",
+                        "message": (
+                            "The underlying store could not be read. This is "
+                            "NOT a statement that no records exist."
+                        ),
+                    }
+                },
+            ) from exc
         out: list[DocumentSummary] = []
         for r in rows:
             out.append(DocumentSummary(
@@ -7250,10 +7394,15 @@ def create_app(
                         else (str(r[7]) if r[7] is not None else None)
                     ),
                 ))
-        except Exception:
+        except duckdb.CatalogException:
             # The skill_rules table is created lazily by the writer.
             # An empty/missing table is a normal pre-promotion state;
             # return an empty list rather than 500.
+            #
+            # NARROWED from `except Exception`: that also swallowed a genuinely
+            # unreadable store, so corruption was reported as "no rules yet".
+            # Only the missing-table case is a normal state; anything else is a
+            # real failure and must surface.
             rules = []
 
         return SkillRuleListResponse(rules=rules)

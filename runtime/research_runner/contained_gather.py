@@ -61,6 +61,16 @@ lifecycle, the input and artifact channels and the failure taxonomy are real
 and exercised end to end; the program they carry is still a placeholder, and
 naming it one here is the point.
 
+The program is the *default*, not the *only* payload. ``make_contained_gather_loop``
+takes ``program=``, a caller-supplied source string that lands at ``PROGRAM_PATH``
+in place of ``GATHER_PROGRAM``; ``cascade_routes._research_loop_factory`` threads
+it through so a caller above the loop can reach it. The workspace input contract
+is unchanged (bytes in, bytes out): the program is one more ``put_file``, and
+whatever it appends to ``out/gather.jsonl`` rides back on the note as
+``artifact_records`` (bounded by ``NOTE_ARTIFACT_LIMIT``) through the same
+``on_emit`` and nowhere else — a caller's program cannot widen the writer count
+any more than the placeholder could.
+
 The one fact it reports that is not a placeholder is ``uid`` — the effective
 user the contained step ran as. Under ``DockerBackend`` that is 65534; under
 ``LocalProcessBackend`` it is the service user, which is precisely the
@@ -128,6 +138,13 @@ DEFAULT_INTERPRETER: str = "python3"
 #: default for "how long may untrusted code run", so the value is stated here
 #: and passed explicitly on every call.
 DEFAULT_STEP_TIMEOUT_S: float = 60.0
+
+#: How many exported ``out/gather.jsonl`` records ride on the note as
+#: ``artifact_records``. The note's ``data`` becomes node metadata behind the
+#: funnel, so the artifact channel is bounded here rather than letting a
+#: program size the graph write; ``contained_passes`` still carries the full
+#: count.
+NOTE_ARTIFACT_LIMIT: int = 32
 
 
 #: The program that runs inside the workspace. Stdlib only — it must run on a
@@ -199,6 +216,7 @@ def make_contained_gather_loop(
     net_policy: NetPolicy = DENY_ALL,
     limits: ResourceLimits | None = None,
     timeout_s: float = DEFAULT_STEP_TIMEOUT_S,
+    program: str = GATHER_PROGRAM,
 ) -> Callable[[Any], AsyncIterator[StepEvent]]:
     """Build a ``BrowseLoop`` whose gather step executes in *backend*.
 
@@ -212,6 +230,12 @@ def make_contained_gather_loop(
     Signature mirrors ``make_contract_gather_stub`` (*steps*, *cost_per_step*)
     so the swap at ``cascade_routes._research_loop_factory`` is one line and the
     budget arithmetic is unchanged.
+
+    *program* is the source that runs in the workspace, written to
+    ``PROGRAM_PATH`` before the first pass; it defaults to the placeholder
+    ``GATHER_PROGRAM``. It is invoked as ``<interpreter> gather.py <pass>``
+    with ``work/`` as cwd, reads ``../in/request.json`` and appends records to
+    ``../out/gather.jsonl`` — the same contract the placeholder documents.
     """
     profile = WorkspaceProfile(name="antiek-contained-gather", image=image)
     resource_limits = limits if limits is not None else ResourceLimits()
@@ -229,7 +253,7 @@ def make_contained_gather_loop(
             profile, limits=resource_limits, net_policy=net_policy
         )
         try:
-            await workspace.put_file(PROGRAM_PATH, GATHER_PROGRAM.encode("utf-8"))
+            await workspace.put_file(PROGRAM_PATH, program.encode("utf-8"))
             await workspace.put_file(
                 REQUEST_PATH,
                 json.dumps(
@@ -297,6 +321,7 @@ def make_contained_gather_loop(
                 workspace_id=workspace.workspace_id,
                 contained_passes=len(records),
                 ran_as_uid=uids[0] if len(uids) == 1 else uids,
+                artifact_records=records[:NOTE_ARTIFACT_LIMIT],
             )
         finally:
             # Idempotent by contract (I6). This runs inline on the normal and
@@ -320,4 +345,5 @@ __all__ = [
     "DEFAULT_GATHER_IMAGE",
     "DEFAULT_INTERPRETER",
     "DEFAULT_STEP_TIMEOUT_S",
+    "NOTE_ARTIFACT_LIMIT",
 ]
