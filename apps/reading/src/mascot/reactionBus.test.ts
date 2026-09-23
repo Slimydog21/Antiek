@@ -22,7 +22,8 @@ describe("Brain product reaction bus", () => {
     ["idle", "sleeping"],
     ["fail", "dizzy"],
     ["voice_recording_started", "thinking"],
-    ["thought_partner_reply_received", "happy"],
+    ["voice_playback_started", "thinking"],
+    ["evidence_source_opened", "curious"],
   ];
 
   it.each(cases)("maps %s to %s", (experience, emote) => {
