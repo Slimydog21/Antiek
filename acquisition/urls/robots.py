@@ -1,7 +1,10 @@
 """Per-host ``robots.txt`` consultation for the general URL fetcher (SPR-10
-task 4) — the proven single-host logic in ``acquisition/urls/paulgraham.py``
-(``urllib.robotparser`` + fail-open with a visible warning) generalised to
-every host ``acquisition.urls.client.fetch`` touches.
+task 4). Robots.txt is parsed and evaluated here per RFC 9309; the proven
+single-host fail-open logic in ``acquisition/urls/paulgraham.py`` is
+generalised to every host ``acquisition.urls.client.fetch`` touches.
+``urllib.robotparser`` is not used: it keeps only the first ``*`` group,
+matches substrings and first rules, and cannot tell a literal ``%2A`` from a
+wildcard.
 
 Three guarantees, in priority order:
 
@@ -57,11 +60,9 @@ import re
 import threading
 import time
 import urllib.parse
-import urllib.robotparser
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Protocol, cast
 from urllib.parse import urljoin, urlsplit
 
 from acquisition.urls.rights_terms import (
@@ -104,6 +105,77 @@ _KNOWN_DIRECTIVES = frozenset({
 # transport the page fetch takes. It may raise on a transport error; the
 # policy builder treats that as fail-open.
 FetchText = Callable[[str, bool], tuple[int, str, str]]
+
+
+@dataclass(frozen=True)
+class RobotsRule:
+    """One Allow/Disallow rule, with its value exactly as written."""
+
+    allow: bool
+    path: str
+
+
+@dataclass(frozen=True)
+class RobotsGroup:
+    """A robots.txt record: agent tokens and the rules they opened together."""
+
+    agents: tuple[str, ...]
+    rules: tuple[RobotsRule, ...]
+
+
+@dataclass(frozen=True)
+class ParsedRobots:
+    """The records relevant to Allow/Disallow matching."""
+
+    groups: tuple[RobotsGroup, ...] = ()
+
+
+NO_RULES = ParsedRobots()
+
+
+def parse_robots(text: str) -> ParsedRobots:
+    """Parse robots.txt grouping per RFC 9309 s2.1.
+
+    Consecutive user-agent lines open one group; allow/disallow lines add
+    rules to the open group; a user-agent line that follows any other record
+    starts a new group; allow/disallow before the first user-agent line are
+    ignored. Other records (sitemap, crawl-delay, license, ...) are ignored
+    for matching. Comments (#) and blank lines are skipped. Keys are
+    case-insensitive. A user-agent value is reduced to its product token: the
+    text before the first ``/`` or whitespace, lower-cased.
+    """
+    groups: list[RobotsGroup] = []
+    agents: list[str] = []
+    rules: list[RobotsRule] = []
+    in_agent_run = False
+
+    def close_group() -> None:
+        nonlocal agents, rules
+        if agents:
+            groups.append(RobotsGroup(tuple(agents), tuple(rules)))
+        agents = []
+        rules = []
+
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line or ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key = key.strip().lower()
+        value = value.strip()
+        if key == "user-agent":
+            if not in_agent_run and agents:
+                close_group()
+            agents.append(value.split()[0].split("/")[0].lower() if value else "")
+            in_agent_run = True
+        elif key in {"allow", "disallow"}:
+            if agents:
+                rules.append(RobotsRule(key == "allow", value))
+            in_agent_run = False
+        else:
+            in_agent_run = False
+    close_group()
+    return ParsedRobots(tuple(groups))
 
 
 def _body_problem(text: str) -> str | None:
@@ -157,13 +229,13 @@ class RobotsPolicy:
     fail_open_reason: str | None
     license_url: str | None
     rights_terms: RightsTerms
-    parser: urllib.robotparser.RobotFileParser = field(repr=False, compare=False)
+    rules: ParsedRobots = field(default=NO_RULES, repr=False, compare=False)
 
     def allows(self, user_agent: str, url: str) -> bool:
         """True iff ``user_agent`` may fetch ``url`` under this policy."""
         if not self.applied:
             return True
-        return robots_allows(self.parser, user_agent, url)
+        return robots_allows(self.rules, user_agent, url)
 
 
 def origin_of(url: str) -> str:
@@ -177,33 +249,12 @@ def robots_url_for(url: str) -> str:
     return f"{origin_of(url)}/robots.txt"
 
 
-class _RobotsRule(Protocol):
-    """The RuleLine internals used by RFC 9309 evaluation."""
-
-    path: str
-    allowance: bool
-
-
-class _RobotsEntry(Protocol):
-    """The Entry internals used for group selection."""
-
-    useragents: list[str]
-    rulelines: list[_RobotsRule]
-
-
-class _ParsedRobotFileParser(Protocol):
-    """The parsed state urllib.robotparser does not expose in its stub."""
-
-    entries: list[_RobotsEntry]
-    default_entry: _RobotsEntry | None
-
-
 def robots_allows(
-    parser: urllib.robotparser.RobotFileParser,
+    robots: ParsedRobots,
     user_agent: str,
     url: str,
 ) -> bool:
-    """RFC 9309 evaluation over urllib.robotparser's parse.
+    """RFC 9309 evaluation over :func:`parse_robots`' result.
     Group selection (RFC 9309 s2.2.1, with the product-family fallback major
     crawlers use): take our product token (the User-Agent up to the first '/',
     lower-cased, e.g. "antiek-agent"); the groups naming exactly that token
@@ -213,39 +264,39 @@ def robots_allows(
     Rule matching (RFC 9309 s2.2.2/s2.2.3): the longest matching rule path
     wins, Allow wins a tie, '*' matches any sequence and a trailing '$'
     anchors the end. No matching rule means allowed."""
-    parsed = cast(_ParsedRobotFileParser, parser)
     token = user_agent.split("/", 1)[0].strip().lower()
     parts = token.split("-")
     candidates = ["-".join(parts[:i]) for i in range(len(parts), 0, -1)]
-    rules: list[_RobotsRule] = []
+    rules: tuple[RobotsRule, ...] = ()
     for candidate in candidates:
         matched = [
-            entry
-            for entry in parsed.entries
-            if any(agent.strip().lower() == candidate for agent in entry.useragents)
+            group
+            for group in robots.groups
+            if candidate in group.agents
         ]
         if matched:
-            rules = [rule for entry in matched for rule in entry.rulelines]
+            rules = tuple(rule for group in matched for rule in group.rules)
             break
     else:
-        if parsed.default_entry is not None:
-            rules = list(parsed.default_entry.rulelines)
-        else:
+        rules = tuple(
+            rule for group in robots.groups if "*" in group.agents for rule in group.rules
+        )
+        if not rules:
             return True
 
-    parsed_url = urllib.parse.urlparse(urllib.parse.unquote(url))
-    normalised = urllib.parse.urlunparse(
-        ("", "", parsed_url.path, parsed_url.params, parsed_url.query, parsed_url.fragment)
-    )
-    normalised = urllib.parse.quote(normalised)
-    if not normalised:
-        normalised = "/"
+    parsed_url = urlsplit(url)
+    target = parsed_url.path or "/"
+    if parsed_url.query:
+        target = f"{target}?{parsed_url.query}"
+    normalised = _normalise(target)
 
     matching: list[tuple[int, bool]] = []
     for rule in rules:
+        if not rule.path:
+            continue
         pattern, length = _compiled_rule(rule.path)
         if pattern.match(normalised) is not None:
-            matching.append((length, rule.allowance))
+            matching.append((length, rule.allow))
     if not matching:
         return True
     return max(matching)[1]
@@ -253,13 +304,22 @@ def robots_allows(
 
 @lru_cache(maxsize=512)
 def _compiled_rule(pattern_text: str) -> tuple[re.Pattern[str], int]:
-    text = re.sub("%2a", "*", pattern_text, flags=re.IGNORECASE)
-    text = re.sub("%24$", "$", text, flags=re.IGNORECASE)
-    anchored = text.endswith("$")
-    regex_text = re.escape(text).replace(r"\*", ".*")
+    anchored = pattern_text.endswith("$")
+    body = pattern_text[:-1] if anchored else pattern_text
+    regex_text = ".*".join(
+        re.escape(_normalise(segment)) for segment in body.split("*")
+    )
     if anchored:
-        regex_text = regex_text[:-2] + r"\Z"
-    return re.compile(regex_text), len(text)
+        regex_text = f"{regex_text}\\Z"
+    return re.compile(regex_text), len(pattern_text)
+
+
+def _normalise(value: str) -> str:
+    """Make equivalent percent-encodings comparable without erasing ``*``."""
+    return urllib.parse.quote(
+        urllib.parse.unquote(value),
+        safe="!#$&'()*+,/:;=?@[]-._~",
+    )
 
 
 # origin -> (policy, monotonic expiry). See ROBOTS_CACHE_TTL_S / UNREACHABLE_RETRY_S.
@@ -316,11 +376,9 @@ def robots_policy_for(
 def _fail_open(
     origin: str,
     robots_url: str,
-    parser: urllib.robotparser.RobotFileParser,
     reason: str,
     ttl_s: float,
 ) -> tuple[RobotsPolicy, float]:
-    parser.parse([])
     logger.warning(
         "%s: %s; failing OPEN — no robots rules enforced for this origin until "
         "it is re-checked in %.0fs (fetches proceed; the site did not tell us "
@@ -336,7 +394,7 @@ def _fail_open(
         fail_open_reason=reason,
         license_url=None,
         rights_terms=NO_TERMS,
-        parser=parser,
+        rules=NO_RULES,
     )
     return policy, ttl_s
 
@@ -349,47 +407,38 @@ def _build_policy(
     """Fetch and parse ``origin``'s robots.txt; return the policy and how long
     it may be cached."""
     robots_url = f"{origin}/robots.txt"
-    parser = urllib.robotparser.RobotFileParser()
-    parser.set_url(robots_url)
     try:
         status, text, _final_url = fetch_text(robots_url, True)
     except Exception as exc:
         return _fail_open(
-            origin, robots_url, parser,
+            origin, robots_url,
             f"robots.txt unreachable ({type(exc).__name__}: {exc})",
             UNREACHABLE_RETRY_S,
         )
     if status >= 500 or status == 429:
         return _fail_open(
-            origin, robots_url, parser,
+            origin, robots_url,
             f"robots.txt unreachable (HTTP {status})", UNREACHABLE_RETRY_S,
         )
     if status >= 400:
         return _fail_open(
-            origin, robots_url, parser,
+            origin, robots_url,
             f"robots.txt returned HTTP {status}", ROBOTS_CACHE_TTL_S,
         )
     size = len(text.encode("utf-8"))
     if size > MAX_ROBOTS_BYTES:
         return _fail_open(
-            origin, robots_url, parser,
+            origin, robots_url,
             f"robots.txt is {size} bytes (> {MAX_ROBOTS_BYTES}); not parsed",
             ROBOTS_CACHE_TTL_S,
         )
     problem = _body_problem(text)
     if problem:
-        return _fail_open(origin, robots_url, parser, problem, ROBOTS_CACHE_TTL_S)
-    try:
-        parser.parse(text.splitlines())
-    except Exception as exc:
-        return _fail_open(
-            origin, robots_url, parser,
-            f"robots.txt unparseable ({type(exc).__name__}: {exc})",
-            ROBOTS_CACHE_TTL_S,
-        )
+        return _fail_open(origin, robots_url, problem, ROBOTS_CACHE_TTL_S)
+    rules = parse_robots(text)
     license_url = parse_license_directive(text)
     try:
-        rights_terms = _load_terms(origin, license_url, fetch_text, parser, user_agent)
+        rights_terms = _load_terms(origin, license_url, fetch_text, rules, user_agent)
     except Exception as exc:
         rights_terms = RightsTerms(
             source="robots_license_directive",
@@ -403,7 +452,7 @@ def _build_policy(
         fail_open_reason=None,
         license_url=license_url,
         rights_terms=rights_terms,
-        parser=parser,
+        rules=rules,
     )
     return policy, ROBOTS_CACHE_TTL_S
 
@@ -412,7 +461,7 @@ def _load_terms(
     origin: str,
     license_url: str | None,
     fetch_text: FetchText,
-    parser: urllib.robotparser.RobotFileParser,
+    rules: ParsedRobots,
     user_agent: str,
 ) -> RightsTerms:
     if license_url is None:
@@ -437,7 +486,7 @@ def _load_terms(
             license_url=license_url,
             parse_error=f"invalid licence URL ({exc})",
         )
-    if not robots_allows(parser, user_agent, absolute):
+    if not robots_allows(rules, user_agent, absolute):
         logger.warning(
             "%s: robots.txt disallows its licence URL (%s); recorded, not fetched",
             origin,
@@ -495,8 +544,12 @@ __all__ = [
     "ROBOTS_CACHE_TTL_S",
     "UNREACHABLE_RETRY_S",
     "FetchText",
+    "ParsedRobots",
     "RobotsDisallowed",
     "RobotsPolicy",
+    "RobotsGroup",
+    "RobotsRule",
+    "parse_robots",
     "cached_origins",
     "clear_robots_cache",
     "origin_of",
