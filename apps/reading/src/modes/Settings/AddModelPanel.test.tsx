@@ -217,7 +217,7 @@ describe("AddModelPanel", () => {
       "Private gateway",
     );
     await user.type(
-      screen.getByPlaceholderText("deepseek-chat"),
+      screen.getByPlaceholderText("deepseek-flash"),
       "private-model",
     );
     await user.type(
