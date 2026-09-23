@@ -13,8 +13,10 @@ opens, compliments) is IGNORED. No middle verdict.
 
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 # The pre-registered criteria, pinned. NEVER change this hash; if the criteria
 # doc is amended (it must not be after the window opens), the amendment is
@@ -48,13 +50,24 @@ class GateNotRunnable(ValueError):
 @dataclass(frozen=True)
 class Verdict:
     verdict: str  # SUSTAIN | RETIRE
-    counts: dict  # admissible-signal counts per category
+    counts: dict[str, int]  # admissible-signal counts per category
     rationale: str
     criteria_commit: str = CRITERIA_COMMIT
 
 
 def _norm(actor: object) -> str:
-    return actor.strip().casefold() if isinstance(actor, str) else ""
+    """Identity key for comparing actor ids: the Unicode caseless-identifier
+    form (NFKC, drop format characters, casefold, NFKC again), stripped.
+
+    strip()+casefold() alone let 'operator\\u200b', a soft-hyphenated or a
+    fullwidth 'operator' compare unequal to the operator while reading the
+    same to a person, so the operator could pass as a tester or an exporter.
+    """
+    if not isinstance(actor, str):
+        return ""
+    s = unicodedata.normalize("NFKC", actor)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Cf")
+    return unicodedata.normalize("NFKC", s.casefold()).strip()
 
 
 def _nonblank(value: object) -> bool:
@@ -79,7 +92,7 @@ def _stamp(value: object) -> datetime | None:
 
 
 def compute_verdict(
-    events: list[dict],
+    events: list[dict[str, Any]],
     *,
     operator_user_id: str,
     tester_ids: frozenset[str] | set[str],
@@ -132,7 +145,7 @@ def compute_verdict(
             "fixed; an extension is a finding to record, not a parameter"
         )
 
-    def in_window(e: dict) -> bool:
+    def in_window(e: dict[str, Any]) -> bool:
         ts = _stamp(e.get("emitted_at"))
         return ts is not None and window_start <= ts < window_end
 
@@ -149,7 +162,7 @@ def compute_verdict(
             "window was not instrumented, so no verdict (RETIRE included) holds"
         )
 
-    def documented(e: dict, who_key: str) -> bool:
+    def documented(e: dict[str, Any], who_key: str) -> bool:
         actor = e.get("user_id")
         return (
             _nonblank(e.get(who_key))
