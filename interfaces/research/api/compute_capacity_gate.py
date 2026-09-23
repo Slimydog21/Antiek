@@ -14,6 +14,7 @@ from substrate.compute_capacity.acu_meter import (
     capacity_exhausted_payload,
     capacity_warning_payload,
     gate_investigation_start,
+    lookup_start_acu_row,
     record_investigation_start_acu,
 )
 from substrate.graph import default_db_path
@@ -62,13 +63,26 @@ def commit_start_acu(
     investigation_id: str,
     reason: str,
 ) -> CapacityGateResult:
-    """Record 1 ACU after a successful start emit (idempotent on inv id)."""
+    """Gate and record 1 ACU BEFORE the start is appended or broadcast.
+
+    Idempotent on investigation id. The hard gate is re-evaluated under the
+    same writer lock as the insert, so starts racing past the precheck cannot
+    both charge beyond the cap. Callers must not start the run unless this
+    returns: a 503 or 429 here means nothing started and nothing was charged.
+    """
     owner = resolve_capacity_owner(request)
     db = _db_path()
     try:
         with connect_write(
             db, purpose="compute-capacity:record-acu", timeout_s=_LOCK_TIMEOUT_S
         ) as con:
+            # A replay of an already-charged start is not re-gated.
+            if lookup_start_acu_row(con, investigation_id) is None:
+                gate = gate_investigation_start(con, owner)
+                if gate.verdict == "hard_refuse":
+                    raise HTTPException(
+                        status_code=429, detail=capacity_exhausted_payload(gate)
+                    )
             recorded = record_investigation_start_acu(
                 con,
                 owner_user_id=owner,

@@ -189,6 +189,10 @@ def test_openai_compat_normalize_handles_missing_usage():
     p = OpenAICompatProvider(name="t", base_url="x", api_key="k")
     u = p.normalize_usage({})
     assert (u.input_tokens, u.output_tokens, u.cached_input_tokens) == (0, 0, 0)
+    # Unknown is not zero: the router bills an unreported call at its ceiling.
+    assert u.reported is False
+    assert p.normalize_usage({"prompt_tokens": 5}).reported is False
+    assert p.normalize_usage({"prompt_tokens": 5, "completion_tokens": 0}).reported is True
 
 
 # ---------------------------------------------------------------------------

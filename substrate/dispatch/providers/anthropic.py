@@ -310,8 +310,8 @@ class AnthropicProvider:
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
-        if not raw_usage:
-            return NormalizedUsage(input_tokens=0, output_tokens=0)
+        if not raw_usage or not {"input_tokens", "output_tokens"} <= raw_usage.keys():
+            return NormalizedUsage(input_tokens=0, output_tokens=0, reported=False)
         # Anthropic's ``input_tokens`` is the cache-EXCLUSIVE remainder
         # ("tokens after the last cache breakpoint" — Anthropic Messages
         # API prompt-caching schema). ``cache_read_input_tokens`` and
