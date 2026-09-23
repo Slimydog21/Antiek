@@ -69,10 +69,16 @@ product change, not a parameter change.
 
 `substrate/rights/register.py` `resolve_or_create_ip_holder()` creates a
 `pre_onboarded` ip_holders account by display name, idempotently, with no
-notification, and `substrate/marketplace_metrics/book_escrow.py` accrues the
-publisher's 70 into that account from the first paid impression. Money
-accumulates for rights holders who have never heard of Antiek. ProRata signs
-first and pays second; Antiek pays first and asks second. As a pitch, "you
+notification, and `accrue_reading_session()` in
+`substrate/marketplace_metrics/book_escrow.py` is written to accrue the
+publisher's 70 into that account from the first paid impression. Nothing calls
+it in production today. The client-priced impressions endpoint it served,
+`record_ad_impressions` in `interfaces/research/api/books.py`, returns 410
+`client_priced_ad_impressions_disabled`, and revenue may enter accrual again
+only from a future authoritative settled-fill record. So no money accrues yet.
+Once a settled-fill path feeds it, the mechanism accumulates money for rights
+holders who have never heard of Antiek. ProRata signs first and pays second;
+Antiek would pay first and ask second. As a pitch, "you
 already have N dollars waiting" beats any rate card, and it is the closest
 digital analogue of the Spotify advance.
 
@@ -90,8 +96,10 @@ Two reasons, in order of weight:
    lacks it today because nobody has bothered, not because they cannot.
 2. **It is inert until counsel clears it.** The account is created
    `pre_onboarded` and *no notification is sent*; that gates on §9.10 G2
-   lawyer review plus operator action (`register.py` docstring). A balance
-   nobody is told about is not a lure. The differentiator exists only in the
+   lawyer review plus operator action (`register.py` docstring). Nor does any
+   balance accrue today: the escrow accrual has no production caller until a
+   settled-fill path is wired to it. A balance nobody is told about is not a
+   lure. The differentiator exists only in the
    notified form, and the notified form does not exist yet.
 
 What survives contact is the thing ProRata cannot buy with the Series B:
