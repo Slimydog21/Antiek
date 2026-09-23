@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -79,6 +80,8 @@ class _SynthStubProvider:
                 latency_ms=3,
             )
         if "senior investment analyst" in prompt:
+            offered = re.search(r'"chunk_ids":\s*\[\s*"([^"]+)"', prompt)
+            cited = offered.group(1) if offered else "chunk-any"
             return RawProviderResponse(
                 text=json.dumps({
                     "thesis_summary": (
@@ -89,7 +92,7 @@ class _SynthStubProvider:
                         "claim": "Provisional gather notes compound into a thesis.",
                         "confidence": "moderate",
                         "confidence_basis": "DRW gather stub",
-                        "supporting_chunk_ids": ["chunk-any"],
+                        "supporting_chunk_ids": [cited],
                         "supporting_path_indices": [],
                         "effective_source_tier": 3,
                         "hedging_required": True,
@@ -251,20 +254,50 @@ async def test_pack_synthesis_tail_mechanical_phase8_when_skill_templates_missin
     assert ok is True
 
 
-@pytest.mark.asyncio
-async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatch):
-    """M2: leaves gather-only; session parent reaches DeepResearchComplete."""
+def _grounded_gather_loop(document_id: str):
+    """A gather loop that, like the Exa loop, notes a real ingested document;
+    the funnel grounds the insight on that document's substantive chunk."""
+
+    async def _loop(ctx):
+        sub_q = await ctx.checkpoint()
+        yield ctx.note(f"source for {sub_q}", document_id=document_id)
+
+    return _loop
+
+
+def _seed_source(db: str) -> str:
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_chunk, insert_document
+
+    text = (
+        "Photonic qubits lose coherence mainly through waveguide scattering, "
+        "and the loss budget sets the fault-tolerance threshold. "
+    ) * 5
+    with connect_write(db, purpose="test/seed") as con:
+        insert_document(
+            con, document_id="doc-url-src", source_tier=2, document_type="web",
+            title="Photonics source", raw_text=text,
+            content_class="public_domain", ip_holder_id=None,
+        )
+        insert_chunk(
+            con, document_id="doc-url-src", chunk_index=0,
+            chunk_id="chunk-src", text=text,
+        )
+    return "doc-url-src"
+
+
+async def _run_cascade(
+    session_id: str, loop, monkeypatch
+) -> tuple[CascadeSession, object]:
     _patch_dispatch(monkeypatch)
     db = os.environ["ANTIEK_DUCKDB_PATH"]
     ev = os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]
-    init_database_at_path(db)
-
     tree = build_plan("quantum cascade convergence", decomposer=_Dec(["sub a"])).tree
     root_id = persist_tree(
-        tree, investigation_id="session-conv",
+        tree, investigation_id=session_id,
         embedding_provider=_FakeEmbedding(), db_path=db,
     )
-    approve_plan(root_id, approver="op", investigation_id="session-conv", db_path=db)
+    approve_plan(root_id, approver="op", investigation_id=session_id, db_path=db)
     loaded = load_tree(root_id, db_path=db)
     leaves = [
         Leaf(
@@ -274,31 +307,66 @@ async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatc
         )
         for c in loaded.root.children
     ]
-
     funnel = PromotionFunnel(db_path=db, embedding_provider=_FakeEmbedding())
     runner = HostLocalRunner(
-        make_contract_gather_stub(steps=1),
-        events_dir=ev,
-        seal_on_complete=False,
-        on_emit=funnel.submit,
+        loop, events_dir=ev, seal_on_complete=False, on_emit=funnel.submit,
     )
-    session = CascadeSession("session-conv", runner=runner, funnel=funnel,
+    session = CascadeSession(session_id, runner=runner, funnel=funnel,
                              events_dir=ev, db_path=db)
     bus = EventBroadcaster()
     from interfaces.research.api.synthesizer import register_handlers as _register_synth
     _register_synth(bus)
     coordinator = register_handlers(bus)
-
     await session.launch(root_id, leaves)
     _ = [ev_item async for ev_item in session.stream()]
     await session.join_and_merge()
-
     assert session.is_complete()
     assert not session.is_deep_research_complete()
-
     pack = session.build_evidence_pack(plan_root_node_id=root_id)
     await session.run_synthesis_tail(pack, broadcaster=bus, coordinator=coordinator)
+    return session, pack
 
+
+@pytest.mark.asyncio
+async def test_stub_gather_cannot_synthesize_on_phantom_evidence(tmp_path, monkeypatch):
+    """W03: the contract stub retrieves nothing, so its placeholder note is
+    not evidence. The pack must not mint a ``chunk-<node>`` /
+    ``doc-gather-*`` pair for it, and the synthesizer (which cites whatever
+    chunk the evidence block offers) must not be able to deliver a
+    ``proceed`` thesis on it. With no evidence the honest outcome is
+    ``insufficient_evidence``."""
+    init_database_at_path(os.environ["ANTIEK_DUCKDB_PATH"])
+    session, pack = await _run_cascade(
+        "session-stub", make_contract_gather_stub(steps=1), monkeypatch,
+    )
+    delivered = [
+        r["payload"] for r in trajectory("session-stub")
+        if r.get("action_type") == ActionType.SYNTHESIZE_DELIVERED.value
+    ]
+    assert [
+        (d.get("implicit_recommendation"),
+         [c.get("supporting_chunk_ids") for c in d.get("thesis_components") or []])
+        for d in delivered
+    ] == [("insufficient_evidence", [])], [
+        (c.chunk_id, c.document_id, c.text) for c in pack.chunks
+    ]
+    assert pack.chunks == []
+    assert pack.documents == []
+
+
+@pytest.mark.asyncio
+async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatch):
+    """M2: leaves gather-only; session parent reaches DeepResearchComplete
+    on evidence whose chunk and document exist in the substrate."""
+    db = os.environ["ANTIEK_DUCKDB_PATH"]
+    init_database_at_path(db)
+    doc_id = _seed_source(db)
+    session, pack = await _run_cascade(
+        "session-conv", _grounded_gather_loop(doc_id), monkeypatch,
+    )
+    assert [(c.chunk_id, c.document_id) for c in pack.chunks] == [
+        ("chunk-src", doc_id),
+    ]
     assert session.is_deep_research_complete()
     rows = trajectory("session-conv")
     assert any(

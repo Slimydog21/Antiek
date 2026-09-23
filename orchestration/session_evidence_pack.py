@@ -141,18 +141,25 @@ def parse_session_evidence_pack(data: dict[str, Any]) -> SessionEvidencePack:
         raise SessionEvidencePackError(str(exc)) from exc
 
 
-def _document_ip_holder(
+def _substrate_chunk(
     con: Any,
-    document_id: str,
-) -> str | None:
+    chunk_id: str,
+) -> tuple[str, str | None, str | None] | None:
+    """``(document_id, ip_holder_id, title)`` for a chunk the substrate holds.
+
+    ``None`` when the chunk row, or the document it cites, does not exist.
+    The pack reads both ids and the ip_holder from these rows, never from
+    producer-written node metadata, so it cannot cite a chunk or document
+    that exists nowhere."""
     row = con.execute(
-        "SELECT ip_holder_id FROM documents WHERE document_id = ?",
-        [document_id],
+        "SELECT c.document_id, d.ip_holder_id, d.title FROM chunks c "
+        "JOIN documents d ON d.document_id = c.document_id "
+        "WHERE c.chunk_id = ?",
+        [chunk_id],
     ).fetchone()
     if row is None:
         return None
-    result: str | None = row[0]
-    return result
+    return str(row[0]), row[1], row[2]
 
 
 def _load_problem_question(
@@ -239,7 +246,6 @@ def build_session_evidence_pack(
 
                 meta_chunk = None
                 meta_doc = None
-                meta_ip = None
                 node_row = con.execute(
                     "SELECT canonical_label, metadata FROM nodes WHERE node_id = ?",
                     [node_id],
@@ -256,40 +262,31 @@ def build_session_evidence_pack(
                     if isinstance(node_meta, dict):
                         meta_chunk = node_meta.get("chunk_id")
                         meta_doc = node_meta.get("source_document_id")
-                        meta_ip = node_meta.get("ip_holder_id")
 
                 if not str(label).strip():
                     continue
-
-                document_id = (
-                    str(meta_doc)
-                    if meta_doc
-                    else f"doc-gather-{session_id}-{iid}"
-                )
-                chunk_id = (
-                    str(meta_chunk) if meta_chunk else f"chunk-{node_id}"
-                )
+                # Evidence is admitted only when its chunk and that chunk's
+                # document exist in the substrate. A node with no chunk (the
+                # contract stub's placeholder note, an Exa "no servable
+                # source" note) is not evidence, so it stays out of the pack
+                # rather than riding a minted ``chunk-<node>`` /
+                # ``doc-gather-*`` pair into the synthesizer as "direct"
+                # support. A node whose claimed document is not the chunk's
+                # document has a broken chain and is dropped too.
+                if not meta_chunk:
+                    continue
+                resolved = _substrate_chunk(con, str(meta_chunk))
+                if resolved is None:
+                    continue
+                document_id, ip_holder, doc_title = resolved
+                if meta_doc and str(meta_doc) != document_id:
+                    continue
+                chunk_id = str(meta_chunk)
 
                 if document_id not in documents:
-                    ip_holder = (
-                        str(meta_ip) if meta_ip is not None
-                        else _document_ip_holder(con, document_id)
-                    )
-                    title = (
-                        f"Gather source ({iid})"
-                        if document_id.startswith("doc-gather-")
-                        else document_id
-                    )
-                    if not document_id.startswith("doc-gather-"):
-                        row = con.execute(
-                            "SELECT title FROM documents WHERE document_id = ?",
-                            [document_id],
-                        ).fetchone()
-                        if row and row[0]:
-                            title = str(row[0])
                     documents[document_id] = PackDocument(
                         document_id=document_id,
-                        title=title,
+                        title=str(doc_title) if doc_title else document_id,
                         ip_holder_id=ip_holder,
                         source_tier=3,
                     )

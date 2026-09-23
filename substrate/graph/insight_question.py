@@ -814,62 +814,34 @@ def _event_payload(event: dict[str, Any]) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def resolve_substantive_chunk_id(con: Any, document_id: str | None) -> str | None:
-    """Most substantive non-boilerplate chunk for a document (funnel heuristic).
+class NoteGroundednessRefused(Exception):
+    """``promote_from_note_event`` refused a note: no source chunk supports it
+    at the groundedness bar. A designed refusal, not a failure; callers that
+    must record it (the knowledge-event projector) ask for this typed signal
+    instead of reading ``None``."""
 
-    Grounds note-taker / funnel deposits so ``knowledge_unit_of`` can recover
-    claim→chunk→doc provenance and the unit becomes reusable.
-    """
-    if not document_id:
-        return None
-    row = con.execute(
-        """SELECT chunk_id FROM chunks
-           WHERE document_id = ?
-             AND length(text) BETWEEN 400 AND 4000
-             AND text NOT ILIKE '%bibliography%'
-             AND text NOT ILIKE '%references%'
-             AND text NOT ILIKE '%index%'
-             AND text NOT ILIKE '## Page%'
-             AND text NOT ILIKE 'chapter %'
-             AND text NOT ILIKE 'contents%'
-           ORDER BY length(text) DESC
-           LIMIT 1""",
-        [document_id],
-    ).fetchone()
-    if not row or row[0] is None:
-        row = con.execute(
-            """SELECT chunk_id FROM chunks
-               WHERE document_id = ?
-               ORDER BY length(text) DESC
-               LIMIT 1""",
-            [document_id],
-        ).fetchone()
-    if not row or row[0] is None:
-        return None
-    return str(row[0])
+    def __init__(self, score: float, threshold: float) -> None:
+        super().__init__(
+            f"best source chunk scores {score:.3f} < groundedness bar {threshold:.3f}"
+        )
+        self.score = score
+        self.threshold = threshold
 
 
-def _note_evidence_texts(
+def _note_evidence_chunk_ids(
     event: dict[str, Any],
     *,
     events_dir: str | None,
-    con: Any | None = None,
 ) -> list[str]:
-    """Load evidence texts for deposit-time groundedness.
+    """Chunk ids the note's investigation actually retrieved.
 
-    Prefers cited ``source_event_ids``, then adds:
-
-    * every ``evidence.retrieve.delivered`` answer in the same investigation
-    * ``decompose.delivered`` sub-questions / rationales (the wrestling agenda
-      the note synthesizes)
-    * all chunk texts for the note's ``document_id`` when a DB connection is
-      supplied (passage-aligned lexical coverage)
-
-    Note-taker windows synthesize across a retrieve slice; scoring only
-    against the cited subset under-grounds meta-notes that are entailed
-    by sibling delivers in the same window. Document chunks are the book
-    surface the operator is reading — honest entailment evidence, not a
-    score pad.
+    Collects ``supporting_claims[].chunk_ids`` from the note's cited
+    ``source_event_ids`` first, then from every sibling
+    ``evidence.retrieve.delivered`` in the same investigation. Only chunk ids
+    are taken: a retrieval ``answer``, a ``decompose.delivered`` sub-question
+    or rationale, and any other pipeline-written string are model or agenda
+    text, and scoring a note against them lets the pipeline ground its own
+    output (W11).
     """
     payload = _event_payload(event)
     ids = payload.get("source_event_ids") or []
@@ -884,7 +856,6 @@ def _note_evidence_texts(
     root = events_dir or default_events_dir()
     cited: list[str] = []
     siblings: list[str] = []
-    agenda: list[str] = []
     # Unlocked physical read: append-only JSONL/parquet. Taking
     # investigation_event_lock (.delivery.lock) here deadlocks on macOS when
     # the caller already holds that lock (e.g. _promote_delivered_notes iterating
@@ -898,81 +869,99 @@ def _note_evidence_texts(
         pl = row.get("payload") or {}
         if not isinstance(pl, dict):
             continue
-        at = row.get("action_type")
-        if at == "decompose.delivered":
-            for sq in pl.get("decomposition") or []:
-                if not isinstance(sq, dict):
-                    continue
-                bits = [
-                    str(sq.get("sub_question") or ""),
-                    str(sq.get("rationale") or ""),
-                ]
-                text = "\n".join(b for b in bits if b.strip())
-                if text.strip():
-                    agenda.append(text.strip())
+        is_cited = bool(want) and row.get("event_id") in want
+        if not is_cited and row.get("action_type") != "evidence.retrieve.delivered":
             continue
-        bits = [
-            str(pl.get("sub_question") or ""),
-            str(pl.get("answer") or ""),
-            str(pl.get("rendered_text") or ""),
-            str(pl.get("thesis") or ""),
-        ]
-        text = "\n".join(b for b in bits if b.strip())
-        if not text.strip():
-            continue
-        eid = row.get("event_id")
-        if want and eid in want:
-            cited.append(text.strip())
-        elif at == "evidence.retrieve.delivered":
-            siblings.append(text.strip())
-    out = list(cited)
-    seen = set(cited)
-    for s in siblings + agenda:
-        if s not in seen:
-            out.append(s)
-            seen.add(s)
-    doc = event.get("document_id") or payload.get("document_id")
-    if con is not None and isinstance(doc, str) and doc.strip():
-        try:
-            rows = con.execute(
-                "SELECT text FROM chunks WHERE document_id = ?",
-                [doc.strip()],
-            ).fetchall()
-        except Exception:
-            rows = []
-        for (chunk_text,) in rows:
-            if chunk_text is None:
+        for claim in pl.get("supporting_claims") or []:
+            if not isinstance(claim, dict):
                 continue
-            t = str(chunk_text).strip()
-            if t and t not in seen:
-                out.append(t)
-                seen.add(t)
+            for cid in claim.get("chunk_ids") or []:
+                if isinstance(cid, str) and cid:
+                    (cited if is_cited else siblings).append(cid)
+    return list(dict.fromkeys(cited + siblings))
+
+
+def _candidate_chunks(
+    con: Any,
+    *,
+    document_id: str | None,
+    chunk_ids: Sequence[str],
+) -> dict[str, tuple[str, str]]:
+    """``chunk_id -> (document_id, text)`` for the source chunks a note may
+    cite: the envelope document's chunks (in reading order), then the
+    retrieved chunk ids. Rows come from ``chunks``; an id with no row is not
+    a candidate."""
+    out: dict[str, tuple[str, str]] = {}
+    rows: list[Any] = []
+    if document_id:
+        rows.extend(con.execute(
+            "SELECT chunk_id, document_id, text FROM chunks WHERE document_id = ? "
+            "ORDER BY chunk_index, chunk_id",
+            [document_id],
+        ).fetchall())
+    extra = [cid for cid in chunk_ids if cid]
+    if extra:
+        placeholders = ",".join("?" for _ in extra)
+        found = {
+            row[0]: row
+            for row in con.execute(
+                "SELECT chunk_id, document_id, text FROM chunks "
+                f"WHERE chunk_id IN ({placeholders})",
+                extra,
+            ).fetchall()
+        }
+        rows.extend(found[cid] for cid in extra if cid in found)
+    for cid, doc, text in rows:
+        if cid and text is not None and str(cid) not in out:
+            out[str(cid)] = (str(doc), str(text))
     return out
 
 
-def _score_note_groundedness(
-    con: Any,
-    note_text: str,
+def chunk_texts_for(
+    chunk_ids: Sequence[str],
     *,
-    chunk_id: str | None,
-    evidence_texts: list[str],
-) -> float:
+    con: LockedConnection | None = None,
+) -> dict[str, str]:
+    """``chunk_id -> text`` for the ids the substrate holds, in the given
+    order. An id with no ``chunks`` row is omitted, never invented."""
+    wanted = [cid for cid in dict.fromkeys(chunk_ids) if cid]
+    if not wanted:
+        return {}
+
+    def _read(c: LockedConnection) -> dict[str, str]:
+        placeholders = ",".join("?" for _ in wanted)
+        found = {
+            str(cid): str(text)
+            for cid, text in c.execute(
+                f"SELECT chunk_id, text FROM chunks WHERE chunk_id IN ({placeholders})",
+                wanted,
+            ).fetchall()
+            if text is not None
+        }
+        return {cid: found[cid] for cid in wanted if cid in found}
+
+    return _with_connection(con, "chunk_texts_for", _read)
+
+
+def best_supporting_chunk(
+    claim: str,
+    chunk_texts: dict[str, str],
+) -> tuple[str | None, float | None]:
+    """The chunk that best supports ``claim`` on its own, and its score.
+
+    Each candidate is scored alone with the lexical ``score_claim`` so the
+    returned score is exactly what a later re-score of ``claim`` against its
+    cited chunk yields (``knowledge_unit_of``, the reuse gate). Ties keep the
+    earlier candidate. ``(None, None)`` when there is no candidate."""
     from substrate.eval.groundedness import score_claim
 
-    chunk_texts: list[str] = list(evidence_texts)
-    if chunk_id:
-        row = con.execute(
-            "SELECT text FROM chunks WHERE chunk_id = ? LIMIT 1", [chunk_id]
-        ).fetchone()
-        if row and row[0] is not None:
-            chunk_texts.insert(0, str(row[0]))
-    verdict = score_claim(
-        note_text,
-        chunk_texts,
-        cited_chunk_ids=[chunk_id] if chunk_id else [],
-    )
-    return float(verdict.score)
-
+    best_id: str | None = None
+    best_score: float | None = None
+    for cid, text in chunk_texts.items():
+        score = float(score_claim(claim, [text], cited_chunk_ids=[cid]).score)
+        if best_score is None or score > best_score:
+            best_id, best_score = cid, score
+    return best_id, best_score
 
 
 def rescore_promoted_note_groundedness(
@@ -987,9 +976,10 @@ def rescore_promoted_note_groundedness(
 ) -> list[dict[str, Any]]:
     """Re-score insight nodes deposited from note.emerged with current evidence.
 
-    Uses the same ``_note_evidence_texts`` + ``_score_note_groundedness`` path as
-    ``promote_from_note_event`` (no invented scores). Updates
-    ``metadata.groundedness_score`` when ``dry_run=False``.
+    The score is the node text against its cited chunk alone, the same
+    number ``promote_from_note_event`` stores and ``knowledge_unit_of``
+    re-derives (no invented scores). Updates ``metadata.groundedness_score``
+    when ``dry_run=False``.
 
     Returns one row per considered insight:
     ``{node_id, old, new, delta, updated, crossed_threshold}``.
@@ -1048,14 +1038,8 @@ def rescore_promoted_note_groundedness(
                         break
             if event is None:
                 continue
-            # Ensure document_id on envelope for chunk join
-            if not event.get("document_id") and meta.get("source_document_id"):
-                event = dict(event)
-                event["document_id"] = meta.get("source_document_id")
-            evidence = _note_evidence_texts(event, events_dir=root, con=c)
-            new = _score_note_groundedness(
-                c, text, chunk_id=chunk_id if isinstance(chunk_id, str) else None,
-                evidence_texts=evidence,
+            new = _score_unit_groundedness(
+                c, text, chunk_id if isinstance(chunk_id, str) else None
             )
             crossed = old is not None and old < threshold <= new
             updated = False
@@ -1131,22 +1115,27 @@ def promote_from_note_event(
     emit_graph_events: bool = True,
     events_dir: str | None = None,
     min_groundedness: float | None = 0.5,
+    raise_on_refusal: bool = False,
 ) -> str | None:
     """Promote a single ``note.emerged`` event into an insight node.
 
     Opt-in: returns ``None`` unless ``enabled=True`` (SPR-03 flips the
-    always-on switch). Grounds on envelope ``document_id`` + a substantive
-    chunk so ``knowledge_unit_of`` can assemble a reusable unit; deposit-time
-    groundedness scores the note against chunk text PLUS cited
-    ``source_event_ids`` payloads (and broadened sibling/decompose/doc
-    evidence).
+    always-on switch). The candidate citations are source text only: the
+    envelope ``document_id``'s chunks plus the chunks the investigation's
+    retrieval evidence cites (``_note_evidence_chunk_ids``). The note cites
+    the candidate that best supports it on its own, and the stored
+    ``groundedness_score`` is that chunk's score, so ``knowledge_unit_of``'s
+    re-score against the cited chunk reproduces it.
 
     ``min_groundedness`` (default 0.5, same bar as the reuse gate) refuses
-    promotion when the honest lexical score is strictly below the bar —
+    promotion when the best chunk scores strictly below the bar —
     ``note.emerged`` stays on the event log for the notebook, but the
-    retrieve pool is not polluted with below-threshold insights. Pass
-    ``min_groundedness=None`` to promote regardless of score (tests /
-    explicit backfill). Never invents or inflates scores.
+    retrieve pool is not polluted with below-threshold insights. A refusal
+    returns ``None``, or raises ``NoteGroundednessRefused`` when
+    ``raise_on_refusal=True``. Pass ``min_groundedness=None`` to promote
+    regardless of score (tests / explicit backfill). A note with no candidate
+    chunk is promoted without a citation, which ``knowledge_unit_of`` refuses
+    to treat as a reusable unit. Never invents or inflates scores.
 
     Lock order: event-log reads for evidence happen BEFORE the DuckDB write
     session so note-taker catch_up cannot deadlock (write-held + event-lock
@@ -1169,46 +1158,26 @@ def promote_from_note_event(
 
     # Event-log evidence OUTSIDE the DuckDB writer (avoids lock-order inversion
     # with DurableNoteTakerReplay.catch_up).
-    event_evidence = _note_evidence_texts(event, events_dir=events_dir, con=None)
+    evidence_chunk_ids = _note_evidence_chunk_ids(event, events_dir=events_dir)
 
     def _do(c: LockedConnection) -> str | None:
-        chunk_id = (
-            resolve_substantive_chunk_id(c, source_document_id)
-            if source_document_id
-            else None
+        candidates = _candidate_chunks(
+            c, document_id=source_document_id, chunk_ids=evidence_chunk_ids,
         )
-        # Chunk texts only here — no event-log iter under the write lock.
-        evidence_texts = list(event_evidence)
-        if source_document_id:
-            try:
-                rows = c.execute(
-                    "SELECT text FROM chunks WHERE document_id = ?",
-                    [source_document_id],
-                ).fetchall()
-            except Exception:
-                rows = []
-            seen = set(evidence_texts)
-            for (chunk_text,) in rows:
-                if chunk_text is None:
-                    continue
-                t = str(chunk_text).strip()
-                if t and t not in seen:
-                    evidence_texts.append(t)
-                    seen.add(t)
-        gscore: float | None = None
-        if chunk_id or evidence_texts:
-            gscore = _score_note_groundedness(
-                c,
-                note_text,
-                chunk_id=chunk_id,
-                evidence_texts=evidence_texts,
-            )
+        chunk_id, gscore = best_supporting_chunk(
+            note_text, {cid: chunk_text for cid, (_doc, chunk_text) in candidates.items()},
+        )
         if (
             min_groundedness is not None
             and gscore is not None
             and gscore < float(min_groundedness)
         ):
+            if raise_on_refusal:
+                raise NoteGroundednessRefused(gscore, float(min_groundedness))
             return None
+        # The cited chunk's own document, so chunk → document holds even
+        # when the support came from a retrieved chunk of another source.
+        document_id = candidates[chunk_id][0] if chunk_id else source_document_id
         meta: dict[str, Any] = {
             "source_event_ids": payload.get("source_event_ids", []),
             "origin_event_id": event.get("event_id"),
@@ -1221,17 +1190,17 @@ def promote_from_note_event(
             investigation_id=investigation_id,
             confidence=payload.get("confidence", "unknown"),
             metadata=meta,
-            source_document_id=source_document_id,
+            source_document_id=document_id,
             chunk_id=chunk_id,
             embedding_provider=embedding_provider,
             emit_graph_events=emit_graph_events,
             con=c,
         )
-        if nid and source_document_id and chunk_id:
+        if nid and document_id and chunk_id:
             _stamp_insight_grounding(
                 c,
                 nid,
-                source_document_id=source_document_id,
+                source_document_id=document_id,
                 chunk_id=chunk_id,
                 investigation_id=investigation_id,
                 groundedness_score=gscore,
@@ -1479,11 +1448,10 @@ def knowledge_unit_of(
 
     groundedness_score: float | None = None
     if score_groundedness:
-        stored_gs = meta.get("groundedness_score")
-        if isinstance(stored_gs, (int, float)):
-            groundedness_score = float(stored_gs)
-        else:
-            groundedness_score = _score_unit_groundedness(con, text, chunk_id)
+        # Always re-score against the cited chunk. metadata.groundedness_score
+        # is producer-written (and was once scored against agenda / model
+        # text, W11), so the gate never reads it back as the unit's score.
+        groundedness_score = _score_unit_groundedness(con, text, chunk_id)
 
     # Resolve the content-rights class from the source document when the caller
     # did not supply one. The funnel deposits notes with no supported_by claim

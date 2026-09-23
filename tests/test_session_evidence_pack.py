@@ -171,12 +171,13 @@ async def test_builder_from_hermetic_jsonl(env):
     assert pack.session_id == "session-1"
     assert pack.problem_question == "the problem"
     assert pack.leaf_investigation_ids == ["leaf-0"]
-    assert len(pack.chunks) >= 1
-    assert len(pack.documents) >= 1
-    for chunk in pack.chunks:
-        assert any(d.document_id == chunk.document_id for d in pack.documents)
-        doc = next(d for d in pack.documents if d.document_id == chunk.document_id)
-        assert chunk.ip_holder_id == doc.ip_holder_id
+    # The contract stub retrieves nothing: its "[gather-stub] provisional
+    # note" is an insight node with no chunk behind it. The pack must not
+    # invent a ``chunk-<node_id>`` / ``doc-gather-*`` pair for it (W03), so a
+    # stub-only gather yields an empty pack, which cannot satisfy
+    # DeepResearchComplete.
+    assert pack.chunks == []
+    assert pack.documents == []
 
     rebuilt = build_session_evidence_pack(
         "session-1",
@@ -186,3 +187,58 @@ async def test_builder_from_hermetic_jsonl(env):
         plan_root_node_id=root_id,
     )
     assert rebuilt.content_hash == pack.content_hash
+
+def test_builder_cites_only_substrate_chunks_and_document_ip_holder(env):
+    """W03: every pack chunk resolves to a real ``chunks`` row, its document
+    is that row's document, and ``ip_holder_id`` is read from ``documents``.
+
+    Node metadata is producer-written; a chunk id that is not in the
+    substrate, a document the chunk does not belong to, or an ip_holder the
+    documents table does not carry must never reach the synthesizer as
+    evidence."""
+    from runtime.db_lock import connect_write
+    from substrate.graph.insight_question import promote_insight
+    from substrate.graph.ops import insert_chunk, insert_document
+
+    with connect_write(env["db"], purpose="test/seed") as con:
+        insert_document(
+            con, document_id="doc-real", source_tier=2, document_type="book",
+            title="Real Source", raw_text="Photonic qubit loss.",
+            content_class="public_domain", ip_holder_id="iph-real",
+        )
+        insert_chunk(
+            con, document_id="doc-real", chunk_index=0, chunk_id="chunk-real",
+            text="Photonic qubit loss dominates the error budget.",
+        )
+        insert_document(
+            con, document_id="doc-other", source_tier=2, document_type="book",
+            title="Other Source", raw_text="Unrelated.",
+            content_class="public_domain", ip_holder_id="iph-other",
+        )
+
+    def _node(text: str, **kw) -> str:
+        return promote_insight(
+            text=text, investigation_id="leaf-0",
+            embedding_provider=_FakeEmbedding(), **kw,
+        )
+
+    _node("Grounded insight.", source_document_id="doc-real",
+          chunk_id="chunk-real", metadata={"ip_holder_id": "forged-holder"})
+    _node("Forged chunk insight.", source_document_id="doc-real",
+          chunk_id="chunk-forged")
+    _node("Mismatched document insight.", source_document_id="doc-other",
+          chunk_id="chunk-real")
+    _node("Ungrounded stub insight.")
+
+    pack = build_session_evidence_pack(
+        "session-w03",
+        events_dir=env["events"],
+        db_path=env["db"],
+        researches=[("leaf-0", "sub one")],
+    )
+    assert [(c.chunk_id, c.document_id, c.ip_holder_id, c.text) for c in pack.chunks] == [
+        ("chunk-real", "doc-real", "iph-real", "Grounded insight."),
+    ]
+    assert [(d.document_id, d.title, d.ip_holder_id) for d in pack.documents] == [
+        ("doc-real", "Real Source", "iph-real"),
+    ]
