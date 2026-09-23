@@ -95,7 +95,9 @@ def compute_verdict(
     let '', 'OPERATOR' and ' operator' through as organic demand):
 
     - round-trip: re-imported by a pinned tester AND exported by a pinned
-      tester (criterion 1: "exported by a non-operator").
+      tester AND no operator-equivalent id among its exporters (criterion 1:
+      "exported by a non-operator"; an ``exported_by`` naming the operator is
+      ambiguous provenance, which is not that).
     - third-party reader / agent-unprompted: hand-documented observations, so
       they must name the tool/agent, name who (not the operator, compared
       case- and whitespace-insensitively), and cite an ``evidence_ref`` the
@@ -117,6 +119,11 @@ def compute_verdict(
         )
     if any(not _nonblank(t) or _norm(t) == op for t in testers):
         raise GateNotRunnable("tester_ids holds a blank id or the operator")
+    if len({_norm(t) for t in testers}) != len(testers):
+        raise GateNotRunnable(
+            "tester_ids holds case/whitespace variants of one id; N counts people, "
+            "not spellings"
+        )
     if window_start.tzinfo is None or window_end.tzinfo is None:
         raise GateNotRunnable("window bounds must be timezone-aware")
     if window_end - window_start != WINDOW:
@@ -158,6 +165,7 @@ def compute_verdict(
         and _is_tester(e.get("user_id"), testers)
         and isinstance(e.get("exported_by"), (list, tuple))
         and any(_is_tester(x, testers) for x in e["exported_by"])
+        and not any(_norm(x) == op for x in e["exported_by"])
     ]
     third_party = [
         e for e in windowed
