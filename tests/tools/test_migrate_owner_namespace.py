@@ -88,9 +88,11 @@ def _seed_legacy_state(env: Path) -> None:
 
     app = FastAPI()
     register_settings_budget_routes(app)
-    with patch.object(models_admin, "request_owner_user_id", lambda request: LEGACY_OWNER):
-        with TestClient(app) as client:
-            assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    with (
+        patch.object(models_admin, "request_owner_user_id", lambda request: LEGACY_OWNER),
+        TestClient(app) as client,
+    ):
+        assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
     assert _load_registry()[_MODEL_ID].owner_user_id == LEGACY_OWNER
 
     # 2. an oauth credential owned by the sentinel (the shape oauth_routes writes)
