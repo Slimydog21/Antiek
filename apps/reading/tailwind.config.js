@@ -69,10 +69,13 @@ export default {
         "ice-4": ch("border-hairline"),
         "glacial-1": ch("border-hairline"),
         "glacial-2": ch("border-rule"),
-        // shadow-1 is secondary text (text-2); as a fill it follows too.
-        "shadow-1": ch("text-2"),
-        // shadow-2 FILLS stay dark in both themes (the hover of an ink
-        // button, the dark float menu); its text use is text-2 (below).
+        // shadow-1 and shadow-2 as TEXT are text-2 (textColor below). As
+        // FILLS they are slate pigments that stay dark in both themes:
+        // shadow-2 is the ink button and the dark float menu, shadow-1 the
+        // button's hover (bg-shadow-2 hover:bg-shadow-1 under white text).
+        // A shadow-1 fill that followed text-2 went pale at night: white on
+        // it 2.54:1 on "Stop & upload", "Mark not met" and "Indeterminate".
+        "shadow-1": ch("fixed-ink-3"),
         "shadow-2": ch("fixed-ink-2"),
         // ink is the fixed pigment: ink on the sun, ink buttons, the dark
         // rail. It does not flip (text-ink dark:text-bright stays correct).
@@ -120,6 +123,7 @@ export default {
         "3": ch("text-3"),
         "sun-deep": ch("sun-ink"),
         aurora: ch("teal"),
+        "shadow-1": ch("text-2"),
         "shadow-2": ch("text-2"),
         starlight: ch("text-2"),
         ...icePigment,

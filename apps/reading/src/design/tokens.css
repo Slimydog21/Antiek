@@ -58,12 +58,17 @@
   /* Fixed ink and paper: the pigments that do NOT flip. They paint what
      is dark (or white) in both themes: ink printed on the sun, ink
      buttons, the dark rail, white text on a danger fill. The Tailwind
-     keys `ink`, `shadow-2` (fills) and the text-ice-0…4 utilities read
-     these. */
+     keys `ink`, `shadow-2` and `shadow-1` (as fills) and the
+     text-ice-0…4 utilities read these. --fixed-ink-3 is the slate of the
+     day --text-2, kept as a pigment because bg-shadow-1 is the hover of
+     the bg-shadow-2 ink button under white text: white on it 6.56:1 in
+     both themes. Following the night --text-2 it was 2.54:1. */
   --fixed-ink:       #0F1419;
   --fixed-ink-rgb:   15 20 25;
   --fixed-ink-2:     #384858;
   --fixed-ink-2-rgb: 56 72 88;
+  --fixed-ink-3:     #4F5F70;
+  --fixed-ink-3-rgb: 79 95 112;
   --fixed-paper:     #FFFFFF;
   --fixed-paper-rgb: 255 255 255;
   /* The day red, and the danger FILL under white text in both themes
@@ -175,8 +180,8 @@
 
   --text-1:     var(--fixed-ink);
   --text-1-rgb: var(--fixed-ink-rgb);
-  --text-2:     #4F5F70;
-  --text-2-rgb: 79 95 112;
+  --text-2:     var(--fixed-ink-3);
+  --text-2-rgb: var(--fixed-ink-3-rgb);
   --text-3:     #5F6B79;
   --text-3-rgb: 95 107 121;
 

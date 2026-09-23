@@ -134,6 +134,17 @@ describe("fills: what sits on the sun, on a danger fill, on the fixed ink", () =
       }
     });
 
+    it(`${theme}: white text on the slate ink button and on its hover (bg-shadow-2 hover:bg-shadow-1)`, () => {
+      // "Stop & upload" (InterviewVoiceCapture), "Mark not met" (Loop3) and
+      // "Indeterminate" (Outcomes, through its accent prop) draw white text
+      // on bg-shadow-2 and hover to bg-shadow-1. Both fills must hold in
+      // both themes; a shadow-1 that followed text-2 went pale at night
+      // (2.54:1) while it read 6.56:1 by day.
+      for (const fill of ["shadow-2", "shadow-1"]) {
+        expect(ratio(util(theme, "text", "ice-0"), util(theme, "bg", fill)), `text-ice-0 on bg-${fill}`).toBeGreaterThanOrEqual(AA_TEXT);
+      }
+    });
+
     it(`${theme}: the dark islands keep their light text (FloatMenu, the rail)`, () => {
       // bg-ink carries text-bright and muted text-moonlight; the bg-shadow-2
       // field inside it carries text-bright.
