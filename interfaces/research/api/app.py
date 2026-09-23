@@ -3964,7 +3964,7 @@ def create_app(
             # ``pip install -e '.[export]'`` and retries.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from xhtml2pdf import pisa  # type: ignore
+                                from xhtml2pdf import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -4037,7 +4037,7 @@ def create_app(
             # as PDF. Same 503 fallback when the extra isn't installed.
             try:
                 # optional 'export' extra; not installed in the lint env
-                from ebooklib import epub  # type: ignore
+                                from ebooklib import (  # type: ignore[import-not-found, import-untyped, unused-ignore]
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
