@@ -31,18 +31,51 @@ from typing import Any
 
 from . import accrue_escrow
 
+# One row per (holder, work) ever seeded. The seed is once per work, but intake
+# re-runs are routine (resubmission, grant flips, the corpus CLI has no
+# already-ingested check) and the escrow column is a bare running sum, so the
+# key has to live somewhere a re-run cannot reset.
+_SEED_LEDGER_DDL = """
+CREATE TABLE IF NOT EXISTS opt_in_intake_seeds (
+    ip_holder_id  TEXT NOT NULL,
+    document_id   TEXT NOT NULL,
+    amount_usd    DECIMAL(18, 6) NOT NULL,
+    seeded_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (ip_holder_id, document_id)
+)
+"""
+
 
 def accrue_opt_in_escrow(
-    con: Any, ip_holder_id: str, amount_usd: Decimal
-) -> None:
-    """Accrue the opt-in intake seed to a granted publisher's holder.
+    con: Any, ip_holder_id: str, amount_usd: Decimal, *, document_id: str
+) -> bool:
+    """Accrue the opt-in intake seed to a granted publisher's holder, at most
+    once per (``ip_holder_id``, ``document_id``). Returns True only when this
+    call accrued.
 
     The thin seam ``acquisition.opt_in.intake.ingest_entry`` calls for a
-    SERVABLE opt-in work. Delegates to the ONE low-level writer
-    (``ip_holders.accrue_escrow``), which rejects a non-positive amount — so the
-    intake lane's positive seed contract is enforced at the writer, not duplicated
-    here. Accrual only; disbursement stays operator-gated (G2/G3)."""
-    accrue_escrow(con, ip_holder_id, amount_usd)
+    SERVABLE opt-in work. ``document_id`` is the content-hash id the ingest
+    dedups on, so it is stable across re-runs and grant flips. The seed row and
+    the escrow increment commit together (``con`` is a ``connect_write``
+    connection): a failed increment leaves no row claiming the seed happened.
+    Delegates to the ONE low-level writer (``ip_holders.accrue_escrow``), which
+    rejects a non-positive amount and an unknown holder. Accrual only;
+    disbursement stays operator-gated (G2/G3)."""
+    con.execute(_SEED_LEDGER_DDL)
+    with con.transaction():
+        inserted = con.execute(
+            """
+            INSERT INTO opt_in_intake_seeds (ip_holder_id, document_id, amount_usd)
+            VALUES (?, ?, ?)
+            ON CONFLICT DO NOTHING
+            RETURNING ip_holder_id
+            """,
+            [ip_holder_id, document_id, str(amount_usd)],
+        ).fetchall()
+        if not inserted:
+            return False
+        accrue_escrow(con, ip_holder_id, amount_usd)
+    return True
 
 
 __all__ = ["accrue_opt_in_escrow"]

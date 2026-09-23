@@ -394,15 +394,33 @@ def test_grant_flip_servable_gated_servable_same_work(temp_db):
 # ---------------------------------------------------------------------------
 
 
+def _escrow(db_path: str, ip_holder_id: str) -> Decimal:
+    from runtime.db_lock import connect_write
+    from substrate import ip_holders
+
+    with connect_write(db_path, purpose="test:escrow") as con:
+        holder = ip_holders.get(con, ip_holder_id)
+    assert holder is not None
+    return holder.escrow_balance_usd
+
+
 def test_resubmission_is_idempotent_no_duplicates(temp_db):
     """Running the same manifest twice yields the same document + holder
-    counts (no duplicate documents, no duplicate holder)."""
+    counts (no duplicate documents, no duplicate holder) AND the same escrow
+    balance: the intake seed is once per (holder, work), not once per run."""
     from runtime.db_lock import connect_write
     from substrate import ip_holders
 
     m = _manifest_dict(grant=True)
-    intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
-    intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+    first = intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+    seeded = _escrow(temp_db, first.summary.ip_holder_id)
+    second = intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+
+    assert first.summary.escrow_accrued is True
+    assert seeded > Decimal("0")
+    # The re-run deduplicates the document, so it must not seed escrow again.
+    assert _escrow(temp_db, first.summary.ip_holder_id) == seeded
+    assert second.summary.escrow_accrued is False
 
     con = duckdb.connect(temp_db)
     try:
@@ -416,6 +434,29 @@ def test_resubmission_is_idempotent_no_duplicates(temp_db):
     assert n_docs == 1
     assert n_assets == 1
     assert n_holders == 1
+
+
+def test_grant_flips_seed_escrow_once_per_work(temp_db):
+    """The seed is keyed on the work, not on the run or on first sight of the
+    document: a work first ingested GATED seeds nothing, seeds once when its
+    grant arrives, and a withdraw + re-grant cycle never seeds it again."""
+    gated = _manifest_dict(grant=False)
+    granted = _manifest_dict(grant=True)
+
+    r0 = intake_manifest(parse_manifest(gated), db_path=temp_db, embedder=_StubEmbedder())
+    holder_id = r0.summary.ip_holder_id
+    assert _escrow(temp_db, holder_id) == Decimal("0")
+
+    r1 = intake_manifest(parse_manifest(granted), db_path=temp_db, embedder=_StubEmbedder())
+    assert r1.summary.escrow_accrued is True
+    assert r1.outcomes[0].document_id == r0.outcomes[0].document_id
+    seeded = _escrow(temp_db, holder_id)
+    assert seeded == Decimal("0.01")
+
+    intake_manifest(parse_manifest(gated), db_path=temp_db, embedder=_StubEmbedder())
+    r3 = intake_manifest(parse_manifest(granted), db_path=temp_db, embedder=_StubEmbedder())
+    assert _escrow(temp_db, holder_id) == seeded
+    assert r3.summary.escrow_accrued is False
 
 
 def test_resubmission_adding_one_work_adds_exactly_one_document(temp_db):
