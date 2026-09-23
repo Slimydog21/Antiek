@@ -209,6 +209,16 @@ def dispatch_talk_to_book_byot(
                 role=role,
                 investigation_id=investigation_id,
                 config=exact_config,
+                # BYOT_ONLY: the payer decides the provider. ``exact_config``
+                # already makes the owner's rung the tier's primary with no
+                # fallback; what re-routed owner-paid calls was the router's
+                # operator-lineup consult, which fires whenever the caller
+                # passes no override and swapped in the house provider —
+                # house paid, and the guard below turned the owner's
+                # reservation into ``unknown`` for a call that never touched
+                # the owner's key. Opting out keeps the receipt honest too:
+                # no override was applied, so none is recorded.
+                operator_lineup=False,
             )
         except Exception:
             ledger.mark_operation_unknown(request_owner_user_id, logical_operation_id)

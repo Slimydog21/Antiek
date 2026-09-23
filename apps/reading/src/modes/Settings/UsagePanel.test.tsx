@@ -273,4 +273,32 @@ describe("UsagePanel", () => {
       "Cap must be a non-negative dollar value.",
     );
   });
+
+  it("renders an explicit unavailable state when the usage fetch fails — never $0.00", async () => {
+    // Audit wave 4, finding 2 (#3400): a rejected usage fetch used to fall back to
+    // a zeroed entry per key, printing "used $0.00 · held $0.00" for a meter that
+    // was never read, under a header promising exactly the opposite.
+    vi.mocked(fetchSettingsUsage).mockRejectedValueOnce(new Error("ledger locked sk-secret"));
+    const user = userEvent.setup();
+    render(<UsagePanel />);
+
+    const deepseek = await screen.findByTestId("usage-row-user-deepseek");
+    expect(within(deepseek).getByText("usage unavailable")).toBeTruthy();
+    const kimi = screen.getByTestId("usage-row-user-kimi");
+    expect(within(kimi).getByText("usage unavailable")).toBeTruthy();
+    // Scoped to the rows: the header itself says "never fabricated as $0.00".
+    const rows = screen.getByRole("list", { name: "BYOT usage rows" });
+    expect(rows.textContent).not.toContain("$0.00");
+    expect(document.body.textContent).not.toContain("sk-secret");
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Can't load usage right now");
+    // Live provider balances still render from their own fetch.
+    expect(within(deepseek).getByText("Live balance $42.50")).toBeTruthy();
+
+    // Retry restores real figures and clears the alert.
+    vi.mocked(fetchSettingsUsage).mockResolvedValue(usage);
+    await user.click(within(alert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(within(deepseek).getByText(/used \$1\.20 · cap \$10\.00/)).toBeTruthy();
+  });
 });
