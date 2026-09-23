@@ -30,7 +30,7 @@ def _content(text: str) -> dict:
 
 def test_returned_unmodified_classified_and_emits_event():
     reg = ExportRegistry()
-    reg.record_export("d1", _content("X"))
+    reg.record_export("d1", _content("X"), exporter_id="tester-1")
     r = classify_roundtrip("d1", _content("X"), reg)
     assert r.classification == "returned_unmodified" and r.is_roundtrip
     assert r.event is not None
@@ -39,7 +39,7 @@ def test_returned_unmodified_classified_and_emits_event():
 
 def test_traveled_and_changed_is_the_strongest_signal():
     reg = ExportRegistry()
-    reg.record_export("d1", _content("the original"))
+    reg.record_export("d1", _content("the original"), exporter_id="tester-1")
     r = classify_roundtrip("d1", _content("the EDITED version"), reg)
     assert r.classification == "traveled_and_changed" and r.is_roundtrip
     assert r.event is not None
@@ -47,7 +47,7 @@ def test_traveled_and_changed_is_the_strongest_signal():
 
 def test_novel_is_not_a_roundtrip_and_emits_nothing():
     reg = ExportRegistry()
-    reg.record_export("d1", _content("X"))
+    reg.record_export("d1", _content("X"), exporter_id="tester-1")
     r = classify_roundtrip("d2", _content("Y"), reg)
     assert r.classification == "novel" and not r.is_roundtrip
     assert r.event is None
@@ -77,7 +77,7 @@ def test_synthetic_roundtrip_through_real_artifacts(keypair):
     # bytes via the signature-checked read path SPR-07 ingests through.
     reg = ExportRegistry()
     original = _export_bytes(keypair, "the original passage")
-    reg.record_export("doc-rt", _content("the original passage"))
+    reg.record_export("doc-rt", _content("the original passage"), exporter_id="tester-1")
 
     # the unmodified file comes back
     back = read_antiek(original)
