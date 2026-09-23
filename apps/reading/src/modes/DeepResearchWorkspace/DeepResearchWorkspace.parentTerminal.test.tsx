@@ -142,6 +142,169 @@ describe("DRW monitor reads the session parent-terminal contract", () => {
     expect(getSession.mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 
+  // A skipped synthesis tail ends the parent without ever setting
+  // deep_research_complete: the backend reports how the parent ended instead.
+  const STOPPED_LEAVES = [
+    { investigation_id: "session-1-leaf-0", sub_question: "sub one", state: "stopped" as const },
+    { investigation_id: "session-1-leaf-1", sub_question: "sub two", state: "stopped" as const },
+  ];
+  const FAILED_LEAVES = [
+    { investigation_id: "session-1-leaf-0", sub_question: "sub one", state: "failed" as const },
+    { investigation_id: "session-1-leaf-1", sub_question: "sub two", state: "stopped" as const },
+  ];
+  const FAILED_REASON =
+    "no leaf research finished: 1 of 2 failed (session-1-leaf-0); synthesis skipped";
+
+  async function settledAfterFirstPoll(over: Record<string, unknown>) {
+    getSession.mockResolvedValue(body(over));
+    const { result } = renderHook(() => useResearchSession("session-1", { intervalMs: 5 }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    // Several poll intervals later, nothing more was asked: the monitor settled.
+    await new Promise((r) => setTimeout(r, 80));
+    return result;
+  }
+
+  it("settles a skipped tail whose parent was stopped as stopped and stops polling", async () => {
+    const result = await settledAfterFirstPoll({
+      researches: STOPPED_LEAVES,
+      deep_research_complete: false,
+      synthesis_tail_error: null,
+      synthesis_tail_skipped: "no_leaf_done",
+      parent_terminal: { state: "stopped", reason: "stopped" },
+      completion_running: false,
+    });
+    expect(result.current.parent).toEqual({ kind: "stopped" });
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles a skipped tail whose parent failed as failed, with the reason, and stops polling", async () => {
+    const result = await settledAfterFirstPoll({
+      researches: FAILED_LEAVES,
+      deep_research_complete: false,
+      synthesis_tail_error: null,
+      synthesis_tail_skipped: "no_leaf_done",
+      parent_terminal: { state: "failed", reason: FAILED_REASON },
+      completion_running: false,
+    });
+    expect(result.current.parent).toEqual({ kind: "failed", reason: FAILED_REASON });
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the parent terminal on a recovered session too", async () => {
+    const result = await settledAfterFirstPoll({
+      live: false,
+      all_terminal: true,
+      researches: STOPPED_LEAVES,
+      deep_research_complete: null,
+      synthesis_tail_error: null,
+      parent_terminal: { state: "stopped", reason: "stopped" },
+    });
+    expect(result.current.parent).toEqual({ kind: "stopped" });
+  });
+
+  it("stops polling once completion ended without scheduling a tail", async () => {
+    // Hard-ceiling runs and a server without the tail wired never write a
+    // parent terminal; completion_running=false is the only settle signal.
+    const result = await settledAfterFirstPoll({
+      deep_research_complete: false,
+      synthesis_tail_error: null,
+      parent_terminal: null,
+      completion_running: false,
+    });
+    expect(result.current.parent).toEqual({ kind: "not_synthesized" });
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles a budget-halted parent as budget-halted, not as a stop", async () => {
+    const result = await settledAfterFirstPoll({
+      researches: STOPPED_LEAVES.map((r) => ({ ...r, state: "budget_halted" as const })),
+      deep_research_complete: false,
+      synthesis_tail_error: null,
+      synthesis_tail_skipped: "no_leaf_done",
+      parent_terminal: { state: "budget_halted", reason: "no leaf research finished" },
+      completion_running: false,
+    });
+    expect(result.current.parent).toEqual({ kind: "budget_halted" });
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles a parent that ended completed without DeepResearchComplete as unconfirmed", async () => {
+    const result = await settledAfterFirstPoll({
+      deep_research_complete: false,
+      synthesis_tail_error: null,
+      parent_terminal: { state: "done", reason: null },
+      completion_running: false,
+    });
+    expect(result.current.parent).toEqual({ kind: "unconfirmed" });
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps polling while completion is still running and the parent has not ended", async () => {
+    getSession
+      .mockResolvedValueOnce(
+        body({ deep_research_complete: false, parent_terminal: null, completion_running: true }),
+      )
+      .mockResolvedValue(
+        body({
+          deep_research_complete: false,
+          parent_terminal: { state: "failed", reason: FAILED_REASON },
+          completion_running: false,
+        }),
+      );
+    const { result } = renderHook(() => useResearchSession("session-1", { intervalMs: 5 }));
+    await waitFor(
+      () => expect(result.current.parent).toEqual({ kind: "failed", reason: FAILED_REASON }),
+      { timeout: 2000 },
+    );
+    expect(getSession.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("labels a stopped parent 'stopped' and a failed one as a failure with its reason", async () => {
+    getSession.mockResolvedValue(
+      body({
+        researches: STOPPED_LEAVES,
+        deep_research_complete: false,
+        synthesis_tail_skipped: "no_leaf_done",
+        parent_terminal: { state: "stopped", reason: "stopped" },
+        completion_running: false,
+      }),
+    );
+    renderMonitor();
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 2 }).textContent).toMatch(/stopped/),
+    );
+    expect(screen.getByRole("heading", { level: 2 }).textContent).not.toMatch(/not confirmed/);
+    expect(screen.queryByRole("alert")).toBeNull();
+    cleanup();
+
+    getSession.mockResolvedValue(
+      body({
+        researches: FAILED_LEAVES,
+        deep_research_complete: false,
+        synthesis_tail_skipped: "no_leaf_done",
+        parent_terminal: { state: "failed", reason: FAILED_REASON },
+        completion_running: false,
+      }),
+    );
+    renderMonitor();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(FAILED_REASON);
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toMatch(/session failed/);
+  });
+
+  it("reacts with error when an all-done gather ends in a failed parent (empty evidence pack)", () => {
+    expect(
+      deriveResearchReactionPhase({
+        sessionId: "s",
+        loading: false,
+        allTerminal: true,
+        error: null,
+        researchStates: ["done", "done"],
+        parent: { kind: "failed", reason: "empty substrate-grounded evidence pack" },
+      }),
+    ).toBe("error");
+  });
+
   it("derives an error reaction phase from a failed parent even when every leaf is done", () => {
     const snapshot = {
       sessionId: "s",

@@ -378,8 +378,13 @@ function ComposeBar({
 const PARENT_LABEL: Record<SessionParentState["kind"], string> = {
   complete: "complete",
   synthesis_failed: "synthesis failed",
-  // Not "synthesizing": a hard-ceiling run never schedules the tail, and the
-  // response cannot yet tell that apart from a tail still running.
+  failed: "session failed",
+  stopped: "stopped",
+  budget_halted: "stopped at the budget limit",
+  unconfirmed: "synthesis not confirmed",
+  not_synthesized: "not synthesized",
+  // Not "synthesizing": a server that predates completion_running cannot tell
+  // a tail still running apart from one that will never be scheduled.
   pending: "synthesis not confirmed",
   unknown: "synthesis status unknown",
 };
@@ -538,6 +543,11 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
         <p role="alert" className="text-xs font-medium text-emperor">
           The researches finished, but the session’s synthesis did not, so there
           is no combined result. {session.parent.error}
+        </p>
+      )}
+      {session.parent.kind === "failed" && (
+        <p role="alert" className="text-xs font-medium text-emperor">
+          The session ended failed, so there is no combined result. {session.parent.reason}
         </p>
       )}
       {session.hardCeiling && (

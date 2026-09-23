@@ -85,7 +85,7 @@ _log = logging.getLogger(__name__)
 SYNTHESIS_TAIL_FAILED = "cascade.synthesis_tail.failed"
 # Audit action_type for a synthesis tail that was deliberately not run: the
 # leaves left no finished evidence to synthesize. Same untyped seam; it is not a
-# lifecycle event, so the session's status stays derived from its leaves.
+# lifecycle event: ``record_synthesis_tail_skipped`` writes the parent terminal.
 SYNTHESIS_TAIL_SKIPPED = "cascade.synthesis_tail.skipped"
 
 
@@ -129,6 +129,9 @@ class SessionRecovery:
     # the session was evicted. None when no such event exists — we surface only
     # what is honestly recoverable, never a fabricated success or failure.
     synthesis_tail_error: str | None = None
+    # The session parent's own terminal (``parent_terminal``), or None while
+    # the parent has not ended.
+    parent_terminal: dict[str, str | None] | None = None
 
     @property
     def all_terminal(self) -> bool:
@@ -348,7 +351,12 @@ class CascadeSession:
         still leaves a ``logger.warning`` breadcrumb rather than a silent ``pass``
         (the very pattern this method exists to kill); the error is already on the
         in-memory field + the ``logger.exception`` below regardless."""
-        self.synthesis_tail_error = f"[{stage}] {type(exc).__name__}: {exc}"
+        cancelled = isinstance(exc, asyncio.CancelledError)
+        detail = str(exc) or (
+            "the completion task was cancelled (service shutdown or restart)"
+            if cancelled else ""
+        )
+        self.synthesis_tail_error = f"[{stage}] {type(exc).__name__}: {detail}"
         try:
             log_event(
                 self.session_id,
@@ -362,6 +370,34 @@ class CascadeSession:
         except Exception:  # pragma: no cover — audit-of-audit isolation
             _log.warning(
                 "synthesis-tail audit event emit failed for session_id=%s "
+                "(error preserved on the session field + the logger.exception below)",
+                self.session_id, exc_info=True,
+            )
+        # The completion can no longer write the parent's verdict, so end the
+        # parent failed unless something already ended it (the Loop 1 tail
+        # writes its own ``investigation.failed`` on cancel). Without this, a
+        # join/merge failure or a cancel before the tail left the parent with
+        # no terminal and every status reader showed ``in_progress`` forever.
+        try:
+            if self.parent_terminal() is None:
+                log_event(
+                    self.session_id,
+                    ActionType.INVESTIGATION_FAILED,
+                    payload={
+                        "phase": 6,
+                        "reason": (
+                            f"cascade completion {'cancelled' if cancelled else 'failed'} "
+                            f"at stage={stage} before a terminal verdict: "
+                            f"{self.synthesis_tail_error}"
+                        ),
+                        "last_completed_phase": None,
+                    },
+                    role="orchestrator",
+                    events_dir=self._events_dir,
+                )
+        except Exception:  # pragma: no cover — audit-of-audit isolation
+            _log.warning(
+                "parent terminal emit failed for session_id=%s "
                 "(error preserved on the session field + the logger.exception below)",
                 self.session_id, exc_info=True,
             )
@@ -394,22 +430,27 @@ class CascadeSession:
         Without a parent terminal every status reader guessed differently: the
         list derived "stopped"/"completed" from the leaves while GET
         /investigations/{id} read the terminal-less parent as in_progress
-        forever. No leaf finished ends the parent like a stopped research
-        (``completed`` with ``outcome: stopped``, what the runner writes for a
-        stopped leaf). A finished gather with nothing citable ends it failed at
-        phase 6, the verdict the tail itself gives an empty pack. Neither can
-        satisfy DeepResearchComplete, which also requires phases 6-9."""
+        forever. When no leaf finished, the parent takes the leaves' outcome:
+        stopped (``completed`` with ``outcome: stopped``, what the runner writes
+        for a stopped leaf) only when every leaf was stopped or cancelled;
+        budget-halted (``chase_halted``, what the runner writes for a halted
+        leaf) when the rest hit the budget; failed at phase 6 when any leaf
+        failed or ended in no terminal state at all. A finished gather with
+        nothing citable ends it failed at phase 6, the verdict the tail itself
+        gives an empty pack. None can satisfy DeepResearchComplete, which also
+        requires phases 6-9."""
         self.synthesis_tail_skipped = reason
+        states = self.status()
         log_event(
             self.session_id,
             SYNTHESIS_TAIL_SKIPPED,
             payload={"reason": reason.value,
-                     "leaf_states": {s.investigation_id: s.state for s in self.status()}},
+                     "leaf_states": {s.investigation_id: s.state for s in states}},
             role="user_agent",
             events_dir=self._events_dir,
         )
         if reason is SynthesisTailSkip.NO_LEAF_DONE:
-            action, payload = ActionType.INVESTIGATION_COMPLETED, {"outcome": "stopped"}
+            action, payload = _no_leaf_done_terminal(states)
         else:
             action, payload = ActionType.INVESTIGATION_FAILED, {
                 "phase": 6,
@@ -422,13 +463,18 @@ class CascadeSession:
         log_event(self.session_id, action, payload=payload,
                   role="orchestrator", events_dir=self._events_dir)
 
+    def parent_terminal(self) -> dict[str, str | None] | None:
+        """The session parent's own durable terminal (see ``parent_terminal``)."""
+        return parent_terminal(self.session_id, events_dir=self._events_dir)
+
     def terminal_status(self) -> dict[str, object]:
         """The session's deep-research terminal contract, for status surfaces.
 
         ``deep_research_complete`` is the authoritative Path-A convergence
         check (gather leaves terminal AND the session parent satisfies
         ``DeepResearchComplete``); ``synthesis_tail_error`` is the captured
-        failure string (None when the tail has not failed)."""
+        failure string (None when the tail has not failed);
+        ``parent_terminal`` is how the parent ended, if it has."""
         return {
             "deep_research_complete": self.is_deep_research_complete(),
             "synthesis_tail_error": self.synthesis_tail_error,
@@ -436,6 +482,7 @@ class CascadeSession:
                 self.synthesis_tail_skipped.value
                 if self.synthesis_tail_skipped is not None else None
             ),
+            "parent_terminal": self.parent_terminal(),
         }
 
     def build_evidence_pack(
@@ -543,7 +590,68 @@ def reconstruct_session(session_id: str, *, events_dir: str | None = None) -> Se
         session_id=session_id,
         researches=researches,
         synthesis_tail_error=tail_error,
+        parent_terminal=parent_terminal(session_id, events_dir=resolved),
     )
+
+
+def _no_leaf_done_terminal(
+    states: Sequence[ResearchState],
+) -> tuple[ActionType, dict[str, object]]:
+    """The parent terminal for a session in which no leaf reached DONE.
+
+    Stopped only when the operator stopped or cancelled every leaf; a
+    budget halt is the budget's verdict, not the operator's; a failed leaf, or
+    one that never reached a terminal state, is a failure the parent keeps."""
+    by_state: dict[str, list[str]] = {}
+    for s in states:
+        by_state.setdefault(s.state, []).append(s.investigation_id)
+    stopped = by_state.pop(RunState.STOPPED.value, [])
+    halted = by_state.pop(RunState.BUDGET_HALTED.value, [])
+    failed = by_state.pop(RunState.FAILED.value, [])
+    unended = [f"{iid}={state}" for state, iids in by_state.items() for iid in iids]
+    n = len(states)
+    if not failed and not unended and states:
+        if not halted:
+            return ActionType.INVESTIGATION_COMPLETED, {"outcome": "stopped"}
+        return ActionType.INVESTIGATION_CHASE_HALTED, {
+            "reason": (
+                f"no leaf research finished: {len(halted)} of {n} budget-halted "
+                f"({', '.join(halted)}), {len(stopped)} stopped; synthesis skipped"
+            ),
+        }
+    causes = []
+    if failed:
+        causes.append(f"{len(failed)} of {n} failed ({', '.join(failed)})")
+    if unended:
+        causes.append(f"{len(unended)} of {n} never ended ({', '.join(unended)})")
+    return ActionType.INVESTIGATION_FAILED, {
+        "phase": 6,
+        "reason": (
+            f"no leaf research finished: {'; '.join(causes) or 'no leaf research ran'}"
+            "; synthesis skipped"
+        ),
+        "last_completed_phase": None,
+    }
+
+
+def parent_terminal(
+    session_id: str, *, events_dir: str | None = None
+) -> dict[str, str | None] | None:
+    """How the session parent ended, read from its own trajectory with the
+    shared ``terminal_event`` reader, or None while it has not ended.
+
+    ``state`` is the ``RunState`` value (``done``, ``stopped``, ``failed``,
+    ``budget_halted``); ``reason`` is the failure reason or the completion
+    ``outcome``. Leaf states cannot tell a poller this: every leaf can be
+    terminal while the parent was stopped, failed, or never synthesized."""
+    terminal = terminal_event(trajectory(session_id, events_dir=events_dir))
+    if terminal is None:
+        return None
+    state, row = terminal
+    payload = row.get("payload")
+    fields = payload if isinstance(payload, dict) else {}
+    reason = fields.get("reason") or fields.get("error") or fields.get("outcome")
+    return {"state": state.value, "reason": reason if isinstance(reason, str) else None}
 
 
 def _recover_synthesis_tail_error(

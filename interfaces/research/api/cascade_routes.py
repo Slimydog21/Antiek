@@ -1697,7 +1697,7 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                 _HARD_CEILING_RUNS[session] = (gateway, binding)
             # Drive the fan-out to completion (join + funnel drain + merge) in the
             # background so the session progresses without a connected stream client.
-            _SESSION_TASKS[session_id] = asyncio.create_task(_run_to_completion(session))
+            _SESSION_TASKS[session_id] = _schedule_completion(session)
             response = {
                 "session_id": session_id,
                 "researches": [
@@ -1771,20 +1771,63 @@ async def _run_to_completion(session: CascadeSession) -> None:
     except Exception as exc:
         # Capture, do not swallow: record WITH the failing stage (so a join/merge
         # failure isn't mislabeled as a synthesis-tail one) + audit, stay non-fatal.
+        # Recording also ends the parent failed when nothing else ended it.
         session.record_synthesis_tail_error(exc, stage=stage)
+    except asyncio.CancelledError as exc:
+        # uvicorn cancels this detached task at shutdown. CancelledError is a
+        # BaseException, so the handler above never saw a cancel landing in
+        # join_and_merge (the tail guards only its own phases) and the parent
+        # kept no terminal. Record and end the parent failed, then let the
+        # cancellation propagate.
+        session.record_synthesis_tail_error(exc, stage=stage)
+        raise
     finally:
-        _OWNER_CASCADE_LAUNCHES.pop(session.session_id, None)
-        hard_run = _HARD_CEILING_RUNS.get(session)
-        if hard_run is not None:
-            gateway, binding = hard_run
-            try:
-                gateway.ledger.close_execution(
-                    deterministic_key("research-close", binding.run_id),
-                    binding.run_id,
-                    "cascade execution reached terminal state",
-                )
-            except Exception as exc:
-                logger.exception("hard-ceiling close failed for %s: %s", binding.run_id, exc)
+        _release_completion(session)
+
+
+def _release_completion(session: CascadeSession) -> None:
+    """Drop the session's owner manifest and close its hard-ceiling execution."""
+    _OWNER_CASCADE_LAUNCHES.pop(session.session_id, None)
+    hard_run = _HARD_CEILING_RUNS.get(session)
+    if hard_run is not None:
+        gateway, binding = hard_run
+        try:
+            gateway.ledger.close_execution(
+                deterministic_key("research-close", binding.run_id),
+                binding.run_id,
+                "cascade execution reached terminal state",
+            )
+        except Exception as exc:
+            logger.exception("hard-ceiling close failed for %s: %s", binding.run_id, exc)
+
+
+def _schedule_completion(session: CascadeSession) -> asyncio.Task[None]:
+    """Start ``_run_to_completion`` as the session's detached task.
+
+    A task cancelled before its first step never enters the coroutine, so
+    neither the cancel handler nor the ``finally`` in ``_run_to_completion``
+    runs: shutdown right after a launch left the parent with no terminal and
+    the hard-ceiling execution open. The done callback closes that window."""
+    task = asyncio.create_task(_run_to_completion(session))
+    task.add_done_callback(lambda t: _settle_unstarted_completion(session, t))
+    return task
+
+
+def _settle_unstarted_completion(session: CascadeSession, task: asyncio.Task[None]) -> None:
+    # A body that ran recorded its own cancel (``synthesis_tail_error`` is set
+    # before any emit) and released in its ``finally``; only a task cancelled
+    # before it started reaches here with neither done.
+    if not task.cancelled() or session.synthesis_tail_error is not None:
+        return
+    try:
+        session.record_synthesis_tail_error(asyncio.CancelledError(), stage="join_and_merge")
+    finally:
+        _release_completion(session)
+
+
+def _completion_running(session_id: str) -> bool:
+    task = _SESSION_TASKS.get(session_id)
+    return task is not None and not task.done()
 
 
 @cascade_router.get("/sessions/{session_id}")
@@ -1813,6 +1856,13 @@ async def session_status(session_id: str, request: Request) -> dict[str, Any]:
             "deep_research_complete": terminal["deep_research_complete"],
             "synthesis_tail_error": terminal["synthesis_tail_error"],
             "synthesis_tail_skipped": terminal["synthesis_tail_skipped"],
+            # How the parent ended (done / stopped / budget_halted / failed), read from its
+            # own trajectory, and whether background completion can still write
+            # it. A poller settles on either: a skipped tail ends the parent
+            # without ever setting deep_research_complete, and a run that never
+            # schedules the tail (hard ceiling, no tail wired) never ends it.
+            "parent_terminal": terminal["parent_terminal"],
+            "completion_running": _completion_running(session_id),
         }
         hard_ceiling = _hard_ceiling_snapshot_for_session(session_id, request)
         if hard_ceiling is not None:
@@ -1840,6 +1890,9 @@ async def session_status(session_id: str, request: Request) -> dict[str, Any]:
         # "not reconstructable from membership alone", not "false".
         "deep_research_complete": None,
         "synthesis_tail_error": rec.synthesis_tail_error,
+        "parent_terminal": rec.parent_terminal,
+        # Nothing in this process is completing a recovered session.
+        "completion_running": False,
     }
     hard_ceiling = _hard_ceiling_snapshot_for_session(session_id, request)
     if hard_ceiling is not None:

@@ -313,3 +313,104 @@ def test_leaves_that_gathered_evidence_still_run_the_tail(client, monkeypatch):
     assert _session_lifecycle(sid) == ["investigation.completed"]
     assert status.get("synthesis_tail_skipped") is None
     assert _skips(sid) == []
+
+
+def _failing_or_slow_loop(fail_sub_questions: set[str]):
+    """Leaves whose sub-question is listed raise on their first pass; the rest
+    stay in flight until the operator stops them."""
+    import asyncio
+
+    async def _loop(ctx):
+        for i in range(10_000):
+            sub_q = await ctx.checkpoint()
+            if sub_q in fail_sub_questions:
+                raise RuntimeError(f"gather exploded on {sub_q}")
+            await asyncio.sleep(0.02)
+            yield ctx.step(f"pass {i} on {sub_q}", cost_usd=0.0, tokens=0)
+
+    return _loop
+
+
+def _wait_for_leaf_state(client, sid: str, iid: str, state: str, timeout: float = 30.0) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        rows = client.get(f"/research/sessions/{sid}").json()["researches"]
+        if any(r["investigation_id"] == iid and r["state"] == state for r in rows):
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"{iid} never reached {state}")
+
+
+def test_every_leaf_failed_ends_the_parent_failed_not_stopped(client, monkeypatch):
+    monkeypatch.setattr(
+        cr, "_research_loop_factory",
+        lambda **kw: _failing_or_slow_loop({"sub a", "sub b"}),
+    )
+    root = _approved_plan(client)
+    launched = client.post(f"/research/plans/{root}/launch", json={})
+    assert launched.status_code == 200, launched.text
+    sid = launched.json()["session_id"]
+    _wait_for_completion_task(sid)
+
+    status = client.get(f"/research/sessions/{sid}").json()
+    assert {r["state"] for r in status["researches"]} == {"failed"}
+    assert _SYNTH_PROMPTS == []
+    assert status["synthesis_tail_skipped"] == "no_leaf_done"
+    # A failure is not a stop: the parent keeps the leaves' failure.
+    assert _session_lifecycle(sid) == ["investigation.failed"]
+    payload = _parent_terminal_payload(sid)
+    assert payload["phase"] == 6
+    assert "2 of 2" in payload["reason"] and "failed" in payload["reason"]
+    assert status["parent_terminal"]["state"] == "failed"
+    assert client.get(f"/investigations/{sid}").json()["status"] == "failed"
+    listed = client.get("/investigations").json()["investigations"]
+    assert next(s for s in listed if s["investigation_id"] == sid)["status"] == "failed"
+
+
+def test_one_failed_leaf_among_stopped_ones_ends_the_parent_failed(client, monkeypatch):
+    monkeypatch.setattr(
+        cr, "_research_loop_factory",
+        lambda **kw: _failing_or_slow_loop({"sub a"}),
+    )
+    root = _approved_plan(client)
+    launched = client.post(f"/research/plans/{root}/launch", json={})
+    assert launched.status_code == 200, launched.text
+    body = launched.json()
+    sid = body["session_id"]
+    by_q = {r["sub_question"]: r["investigation_id"] for r in body["researches"]}
+    _wait_for_leaf_state(client, sid, by_q["sub a"], "failed")
+    s = client.post(
+        f"/research/sessions/{sid}/researches/{by_q['sub b']}/steer", json={"kind": "stop"},
+    )
+    assert s.status_code == 200, s.text
+    _wait_for_completion_task(sid)
+
+    status = client.get(f"/research/sessions/{sid}").json()
+    assert sorted(r["state"] for r in status["researches"]) == ["failed", "stopped"]
+    assert _SYNTH_PROMPTS == []
+    assert _session_lifecycle(sid) == ["investigation.failed"]
+    assert "1 of 2" in _parent_terminal_payload(sid)["reason"]
+    assert status["parent_terminal"]["state"] == "failed"
+    assert client.get(f"/investigations/{sid}").json()["status"] == "failed"
+
+
+def test_a_stopped_session_exposes_a_stopped_parent_terminal(client, monkeypatch):
+    monkeypatch.setattr(
+        cr, "_research_loop_factory",
+        lambda **kw: _failing_or_slow_loop(set()),
+    )
+    root = _approved_plan(client)
+    launched = client.post(f"/research/plans/{root}/launch", json={})
+    body = launched.json()
+    sid = body["session_id"]
+    for leaf in body["researches"]:
+        client.post(
+            f"/research/sessions/{sid}/researches/{leaf['investigation_id']}/steer",
+            json={"kind": "stop"},
+        )
+    _wait_for_completion_task(sid)
+
+    status = client.get(f"/research/sessions/{sid}").json()
+    assert status["parent_terminal"] == {"state": "stopped", "reason": "stopped"}
+    assert status["completion_running"] is False
+    assert _parent_terminal_payload(sid) == {"outcome": "stopped"}

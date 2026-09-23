@@ -109,6 +109,13 @@ export interface SessionCost {
   aggregate_cap_usd: number;
 }
 
+/** How the session parent itself ended: a terminal run state plus the failure
+ * reason or completion outcome (mirrors cascade_session.parent_terminal). */
+export interface SessionParentTerminal {
+  state: "done" | "stopped" | "failed" | "budget_halted";
+  reason: string | null;
+}
+
 export interface SessionStatus {
   session_id: string;
   live: boolean;
@@ -121,6 +128,15 @@ export interface SessionStatus {
   deep_research_complete?: boolean | null;
   /** The captured join/synthesis-tail failure, or null. */
   synthesis_tail_error?: string | null;
+  /** Why the synthesis tail was skipped, or null when it ran or is undecided. */
+  synthesis_tail_skipped?: "no_leaf_done" | "empty_evidence_pack" | null;
+  /** How the parent ended, or null while it has not. A skipped tail ends it
+   * stopped, failed or budget-halted without setting deep_research_complete. */
+  parent_terminal?: SessionParentTerminal | null;
+  /** Whether background completion can still write the parent's verdict.
+   * False with no parent terminal means none is coming (a hard-ceiling run,
+   * or a server without the synthesis tail wired). */
+  completion_running?: boolean;
 
   source_policy?: ResearchSourcePolicy[];
   source_policy_execution?: "metadata_only" | "runner_consumed";
