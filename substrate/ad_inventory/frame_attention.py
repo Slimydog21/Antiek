@@ -173,7 +173,13 @@ SUPPORTED_FRAME_TELEMETRY_SCHEMA_VERSIONS = frozenset({
 # weigh_second's blend math is STILL unchanged (the golden weight literals are
 # identical); the bump marks the hold+cap era so a payout dispute can tell a
 # pre-hold accrual from a post-hold one.
-FRAME_WEIGHTING_VERSION = "frame-weight-v3"
+#
+# v3 -> v4 (W09): the dwell saturation cap now meters VALID IN-FRAME TIME
+# (1000 ms per valid in-frame second) instead of client-reported focused dwell;
+# a zero-dwell line could otherwise report focused_dwell_ms=0 and escape the cap
+# while still earning. weigh_second's blend math is unchanged (the golden
+# literals are identical).
+FRAME_WEIGHTING_VERSION = "frame-weight-v4"
 
 
 # ---------------------------------------------------------------------------

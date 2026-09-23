@@ -21,6 +21,7 @@ from substrate.ad_inventory.frame_attention import (
 )
 from substrate.ad_inventory.frame_attention_accrual import (
     accrue_window,
+    ensure_tables,
     replay,
 )
 from substrate.anti_gaming.frame_ivt import REASON_DUPLICATE_INDEX
@@ -312,3 +313,88 @@ def test_clamped_dwell_reported_even_when_window_is_unpriced(con):
     assert b.clamped_dwell_ms == 2000  # saturated day, 0 cents
     assert b.clamped_cents == 0
     assert b.reconciles()
+
+
+def test_zero_dwell_line_is_clamped_when_day_is_saturated(con):
+    """W09 regression: a zero-dwell line still occupies valid in-frame seconds,
+    so a saturated day cannot preserve its cents by zeroing the client-reported
+    dwell field."""
+    cap = 1500
+    ensure_tables(con)
+    con.execute(
+        """
+        INSERT INTO frame_daily_dwell (
+            dwell_id, owner_user_id, asset_id, day_bucket, window_id,
+            batch_ref, incremental_ms, prior_counted_ms, counted_ms,
+            clamped_ms, clamped_cents, cap_ms
+        ) VALUES (
+            'seed', 'u-1', 'pd-a', '2026-08-13', 'w0', 'b0',
+            ?, ?, ?, ?, ?, ?
+        )
+        """,
+        [cap, 0, cap, 0, 0, cap],
+    )
+
+    result = accrue_window(
+        con, _dwell_batch([0, 0, 0], window_id="win:read:zeroSat"),
+        asset_to_ip_holder={"pd-a": None}, owner_user_id="u-1",
+        dwell_cap_ms=cap, day_bucket="2026-08-13",
+    )
+    assert result.asset_lines[0].amount_cents == 0
+    assert result.house.amount_cents == 1000
+    assert result.clamped_cents == 1000
+    assert result.clamped_dwell_ms == 3000
+    assert result.reconciles()
+    row = con.execute(
+        "SELECT incremental_ms FROM frame_daily_dwell "
+        "WHERE batch_ref = ? AND asset_id = ?",
+        [result.batch_ref, "pd-a"],
+    ).fetchone()
+    assert row is not None
+    assert int(row[0]) == 3000
+
+
+def test_zero_dwell_windows_accumulate_the_cap_prior(con):
+    """An identity that always reports zero dwell still advances the daily
+    meter: its first window is partially clamped and its second is fully
+    clamped."""
+    cap = 1500
+    a = accrue_window(
+        con, _dwell_batch([0, 0], window_id="win:read:zA"),
+        asset_to_ip_holder={"pd-a": None}, owner_user_id="u-1",
+        dwell_cap_ms=cap, day_bucket="2026-08-13",
+    )
+    assert a.clamped_dwell_ms == 500
+    assert a.clamped_cents == 250
+    assert a.asset_lines[0].amount_cents == 750
+
+    b = accrue_window(
+        con, _dwell_batch([0, 0], window_id="win:read:zB"),
+        asset_to_ip_holder={"pd-a": None}, owner_user_id="u-1",
+        dwell_cap_ms=cap, day_bucket="2026-08-13",
+    )
+    assert b.clamped_dwell_ms == 2000
+    assert b.clamped_cents == 1000
+    assert b.asset_lines[0].amount_cents == 0
+
+
+def test_zero_dwell_capped_window_replays_identically(con):
+    """Replay uses the same in-frame meter as the writer, so both the partially
+    clamped and the fully clamped zero-dwell window reproduce exactly."""
+    cap = 1500
+    a = accrue_window(
+        con, _dwell_batch([0, 0], window_id="win:read:zeroR1"),
+        asset_to_ip_holder={"pd-a": None}, owner_user_id="u-1",
+        dwell_cap_ms=cap, day_bucket="2026-08-13",
+    )
+    b = accrue_window(
+        con, _dwell_batch([0, 0], window_id="win:read:zeroR2"),
+        asset_to_ip_holder={"pd-a": None}, owner_user_id="u-1",
+        dwell_cap_ms=cap, day_bucket="2026-08-13",
+    )
+    rep_a = replay(con, a.batch_ref)
+    assert rep_a.identical, (rep_a.recorded, rep_a.recomputed)
+    assert rep_a.recorded["assets"]["pd-a"] == 750
+    rep_b = replay(con, b.batch_ref)
+    assert rep_b.identical, (rep_b.recorded, rep_b.recomputed)
+    assert rep_b.recorded["assets"]["pd-a"] == 0

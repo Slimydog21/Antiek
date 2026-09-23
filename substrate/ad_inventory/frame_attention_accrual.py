@@ -255,9 +255,9 @@ class FrameAccrualLine:
     """One window+asset accrual line (post-aggregation). ``summed_weight`` is
     the sum of this asset's per-second normalized weights across the window;
     ``amount_cents`` is its conserved slice of the window ad value;
-    ``countable_dwell_ms`` is this asset's summed focused dwell over the
-    window's VALID seconds — the saturation cap's input (the cap is applied by
-    the writer, which knows the per-(user, asset, day) prior)."""
+    ``n_seconds`` is its count of valid in-frame seconds — the saturation cap's
+    input, metered by the writer (which knows the per-(user, asset, day)
+    prior)."""
 
     window_id: str
     asset_id: str
@@ -266,7 +266,6 @@ class FrameAccrualLine:
     summed_weight: float
     amount_cents: int
     n_seconds: int
-    countable_dwell_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -433,7 +432,6 @@ def aggregate_window(
     asset_weight: dict[str, float] = {}
     asset_chunk: dict[str, str | None] = {}
     asset_nsec: dict[str, int] = {}
-    asset_dwell: dict[str, int] = {}  # countable (focused) dwell ms per asset
     house_cents = 0
     house_nsec = 0
     house_reasons: set[str] = set()
@@ -458,13 +456,9 @@ def aggregate_window(
             asset_cents[aw.asset_id] = asset_cents.get(aw.asset_id, 0) + split[aw.asset_id]
             asset_weight[aw.asset_id] = asset_weight.get(aw.asset_id, 0.0) + float(aw.weight)
             asset_chunk[aw.asset_id] = aw.chunk_id
+            # Valid in-frame seconds are also the saturation cap's meter
+            # (filter-before-cap: an invalid second never reaches this loop).
             asset_nsec[aw.asset_id] = asset_nsec.get(aw.asset_id, 0) + 1
-            # Countable dwell is the saturation cap's unit: this asset's focused
-            # dwell over the window's VALID seconds (filter-before-cap — an
-            # invalid second contributes neither cents nor dwell).
-            asset_dwell[aw.asset_id] = (
-                asset_dwell.get(aw.asset_id, 0) + aw.focused_dwell_ms
-            )
 
     asset_lines = tuple(
         FrameAccrualLine(
@@ -475,7 +469,6 @@ def aggregate_window(
             summed_weight=asset_weight[aid],
             amount_cents=asset_cents[aid],
             n_seconds=asset_nsec[aid],
-            countable_dwell_ms=asset_dwell.get(aid, 0),
         )
         for aid in sorted(asset_cents.keys())
     )
@@ -617,19 +610,20 @@ def accrue_window(
     ``ip_holders.accrue_escrow`` (pre-onboarded included). House seconds accrue
     to NO contributor. Accrual ≠ disbursement — nothing leaves escrow here.
 
-    AFA-S2 (W2-S2) saturation cap — per-(user, asset, day) countable dwell
+    AFA-S2 (W2-S2) saturation cap — per-(user, asset, day) valid in-frame time
     saturates at ``dwell_cap_ms`` when DEFINED (``None`` = uncapped, the
     backward-compatible default). The clamp is applied filter-before-cap on the
     first accrual only (the idempotent reload returns the stored result, never a
-    re-clamp against moved priors): each asset line's countable dwell is clamped
-    against the day's prior counted dwell (``frame_daily_dwell``), the asset's
-    cents are scaled by counted/incremental (integer floor — the excess goes to
-    house, so conservation stays exact), and every clamped ms + cent is recorded
-    and reported (``REASON_DWELL_CAP_CLAMPED`` surfaces in the response's
-    clamped fields; the dwell ledger row carries prior/counted/clamped so
-    :func:`replay` re-derives the clamp exactly). ``owner_user_id`` is the
-    reader identity the cap scopes on ("" when unknown); ``day_bucket`` is the
-    UTC day (defaults to today; injectable for tests).
+    re-clamp against moved priors): each asset line's valid in-frame time
+    (1000 ms per valid in-frame second) is clamped against the day's prior
+    counted time (``frame_daily_dwell``), the asset's cents are scaled by
+    counted/incremental (integer floor — the excess goes to house, so
+    conservation stays exact), and every clamped ms + cent is recorded and
+    reported (``REASON_DWELL_CAP_CLAMPED`` surfaces in the response's clamped
+    fields; the dwell ledger row carries prior/counted/clamped so :func:`replay`
+    re-derives the clamp exactly). ``owner_user_id`` is the reader identity the
+    cap scopes on ("" when unknown); ``day_bucket`` is the UTC day (defaults to
+    today; injectable for tests).
 
     ``classification`` is the frame_ivt classification of ``batch``, computed
     ONCE by the caller (the frame-telemetry route) so the response and the money
@@ -818,6 +812,20 @@ def _utc_today() -> str:
     return datetime.now(UTC).date().isoformat()
 
 
+# The saturation cap's meter: every VALID second in which an asset carries an
+# eligible weight is 1000 ms of in-frame time for that asset, whatever
+# focused_dwell_ms the client reported. Metering on reported dwell lets a
+# client zero that field and bypass the cap; metering on valid in-frame seconds
+# means the only way to avoid the cap is to forfeit the seconds' earnings.
+IN_FRAME_MS_PER_SECOND = 1000
+
+
+def _metered_in_frame_ms(line: FrameAccrualLine) -> int:
+    """The saturation cap's meter for one asset line: its valid in-frame
+    seconds (server-counted by aggregate_window) in milliseconds."""
+    return line.n_seconds * IN_FRAME_MS_PER_SECOND
+
+
 def _prior_counted_dwell(
     con: Any, identity: str, asset_id: str, day_bucket: str
 ) -> int:
@@ -881,23 +889,24 @@ def _apply_dwell_caps(
     day_bucket: str,
     cap_ms: int,
 ) -> WindowAccrual:
-    """Saturation-cap mediation (AFA-S2 W2-S2): clamp each asset line's
-    countable dwell against the per-(user, asset, day) prior and reroute the
+    """Saturation-cap mediation (AFA-S2 W2-S2): clamp each asset line's valid
+    in-frame time against the per-(user, asset, day) prior and reroute the
     clamped excess from the asset to house.
 
-    Only contributor lines carry countable dwell (a BLOCK/REVIEW hold and an
-    empty window have none — their whole value is already house), so the cap
+    Only contributor lines carry valid in-frame seconds (a BLOCK/REVIEW hold and
+    an empty window have none — their whole value is already house), so the cap
     never touches a held window. Each affected asset records an append-only
     ``frame_daily_dwell`` row carrying the PRIOR it was clamped against, so
     :func:`replay` re-derives the clamp exactly without depending on row order.
+    Focused dwell remains a weighting signal only.
 
     Cents rule: kept = amount × counted // incremental (integer floor). The
     floor guarantees kept ≤ amount — the clamped remainder joins the house
     tally, so conservation (Σ asset + house == total) is EXACT, and a clamped
     second never earns a cent. The approximation is honest and bounded: the cap
-    is a structural ceiling on dwell, applied linearly to the asset's already-
-    weighted accrual (the blend's area/prominence terms ride along), and every
-    clamped ms/cent is reported — nothing is silently dropped.
+    is a structural ceiling on in-frame time, applied linearly to the asset's
+    already-weighted accrual (the blend's area/prominence terms ride along),
+    and every clamped ms/cent is reported — nothing is silently dropped.
     """
     if not result.asset_lines:
         return result
@@ -906,13 +915,22 @@ def _apply_dwell_caps(
     clamped_cents_total = 0
     new_lines: list[FrameAccrualLine] = []
 
+    # Fail closed BEFORE any dwell row is written: a line with cents but no
+    # valid in-frame second cannot come from aggregate_window, and letting it
+    # through un-metered is exactly the zero-dwell bypass this meter closes.
+    unmetered = [
+        line.asset_id
+        for line in result.asset_lines
+        if _metered_in_frame_ms(line) <= 0
+    ]
+    if unmetered:
+        raise ValueError(
+            f"asset lines {unmetered!r} have no valid in-frame seconds to "
+            "meter against the dwell cap"
+        )
+
     for line in result.asset_lines:
-        incremental_ms = line.countable_dwell_ms
-        if incremental_ms <= 0:
-            # No countable dwell: the cap clamps dwell, and there is none —
-            # the line stands (its cents came from the zero-dwell equal split).
-            new_lines.append(line)
-            continue
+        incremental_ms = _metered_in_frame_ms(line)
         prior = _prior_counted_dwell(con, identity, line.asset_id, day_bucket)
         counted_ms, clamped_ms = clamp_countable_dwell(
             prior, incremental_ms, cap_ms=cap_ms
@@ -986,7 +1004,7 @@ def _record_dwell_row(
         """,
         [
             dwell_id, identity, line.asset_id, day_bucket, line.window_id,
-            batch_ref, line.countable_dwell_ms, prior, counted_ms,
+            batch_ref, _metered_in_frame_ms(line), prior, counted_ms,
             clamped_ms, clamped_cents, cap_ms,
         ],
     )
@@ -1168,10 +1186,12 @@ def _reapply_dwell_caps(con: Any, result: WindowAccrual) -> WindowAccrual:
     clamped_cents_total = 0
     new_lines: list[FrameAccrualLine] = []
     for line in result.asset_lines:
-        incremental_ms = line.countable_dwell_ms
+        incremental_ms = _metered_in_frame_ms(line)
         if incremental_ms <= 0:
-            new_lines.append(line)
-            continue
+            raise ValueError(
+                f"asset line {line.asset_id!r} has no valid in-frame seconds "
+                "to meter against the dwell cap"
+            )
         row = con.execute(
             "SELECT prior_counted_ms, counted_ms, clamped_ms, clamped_cents, "
             "cap_ms FROM frame_daily_dwell WHERE batch_ref = ? AND asset_id = ?",

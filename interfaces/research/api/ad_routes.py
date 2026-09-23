@@ -342,17 +342,17 @@ def _resolve_from_fill_record(
 def resolve_dwell_cap_ms(*, owner_user_id: str) -> int | None:
     """Resolve the per-identity dwell saturation cap (AFA-S2, W2-S2).
 
-    The cap bounds one identity's countable focused dwell per (asset, day): past
+    The cap bounds one identity's valid in-frame time per (asset, day): past
     the cap, further dwell on the same asset the same day earns nothing (the
     sybil's extractable value is bounded). It is resolved PER IDENTITY here so a
     cap can be defined for some identities and not others: return ``None`` for
     an identity with no cap (unbounded), a positive ms ceiling otherwise.
 
     Today every identity gets the published structural ceiling
-    (``DEFAULT_DAILY_ASSET_DWELL_CAP_MS`` — 6h of countable dwell on ONE asset in
-    ONE day, an un-calibrated "no honest single-document day exceeds this"
-    ceiling, documented in ``frame_ivt``; calibration against real traffic is a
-    recorded follow-up). Module-scope seam (mirrors the value-mint seam) so
+    (``DEFAULT_DAILY_ASSET_DWELL_CAP_MS`` — 6h of valid in-frame time on ONE
+    asset in ONE day, an un-calibrated "no honest single-document day exceeds
+    this" ceiling, documented in ``frame_ivt``; calibration against real traffic
+    is a recorded follow-up). Module-scope seam (mirrors the value-mint seam) so
     tests can monkeypatch per-identity caps without touching the route.
     """
     _ = owner_user_id

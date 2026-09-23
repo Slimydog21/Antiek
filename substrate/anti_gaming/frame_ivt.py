@@ -118,11 +118,12 @@ REASON_DWELL_CAP_CLAMPED = "cap_daily_asset_dwell_clamped"
 # benchmarks/rubric_latency --update-baseline) belongs to whoever first has real
 # data and is recorded in the S2 handoff — it is deliberately NOT faked here.
 #
-# Ceiling rationale: countable focused dwell is capped at 1000 ms/second. Even a
-# very heavy reader rarely focus-reads ONE document for more than a few hours in
-# a day; 6 h of COUNTABLE dwell on a SINGLE asset in a SINGLE day is beyond
-# plausible sustained single-document reading — it is where a re-reading bot's
-# otherwise-unbounded accrual is clamped. 6 h = 21_600_000 ms.
+# Ceiling rationale: the countable unit is valid in-frame time (1000 ms per
+# valid in-frame second on the asset). Even a very heavy reader rarely attends
+# to ONE document for more than a few hours in a day; 6 h of IN-FRAME time on a
+# SINGLE asset in a SINGLE day is beyond plausible sustained single-document
+# reading — it is where a re-reading bot's otherwise-unbounded accrual is
+# clamped. 6 h = 21_600_000 ms.
 DEFAULT_DAILY_ASSET_DWELL_CAP_MS = 21_600_000
 
 

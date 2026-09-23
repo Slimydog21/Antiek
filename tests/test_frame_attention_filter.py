@@ -135,6 +135,6 @@ def test_conservation_holds_under_partial_filter_multi_asset():
     assert result.excluded_second_counts == ((REASON_DUPLICATE_INDEX, 1),)
 
 
-def test_weighting_version_is_v3_on_filtered_accrual():
+def test_weighting_version_is_v4_on_filtered_accrual():
     result = aggregate_window(_batch([_second(0), _second(1)]))
-    assert result.weighting_version == "frame-weight-v3"
+    assert result.weighting_version == "frame-weight-v4"

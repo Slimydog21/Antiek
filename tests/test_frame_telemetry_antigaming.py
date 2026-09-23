@@ -283,6 +283,62 @@ def test_no_saturation_cap_when_undefined(isolated_db, monkeypatch):
     assert body["contributor_cents"] == 1000
 
 
+def test_zero_dwell_does_not_escape_saturation_cap(isolated_db, monkeypatch):
+    """W09: the route cannot be bypassed by sending focused_dwell_ms=0; the cap
+    meters the same asset's valid in-frame seconds across windows."""
+    _mint_value(monkeypatch, 1000)
+    _mint_cap(monkeypatch, 1500)
+    _seed_book(isolated_db, document_id="pd-earner")
+    client = _client()
+
+    r1 = client.post("/api/ad/frame-telemetry", json=_batch_n("win:zero-capA", 2, dwell=0))
+    assert r1.status_code == 202, r1.text
+    a = r1.json()
+    assert a["clamped_dwell_ms"] == 500
+    assert a["clamped_cents"] == 250
+    assert a["contributor_cents"] == 750
+    assert a["reconciles"] is True
+
+    holder = _ip_holder_id(isolated_db, "pd-earner")
+    escrow_before = _escrow_usd(isolated_db, holder)
+    r2 = client.post("/api/ad/frame-telemetry", json=_batch_n("win:zero-capB", 2, dwell=0))
+    assert r2.status_code == 202, r2.text
+    b = r2.json()
+    assert b["clamped_dwell_ms"] == 2000
+    assert b["clamped_cents"] == 1000
+    assert b["contributor_cents"] == 0
+    assert b["house_cents"] == 1000
+    assert b["reconciles"] is True
+    # The saturated identity's zero-dwell window moved nothing into escrow.
+    assert _escrow_usd(isolated_db, holder) == escrow_before
+
+
+def _ip_holder_id(db_path, document_id):
+    from runtime.db_lock import connect_read
+
+    con = connect_read(db_path)
+    try:
+        row = con.execute(
+            "SELECT ip_holder_id FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert row is not None and row[0] is not None
+    return row[0]
+
+
+def _escrow_usd(db_path, ip_holder_id):
+    from runtime.db_lock import connect_read
+    from substrate import ip_holders
+
+    con = connect_read(db_path)
+    try:
+        return ip_holders.get(con, ip_holder_id).escrow_balance_usd
+    finally:
+        con.close()
+
+
 # ── post-filter conservation ────────────────────────────────────────────────
 
 
