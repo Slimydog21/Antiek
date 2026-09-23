@@ -42,14 +42,31 @@ vi.mock("./Canvas/Canvas", () => ({
     onCiteSource,
   }: {
     investigationId: string;
-    onCiteSource?: (node: { source_document_id: string | null }) => void;
+    onCiteSource?: (
+      node: { source_document_id: string | null },
+      anchor: { left: number; top: number; right: number; bottom: number; width: number; height: number },
+    ) => void;
   }) => (
     <div data-testid="selected-organism-canvas">
       <span data-testid="selected-organism-id">{investigationId}</span>
-      <button onClick={() => onCiteSource?.({ source_document_id: " doc/evidence 1 " })}>
+      <button
+        onClick={() =>
+          onCiteSource?.(
+            { source_document_id: " doc/evidence 1 " },
+            { left: 10, top: 10, right: 110, bottom: 40, width: 100, height: 30 },
+          )
+        }
+      >
         Read grounded source
       </button>
-      <button onClick={() => onCiteSource?.({ source_document_id: "   " })}>
+      <button
+        onClick={() =>
+          onCiteSource?.(
+            { source_document_id: "   " },
+            { left: 10, top: 10, right: 110, bottom: 40, width: 100, height: 30 },
+          )
+        }
+      >
         Read ungrounded source
       </button>
     </div>
@@ -211,12 +228,12 @@ describe("Deep Research wait arcade gate", () => {
 
     expect(openWindowMock).toHaveBeenCalledWith(
       "reader",
-      { documentId: " doc/evidence 1 " },
-      {
+      { documentId: " doc/evidence 1 ", evidenceSourceContext: true },
+      expect.objectContaining({
         id: "win:reader:%20doc%2Fevidence%201%20",
         title: "Research source",
         replaceOldestAtLimit: true,
-      },
+      }),
     );
     expect(screen.getByTestId("selected-organism-id").textContent).toBe("done-1");
 

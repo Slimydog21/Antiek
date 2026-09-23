@@ -41,7 +41,6 @@ import {
 import { track } from "../../lib/analytics";
 import type { DistilledNode, ResearchSourcePolicy } from "../../lib/api";
 import { DEFAULT_WINDOW_RECT } from "../../workspace/windowsStore";
-import { openWindow } from "../../components/windows/openWindow";
 import CostMeter from "./CostMeter";
 import HardCeilingEvidence from "./HardCeilingEvidence";
 import PlanEditor from "./PlanEditor";
@@ -438,20 +437,6 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
         title: "Research source",
         replaceOldestAtLimit: true,
         ...(rect ? { rect } : {}),
-      },
-    );
-  }, []);
-
-  const openEvidenceSource = useCallback((node: DistilledNode) => {
-    const documentId = node.source_document_id;
-    if (!documentId?.trim()) return;
-    openWindow(
-      "reader",
-      { documentId },
-      {
-        id: `win:reader:${encodeURIComponent(documentId)}`,
-        title: "Research source",
-        replaceOldestAtLimit: true,
       },
     );
   }, []);
