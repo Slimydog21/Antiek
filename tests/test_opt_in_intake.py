@@ -507,6 +507,47 @@ def test_staging_merge_leaves_seed_to_live_for_existing_holder(temp_db, tmp_path
     assert _escrow(temp_db, holder_id) == Decimal("0.01")
 
 
+def _second_work(m: dict) -> dict:
+    """The same publisher with a different work (a new document)."""
+    m2 = copy.deepcopy(m)
+    w = m2["works"][0]
+    w.update(title="A Second Work", isbn="978-0-262-99999-0",
+             doi="10.7551/mitpress/00010.001.0001",
+             body_text=_BODY + " second distinct body")
+    return m2
+
+
+def test_staging_merge_credits_a_new_works_seed_to_an_existing_holder(temp_db, tmp_path):
+    """Codex critic on #3415 (merge_staging.py:423): a holder that already
+    exists live, and a NEW licensed work that arrives only through the merge.
+    The merge is how that document reaches live, so no later live ingest will
+    seed it: the staged seed must be credited by the merge, once."""
+    from runtime.staging_db import prepare_staging_db
+    from tools.merge_staging import merge_staging
+
+    live = intake_manifest(parse_manifest(_manifest_dict(grant=True)), db_path=temp_db,
+                           embedder=_StubEmbedder())
+    holder_id = live.summary.ip_holder_id
+    assert _escrow(temp_db, holder_id) == Decimal("0.01")
+
+    staging = prepare_staging_db(str(tmp_path / "staging.duckdb"))
+    m2 = _second_work(_manifest_dict(grant=True))
+    staged = intake_manifest(parse_manifest(m2), db_path=staging, embedder=_StubEmbedder())
+    assert staged.summary.escrow_accrued is True
+
+    merge_staging(live_db=temp_db, staging_db=staging)
+    assert _escrow(temp_db, holder_id) == Decimal("0.02")
+
+    # Idempotent: a second merge of the same staging DB credits nothing more.
+    merge_staging(live_db=temp_db, staging_db=staging)
+    assert _escrow(temp_db, holder_id) == Decimal("0.02")
+
+    # And the carried key stops a later direct ingest of the work re-seeding it.
+    direct = intake_manifest(parse_manifest(m2), db_path=temp_db, embedder=_StubEmbedder())
+    assert direct.summary.escrow_accrued is False
+    assert _escrow(temp_db, holder_id) == Decimal("0.02")
+
+
 def test_resubmission_adding_one_work_adds_exactly_one_document(temp_db):
     m = _manifest_dict(grant=True)
     intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
