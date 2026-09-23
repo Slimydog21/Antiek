@@ -39,6 +39,17 @@ def isolated_db(monkeypatch):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def _derived_owner() -> str:
+    """Match request_owner_user_id for the unauthenticated_local test path."""
+    from interfaces.research.api.account_memory_identity import (
+        derive_owner_from_verified_email,
+    )
+
+    owner = derive_owner_from_verified_email("operator@localhost")
+    assert owner is not None
+    return owner
+
+
 def test_one_acu_per_investigation_start_constant():
     assert ACU_PER_INVESTIGATION_START == 1
 
@@ -104,10 +115,10 @@ def test_http_post_investigations_meters_and_soft_warns(isolated_db, monkeypatch
 
     with connect_write(isolated_db, purpose="test:seed-cap") as con:
         set_capacity(
-            con, owner_user_id="__operator__", tier="custom", monthly_compute_units=2
+            con, owner_user_id=_derived_owner(), tier="custom", monthly_compute_units=2
         )
         record_investigation_start_acu(
-            con, owner_user_id="__operator__", investigation_id="inv-seed"
+            con, owner_user_id=_derived_owner(), investigation_id="inv-seed"
         )
 
     client = TestClient(create_app(register_wrestling=False, register_providers=False))
@@ -130,10 +141,10 @@ def test_http_hard_refuse_429(isolated_db, monkeypatch):
 
     with connect_write(isolated_db, purpose="test:hard-http") as con:
         set_capacity(
-            con, owner_user_id="__operator__", tier="custom", monthly_compute_units=1
+            con, owner_user_id=_derived_owner(), tier="custom", monthly_compute_units=1
         )
         record_investigation_start_acu(
-            con, owner_user_id="__operator__", investigation_id="inv-fill"
+            con, owner_user_id=_derived_owner(), investigation_id="inv-fill"
         )
 
     client = TestClient(create_app(register_wrestling=False, register_providers=False))

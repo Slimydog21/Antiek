@@ -30,7 +30,17 @@ from substrate.graph import (  # noqa: E402
     insert_document,
 )
 
-_OWNER_DEFAULT = "__operator__"
+def _derived_owner() -> str:
+    from interfaces.research.api.account_memory_identity import (
+        derive_owner_from_verified_email,
+    )
+
+    owner = derive_owner_from_verified_email("operator@localhost")
+    assert owner is not None
+    return owner
+
+
+_OWNER_DEFAULT = _derived_owner()
 
 
 @pytest.fixture(autouse=True)
@@ -70,6 +80,16 @@ def seeded_chunk(tmp_path, monkeypatch):
             chunk_id="chunk-tiers-1",
         )
     return {"chunk_id": "chunk-tiers-1", "document_id": "doc-tiers", "db": db}
+
+
+def _derived_owner() -> str:
+    from interfaces.research.api.account_memory_identity import (
+        derive_owner_from_verified_email,
+    )
+
+    owner = derive_owner_from_verified_email("operator@localhost")
+    assert owner is not None
+    return owner
 
 
 def _get(client: TestClient, chunk_id: str):
