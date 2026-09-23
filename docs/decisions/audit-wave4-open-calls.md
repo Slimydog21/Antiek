@@ -1,7 +1,7 @@
 # Audit wave 4: what the repairs leave open
 
 **Date:** 2026-09-23
-**Status:** PROPOSED. Three operator calls, each with a recommendation, and four latent defects recorded with the condition that makes each one live. None of them is executed.
+**Status:** PROPOSED. Four operator calls, each with a recommendation, and four latent defects recorded with the condition that makes each one live. None of them is executed.
 **Owner:** Antiek audit wave 4. It was an executing-refuter audit of eight surfaces wave 3 did not cover, at main `0222ed443`, using 78 agents. It confirmed 18 findings, refuted 17 and left 8 low-severity ones unverified.
 **Builds on:** the wave-4 repairs that WERE engineering calls. They shipped as `#3413` (C10 deploy gate), the `fix/audit-wave4` stack (C01 C02 C03 C04 C06 C07 C08 C09 C11 C12 C13 C15 C16 C18, plus the daemon unit variable) and `#3412` (tracked symlink). Each has a test that was red before its fix and a mutation check. C05 (`owner_byot_dispatch.py`) and C14 (`UsagePanel.tsx`) sit inside the BYOT lane's open seam and were handed to it on #3400 rather than fixed in parallel.
 
@@ -9,7 +9,7 @@
 
 ## Why these are recorded and not built
 
-The three calls in the first part change a policy: who is paid, what the demand test measures, and whether a protected file may change. The four latent defects in the second part are real mechanisms that no production path reaches today. Each one becomes live when a specific wiring change lands, so the right time to close it is that change, not now. The audit's rule was "record, recommend, do not guess", and this file is that record.
+The four calls in the first part change a policy: who is paid, what the demand test measures, whether a protected file may change, and what an unmetered provider costs on the books. The four latent defects in the second part are real mechanisms that no production path reaches today. Each one becomes live when a specific wiring change lands, so the right time to close it is that change, not now. The audit's rule was "record, recommend, do not guess", and this file is that record.
 
 ---
 
@@ -32,6 +32,12 @@ The verdict now refuses to run (`GateNotRunnable`) when no in-window `export_off
 `DaemonBudget.reserve` reads the day's sidecar, adds, and writes it back with no lock. In a repro, four concurrent runners were granted $12.50 against a $5.00 cap and left the sidecar corrupt. Production spends nothing today because both entry points run `no_op_spawn`. The fix is an `flock` around the read-modify-write, which is about ten lines, but `orchestration/continuous/budget.py` is one of the four files `tests/test_suggestions_surface.py::test_section_7_4_caps_are_byte_unchanged_vs_origin_main` pins byte-identical to `origin/main`. Any change to it goes red by design.
 
 **Recommendation:** make the lock a precondition of the Sprint-14 PR that introduces a real `spawn_fn`. That PR must touch the daemon anyway and will need a deliberate tripwire update. Adding the lock now would require weakening the tripwire for code that spends nothing.
+
+### 4. What a Prime Agent dispatch costs on the books (consequence of C06)
+
+The C06 repair makes `substrate/dispatch/router.py` bill any successful call whose usage is unreported at its ceiling: one input token per prompt byte plus `effective_max_tokens`, at the tier's pricing. Before the repair it recorded a definite $0. `providers/prime_agent.py` always returns `raw_usage={}`, because `prime-agent -p` reports no token counts, so every Prime Agent call now records that ceiling at its base tier's price. A fallback or override inherits the base tier's pricing. This is correct under the finding's principle (unknown usage is not a free call), but it moves the Prime lane's spend figures and budget headroom.
+
+**Recommendation:** if Prime is flat-rate for this operator, put it on a tier with zero pricing (explicitly free). If it is metered, surface real counts from `PrimeAgentRLMBackend`'s receipt as `raw_usage`. The one wrong answer is `reported=True` with zeros, which recreates C06. The owner of the Prime lane (#3399) has been told.
 
 ---
 
