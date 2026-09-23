@@ -373,6 +373,30 @@ describe("BookReader", () => {
     getFullTextMock.mockRejectedValue(new Error("book_not_found"));
     await renderReader();
     await waitFor(() => expect(screen.getByText(/in the library/)).toBeTruthy());
+    // Not-found is a neutral note with a way back, not an alarm.
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("link", { name: "Go to the library" }).getAttribute("href")).toBe("/library");
+  });
+
+  it("names a failed load in plain words, keeps the raw error off screen, and retries (design wave 3)", async () => {
+    // Before: a bare red "Failed to fetch" in the middle of the page, no retry.
+    getBookMock.mockRejectedValueOnce(new Error("Failed to fetch"));
+    getFullTextMock.mockRejectedValueOnce(new Error("Failed to fetch"));
+    await renderReader();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/Couldn.t open this book/);
+    expect(alert.textContent).not.toContain("Failed to fetch");
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByTestId("book-reader-root")).toBeTruthy();
+  });
+
+  it("names what is opening while the book loads", async () => {
+    getBookMock.mockReturnValue(new Promise(() => {}));
+    getFullTextMock.mockReturnValue(new Promise(() => {}));
+    await renderReader();
+    expect(screen.getByRole("status").textContent).toContain("Opening the book");
   });
 
   it("spins a research from the current page and hands off to it", async () => {

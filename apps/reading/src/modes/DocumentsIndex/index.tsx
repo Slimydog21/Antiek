@@ -5,6 +5,7 @@ import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
+import { LoadingState } from "../../components/states";
 
 /**
  * Documents listing UI (master-spec §4.1).
@@ -141,7 +142,7 @@ export default function DocumentsIndex() {
           )}
 
           {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+            <LoadingState variant="inline" label="Opening your documents" />
           )}
 
           {!loading && rows.length === 0 && !error && (

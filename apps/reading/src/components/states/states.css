@@ -55,10 +55,22 @@
 .st-page .st-actions {
   justify-content: center;
 }
-/* The error's word always travels with an icon (never colour alone). */
-.st-icon {
+/* The error's word always travels with an icon (never colour alone): a
+   ringed "!" in the danger colour, drawn in CSS so it costs no entry JS and
+   hidden from assistive tech (the empty alt after the slash). */
+.st-err::before {
+  content: "!" / "";
   flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
   color: var(--danger);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* Skeletons: the geometry of what is opening, drawn in a faint ink wash.

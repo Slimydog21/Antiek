@@ -17,7 +17,7 @@
  * boundaries, so this is a true unit of the monitor (no network, no socket).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import type { InvestigationSummary } from "../../lib/api";
@@ -193,12 +193,33 @@ describe("MyResearch — honest aggregate (M2)", () => {
 });
 
 describe("MyResearch — honest no-key state + use-gate (M4)", () => {
-  it("shows the honest no-result state when the list is empty", () => {
+  it("an empty list is a neutral empty state that invites the first research (C3)", () => {
+    // Before: a red role=alert blaming a missing provider key ("the engine
+    // returned no result … the model provider isn't configured") for what is
+    // simply a first run.
     listState.current.investigations = [];
     renderMonitor();
-    // The shared no-provider sentence (AIActionFailure no-reason branch).
-    expect(screen.getByText(/the engine returned no result/i)).toBeTruthy();
-    expect(screen.getByText(/model provider isn/i)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("No research yet")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/engine returned no result|provider/i);
+    expect(screen.getAllByRole("button", { name: "Start a research" }).length).toBeGreaterThan(0);
+  });
+
+  it("a failed load says what failed, hides the raw error, and retries", async () => {
+    const refetch = vi.fn();
+    listState.current = { ...listState.current, error: "GET /investigations failed: HTTP 500", refetch };
+    renderMonitor();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toMatch(/Couldn.t load your research/);
+    expect(alert.textContent).not.toMatch(/HTTP 500|GET \/investigations/);
+    fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("names what is opening while the list loads", () => {
+    listState.current = { ...listState.current, loading: true };
+    renderMonitor();
+    expect(screen.getByRole("status").textContent).toContain("Opening your research");
   });
 
   it("disables launch with a clear reason when unauthenticated", () => {

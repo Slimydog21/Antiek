@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonTable from "../../components/lemon/LemonTable";
 import { apiFetch } from "../../lib/api";
+import { LoadingState } from "../../components/states";
 
 /**
  * Operator-facing outcomes audit surface (master-spec §13.8).
@@ -97,7 +98,7 @@ export default function OutcomesIndex() {
           )}
 
           {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+            <LoadingState variant="inline" label="Opening the outcomes audit" />
           )}
 
           {!loading && rows.length === 0 && !error && (

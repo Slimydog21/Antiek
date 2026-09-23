@@ -42,7 +42,7 @@ import { getBudgetDefaults, type BudgetDefaults } from "../../api/research";
 import { useAuth } from "../../lib/auth";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../../lib/api";
-import AIActionFailure from "../../shared/AIActionFailure";
+import { EmptyState, ErrorState, LoadingState } from "../../components/states";
 import { aggregateAttention, hasUnseen } from "../../shared/attention";
 import {
   isUnseen,
@@ -265,22 +265,23 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
 
         {error && <ListError error={error} onRetry={refetch} />}
 
-        {/* No-key / nothing-yet honest state. The common production reason a
-            research list is empty is that no model provider is configured, so
-            we reuse the shared AIActionFailure no-reason branch which says
-            exactly that — never a hopeful spinner. */}
+        {/* An empty list is a first run, not a failure: a neutral empty state
+            that invites the first research (it used to be a red role=alert
+            blaming a missing provider key). */}
         {!loading && !error && investigations.length === 0 && (
-          <div className="rounded-md border border-rule px-4 py-8 dark:border-charcoal-1">
-            <AIActionFailure
-              title="No research yet"
-              onRetry={() => navigate("/")}
-              retryLabel="Start a research"
-            />
-          </div>
+          <EmptyState
+            title="No research yet"
+            body="Research you start shows up here, running or finished."
+            action={
+              <LemonButton variant="primary" size="sm" onClick={() => navigate("/")}>
+                Start a research
+              </LemonButton>
+            }
+          />
         )}
 
         {loading && investigations.length === 0 && (
-          <p className="text-sm italic text-shadow-1 dark:text-moonlight">Loading…</p>
+          <LoadingState variant="inline" label="Opening your research" />
         )}
 
         {groups.length > 0 && (
@@ -486,9 +487,13 @@ function ResearchRow({
 
 function ListError({ error, onRetry }: { error: string; onRetry: () => void }) {
   return (
-    <div className="rounded-md border border-rule px-4 py-6 dark:border-charcoal-1">
-      <AIActionFailure title="Couldn’t load your research" reason={error} onRetry={onRetry} />
-    </div>
+    <ErrorState
+      variant="inline"
+      title="Couldn’t load your research"
+      body="Anything already running keeps running. Try again in a moment."
+      detail={error}
+      onRetry={onRetry}
+    />
   );
 }
 

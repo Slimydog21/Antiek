@@ -31,7 +31,6 @@ export function LoadingState({
   shape = "list",
   rows = 3,
   variant = "page",
-  className = "",
 }: {
   /** What is opening, in the reader's words: "Opening the library". */
   label: string;
@@ -39,11 +38,10 @@ export function LoadingState({
   shape?: "list" | "page";
   rows?: number;
   variant?: Variant;
-  className?: string;
 }) {
   const bars = shape === "page" ? 7 : rows;
   return (
-    <div role="status" aria-live="polite" className={`st st-${variant} ${className}`}>
+    <div role="status" aria-live="polite" className={variant === "page" ? "st st-page" : "st"}>
       <p className="st-body">{label}…</p>
       <div aria-hidden="true" data-skeleton={shape} className="st-skel">
         {Array.from({ length: bars }, (_, i) => (
@@ -60,7 +58,6 @@ export function EmptyState({
   action,
   art = true,
   variant = "page",
-  className = "",
 }: {
   title: string;
   body?: ReactNode;
@@ -69,10 +66,9 @@ export function EmptyState({
   /** The empty mascot pose. Decline it where the brand cast is wrong. */
   art?: boolean;
   variant?: Variant;
-  className?: string;
 }) {
   return (
-    <div className={`st st-${variant} ${className}`}>
+    <div className={`st st-${variant}`}>
       {art && (
         <span data-state-art aria-hidden="true">
           <BrainMascot mood="empty" size={64} />
@@ -90,9 +86,7 @@ export function ErrorState({
   body,
   detail,
   onRetry,
-  retryLabel = "Try again",
   variant = "page",
-  className = "",
 }: {
   /** What failed: "Couldn't open this book". */
   title: string;
@@ -101,9 +95,7 @@ export function ErrorState({
   /** The raw technical message, copied on request and never shown. */
   detail?: string | null;
   onRetry?: () => void;
-  retryLabel?: string;
   variant?: Variant;
-  className?: string;
 }) {
   const [copy, setCopy] = useState<"idle" | "done" | "failed">("idle");
   const copyDetail = () => {
@@ -115,20 +107,14 @@ export function ErrorState({
       );
   };
   return (
-    <div role="alert" className={`st st-${variant} ${className}`}>
-      <p className="st-title">
-        <svg className="st-icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.6" />
-          <path d="M8 4.5v4.2M8 10.9v.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        </svg>
-        {title}
-      </p>
+    <div role="alert" className={`st st-${variant}`}>
+      <p className="st-title st-err">{title}</p>
       {body && <p className="st-body">{body}</p>}
       {(onRetry || detail) && (
         <div className="st-actions">
           {onRetry && (
             <LemonButton variant="primary" size="sm" onClick={onRetry}>
-              {retryLabel}
+              Try again
             </LemonButton>
           )}
           {detail && (

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
@@ -11,6 +11,7 @@ import type {
   SelectionProvenance,
 } from "../shared/FloatMenu/useFloatMenuSelection";
 import ReadingColumn from "../../components/reader/ReadingColumn";
+import { EmptyState, ErrorState, LoadingState } from "../../components/states";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
@@ -317,12 +318,37 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
   }, [pageIndex, houseFill, documentId, pages.length, observePage, body?.ad_eligible]);
 
   if (loading) {
-    return <CenterNote inWindow={inWindow}>Opening the book…</CenterNote>;
+    return (
+      <CenterNote inWindow={inWindow}>
+        <LoadingState label="Opening the book" shape="page" />
+      </CenterNote>
+    );
+  }
+  if (error === "book_not_found") {
+    return (
+      <CenterNote inWindow={inWindow}>
+        <EmptyState
+          title="That book isn't in the library."
+          action={
+            <Link to="/library" className="text-sm text-teal underline underline-offset-2">
+              Go to the library
+            </Link>
+          }
+        />
+      </CenterNote>
+    );
   }
   if (error || !book || !body) {
+    // What failed and what is safe; the raw message ("Failed to fetch") is
+    // for "Copy error details", never the page.
     return (
-      <CenterNote tone="error" inWindow={inWindow}>
-        {error === "book_not_found" ? "That book isn't in the library." : error}
+      <CenterNote inWindow={inWindow}>
+        <ErrorState
+          title="Couldn't open this book"
+          body="Your library and notes are unchanged. Check your connection, then try again."
+          detail={error}
+          onRetry={refreshSourceBody}
+        />
       </CenterNote>
     );
   }
@@ -581,13 +607,13 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
   );
 }
 
+/** The reader's surface while it has no book to show: a shared state
+ *  (loading, not found, failed) centred on the reader's own ground. */
 function CenterNote({
   children,
-  tone,
   inWindow = false,
 }: {
   children: React.ReactNode;
-  tone?: "error";
   inWindow?: boolean;
 }) {
   return (
@@ -595,13 +621,7 @@ function CenterNote({
       data-testid="book-reader-status"
       className={`${inWindow ? "h-full bg-transparent" : "h-full bg-ice-0 dark:bg-charcoal-2"} flex items-center justify-center`}
     >
-      <p
-        className={`text-sm font-serif ${
-          tone === "error" ? "text-emperor" : "text-shadow-1 dark:text-moonlight italic"
-        }`}
-      >
-        {children}
-      </p>
+      {children}
     </div>
   );
 }

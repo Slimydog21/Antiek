@@ -51,4 +51,10 @@ describe("AIActionFailure coded failures", () => {
     expect(screen.getByText(/engine reported a problem/i)).toBeTruthy();
     expect(screen.getByText(/Engine: quota exceeded/)).toBeTruthy();
   });
+
+  it("sets its sentence in the interface face, never mono (T5)", () => {
+    render(<AIActionFailure title="The research didn’t complete" onRetry={() => {}} />);
+    const sentence = screen.getByText(/The research didn’t complete/);
+    expect(sentence.closest(".font-mono")).toBeNull();
+  });
 });

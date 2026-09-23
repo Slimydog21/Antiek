@@ -8,6 +8,7 @@ import LemonTextarea from "../../components/lemon/LemonTextarea";
 import LemonSelect from "../../components/lemon/LemonSelect";
 import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { ErrorState } from "../../components/states";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
@@ -665,9 +666,22 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             />
           )}
 
-          {error && (
-            <div className="text-xs font-mono text-emperor">{error}</div>
-          )}
+          {/* A failed POST says what failed and what is safe; the raw
+              "Submit failed: POST … HTTP 500" goes to Copy error details. A
+              validation or capacity message is already a sentence for the
+              reader, set in the interface face. */}
+          {error &&
+            (error.startsWith("Submit failed") ? (
+              <ErrorState
+                variant="inline"
+                title="Couldn’t start the research"
+                body="Your question is still here, so you can send it again."
+                detail={error}
+                onRetry={() => void onSubmit()}
+              />
+            ) : (
+              <p className="text-sm text-danger">{error}</p>
+            ))}
 
           <div className="rounded-hog border border-rule dark:border-charcoal-1 bg-ice-1/80 dark:bg-charcoal-1/40 p-3 space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -696,7 +710,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               />
             </div>
             {modelsState === "error" ? (
-              <p className="text-xs font-mono text-emperor" role="alert">
+              <p className="text-sm text-danger" role="alert">
                 Can’t load executable models. Check Settings, then retry inventory.
               </p>
             ) : selectedModel ? (
