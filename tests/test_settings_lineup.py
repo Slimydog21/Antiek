@@ -24,8 +24,26 @@ from interfaces.research.api.settings_lineup import (
 from substrate.dispatch.router import reset_provider_registry
 
 
+def _derived_owner() -> str:
+    from interfaces.research.api.account_memory_identity import (
+        derive_owner_from_verified_email,
+    )
+
+    owner = derive_owner_from_verified_email("operator-under-test@example.com")
+    assert owner is not None
+    return owner
+
+
 def _fresh_app() -> FastAPI:
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        request.state.user_id = "__operator__"
+        request.state.user_email = "operator-under-test@example.com"
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
     register_settings_budget_routes(app)
     register_settings_lineup_routes(app)
     return app
@@ -112,7 +130,7 @@ def test_put_and_get_roundtrip(client: TestClient) -> None:
     }
     # persisted to the sidecar
     registry = json.loads(_registry_path().read_text(encoding="utf-8"))
-    assert "__operator__" in registry["owners"]
+    assert _derived_owner() in registry["owners"]
 
     # GET returns the same view
     get = client.get("/settings/lineup")

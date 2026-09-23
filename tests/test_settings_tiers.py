@@ -30,7 +30,17 @@ from substrate.graph import (  # noqa: E402
     insert_document,
 )
 
-_OWNER_DEFAULT = "__operator__"
+def _derived_owner() -> str:
+    from interfaces.research.api.account_memory_identity import (
+        derive_owner_from_verified_email,
+    )
+
+    owner = derive_owner_from_verified_email("operator@localhost")
+    assert owner is not None
+    return owner
+
+
+_OWNER_DEFAULT = _derived_owner()
 
 
 @pytest.fixture(autouse=True)
