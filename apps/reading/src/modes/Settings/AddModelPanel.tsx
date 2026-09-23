@@ -554,7 +554,7 @@ export default function AddModelPanel() {
                   wrapperClassName="w-full"
                   value={modelId}
                   onChange={(e) => setModelId(e.target.value)}
-                  placeholder="deepseek-chat"
+                  placeholder="deepseek-flash"
                 />
               </div>
             )}

@@ -16,7 +16,7 @@ from substrate.dispatch.router import reset_provider_registry
 _BODY = {
     "provider_kind": "openai_compat",
     "provider_catalog_id": "deepseek",
-    "model_id": "deepseek-chat",
+    "model_id": "deepseek-flash",
     "display_name": "My DeepSeek",
     "api_key": "sk-test-only-user-key-abcdefghijklmnopqrstuvwxyz",
 }
@@ -96,7 +96,7 @@ def test_two_sessions_cannot_list_resolve_or_delete_each_others_models(
     choice_a = {
         "authority": "user_model",
         "provider_id": id_a,
-        "model_id": "deepseek-chat",
+        "model_id": "deepseek-flash",
     }
     assert (
         client.post("/settings/models/user/resolve", json=choice_a, cookies=cookies_b).status_code

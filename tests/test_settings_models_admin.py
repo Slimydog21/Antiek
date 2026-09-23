@@ -39,7 +39,7 @@ _SECRET = "sk-AAAA-super-secret-user-model-key-1234567890"
 
 _ADD_BODY = {
     "provider_kind": "openai_compat",
-    "model_id": "deepseek-chat",
+    "model_id": "deepseek-flash",
     "display_name": "My DeepSeek",
     "base_url": "https://api.deepseek.com/v1",
     "api_key": _SECRET,
@@ -108,7 +108,7 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     row = next(m for m in models.json()["models"] if m["provider_id"] == "user-my-deepseek")
     assert row["registered"] is True
     assert row["ready"] is False
-    assert row["model_id"] == "deepseek-chat"
+    assert row["model_id"] == "deepseek-flash"
     assert row["route_eligible"] is True
     assert row["pricing_status"] == "unknown"
     assert row["hard_ceiling_eligible"] is False
@@ -238,14 +238,14 @@ def test_exact_choice_resolves_but_execution_remains_hard_ceiling_blocked(
         json={
             "authority": "user_model",
             "provider_id": "user-my-deepseek",
-            "model_id": "deepseek-chat",
+            "model_id": "deepseek-flash",
         },
     )
     assert response.status_code == 200
     assert response.json() == {
         "authority": "user_model",
         "provider_id": "user-my-deepseek",
-        "model_id": "deepseek-chat",
+        "model_id": "deepseek-flash",
         "pricing_status": "unknown",
         "hard_ceiling_eligible": False,
         "execution_status": "blocked_unknown_pricing",
@@ -289,7 +289,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
     )
     identity = ProviderRouteIdentity(
         "openai_compat",
-        "deepseek-chat",
+        "deepseek-flash",
         "https://api.deepseek.com",
         "user.prompt.generate",
         "generate",
@@ -297,7 +297,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
     cost = CostCatalogEntry(
         seam_id="user.prompt.generate",
         provider="qualified-family",
-        model="deepseek-chat",
+        model="deepseek-flash",
         operation="generate",
         rates=(UnitRate(BillingUnit.CALL, Decimal("0.01")),),
         snapshot="qualified-family-v1",
@@ -322,7 +322,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
     }
     qualification = ProviderQualification(
         "qualified-family",
-        "deepseek-chat",
+        "deepseek-flash",
         "generate",
         "2026-07-16",
         QualificationVerdict.QUALIFIED,
@@ -335,7 +335,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
 
     class ExactAdapter:
         provider = "user-my-deepseek"
-        model = "deepseek-chat"
+        model = "deepseek-flash"
         endpoint = "https://api.deepseek.com"
         capabilities = ProviderCapabilities(True, True, True, frozenset({BillingUnit.CALL}))
 
@@ -376,7 +376,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
         json={
             "authority": "user_model",
             "provider_id": "user-my-deepseek",
-            "model_id": "deepseek-chat",
+            "model_id": "deepseek-flash",
         },
     ).json()
     for projected in (user_row, generic_row, resolved):
@@ -390,7 +390,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
     "choice",
     [
         {"authority": "user_model", "provider_id": "user-my-deepseek", "model_id": "other"},
-        {"authority": "user_model", "provider_id": "user-other", "model_id": "deepseek-chat"},
+        {"authority": "user_model", "provider_id": "user-other", "model_id": "deepseek-flash"},
     ],
 )
 def test_non_exact_choice_fails_value_free(client: TestClient, choice: dict[str, str]) -> None:
@@ -409,7 +409,7 @@ def test_deleted_stale_and_credential_rebound_routes_fail_closed(
     choice = {
         "authority": "user_model",
         "provider_id": "user-my-deepseek",
-        "model_id": "deepseek-chat",
+        "model_id": "deepseek-flash",
     }
     client.app.state.registered_providers.discard("user-my-deepseek")
     assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
@@ -472,7 +472,7 @@ def test_same_name_adapter_replacement_revokes_route_authority(client: TestClien
     choice = {
         "authority": "user_model",
         "provider_id": "user-my-deepseek",
-        "model_id": "deepseek-chat",
+        "model_id": "deepseek-flash",
     }
     assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
     generic_row = next(
@@ -492,7 +492,7 @@ def test_second_live_app_preserves_equivalent_route_authority(env: Path) -> None
         choice = {
             "authority": "user_model",
             "provider_id": "user-my-deepseek",
-            "model_id": "deepseek-chat",
+            "model_id": "deepseek-flash",
         }
         assert first.post("/settings/models/user/resolve", json=choice).status_code == 200
 
@@ -531,7 +531,7 @@ def test_ciphertext_substitution_revokes_route_and_cannot_reveal_other_key(
     choice = {
         "authority": "user_model",
         "provider_id": "user-my-deepseek",
-        "model_id": "deepseek-chat",
+        "model_id": "deepseek-flash",
     }
     response = client.post("/settings/models/user/resolve", json=choice)
     assert response.status_code == 409
@@ -915,7 +915,7 @@ def test_boot_migrates_legacy_user_model_without_losing_authority(env: Path) -> 
         choice = {
             "authority": "user_model",
             "provider_id": "user-my-deepseek",
-            "model_id": "deepseek-chat",
+            "model_id": "deepseek-flash",
         }
         assert reborn.post("/settings/models/user/resolve", json=choice).status_code == 200
         assert get_provider("user-my-deepseek")._resolve_api_key() == _SECRET  # noqa: SLF001

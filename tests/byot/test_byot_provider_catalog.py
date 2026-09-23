@@ -54,8 +54,8 @@ def test_presets_have_exact_positive_price_rows() -> None:
     )
     deepseek = get_provider_preset("deepseek")
     assert {variant.model_id for variant in deepseek.models} == {
-        "deepseek-chat",
-        "deepseek-reasoner",
+        "deepseek-flash",
+        "deepseek-v4-pro",
     }
 
     entries = route_authority_catalog_entries()
@@ -165,7 +165,9 @@ def test_preset_user_key_is_registered_route_eligible_and_priced(
         assert row["route_eligible"] is True
         assert row["pricing_status"] == "known"
         assert row["execution_status"] == "blocked_idempotency_unproven"
-        assert row["rate_snapshot"] == "deepseek-v4-flash-2026-08-spec"
+        # Registered under the retired name, stored and priced as the current model.
+        assert row["model_id"] == "deepseek-flash"
+        assert row["rate_snapshot"] == "deepseek-flash-v4.1-2026-09-23"
 
         custom = client.post(
             "/settings/models/user",
@@ -181,3 +183,37 @@ def test_preset_user_key_is_registered_route_eligible_and_priced(
         assert custom.json()["pricing_status"] == "unknown"
         assert custom.json()["execution_status"] == "blocked_unknown_pricing"
     reset_provider_registry()
+
+
+def test_retired_deepseek_names_resolve_to_the_current_models() -> None:
+    """DeepSeek discontinued deepseek-chat / deepseek-reasoner (2026-07-24) and
+    retired V4 Flash for V4.1 Flash (2026-09-10). A key saved under an old
+    name must resolve to the current model, not fail at the provider."""
+    from runtime.research_runner.byot_provider_catalog import (
+        canonical_model_id,
+        get_model_variant,
+    )
+
+    deepseek = get_provider_preset("deepseek")
+    assert canonical_model_id(deepseek, "deepseek-reasoner") == "deepseek-v4-pro"
+    assert canonical_model_id(deepseek, "deepseek-chat") == "deepseek-flash"
+    assert canonical_model_id(deepseek, "deepseek-v4-flash") == "deepseek-flash"
+    assert canonical_model_id(deepseek, "deepseek-flash") == "deepseek-flash"
+    assert get_model_variant(deepseek, "deepseek-chat").model_id == "deepseek-flash"
+    # Legacy aliases are scoped to their provider.
+    assert canonical_model_id(get_provider_preset("kimi"), "deepseek-chat") == "deepseek-chat"
+
+
+def test_deepseek_ceiling_uses_peak_cache_miss_rates() -> None:
+    """The ceiling projection must never under-estimate: DeepSeek's peak
+    cache-miss rates per 1M tokens (pricing page, checked 2026-09-23)."""
+    from decimal import Decimal
+
+    million = Decimal("1000000")
+    rows = {
+        v.model_id: {r.unit.value: r.usd_per_unit * million for r in v.rates}
+        for v in get_provider_preset("deepseek").models
+    }
+    assert rows["deepseek-flash"] == {"input_token": Decimal("0.30"), "output_token": Decimal("1.20")}
+    assert rows["deepseek-v4-pro"] == {"input_token": Decimal("1.32"), "output_token": Decimal("3.96")}
+

@@ -329,11 +329,11 @@ def _freeze_current_authority(
             resource_id=document_id,
             action=action,
             logical_operation_id=logical_operation_id,
-            requested_model=RequestedModel(validated.provider_id, validated.model_id),
+            requested_model=RequestedModel(validated.provider_id, resolved.model_id),
             payer_policy=PayerPolicy.BYOT_ONLY,
             proposed_routes=(ProposedRoute(
                 provider_id=validated.provider_id,
-                model_id=validated.model_id,
+                model_id=resolved.model_id,
                 projected_max_cents=projected_cents,
                 owner_credential=candidate,
                 payer=payer,

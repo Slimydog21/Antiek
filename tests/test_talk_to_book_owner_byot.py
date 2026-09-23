@@ -72,13 +72,13 @@ def _config() -> DispatchConfig:
     return DispatchConfig({"thought_partner": "pro"}, {"pro": tier})
 
 
-def _authority_fixture(monkeypatch: pytest.MonkeyPatch):
+def _authority_fixture(monkeypatch: pytest.MonkeyPatch, model_id: str = "deepseek-flash"):
     record = models_admin.UserModelRecord(
         id="user-owner-model",
         owner_user_id="owner-a",
         provider_kind="openai_compat",
         provider_catalog_id="deepseek",
-        model_id="deepseek-chat",
+        model_id=model_id,
         display_name="Owner model",
         base_url="https://api.deepseek.com",
         cred_ref="cred-owner",
@@ -133,8 +133,39 @@ def test_exact_owner_model_executes_one_rung_without_house_fallback(
     assert len(authority.digest()) == 64
     assert provider.calls[0]["prompt"] == "private book prompt"
     assert house.calls == []
-    assert result.cost_usd == pytest.approx((2 * 0.28 + 3 * 0.42) / 1_000_000)
+    # deepseek-flash peak cache-miss rates: $0.30 in / $1.20 out per 1M tokens.
+    assert result.cost_usd == pytest.approx((2 * 0.30 + 3 * 1.20) / 1_000_000)
     assert ledger.key_usage(record.id, "owner-a").used_cents == 1
+
+
+@pytest.mark.parametrize(("stored", "sent"), [
+    ("deepseek-chat", "deepseek-flash"),
+    ("deepseek-reasoner", "deepseek-v4-pro"),
+])
+def test_record_saved_under_a_retired_name_sends_the_current_model(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stored: str, sent: str,
+) -> None:
+    """A key registered before DeepSeek retired deepseek-chat/deepseek-reasoner
+    must not fail at the provider: it is priced, bound and sent as the current
+    model, and a remembered choice under the old name still resolves."""
+    app, record, _, provider, house = _authority_fixture(monkeypatch, model_id=stored)
+    result, authority = dispatch_talk_to_book_byot(
+        app=app,
+        request_owner_user_id="owner-a",
+        resource_owner_user_id="owner-a",
+        document_id="doc-a",
+        choice=models_admin.UserModelChoice(
+            authority="user_model", provider_id=record.id, model_id=stored,
+        ),
+        prompt="private book prompt",
+        investigation_id="read-doc-a",
+        logical_operation_id="turn-legacy",
+        config=_config(),
+        usage_ledger=ByotUsageLedger(tmp_path / "usage.sqlite3"),
+    )
+    assert provider.calls[0]["model"] == sent
+    assert (result.provider, result.model) == (record.id, sent)
+    assert house.calls == []
 
 
 @pytest.mark.parametrize("resource_owner", ["owner-b", "__operator__"])
@@ -208,7 +239,7 @@ def test_call_time_route_mutation_refuses_before_provider_io(
         if calls == 1:
             return original_load()
         changes = {
-            "model": {"model_id": "deepseek-reasoner"},
+            "model": {"model_id": "deepseek-v4-pro"},
             "endpoint": {"base_url": "https://example.invalid/v1"},
             "fingerprint": {"cred_fingerprint": "b" * 64},
         }[mutation]
