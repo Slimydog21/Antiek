@@ -12,7 +12,7 @@ from acquisition.youtube.client import TranscriptSegment, reset_youtube_fetch_co
 from interfaces.research.api import research_tool_search
 from interfaces.research.api.app import create_app
 from runtime.connectors.registry import ToolConnectionUnavailable
-from runtime.connectors.youtube import YouTubeVideoMetadata
+from runtime.connectors.youtube import YouTubeQuotaExhausted, YouTubeVideoMetadata
 from runtime.db_lock import connect_read
 
 
@@ -144,3 +144,65 @@ def test_connected_tool_for_request_needs_a_signed_in_owner_and_a_connection(
 
     monkeypatch.setattr(research_tool_search, "resolve_tool_connection", unavailable)
     assert research_tool_search.connected_tool_for_request(request, "youtube") is None
+
+
+def test_credentialed_metadata_failure_is_an_error_never_a_yt_dlp_fallback(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """A connected key that fails reports the failure; it does not scrape instead.
+
+    The user connected the official Data API so their ingests stop going
+    through yt-dlp, which violates YouTube's terms whatever the use. Quietly
+    falling back to yt-dlp when their key fails (quota out, key revoked, a
+    transport error) would scrape on their behalf without telling them. The
+    request answers status="error" naming the failure, and nothing is written.
+    """
+    db_path = tmp_path / "graph.duckdb"
+    events_dir = tmp_path / "events"
+    events_dir.mkdir()
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(db_path))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events_dir))
+    monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    scraped: list[str] = []
+
+    def yt_dlp_metadata(video_id: str) -> dict[str, object]:
+        scraped.append(video_id)
+        return {"title": "yt-dlp title", "uploader": "c", "duration": 180, "upload_date": "20260812"}
+
+    monkeypatch.setattr("acquisition.youtube.client._fetch_metadata", yt_dlp_metadata)
+    monkeypatch.setattr("acquisition.youtube.client._fetch_transcript", lambda _video_id: ([], "missing"))
+    reset_youtube_fetch_counter()
+
+    class QuotaOutConnector:
+        closed = False
+
+        def video_metadata(self, video_id: str) -> YouTubeVideoMetadata:
+            raise YouTubeQuotaExhausted(reset_at="2026-09-24T07:00:00+00:00")
+
+        def close(self) -> None:
+            self.closed = True
+
+    connector = QuotaOutConnector()
+    monkeypatch.setattr(
+        research_tool_search, "connected_tool_for_request", lambda _request, _vendor: connector
+    )
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    with TestClient(app) as client:
+        response = client.post(
+            "/sources/ingest", json={"url": "https://www.youtube.com/watch?v=ccccccccccc"}
+        )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["detected_kind"] == "youtube"
+    assert body["error_message"].startswith("YouTubeQuotaExhausted")
+    assert scraped == []
+    assert connector.closed
+    with connect_read(str(db_path)) as con:
+        assert con.execute(
+            "SELECT COUNT(*) FROM documents WHERE document_id = ?", ["doc-yt-ccccccccccc"]
+        ).fetchone() == (0,)

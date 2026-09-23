@@ -3285,6 +3285,8 @@ def create_app(
                 if connector is not None:
                     # Metadata uses the owner's Data API key (videos.list, 1 unit).
                     # Captions still use unofficial timedtext. The ToS question remains open.
+                    # A failing key is reported as an error, never retried through
+                    # yt-dlp: that would scrape for a user who chose the official API.
                     try:
                         yt_kwargs["video"] = fetch_with_data_api(connector, req.url)
                     finally:
