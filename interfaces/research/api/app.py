@@ -191,6 +191,13 @@ class HealthResponse(BaseModel):
     duckdb_integrity_check: str = "not_run"
     duckdb_wal_present: bool = False
     duckdb_wal_bytes: int = 0
+    # SPR-11 Task 4: v10 account-memory schema postconditions, read straight
+    # off the startup-cached DuckDB snapshot. Read-only; they deliberately do
+    # not feed `duckdb_ready`, because an unmigrated database is a healthy
+    # database that has not had the explicit v10 migration run against it.
+    duckdb_memory_nodes_ready: bool = False
+    duckdb_memory_edges_owner_ready: bool = False
+    duckdb_memory_owner_index_ready: bool = False
     duckdb_error: str | None = None
     # Verified-backup freshness (pass46 / production-audit P1). A green
     # /health must not hide a missing or stale backup marker. Mirrors
@@ -2284,6 +2291,9 @@ def create_app(
             duckdb_integrity_check=duckdb_health.integrity_check,
             duckdb_wal_present=duckdb_health.wal_present,
             duckdb_wal_bytes=duckdb_health.wal_bytes,
+            duckdb_memory_nodes_ready=duckdb_health.memory_nodes_ready,
+            duckdb_memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
+            duckdb_memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
             duckdb_error=duckdb_health.error,
             **_probe_backup_freshness(),
         )

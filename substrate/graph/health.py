@@ -16,15 +16,31 @@ enough to run on every ``/health`` hit.
 
 It remains strictly read-only and never raises: a failure is reported as a
 value, not an exception.
+
+SPR-11 Task 4 adds three read-only account-memory (v10) schema postconditions
+to the same snapshot. They reuse the predicates the migration itself asserts
+with -- ``_nodes_have_memory`` / ``_edges_have_owner`` / ``_owner_index_exists``
+from ``substrate.graph.migrate_v10_account_memory`` -- rather than restating the
+SQL here, so ``/health`` and the migration can never disagree about what "v10
+applied" means. Nothing here runs the migration: the predicates are pure
+``SELECT``s against catalog views, they run on the connection this probe has
+already opened, and the whole snapshot is cached at app startup. Opening a
+second connection per request would be both a writer-lock conflict and a
+single-writer violation.
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, cast
 
-from runtime.db_lock import ReadConnection, connect_read
+from runtime.db_lock import LockedConnection, ReadConnection, connect_read
+from substrate.graph.migrate_v10_account_memory import (
+    _edges_have_owner,
+    _nodes_have_memory,
+    _owner_index_exists,
+)
 
 
 @dataclass(frozen=True)
@@ -39,6 +55,13 @@ class DuckDBHealth:
     integrity_check: str = "not_run"
     wal_present: bool = False
     wal_bytes: int = 0
+    # SPR-11 v10 account-memory schema postconditions. Read-only and reported
+    # independently of `ready`: a database can be perfectly healthy and simply
+    # not have had the explicit, operator-run v10 migration applied yet, which
+    # is exactly the state these three fields exist to make visible.
+    memory_nodes_ready: bool = False
+    memory_edges_owner_ready: bool = False
+    memory_owner_index_ready: bool = False
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -86,6 +109,33 @@ def _storage_integrity(con: ReadConnection) -> str:
     return "ok"
 
 
+def _memory_postconditions(con: ReadConnection) -> tuple[bool, bool, bool]:
+    """Evaluate the three v10 account-memory schema postconditions.
+
+    Returns ``(nodes_ready, edges_owner_ready, owner_index_ready)``. Each
+    predicate is evaluated independently and a raise is reported as ``False``
+    for that field alone: the migration's predicates raise on shapes they do
+    not recognize, and an unrecognized shape is precisely "this postcondition
+    is not satisfied" -- it must not blank the other two, and it must never
+    escape a probe whose contract is that it never raises.
+
+    The predicates are typed against ``LockedConnection`` because the migration
+    calls them under the serialized writer. They issue nothing but ``SELECT``s
+    against ``information_schema`` / ``duckdb_constraints()`` / ``duckdb_indexes()``,
+    so the read-only handle this probe already holds satisfies every attribute
+    they touch; the cast records that deliberately rather than widening the
+    migration's own signature.
+    """
+    read_con = cast(LockedConnection, con)
+    results: list[bool] = []
+    for predicate in (_nodes_have_memory, _edges_have_owner, _owner_index_exists):
+        try:
+            results.append(bool(predicate(read_con)))
+        except Exception:
+            results.append(False)
+    return results[0], results[1], results[2]
+
+
 def probe_duckdb_health(db_path: str) -> DuckDBHealth:
     """Probe ``db_path`` without creating or mutating it.
 
@@ -123,6 +173,9 @@ def probe_duckdb_health(db_path: str) -> DuckDBHealth:
     schema_present = False
     database_size_ok = False
     integrity_check = "not_run"
+    memory_nodes_ready = False
+    memory_edges_owner_ready = False
+    memory_owner_index_ready = False
     try:
         row = con.execute(
             "SELECT count(*) FROM information_schema.tables "
@@ -134,6 +187,16 @@ def probe_duckdb_health(db_path: str) -> DuckDBHealth:
         database_size_ok = True
 
         integrity_check = _storage_integrity(con)
+
+        # Same connection, no writes, no migration. Skipped entirely when the
+        # graph schema is absent: with no `nodes`/`edges` there is nothing for
+        # the postconditions to be about, and False is the honest answer.
+        if schema_present:
+            (
+                memory_nodes_ready,
+                memory_edges_owner_ready,
+                memory_owner_index_ready,
+            ) = _memory_postconditions(con)
     except Exception as exc:
         return DuckDBHealth(
             ready=False,
@@ -144,6 +207,9 @@ def probe_duckdb_health(db_path: str) -> DuckDBHealth:
             integrity_check=integrity_check,
             wal_present=wal_present,
             wal_bytes=wal_bytes,
+            memory_nodes_ready=memory_nodes_ready,
+            memory_edges_owner_ready=memory_edges_owner_ready,
+            memory_owner_index_ready=memory_owner_index_ready,
             error=f"{type(exc).__name__}: {exc}",
         )
     finally:
@@ -169,4 +235,7 @@ def probe_duckdb_health(db_path: str) -> DuckDBHealth:
         integrity_check=integrity_check,
         wal_present=wal_present,
         wal_bytes=wal_bytes,
+        memory_nodes_ready=memory_nodes_ready,
+        memory_edges_owner_ready=memory_edges_owner_ready,
+        memory_owner_index_ready=memory_owner_index_ready,
     )
