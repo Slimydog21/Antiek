@@ -109,12 +109,18 @@ class NormalizedUsage:
     ``(input_tokens, cached_input_tokens, cache_creation_input_tokens, output_tokens)``
     together with the per-tier pricing entry to compute ``cost_usd``.
     Adapters MUST NOT compute cost themselves — keep pricing in one place.
+
+    ``reported`` is False when the provider did not report the counts (no
+    usage block, or one missing the input/output count). Zero tokens and
+    unknown tokens are different facts: the router bills an unreported call
+    at its worst-case ceiling rather than as a free 0-token call.
     """
 
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
+    reported: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +188,8 @@ class Provider(Protocol):
         """Convert this provider's raw usage shape into ``NormalizedUsage``.
 
         Must handle the case where the provider returned partial or no
-        usage data — return zeros rather than raising. The router emits
-        the DispatchCall event regardless of whether usage was available.
+        usage data — return zeros with ``reported=False`` rather than
+        raising. The router emits the DispatchCall event regardless, priced
+        at the call's ceiling when usage was not reported.
         """
         ...

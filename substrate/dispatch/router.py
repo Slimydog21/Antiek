@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import logging
 import os
 import time
 from collections.abc import Mapping
@@ -61,6 +62,8 @@ except ImportError:  # pragma: no cover
         RouteReceiptCandidate,
         RouteReceiptSelection,
     )
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -767,6 +770,20 @@ def _dispatch_authoritative(
         # Success: normalize, cost, emit, return.
         default_breaker.record_success(provider_name)
         usage = provider.normalize_usage(raw.raw_usage)
+        if not raw.raw_usage or not usage.reported:
+            # A paid 200 with no usage is not a free call. Bill the ceiling the
+            # call could have cost (one input token per prompt byte, the full
+            # output budget), the same bound owner-BYOT reserves, so no ledger
+            # settles an unmetered response at a definite 0.
+            logger.warning(
+                "dispatch: %s/%s reported no usage; billing the call ceiling",
+                provider_name, model_name,
+            )
+            usage = NormalizedUsage(
+                input_tokens=max(1, len(prompt.encode("utf-8"))),
+                output_tokens=effective_max_tokens,
+                reported=False,
+            )
         finish = normalize_finish_reason(raw.finish_reason)
         cost = _compute_cost_usd(usage, current.pricing)
         receipt = _route_receipt(

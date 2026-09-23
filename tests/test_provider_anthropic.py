@@ -212,13 +212,17 @@ def test_anthropic_normalize_usage_with_cache_read():
 
 
 def test_anthropic_normalize_usage_handles_missing_fields():
-    """If the provider omits usage entirely, return zeros (do not raise)."""
+    """If the provider omits usage entirely, return zeros (do not raise)
+    flagged unreported, so the router bills the ceiling, not a free call."""
     p = AnthropicProvider(api_key="k")
     u = p.normalize_usage({})
     assert u.input_tokens == 0
     assert u.output_tokens == 0
     assert u.cached_input_tokens == 0
     assert u.cache_creation_input_tokens == 0
+    assert u.reported is False
+    assert p.normalize_usage({"input_tokens": 5}).reported is False
+    assert p.normalize_usage({"input_tokens": 5, "output_tokens": 0}).reported is True
 
 
 # ---------------------------------------------------------------------------

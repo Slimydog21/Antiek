@@ -2185,6 +2185,13 @@ def register_book_routes(app: FastAPI) -> None:
 
         investigation_id = f"inv-{_uuid.uuid4().hex[:12]}"
         spawn_context = f"read: passage {document_id} p{req.page_index}"
+        # Charge (gated) before the start is appended or broadcast: a failed
+        # charge must mean no run, never an unmetered run behind a 503.
+        post_gate = commit_start_acu(
+            request,
+            investigation_id=investigation_id,
+            reason="spin_research",
+        )
         event_id = emit_typed(
             investigation_id,
             InvestigationStartRequestedPayload(
@@ -2238,11 +2245,6 @@ def register_book_routes(app: FastAPI) -> None:
             )
             artifact_path = str(exported.path)
             twin_notes_path = str(exported.twin_notes_path)
-        post_gate = commit_start_acu(
-            request,
-            investigation_id=investigation_id,
-            reason="spin_research",
-        )
         warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
         attach_capacity_warn_header(response, warn_gate)
         return SpinResearchResponse(
