@@ -94,6 +94,13 @@ them); Charter is the reading face. Minimum text is 11px (`text-xxs`).
 already carried: `shadow-1` `#64778A → #4F5F70` (6.32:1 on white) and `emperor`
 `#E33C2D → #CE3623` (4.51:1 with white text). Reconciled to the canonical
 values. Both clear WCAG AA; the visual delta is ~one Munsell step.
+Superseded (2026-09-23, semantic layer): day danger and the danger fill are
+`#B82E1C` (`--danger-fill`), not `#CE3623`. `#CE3623` measured 4.45:1 on the
+inset ground and 4.30:1 on its own 10% wash over the card, below the AA bar
+the contrast test holds every semantic pair to; `#B82E1C` measures 5.79 on
+the page, 6.04 on the card, 5.40 on the inset, 5.16 on its wash and 6.09 under
+white text. The design spec's table still lists `#CE3623`; the value awaits
+the operator's ratification.
 
 ### SPR-09 re-tone (weathered sun)
 `sun-deep`/`sun-glow`/`sun-highlight` were re-toned from the loud lemon depths
