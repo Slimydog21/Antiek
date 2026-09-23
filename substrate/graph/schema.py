@@ -1057,6 +1057,8 @@ CREATE INDEX IF NOT EXISTS idx_attribution_audit_impression_set
     ON attribution_audit(impression_set_ref);
 CREATE INDEX IF NOT EXISTS idx_attribution_audit_page
     ON attribution_audit(page_id);
+-- SPR-08 T3: which §9.3 module produced the vector.
+ALTER TABLE attribution_audit ADD COLUMN IF NOT EXISTS producer_module TEXT DEFAULT 'substrate.ad_inventory.attribution';
 """
 
 
