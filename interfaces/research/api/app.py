@@ -90,7 +90,10 @@ from substrate.schemas import (  # noqa: E402
     TypedPayload,
 )
 
-from .account_memory_context import account_memory_context  # noqa: E402
+from .account_memory_context import (  # noqa: E402
+    account_memory_context,
+    record_account_memory_from_turn,
+)
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
@@ -193,6 +196,14 @@ class HealthResponse(BaseModel):
     duckdb_wal_present: bool = False
     duckdb_wal_bytes: int = 0
     duckdb_error: str | None = None
+    # SPR-11 T4: account-memory v10 schema postconditions, read from the same
+    # startup-cached snapshot as the duckdb_* fields (never a per-request open).
+    # Reported independently of duckdb_ready: idx_edges_owner is created only by
+    # migrate_v10_account_memory, so a False memory_owner_index_ready on a fresh
+    # schema is a pending migration, not an outage.
+    memory_node_type_ready: bool = False
+    memory_edges_owner_ready: bool = False
+    memory_owner_index_ready: bool = False
     # Verified-backup freshness (pass46 / production-audit P1). A green
     # /health must not hide a missing or stale backup marker. Mirrors
     # tools/backup_freshness.py: fresh=False + backup_reason when the
@@ -2350,6 +2361,9 @@ def create_app(
             duckdb_wal_present=duckdb_health.wal_present,
             duckdb_wal_bytes=duckdb_health.wal_bytes,
             duckdb_error=duckdb_health.error,
+            memory_node_type_ready=duckdb_health.memory_node_type_ready,
+            memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
+            memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
             **_probe_backup_freshness(),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
@@ -6680,6 +6694,18 @@ def create_app(
             ) from None
 
         parsed = parse_thought_partner_response(result.text)
+        # SPR-11 T7: write stable first-person facts from this turn back into
+        # owner-private account memory. Dark until the env flag named in
+        # substrate.memory.interaction_extractor is set; best-effort, so it can
+        # never change the response below. Off the loop thread because it
+        # takes the write lock (the sanctioned to_thread shape, as /health's
+        # flywheel probe).
+        await asyncio.to_thread(
+            record_account_memory_from_turn,
+            request,
+            prompt=req.prompt,
+            investigation_id=req.investigation_id,
+        )
         return ThoughtPartnerResponseBody(
             shape=parsed.shape,
             text=result.text,

@@ -16,6 +16,14 @@ enough to run on every ``/health`` hit.
 
 It remains strictly read-only and never raises: a failure is reported as a
 value, not an exception.
+
+The three ``memory_*`` booleans report the account-memory (v10) schema
+postconditions, evaluated with the migration's own predicates over the same
+read-only connection. They are independent of ``ready``: a fresh schema already
+has the ``memory`` node type and ``edges.owner_user_id`` but not
+``idx_edges_owner``, which only ``migrate_v10_account_memory`` creates, so a
+False ``memory_owner_index_ready`` reads as a pending migration, not an outage.
+The probe never runs the migration.
 """
 
 from __future__ import annotations
@@ -25,6 +33,11 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from runtime.db_lock import ReadConnection, connect_read
+from substrate.graph.migrate_v10_account_memory import (
+    _edges_have_owner,
+    _nodes_have_memory,
+    _owner_index_exists,
+)
 
 
 @dataclass(frozen=True)
@@ -40,6 +53,10 @@ class DuckDBHealth:
     wal_present: bool = False
     wal_bytes: int = 0
     error: str | None = None
+    # Account-memory v10 postconditions (read-only; see module docstring).
+    memory_node_type_ready: bool = False
+    memory_edges_owner_ready: bool = False
+    memory_owner_index_ready: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -86,6 +103,24 @@ def _storage_integrity(con: ReadConnection) -> str:
     return "ok"
 
 
+def _memory_postconditions(con: ReadConnection) -> tuple[bool, bool, bool]:
+    """Evaluate the v10 predicates read-only, each reported as a value.
+
+    The predicates raise ``RuntimeError`` on a shape they do not recognize (or
+    when the table is absent); that is reported as False here rather than
+    propagated, because /health must keep answering. Each is evaluated on its
+    own so one unrecognized shape cannot blank the other two.
+    """
+    connection: Any = con  # the predicates are typed for the writer wrapper
+    results: list[bool] = []
+    for predicate in (_nodes_have_memory, _edges_have_owner, _owner_index_exists):
+        try:
+            results.append(bool(predicate(connection)))
+        except Exception:
+            results.append(False)
+    return results[0], results[1], results[2]
+
+
 def probe_duckdb_health(db_path: str) -> DuckDBHealth:
     """Probe ``db_path`` without creating or mutating it.
 
@@ -123,6 +158,7 @@ def probe_duckdb_health(db_path: str) -> DuckDBHealth:
     schema_present = False
     database_size_ok = False
     integrity_check = "not_run"
+    memory_ready = (False, False, False)
     try:
         row = con.execute(
             "SELECT count(*) FROM information_schema.tables "
@@ -134,6 +170,7 @@ def probe_duckdb_health(db_path: str) -> DuckDBHealth:
         database_size_ok = True
 
         integrity_check = _storage_integrity(con)
+        memory_ready = _memory_postconditions(con)
     except Exception as exc:
         return DuckDBHealth(
             ready=False,
@@ -169,4 +206,7 @@ def probe_duckdb_health(db_path: str) -> DuckDBHealth:
         integrity_check=integrity_check,
         wal_present=wal_present,
         wal_bytes=wal_bytes,
+        memory_node_type_ready=memory_ready[0],
+        memory_edges_owner_ready=memory_ready[1],
+        memory_owner_index_ready=memory_ready[2],
     )
