@@ -94,6 +94,7 @@ export {
   notifyResearchStarted,
   notifyShellFailure,
   notifyVoicePlaybackStarted,
+  notifyThoughtPartnerReplyReceived,
   type ResearchReactionPhase,
 } from "./shellExperienceSignals";
 
