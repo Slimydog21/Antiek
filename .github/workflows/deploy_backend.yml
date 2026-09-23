@@ -107,6 +107,21 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "Target SHA: $SHA"
 
+      # The gate job runs a script from the repository, so it must have the
+      # repository. Before this step existed the job had NO checkout: the
+      # call below failed with "No such file or directory" (exit 127), the
+      # else-branch read that as "not green yet", and every deploy was
+      # skipped — automated delivery was dead from the moment the gate
+      # merged. This checks out the TRUSTED copy (the default branch, which
+      # is what workflow_run/workflow_dispatch resolve to), sparse to the
+      # one directory the gate needs. tests/test_require_green_script.py
+      # asserts this step precedes the call.
+      - name: Check out the gate script (default branch, sparse)
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools/deploy
+          persist-credentials: false
+
       - name: Require every main-required check green for this SHA
         id: required
         env:
@@ -114,6 +129,10 @@ jobs:
           SHA: ${{ steps.resolve.outputs.sha }}
         run: |
           set -euo pipefail
+          test -x tools/deploy/require_green.sh || {
+            echo "::error::tools/deploy/require_green.sh is not on this runner — the gate cannot run; refusing to decide."
+            exit 3
+          }
           # Single source of truth for the gate: tools/deploy/require_green.sh,
           # shared with infrastructure/ansible/playbooks/deploy.yml so the
           # manual / runbook deploy path is gated IDENTICALLY. The literal
@@ -128,9 +147,13 @@ jobs:
             echo "all_green=true" >> "$GITHUB_OUTPUT"
           else
             rc=$?
-            if [ "$rc" -eq 3 ]; then
-              echo "::error::require_green could not VERIFY $SHA (exit 3) — refusing to decide; fix the verifier, do not bypass it."
-              exit 3
+            # ONLY exit 1 means "verified, and not all green yet". Every
+            # other code (3 = cannot verify, 127 = script missing, anything
+            # unexpected) is a verifier failure and fails this job loudly —
+            # a missing verifier must never read as "not yet".
+            if [ "$rc" -ne 1 ]; then
+              echo "::error::require_green could not VERIFY $SHA (exit $rc) — refusing to decide; fix the verifier, do not bypass it."
+              exit "$rc"
             fi
             echo "all_green=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Required checks not all green yet for $SHA — no deploy from this event."

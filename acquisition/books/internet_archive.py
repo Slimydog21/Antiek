@@ -34,6 +34,8 @@ import logging
 import re
 from typing import Any
 
+from acquisition.books.pd_jurisdiction import non_serving_pd_qualification
+
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
 logger = logging.getLogger("acquisition.books.internet_archive")
@@ -129,7 +131,10 @@ def ia_rights_input(meta: dict[str, Any]) -> tuple[str | None, str | None]:
             "NOT_IN_COPYRIGHT"
         )
 
-    # 3. A free-text rights field that explicitly asserts PD.
+    # 3. A free-text rights field that explicitly asserts PD — for the
+    # jurisdiction we serve from. "Public domain in Canada" is not that.
+    if non_serving_pd_qualification(haystack) is not None:
+        return None, None
     if any(tok in haystack for tok in _PD_RIGHTS_TOKENS):
         asserted = "; ".join(f for f in (rights_fields + license_urls) if f)
         return None, (

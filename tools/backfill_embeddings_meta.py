@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Sequence
 from typing import Any
 
@@ -38,7 +39,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             allowed = sorted(TURBOPUFFER_INDEX_CONTENT_CLASSES)
             placeholders = ",".join("?" for _ in allowed)
             missing = con.execute(
-                "SELECT c.chunk_id FROM chunks c "
+                "SELECT c.chunk_id, c.text, c.embedding FROM chunks c "
                 "JOIN documents d ON d.document_id=c.document_id "
                 "LEFT JOIN embeddings_meta em ON em.chunk_id=c.chunk_id "
                 f"WHERE c.embedding IS NOT NULL AND em.chunk_id IS NULL "
@@ -48,7 +49,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ).fetchall()
         else:
             missing = con.execute(
-                "SELECT c.chunk_id FROM chunks c "
+                "SELECT c.chunk_id, c.text, c.embedding FROM chunks c "
                 "LEFT JOIN embeddings_meta em ON em.chunk_id=c.chunk_id "
                 "WHERE c.embedding IS NOT NULL AND em.chunk_id IS NULL "
                 "ORDER BY c.chunk_id"
@@ -88,14 +89,52 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(result, sort_keys=True))
         return 0
 
+    # VERIFY before stamping. This tool used to assert the live model's
+    # identity onto every unpinned chunk without looking at the vector — so a
+    # chunk whose floats were HASH-derived (the silent-fallback case this
+    # backfill exists to repair) got stamped "MiniLM", and the search-time
+    # compatibility gate then vouched for a lie. A pin is a claim about
+    # provenance; the only honest way to make it after the fact is to
+    # re-derive the vector and check it matches.
     written = 0
+    unverified: list[str] = []
     with connect_write(args.db, purpose="backfill-embeddings-meta") as wcon:
-        for (chunk_id,) in missing:
-            record_chunk_embedding_meta(wcon, chunk_id=chunk_id, provider=model)
-            written += 1
+        for chunk_id, text, stored in missing:
+            if _vector_matches(model, text, stored):
+                record_chunk_embedding_meta(wcon, chunk_id=chunk_id, provider=model)
+                written += 1
+            else:
+                unverified.append(chunk_id)
     result["written"] = written
+    result["unverified"] = unverified
     print(json.dumps(result, sort_keys=True))
+    if unverified:
+        print(
+            f"backfill: {len(unverified)} chunk(s) whose stored vector does NOT "
+            "match this model's encoding were left UNPINNED (not stamped). They "
+            "were produced by a different provider — re-embed them with "
+            "tools/reembed_chunks.py rather than claiming an identity they lack.",
+            file=sys.stderr,
+        )
+        return 2
     return 0
+
+
+def _vector_matches(model: Any, text: str, stored: Any, *, min_cos: float = 0.999) -> bool:
+    """True iff re-encoding ``text`` reproduces ``stored`` (cosine >= min_cos)."""
+    import math
+    if stored is None or text is None:
+        return False
+    fresh = [float(x) for x in model.encode(text)]
+    got = [float(x) for x in stored]
+    if len(fresh) != len(got) or not fresh:
+        return False
+    dot = sum(a * b for a, b in zip(fresh, got, strict=True))
+    na = math.sqrt(sum(a * a for a in fresh))
+    nb = math.sqrt(sum(b * b for b in got))
+    if na == 0 or nb == 0:
+        return False
+    return bool(dot / (na * nb) >= min_cos)
 
 
 if __name__ == "__main__":

@@ -680,6 +680,7 @@ def make_region_selected_handler(
                     section_path=f"page {p.page}" if p.page is not None else None,
                     text=p.text_excerpt,
                     embedding=vec,
+                    embedding_provider=emb,
                     token_count=len(p.text_excerpt.split()),
                 )
                 # Anchor the chunk as a graph node so traversal-side
