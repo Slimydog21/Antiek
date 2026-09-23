@@ -182,11 +182,34 @@ def test_oversized_and_malformed_bodies_are_bounded_and_value_free(client) -> No
     assert "SENTINEL" not in malformed.text
 
 
-def test_quota_copy_discloses_host_global_scope(client) -> None:
+def test_quota_copy_discloses_per_account_scope_and_meters_per_owner(client, tmp_path) -> None:
+    """The YouTube meter a user sees is theirs, and the copy says so.
+
+    It used to be one host-wide sidecar, and the note admitted it: user B was
+    refused because user A had spent 10,000 units on a key that was not B's.
+    Exhaust A's meter directly and check that B's row is untouched.
+    """
     response = client.put(
         "/settings/tools/youtube", json={"credential": SECRET}, cookies=_cookie("user-a")
     )
-    assert "Host-global shared" in response.json()["quota"]["note"]
+    note = response.json()["quota"]["note"]
+    assert "Per-account" in note
+    assert "Host-global" not in note and "host-global" not in note
+    assert client.put(
+        "/settings/tools/youtube", json={"credential": SECRET}, cookies=_cookie("user-b")
+    ).status_code == 200
+
+    from runtime.connectors.quota_meter import QuotaMeter
+
+    QuotaMeter("youtube", owner="user-a", state_dir=str(tmp_path / "quota")).mark_exhausted()
+
+    quota_a = _row(client.get("/settings/tools", cookies=_cookie("user-a")).json(), "youtube")["quota"]
+    quota_b = _row(client.get("/settings/tools", cookies=_cookie("user-b")).json(), "youtube")["quota"]
+    assert quota_a["hard_exhausted"] is True and quota_a["remaining"] == 0
+    assert quota_b["hard_exhausted"] is False and quota_b["remaining"] == 10_000
+
+    x_note = _row(client.get("/settings/tools", cookies=_cookie("user-a")).json(), "x")["quota"]["note"]
+    assert "per-account" in x_note and "host-global" not in x_note
 
 
 def _row(payload: dict, vendor: str) -> dict:

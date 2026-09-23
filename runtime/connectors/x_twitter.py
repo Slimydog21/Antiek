@@ -143,6 +143,7 @@ class XTwitterConnector(PasteKeyConnector):
         key_file: str | None = None,
         client: httpx.Client | None = None,
         governor: VendorRateGovernor | None = None,
+        owner: str | None = None,
         state_dir: str | None = None,
         timeout_s: float = 30.0,
     ) -> None:
@@ -158,7 +159,8 @@ class XTwitterConnector(PasteKeyConnector):
         if governor is not None:
             self._governor = governor
         else:
-            kwargs: dict[str, Any] = {}
+            # The owner keys the window: their bearer, their brake.
+            kwargs: dict[str, Any] = {"owner": owner}
             if state_dir is not None:
                 kwargs["state_dir"] = state_dir
             self._governor = VendorRateGovernor("x", _X_RATE, **kwargs)

@@ -117,14 +117,18 @@ def _owner(request: Request) -> str:
     return normalized_owner
 
 
-def _quota(snapshot: ToolConnectionSnapshot) -> ToolQuotaResponse:
+def _quota(snapshot: ToolConnectionSnapshot, owner_user_id: str) -> ToolQuotaResponse:
+    # Quota and rate state are keyed per owner: YouTube's budget is per GCP
+    # project, so it is per key, and a host-wide meter refused user B once
+    # user A had spent A's units. The notes say per-account because that is
+    # what the meter now measures; the old "host-global" copy would be a lie.
     if snapshot.quota_kind == "youtube_units":
         if not snapshot.credential_present:
             return ToolQuotaResponse(
                 kind="youtube_units",
-                note="Connect a credential to start host-global shared quota tracking",
+                note="Connect a credential to start per-account quota tracking",
             )
-        quota = QuotaMeter("youtube").remaining()
+        quota = QuotaMeter("youtube", owner=owner_user_id).remaining()
         return ToolQuotaResponse(
             kind="youtube_units",
             remaining=quota.remaining,
@@ -132,8 +136,8 @@ def _quota(snapshot: ToolConnectionSnapshot) -> ToolQuotaResponse:
             reset_at=quota.reset_at,
             hard_exhausted=quota.hard_exhausted,
             note=(
-                "Host-global shared Antiek meter across all owners and keys; "
-                "the provider remains authoritative"
+                "Per-account Antiek meter for your own key, not shared with other "
+                "accounts; the provider remains authoritative"
             ),
         )
     if snapshot.quota_kind == "rate_ceiling":
@@ -144,7 +148,7 @@ def _quota(snapshot: ToolConnectionSnapshot) -> ToolQuotaResponse:
             kind="rate_ceiling",
             limit=limit,
             note=(
-                "Antiek's own host-global brake across all owners and keys: "
+                "Antiek's own per-account brake on your key: "
                 f"{limit} requests per {window}. It is not a provider allowance."
             ),
             estimated_cost_usd=_X_SEARCH_COST_USD if is_x else None,
@@ -156,7 +160,7 @@ def _quota(snapshot: ToolConnectionSnapshot) -> ToolQuotaResponse:
     )
 
 
-def _response(snapshot: ToolConnectionSnapshot) -> ToolConnectionResponse:
+def _response(snapshot: ToolConnectionSnapshot, owner_user_id: str) -> ToolConnectionResponse:
     return ToolConnectionResponse(
         vendor=snapshot.vendor,
         display_name=snapshot.display_name,
@@ -166,7 +170,7 @@ def _response(snapshot: ToolConnectionSnapshot) -> ToolConnectionResponse:
         status=snapshot.status,
         credential_present=snapshot.credential_present,
         status_note=snapshot.status_note,
-        quota=_quota(snapshot),
+        quota=_quota(snapshot, owner_user_id),
         searchable=snapshot.searchable,
     )
 
@@ -180,7 +184,7 @@ def get_tool_connections(request: Request, response: Response) -> ToolConnection
     owner_user_id = _owner(request)
     _no_store(response)
     try:
-        rows = [_response(item) for item in list_tool_connections(owner_user_id)]
+        rows = [_response(item, owner_user_id) for item in list_tool_connections(owner_user_id)]
     except (OSError, ToolConnectionIntegrityError) as exc:
         raise HTTPException(status_code=503, detail="tool connections are unavailable") from exc
     return ToolConnectionsResponse(connections=rows, count=len(rows))
@@ -224,7 +228,7 @@ async def put_tool_connection(
     _no_store(response)
     credential = await _credential_from_request(request)
     try:
-        return _response(connect_tool(owner_user_id, vendor, credential))
+        return _response(connect_tool(owner_user_id, vendor, credential), owner_user_id)
     except ToolConnectionUnavailable as exc:
         raise HTTPException(status_code=404, detail="unsupported tool vendor") from exc
     except (KeyShapeError, ValueError) as exc:
