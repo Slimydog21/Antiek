@@ -119,6 +119,7 @@ class IngestYouTubeResult:
     # skipped ingest that wrote no row). personal_reading by default;
     # source_declared_open only on an operator-confirmed CC-BY video.
     content_class: str | None = None
+    metadata_source: str | None = None
 
 
 def youtube_doc_id(video_id: str) -> str:
@@ -327,6 +328,7 @@ def ingest_youtube(
             skipped_reason="low_word_count",
             title=v.title,
             transcript_source=v.transcript_source,
+            metadata_source=getattr(v, "metadata_source", "yt_dlp"),
             caption_kind=getattr(v, "caption_kind", CAPTION_KIND_MISSING),
         )
     if not v.transcript and word_count < min_word_count * 4:
@@ -341,6 +343,7 @@ def ingest_youtube(
             skipped_reason="no_transcript",
             title=v.title,
             transcript_source=v.transcript_source,
+            metadata_source=getattr(v, "metadata_source", "yt_dlp"),
             caption_kind=getattr(v, "caption_kind", CAPTION_KIND_MISSING),
         )
 
@@ -397,6 +400,7 @@ def ingest_youtube(
                 "duration_seconds": v.duration_seconds,
                 "channel": v.channel,
                 "transcript_source": v.transcript_source,
+                "metadata_source": getattr(v, "metadata_source", "yt_dlp"),
                 # SPR-07: caption provenance (human/auto/unknown/missing)
                 # so the reader knows auto-captions are unreliable.
                 "caption_kind": getattr(v, "caption_kind", CAPTION_KIND_MISSING),
@@ -496,6 +500,7 @@ def ingest_youtube(
         chunks_written=chunks_written,
         title=v.title,
         transcript_source=v.transcript_source,
+        metadata_source=getattr(v, "metadata_source", "yt_dlp"),
         caption_kind=getattr(v, "caption_kind", CAPTION_KIND_MISSING),
         content_class=resolved_content_class,
     )
