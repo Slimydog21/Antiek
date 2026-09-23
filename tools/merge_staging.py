@@ -3,7 +3,8 @@
 SPR-01 keystone, second half. The corpus ingest writes to a staging DuckDB
 (``runtime/staging_db.py``) off the live hot path; this tool copies the
 staged rows — documents, book_assets, chunks (with their precomputed
-vectors), nodes, and any net-new ip_holders — into the live DB.
+vectors), nodes, any net-new ip_holders, and the opt-in seed keys of those
+new holders — into the live DB.
 
 The merge is a SINGLE ``runtime.db_lock.connect_write`` transaction: the
 live-writer flock opens once, the staging file is ATTACHed read-only, every
@@ -47,12 +48,17 @@ import os
 import sys
 import time
 from dataclasses import dataclass
+from typing import Any
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from runtime.db_lock import connect_write  # noqa: E402
+from substrate.ip_holders.opt_in_accrual import (  # noqa: E402
+    SEED_LEDGER_TABLE,
+    ensure_seed_ledger,
+)
 
 # Merge order is dependency-respecting: ip_holders before documents (so a
 # document's ip_holder_id can be remapped to a live holder id), documents
@@ -261,7 +267,7 @@ def merge_staging(
             # tables atomically — live is never left half-merged.
             con.execute("BEGIN TRANSACTION")
             try:
-                holders = _merge_ip_holders(
+                holders, inserted_holder_ids = _merge_ip_holders(
                     con,
                     columns=plan.live_columns["ip_holders"],
                     staging_columns=plan.staging_columns["ip_holders"],
@@ -269,6 +275,13 @@ def merge_staging(
                 results.append(holders)
 
                 staged_holder_remap = _build_holder_remap(con)
+                seeds = _merge_opt_in_seeds(
+                    con,
+                    inserted_holder_ids=inserted_holder_ids,
+                    remap=staged_holder_remap,
+                )
+                if seeds is not None:
+                    results.append(seeds)
                 for table, key in _DOC_KEYED_TABLES:
                     res = _merge_table(
                         con,
@@ -347,11 +360,13 @@ def _merge_ip_holders(
     *,
     columns: list[str],
     staging_columns: frozenset[str] | set[str],
-) -> TableMergeResult:
+) -> tuple[TableMergeResult, set[str]]:
     """Insert net-new ip_holders keyed on ``display_name`` (not the random
     id). A holder already present live is authoritative and left untouched —
     its escrow balance is never overwritten by a staged copy. Column-explicit
-    by name (same as :func:`_merge_table`)."""
+    by name (same as :func:`_merge_table`). Also returns the ids inserted, so
+    :func:`_merge_opt_in_seeds` can tell which holders brought their staged
+    escrow with them."""
     target, select = _projection(columns, staging_columns)
     staged_total = _count(con, "SELECT COUNT(*) FROM staging.ip_holders")
     inserted_rows = con.execute(
@@ -363,8 +378,63 @@ def _merge_ip_holders(
         "RETURNING ip_holder_id"
     ).fetchall()
     inserted = len(inserted_rows)
+    return (
+        TableMergeResult(
+            table="ip_holders", inserted=inserted, skipped=staged_total - inserted
+        ),
+        {r[0] for r in inserted_rows},
+    )
+
+
+def _merge_opt_in_seeds(
+    con: Any,
+    *,
+    inserted_holder_ids: set[str],
+    remap: dict[str, str],
+) -> TableMergeResult | None:
+    """Carry the opt-in seed keys that belong to the escrow this merge copied.
+
+    ``opt_in_intake_seeds`` is the once-per-(holder, work) key that stops a
+    re-run of an opt-in manifest from seeding escrow again. A holder inserted
+    by this merge arrives with its staged ``escrow_balance_usd``, seeds
+    included, so its seed rows have to arrive too: without them a later
+    direct ingest of the same manifest into live finds no key and seeds the
+    same work a second time. A holder that already existed live keeps its own
+    balance and never received the staged seed, so its staged seed rows are
+    NOT copied; the next live ingest of that work seeds it once.
+
+    Returns None when the staging DB has no seed ledger (no opt-in intake
+    ran there)."""
+    has_staged = _count(
+        con,
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_catalog = 'staging' AND table_schema = 'main' "
+        "AND table_name = ?",
+        [SEED_LEDGER_TABLE],
+    )
+    if not has_staged:
+        return None
+    ensure_seed_ledger(con)
+    staged = con.execute(
+        f"SELECT ip_holder_id, document_id, amount_usd, seeded_at "
+        f"FROM staging.{SEED_LEDGER_TABLE}"
+    ).fetchall()
+    inserted = 0
+    for staging_id, document_id, amount_usd, seeded_at in staged:
+        live_id = remap.get(staging_id, staging_id)
+        if live_id not in inserted_holder_ids:
+            continue
+        inserted += len(
+            con.execute(
+                f"INSERT INTO {SEED_LEDGER_TABLE} "
+                "(ip_holder_id, document_id, amount_usd, seeded_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING "
+                "RETURNING ip_holder_id",
+                [live_id, document_id, amount_usd, seeded_at],
+            ).fetchall()
+        )
     return TableMergeResult(
-        table="ip_holders", inserted=inserted, skipped=staged_total - inserted
+        table=SEED_LEDGER_TABLE, inserted=inserted, skipped=len(staged) - inserted
     )
 
 
