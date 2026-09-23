@@ -95,7 +95,7 @@ describe("AISidecar driver dropdown (SPR-03 Task 3)", () => {
 
   it("mounts the ModelUsagePicker in the sidecar tree", async () => {
     render(<AISidecar />);
-    const trigger = screen.getByLabelText("Model for the thought partner");
+    const trigger = await screen.findByLabelText("Model for the thought partner");
     expect(trigger).toBeTruthy();
     // It reads the house route until a key is chosen.
     await waitFor(() => expect(trigger.textContent).toContain("Default"));
@@ -104,7 +104,7 @@ describe("AISidecar driver dropdown (SPR-03 Task 3)", () => {
   it("carries the chosen key and variant on the thought-partner request as model_choice + operation_id", async () => {
     const user = userEvent.setup();
     render(<AISidecar />);
-    const trigger = screen.getByLabelText("Model for the thought partner");
+    const trigger = await screen.findByLabelText("Model for the thought partner");
     await waitFor(() => expect(trigger.textContent).toContain("Default"));
     await waitFor(() =>
       expect(apiFetchMock.mock.calls.some(([u]) => String(u).endsWith("/settings/models/user"))).toBe(true),
@@ -149,7 +149,7 @@ describe("AISidecar driver dropdown (SPR-03 Task 3)", () => {
 
   it("adopts a driver chosen elsewhere via the seed bus (the CommandPalette's picker)", async () => {
     render(<AISidecar />);
-    const trigger = screen.getByLabelText("Model for the thought partner");
+    const trigger = await screen.findByLabelText("Model for the thought partner");
     await waitFor(() =>
       expect(apiFetchMock.mock.calls.some(([u]) => String(u).endsWith("/settings/models/user"))).toBe(true),
     );

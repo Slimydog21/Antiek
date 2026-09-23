@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ModelUsagePicker from "./ModelUsagePicker";
+import ModelUsagePicker from "./ModelUsagePicker.impl";
 import { fetchUserModels } from "../../api/settingsModels";
 import { fetchSettingsUsage, fetchSettingsBalance } from "../../api/settingsUsage";
 

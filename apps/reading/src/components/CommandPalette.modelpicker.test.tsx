@@ -69,7 +69,7 @@ describe("CommandPalette driver dropdown (SPR-03 Task 3)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     openPalette();
     const dialog = await screen.findByRole("dialog", { name: "Command palette" });
-    const trigger = screen.getByLabelText("Driver model for the AI sidecar");
+    const trigger = await screen.findByLabelText("Driver model for the AI sidecar");
     expect(dialog.contains(trigger)).toBe(true);
     await waitFor(() => expect(trigger.textContent).toContain("Default"));
   });
@@ -87,7 +87,7 @@ describe("CommandPalette driver dropdown (SPR-03 Task 3)", () => {
       );
       openPalette();
       await screen.findByRole("dialog", { name: "Command palette" });
-      const trigger = screen.getByLabelText("Driver model for the AI sidecar");
+      const trigger = await screen.findByLabelText("Driver model for the AI sidecar");
       await waitFor(() => expect(trigger.textContent).toContain("Default"));
       await waitFor(() =>
         expect(apiFetchMock.mock.calls.some(([u]) => String(u).endsWith("/settings/models/user"))).toBe(true),

@@ -100,7 +100,7 @@ describe("ThoughtPartnerPanel (Surface E)", () => {
       json: async () => ({ shape: "SYNTHESIS", text: "ok" }),
     });
     render(<ThoughtPartnerPanel />);
-    const trigger = screen.getByLabelText("Model for this brainstorm");
+    const trigger = await screen.findByLabelText("Model for this brainstorm");
     await waitFor(() => expect(trigger.textContent).toContain("Default"));
     fireEvent.change(screen.getByLabelText("Thought partner prompt"), {
       target: { value: "Challenge these notes" },
