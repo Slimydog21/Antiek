@@ -90,18 +90,20 @@ _OPENAI_UNREPORTED = [
     pytest.param({"prompt_tokens": None, "completion_tokens": None}, id="null-counts"),
     pytest.param({"prompt_tokens": 10, "completion_tokens": None}, id="null-completion"),
     pytest.param({"prompt_tokens": "", "completion_tokens": ""}, id="blank-counts"),
-    # A present but invalid cache count is the split not reported: never 0,
-    # never an int() that raises before the router can bill the call.
-    pytest.param({"prompt_tokens": 10, "completion_tokens": 5,
-                  "prompt_tokens_details": {"cached_tokens": None}}, id="null-cached"),
-    pytest.param({"prompt_tokens": 10, "completion_tokens": 5,
-                  "prompt_tokens_details": {"cached_tokens": "abc"}}, id="string-cached"),
-    pytest.param({"prompt_tokens": 10, "completion_tokens": 5,
-                  "prompt_tokens_details": "abc"}, id="non-object-details"),
-    pytest.param({"prompt_tokens": 10, "completion_tokens": 5,
-                  "prompt_cache_hit_tokens": None}, id="null-cache-hit"),
-    pytest.param({"prompt_tokens": 10, "completion_tokens": 5,
-                  "prompt_cache_hit_tokens": -3}, id="negative-cache-hit"),
+]
+
+# Valid primaries with a present-but-invalid cache count. prompt_tokens is
+# INCLUSIVE of cached tokens, so the split being unknown is not the call being
+# unknown (codex critic round 2 on #3415: the whole-call ceiling billed a
+# $0.00003 call $0.012). Bill every input token at the full rate, flag it,
+# never 0 for the cache and never an int() that raises.
+_OPENAI_CACHE_UNKNOWN = [
+    pytest.param({"prompt_tokens_details": {"cached_tokens": None}}, id="null-cached"),
+    pytest.param({"prompt_tokens_details": {"cached_tokens": "abc"}}, id="string-cached"),
+    pytest.param({"prompt_tokens_details": "abc"}, id="non-object-details"),
+    pytest.param({"prompt_tokens_details": None}, id="null-details"),
+    pytest.param({"prompt_cache_hit_tokens": None}, id="null-cache-hit"),
+    pytest.param({"prompt_cache_hit_tokens": -3}, id="negative-cache-hit"),
 ]
 _ANTHROPIC_UNREPORTED = [
     pytest.param(None, id="omitted"),
@@ -138,6 +140,23 @@ def test_openai_compat_unreported_usage_is_billed_at_ceiling(usage) -> None:
     assert result.usage.input_tokens == len(_PROMPT.encode("utf-8"))
     assert result.usage.output_tokens == _MAX_TOKENS
     assert result.cost_usd == pytest.approx(_CEILING_USD)
+
+
+@pytest.mark.parametrize("cache_fields", _OPENAI_CACHE_UNKNOWN)
+def test_openai_compat_unknown_cache_split_bills_primaries_at_full_rate(cache_fields) -> None:
+    body = dict(_OPENAI_TEXT)
+    body["usage"] = {"prompt_tokens": 10, "completion_tokens": 5, **cache_fields}
+    register_provider(_openai(body))
+    result = dispatch(
+        _PROMPT, "thought_partner", investigation_id="inv-usage",
+        config=_config("oc", "deepseek-chat"),
+    )
+    assert result.usage.reported is True
+    assert result.usage.cache_unknown is True
+    assert (result.usage.input_tokens, result.usage.output_tokens) == (10, 5)
+    assert result.usage.cached_input_tokens == 0
+    assert result.cost_usd == pytest.approx(10 / 1e6 * 1.0 + 5 / 1e6 * 4.0)
+    assert result.cost_usd < _CEILING_USD
 
 
 @pytest.mark.parametrize("usage", _ANTHROPIC_UNREPORTED)

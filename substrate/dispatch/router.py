@@ -779,6 +779,11 @@ def _dispatch_authoritative(
         # Success: normalize, cost, emit, return.
         default_breaker.record_success(provider_name)
         usage = provider.normalize_usage(raw.raw_usage)
+        if usage.reported and usage.cache_unknown:
+            logger.warning(
+                "dispatch: %s/%s reported no valid cache split; billing all input "
+                "at the full rate", provider_name, model_name,
+            )
         if not raw.raw_usage or not usage.reported:
             # A paid 200 with no usage is not a free call. Bill the ceiling the
             # call could have cost (one input token per prompt byte, the full
