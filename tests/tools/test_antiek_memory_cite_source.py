@@ -24,6 +24,8 @@ def cite_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
             ("doc-r", "restricted_pending_opt_in", "user-a", "pub-1"),
             ("doc-null", None, "user-a", None),
             ("doc-b", "user_owned", "user-b", None),
+            # Class still reads public_domain; the takedown sits in book_assets.
+            ("doc-td", "public_domain", "user-a", "pub-3"),
         ):
             con.execute(
                 "INSERT INTO documents (document_id, title, source_tier, "
@@ -36,6 +38,9 @@ def cite_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
                 "section_path, text) VALUES (?, ?, 0, 'Section 1', 'source text')",
                 [document_id.replace("doc-", "chunk-"), document_id],
             )
+        con.execute(
+            "INSERT INTO book_assets (document_id, taken_down) VALUES ('doc-td', TRUE)"
+        )
         for node_id, label, metadata in (
             ("claim-pd", "Public claim", {"chunk_id": "chunk-pd"}),
             ("claim-r", "Restricted claim", {"chunk_id": "chunk-r"}),
@@ -124,6 +129,16 @@ def test_chunk_and_document_citations(cite_source: Any) -> None:
     assert public_document.is_error is False
     assert _body(public_document)["ip_holder_id"] == "pub-2"
     assert _body(public_document)["section_path"] is None
+
+
+def test_taken_down_book_is_cited_without_its_ip_holder(cite_source: Any) -> None:
+    for args in ({"id": "chunk-td"}, {"id": "doc-td", "id_type": "document"}):
+        taken_down = cite_source(args)
+        assert taken_down.is_error is False
+        assert _body(taken_down)["document_id"] == "doc-td"
+        assert _body(taken_down)["ip_holder_id"] is None
+        assert _body(taken_down)["servable"] is False
+        assert _body(taken_down)["servability"] == "taken_down"
 
 
 def test_claim_citations_use_canonical_node_gate(cite_source: Any) -> None:
