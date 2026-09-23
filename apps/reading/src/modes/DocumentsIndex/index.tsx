@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
-import DocumentStylePreview from "../ResearchWorkstation/DocumentStylePreview";
 
 /**
  * Documents listing UI (master-spec §4.1).
@@ -17,6 +16,12 @@ import DocumentStylePreview from "../ResearchWorkstation/DocumentStylePreview";
  * through the style wheel (`GET /documents/{id}/render?style=`), the one
  * surface where an ingested asset is viewed as projected HTML.
  */
+
+// The preview opens on demand from a row, and `index` ships on every page
+// load under a 700 KB gz ceiling, so it loads as its own chunk.
+const DocumentStylePreview = lazy(
+  () => import("../ResearchWorkstation/DocumentStylePreview"),
+);
 
 interface DocumentRow {
   document_id: string;
@@ -263,7 +268,9 @@ export default function DocumentsIndex() {
                   Close preview
                 </button>
               </div>
-              <DocumentStylePreview key={previewId} documentId={previewId} />
+              <Suspense fallback={null}>
+                <DocumentStylePreview key={previewId} documentId={previewId} />
+              </Suspense>
             </section>
           )}
         </div>
