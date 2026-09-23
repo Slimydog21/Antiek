@@ -1,9 +1,11 @@
-"""YouTube Data API v3 connector — key validation + search (BYO-tools v1).
+"""YouTube Data API v3 connector — key validation, search, one-video metadata.
 
 A ``runtime/connectors``-level connector for the **settings vertical**: a user
 connects their own GCP API key (BYOK), and this connector (a) validates it live
-against ``GET /youtube/v3/videos?chart=mostPopular&maxResults=1`` and (b)
-exposes a search wrapper. Both surfaces route through the daily-quota
+against ``GET /youtube/v3/videos?chart=mostPopular&maxResults=1``, (b)
+exposes a search wrapper, and (c) reads one video's metadata through
+``videos.list`` so an ingest can take title, description and publish date
+from the official API instead of yt-dlp. Every surface routes through the daily-quota
 :class:`~runtime.connectors.quota_meter.QuotaMeter` exactly like
 ``acquisition/youtube/data_api.py``, metering every call in quota units against
 the 10,000-unit/day budget reset at midnight Pacific.
@@ -25,6 +27,7 @@ the operator's smoke test.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -87,6 +90,42 @@ class YouTubeQuotaExhausted(YouTubeError):
 
 
 _ID_FIELDS = (("videoId", "video"), ("channelId", "channel"), ("playlistId", "playlist"))
+
+# A watch id is exactly 11 URL-safe base64 characters. Checked before any send
+# so a malformed id never spends a unit or reaches the vendor.
+_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+_ISO_DURATION = re.compile(
+    r"^P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?$"
+)
+
+
+@dataclass(frozen=True)
+class YouTubeVideoMetadata:
+    """One video's metadata as ``videos.list`` returns it.
+
+    ``published_at`` is the vendor's RFC 3339 string, unparsed; the ingest lane
+    owns turning it into a datetime. ``duration_seconds`` is 0 when the vendor
+    sent no duration or one this parser does not read (a live stream reports
+    ``P0D``), never a guess.
+    """
+
+    video_id: str
+    title: str
+    channel_title: str
+    description: str
+    published_at: str | None
+    duration_seconds: int
+
+
+def _iso8601_duration_seconds(value: object) -> int:
+    """``PT1H2M3S`` -> 3723. Pure; anything unreadable is 0."""
+    if not isinstance(value, str):
+        return 0
+    match = _ISO_DURATION.match(value)
+    if match is None:
+        return 0
+    parts = {name: int(raw) if raw else 0 for name, raw in match.groupdict().items()}
+    return parts["days"] * 86_400 + parts["hours"] * 3_600 + parts["minutes"] * 60 + parts["seconds"]
 
 
 @dataclass(frozen=True)
@@ -290,6 +329,42 @@ class YouTubeDataConnector(PasteKeyConnector):
             units=_VIDEOS_UNITS,
         )
 
+    def video_metadata(self, video_id: str) -> YouTubeVideoMetadata:
+        """One video's metadata: ``GET /youtube/v3/videos?part=snippet,contentDetails``.
+
+        Costs 1 quota unit (``videos.list``), reserved on this owner's meter
+        before the request is built, which is the whole point: the same fields
+        yt-dlp scrapes arrive here through the owner's own key and the
+        official API. A malformed id is refused before any send and spends
+        nothing. A well-formed id the vendor does not know raises
+        :class:`YouTubeError` with ``status_code=404``; the unit is spent,
+        because Google charged it.
+        """
+        if not isinstance(video_id, str) or not _VIDEO_ID.match(video_id):
+            raise ValueError("video_id must be an 11-character YouTube id")
+        payload = self._get(
+            "/videos",
+            {"part": "snippet,contentDetails", "id": video_id, "maxResults": "1"},
+            units=_VIDEOS_UNITS,
+        )
+        items = payload.get("items")
+        item = items[0] if isinstance(items, list) and items else None
+        if not isinstance(item, dict):
+            raise YouTubeError("YouTube video was not found", status_code=404)
+        snippet = item.get("snippet")
+        snippet = snippet if isinstance(snippet, dict) else {}
+        details = item.get("contentDetails")
+        details = details if isinstance(details, dict) else {}
+        published = snippet.get("publishedAt")
+        return YouTubeVideoMetadata(
+            video_id=video_id,
+            title=str(snippet.get("title") or ""),
+            channel_title=str(snippet.get("channelTitle") or ""),
+            description=str(snippet.get("description") or ""),
+            published_at=str(published) if published else None,
+            duration_seconds=_iso8601_duration_seconds(details.get("duration")),
+        )
+
     def search(
         self,
         query: str,
@@ -371,5 +446,6 @@ __all__ = [
     "YouTubeKeyRequired",
     "YouTubeQuotaExhausted",
     "YouTubeSearchHit",
+    "YouTubeVideoMetadata",
     "parse_search_items",
 ]

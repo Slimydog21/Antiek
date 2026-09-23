@@ -483,3 +483,224 @@ def test_rate_limited_x_search_leaves_the_operation_retriable(monkeypatch, tmp_p
     assert after_window.status_code == 200, after_window.text
     assert after_window.json()["status"] == "completed"
     assert after_window.json()["candidates"][0]["external_id"] == "1799999999999999999"
+
+
+# ── SPR-04 task 5: POST /research/tools/ingest ─────────────────────────────
+#
+# A connected-tool candidate is ingested with the owner's own key: the route
+# fetches the single item through the resolved connector (stubbed here at the
+# HTTP layer) and hands it to the EXISTING acquisition adapter with
+# content_class=personal_reading. The adapters are recorders so no graph is
+# opened; what these tests pin is what the route passes them.
+
+import sqlite3  # noqa: E402
+
+from acquisition.twitter.adapter import IngestTwitterResult, TwitterThread  # noqa: E402
+from acquisition.youtube.adapter import IngestYouTubeResult  # noqa: E402
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
+
+_VIDEO_ID = "dQw4w9WgXcQ"
+_TWEET_ID = "1790000000000000001"
+
+
+def _videos_handler(calls: list[str]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/youtube/v3/videos"
+        calls.append(request.url.params["id"])
+        return httpx.Response(200, json={"items": [{
+            "id": request.url.params["id"],
+            "snippet": {
+                "title": "Solid-state battery lecture",
+                "channelTitle": "Materials Lab",
+                "description": "A long description.",
+                "publishedAt": "2026-08-12T00:00:00Z",
+            },
+            "contentDetails": {"duration": "PT45M"},
+        }]})
+    return handler
+
+
+def _tweet_handler(calls: list[str]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, json={
+            "data": {"id": _TWEET_ID, "text": "Worth reading", "author_id": "7",
+                     "created_at": "2026-08-12T10:00:00.000Z", "conversation_id": _TWEET_ID},
+            "includes": {"users": [{"id": "7", "username": "labnotes", "verified": False}]},
+        })
+    return handler
+
+
+class _Recorder:
+    def __init__(self, result):
+        self.result = result
+        self.calls: list[tuple[tuple, dict]] = []
+
+    def __call__(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return self.result(*args, **kwargs) if callable(self.result) else self.result
+
+
+def _no_captions(monkeypatch) -> None:
+    import acquisition.youtube.client as yt_client
+
+    monkeypatch.setattr(yt_client, "_fetch_transcript", lambda _vid: ([], "missing"))
+    yt_client.reset_youtube_fetch_counter()
+
+
+def _youtube_recorder() -> _Recorder:
+    return _Recorder(lambda _url, **kw: IngestYouTubeResult(
+        document_id=f"doc-yt-{kw['video'].video_id}",
+        video_id=kw["video"].video_id,
+        chunks_written=3,
+        title=kw["video"].title,
+        content_class=kw.get("content_class"),
+    ))
+
+
+def _ingest_rows(tmp_path, operation_id: str) -> int:
+    with sqlite3.connect(tmp_path / "journal.sqlite3") as con:
+        return int(con.execute(
+            "SELECT COUNT(*) FROM ingests WHERE operation_id=?", (operation_id,)
+        ).fetchone()[0])
+
+
+def test_tools_ingest_replays_one_document_id_per_operation_id(monkeypatch, tmp_path):
+    _no_captions(monkeypatch)
+    fetched: list[str] = []
+    connector = _youtube_connector(_videos_handler(fetched), tmp_path)
+    resolved: list[tuple] = []
+
+    def resolver(*args, **_kwargs):
+        resolved.append(args)
+        return connector
+
+    adapter = _youtube_recorder()
+    monkeypatch.setattr(subject, "ingest_youtube", adapter)
+    client = _app(monkeypatch, tmp_path, resolver)
+    body = {"operation_id": "ingest_operation_001", "vendor": "youtube", "external_id": _VIDEO_ID}
+
+    first = client.post("/research/tools/ingest", json=body)
+    second = client.post("/research/tools/ingest", json=body)
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["status"] == "completed"
+    assert second.json()["status"] == "replayed"
+    assert first.json()["document_id"] == second.json()["document_id"] == f"doc-yt-{_VIDEO_ID}"
+    assert first.json()["ingest_status"] == "ingested"
+    assert first.headers["cache-control"] == "private, no-store"
+    # One vendor fetch, one adapter call, one journal row: the replay bought nothing.
+    assert fetched == [_VIDEO_ID]
+    assert len(adapter.calls) == 1
+    assert resolved == [("owner-a", "youtube")]
+    assert _ingest_rows(tmp_path, "ingest_operation_001") == 1
+    # The metadata the adapter ingested came through the owner's key.
+    video = adapter.calls[0][1]["video"]
+    assert video.title == "Solid-state battery lecture"
+    assert video.channel == "Materials Lab"
+    assert video.duration_seconds == 2700
+
+
+def test_tools_ingest_attaches_personal_reading_content_class(monkeypatch, tmp_path):
+    # YouTube: the owner's key fetches the video, the adapter gets the class.
+    _no_captions(monkeypatch)
+    yt_adapter = _youtube_recorder()
+    monkeypatch.setattr(subject, "ingest_youtube", yt_adapter)
+    yt_client = _app(
+        monkeypatch, tmp_path,
+        lambda *_a, **_k: _youtube_connector(_videos_handler([]), tmp_path, "yt-class"),
+    )
+    yt = yt_client.post("/research/tools/ingest", json={
+        "operation_id": "ingest_operation_yt1", "vendor": "youtube", "external_id": _VIDEO_ID,
+    })
+    assert yt.status_code == 200, yt.text
+    kwargs = yt_adapter.calls[0][1]
+    # .get, not [...]: a dropped argument must fail on the VALUE (None), not a KeyError.
+    assert kwargs.get("content_class") == "personal_reading"
+    assert kwargs.get("content_class") == PERSONAL_READING_CONTENT_CLASS
+    assert kwargs["source_tier"] == 4
+    assert yt.json()["content_class"] == "personal_reading"
+
+    # X: the owner's bearer fetches the post, the thread adapter gets the class.
+    x_adapter = _Recorder(lambda thread, **_kw: IngestTwitterResult(
+        document_id="doc-x-0123456789abcdef", chunks_written=1, title="Worth reading",
+    ))
+    monkeypatch.setattr(subject, "ingest_twitter_thread", x_adapter)
+    x_fetched: list[str] = []
+    x_client = _app(
+        monkeypatch, tmp_path,
+        lambda *_a, **_k: _x_connector(_tweet_handler(x_fetched), tmp_path, "x-class"),
+    )
+    x = x_client.post("/research/tools/ingest", json={
+        "operation_id": "ingest_operation_x01", "vendor": "x", "external_id": _TWEET_ID,
+    })
+    assert x.status_code == 200, x.text
+    (thread,), x_kwargs = x_adapter.calls[0]
+    # .get, not [...]: a dropped argument must fail on the VALUE (None), not a KeyError.
+    assert x_kwargs.get("content_class") == "personal_reading"
+    assert x_kwargs.get("content_class") == PERSONAL_READING_CONTENT_CLASS
+    assert x_kwargs["source_tier"] == 4
+    assert isinstance(thread, TwitterThread)
+    assert thread.root_tweet_id == _TWEET_ID
+    assert thread.author_handle == "labnotes"
+    assert thread.tweets[0].text == "Worth reading"
+    assert x_fetched == [f"/2/tweets/{_TWEET_ID}"]
+
+
+def test_tools_ingest_rejects_malformed_external_id_without_echo(monkeypatch, tmp_path):
+    def resolver(*_a, **_k):
+        raise AssertionError("the resolver must not be reached")
+
+    client = _app(monkeypatch, tmp_path, resolver)
+    for vendor, bad in (("youtube", "PRIVATE-MARKER"), ("x", "PRIVATE-MARKER")):
+        response = client.post("/research/tools/ingest", json={
+            "operation_id": "ingest_operation_bad", "vendor": vendor, "external_id": bad,
+        })
+        assert response.status_code == 422
+        assert "PRIVATE-MARKER" not in response.text
+
+
+def test_tools_ingest_not_found_releases_the_operation(monkeypatch, tmp_path):
+    _no_captions(monkeypatch)
+    sends: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sends.append(request.url.params["id"])
+        return httpx.Response(200, json={"items": []})
+
+    adapter = _youtube_recorder()
+    monkeypatch.setattr(subject, "ingest_youtube", adapter)
+    client = _app(
+        monkeypatch, tmp_path,
+        lambda *_a, **_k: _youtube_connector(handler, tmp_path, "yt-missing"),
+    )
+    body = {"operation_id": "ingest_operation_404", "vendor": "youtube", "external_id": _VIDEO_ID}
+    first = client.post("/research/tools/ingest", json=body)
+    retry = client.post("/research/tools/ingest", json=body)
+    assert first.status_code == 404
+    assert retry.status_code == 404
+    assert _VIDEO_ID not in first.text
+    assert sends == [_VIDEO_ID, _VIDEO_ID]  # released, so the retry reached the vendor
+    assert adapter.calls == []
+
+
+def test_tools_ingest_adapter_failure_is_unresolved_not_retried(monkeypatch, tmp_path):
+    _no_captions(monkeypatch)
+    fetched: list[str] = []
+
+    def failing(*_a, **_k):
+        raise ValueError("graph write failed")
+
+    monkeypatch.setattr(subject, "ingest_youtube", _Recorder(failing))
+    client = _app(
+        monkeypatch, tmp_path,
+        lambda *_a, **_k: _youtube_connector(_videos_handler(fetched), tmp_path, "yt-fail"),
+    )
+    body = {"operation_id": "ingest_operation_err", "vendor": "youtube", "external_id": _VIDEO_ID}
+    first = client.post("/research/tools/ingest", json=body)
+    again = client.post("/research/tools/ingest", json=body)
+    assert first.status_code == 503
+    assert "graph write failed" not in first.text
+    assert again.status_code == 409  # a paid fetch with an unknown outcome is not re-sent
+    assert fetched == [_VIDEO_ID]
