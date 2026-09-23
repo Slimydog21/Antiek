@@ -1725,6 +1725,26 @@ ConstraintLoopStatus = Literal[
     "preflight_failed",  # constraints contradictory before any iteration
 ]
 
+# How a research role's Delivered payload came to exist. The bridges answer a
+# failed call with a fallback Delivered (so the phase never hangs), and that
+# fallback is shaped exactly like a model that declined: empty output plus
+# ``insufficient_evidence``. This field is what tells them apart. The bridge
+# sets it from what happened at dispatch, never from the model's text:
+#
+# - ``delivered`` — the model answered and the answer parsed.
+# - ``parse_failed`` — the model answered, but even after the bridge's repair
+#   attempt the answer did not parse. The 2026-05-18 H2.5 contract treats this
+#   as "no defensible answer", a valid terminal.
+# - ``dispatch_failed`` — no model answered (provider error, missing key,
+#   breaker open, owner credential unavailable). Nothing was decided, so no
+#   gate may read this payload as a verdict.
+RoleOutcome = Literal["delivered", "parse_failed", "dispatch_failed"]
+
+# The outcomes in which a model actually answered. Gates that accept an empty
+# or declined payload as a verdict (the H2.5 hatches) accept it only from
+# these; anything else, including an outcome added later, is not a verdict.
+ROLE_ANSWERED_OUTCOMES: frozenset[str] = frozenset({"delivered", "parse_failed"})
+
 
 class ConstraintViolationFoundPayload(_PayloadBase):
     """Emitted when a constraint check identifies a violation. One
@@ -2184,6 +2204,8 @@ class ConnectorDeliveredPayload(_PayloadBase):
     natural_language_relationships: list[NaturalLanguageRelationship] = Field(
         default_factory=list,
     )
+    # How this payload was produced; see ``RoleOutcome``.
+    role_outcome: RoleOutcome = "delivered"
 
 
 # ---------------------------------------------------------------------------
@@ -2315,6 +2337,8 @@ class SynthesizeDeliveredPayload(_PayloadBase):
     # converged.
     constraint_loop_status: ConstraintLoopStatus = "single_pass"
     constraint_loop_iterations: int = Field(default=1, ge=1)
+    # How this payload was produced; see ``RoleOutcome``.
+    role_outcome: RoleOutcome = "delivered"
 
 
 # ---------------------------------------------------------------------------
@@ -2682,6 +2706,8 @@ class ParameterExtractDeliveredPayload(_PayloadBase):
     )
     parameters: list[Parameter] = Field(default_factory=list)
     constraints: list[ConstraintSpec] = Field(default_factory=list)
+    # How this payload was produced; see ``RoleOutcome``.
+    role_outcome: RoleOutcome = "delivered"
 
 
 # ---------------------------------------------------------------------------
@@ -2763,6 +2789,8 @@ class EvidenceRetrieveDeliveredPayload(_PayloadBase):
     supporting_claims: list[SupportingClaim] = Field(default_factory=list)
     evidentiary_gaps: list[EvidentiaryGap] = Field(default_factory=list)
     insufficient_evidence: bool = False
+    # How this payload was produced; see ``RoleOutcome``.
+    role_outcome: RoleOutcome = "delivered"
 
 
 # ---------------------------------------------------------------------------

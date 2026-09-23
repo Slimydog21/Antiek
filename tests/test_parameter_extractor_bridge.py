@@ -228,6 +228,7 @@ async def test_provider_unavailable_falls_back(
     assert p.parameters == []
     assert p.constraints == []
     assert e.policy_id == "parameter-extractor-fallback/no-provider"
+    assert p.role_outcome == "dispatch_failed"
 
 
 @pytest.mark.asyncio
@@ -253,6 +254,7 @@ async def test_parse_failure_falls_back_preserving_dispatch_policy_id(
     assert p.constraints == []
     # Dispatch succeeded — parse failed. Provider stamp preserved.
     assert e.policy_id == "stub-pe/stub-flash-model"
+    assert p.role_outcome == "parse_failed"
 
 
 @pytest.mark.asyncio

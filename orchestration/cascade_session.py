@@ -65,6 +65,7 @@ from runtime.research_runner import (
     ResearchPlan,
     RunState,
     StepEvent,
+    terminal_event,
 )
 from runtime.research_runner.promotion_funnel import PromotionFunnel
 from substrate.event_log import default_events_dir, log_event, trajectory
@@ -423,13 +424,6 @@ class CascadeSession:
 # ---------------------------------------------------------------------------
 
 
-_TERMINAL_ACTION = {
-    ActionType.INVESTIGATION_COMPLETED.value: RunState.DONE,
-    ActionType.INVESTIGATION_FAILED.value: RunState.FAILED,
-    ActionType.INVESTIGATION_CHASE_HALTED.value: RunState.BUDGET_HALTED,
-}
-
-
 def _list_investigation_ids(events_dir: str) -> list[str]:
     if not os.path.isdir(events_dir):
         return []
@@ -464,8 +458,11 @@ def reconstruct_session(session_id: str, *, events_dir: str | None = None) -> Se
                 sub_q = payload.get("sub_question", sub_q)
                 if state == RunState.PENDING:
                     state = RunState.RUNNING
-            elif at in _TERMINAL_ACTION:
-                state = _TERMINAL_ACTION[at]
+        # The same reader the status routes use: a stop or cancel ends through
+        # ``completed`` with an ``outcome``, and must not recover as done.
+        terminal = terminal_event(rows)
+        if terminal is not None:
+            state = terminal[0]
         if parent == session_id:
             researches.append(ResearchState(iid, sub_q, state.value))
     researches.sort(key=lambda r: r.investigation_id)

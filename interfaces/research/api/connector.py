@@ -29,7 +29,8 @@ parameter_extractor):
   if the LLM never confirmed), policy stamped
   ``connector-fallback/no-provider``.
 - Parse failure → fallback Delivered with paths preserved and
-  ``natural_language_relationships=[]``.
+  ``natural_language_relationships=[]``. ``role_outcome`` tells the two
+  fallbacks apart (``parse_failed`` vs ``dispatch_failed``).
 - Graph unavailable / traversal raises → fallback Delivered with
   empty paths AND empty NL relationships; logs to stderr.
 """
@@ -74,10 +75,12 @@ from substrate.schemas import (  # noqa: E402
     GraphPath,
     KeywordMapping,
     NaturalLanguageRelationship,
+    RoleOutcome,
     SeedPair,
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
+from .dispatch_failure import RoleDispatchFailed  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Traversal dispatch
@@ -236,7 +239,7 @@ def _dispatch_and_parse(
             f"{type(exc).__name__}: {exc}",
             flush=True,
         )
-        return None, "connector-fallback/no-provider"
+        raise RoleDispatchFailed("connector", "connector-fallback/no-provider") from exc
 
     try:
         parsed = parse_connector_response(
@@ -326,13 +329,18 @@ def make_connector_handler(
         )
 
         # ── 3. Dispatch + parse ──
-        result, policy_id = await asyncio.to_thread(
-            _dispatch_and_parse,
-            prompt,
-            event,
-            canonical_node_ids=canonical_node_ids,
-            canonical_edge_ids=canonical_edge_ids,
-        )
+        role_outcome: RoleOutcome = "parse_failed"
+        try:
+            result, policy_id = await asyncio.to_thread(
+                _dispatch_and_parse,
+                prompt,
+                event,
+                canonical_node_ids=canonical_node_ids,
+                canonical_edge_ids=canonical_edge_ids,
+            )
+        except RoleDispatchFailed as failed:
+            result, policy_id = None, failed.policy_id
+            role_outcome = "dispatch_failed"
 
         if result is None:
             # Fallback: surface the traversed paths even though the
@@ -347,6 +355,7 @@ def make_connector_handler(
                     algorithm_rationale=None,
                     paths=traversed_paths,
                     natural_language_relationships=[],
+                    role_outcome=role_outcome,
                 ),
                 policy_id=policy_id,
                 broadcaster=broadcaster,

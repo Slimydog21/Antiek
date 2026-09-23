@@ -51,13 +51,14 @@ from .protocol import (
     Status,
     StepEvent,
     StopResearch,
+    terminal_event,
 )
 
 __all__ = [
     # protocol
     "ResearchRunner", "ResearchPlan", "BudgetCap", "Command", "CommandKind",
     "CostState", "Handle", "RunState", "Status", "StepEvent",
-    "StopResearch", "BudgetExceeded", "SpendControlMode",
+    "StopResearch", "BudgetExceeded", "SpendControlMode", "terminal_event",
     "BillingUnit", "BoundedUsage", "CostProjectionRequest", "CostProjection",
     "ProjectionDisposition", "ProjectionIneligibility",
     "ProjectionRate",

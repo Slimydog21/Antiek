@@ -2,6 +2,9 @@
 
 Maps caught exceptions to the closed code set in
 ``docs/decisions/drw-plan-failure-contract.md``. Pure function — no I/O.
+
+Also holds ``RoleDispatchFailed``, the typed signal a Loop One role bridge
+raises when no model answered its call.
 """
 
 from __future__ import annotations
@@ -79,3 +82,20 @@ def classify_dispatch_failure(exc: BaseException) -> FailureClassification:
         message=_MESSAGES[code],
         retryable=retryable,
     )
+
+class RoleDispatchFailed(Exception):
+    """No model answered a research role's call.
+
+    Raised by a role bridge's ``_dispatch_and_parse`` when the provider call
+    itself failed (ProviderError, an unregistered provider, an open breaker,
+    an unavailable owner credential), as distinct from a model that answered
+    with something that did not parse. The bridge's handler catches it and
+    emits its fallback Delivered stamped ``role_outcome="dispatch_failed"``,
+    so the orchestrator cannot mistake the outage for the model's own
+    ``insufficient_evidence`` verdict. ``policy_id`` is the stamp the bridge
+    has always put on that fallback event."""
+
+    def __init__(self, role: str, policy_id: str) -> None:
+        self.role = role
+        self.policy_id = policy_id
+        super().__init__(f"{role} dispatch failed ({policy_id})")

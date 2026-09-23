@@ -1593,6 +1593,7 @@ export interface EvidenceRetrieveDeliveredPayload {
   supporting_claims?: SupportingClaim[];
   evidentiary_gaps?: EvidentiaryGap[];
   insufficient_evidence?: boolean;
+  role_outcome?: "delivered" | "parse_failed" | "dispatch_failed";
 }
 
 /**
@@ -1622,6 +1623,7 @@ export interface ParameterExtractDeliveredPayload {
   action_type: "parameter_extract.delivered";
   parameters?: Parameter[];
   constraints?: ConstraintSpec[];
+  role_outcome?: "delivered" | "parse_failed" | "dispatch_failed";
 }
 
 /**
@@ -1658,6 +1660,7 @@ export interface ConnectorDeliveredPayload {
   algorithm_rationale?: string | null;
   paths?: GraphPath[];
   natural_language_relationships?: NaturalLanguageRelationship[];
+  role_outcome?: "delivered" | "parse_failed" | "dispatch_failed";
 }
 
 /**
@@ -1702,6 +1705,7 @@ export interface SynthesizeDeliveredPayload {
   conviction_level?: number | null;
   constraint_loop_status?: "single_pass" | "passed" | "regressed" | "max_iterations_reached" | "escalated" | "preflight_failed";
   constraint_loop_iterations?: number;
+  role_outcome?: "delivered" | "parse_failed" | "dispatch_failed";
 }
 
 /**
