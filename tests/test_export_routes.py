@@ -183,3 +183,141 @@ def test_export_my_graph_503_when_db_path_invalid(monkeypatch, tmp_path):
     assert "traceback" not in body.lower()
     assert "research_graph" not in body
     assert "graph database unavailable" in body
+
+
+INVITE_TOKEN = "invite-bearer-credential-7f3a9c"
+PARTNER_SECRET = "a1" * 32
+
+
+def _seed_credentials(db: str) -> str:
+    """Seed the three credential stores the graph DB carries; return the
+    operator's live signing key."""
+    from services.antiek_format.signature import ensure_keypair
+    from substrate.speak.schema import ensure_speak_schema
+
+    private_key = ensure_keypair("__operator__", db_path=db).private_key_b64
+    with connect_write(db, purpose="test:export-credentials") as con:
+        ensure_speak_schema(con)
+        con.execute(
+            "INSERT INTO speak_invites (invite_id, interview_id, project_id, token, "
+            "required_consent_scopes) VALUES ('i1', 'iv1', 'p1', ?, '[\"record\"]'), "
+            "('i2', 'iv2', 'p1', 'second-invite-credential', '[]')",
+            [INVITE_TOKEN],
+        )
+        con.execute(
+            "INSERT INTO federation_partners (attempt_id, partner_id, display_name, "
+            "substrate_url, shared_secret_hex, state, registered_at, "
+            "last_state_change_at) VALUES ('a1', 'partner-1', 'Partner', "
+            "'https://partner.example', ?, 'trusted', now(), now())",
+            [PARTNER_SECRET],
+        )
+    return private_key
+
+
+def _shard_rows(zf: zipfile.ZipFile, name: str, tmp_path) -> list[dict]:
+    path = tmp_path / name.replace("/", "_")
+    path.write_bytes(zf.read(name))
+    con = duckdb.connect()
+    try:
+        cur = con.execute(f"SELECT * FROM read_parquet('{path}')")
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+    finally:
+        con.close()
+
+
+def test_export_my_graph_keeps_credentials_on_the_host(monkeypatch, tmp_path):
+    """The bundle is built to leave the host, so it must not carry the
+    Ed25519 signing key ("NEVER leaves substrate-resident storage"), a live
+    Speak invite bearer token, or a federation partner's shared secret."""
+    paths = _build_store(monkeypatch, tmp_path)
+    private_key = _seed_credentials(paths["db"])
+    secrets = (private_key, INVITE_TOKEN, "second-invite-credential", PARTNER_SECRET)
+
+    resp = _client().get("/export/my-graph")
+    assert resp.status_code == 200, resp.text[:500]
+    zf = zipfile.ZipFile(io.BytesIO(resp.content))
+
+    shards: dict[str, list[dict]] = {}
+    for name in zf.namelist():
+        if name.startswith("graph/") and name.endswith(".parquet"):
+            rows = _shard_rows(zf, name, tmp_path)
+            shards[name.removeprefix("graph/").removesuffix(".parquet")] = rows
+            flat = repr(rows)
+        else:
+            flat = zf.read(name).decode("utf-8", errors="replace")
+        # Index only: the assertion must not echo key material into the log.
+        leaked = [i for i, secret in enumerate(secrets) if secret in flat]
+        assert leaked == [], f"credential #{leaked} exported in {name}"
+
+    # The signing key's rows stay home; the non-secret rows keep their data
+    # with the credential replaced by a fresh value nobody holds.
+    assert shards["antiek_user_keypairs"] == []
+    invites = {r["invite_id"]: r for r in shards["speak_invites"]}
+    assert set(invites) == {"i1", "i2"}
+    assert invites["i1"]["required_consent_scopes"] == '["record"]'
+    tokens = [r["token"] for r in invites.values()]
+    assert all(tokens) and len(set(tokens)) == 2, "restore needs NOT NULL UNIQUE tokens"
+    (partner,) = shards["federation_partners"]
+    assert partner["partner_id"] == "partner-1"
+    assert partner["shared_secret_hex"]
+
+    manifest = json.loads(zf.read("manifest.json"))
+    withheld = manifest["credentials_withheld"]
+    assert withheld["antiek_user_keypairs"]["policy"] == "rows_withheld"
+    assert withheld["antiek_user_keypairs"]["source_rows"] == 1
+    assert withheld["speak_invites.token"]["policy"] == "values_replaced"
+    assert withheld["federation_partners.shared_secret_hex"]["policy"] == "values_replaced"
+    # Counts describe the bundle, not the source.
+    assert manifest["counts"]["table_rows"]["antiek_user_keypairs"] == 0
+    assert manifest["counts"]["table_rows"]["speak_invites"] == 2
+
+
+def test_unclassified_credential_shaped_column_is_replaced(monkeypatch, tmp_path):
+    """Fail closed: a credential-shaped column nobody classified yet is
+    replaced, and the manifest names it, rather than exported verbatim."""
+    paths = _build_store(monkeypatch, tmp_path)
+    with connect_write(paths["db"], purpose="test:export-new-secret") as con:
+        con.execute("CREATE TABLE future_oauth (id TEXT PRIMARY KEY, refresh_token TEXT)")
+        con.execute("INSERT INTO future_oauth VALUES ('o1', 'refresh-credential-99')")
+
+    resp = _client().get("/export/my-graph")
+    assert resp.status_code == 200, resp.text[:500]
+    zf = zipfile.ZipFile(io.BytesIO(resp.content))
+    (row,) = _shard_rows(zf, "graph/future_oauth.parquet", tmp_path)
+    assert row["id"] == "o1"
+    assert row["refresh_token"] and row["refresh_token"] != "refresh-credential-99"
+    withheld = json.loads(zf.read("manifest.json"))["credentials_withheld"]
+    assert withheld["future_oauth.refresh_token"]["policy"] == "values_replaced"
+    assert "unclassified" in withheld["future_oauth.refresh_token"]["reason"]
+
+
+def test_every_credential_shaped_column_in_the_schema_is_classified(tmp_path):
+    """Tripwire: a new table with a key/token/secret column must be classified
+    (credential or not) in export_routes, not left to the fail-closed default."""
+    from services.antiek_format.signature import ensure_keypair
+    from substrate.speak.schema import ensure_speak_schema
+
+    db = str(tmp_path / "schema.duckdb")
+    init_database_at_path(db)
+    ensure_keypair("__operator__", db_path=db)
+    with connect_write(db, purpose="test:export-schema-scan") as con:
+        ensure_speak_schema(con)
+    con = duckdb.connect(db, read_only=True)
+    try:
+        columns = con.execute(
+            "SELECT table_name, column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = 'main'"
+        ).fetchall()
+    finally:
+        con.close()
+    unclassified = [
+        (t, c)
+        for t, c, dtype in columns
+        if export_routes._credential_shaped(c, dtype)
+        and t not in export_routes.CREDENTIAL_TABLES_WITHHELD
+        and (t, c) not in export_routes.CREDENTIAL_COLUMNS_REPLACED
+        and (t, c) not in export_routes.NON_CREDENTIAL_COLUMNS
+    ]
+    assert unclassified == []
+    assert ("speak_invites", "token") in export_routes.CREDENTIAL_COLUMNS_REPLACED
