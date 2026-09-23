@@ -16,8 +16,10 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -125,12 +127,24 @@ def ingest_voice_note(
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
+    write_guard: Callable[[Any], None] | None = None,
+    after_write: Callable[[Any, IngestVoiceNoteResult], None] | None = None,
 ) -> IngestVoiceNoteResult:
     """Write a transcribed voice note into the substrate graph.
 
     The transcript is the text-only output of whisper (or a stub for
     tests). This adapter does not perform transcription itself; pair
     with ``transcribe_and_ingest`` to chain the two.
+
+    ``write_guard(con)`` runs under this ingest's write lock before
+    anything is written, the ``document_loaded`` event included; if it
+    raises, the note leaves no event, document, chunk or node. A caller
+    whose permission to write can be revoked between its own check and
+    this lock (Speak's invite door, closed by a takedown) passes its check
+    here. ``after_write(con, result)`` runs under the same lock once the
+    note is written, so the caller's bookkeeping lands with the note or
+    not at all. With either hook the lock is taken even for a note too
+    short to store.
     """
     when = recorded_at or datetime.now(UTC)
     document_id = voice_note_doc_id(operator_id, when)
@@ -153,25 +167,45 @@ def ingest_voice_note(
         page_count=None,
         source_uri=None,
     )
-    event_id = emit_typed(
-        investigation_id,
-        payload,
-        document_id=document_id,
-        role="acquisition",
-        policy_id="acquisition/voice",
-    )
-
-    if word_count < min_word_count:
-        return IngestVoiceNoteResult(
+    def _emit_loaded() -> str | None:
+        return emit_typed(
+            investigation_id,
+            payload,
             document_id=document_id,
-            document_loaded_event_id=event_id,
-            skipped_reason="low_word_count",
-            title=auto_title,
-            transcript_text=transcript,
-            duration_seconds=duration_seconds,
+            role="acquisition",
+            policy_id="acquisition/voice",
         )
 
+    from runtime.db_lock import connect_write
+
     resolved_db_path = db_path or default_db_path()
+    # Unguarded callers keep emitting before the lock. A guarded ingest emits
+    # under the lock once the guard passes (db lock then event lock, the
+    # order write/event_outbox.dispatch_pending already takes).
+    event_id = _emit_loaded() if write_guard is None else None
+
+    if word_count < min_word_count:
+        def _skipped(loaded_event_id: str | None) -> IngestVoiceNoteResult:
+            return IngestVoiceNoteResult(
+                document_id=document_id,
+                document_loaded_event_id=loaded_event_id,
+                skipped_reason="low_word_count",
+                title=auto_title,
+                transcript_text=transcript,
+                duration_seconds=duration_seconds,
+            )
+
+        if write_guard is None and after_write is None:
+            return _skipped(event_id)
+        with connect_write(resolved_db_path, purpose="acquisition/voice") as con:
+            if write_guard is not None:
+                write_guard(con)
+                event_id = _emit_loaded()
+            skipped = _skipped(event_id)
+            if after_write is not None:
+                after_write(con, skipped)
+        return skipped
+
     ensure_initialized(resolved_db_path)
 
     chunks: list[Chunk] = chunk_markdown(full_text)
@@ -180,9 +214,10 @@ def ingest_voice_note(
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
-    from runtime.db_lock import connect_write
-
     with connect_write(resolved_db_path, purpose="acquisition/voice") as con:
+        if write_guard is not None:
+            write_guard(con)
+            event_id = _emit_loaded()
         insert_document(
             con,
             document_id=document_id,
@@ -245,16 +280,19 @@ def ingest_voice_note(
             )
             node_ids.append(node_id)
 
-    return IngestVoiceNoteResult(
-        document_id=document_id,
-        chunk_ids=chunk_ids,
-        node_ids=node_ids,
-        document_loaded_event_id=event_id,
-        chunks_written=chunks_written,
-        title=auto_title,
-        transcript_text=transcript,
-        duration_seconds=duration_seconds,
-    )
+        result = IngestVoiceNoteResult(
+            document_id=document_id,
+            chunk_ids=chunk_ids,
+            node_ids=node_ids,
+            document_loaded_event_id=event_id,
+            chunks_written=chunks_written,
+            title=auto_title,
+            transcript_text=transcript,
+            duration_seconds=duration_seconds,
+        )
+        if after_write is not None:
+            after_write(con, result)
+    return result
 
 
 def transcribe_and_ingest(
