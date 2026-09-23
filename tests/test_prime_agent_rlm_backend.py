@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import os
 import stat
+import time
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -224,8 +225,52 @@ def test_run_session_reads_file_handoff_output(tmp_path: Path) -> None:
     assert outcome.evidence.source == "prime-agent-session"
 
 
-def test_run_session_missing_output_times_out(tmp_path: Path) -> None:
-    backend = _backend(tmp_path, timeout_seconds=0.05)
+def test_run_session_without_file_falls_back_to_stdout_and_names_the_tool_less_argv(
+    tmp_path: Path,
+) -> None:
+    """SPR-01 Task 2. ``_argv`` passes ``--no-tools``, so Prime can never write the
+    handoff file; ``run_session`` must not wait for it. The real stand-in below
+    writes no file and answers on stdout. The receipt must be SUCCESS with the
+    stdout text as evidence, its detail must name the tool-less argv rather than a
+    "missing" file, and the receipt must be produced as soon as ``run()`` returns —
+    before this change the backend polled for the file for the full timeout."""
+    backend = _backend(tmp_path, timeout_seconds=2.0)
+    real_run = backend.run
+    run_returned_at: list[float] = []
+
+    def timed_run(request: PrimeAgentRequest):
+        outcome = real_run(request)
+        run_returned_at.append(time.monotonic())
+        return outcome
+
+    backend.run = timed_run  # type: ignore[method-assign]
+    outcome = backend.run_session(
+        PrimeAgentSessionRequest(
+            goal_brief="goal",
+            iteration_prompt="payload",
+            workflow="workflow",
+            request_id="id",
+        )
+    )
+    finished = time.monotonic()
+
+    assert outcome.receipt.state is PrimeAgentTerminalState.SUCCESS
+    assert outcome.evidence is not None
+    assert outcome.evidence.text == "supplemental answer"
+    assert outcome.evidence.source == "prime-agent-session"
+    assert outcome.receipt.detail is not None
+    assert "--no-tools" in outcome.receipt.detail
+    assert "missing" not in outcome.receipt.detail
+    # The old poll burned timeout_seconds (2.0s here) after the child exited.
+    assert finished - run_returned_at[0] < 0.25
+    assert not list(tmp_path.glob("**/prime_agent_session_answer.txt"))
+
+
+def test_run_session_without_file_or_stdout_is_malformed_not_timeout(tmp_path: Path) -> None:
+    """A SUCCESS run with nothing on stdout and no file has no answer anywhere.
+    That is MALFORMED, reported immediately and naming the tool-less argv — not a
+    TIMEOUT spent waiting for a file that ``--no-tools`` forecloses."""
+    backend = _backend(tmp_path, timeout_seconds=2.0)
 
     def fake_run(request: PrimeAgentRequest):
         return backend._outcome(  # type: ignore[attr-defined]
@@ -238,6 +283,7 @@ def test_run_session_missing_output_times_out(tmp_path: Path) -> None:
         )
 
     backend.run = fake_run  # type: ignore[method-assign]
+    started = time.monotonic()
     outcome = backend.run_session(
         PrimeAgentSessionRequest(
             goal_brief="goal",
@@ -247,7 +293,11 @@ def test_run_session_missing_output_times_out(tmp_path: Path) -> None:
         )
     )
 
-    assert outcome.receipt.state is PrimeAgentTerminalState.TIMEOUT
+    assert outcome.receipt.state is PrimeAgentTerminalState.MALFORMED
+    assert outcome.evidence is None
+    assert outcome.receipt.detail is not None
+    assert "--no-tools" in outcome.receipt.detail
+    assert time.monotonic() - started < 0.25
 
 
 def test_run_session_invalid_request_is_malformed(tmp_path: Path) -> None:

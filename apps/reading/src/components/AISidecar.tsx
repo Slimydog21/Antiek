@@ -7,11 +7,13 @@ import {
 
 import { apiFetch } from "../lib/api";
 import { BrainThinking } from "../brand/mascot/animated";
+import { useOwnerModelChoice } from "../hooks/useOwnerModelChoice";
 import { useReplyMode } from "../hooks/useReplyMode";
 import { notifyThoughtPartnerReplyReceived } from "../mascot";
 import { AISIDECAR_PANEL_ID } from "../workspace/shortcuts";
 import SpokenReply from "./SpokenReply";
 import ContextPicker from "./ai/ContextPicker";
+import ModelUsagePicker from "./ai/ModelUsagePicker";
 import {
   dispatchAiAction,
   parseAssistantReply,
@@ -83,6 +85,11 @@ export default function AISidecar() {
   const aliveRef = useRef(true);
   // Read SPR-07 — the rabbit hole answers in text OR audio per preference.
   const { mode: replyMode, setMode: setReplyMode } = useReplyMode();
+  // SPR-03 Task 3 — which of the operator's own keys drives the thought
+  // partner. The picker is the same control every other AI surface mounts;
+  // the choice rides on the request as model_choice + operation_id.
+  const model = useOwnerModelChoice("sidecar");
+  const { select: selectModel, launchFields } = model;
 
   /**
    * Actions the AI has dispatched against this workspace. Each entry
@@ -109,11 +116,16 @@ export default function AISidecar() {
       if (typeof detail.system_context === "string") {
         setComposedContext(detail.system_context);
       }
+      // A driver picked elsewhere (the CommandPalette) lands here, so the
+      // palette's dropdown and this one are the same choice.
+      if (detail.owner_model && typeof detail.owner_model.row_id === "string") {
+        selectModel(detail.owner_model.row_id, detail.owner_model.model_id);
+      }
       queueMicrotask(() => inputRef.current?.focus());
     };
     window.addEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
     return () => window.removeEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
-  }, []);
+  }, [selectModel]);
 
 
   const reloadContext = useCallback(async () => {
@@ -218,6 +230,12 @@ export default function AISidecar() {
           system_context: composeThoughtPartnerSystemContext(
             composedContext.trim() ? composedContext : null,
           ),
+          // Both fields or neither (see useOwnerModelChoice). Honest status:
+          // ThoughtPartnerRequest (app.py) does not read model_choice yet and
+          // ignores unknown fields, so today this ships reach, not function —
+          // the same as every owner route until the SPR-03 Task 4 namespace
+          // fix lands. The surface is wired for the day the route reads it.
+          ...launchFields(prompt),
         }),
       });
       if (!aliveRef.current) return;
@@ -338,6 +356,22 @@ export default function AISidecar() {
               non-owner path (the picker renders what reached the model).
             */}
             <ContextPicker onContextChange={setComposedContext} />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                Driver
+              </span>
+              <ModelUsagePicker
+                models={model.models}
+                value={model.selectedRowId}
+                valueModelId={model.selectedModelId}
+                onChange={model.select}
+                includeDefault
+                defaultLabel="Default (house route)"
+                triggerLabel={model.triggerLabel}
+                triggerAriaLabel="Model for the thought partner"
+                size="sm"
+              />
+            </div>
             <textarea
               ref={inputRef}
               value={draft}
