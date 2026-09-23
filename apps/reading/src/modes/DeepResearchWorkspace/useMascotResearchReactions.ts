@@ -24,7 +24,7 @@ export function deriveResearchReactionPhase({
   parent,
 }: ResearchReactionSnapshot): ResearchReactionPhase {
   if (error) return "error";
-  if (parent.kind === "synthesis_failed") return "error";
+  if (parent.kind === "synthesis_failed" || parent.kind === "failed") return "error";
   if (
     researchStates.some(
       (state) => state === "failed" || state === "budget_halted",

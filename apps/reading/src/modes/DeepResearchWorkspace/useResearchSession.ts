@@ -31,12 +31,26 @@ import type { ResearchSourcePolicy } from "../../lib/api";
  * The session PARENT's outcome, which leaf states cannot tell you: every leaf
  * can be DONE while join/merge or the synthesis tail failed. Only the
  * backend's `deep_research_complete === true` is success; anything the
- * response does not affirm is `unknown`, never success.
+ * response does not affirm is `unknown`, never success. Every kind except
+ * `pending` is settled: nothing more will change it, so polling stops.
  */
 export type SessionParentState =
   | { kind: "complete" }
   | { kind: "synthesis_failed"; error: string }
-  /** The backend says not complete yet and records no failure. */
+  /** The parent ended failed (a skipped tail, or completion that ended it). */
+  | { kind: "failed"; reason: string }
+  /** The parent ended stopped: every leaf was stopped or cancelled. */
+  | { kind: "stopped" }
+  /** The parent ended at the budget limit before any leaf finished. */
+  | { kind: "budget_halted" }
+  /** The parent ended completed, but the backend does not affirm
+   * DeepResearchComplete. */
+  | { kind: "unconfirmed" }
+  /** Completion finished without writing a parent verdict and none is coming
+   * (a hard-ceiling run, or a server without the synthesis tail wired). */
+  | { kind: "not_synthesized" }
+  /** The backend says not complete yet, records no failure, and completion
+   * may still write the verdict. */
   | { kind: "pending" }
   /** Recovered session (null) or a response without the field. */
   | { kind: "unknown" };
@@ -45,7 +59,29 @@ export function deriveSessionParent(s: SessionStatus): SessionParentState {
   const error = s.synthesis_tail_error?.trim();
   if (error) return { kind: "synthesis_failed", error };
   if (s.deep_research_complete === true) return { kind: "complete" };
-  if (s.deep_research_complete === false) return { kind: "pending" };
+  // A skipped tail ends the parent without ever setting deep_research_complete,
+  // so the parent's own terminal, not that flag, says how the session ended.
+  const terminal = s.parent_terminal;
+  if (terminal) {
+    switch (terminal.state) {
+      case "failed":
+        return {
+          kind: "failed",
+          reason: terminal.reason?.trim() || "the session ended failed without a recorded reason",
+        };
+      case "stopped":
+        return { kind: "stopped" };
+      case "budget_halted":
+        return { kind: "budget_halted" };
+      case "done":
+        return s.deep_research_complete === false ? { kind: "unconfirmed" } : { kind: "unknown" };
+      default:
+        return { kind: "unknown" };
+    }
+  }
+  if (s.deep_research_complete === false) {
+    return s.completion_running === false ? { kind: "not_synthesized" } : { kind: "pending" };
+  }
   return { kind: "unknown" };
 }
 
