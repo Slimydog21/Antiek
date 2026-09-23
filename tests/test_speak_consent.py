@@ -267,6 +267,8 @@ def test_public_publish_allowed_when_all_gates_satisfied(speak_db, monkeypatch):
         con, project_id=proj, subject_ref="the-dad", subject_status="deceased",
         consent_granted=False, rationale="deceased 2019; documented rule.",
     )
+    # The speaker granted publish-scope consent (record alone is not enough).
+    consent_mod.record_consent(con, interview_id=iv, scopes=[ConsentScope.PUBLISH])
     # One third-party claim, operator-attested → publishable.
     claim = third_party.record_claim(
         con, project_id=proj, interview_id=iv,
@@ -289,6 +291,7 @@ def test_public_publish_blocked_by_uncorroborated_claim(speak_db, monkeypatch):
         con, project_id=proj, subject_ref="the-dad", subject_status="deceased",
         consent_granted=False, rationale="deceased; documented rule.",
     )
+    consent_mod.record_consent(con, interview_id=iv, scopes=[ConsentScope.PUBLISH])
     third_party.record_claim(
         con, project_id=proj, interview_id=iv,
         text="He secretly funded a rival.", about_subject=True, subject_ref="the-dad",

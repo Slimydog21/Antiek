@@ -37,6 +37,15 @@ from .schema import ensure_speak_schema
 
 _TARGET_KINDS = frozenset({"interview", "claim", "subject"})
 
+# SQL predicate for every public listing of projects (``/speak/feed``,
+# ``/speak/opportunities``, ``/speak/pushes``): a project under an active
+# takedown is not listed, because those surfaces disclose ``subject_ref``.
+# Expects the project table aliased as ``p``.
+NO_ACTIVE_TAKEDOWN_SQL = (
+    "NOT EXISTS (SELECT 1 FROM speak_takedowns t "
+    "WHERE t.project_id = p.project_id AND t.status = 'active')"
+)
+
 
 @dataclass(frozen=True)
 class Takedown:
