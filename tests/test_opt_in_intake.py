@@ -459,6 +459,54 @@ def test_grant_flips_seed_escrow_once_per_work(temp_db):
     assert r3.summary.escrow_accrued is False
 
 
+def test_staging_merge_carries_seed_key_with_new_holder_escrow(temp_db, tmp_path):
+    """Staging ingest, merge into live, then a direct live ingest of the same
+    manifest. The merge copies the new holder's staged escrow (seed included),
+    so it has to copy the seed key too, or the direct run seeds the work again."""
+    from runtime.staging_db import prepare_staging_db
+    from tools.merge_staging import merge_staging
+
+    staging = prepare_staging_db(str(tmp_path / "staging.duckdb"))
+    m = _manifest_dict(grant=True)
+
+    staged = intake_manifest(parse_manifest(m), db_path=staging, embedder=_StubEmbedder())
+    assert staged.summary.escrow_accrued is True
+    merge_staging(live_db=temp_db, staging_db=staging)
+    holder_id = staged.summary.ip_holder_id
+    assert _escrow(temp_db, holder_id) == Decimal("0.01")
+
+    direct = intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+    assert direct.summary.ip_holder_id == holder_id
+    assert direct.summary.escrow_accrued is False
+    assert _escrow(temp_db, holder_id) == Decimal("0.01")
+
+
+def test_staging_merge_leaves_seed_to_live_for_existing_holder(temp_db, tmp_path):
+    """A holder that already existed live keeps its live balance through the
+    merge, so the staged seed never reached live escrow. Its staged seed key
+    must stay behind, and the first live ingest of the work seeds it once."""
+    from runtime.staging_db import prepare_staging_db
+    from tools.merge_staging import merge_staging
+
+    gated = intake_manifest(
+        parse_manifest(_manifest_dict(grant=False)), db_path=temp_db,
+        embedder=_StubEmbedder(),
+    )
+    holder_id = gated.summary.ip_holder_id
+    staging = prepare_staging_db(str(tmp_path / "staging.duckdb"))
+    m = _manifest_dict(grant=True)
+    intake_manifest(parse_manifest(m), db_path=staging, embedder=_StubEmbedder())
+    merge_staging(live_db=temp_db, staging_db=staging)
+    assert _escrow(temp_db, holder_id) == Decimal("0")
+
+    direct = intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+    assert direct.summary.escrow_accrued is True
+    assert _escrow(temp_db, holder_id) == Decimal("0.01")
+    again = intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+    assert again.summary.escrow_accrued is False
+    assert _escrow(temp_db, holder_id) == Decimal("0.01")
+
+
 def test_resubmission_adding_one_work_adds_exactly_one_document(temp_db):
     m = _manifest_dict(grant=True)
     intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())

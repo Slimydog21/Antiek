@@ -121,6 +121,30 @@ def test_accrual_routes_pool_to_escrow(db):
         assert a_escrow > 0
 
 
+def test_dangling_payee_fails_before_any_accrual_is_written(db):
+    """A mapped ip_holder_id with no ip_holders row (the contributors route
+    takes the id from the client unchecked) must stop the accrual before the
+    first speak_accruals row. Otherwise the real payee, credited first as the
+    larger share, keeps its committed row + escrow and a retry pays it twice."""
+    with _con(db) as con:
+        p = project.create_project(con, title="Dad's biography")
+        real = contributor.map_contributor(con, interview_id="iv-real",
+                                           project_id=p.project_id, display_name="Real")
+        contributor.map_contributor(con, interview_id="iv-dangle", project_id=p.project_id,
+                                    ip_holder_id="ipholder-dangling00")
+        _publishable_claim(con, p.project_id, "Fact one about him.", "iv-real")
+        _publishable_claim(con, p.project_id, "Fact two about him.", "iv-real")
+        _publishable_claim(con, p.project_id, "Fact three about him.", "iv-dangle")
+
+        for _attempt in range(2):
+            with pytest.raises(ip_holders.UnknownIpHolderError):
+                contributor.accrue_contributions(con, project_id=p.project_id,
+                                                 ad_revenue_usd=Decimal("100"))
+            (n_rows,) = con.execute("SELECT COUNT(*) FROM speak_accruals").fetchone()
+            assert n_rows == 0
+            assert ip_holders.get(con, real.ip_holder_id).escrow_balance_usd == 0
+
+
 def test_zero_buyers_tracks_share_but_zero_dollars(db):
     with _con(db) as con:
         p = project.create_project(con, title="Dad's biography")
