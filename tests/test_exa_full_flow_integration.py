@@ -65,6 +65,8 @@ class _StubEmbedder:
     """Deterministic float vector — substitute for sentence-transformers
     so the test doesn't pull the model weights."""
 
+    dimension = 4  # the EmbeddingProvider Protocol requires it; producers now pin it
+
     def encode(self, text: str):
         return [0.0, 0.0, 0.0, 0.0]
 

@@ -410,6 +410,7 @@ def ingest_url(
                     text=chunk.text,
                     section_path=chunk.section or None,
                     embedding=chunk_embeddings[i],
+                    embedding_provider=emb,
                     token_count=chunk.token_count,
                 )
                 chunk_ids.append(chunk_id)
