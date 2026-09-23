@@ -22,9 +22,14 @@ What changes vs the arXiv engine:
     ``RateSpec.max_calls`` per ``RateSpec.window_s`` seconds (EDGAR
     ``(8, 1.0)``; Reddit ``(100, 60.0)``) instead of one hard-coded >=3s
     spacing;
-  * state is PER-VENDOR: ``{state_dir}/{vendor}.json`` with its co-located
-    ``{vendor}.json.governor.lock`` — each vendor's budget serializes
-    independently, and one vendor's 429 ban never blocks another's egress.
+  * state is PER-VENDOR and, for a connected user's own key, PER-OWNER:
+    ``{state_dir}/{vendor}/{owner_hash}.json`` with its co-located
+    ``.governor.lock`` — each owner's budget for each vendor serializes
+    independently, one vendor's 429 ban never blocks another's egress, and
+    one user's window never makes another user wait. A governor built with
+    no owner keeps the host-shared ``{state_dir}/{vendor}.json`` layout; that
+    is the explicit Antiek-owned-key case (see :func:`_state_file`), not a
+    default to fall into.
 
 Scope of the guarantee is the arXiv governor's honesty bar: MECHANICAL on this
 host (every process routing through ``governed_send`` with the same state dir
@@ -53,7 +58,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Literal, Protocol, TypeVar
 
-from runtime.connectors.base import RateSpec
+from runtime.connectors.base import RateSpec, owner_state_key
 
 _ENV_RATE_DIR = "ANTIEK_CONNECTOR_RATE_DIR"
 
@@ -82,6 +87,23 @@ def default_state_dir() -> str:
         return env
     home = os.environ.get("ANTIEK_HOME", os.path.expanduser("~/.antiek"))
     return str(Path(home) / "connectors" / "rate")
+
+
+def _state_file(state_root: Path, vendor: str, *, owner: str | None) -> Path:
+    """Where one governor's sliding window lives.
+
+    A connected user's key is that user's budget, so the window is keyed by
+    the owner under a per-vendor directory. ``owner=None`` is the HOST-SHARED
+    case and is deliberate, not a fallback: it is for the paths where an
+    Antiek-owned key is genuinely in play — ``acquisition/twitter/api_client``
+    and the operator-run acquisition lanes build their governors without an
+    owner — and it keeps the pre-owner ``{vendor}.json`` layout so that
+    state carries over. Everything resolved through
+    ``runtime.connectors.registry.resolve_tool_connection`` passes an owner.
+    """
+    if owner is None:
+        return state_root / f"{vendor}.json"
+    return state_root / vendor / f"{owner_state_key(owner)}.json"
 
 
 class _ResponseLike(Protocol):
@@ -281,7 +303,8 @@ class VendorRateGovernor:
     window + a 429 ``banned_until`` sentinel, with the read-modify-write of
     the shared per-vendor JSON state serialized under an exclusive
     cross-process flock — so the budget holds GLOBALLY across all jobs for
-    this vendor on this host, not merely per-process.
+    this vendor (and, when ``owner`` is given, this owner) on this host, not
+    merely per-process.
 
     Construct one per job (or inject one into a connector client) and call
     :meth:`governed_send` for each HTTP send. All governors that point at the
@@ -293,6 +316,7 @@ class VendorRateGovernor:
         vendor: str,
         rate: RateSpec,
         *,
+        owner: str | None = None,
         state_dir: str | None = None,
         default_ban_backoff_s: float = DEFAULT_BAN_BACKOFF_S,
         lock_timeout_s: float = DEFAULT_LOCK_TIMEOUT_S,
@@ -307,9 +331,10 @@ class VendorRateGovernor:
             raise ValueError("rate.window_s must be > 0")
         self._vendor = vendor
         self._rate = rate
+        self._owner = owner
         state_root = Path(state_dir or default_state_dir())
-        self._state_path = state_root / f"{vendor}.json"
-        self._lock_path = str(state_root / f"{vendor}.json.governor.lock")
+        self._state_path = _state_file(state_root, vendor, owner=owner)
+        self._lock_path = f"{self._state_path}.governor.lock"
         self._default_ban_backoff_s = float(default_ban_backoff_s)
         self._lock_timeout_s = float(lock_timeout_s)
         self._lock_poll_interval_s = float(lock_poll_interval_s)
@@ -324,6 +349,15 @@ class VendorRateGovernor:
     @property
     def rate(self) -> RateSpec:
         return self._rate
+
+    @property
+    def owner(self) -> str | None:
+        """The owner this window belongs to; None means host-shared."""
+        return self._owner
+
+    @property
+    def scope(self) -> Literal["owner", "host_shared"]:
+        return "owner" if self._owner is not None else "host_shared"
 
     @property
     def state_path(self) -> str:

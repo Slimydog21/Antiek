@@ -607,6 +607,7 @@ def resolve_tool_connection(
 
         return EdgarConnector(
             contact_cred_id=record.cred_id,
+            owner=owner_user_id,
             artifact_path=artifact_path,
             key_bytes=key_bytes,
             key_file=key_file,
@@ -622,8 +623,11 @@ def resolve_tool_connection(
     from importlib import import_module
 
     connector_type = getattr(import_module(module_name), class_name)
+    # The owner rides into the connector so its rate window / quota meter is
+    # keyed to this user's key rather than shared host-wide.
     return connector_type(
         cred_id=record.cred_id,
+        owner=owner_user_id,
         artifact_path=artifact_path,
         key_bytes=key_bytes,
         key_file=key_file,

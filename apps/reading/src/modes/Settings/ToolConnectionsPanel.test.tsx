@@ -112,7 +112,7 @@ const rows: ToolConnection[] = [
       limit: 25,
       reset_at: null,
       hard_exhausted: null,
-      note: "Antiek's own host-global brake across all owners and keys: 25 requests per 15 minutes. It is not a provider allowance.",
+      note: "Antiek's own per-account brake on your key: 25 requests per 15 minutes. It is not a provider allowance.",
       estimated_cost_usd: 0.125,
       cost_note: "X bills pay-per-use credits, not a flat monthly tier: about $0.005 per post returned.",
     },

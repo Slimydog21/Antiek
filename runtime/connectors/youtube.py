@@ -192,6 +192,7 @@ class YouTubeDataConnector(PasteKeyConnector):
         key_file: str | None = None,
         client: httpx.Client | None = None,
         meter: QuotaMeter | None = None,
+        owner: str | None = None,
         state_dir: str | None = None,
         clock: Any = None,
         timeout_s: float = 20.0,
@@ -207,7 +208,8 @@ class YouTubeDataConnector(PasteKeyConnector):
         if meter is not None:
             self._meter = meter
         else:
-            meter_kwargs: dict[str, Any] = {}
+            # The owner keys the meter: their key, their daily budget.
+            meter_kwargs: dict[str, Any] = {"owner": owner}
             if state_dir is not None:
                 meter_kwargs["state_dir"] = state_dir
             if clock is not None:
