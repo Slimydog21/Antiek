@@ -117,6 +117,15 @@ async def broadcast_emit(
     return eid
 
 
+class WaiterAlreadyRegistered(RuntimeError):
+    """A second ``wait_for`` on a key another caller is still awaiting.
+
+    Overwriting the pending future would orphan the first waiter until its
+    timeout, and its ``finally`` cleanup would then pop the second waiter's
+    future too. Two waiters on one key means two runs of one investigation;
+    the later one is refused instead."""
+
+
 class InvestigationCoordinator:
     """Per-broadcaster handler bank that surfaces ``wait_for(...)``
     semantics over the broadcaster's append-only handler model.
@@ -183,16 +192,22 @@ class InvestigationCoordinator:
         concurrent waiters on the same action type are supported —
         the handler matches ``payload.sub_question``. With an empty
         correlation, only one waiter per ``(investigation_id,
-        action_type)`` is allowed (linear phases 1, 3–9)."""
+        action_type)`` is allowed (linear phases 1, 3–9); a second one
+        raises ``WaiterAlreadyRegistered``."""
         key = (investigation_id, action_type, correlation)
+        held = self._pending.get(key)
+        if held is not None and not held.done():
+            raise WaiterAlreadyRegistered(
+                f"a waiter is already registered for {key!r}"
+            )
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[Event] = loop.create_future()
         self._pending[key] = fut
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
         finally:
-            # Clean up unconditionally; the future may have been
-            # resolved already (which is fine — .pop() handles both
-            # cases). On timeout the future is cancelled by
-            # asyncio.wait_for, so cleanup leaves no leak.
-            self._pending.pop(key, None)
+            # Clean up only our own entry; the future may have been
+            # resolved (and popped) already. On timeout the future is
+            # cancelled by asyncio.wait_for, so cleanup leaves no leak.
+            if self._pending.get(key) is fut:
+                del self._pending[key]
