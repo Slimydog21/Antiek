@@ -89,13 +89,14 @@ export {
 
 export {
   consumeLocallyStartedResearchSession,
+  notifyEvidenceSourceOpened,
   notifyPointerIdleEdge,
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
   notifyVoicePlaybackStarted,
   type ResearchReactionPhase,
-} ;
+} from "./shellExperienceSignals";
 
 
 // SPR-01 — the station-activity surface. Importing this registers the built-in
