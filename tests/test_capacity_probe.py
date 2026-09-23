@@ -16,12 +16,18 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 
 from benchmarks.capacity_probe import (
+    _reader_worker,
     exit_code_for_runs,
+    is_under_tempdir,
+    main,
     parse_concurrency_spec,
     parse_ps_line,
     parse_wait_log_text,
@@ -121,6 +127,60 @@ def test_read_latency_summary_reports_failed_reads() -> None:
     assert summary["failed_p95_ms"] == 300.0
     clean = read_latency_summary(reads[:2])
     assert clean["requests_failed"] == 0 and clean["failed_p95_ms"] is None
+
+
+def test_serve_refuses_a_db_outside_the_temp_dir(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The hidden --serve mode writes schema and load into --db. Pointed
+    outside the temp dir (a real store) it must refuse before any side
+    effect, not start a server against it."""
+    monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", "cap-probe-test-token")
+    outside = "/nonexistent-cap-probe-root/antiek.duckdb"
+    assert not is_under_tempdir(outside)
+    with pytest.raises(SystemExit) as exc:
+        main([
+            "--serve", "--port", "1", "--db", outside,
+            "--wait-log", "/nonexistent-cap-probe-root/wait.jsonl",
+        ])
+    assert exc.value.code == 2
+    assert "must be under" in capsys.readouterr().err
+    assert os.environ.get("ANTIEK_OPERATOR_TOKEN") == "cap-probe-test-token"
+
+
+def test_reader_ignores_proxy_env_for_loopback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An HTTP_PROXY with no NO_PROXY exception must not reroute the
+    harness's loopback reads (which carry the bearer token) through a
+    proxy. Port 9 (discard) refuses connections, so a proxied read fails."""
+
+    class _Ok(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Ok)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        for key in ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+            monkeypatch.setenv(key, "http://127.0.0.1:9")
+        for key in ("NO_PROXY", "no_proxy"):
+            monkeypatch.delenv(key, raising=False)
+        obs = _reader_worker(
+            f"http://127.0.0.1:{server.server_address[1]}",
+            {"Authorization": "Bearer t"},
+            ["/health"],
+            time.monotonic() + 10.0,
+            2,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert [o["status"] for o in obs] == [200, 200], obs
 
 
 @pytest.mark.skipif(

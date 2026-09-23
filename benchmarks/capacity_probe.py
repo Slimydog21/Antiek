@@ -55,7 +55,10 @@ import, sets ``ANTIEK_DUCKDB_PATH`` / ``ANTIEK_RESEARCH_EVENTS_DIR`` /
 ``ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT=soft`` / ``ANTIEK_OPERATOR_TOKEN``,
 and also drops ``PYTEST_CURRENT_TEST`` so the child does not silently
 change db_lock behaviour (warm-writer keepalive, store guard) by thinking
-it runs under pytest.
+it runs under pytest. ``--serve`` refuses a ``--db`` or ``--wait-log``
+outside the system temp dir, and every ``httpx.Client`` is built with
+``trust_env=False`` so a proxy in the environment cannot reroute the
+loopback traffic (which carries the bearer token).
 
 Read latency: ``p50_ms``/``p95_ms``/``p99_ms`` cover 2xx reads only
 (``latency_basis``). Failed reads count in ``requests_failed`` and their
@@ -504,7 +507,10 @@ def _reader_worker(
     observations: list[dict[str, Any]] = []
     turn = 0
     with httpx.Client(
-        base_url=base_url, headers=headers, timeout=REQUEST_TIMEOUT_S
+        base_url=base_url,
+        headers=headers,
+        timeout=REQUEST_TIMEOUT_S,
+        trust_env=False,
     ) as client:
         while time.monotonic() < deadline:
             if cap is not None and len(observations) >= cap:
@@ -539,7 +545,10 @@ def _start_worker(
 
     observations: list[dict[str, Any]] = []
     with httpx.Client(
-        base_url=base_url, headers=headers, timeout=REQUEST_TIMEOUT_S
+        base_url=base_url,
+        headers=headers,
+        timeout=REQUEST_TIMEOUT_S,
+        trust_env=False,
     ) as client:
         while time.monotonic() < deadline:
             if cap is not None and len(observations) >= cap:
@@ -710,7 +719,7 @@ def _run_level(
             )
 
         with httpx.Client(
-            base_url=base_url, headers=headers, timeout=10.0
+            base_url=base_url, headers=headers, timeout=10.0, trust_env=False
         ) as control_client:
             _wait_until_ready(proc, control_client, time.monotonic() + READINESS_TIMEOUT_S,
                               stderr_path)
@@ -929,6 +938,18 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def is_under_tempdir(path: str) -> bool:
+    """True when ``path`` resolves inside the system temp dir.
+
+    The parent always launches --serve on a ``tempfile.mkdtemp`` path. A
+    hand-run --serve pointed anywhere else (a real graph store) would get
+    schema init plus probe load written into it, so the child refuses.
+    """
+    root = os.path.realpath(tempfile.gettempdir())
+    resolved = os.path.realpath(os.path.expanduser(path))
+    return os.path.commonpath([root, resolved]) == root
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -936,6 +957,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.serve:
         if not args.db or not args.wait_log or args.port <= 0:
             parser.error("--serve requires --port, --db and --wait-log")
+        for flag, value in (("--db", args.db), ("--wait-log", args.wait_log)):
+            if not is_under_tempdir(value):
+                parser.error(
+                    f"--serve {flag} must be under {tempfile.gettempdir()}; "
+                    f"got {value}"
+                )
         _serve(args.port, args.db, args.wait_log)
         return 0
 
