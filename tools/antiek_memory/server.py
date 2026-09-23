@@ -113,9 +113,10 @@ class AntiekMemoryServer:
         """
         if self.bound_owner is None:
             return None
-        if claimed is not None:
-            if not isinstance(claimed, dict) or claimed.get("user_id") != self.bound_owner:
-                return None
+        if claimed is not None and (
+            not isinstance(claimed, dict) or claimed.get("user_id") != self.bound_owner
+        ):
+            return None
         return {"user_id": self.bound_owner}
 
     def handle_request(self, request: dict) -> dict | None:
