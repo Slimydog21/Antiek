@@ -62,7 +62,8 @@
 }
 
 /* Skeletons: the geometry of what is opening, drawn in a faint ink wash.
-   The pulse is opacity only; motion.css stills it under reduced motion. */
+   The pulse is Tailwind's animate-pulse (opacity only, no new keyframes);
+   motion.css stills it under reduced motion. */
 .st-skel {
   display: flex;
   flex-direction: column;
@@ -75,7 +76,6 @@
   display: block;
   border-radius: 6px;
   background: rgb(var(--text-1-rgb) / 0.07);
-  animation: st-pulse 1.6s ease-in-out infinite;
 }
 .st-skel[data-skeleton="list"] > span {
   height: 3.5rem;
@@ -96,9 +96,4 @@
 }
 .st-skel[data-skeleton="page"] > span:last-child {
   width: 60%;
-}
-@keyframes st-pulse {
-  50% {
-    opacity: 0.45;
-  }
 }

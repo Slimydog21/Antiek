@@ -47,7 +47,7 @@ export function LoadingState({
       <p className="st-body">{label}…</p>
       <div aria-hidden="true" data-skeleton={shape} className="st-skel">
         {Array.from({ length: bars }, (_, i) => (
-          <span key={i} />
+          <span key={i} className="animate-pulse" />
         ))}
       </div>
     </div>
