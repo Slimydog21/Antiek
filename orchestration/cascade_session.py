@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import enum
 import logging
 import os
 import sys
@@ -82,6 +83,19 @@ _log = logging.getLogger(__name__)
 # Researchmaxx vocabulary that hasn't been schemaed yet. Recoverable from the
 # event log so the from-event-log status path can surface it honestly.
 SYNTHESIS_TAIL_FAILED = "cascade.synthesis_tail.failed"
+# Audit action_type for a synthesis tail that was deliberately not run: the
+# leaves left no finished evidence to synthesize. Same untyped seam; it is not a
+# lifecycle event, so the session's status stays derived from its leaves.
+SYNTHESIS_TAIL_SKIPPED = "cascade.synthesis_tail.skipped"
+
+
+class SynthesisTailSkip(enum.StrEnum):
+    """Why the paid Loop 1 synthesis tail did not run for a session."""
+
+    # No leaf reached DONE: every leaf was stopped, failed or budget-halted.
+    NO_LEAF_DONE = "no_leaf_done"
+    # A leaf finished, but the merged pack carries no chunk to cite.
+    EMPTY_EVIDENCE_PACK = "empty_evidence_pack"
 
 
 @dataclass
@@ -147,6 +161,9 @@ class CascadeSession:
         # reached ``DeepResearchComplete`` because synthesis failed — the
         # split-brain / silent-synthesis hazard the ANT-DRL programme guards.
         self.synthesis_tail_error: str | None = None
+        # Set by ``_run_to_completion`` when the tail is skipped because the
+        # leaves left nothing to synthesize (see ``synthesis_tail_skip``).
+        self.synthesis_tail_skipped: SynthesisTailSkip | None = None
 
     # -- M1: launch with approval enforcement --------------------------
 
@@ -354,6 +371,36 @@ class CascadeSession:
             stage, self.session_id,
         )
 
+    def synthesis_tail_skip(self, pack: SessionEvidencePack) -> SynthesisTailSkip | None:
+        """Whether the paid synthesis tail must NOT run, and why.
+
+        The tail runs only over evidence a leaf finished gathering: at least
+        one leaf in ``DONE`` and at least one chunk in the pack. Anything else
+        (every leaf stopped by the operator, failed or budget-halted, or a
+        finished gather that found nothing) would dispatch the synthesizer
+        over a placeholder and record ``investigation.completed`` on the
+        parent, although an empty pack cannot satisfy DeepResearchComplete
+        (docs/decisions/session-evidence-pack.md)."""
+        if not any(s.state == RunState.DONE.value for s in self.status()):
+            return SynthesisTailSkip.NO_LEAF_DONE
+        if not pack.chunks:
+            return SynthesisTailSkip.EMPTY_EVIDENCE_PACK
+        return None
+
+    def record_synthesis_tail_skipped(self, reason: SynthesisTailSkip) -> None:
+        """Record a skipped tail on the session and its own trajectory. No
+        lifecycle event is written on the parent, so status surfaces keep
+        deriving it from the leaves (all stopped reads as stopped)."""
+        self.synthesis_tail_skipped = reason
+        log_event(
+            self.session_id,
+            SYNTHESIS_TAIL_SKIPPED,
+            payload={"reason": reason.value,
+                     "leaf_states": {s.investigation_id: s.state for s in self.status()}},
+            role="user_agent",
+            events_dir=self._events_dir,
+        )
+
     def terminal_status(self) -> dict[str, object]:
         """The session's deep-research terminal contract, for status surfaces.
 
@@ -364,6 +411,10 @@ class CascadeSession:
         return {
             "deep_research_complete": self.is_deep_research_complete(),
             "synthesis_tail_error": self.synthesis_tail_error,
+            "synthesis_tail_skipped": (
+                self.synthesis_tail_skipped.value
+                if self.synthesis_tail_skipped is not None else None
+            ),
         }
 
     def build_evidence_pack(

@@ -1751,15 +1751,23 @@ async def _run_to_completion(session: CascadeSession) -> None:
         if _SYNTHESIS_TAIL_RUNNER is not None and session not in _HARD_CEILING_RUNS:
             stage = "synthesis_tail"
             pack = session.build_evidence_pack()
-            owner_launch = _OWNER_CASCADE_LAUNCHES.get(session.session_id)
-            token = None
-            try:
-                if owner_launch is not None:
-                    token = install_manifest(owner_launch.manifest)
-                await _SYNTHESIS_TAIL_RUNNER(session, pack)
-            finally:
-                if token is not None:
-                    reset_manifest(token)
+            # Allowlist, not a denylist of stop states: the paid tail runs only
+            # when a leaf finished and the pack has a chunk to cite. Stopping
+            # every leaf must stop the spend, not end in a synthesizer call
+            # over a placeholder sub-question and a "completed" parent.
+            skip = session.synthesis_tail_skip(pack)
+            if skip is not None:
+                session.record_synthesis_tail_skipped(skip)
+            else:
+                owner_launch = _OWNER_CASCADE_LAUNCHES.get(session.session_id)
+                token = None
+                try:
+                    if owner_launch is not None:
+                        token = install_manifest(owner_launch.manifest)
+                    await _SYNTHESIS_TAIL_RUNNER(session, pack)
+                finally:
+                    if token is not None:
+                        reset_manifest(token)
     except Exception as exc:
         # Capture, do not swallow: record WITH the failing stage (so a join/merge
         # failure isn't mislabeled as a synthesis-tail one) + audit, stay non-fatal.
@@ -1804,6 +1812,7 @@ async def session_status(session_id: str, request: Request) -> dict[str, Any]:
             # synthesis-tail failure, so a silent terminal failure cannot hide.
             "deep_research_complete": terminal["deep_research_complete"],
             "synthesis_tail_error": terminal["synthesis_tail_error"],
+            "synthesis_tail_skipped": terminal["synthesis_tail_skipped"],
         }
         hard_ceiling = _hard_ceiling_snapshot_for_session(session_id, request)
         if hard_ceiling is not None:
