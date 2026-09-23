@@ -467,7 +467,7 @@ export default function AISidecar() {
                               prev.filter((r) => r !== rec),
                             );
                           }}
-                          className="text-xxs font-mono px-1.5 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight hover:bg-sun/15"
+                          className="text-xxs font-mono px-1.5 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight hover:bg-sun/15 dark:hover:text-bright"
                         >
                           undo
                         </button>

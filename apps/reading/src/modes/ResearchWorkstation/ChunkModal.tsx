@@ -158,7 +158,7 @@ function OpenInDocumentButton({ chunk }: { chunk: ChunkResponse }) {
   return (
     <a
       href={href}
-      className="text-xs font-mono text-ink dark:text-bright hover:text-ink dark:text-bright px-2 py-1 bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 rounded transition-colors"
+      className="text-xs font-mono text-ink dark:text-bright px-2 py-1 bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 rounded transition-colors"
     >
       {label} →
     </a>
