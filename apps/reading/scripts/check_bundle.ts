@@ -14,15 +14,12 @@
  * Invoked at the end of `npm run build:check`. Exits non-zero on
  * over-budget so CI fails.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { join } from "node:path";
 
-type BudgetEntry = {
-  chunk: string;
-  /** Hard gzipped ceiling in bytes. */
-  maxBytes: number;
-};
+import { type BudgetEntry, resolveChunk } from "./bundle_budget";
+
 
 /**
  * Programme-wide budgets from spec WP-12.2. The `chunk` value is a
@@ -32,7 +29,7 @@ type BudgetEntry = {
 const BUDGETS: BudgetEntry[] = [
   // The main entry chunk — the only one that ships on every page load.
   // S12 ceiling is 700 KB gzipped.
-  { chunk: "index", maxBytes: 700_000 },
+  { chunk: "index", maxBytes: 700_000, entry: true },
   // S1 acceptance: the design-system primitive chunk is split out via
   // vite manualChunks. The original spec target was ≤ 12 KB gz, which
   // turns out to be unhittable in practice — Vite chunk metadata +
@@ -49,33 +46,20 @@ const BUDGETS: BudgetEntry[] = [
 
 const ASSETS_DIR = join(process.cwd(), "dist", "assets");
 
-function findChunk(prefix: string): string | null {
-  let matches: string[];
+function listAssets(): string[] {
   try {
-    matches = readdirSync(ASSETS_DIR).filter(
-      (f) => f.endsWith(".js") && f.startsWith(prefix + "-"),
-    );
+    return readdirSync(ASSETS_DIR);
   } catch {
     console.error(
       `[check_bundle] no dist/assets directory at ${ASSETS_DIR} — run \`npm run build\` first.`,
     );
     process.exit(2);
   }
-  // Lazy routes whose module file is `index.tsx` emit their own `index-<hash>.js`
-  // chunks beside the entry, and directory order is hash order, so the first
-  // match was sometimes a 3 KB lazy chunk and the entry's ceiling went
-  // unmeasured while the log printed a green line. The eager entry is always
-  // the largest match, so measure every match and budget the largest.
-  let largest: string | null = null;
-  let largestGz = -1;
-  for (const m of matches) {
-    const gz = gzippedSize(m);
-    if (gz > largestGz) {
-      largest = m;
-      largestGz = gz;
-    }
-  }
-  return largest;
+}
+
+function readIndexHtml(): string | null {
+  const path = join(process.cwd(), "dist", "index.html");
+  return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
 function gzippedSize(filename: string): number {
@@ -90,8 +74,11 @@ function fmtKB(bytes: number): string {
 let failed = 0;
 let missing = 0;
 console.log("== bundle budget check ==");
+const assets = listAssets();
+const indexHtml = readIndexHtml();
 for (const b of BUDGETS) {
-  const f = findChunk(b.chunk);
+  const r = resolveChunk(b, assets, indexHtml);
+  const f = "file" in r ? r.file : null;
   if (!f) {
     // A budgeted chunk that cannot be found is a FAILURE, not a skip.
     //
@@ -106,11 +93,10 @@ for (const b of BUDGETS) {
     // and `lemon` is split out via manualChunks. So an absent chunk means
     // either the budget needs repointing at the new name, or the build is
     // broken. Both need a human; neither is "within budget".
+    const reason = "error" in r ? r.error : "";
     console.error(
-      `[✗] ${b.chunk.padEnd(12)} NO CHUNK MATCHED prefix \`${b.chunk}-\` in ` +
-        `dist/assets. Its ${fmtKB(b.maxBytes)} ceiling is unenforced. Either ` +
-        `repoint this budget at the chunk's new name, or fix the build that ` +
-        `stopped emitting it.`,
+      `[✗] ${b.chunk.padEnd(12)} ${reason} Its ${fmtKB(b.maxBytes)} ceiling ` +
+        `is unenforced.`,
     );
     failed += 1;
     missing += 1;
@@ -131,7 +117,7 @@ if (failed > 0) {
   const over = failed - missing;
   const parts: string[] = [];
   if (over > 0) parts.push(`${over} chunk(s) over budget`);
-  if (missing > 0) parts.push(`${missing} budgeted chunk(s) missing`);
+  if (missing > 0) parts.push(`${missing} budgeted chunk(s) unresolved`);
   console.error(`\n${parts.join(", ")}. See spec WP-12.2.`);
   process.exit(1);
 }

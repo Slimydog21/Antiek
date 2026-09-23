@@ -58,18 +58,23 @@ def test_the_script_still_exits_nonzero_on_failure() -> None:
     )
 
 
-def test_the_budget_measures_the_largest_matching_chunk() -> None:
-    """Several chunks share the `index-` prefix (lazy `index.tsx` routes), so
-    taking the first directory entry measured a 3 KB lazy chunk against the
-    700 KB entry ceiling on main: green while the entry went unmeasured."""
+def test_the_entry_budget_is_resolved_from_index_html() -> None:
+    """Several chunks share the `index-` prefix (lazy `index.tsx` routes).
+    Taking the first directory entry measured a 3 KB lazy chunk against the
+    700 KB entry ceiling on main, green while the entry went unmeasured. The
+    behaviour is unit-tested in apps/reading/scripts/bundle_budget.test.ts;
+    this pins that check_bundle.ts still uses it for the entry budget."""
     src = _source()
-    body = re.search(r"function findChunk\(prefix: string\)[\s\S]*?\n\}", src)
-    assert body, "findChunk is gone or reshaped"
-    assert "matches[0]" not in body.group(0), (
-        "findChunk returns the first `index-*` file again; with lazy index "
-        "chunks present that is not the entry, and its ceiling is unenforced"
+    assert re.search(r'chunk:\s*"index",[^}]*entry:\s*true', src), (
+        "the `index` budget is no longer marked `entry: true`, so it is "
+        "matched by prefix again and can measure a lazy index-*.js chunk"
     )
-    assert "gzippedSize(" in body.group(0), (
-        "findChunk no longer compares match sizes, so it cannot pick the entry"
+    assert "resolveChunk(" in src and "readIndexHtml()" in src, (
+        "check_bundle.ts no longer resolves budgets through bundle_budget.ts "
+        "with dist/index.html"
     )
-
+    config = (_ROOT / "apps" / "reading" / "vitest.config.ts").read_text(encoding="utf-8")
+    assert '"scripts/**/*.test.ts"' in config, (
+        "vitest no longer collects scripts/bundle_budget.test.ts, so the "
+        "resolver's negative controls never run"
+    )
