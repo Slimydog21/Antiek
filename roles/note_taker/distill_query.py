@@ -109,6 +109,14 @@ def _node_ids_from_trajectory(
     return ordered, escalations
 
 
+def distilled_node_ids(
+    investigation_id: str, *, events_dir: str | None = None
+) -> list[str]:
+    """Every insight/question node id the trajectory records, including a node
+    whose row is gone (``distillation_for`` skips those)."""
+    return _node_ids_from_trajectory(investigation_id, events_dir=events_dir)[0]
+
+
 def distillation_for(
     investigation_id: str,
     *,
