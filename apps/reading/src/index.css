@@ -90,3 +90,22 @@
 html, body, #root {
   height: 100%;
 }
+
+/* Controls revealed on hover need a touch and a keyboard path.
+   tailwind.config.js sets future.hoverOnlyWhenSupported, which wraps every
+   hover: and group-hover: rule in @media (hover: hover) and (pointer: fine)
+   so a hover lift does not stick after a tap. A control hidden until its row
+   is hovered (opacity-0 group-hover:opacity-100: Notebook block move and
+   delete, PlanEditor edit / + sub / remove, ProjectTree pin, the WorkCard
+   read label) would then never show on a touch screen, yet stay tappable.
+   So: on every device where that media query is false, it shows; and on any
+   device it shows while its row holds focus. Plain CSS after the utilities,
+   same specificity as .opacity-0, so source order makes it win. */
+@media not all and (hover: hover), not all and (pointer: fine) {
+  .group-hover\:opacity-100 {
+    opacity: 1;
+  }
+}
+.group:focus-within .group-hover\:opacity-100 {
+  opacity: 1;
+}
