@@ -46,6 +46,7 @@ try:
         ProviderError,
         RawProviderResponse,
         response_contains_secret,
+        usage_counts_reported,
     )
 except ImportError:  # pragma: no cover
     import sys
@@ -56,6 +57,7 @@ except ImportError:  # pragma: no cover
         ProviderError,
         RawProviderResponse,
         response_contains_secret,
+        usage_counts_reported,
     )
 
 
@@ -313,7 +315,7 @@ class OpenAICompatProvider:
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
-        if not raw_usage or not {"prompt_tokens", "completion_tokens"} <= raw_usage.keys():
+        if not raw_usage or not usage_counts_reported(raw_usage, ("prompt_tokens", "completion_tokens")):
             return NormalizedUsage(input_tokens=0, output_tokens=0, reported=False)
         return NormalizedUsage(
             input_tokens=int(raw_usage.get("prompt_tokens", 0) or 0),
