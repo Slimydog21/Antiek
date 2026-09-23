@@ -14,7 +14,12 @@ Streams a downloadable zip of the operator's full knowledge graph:
   byte-for-byte. No locks: the event log is append-only by construction
   (substrate/event_log/events.py), so reads never race a writer.
 - ``manifest.json`` — generated_at, source db basename, schema versions,
-  counts, and an explicit ``graph_not_mutated`` statement.
+  counts, the credentials withheld from the bundle, and an explicit
+  ``graph_not_mutated`` statement.
+
+Credential material stays on the host: the signing-key table ships with no
+rows and secret columns ship with fresh random values (see
+``CREDENTIAL_TABLES_WITHHELD`` / ``CREDENTIAL_COLUMNS_REPLACED``).
 
 READ-ONLY CONTRACT
 ------------------
@@ -50,6 +55,8 @@ import errno
 import fcntl
 import json
 import os
+import re
+import secrets
 import shutil
 import stat
 import sys
@@ -91,6 +98,38 @@ _EXPORT_FAILED = "graph export failed"
 _LOCK_BUSY = "graph write lock held by another process"
 
 
+# Credential material that must not leave the host inside a bundle built to
+# leave it. A table whose every row is a secret has its rows withheld (the
+# restored store mints its own); a secret column in an otherwise portable
+# table has each value replaced by a fresh random one, so the row, its NOT
+# NULL / UNIQUE constraints and the IMPORT DATABASE restore all survive while
+# no exported value authenticates anywhere.
+CREDENTIAL_TABLES_WITHHELD: dict[str, str] = {
+    "antiek_user_keypairs": (
+        "Ed25519 artifact-signing keys never leave substrate-resident storage "
+        "(services/antiek_format/signature.py); a restored store mints a fresh keypair"
+    ),
+}
+CREDENTIAL_COLUMNS_REPLACED: dict[tuple[str, str], str] = {
+    ("speak_invites", "token"): "Speak invite bearer credential (/speak/invite/)",
+    ("federation_partners", "shared_secret_hex"): "federation partner HMAC shared secret",
+}
+# Columns whose NAME looks like a credential but whose value is not one.
+NON_CREDENTIAL_COLUMNS: dict[tuple[str, str], str] = {
+    ("multimedia_distillation_claims", "claim_token"): "lease fencing token (uuid4)",
+}
+# Any other text column with a credential-shaped name is replaced too: a new
+# secret column fails closed until someone classifies it above.
+_CREDENTIAL_NAME = re.compile(
+    r"(secret|private_key|password|passwd|bearer|cookie|api_key$|credential$|(^|_)token$)",
+    re.IGNORECASE,
+)
+
+
+def _credential_shaped(column: str, data_type: str) -> bool:
+    return data_type.upper() == "VARCHAR" and bool(_CREDENTIAL_NAME.search(column))
+
+
 class _ExportUnavailable(RuntimeError):
     """Internal marker mapped to a value-free 503 at the route boundary.
 
@@ -130,7 +169,9 @@ async def export_my_graph(request: Request) -> StreamingResponse:
         graph_dir.mkdir()
         events_dir.mkdir()
 
-        tables, table_rows, duckdb_version = _export_graph(db_path, graph_dir)
+        tables, table_rows, duckdb_version, credentials_withheld = _export_graph(
+            db_path, graph_dir
+        )
         event_counts = _copy_event_files(default_events_dir(), events_dir)
 
         manifest = {
@@ -149,6 +190,7 @@ async def export_my_graph(request: Request) -> StreamingResponse:
                 "master_files": 0,
             },
             "master_md": _master_md_status(),
+            "credentials_withheld": credentials_withheld,
             "graph_not_mutated": True,
         }
         (bundle_root / "manifest.json").write_text(
@@ -181,7 +223,7 @@ async def export_my_graph(request: Request) -> StreamingResponse:
 
 def _export_graph(
     db_path: str, out_dir: Path
-) -> tuple[list[str], dict[str, int], str]:
+) -> tuple[list[str], dict[str, int], str, dict[str, dict[str, Any]]]:
     """Consistent read-only snapshot via DuckDB EXPORT under the writer flock.
 
     Mirrors ``infrastructure/ansible/templates/backup.sh.j2``: acquire the
@@ -192,7 +234,11 @@ def _export_graph(
     ``authority_handoff_guard`` would append is deliberately NOT written —
     that would mutate the source DB.
 
-    Returns (table names, per-table row counts, duckdb version string).
+    Credential material is then scrubbed from the bundle copy
+    (``_withhold_credentials``).
+
+    Returns (table names, per-table bundle row counts, duckdb version string,
+    the manifest's ``credentials_withheld`` section).
     """
     lock_path = db_path + ".write.lock"
     parent = os.path.dirname(lock_path)
@@ -256,6 +302,16 @@ def _export_graph(
                     f"SELECT COUNT(*) FROM {quoted}"
                 ).fetchone()
                 table_rows[t] = int(count_row[0]) if count_row is not None else 0
+            columns = [
+                (str(r[0]), str(r[1]), str(r[2]))
+                for r in con.execute(
+                    "SELECT c.table_name, c.column_name, c.data_type "
+                    "FROM information_schema.columns c "
+                    "JOIN information_schema.tables t "
+                    "ON t.table_schema = c.table_schema AND t.table_name = c.table_name "
+                    "WHERE c.table_schema = 'main' AND t.table_type = 'BASE TABLE'"
+                ).fetchall()
+            ]
             # EXPORT DATABASE takes a literal path (no bound parameter —
             # DuckDB rejects '?'), so escape single quotes for the SQL
             # string literal.
@@ -285,7 +341,87 @@ def _export_graph(
         fixed = normalize_exported_schema_sql(raw)
         if fixed != raw:
             schema_path.write_text(fixed, encoding="utf-8")
-    return tables, table_rows, duckdb_version
+    withheld = _withhold_credentials(out_dir, columns, table_rows)
+    return tables, table_rows, duckdb_version, withheld
+
+
+def _shard_path(out_dir: Path, table: str) -> Path:
+    """The Parquet shard ``load.sql`` loads ``table`` from. EXPORT sanitizes
+    shard file names, so the mapping is read from load.sql, not guessed."""
+    load_sql = (out_dir / "load.sql").read_text(encoding="utf-8")
+    ident = '"' + table.replace('"', '""') + '"'
+    for line in load_sql.splitlines():
+        for name in (ident, table):
+            prefix = f"COPY {name} FROM '"
+            if line.startswith(prefix):
+                return Path(line[len(prefix) :].split("'", 1)[0])
+    # A credential table we cannot locate is a table we cannot scrub: fail
+    # the whole export rather than ship it unscrubbed.
+    raise _ExportUnavailable(_EXPORT_FAILED)
+
+
+def _withhold_credentials(
+    out_dir: Path,
+    columns: list[tuple[str, str, str]],
+    table_rows: dict[str, int],
+) -> dict[str, dict[str, Any]]:
+    """Scrub credential material from the exported shards (the bundle copy;
+    the source DB is never touched) and describe what was withheld for the
+    manifest. ``table_rows`` is updated to describe the bundle."""
+    import duckdb
+
+    withheld: dict[str, dict[str, Any]] = {}
+    replace: dict[str, list[str]] = {}
+    for table, column, data_type in columns:
+        if table in CREDENTIAL_TABLES_WITHHELD:
+            continue
+        key = (table, column)
+        if key in CREDENTIAL_COLUMNS_REPLACED:
+            reason = CREDENTIAL_COLUMNS_REPLACED[key]
+        elif key in NON_CREDENTIAL_COLUMNS or not _credential_shaped(column, data_type):
+            continue
+        else:
+            reason = "unclassified credential-shaped column (replaced until classified)"
+        replace.setdefault(table, []).append(column)
+        withheld[f"{table}.{column}"] = {"policy": "values_replaced", "reason": reason}
+
+    con = duckdb.connect()  # in-memory: rewrites bundle shards only
+    try:
+        for table in sorted({t for t, _, _ in columns} & set(CREDENTIAL_TABLES_WITHHELD)):
+            shard = _shard_path(out_dir, table)
+            con.execute(
+                "COPY (SELECT * FROM read_parquet(?) LIMIT 0) TO '"
+                + str(shard).replace("'", "''")
+                + ".tmp' (FORMAT PARQUET)",
+                [str(shard)],
+            )
+            os.replace(f"{shard}.tmp", shard)
+            withheld[table] = {
+                "policy": "rows_withheld",
+                "reason": CREDENTIAL_TABLES_WITHHELD[table],
+                "source_rows": table_rows.get(table, 0),
+            }
+            table_rows[table] = 0
+        for table, cols in sorted(replace.items()):
+            if not table_rows.get(table):
+                continue
+            shard = _shard_path(out_dir, table)
+            con.execute("DROP TABLE IF EXISTS scrub")
+            con.execute("CREATE TABLE scrub AS SELECT * FROM read_parquet(?)", [str(shard)])
+            rowids = [r[0] for r in con.execute("SELECT rowid FROM scrub").fetchall()]
+            for column in cols:
+                quoted = '"' + column.replace('"', '""') + '"'
+                con.executemany(
+                    f"UPDATE scrub SET {quoted} = ? WHERE rowid = ?",
+                    [[secrets.token_hex(32), rowid] for rowid in rowids],
+                )
+            con.execute(
+                "COPY scrub TO '" + str(shard).replace("'", "''") + ".tmp' (FORMAT PARQUET)"
+            )
+            os.replace(f"{shard}.tmp", shard)
+    finally:
+        con.close()
+    return withheld
 
 
 def _copy_event_files(events_root: str, out_dir: Path) -> dict[str, int]:
