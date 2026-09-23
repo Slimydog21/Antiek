@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { parseTokensCss, resolveVar, toRgba } from "./tokenCss";
-import { semantic, state, type Theme } from "./tokens";
+import { semantic, state, surface, type Theme } from "./tokens";
 import { zIndex } from "./zIndex";
 
 const here = dirname(fileURLToPath(import.meta.url)); // apps/reading/src/design
@@ -103,6 +103,14 @@ describe("the semantic layer: one value per token per theme", () => {
         expect(hexOf(theme, legacy), `${theme} ${legacy} → ${sem}`).toBe(hexOf(theme, sem));
       }
     }
+  });
+
+  it("var(--shadow-2) is the fixed slate pigment bg-shadow-2 and surface.day[8] paint (BrainJourney's day coat)", () => {
+    // It once aliased --text-2 and the day coat drifted a step lighter.
+    const c = toRgba(surface.day[8])!;
+    expect(hexOf("light", "--shadow-2")).toBe([c.r, c.g, c.b, 100].join(","));
+    expect(hexOf("light", "--shadow-2")).toBe(hexOf("light", "--fixed-ink-2"));
+    expect(ext.colors["shadow-2"]).toBe(ch("fixed-ink-2"));
   });
 
   it("the night palette primitives Login.css (and dark: keys) read are declared", () => {

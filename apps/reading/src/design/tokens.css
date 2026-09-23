@@ -408,7 +408,10 @@
   --ink-soft:     var(--text-2);
   --ink-soft-rgb: var(--text-2-rgb);
   --shadow-1:     var(--text-2);
-  --shadow-2:     var(--text-2);
+  /* shadow-2 is a pigment, not a text role: the slate the day scene's
+     BrainJourney coat is painted in, the same colour as bg-shadow-2 and
+     tokens.ts surface.day[8]. Text reads text-shadow-2 (--text-2). */
+  --shadow-2:     var(--fixed-ink-2);
   --text-muted:   var(--text-2);
   --ink-mute:     var(--text-3);
   --ink-mute-rgb: var(--text-3-rgb);
