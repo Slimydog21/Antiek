@@ -60,6 +60,12 @@
     # running, while both deploy_backend runs had correctly SKIPPED. The gate
     # guarded one caller; it has to guard the action. Same script as the
     # workflow uses, so the two cannot drift.
+    #
+    # Tag selection must not separate the gate from the pull either: the gate
+    # tasks carry every tag the pull carries (`--tags code` runs them), and
+    # the pull's `version` is the fact the gate sets only once it cleared, so
+    # `--skip-tags gate`, `--skip-tags deploy` or `--start-at-task "git pull"`
+    # fail the pull itself instead of deploying an unverified SHA.
     - name: resolve the SHA this deploy will pull
       ansible.builtin.command:
         cmd: git ls-remote --heads {{ antiek_repo_url }} {{ antiek_repo_branch }}
@@ -67,12 +73,12 @@
       become: false
       changed_when: false
       register: remote_head
-      tags: [deploy, gate]
+      tags: [deploy, gate, code]
 
     - name: set antiek_target_sha
       ansible.builtin.set_fact:
         antiek_target_sha: "{{ ((remote_head.stdout | trim).split() | first) | default('') }}"
-      tags: [deploy, gate]
+      tags: [deploy, gate, code]
 
     - name: require every main-required check green for the target SHA (fail-closed)
       # Exit 1 = not green yet; exit 3 = could not verify. Both stop the play
@@ -86,8 +92,9 @@
       delegate_to: localhost
       become: false
       changed_when: false
+      register: required_checks_gate
       when: not (antiek_force_deploy | default(false) | bool)
-      tags: [deploy, gate]
+      tags: [deploy, gate, code]
 
     - name: WARN — required-checks gate bypassed by antiek_force_deploy
       ansible.builtin.debug:
@@ -95,13 +102,25 @@
           antiek_force_deploy=true: deploying {{ antiek_target_sha }} WITHOUT
           verifying its required checks. Emergency override — must be deliberate.
       when: antiek_force_deploy | default(false) | bool
-      tags: [deploy, gate]
+      tags: [deploy, gate, code]
+
+    - name: record the gate-cleared ref (the only source of the pull's version)
+      ansible.builtin.set_fact:
+        antiek_gate_cleared_ref: "{{ antiek_repo_branch }}"
+      when: >-
+        (antiek_force_deploy | default(false) | bool)
+        or (required_checks_gate.rc | default(1)) == 0
+      tags: [deploy, gate, code]
 
     - name: git pull
       ansible.builtin.git:
         repo: "{{ antiek_repo_url }}"
         dest: "{{ antiek_install_dir }}"
-        version: "{{ antiek_repo_branch }}"
+        version: >-
+          {{ antiek_gate_cleared_ref | mandatory(msg='required-checks gate did not
+          run or did not clear (tag selection or --start-at-task skipped it);
+          refusing to pull. Run with the gate, or pass antiek_force_deploy=true
+          deliberately.') }}
         force: false
       become_user: "{{ antiek_user }}"
       register: git_pull
