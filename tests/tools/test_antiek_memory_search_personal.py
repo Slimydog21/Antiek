@@ -105,7 +105,10 @@ def test_two_owners_return_disjoint_chunk_sets(search_personal) -> None:
     assert ids_a.isdisjoint(ids_b)
     for chunk in json.loads(owner_a.content[0]["text"])["chunks"]:
         assert chunk["owner_user_id"] == "owner-a"
-        assert chunk["text"] in dict(_CORPUS["owner-a"]).values()
+        # §13.8.3: the owner's text is untrusted too, so it arrives enveloped.
+        opening, closing = '<antiek:content trusted="false">', "</antiek:content>"
+        assert chunk["text"].startswith(opening) and chunk["text"].endswith(closing)
+        assert chunk["text"][len(opening) : -len(closing)] in dict(_CORPUS["owner-a"]).values()
 
 
 def test_query_matching_nothing_returns_an_honest_empty(search_personal) -> None:

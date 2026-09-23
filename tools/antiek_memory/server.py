@@ -219,6 +219,8 @@ class AntiekMemoryServer:
                 content = _call_resource_handler(self.resource_handler, uri, auth_context)
             except ResourceError as exc:
                 return _err(rpc_id, exc.code, exc.message, exc.data)
+            except Exception:  # defensive, as tools/call; no text: it may quote a body
+                return _err(rpc_id, -32603, "Resource read error")
             if content is None:
                 return _err(rpc_id, -32602, f"Resource not found: {uri}")
             return _ok(rpc_id, {
@@ -239,15 +241,25 @@ def _call_resource_handler(
     auth_context: Any,
 ) -> ResourceContent | None:
     """Invoke the resource handler, passing the server-derived
-    ``auth_context`` only when the handler declares the keyword (private
+    ``auth_context`` only when the handler accepts the keyword (private
     resources must know the verified caller; public ones need not)."""
-    try:
-        accepts_auth = "auth_context" in inspect.signature(handler).parameters
-    except (TypeError, ValueError):
-        accepts_auth = False
-    if accepts_auth:
+    if _accepts_auth_context(handler):
         return handler(uri, auth_context=auth_context)
     return handler(uri)
+
+
+def _accepts_auth_context(handler: Callable[..., Any]) -> bool:
+    """Whether ``handler`` can take ``auth_context=`` as a keyword: a named
+    keyword-capable parameter, or ``**kwargs``. A handler that cannot is
+    called without it and so never sees a caller identity (fails closed)."""
+    try:
+        parameters = inspect.signature(handler).parameters
+    except (TypeError, ValueError):  # builtins / C callables without a signature
+        return False
+    named = parameters.get("auth_context")
+    if named is not None:
+        return named.kind in (named.POSITIONAL_OR_KEYWORD, named.KEYWORD_ONLY)
+    return any(p.kind is p.VAR_KEYWORD for p in parameters.values())
 
 
 def _call_handler(
@@ -264,11 +276,7 @@ def _call_handler(
     value is never merged into ``tool_args`` because ``arguments`` is
     caller-controlled and an owner claim there would be self-asserted.
     """
-    try:
-        accepts_auth = "auth_context" in inspect.signature(handler).parameters
-    except (TypeError, ValueError):  # builtins / C callables without a signature
-        accepts_auth = False
-    if accepts_auth:
+    if _accepts_auth_context(handler):
         return handler(tool_args, auth_context=auth_context)
     return handler(tool_args)
 

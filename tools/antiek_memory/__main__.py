@@ -224,10 +224,12 @@ def _make_handlers(
         # books: a takedown withholds the body even from the book's owner. The
         # owner's personal and restricted classes stay servable here, so this
         # checks takedown only, not the full is_chunk_body_withheld predicate.
+        # The owner's corpus includes fetched pages, so its text is as
+        # untrusted as a public body: it gets the same §13.8.3 envelope.
         chunks = [
             {
                 "chunk_id": hit["chunk_id"],
-                "text": full_text[hit["chunk_id"]][0],
+                "text": _envelope(full_text[hit["chunk_id"]][0]),
                 "title": hit["document_title"],
                 "source_tier": hit["source_tier"],
                 "owner_user_id": owner,
@@ -534,9 +536,12 @@ def _make_handlers(
         try:
             if uri.startswith("antiek://private/notes/"):
                 parts = uri.split("/")
-                # antiek://private/notes/{user_id}/{note_id}
-                user_id = parts[4] if len(parts) > 4 else None
-                note_id = parts[5] if len(parts) > 5 else None
+                # antiek://private/notes/{user_id}/{note_id}, exactly: extra
+                # segments or a trailing slash are not a note URI (the books
+                # path is equally strict).
+                if len(parts) != 6:
+                    return None
+                user_id, note_id = parts[4], parts[5]
                 if not user_id or not note_id:
                     return None
                 # A private note is served only to its verified owner. The
@@ -573,9 +578,10 @@ def _make_handlers(
 
             if uri.startswith("antiek://public/notes/"):
                 parts = uri.split("/")
-                note_id = parts[4] if len(parts) > 4 else None
-                if not note_id:
+                # antiek://public/notes/{note_id}, exactly (as private notes).
+                if len(parts) != 5 or not parts[4]:
                     return None
+                note_id = parts[4]
                 row = con.execute(
                     """
                     SELECT nb.block_id, nb.content_json, n.title
