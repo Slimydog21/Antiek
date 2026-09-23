@@ -27,6 +27,11 @@ export function notifyShellFailure(): void {
   emitMascotExperience("fail");
 }
 
+/** Call only after the first HTMLMediaElement.play() promise resolves. */
+export function notifyVoicePlaybackStarted(): void {
+  emitMascotExperience("voice_playback_started");
+}
+
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();
   locallyStartedResearchSessions.set(sessionId, startedAt);
