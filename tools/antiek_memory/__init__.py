@@ -30,8 +30,10 @@ swap in the SDK at integration time.
 """
 
 from .server import (
+    LICENSING_REQUIRED,
     AntiekMemoryServer,
     ResourceContent,
+    ResourceError,
     ToolDescription,
     ToolResult,
     serve_stdio,
@@ -39,8 +41,10 @@ from .server import (
 from .signing import compute_tool_hash, render_well_known_manifest
 
 __all__ = [
+    "LICENSING_REQUIRED",
     "AntiekMemoryServer",
     "ResourceContent",
+    "ResourceError",
     "ToolDescription",
     "ToolResult",
     "compute_tool_hash",
