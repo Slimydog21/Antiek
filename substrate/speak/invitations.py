@@ -32,6 +32,7 @@ from .consent import ConsentScope
 from .events import SPEAK_INTERVIEW_INVITED, record_speak_event
 from .ids import new_invite_id
 from .schema import ensure_speak_schema
+from .takedown import NO_ACTIVE_TAKEDOWN_SQL
 
 
 class PublicEcosystemGated(RuntimeError):
@@ -208,6 +209,11 @@ def mint_open_contribution(con: Any, project_id: str) -> Invite:
       • Refused unless ``public_ecosystem_enabled()`` (ANTIEK_SPEAK_PUBLIC_ECOSYSTEM).
       • Refused unless ``publish_intent == will_be_public`` — private stays
         invite-only (operator-minted invites); no silent cross-over.
+      • Refused while the project has an active takedown. The minted token's
+        landing page (``GET /speak/invite/{token}``) is unauthenticated and
+        returns ``subject_ref``, so this door shares the predicate that hides
+        the project from ``/speak/feed``, ``/speak/opportunities`` and
+        ``/speak/pushes``.
       • Mints a fresh invite TOKEN (source, not an account) — stranger does
         not need a pre-shared family invite; the token remains the credential.
       • Marks ``invitation_mode=public`` (same flip as ``open_public_contribution``).
@@ -221,17 +227,23 @@ def mint_open_contribution(con: Any, project_id: str) -> Invite:
         )
     ensure_speak_schema(con)
     row = con.execute(
-        "SELECT publish_intent, invitation_mode FROM speak_projects "
-        "WHERE project_id = ?",
+        "SELECT p.publish_intent, p.invitation_mode, "
+        f"{NO_ACTIVE_TAKEDOWN_SQL} AS open_to_public "
+        "FROM speak_projects p WHERE p.project_id = ?",
         [project_id],
     ).fetchone()
     if row is None:
         raise ValueError(f"project {project_id!r} not found")
-    publish_intent, invitation_mode = row[0], row[1]
+    publish_intent, invitation_mode, open_to_public = row[0], row[1], row[2]
     if publish_intent != "will_be_public":
         raise PublicEcosystemGated(
             "private Speak projects stay invite-only — open contribution "
             "applies only to will_be_public projects (spine private↔public)."
+        )
+    if not open_to_public:
+        raise PublicEcosystemGated(
+            "this project is under an active takedown, so it is closed to "
+            "open contribution until the takedown is reversed."
         )
     if invitation_mode != "public":
         con.execute(

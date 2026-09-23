@@ -27,6 +27,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from interfaces.research.api.auth import reset_auth_throttles
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
 from substrate.speak import biography, project, publish_gate, subject_consent
@@ -162,8 +163,10 @@ def test_public_draft_leaves_out_record_only_words(db):
                                           public=True)
         assert "every Sunday" not in public.prose_text, public.prose_text
         assert "iv-no" not in public.cited_interview_ids
-        assert private.claim_id in public.excluded_claim_ids
+        # A consent exclusion is reported on its own. excluded_claim_ids
+        # means "not corroborated", and the UI says exactly that about it.
         assert public.consent_excluded_claim_ids == (private.claim_id,)
+        assert private.claim_id not in public.excluded_claim_ids
         assert "kneaded" in public.prose_text
         assert kept.claim_id not in public.excluded_claim_ids
 
@@ -250,3 +253,48 @@ def test_taken_down_project_leaves_opportunities_and_pushes(client):
             f"{path} still discloses a subject under active takedown: {subjects}"
         )
         assert "bob.control@example.test" in subjects
+
+
+@pytest.fixture
+def fresh_throttles() -> Iterator[None]:
+    # The open-contribute rate limit is process-global; start clean and leave
+    # no hits behind for the next test file that counts them.
+    reset_auth_throttles()
+    yield
+    reset_auth_throttles()
+
+
+def test_taken_down_project_mints_no_open_contribution(client, monkeypatch, fresh_throttles):
+    """The G7 open-contribute door is unauthenticated, and the invite landing
+    page it mints a token for returns ``subject_ref``. A project under active
+    takedown must not get a fresh door, or the takedown leaks back out."""
+    monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_ECOSYSTEM", "1")
+
+    def _public(title: str, subject: str) -> str:
+        r = client.post("/speak/projects", json={
+            "title": title, "subject_ref": subject, "publish_intent": "will_be_public",
+        })
+        assert r.status_code == 201, r.text
+        return str(r.json()["project_id"])
+
+    gone = _public("Under takedown", "jane.doe@example.test")
+    control = _public("Control", "bob.control@example.test")
+    r = client.post(f"/speak/projects/{gone}/takedowns", json={
+        "target_kind": "subject", "target_id": "jane.doe@example.test",
+        "requested_by": "jane.doe@example.test", "reason": "subject withdrew",
+    })
+    assert r.status_code == 201, r.text
+
+    r = client.post(f"/speak/projects/{gone}/open-contribute")
+    assert r.status_code != 201, (
+        "open-contribute minted an invite on a project under active takedown: "
+        f"{r.status_code} {r.text}"
+    )
+    assert r.status_code == 403, r.text
+    assert "token" not in r.json()
+    assert "takedown" in r.json()["detail"]
+
+    ok = client.post(f"/speak/projects/{control}/open-contribute")
+    assert ok.status_code == 201, ok.text
+    land = client.get(ok.json()["invite_path"]).json()
+    assert land["subject_ref"] == "bob.control@example.test"
