@@ -98,10 +98,8 @@ class AntiekMemoryServer:
         (§13.9).
       - cite_source: resolve a chunk_id or claim_id to its full
         source metadata.
-      - record_attribution: emit an attribution event when the calling
-        agent uses a public-graph chunk in a synthesis. This is what
-        makes the rev-share work end-to-end across the MCP boundary
-        per §13.8 implementation requirement 2.
+      - record_attribution: record a replayable attribution-audit row for
+        a public-graph chunk under the server's bound owner.
 
     Tool implementations are injected at construction time
     (handler_fns) so the server can be unit-tested with stubs and
@@ -385,12 +383,10 @@ CANONICAL_TOOLS: list[ToolDescription] = [
     ToolDescription(
         name="record_attribution",
         description=(
-            "Emit a page_attribution_computed event for a "
-            "public-graph chunk used in this agent's synthesis. "
-            "Captures the attribution event at the agent step that "
-            "consumed the content — what makes rev-share work "
-            "end-to-end across the MCP boundary per master-spec §13.8 "
-            "implementation requirement 2."
+            "Record an attribution-audit row for a public-graph chunk using "
+            "canonical equal-split math. The row is replayable and idempotent "
+            "per investigation and chunk. Requires the server's bound owner. "
+            "Unknown or non-public chunk ids are rejected."
         ),
         input_schema={
             "type": "object",

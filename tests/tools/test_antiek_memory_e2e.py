@@ -10,7 +10,7 @@ full protocol surface per master-spec §13.8:
 * resources/read  → prompt-injection envelope (§13.8.3)
 * tools/call search_personal  → real substrate query path
 * tools/call cite_source  → resolves chunk metadata
-* tools/call record_attribution  → records attribution event
+* tools/call record_attribution  → records replayable attribution audit
 
 No new deps; uses subprocess + json.
 """
@@ -27,6 +27,7 @@ import duckdb
 import pytest
 
 from processing.embedding.embed import HashEmbedding
+from substrate.ad_inventory import attribution_audit
 from substrate.graph.schema import init_database_at_path
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -512,9 +513,46 @@ class TestToolsCallCiteSource:
 
 
 class TestToolsCallRecordAttribution:
-    """tools/call record_attribution — records attribution event without escrow."""
+    """tools/call record_attribution records a replayable audit row."""
 
-    def test_record_attribution_records_event(self, server_proc, memory_db):
+    def test_record_attribution_records_replayable_row(self, server_proc, memory_db):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        params = {
+            "name": "record_attribution",
+            "arguments": {
+                "chunk_id": "chunk-pd",
+                "investigation_id": "inv-1",
+                "session_dwell_seconds": 42.5,
+            },
+        }
+        resp = _send_and_recv(server_proc, "tools/call", params, rpc_id=5)
+        assert resp["result"]["isError"] is False
+        result = json.loads(resp["result"]["content"][0]["text"])
+        assert result["status"] == "recorded"
+        assert result["chunk_id"] == "chunk-pd"
+        assert result["document_id"] == "doc-pd"
+        assert result["investigation_id"] == "inv-1"
+        assert result["impression_set_ref"] == "mcp:testuser:inv-1"
+        assert "audit_id" in result
+
+        retry = _send_and_recv(server_proc, "tools/call", params, rpc_id=6)
+        assert retry["result"]["isError"] is False
+        retry_result = json.loads(retry["result"]["content"][0]["text"])
+        assert retry_result["audit_id"] == result["audit_id"]
+
+        import duckdb as _duckdb
+        con = _duckdb.connect(str(memory_db), read_only=True)
+        try:
+            assert attribution_audit.replay(con, result["audit_id"]).identical is True
+            count = con.execute(
+                "SELECT count(*) FROM attribution_audit WHERE impression_set_ref = ?",
+                ["mcp:testuser:inv-1"],
+            ).fetchone()[0]
+            assert count == 1
+        finally:
+            con.close()
+
+    def test_record_attribution_unknown_chunk_rejected(self, server_proc, memory_db):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
         resp = _send_and_recv(
             server_proc,
@@ -522,29 +560,17 @@ class TestToolsCallRecordAttribution:
             {
                 "name": "record_attribution",
                 "arguments": {
-                    "chunk_id": "chunk-1",
+                    "chunk_id": "chunk-DOES-NOT-EXIST",
                     "investigation_id": "inv-1",
-                    "session_dwell_seconds": 42.5,
                 },
             },
             rpc_id=5,
         )
-        assert resp["result"]["isError"] is False
-        result = json.loads(resp["result"]["content"][0]["text"])
-        assert result["status"] == "recorded"
-        assert result["chunk_id"] == "chunk-1"
-        assert result["investigation_id"] == "inv-1"
-        assert "audit_id" in result
-
-        # Verify the attribution was actually recorded in the DB
+        assert resp["result"]["isError"] is True
         import duckdb as _duckdb
         con = _duckdb.connect(str(memory_db), read_only=True)
         try:
-            row = con.execute(
-                "SELECT * FROM attribution_audit WHERE page_id = ?",
-                ["chunk-1"],
-            ).fetchone()
-            assert row is not None, "attribution_audit row not found"
+            assert con.execute("SELECT count(*) FROM attribution_audit").fetchone()[0] == 0
         finally:
             con.close()
 
