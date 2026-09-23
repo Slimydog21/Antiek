@@ -33,6 +33,9 @@ tests pin the bound on them:
     the wait bound of every gate acquire the request makes, so the later
     hops (voice-note ingest, the answer turn, decline after the token
     resolve) are covered too, not only the first one.
+
+Test E covers the one write every route makes before ``_write``: the
+cold-memo schema init in ``_db()`` after a restart.
 """
 
 from __future__ import annotations
@@ -460,3 +463,26 @@ def test_every_write_in_a_two_hop_route_carries_the_bound(
         f"{method} {path} took the write lock with waits {recorder.timeouts}; "
         f"every wait must be at most _WRITE_TIMEOUT_S={bound}"
     )
+
+
+def test_cold_schema_probe_under_held_writer_yields_fast_503(
+    held: Seeded,
+) -> None:
+    """Test E — a process whose schema memo is cold (just restarted) meets a
+    held cross-process writer. The read-only schema probe fails against the
+    held file, so ``_db()`` falls through to the cold-init write. That write
+    must carry the same bound as ``_write``'s own, or every Speak route
+    waits out the whole hold in ``_db()`` before it reaches ``_write``."""
+    from substrate.graph import schema as graph_schema
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(graph_schema, "_INITIALIZED_PATHS", set())
+    try:
+        t0 = time.monotonic()
+        r = held.client.get("/speak/projects")
+        elapsed = time.monotonic() - t0
+    finally:
+        mp.undo()
+    assert r.status_code == 503, (r.status_code, r.text, f"{elapsed:.2f}s")
+    assert r.json()["detail"] == "speak_writer_busy", r.text
+    assert elapsed < 5.0, f"GET /speak/projects took {elapsed:.3f}s on a cold memo"

@@ -104,9 +104,15 @@ speak_router = APIRouter(prefix="/speak", tags=["speak"])
 
 def _db() -> str:
     """Resolve + initialize the graph DB (base schema). Speak tables are
-    ensured per write under the lock."""
+    ensured per write under the lock.
+
+    The init is a no-op once the process memo is warm. On a cold memo
+    (a restart) the read-only probe fails while another process holds the
+    file, and the init takes the write lock, so it carries the same bound
+    as ``_write``. Callers run inside ``_off_loop``, which turns the
+    timeout into 503."""
     path = default_db_path()
-    ensure_initialized(path)
+    ensure_initialized(path, timeout_s=_WRITE_TIMEOUT_S)
     return path
 
 
