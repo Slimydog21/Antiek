@@ -32,6 +32,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import logging
 import os
 import sys
 import threading
@@ -1539,6 +1540,14 @@ class OutcomeRecordRequest(BaseModel):
     execution_risk_outcomes: list[dict[str, Any]] = []
     decision_alignment: dict[str, Any] | None = None
     notes: str | None = None
+
+
+# SPR-08 T3: the attribution routes append a replayable audit row. That write
+# is Phase-1 telemetry (no money moves), so it waits a bounded time for the
+# single-writer lock, like the ad routes' frame writes, and the read is served
+# either way with ``X-Antiek-Attribution-Audit: recorded|failed``. The
+# connect_write default (300 s) would otherwise stall a read behind an ingest.
+_ATTRIBUTION_AUDIT_WRITE_TIMEOUT_S = 5.0
 
 
 class AttributionComputeRequest(BaseModel):
@@ -4452,6 +4461,7 @@ def create_app(
     )
     async def get_attribution_report(
         synthesis_id: str,
+        response: Response,
         emit_event: bool = Query(default=False),
     ) -> AttributionReportResponse:
         """Compute attribution shares for a synthesis under all three
@@ -4467,6 +4477,48 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        try:
+            from runtime.db_lock import connect_write
+            from substrate.ad_inventory.attribution import (
+                AttributionResult as AuditAttributionResult,
+            )
+            from substrate.ad_inventory.attribution_audit import (
+                PRODUCER_SYNTHESIS_TELEMETRY,
+                SYNTHESIS_LETTER_TO_ALGORITHM,
+                record_attribution,
+                synthesis_audit_inputs,
+            )
+
+            inputs = synthesis_audit_inputs(r.claims)
+
+            def _record_synthesis_audit() -> None:
+                with connect_write(
+                    default_db_path(),
+                    purpose="api:attribution_audit",
+                    timeout_s=_ATTRIBUTION_AUDIT_WRITE_TIMEOUT_S,
+                ) as con:
+                    for letter, res in (("A", r.option_a), ("B", r.option_b), ("C", r.option_c)):
+                        record_attribution(
+                            con,
+                            impression_set_ref=f"synthesis:{synthesis_id}",
+                            result=AuditAttributionResult(
+                                algorithm=SYNTHESIS_LETTER_TO_ALGORITHM[letter],
+                                page_id=synthesis_id,
+                                shares=dict(res.shares),
+                            ),
+                            inputs=inputs,
+                            producer_module=PRODUCER_SYNTHESIS_TELEMETRY,
+                        )
+
+            await asyncio.to_thread(_record_synthesis_audit)
+            response.headers["X-Antiek-Attribution-Audit"] = "recorded"
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "attribution audit failed for synthesis_id=%s: %s",
+                synthesis_id, type(exc).__name__,
+            )
+            response.headers["X-Antiek-Attribution-Audit"] = "failed"
 
         def _to_resp(
             algo: Literal["A", "B", "C"], result: AttributionResult
@@ -6134,6 +6186,7 @@ def create_app(
         response_model=AttributionResponse,
     )
     async def attribution_compute(
+        response: Response,
         req: AttributionComputeRequest = Body(...),
     ) -> AttributionResponse:
         """Compute per-document attribution shares for a synthesis
@@ -6143,12 +6196,21 @@ def create_app(
             compute_attribution_option_b,
             compute_attribution_option_c,
         )
+        # ``inputs`` records the exact kwargs each algorithm was called with
+        # (minus page_id): the attribution audit replays them verbatim.
+        inputs: dict[str, Any]
         if req.algorithm == "option_a":
+            inputs = {"chunk_to_document": req.chunk_to_document}
             r = compute_attribution_option_a(
                 page_id=req.page_id,
                 chunk_to_document=req.chunk_to_document,
             )
         elif req.algorithm == "option_b":
+            inputs = {
+                "chunk_to_document": req.chunk_to_document,
+                "chunk_to_claim_confidence": req.chunk_to_claim_confidence,
+                "document_to_source_tier": req.document_to_source_tier,
+            }
             r = compute_attribution_option_b(
                 page_id=req.page_id,
                 chunk_to_document=req.chunk_to_document,
@@ -6156,6 +6218,11 @@ def create_app(
                 document_to_source_tier=req.document_to_source_tier,
             )
         elif req.algorithm == "option_c":
+            inputs = {
+                "chunk_to_document": req.chunk_to_document,
+                "chunk_to_claim_id": req.chunk_to_claim_id,
+                "claim_load_bearing_scores": req.claim_load_bearing_scores,
+            }
             r = compute_attribution_option_c(
                 page_id=req.page_id,
                 chunk_to_document=req.chunk_to_document,
@@ -6167,6 +6234,35 @@ def create_app(
                 status_code=400,
                 detail=f"unknown algorithm {req.algorithm!r}",
             )
+        try:
+            from runtime.db_lock import connect_write
+            from substrate.ad_inventory.attribution_audit import (
+                PRODUCER_AD_INVENTORY,
+                record_attribution,
+            )
+
+            def _record_page_audit() -> None:
+                with connect_write(
+                    default_db_path(),
+                    purpose="api:attribution_audit",
+                    timeout_s=_ATTRIBUTION_AUDIT_WRITE_TIMEOUT_S,
+                ) as con:
+                    record_attribution(
+                        con,
+                        impression_set_ref=f"page:{req.page_id}",
+                        result=r,
+                        inputs=inputs,
+                        producer_module=PRODUCER_AD_INVENTORY,
+                    )
+
+            await asyncio.to_thread(_record_page_audit)
+            response.headers["X-Antiek-Attribution-Audit"] = "recorded"
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "attribution audit failed for page_id=%s: %s",
+                req.page_id, type(exc).__name__,
+            )
+            response.headers["X-Antiek-Attribution-Audit"] = "failed"
         return AttributionResponse(
             algorithm=r.algorithm.value,
             page_id=r.page_id,
