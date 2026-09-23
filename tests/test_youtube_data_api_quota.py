@@ -53,8 +53,8 @@ from runtime.connectors.quota_meter import (  # noqa: E402
 from runtime.connectors.youtube import YouTubeDataConnector  # noqa: E402
 
 _TEST_KEY_BYTES = b"0" * nacl.secret.SecretBox.KEY_SIZE  # 32 bytes, test-injected
-# A GCP-shaped API key (the descriptor's prefix class is "AIza").
-_SECRET = "AIzaSyD-test-only-key-0123456789abcdefg"
+# GCP-shaped test sentinel sent only through MockTransport.
+_SECRET = "AIza" + "A" * 35
 
 # A recorded-shape Data API v3 search envelope (fixture-validated,
 # live-unverified — see the client module docstring).
