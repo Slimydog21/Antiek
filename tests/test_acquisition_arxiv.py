@@ -349,6 +349,7 @@ def temp_db_and_events(monkeypatch):
 
 
 class _StubEmbedder:
+    dimension = 16  # the EmbeddingProvider Protocol requires it; producers now pin it
     def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16

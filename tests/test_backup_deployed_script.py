@@ -307,6 +307,22 @@ def _iso_utc(dt: datetime) -> str:
 # ---------------------------------------------------------------------------
 # a. Happy path: exit 0, upload happened, marker written with sane counts
 # ---------------------------------------------------------------------------
+def test_backup_template_sets_marker_owner_and_mode_before_replace() -> None:
+    """A root-run backup must not leave the freshness marker unreadable to the
+    antiek health probe. Ownership is set on the temp file before atomic
+    replace so there is no unreadable-window regression."""
+    source = TEMPLATE_PATH.read_text()
+    assert 'tmp = "${STATE_DIR}/backup_freshness.json.tmp"' in source
+    assert 'os.chown(tmp, owner.pw_uid, owner.pw_gid)' in source
+    assert 'os.chmod(tmp, 0o640)' in source
+    assert source.index('os.chown(tmp, owner.pw_uid, owner.pw_gid)') < source.index(
+        'os.replace(tmp, "${STATE_DIR}/backup_freshness.json")'
+    )
+    assert source.index('os.chmod(tmp, 0o640)') < source.index(
+        'os.replace(tmp, "${STATE_DIR}/backup_freshness.json")'
+    )
+
+
 def test_happy_path_uploads_and_writes_marker(tmp_path: Path) -> None:
     harness = _make_harness(tmp_path)
     proc = _run_script(harness)
@@ -329,7 +345,11 @@ def test_happy_path_uploads_and_writes_marker(tmp_path: Path) -> None:
     assert any("/research_events/" in n for n in names), names
     assert not any("verify-scratch" in n for n in names), names
 
-    # Freshness marker written with the real row counts.
+    # Freshness marker written with the real row counts. The substrate's
+    # health probe runs as antiek, so a root-run backup must leave the marker
+    # readable after an atomic replace.
+    marker_mode = harness.marker.stat().st_mode & 0o777
+    assert marker_mode == 0o640, oct(marker_mode)
     marker = json.loads(harness.marker.read_text())
     assert {table: marker["counts"][table] for table in _SEED_COUNTS} == _SEED_COUNTS
     assert len(marker["counts"]) > len(_SEED_COUNTS)

@@ -59,6 +59,8 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 
+from acquisition.books.pd_jurisdiction import non_serving_pd_qualification
+
 if TYPE_CHECKING:
     from substrate.source_throttle import SourceThrottle as SourceThrottleT
 
@@ -592,6 +594,9 @@ def _archive_pd_basis(meta: dict[str, Any], identifier: str) -> str | None:
     if _ARCHIVE_NEGATED_PD_RE.search(haystack):
         return None
     if _ARCHIVE_COPYRIGHT_CLAIM_RE.search(haystack):
+        return None
+    # A PD assertion limited to a non-serving jurisdiction is not PD for us.
+    if non_serving_pd_qualification(haystack) is not None:
         return None
     if any(tok in haystack for tok in _ARCHIVE_PD_TOKENS):
         asserted = "; ".join(f for f in fields if f)
