@@ -288,6 +288,14 @@ class SourceThrottle:
         ban-event log line. The sentinel is written FIRST; the append never
         raises and cannot block the sentinel.
 
+        A ban-event line is appended only when this call ARMS ``source``'s
+        sentinel, that is when no ban was active for it before. A repeat note
+        of an active ban re-arms the sentinel but is not a new ban, so the log
+        counts bans rather than notes (the same rule as
+        ``ArxivThrottle.note_response``). Each source key is its own sentinel:
+        one arXiv PDF 429 on the bulk path arms both the ``arxiv`` throttle and
+        the ``arxiv_pdf`` source here, and logs one line for each.
+
         ``note_response_at`` deliberately does NOT log a ban event: it is a
         mirror of a ban already logged by ``ArxivThrottle``, and logging it
         again would double-count.
@@ -302,15 +310,18 @@ class SourceThrottle:
                     backoff = max(backoff, float(int(str(retry_after).strip())))
         all_state = self._read_all()
         state = self._source_state(all_state, source)
-        state.banned_until = self._now() + backoff
+        now = self._now()
+        newly_armed = state.banned_until <= now
+        state.banned_until = now + backoff
         all_state.sources[source] = state
         self._write_all(all_state)
-        _append_ban_event(
-            source=source,
-            status=status_code,
-            url=url,
-            ts=self._now(),
-        )
+        if newly_armed:
+            _append_ban_event(
+                source=source,
+                status=status_code,
+                url=url,
+                ts=now,
+            )
 
     def note_response_at(self, source: str, banned_until: float) -> None:
         """Arm ``source``'s ban sentinel at an EXPLICIT absolute expiry, taking

@@ -682,7 +682,9 @@ def install_arxiv_request_hook(
         # redirect target) records the ban sentinel. The outer
         # ``throttle.request`` also notes the FINAL response when it governed the
         # initial hop; that overlap is a harmless no-op on a non-429 and a
-        # conservative re-set on a 429.
+        # conservative re-set on a 429. The ban-event log is appended only by
+        # the note that ARMS the sentinel, so the overlap cannot log one 429
+        # twice (see ``ArxivThrottle.note_response``).
         _note_response_hop(
             eff_throttle,
             eff_lock,

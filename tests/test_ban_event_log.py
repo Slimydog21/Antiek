@@ -1,7 +1,8 @@
 """SPR-05 arXiv task 5B — attributable bans via an append-only ban-event log.
 
-Each ban-status response must append ONE JSON line naming who and where
-(ts, source, status, host, pid, argv0). The sentinel is always written FIRST;
+Each ban a throttle arms must append ONE JSON line naming who and where
+(ts, source, status, host, pid, argv0), however many times the production
+compositions note the same 429. The sentinel is always written FIRST;
 the append never raises into the caller.
 
 NO live HTTP, NO real state files: the conftest ``_isolate_ban_event_log``
@@ -26,6 +27,7 @@ if _REPO not in sys.path:
 from acquisition.arxiv.rate_governor import arxiv_governed_client  # noqa: E402
 from acquisition.arxiv.throttle import (  # noqa: E402
     ARXIV_BAN_SOURCE_KEY,
+    DEFAULT_BAN_BACKOFF_S,
     ArxivThrottle,
 )
 from substrate.ban_events import (  # noqa: E402
@@ -211,12 +213,138 @@ def test_governed_client_429_event_names_the_arxiv_host(tmp_path: Path) -> None:
     resp = client.get("https://export.arxiv.org/api/query?search_query=x")
     assert resp.status_code == 429
     events = read_ban_events()
-    # The hooked path may legitimately note the same 429 twice (hook + outer
-    # request); assert >= 1 and that every event names the arXiv host.
-    assert len(events) >= 1
-    for event in events:
-        assert event["host"] == "export.arxiv.org"
-        assert event["status"] == 429
+    assert len(events) == 1
+    assert events[0]["host"] == "export.arxiv.org"
+    assert events[0]["status"] == 429
+
+
+# -- one 429, one line: the production compositions note a 429 several times --
+#
+# Every production arXiv path wraps an outer ``governed_request`` (whose
+# ``request()`` notes the final response) around a client carrying the per-hop
+# response hook (which notes every hop's response), and ``tools/ingest_arxiv``
+# notes the same 429 a third time from its ``HTTPStatusError`` handler. Before
+# the log was tied to ARMING the sentinel, that wrote two lines per 429 on the
+# oai_pmh / html_fetch / pdf_fetch / adapter paths and three on the ingest_arxiv
+# PDF path, so ``--ban-events`` over-counted bans two to three times.
+
+
+def _always_429(sent: list[str]) -> httpx.MockTransport:
+    def _handler(req: httpx.Request) -> httpx.Response:
+        sent.append(str(req.url))
+        return httpx.Response(429, headers={"Retry-After": "60"}, request=req)
+
+    return httpx.MockTransport(_handler)
+
+
+def test_one_429_through_governed_request_and_hooked_client_logs_one_event(
+    tmp_path: Path,
+) -> None:
+    from acquisition.arxiv.rate_governor import governed_request
+
+    throttle = ArxivThrottle(state_path=str(tmp_path / "t.json"), min_spacing_s=0.0)
+    sent: list[str] = []
+
+    def _send() -> httpx.Response:
+        with arxiv_governed_client(
+            throttle=throttle, transport=_always_429(sent)
+        ) as client:
+            return client.get("https://export.arxiv.org/oai2?verb=ListRecords")
+
+    resp = governed_request(_send, throttle=throttle)
+
+    assert resp.status_code == 429
+    assert len(sent) == 1
+    events = read_ban_events()
+    assert len(events) == 1, events
+    assert events[0]["source"] == ARXIV_BAN_SOURCE_KEY
+    assert events[0]["host"] == "export.arxiv.org"
+    assert throttle.is_banned()
+
+
+def test_one_429_through_the_ingest_arxiv_pdf_path_logs_one_event(
+    tmp_path: Path,
+) -> None:
+    from acquisition.arxiv import pdf_fetch
+    from tools.ingest_arxiv import _note_http_status
+
+    throttle = ArxivThrottle(state_path=str(tmp_path / "t.json"), min_spacing_s=0.0)
+    sent: list[str] = []
+    client = httpx.Client(transport=_always_429(sent), follow_redirects=True)
+    try:
+        with pytest.raises(httpx.HTTPStatusError) as caught:
+            pdf_fetch.fetch_pdf("2402.03300", throttle=throttle, client=client)
+        # run_batch's handler notes the same response once more.
+        assert _note_http_status(throttle, caught.value) is True
+    finally:
+        client.close()
+
+    assert len(sent) == 1
+    events = read_ban_events()
+    assert len(events) == 1, events
+    assert events[0]["host"] == "arxiv.org"
+
+
+def test_one_bulk_pdf_429_logs_one_event_per_sentinel(tmp_path: Path) -> None:
+    """The bulk path arms two sentinels for one 429 by design (the ``arxiv``
+    throttle and the ``arxiv_pdf`` source), so it logs one line for each and no
+    more."""
+    from acquisition.arxiv import bulk
+
+    source = SourceThrottle(state_path=str(tmp_path / "s.json"))
+    arxiv = ArxivThrottle(state_path=str(tmp_path / "t.json"), min_spacing_s=0.0)
+    paper = bulk.record_to_paper(
+        {
+            "id": "2401.00001",
+            "title": "t",
+            "abstract": "a",
+            "categories": "cs.LG",
+            "versions": [{"version": "v1", "created": "Mon, 1 Jan 2024 10:00:00 GMT"}],
+        }
+    )
+    sent: list[str] = []
+    client = httpx.Client(transport=_always_429(sent), follow_redirects=True)
+    try:
+        with pytest.raises(httpx.HTTPStatusError):
+            bulk.fetch_bulk_pdf(
+                paper, throttle=source, client=client, _arxiv_throttle=arxiv
+            )
+    finally:
+        client.close()
+
+    assert len(sent) == 1
+    events = read_ban_events()
+    assert sorted(str(e["source"]) for e in events) == ["arxiv", "arxiv_pdf"], events
+
+
+def test_repeat_note_of_an_active_ban_is_not_logged_but_a_later_ban_is(
+    tmp_path: Path,
+) -> None:
+    clock = _FakeClock(t=1_700_000_000.0)
+    t = ArxivThrottle(state_path=str(tmp_path / "t.json"), now=clock.now, sleep=clock.sleep)
+    s = SourceThrottle(state_path=str(tmp_path / "s.json"), now=clock.now, sleep=clock.sleep)
+
+    t.note_response(429, {"Retry-After": "60"})
+    s.note_response("gutendex", 503, {"Retry-After": "60"})
+    clock.sleep(1.0)
+    t.note_response(429, {"Retry-After": "60"})
+    s.note_response("gutendex", 503, {"Retry-After": "60"})
+    # The repeat notes still re-arm the sentinels; they just are not new bans.
+    assert t.banned_until() == clock.now() + DEFAULT_BAN_BACKOFF_S
+    assert s.is_banned("gutendex")
+    assert len(read_ban_events()) == 2
+
+    # A different source key is a different sentinel, so it is a new ban.
+    s.note_response("arxiv_export", 429, {})
+    assert len(read_ban_events()) == 3
+
+    # Once the bans expire, the next 429 is a new ban and is logged.
+    clock.sleep(DEFAULT_BAN_BACKOFF_S + 1.0)
+    t.note_response(429, {})
+    s.note_response("gutendex", 503, {})
+    events = read_ban_events()
+    assert len(events) == 5
+    assert [e["source"] for e in events[-2:]] == [ARXIV_BAN_SOURCE_KEY, "gutendex"]
 
 
 def test_read_ban_events_returns_last_n_and_skips_malformed_lines(

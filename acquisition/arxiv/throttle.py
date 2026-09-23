@@ -270,6 +270,15 @@ class ArxivThrottle:
         ban-event log line — the sentinel write is independent of it. The
         sentinel is written FIRST; the append never raises and cannot block
         the sentinel.
+
+        A ban-event line is appended only when this call ARMS the sentinel,
+        that is when no ban was active before it. The production compositions
+        note one HTTP 429 several times: the per-hop response hook, the outer
+        ``governed_request``'s ``request()`` and a caller's
+        ``HTTPStatusError`` handler (``tools/ingest_arxiv._note_http_status``)
+        all see the same response. Re-arming an active ban stays a
+        conservative sentinel write, but it is not a new ban, so it logs
+        nothing and ``--ban-events`` counts bans rather than notes.
         """
         if status_code != 429:
             return
@@ -283,14 +292,17 @@ class ArxivThrottle:
                 with contextlib.suppress(ValueError, TypeError):
                     backoff = max(backoff, float(int(retry_after.strip())))
         state = self._read_state()
-        state.banned_until = self._now() + backoff
+        now = self._now()
+        newly_armed = state.banned_until <= now
+        state.banned_until = now + backoff
         self._write_state(state)
-        _append_ban_event(
-            source=ARXIV_BAN_SOURCE_KEY,
-            status=status_code,
-            url=url,
-            ts=self._now(),
-        )
+        if newly_armed:
+            _append_ban_event(
+                source=ARXIV_BAN_SOURCE_KEY,
+                status=status_code,
+                url=url,
+                ts=now,
+            )
 
     def request(
         self,

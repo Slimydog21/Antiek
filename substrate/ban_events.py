@@ -1,8 +1,11 @@
 """Append-only ban-event log: attribute every ban sentinel to who and where.
 
 On 2026-09-20 a real arXiv 429 armed ``~/.antiek/source_throttle.json`` and
-nothing on disk recorded which process, URL, or argv drew it. Each ban-status
-response must append ONE JSON line naming who and where.
+nothing on disk recorded which process, URL, or argv drew it. Each ban a
+throttle ARMS appends ONE JSON line naming who and where. The throttles decide
+that, not this module: a note that finds its sentinel already active (one 429
+seen by the per-hop hook, the outer governed request and a caller's error
+handler) is not a new ban and appends nothing.
 
 Invariants (hard — do not weaken):
 
