@@ -26,6 +26,7 @@ from benchmarks.capacity_probe import (
     parse_ps_line,
     parse_wait_log_text,
     percentile,
+    read_latency_summary,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -101,6 +102,25 @@ def test_exit_code_one_on_zero_completed_reads() -> None:
     # Missing key counts as zero: a run dict without evidence is not a
     # measurement either.
     assert exit_code_for_runs([{}]) == 1
+
+
+def test_read_latency_summary_reports_failed_reads() -> None:
+    """Failed reads stay out of the served-read percentiles but are not
+    dropped: they are counted and get their own p95."""
+    reads = [
+        {"path": "/health", "status": 200, "ms": 10.0},
+        {"path": "/health", "status": 200, "ms": 20.0},
+        {"path": "/speak/projects", "status": 503, "ms": 1.0},
+        {"path": "/speak/projects", "status": "error:ConnectError", "ms": 300.0},
+    ]
+    summary = read_latency_summary(reads)
+    assert summary["requests_completed"] == 2
+    assert summary["requests_failed"] == 2
+    assert summary["latency_basis"] == "2xx_reads_only"
+    assert summary["p95_ms"] == 20.0
+    assert summary["failed_p95_ms"] == 300.0
+    clean = read_latency_summary(reads[:2])
+    assert clean["requests_failed"] == 0 and clean["failed_p95_ms"] is None
 
 
 @pytest.mark.skipif(

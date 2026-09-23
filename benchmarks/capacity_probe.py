@@ -57,6 +57,10 @@ and also drops ``PYTEST_CURRENT_TEST`` so the child does not silently
 change db_lock behaviour (warm-writer keepalive, store guard) by thinking
 it runs under pytest.
 
+Read latency: ``p50_ms``/``p95_ms``/``p99_ms`` cover 2xx reads only
+(``latency_basis``). Failed reads count in ``requests_failed`` and their
+latency is reported separately as ``failed_p95_ms``.
+
 Exit codes: 0 success; 2 setup/readiness/warm-up failure (naming the
 path and status); 1 if any run completed zero read requests — the
 stub-theater guard. The JSON is still written on exit 1.
@@ -149,6 +153,32 @@ def percentile(values: Sequence[float], p: float) -> float | None:
     ordered = sorted(values)
     rank = max(1, math.ceil(p / 100.0 * len(ordered)))
     return float(ordered[min(rank, len(ordered)) - 1])
+
+
+def _is_2xx(status: object) -> bool:
+    return isinstance(status, int) and 200 <= status < 300
+
+
+def read_latency_summary(reads: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Read-latency fields for one run.
+
+    ``p50_ms``/``p95_ms``/``p99_ms`` cover 2xx reads only (``latency_basis``
+    says so), because a fast 503 is not a served read. A failed read is
+    still reported: it counts in ``requests_failed``, and its latency goes
+    into ``failed_p95_ms``, so a run full of failures cannot show the same
+    percentiles as a clean one without the JSON saying so.
+    """
+    ok = [float(obs["ms"]) for obs in reads if _is_2xx(obs["status"])]
+    failed = [float(obs["ms"]) for obs in reads if not _is_2xx(obs["status"])]
+    return {
+        "requests_completed": len(ok),
+        "requests_failed": len(failed),
+        "latency_basis": "2xx_reads_only",
+        "p50_ms": percentile(ok, 50),
+        "p95_ms": percentile(ok, 95),
+        "p99_ms": percentile(ok, 99),
+        "failed_p95_ms": percentile(failed, 95),
+    }
 
 
 def parse_ps_line(line: str) -> tuple[float, float] | None:
@@ -746,10 +776,7 @@ def _run_level(
         reads = [obs for worker in read_results for obs in worker]
         starts_obs = [obs for worker in start_results for obs in worker]
 
-        completed_latencies = [
-            obs["ms"] for obs in reads
-            if isinstance(obs["status"], int) and 200 <= obs["status"] < 300
-        ]
+        read_summary = read_latency_summary(reads)
         health_latencies = [
             obs["ms"] for obs in reads
             if obs["path"] == "/health" and isinstance(obs["status"], int)
@@ -766,7 +793,6 @@ def _run_level(
                 counts[key] = counts.get(key, 0) + 1
             return dict(sorted(counts.items()))
 
-        requests_completed = len(completed_latencies)
         starts_completed = len(start_latencies)
 
         wait_rows = parse_wait_log_file(wait_log_path)[baseline_wait_lines:]
@@ -778,13 +804,9 @@ def _run_level(
         run: dict[str, Any] = {
             "concurrency": concurrency,
             "starts_workers": starts,
-            "requests_completed": requests_completed,
-            "requests_failed": len(reads) - requests_completed,
+            **read_summary,
             "status_counts": {"reads": status_counts(reads),
                               "starts": status_counts(starts_obs)},
-            "p50_ms": percentile(completed_latencies, 50),
-            "p95_ms": percentile(completed_latencies, 95),
-            "p99_ms": percentile(completed_latencies, 99),
             "health_p95_ms": percentile(health_latencies, 95),
             "starts_completed": starts_completed,
             "start_p95_ms": percentile(start_latencies, 95),
@@ -828,6 +850,7 @@ def _print_summary(run: dict[str, Any]) -> None:
     print(
         "[cap-probe] N={concurrency} reads={requests_completed}ok/"
         "{requests_failed}fail p50/p95/p99={p50_ms}/{p95_ms}/{p99_ms}ms "
+        "failed_p95={failed_p95_ms}ms "
         "health_p95={health_p95_ms}ms starts={starts_completed} "
         "start_p95={start_p95_ms}ms wait_p95={write_lock_wait_p95_ms}ms "
         "hold_p95={write_lock_hold_p95_ms}ms write_log_rows={write_log_rows} "
