@@ -5,8 +5,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from substrate.agent_skills.registry import list_skills
+
 # Bound prior turns folded into the prompt (TalkToBook / book_qa parity).
 MAX_HISTORY_TURNS = 8
+
+# Heading of the kernel-skill catalog block (tests key on it).
+SKILL_CATALOG_HEADING = "RESEARCH SKILL CATALOG"
 
 THOUGHT_PARTNER_SYSTEM_PROMPT = """\
 You are the thought-partner role in Antiek's Brainstorming Workstation
@@ -48,6 +53,34 @@ Do not invent claims or evidence the selected notes do not support.
 Cite note_ids inline (the user can click to scroll). Treat the user's
 prompt as the directing question; if ambiguous, default to SYNTHESIS.
 """
+
+
+def render_skill_catalog() -> str:
+    """The kernel-skill catalog as prose, so the model is told what the
+    research agents can execute (DuckDB/SQL, Python analysis, Processing-
+    style sketches) and can name a skill when an EXTENSION direction
+    needs data work.
+
+    Reads the typed manifests from ``substrate.agent_skills.registry``
+    (description, parameter contract, return contract, invariant notes)
+    and renders them without re-parsing anything. Deterministic:
+    registration order, no I/O. Optional parameters are bracketed.
+    """
+    lines = [
+        f"{SKILL_CATALOG_HEADING} (code the research agents can execute; name",
+        "a skill when an extension needs data work):",
+    ]
+    for manifest in list_skills():
+        params = ", ".join(
+            f"{p.name}: {p.annotation}" if p.required else f"[{p.name}: {p.annotation}]"
+            for p in manifest.parameters
+        )
+        lines.append(f"- {manifest.name}({params}): {manifest.summary}")
+        lines.append(f"  {manifest.description}")
+        lines.append(f"  Returns: {manifest.returns}")
+        for note in manifest.safety:
+            lines.append(f"  Invariant: {note}")
+    return "\n".join(lines)
 
 
 def compose_thought_partner_prompt(
@@ -93,5 +126,6 @@ def compose_thought_partner_prompt(
         f"USER PROMPT: {user_prompt}\n\n"
         f"SELECTED NOTES:\n{notes_block}"
         f"{style_block}\n\n"
+        f"{render_skill_catalog()}\n\n"
         "Respond in the JSON shape specified in your system prompt."
     )
