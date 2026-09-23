@@ -311,6 +311,11 @@ jobs:
         env:
           ANSIBLE_HOST_KEY_CHECKING: "True"
           ANSIBLE_FORCE_COLOR: "1"
+          # The playbook re-runs the fail-closed required-checks gate just
+          # before git pull. That gate calls `gh api` and must be
+          # authenticated even when invoked from the deploy job, not only
+          # from the earlier gate job.
+          GH_TOKEN: ${{ github.token }}
         run: ansible-playbook -i inventory.ini playbooks/deploy.yml
 
       # The playbook already asserts /health + prod-parity internally. This
