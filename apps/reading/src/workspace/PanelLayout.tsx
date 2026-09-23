@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { toast } from "../components/lemon/LemonToast";
@@ -24,9 +24,12 @@ import { useViewportTier } from "./useViewportTier";
  *   │          │ (Chat-style surfaces)     │          │
  *   └──────────┴───────────────────────────┴──────────┘
  *
- * Each dock animates its width/height to 0 when empty so the main slot
- * gets the full viewport when there are no docked panels. The bottom
- * dock is operator-resizable via a top-edge grab handle.
+ * Each dock collapses to 0 when empty so the main slot gets the full
+ * viewport when there are no docked panels. The width SNAPS (no width
+ * transition: animating it reflowed the reading column on every frame of
+ * the 150ms, and left MasterMdViewer's widgets measured against a stale
+ * layout); the dock's contents fade in instead (DockFade, opacity only).
+ * The bottom dock is operator-resizable via a top-edge grab handle.
  *
  * S5 introduces the bottom dock for the Chat panel; the same primitive
  * is available to any panel-kind that opts into mode="docked-bottom".
@@ -35,6 +38,30 @@ type Props = { mainSlot: ReactNode };
 
 const DOCK_WIDTH = 320;
 
+/**
+ * The arrival of a dock's contents: mounted faded, then eased in on the next
+ * frame (opacity only, the motion tokens). Mounts when a dock gains its
+ * first panel, so opening a dock is one layout plus a fade, never a width
+ * animation. Under reduced motion it mounts fully visible.
+ */
+function DockFade({ children }: { children: ReactNode }) {
+  const reduceMotion = usePrefersReducedMotion();
+  const [entered, setEntered] = useState(reduceMotion);
+  useEffect(() => {
+    if (entered) return;
+    const raf = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(raf);
+  }, [entered]);
+  return (
+    <div
+      data-enter={entered}
+      className="flex min-h-0 flex-1 flex-col transition-opacity duration-base ease-enter data-[enter=false]:opacity-0"
+    >
+      {children}
+    </div>
+  );
+}
+
 export function PanelLayout({ mainSlot }: Props) {
   const dockLeftIds = useWorkspace((s) => s.dockLeftIds);
   const dockRightIds = useWorkspace((s) => s.dockRightIds);
@@ -42,7 +69,6 @@ export function PanelLayout({ mainSlot }: Props) {
   const floatingIds = useWorkspace((s) => s.floatingIds);
   const dockBottomHeight = useWorkspace((s) => s.dockBottomHeight);
   const setDockBottomHeight = useWorkspace((s) => s.setDockBottomHeight);
-  const reduceMotion = usePrefersReducedMotion();
   const tier = useViewportTier();
 
   // S11 — at tier "lg" the two side docks can't both be visible; if both
@@ -59,10 +85,6 @@ export function PanelLayout({ mainSlot }: Props) {
     }
     return DOCK_WIDTH;
   };
-
-  const dockTransition = reduceMotion
-    ? "transition-none"
-    : "transition-[width] duration-150 ease-out";
 
   // S11 acceptance: at tier `lg`, if both docks have content the
   // right dock auto-collapses. Surface this as a toast the first
@@ -128,13 +150,17 @@ export function PanelLayout({ mainSlot }: Props) {
     <div className="relative h-full w-full flex bg-transparent overflow-hidden">{/* SPR-04: root made transparent (was bg-ice-2 dark:bg-space-2) so the z-0 living mountainscape shows through the glassy route surface; the docks below keep their opaque chrome bg for legibility. */}
       {/* LEFT DOCK */}
       <aside
-        className={`flex flex-col shrink-0 border-r-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}
+        className="flex flex-col shrink-0 border-r-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0"
         style={{ width: dockSide("left", dockLeftIds.length) }}
         aria-label="Left dock"
       >
-        {dockLeftIds.map((id) => (
-          <PanelLayoutPanel key={id} id={id} />
-        ))}
+        {dockLeftIds.length > 0 && (
+          <DockFade>
+            {dockLeftIds.map((id) => (
+              <PanelLayoutPanel key={id} id={id} />
+            ))}
+          </DockFade>
+        )}
       </aside>
 
       {/* CENTRE COLUMN: main + floating + bottom dock */}
@@ -182,13 +208,17 @@ export function PanelLayout({ mainSlot }: Props) {
 
       {/* RIGHT DOCK */}
       <aside
-        className={`flex flex-col shrink-0 border-l-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}
+        className="flex flex-col shrink-0 border-l-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0"
         style={{ width: dockSide("right", dockRightIds.length) }}
         aria-label="Right dock"
       >
-        {dockRightIds.map((id) => (
-          <PanelLayoutPanel key={id} id={id} />
-        ))}
+        {dockRightIds.length > 0 && (
+          <DockFade>
+            {dockRightIds.map((id) => (
+              <PanelLayoutPanel key={id} id={id} />
+            ))}
+          </DockFade>
+        )}
       </aside>
     </div>
   );
