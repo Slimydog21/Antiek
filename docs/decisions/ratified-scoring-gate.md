@@ -1,7 +1,23 @@
 # Ratified-scoring gate — blocking, pre-merge, structural pre-registration
 
 **Decision date:** 2026-06-04
-**Status:** ⚠️ NOT WIRED — the tool exists, the CI step does not.
+**Status:** ✅ WIRED — `Ratified-scoring gate (ACV SPR-06)` runs in ci.yml's
+`keystone` job, which IS a required context.
+>
+> Wired 2026-09-22. It lands in `keystone`, NOT in the `pytest` job this
+> record originally named: `pytest` is listed under
+> `emitted_but_not_required` in `.github/required-checks.yml`, so a
+> deny-by-default gate placed there could not block a merge — it would
+> have reproduced the gap this correction describes. The tool is
+> stdlib-only, so the step runs before the dependency install.
+>
+> The tripwire this record names now exists:
+> `tests/test_ratified_gate.py` asserts the step is present, that it does
+> not swallow the exit code (`|| true` / `set +e` / `continue-on-error`),
+> and — because the gate reports OK over zero scored artifacts today —
+> that planting an unratified scored artifact actually reds it. All three
+> were mutation-verified, including against the exact historical state of
+> the step being absent.
 
 > Corrected 2026-09-20. This line previously read
 > "✅ Active (blocking on `pull_request:[main]` + `push:[main]` via the

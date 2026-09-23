@@ -203,10 +203,22 @@ echo "${LOG_PREFIX} exporting DuckDB → ${STAGING}/duckdb (single-writer flock,
 ANTIEK_STOPPED_FOR_BACKUP=0
 restart_if_stopped() {
     if [ "${ANTIEK_STOPPED_FOR_BACKUP:-0}" = "1" ]; then
-        systemctl start antiek \
-            && echo "${LOG_PREFIX} antiek.service restarted after backup" \
-            || echo "${LOG_PREFIX} ERROR: failed to restart antiek"
+        if systemctl start antiek; then
+            echo "${LOG_PREFIX} antiek.service restarted after backup"
+            ANTIEK_STOPPED_FOR_BACKUP=0
+            return 0
+        fi
+        # The `|| echo` this replaced returned 0, because echo succeeds. The
+        # caller then cleared the flag unconditionally, so the EXIT trap had
+        # nothing left to retry, the run exited 0, and a FRESH freshness marker
+        # was stamped — asserting health while antiek.service was still down.
+        # This script already refuses to stamp over a bad backup (see the
+        # read-back SHA mismatch guard); a dead service deserves the same.
+        echo "${LOG_PREFIX} ERROR: failed to restart antiek" >&2
+        ANTIEK_RESTART_FAILED=1
+        return 1
     fi
+    return 0
 }
 trap 'cleanup; restart_if_stopped' EXIT
 # STOPPING IS THE LAST RESORT, NOT THE FIRST MOVE (2026-09-21).
@@ -360,7 +372,9 @@ PY
     fi
     exit "${snapshot_rc}"
 done
-restart_if_stopped; ANTIEK_STOPPED_FOR_BACKUP=0  # service restarts before normalize/upload
+# restart_if_stopped clears the flag itself ON SUCCESS. Do not clear it here:
+# a failed restart must leave the flag set so the EXIT trap retries.
+restart_if_stopped || true  # keep going to normalize/upload; the marker guard below refuses to certify
 
 # ── 1b. Normalize EXPORT schema.sql (DuckDB self-ref-FK stray-comma bug) ──
 # DuckDB EXPORT drops a self-referential FK but leaves a stray comma in
@@ -532,6 +546,17 @@ if [[ ! "${REMOTE_SHA256}" =~ ^[0-9a-f]{64}$ ]] || [[ "${REMOTE_SHA256}" != "${A
     exit 9
 fi
 
+# The marker asserts "nightly backups are landing and the system is healthy".
+# It must not be written while antiek.service is down because WE stopped it and
+# could not start it again — that certifies health over an outage. Same
+# reasoning as the read-back mismatch guard above: refuse rather than certify.
+if [ "${ANTIEK_RESTART_FAILED:-0}" = "1" ] || [ "${ANTIEK_STOPPED_FOR_BACKUP:-0}" = "1" ]; then
+    echo "ERROR: backup: antiek.service was stopped for the backup and did not restart;" >&2
+    echo "ERROR: backup: refusing freshness marker (the archive itself is fine and uploaded)" >&2
+    systemctl start antiek && echo "${LOG_PREFIX} antiek.service started on the final retry" >&2
+    exit 10
+fi
+
 # ── 6. Freshness marker (only reachable on full success) ──────────────────
 # tools/backup_freshness.py reads this marker; a marker older than its
 # threshold (default 26h) — or missing — means nightly backups stopped
@@ -541,6 +566,7 @@ echo "${LOG_PREFIX} writing freshness marker → ${STATE_DIR}/backup_freshness.j
 {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
 import json
 import os
+import pwd
 
 with open("${STAGING}/source_manifest.json") as f:
     counts = json.load(f)["counts"]
@@ -556,6 +582,12 @@ tmp = "${STATE_DIR}/backup_freshness.json.tmp"
 with open(tmp, "w") as f:
     json.dump(marker, f, indent=2)
     f.write("\n")
+# The service runs as root, but the substrate health probe runs as antiek and
+# must be able to read the freshness verdict. Set ownership before the atomic
+# replace so there is no window in which the marker is unreadable.
+owner = pwd.getpwnam("{{ antiek_user }}")
+os.chown(tmp, owner.pw_uid, owner.pw_gid)
+os.chmod(tmp, 0o640)
 os.replace(tmp, "${STATE_DIR}/backup_freshness.json")
 print("  marker written")
 PY

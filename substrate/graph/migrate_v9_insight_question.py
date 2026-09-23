@@ -65,13 +65,14 @@ import contextlib
 import os
 import sys
 
-try:
-    from ..runtime.db_lock import LockedConnection, connect_write  # type: ignore[import-untyped]
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection, connect_write
-
+# ``..runtime.db_lock`` resolves to ``substrate.runtime.db_lock``, which does
+# NOT exist, so the try branch was permanently dead and the branch marked
+# "# pragma: no cover" was the only live path. mypy resolved the missing
+# module as "installed but missing py.typed", which the ignore suppressed,
+# so the write-lock API degraded to Any here. Import what actually loads.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+from runtime.db_lock import LockedConnection, connect_write  # noqa: E402
 
 # The node-type list AFTER this migration. Must stay in lock-step with
 # the V1 CHECK in schema.py and substrate/schemas/events.NodeType. The

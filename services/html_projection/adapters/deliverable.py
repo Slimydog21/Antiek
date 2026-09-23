@@ -46,10 +46,12 @@ class DeliverableBlock:
 
     @property
     def servable(self) -> bool:
-        return (
-            self.content_class is None
-            or self.content_class in SERVABLE_CONTENT_CLASSES
-        )
+        # None means "operator-authored" ONLY when no source document is
+        # named. A block that cites a source but carries no rights class is
+        # a degraded lookup, and degraded rights withhold (fail closed).
+        if self.content_class is None:
+            return self.source_document_id is None
+        return self.content_class in SERVABLE_CONTENT_CLASSES
 
 
 @dataclass(frozen=True)

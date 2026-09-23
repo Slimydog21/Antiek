@@ -671,7 +671,10 @@ class MultimediaAssetStore:
         if root is not None:
             self.root = Path(root)
         else:
-            self.root = Path(os.environ.get("ANTIEK_MULTIMEDIA_STORE", str(default_root)))
+            self.root = Path(
+                os.environ.get("ANTIEK_MULTIMEDIA_STORE", "").strip()
+                or str(default_root)
+            )
         if self.root.is_symlink():
             raise ValueError("multimedia asset root cannot be a symlink")
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)

@@ -35,13 +35,20 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
+# Hoisted OUT of the try below. ``..runtime.db_lock`` resolves to
+# ``substrate.runtime.db_lock``, which does not exist, so that ONE line made
+# the whole try fail and every relative import in it dead — while mypy read
+# the dead branch and typed the write-lock API as Any.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+from runtime.db_lock import LockedConnection  # noqa: E402
+
 try:
     from ..constants import (
         PERSONAL_READING_CONTENT_CLASS,
         THIRD_PARTY_DOCUMENT_TYPES,
     )
     from ..event_log import emit_typed
-    from ..runtime.db_lock import LockedConnection  # type: ignore[import-untyped]
     from ..schemas import (
         GraphEdgeInsertedPayload,
         GraphNodeInsertedPayload,

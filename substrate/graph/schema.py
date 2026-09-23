@@ -42,19 +42,34 @@ import contextlib
 import os
 import sys
 
-import duckdb
+# Kept even though nothing in THIS module references `duckdb.` directly.
+# tests/test_schema_init_fastpath.py patches `schema_mod.duckdb.connect`
+# through this namespace to assert the warm probe opens no connection, so
+# removing it turns that gate into an AttributeError instead of a check.
+import duckdb  # noqa: F401
 
 from runtime.db_lock import ReadConnection, connect_read
 
 # Import the canonical write-locker from Sprint 1 day-2. Same flock
 # discipline; this is the Quack v2.0 swap point.
-try:
-    from ..runtime.db_lock import LockedConnection, connect_write  # type: ignore[import-untyped]
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection, connect_write
-
+# The package-relative form ``..runtime.db_lock`` resolves to
+# ``substrate.runtime.db_lock``, which DOES NOT EXIST — `import
+# substrate.runtime` raises ModuleNotFoundError. So the try branch was
+# permanently dead and the branch marked "# pragma: no cover — direct-script
+# fallback" was the ONLY live path; the comment described the opposite of the
+# truth.
+#
+# The cost was not cosmetic. Under the editable install mypy resolved the
+# nonexistent module as "installed but missing py.typed", which is exactly what
+# `type: ignore[import-untyped]` suppresses — so the required gate stayed green
+# while the entire write-lock API degraded to Any:
+#     reveal_type(connect_write)    -> Any
+#     reveal_type(LockedConnection) -> Any
+# A real write-lock violation in this file was untypeable, and therefore
+# invisible to `mypy --strict`.
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+from runtime.db_lock import LockedConnection, connect_write  # noqa: E402
 
 # The schema script. Idempotent — every CREATE uses IF NOT EXISTS so
 # rerunning is safe. CHECK constraints make malformed inserts fail
@@ -1648,7 +1663,11 @@ _V20_CONFIGURATION_REQUIRED_SHAPE = {
 }
 
 
-def _v20_configuration_shape_is_valid(con: LockedConnection) -> bool:
+def _v20_configuration_shape_is_valid(con: ReadConnection | LockedConnection) -> bool:
+    # Read-only: this validator only DESCRIBEs/SELECTs (AST-checked — no
+    # INSERT/UPDATE/DELETE/CREATE/DROP/ALTER), so it accepts a read handle
+    # too. The narrow signature was never a safety property; it was invisible
+    # while the write-lock import resolved to Any.
     described = {
         row[0]: (row[1], row[2], row[3], row[4])
         for row in con.execute("DESCRIBE note_taker_configurations").fetchall()
@@ -1684,7 +1703,11 @@ def _v20_configuration_shape_is_valid(con: LockedConnection) -> bool:
     }
 
 
-def _v20_note_taker_shape_is_valid(con: LockedConnection) -> bool:
+def _v20_note_taker_shape_is_valid(con: ReadConnection | LockedConnection) -> bool:
+    # Read-only: this validator only DESCRIBEs/SELECTs (AST-checked — no
+    # INSERT/UPDATE/DELETE/CREATE/DROP/ALTER), so it accepts a read handle
+    # too. The narrow signature was never a safety property; it was invisible
+    # while the write-lock import resolved to Any.
     described = {
         row[0]: (row[1], row[2], row[3], row[4])
         for row in con.execute("DESCRIBE note_taker_windows").fetchall()
@@ -1742,7 +1765,11 @@ _V21_READER_HTML_KEY_CHECKS = {
 }
 
 
-def _v21_reader_html_shape_is_valid(con: LockedConnection) -> bool:
+def _v21_reader_html_shape_is_valid(con: ReadConnection | LockedConnection) -> bool:
+    # Read-only: this validator only DESCRIBEs/SELECTs (AST-checked — no
+    # INSERT/UPDATE/DELETE/CREATE/DROP/ALTER), so it accepts a read handle
+    # too. The narrow signature was never a safety property; it was invisible
+    # while the write-lock import resolved to Any.
     described = {
         row[0]: (row[1], row[2], row[3], row[4])
         for row in con.execute("DESCRIBE document_reader_html").fetchall()
@@ -1896,8 +1923,12 @@ class SchemaCorruptionError(RuntimeError):
 
 
 def _v19_receipt_shape_is_valid(
-    con: duckdb.DuckDBPyConnection | LockedConnection,
+    con: ReadConnection | LockedConnection,
 ) -> bool:
+    # Read-only: this validator only DESCRIBEs/SELECTs (AST-checked — no
+    # INSERT/UPDATE/DELETE/CREATE/DROP/ALTER), so it accepts a read handle
+    # too. The narrow signature was never a safety property; it was invisible
+    # while the write-lock import resolved to Any.
     described = {
         row[0]: (row[1], row[2], row[3])
         for row in con.execute("DESCRIBE event_consumer_receipts").fetchall()
@@ -1923,8 +1954,12 @@ def _v19_receipt_shape_is_valid(
 
 
 def _v19_frontier_shape_is_valid(
-    con: duckdb.DuckDBPyConnection | LockedConnection,
+    con: ReadConnection | LockedConnection,
 ) -> bool:
+    # Read-only: this validator only DESCRIBEs/SELECTs (AST-checked — no
+    # INSERT/UPDATE/DELETE/CREATE/DROP/ALTER), so it accepts a read handle
+    # too. The narrow signature was never a safety property; it was invisible
+    # while the write-lock import resolved to Any.
     described = {
         row[0]: (row[1], row[2], row[3])
         for row in con.execute("DESCRIBE event_consumer_frontiers").fetchall()
@@ -1951,8 +1986,12 @@ def _v19_frontier_shape_is_valid(
 
 
 def _v19_event_shape_is_valid(
-    con: duckdb.DuckDBPyConnection | LockedConnection,
+    con: ReadConnection | LockedConnection,
 ) -> bool:
+    # Read-only: this validator only DESCRIBEs/SELECTs (AST-checked — no
+    # INSERT/UPDATE/DELETE/CREATE/DROP/ALTER), so it accepts a read handle
+    # too. The narrow signature was never a safety property; it was invisible
+    # while the write-lock import resolved to Any.
     described = {
         row[0]: (row[1], row[2], row[3])
         for row in con.execute("DESCRIBE event_consumer_events").fetchall()
