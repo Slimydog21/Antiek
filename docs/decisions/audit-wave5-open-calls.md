@@ -51,7 +51,7 @@ Related export call: merging a book's own derived insights back into that same n
 |---|---|---|
 | W08 frame-attention re-mints a window's revenue on every flush (high, latent) | SPR-08 lane | Fixed on `fix/w5-ads-accrual-20260923` @ `1349e3356`, codex ACCEPT, queued in the merge train |
 | W09 dwell cap skipped at zero dwell (medium, latent) | SPR-08 lane | Same branch |
-| W14–W18 + `cite_source` (agent-memory MCP) | #3403 lane | W14, W15, W17, W18 committed on `fix/w5-mcp-hardening-20260923`; W16 and `cite_source` in progress |
+| W14–W18 + `cite_source` (agent-memory MCP) | #3403 lane | Fixed on `fix/w5-mcp-hardening-20260923` @ `f6c8814e5`, merging after #3403. The lane's critic also reproduced and fixed three pre-existing MCP defects on the #3403 base, each mutation-tested: a private-note resource that took `user_id` from the URI, so any caller could read another user's note (high); `search_personal` serving a taken-down book's body (high); and an untrusted-content envelope that untrusted text could close early (low). Still open: `record_attribution` does not check `book_assets.taken_down` (medium, matching the HTTP path). W16 is a hash pin rather than a key signature, which needs an operator-held signing secret: **operator call**. |
 
 ## Pre-existing on main, surfaced by this wave
 
