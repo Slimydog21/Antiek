@@ -20,7 +20,6 @@ tegrator + reel/roam constants) was removed
  */
 
 export {
-  notifyThoughtPartnerReplyReceived,
   mascotReducer,
   isBusy,
   INITIAL_MASCOT_STATE,
