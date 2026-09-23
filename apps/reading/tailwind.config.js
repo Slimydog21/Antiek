@@ -184,10 +184,18 @@ export default {
         toast: "var(--z-toast)",
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        // Tighter monospace for trajectory data; reading text stays default sans.
-        mono: ['"JetBrains Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
-        serif: ["Charter", '"Iowan Old Style"', "Georgia", "serif"],
+        sans: ["Inter", "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],
+        mono: [
+          '"JetBrains Mono"',
+          "ui-monospace",
+          '"SF Mono"',
+          "SFMono-Regular",
+          "Menlo",
+          "Consolas",
+          '"Liberation Mono"',
+          "monospace",
+        ],
+        serif: ["Charter", '"Iowan Old Style"', '"Source Serif 4"', "Georgia", "serif"],
       },
 
       // Density-overridable spacing scale (CFEEL-S2 M1) — PostHog/Quill pattern.

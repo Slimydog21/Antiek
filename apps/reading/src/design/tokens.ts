@@ -335,11 +335,15 @@ export const radius = { sm: "4px", md: "6px", lg: "10px" } as const;
 /** The brand outline thickness used on every Lemon primitive. */
 export const edgeWidth = "2.5px" as const;
 
+/**
+ * Three faces, one job each. Inter (interface) and JetBrains Mono (data,
+ * provenance) ship as self-hosted woff2; the fallbacks name installed faces
+ * so a missing file never lands on Courier. Charter is the reading face.
+ */
 export const type = {
-  sans: '"Inter", system-ui, -apple-system, sans-serif',
-  mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace',
-  // reading prose only (MasterMdViewer, Notebook prose blocks)
-  serif: '"Charter", "Iowan Old Style", Georgia, serif',
+  sans: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+  serif: '"Charter", "Iowan Old Style", "Source Serif 4", Georgia, serif',
 } as const;
 
 /**

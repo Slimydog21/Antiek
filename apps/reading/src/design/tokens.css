@@ -139,10 +139,12 @@
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-enter:    cubic-bezier(0, 0, 0.2, 1);
 
-  /* Type */
-  --sans:  "Inter", system-ui, -apple-system, sans-serif;
-  --mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --serif: "Charter", "Iowan Old Style", Georgia, serif;
+  /* Type: three faces, one job each. Inter + JetBrains Mono ship as
+     self-hosted woff2 (src/index.css); the fallbacks name real installed
+     faces so a missing file never lands on Courier. */
+  --sans:  "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:  "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --serif: "Charter", "Iowan Old Style", "Source Serif 4", Georgia, serif;
 
   /* Edge-reservation seam (SPR-06 M3): the always-on ad border's inset.
      Default 0; docs/decisions/spr-06-edge-reservation-seam.md. */
