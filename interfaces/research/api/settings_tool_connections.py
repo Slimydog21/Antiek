@@ -123,6 +123,8 @@ def _quota(snapshot: ToolConnectionSnapshot, owner_user_id: str) -> ToolQuotaRes
     # project, so it is per key, and a host-wide meter refused user B once
     # user A had spent A's units. The notes say per-account because that is
     # what the meter now measures; the old "host-global" copy would be a lie.
+    # The one exception is a keyless vendor (EDGAR): it can tell callers
+    # apart only by IP, so its brake stays the host's and its note says so.
     if snapshot.quota_kind == "youtube_units":
         if not snapshot.credential_present:
             return ToolQuotaResponse(
@@ -147,11 +149,16 @@ def _quota(snapshot: ToolConnectionSnapshot, owner_user_id: str) -> ToolQuotaRes
         if rate is None:
             return ToolQuotaResponse(kind="unavailable", note="No Antiek brake is set for this tool")
         limit = rate.max_calls
+        scope = (
+            "server-wide brake, shared by every account because the provider limits by IP address"
+            if snapshot.auth == "none"
+            else "per-account brake on your key"
+        )
         return ToolQuotaResponse(
             kind="rate_ceiling",
             limit=limit,
             note=(
-                "Antiek's own per-account brake on your key: "
+                f"Antiek's own {scope}: "
                 f"{limit} request{'' if limit == 1 else 's'} per {_window_phrase(rate.window_s)}. "
                 "It is not a provider allowance."
             ),

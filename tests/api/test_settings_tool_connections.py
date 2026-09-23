@@ -312,3 +312,18 @@ def test_rate_ceiling_note_comes_from_the_catalog_rate(client) -> None:
     # Only X quotes a sourced price.
     assert quotas["fred"]["estimated_cost_usd"] is None
     assert quotas["alpha_vantage"]["cost_note"] is None
+
+
+def test_edgar_rate_note_says_its_brake_is_shared_by_every_account(client) -> None:
+    """EDGAR has no key and SEC limits by IP, so its brake is the server's.
+
+    The note told EDGAR users about a "per-account brake on your key": there
+    is no key, and the one window is shared by every account on the host.
+    """
+    payload = client.get("/settings/tools", cookies=_cookie("user-a")).json()
+    quotas = {item["vendor"]: item["quota"] for item in payload["connections"]}
+    edgar = quotas["edgar"]["note"]
+    assert "shared by every account" in edgar
+    assert "per-account" not in edgar and "your key" not in edgar
+    assert "8 requests per second" in edgar
+    assert "per-account brake on your key" in quotas["x"]["note"]

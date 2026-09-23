@@ -16,8 +16,8 @@ a request is built.
 RATE — FRED allows "Up to 120 requests per minute" before answering 429
 (https://fred.stlouisfed.org/docs/api/fred/errors.html, read 2026-09-23). The
 governor brakes at 100 per minute, one notch under, the same reasoning as
-EDGAR's 8 under SEC's 10. It is keyed per owner like every connector the
-registry resolves, so one user's calls never make another wait.
+EDGAR's 8 under SEC's 10. It is keyed per owner like every keyed connector
+the registry resolves, so one user's calls never make another wait.
 
 RECORDED RESPONSE — an unregistered key on ``/fred/series`` answers HTTP 400
 with ``{"error_code":400,"error_message":"Bad Request.  The value for variable

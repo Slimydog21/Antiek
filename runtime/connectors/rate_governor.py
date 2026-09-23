@@ -100,7 +100,10 @@ def _state_file(state_root: Path, vendor: str, *, owner: str | None) -> Path:
     by ``runtime/byok/runner.py``) builds its governor without an owner — and
     it keeps the pre-owner ``{vendor}.json`` layout so that state carries
     over. Everything resolved through
-    ``runtime.connectors.registry.resolve_tool_connection`` passes an owner.
+    ``runtime.connectors.registry.resolve_tool_connection`` passes an owner
+    except EDGAR, which is keyless and which SEC rate-limits per IP: every
+    account's EDGAR traffic shares this host's address, so it shares this
+    host's window.
     """
     if owner is None:
         return state_root / f"{vendor}.json"

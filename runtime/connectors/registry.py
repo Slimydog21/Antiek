@@ -630,9 +630,10 @@ def resolve_tool_connection(
     if definition.vendor == "edgar":
         from acquisition.edgar.client import EdgarConnector
 
+        # No owner: EDGAR's rate window is the host's (SEC limits per IP, and
+        # every account sends from this one), so it stays host-shared.
         return EdgarConnector(
             contact_cred_id=record.cred_id,
-            owner=owner_user_id,
             artifact_path=artifact_path,
             key_bytes=key_bytes,
             key_file=key_file,

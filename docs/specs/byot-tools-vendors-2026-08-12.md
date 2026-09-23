@@ -28,7 +28,7 @@ NOT OBTAINABLE; see
 | YouTube Data API | `youtube` | `runtime/connectors/youtube.py` (api_key_query) | ToolConnectionsPanel | youtube_units per account; hard_exhausted; reset_at | `research_tool_search.py` search + ingest; `/sources/ingest` metadata when connected |
 | Polygon.io | `polygon` | `acquisition/polygon/client.py` `PolygonConnector` | ToolConnectionsPanel | vendor rate spec | nothing yet (connect-only) |
 | Financial Modeling Prep | `fmp` | `acquisition/fmp/client.py` `FmpConnector` | ToolConnectionsPanel | vendor rate spec | nothing yet (connect-only) |
-| SEC EDGAR | `edgar` | `acquisition/edgar/client.py` `EdgarConnector` (contact-keyed, not api-keyed) | ToolConnectionsPanel | SEC fair-access rate | nothing yet (connect-only) |
+| SEC EDGAR | `edgar` | `acquisition/edgar/client.py` `EdgarConnector` (contact-keyed, not api-keyed) | ToolConnectionsPanel | 8 req / s host-wide governor, shared by every account (SEC blocks the IP past 10/s) | nothing yet (connect-only) |
 | X (Twitter) API v2 | `x` | `runtime/connectors/x_twitter.py` (bearer_token) | ToolConnectionsPanel | 25 req / 900 s per-account governor; pay-per-use credits since 2026-06 | `research_tool_search.py` search + ingest |
 | FRED (St. Louis Fed) | `fred` | `runtime/connectors/fred.py` (api_key_query, 32 lower-case chars) | ToolConnectionsPanel | 100 req / 60 s per-account governor (FRED allows 120/min) | nothing yet (connect-only) |
 | Alpha Vantage | `alpha_vantage` | `runtime/connectors/alpha_vantage.py` (api_key_query) | ToolConnectionsPanel | 1 req / s per-account governor; vendor caps free keys at 25/day | nothing yet (connect-only) |
