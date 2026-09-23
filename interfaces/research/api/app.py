@@ -1148,15 +1148,23 @@ def _compose_autocomplete_prompt(*, prefix: str, document_context: str | None) -
     client-sent open-doc context (the cursor's neighborhood); retrieval-
     augmented completion (CK-1-style grounding) is a follow-up."""
     context_block = (
-        f"DOCUMENT CONTEXT:\n{document_context}\n\n" if document_context else ""
+        f"DOCUMENT CONTEXT:
+{document_context}
+
+" if document_context else ""
     )
     return (
         "You are an inline autocomplete for Antiek's writing surface. "
         "Complete the text after the cursor. Return ONLY the continuation "
         "— no preamble, no quotation marks, no explanation. Match the voice "
-        "and vocabulary of the surrounding text.\n\n"
+        "and vocabulary of the surrounding text.
+
+"
         f"{context_block}"
-        f"TEXT BEFORE CURSOR:\n{prefix}\n\n"
+        f"TEXT BEFORE CURSOR:
+{prefix}
+
+"
         "CONTINUATION:"
     )
 
@@ -1268,7 +1276,8 @@ def _compose_context(
                         continue
                     if result.full_text:
                         head = f"@doc {result.title or item.id}"
-                        blocks.append(f"{head}\n{result.full_text}")
+                        blocks.append(f"{head}
+{result.full_text}")
                     elif result.found:
                         withheld.append(item.id)
                     else:
@@ -1279,14 +1288,17 @@ def _compose_context(
                         [item.id],
                     ).fetchone()
                     if row and row[0]:
-                        blocks.append(f"@insight {item.id}\n{row[0]}")
+                        blocks.append(f"@insight {item.id}
+{row[0]}")
                     else:
                         missing.append(item.id)
     except Exception:
         # Absent graph: every item is missing — honest, well-formed response.
         missing = [item.id for item in items]
     return ComposeContextResponse(
-        system_context="\n\n".join(blocks),
+        system_context="
+
+".join(blocks),
         withheld=withheld,
         missing=missing,
     )
@@ -3894,7 +3906,8 @@ def create_app(
                     # newline can't break the list item onto its own line.
                     lines.append(f"- {' '.join(src.split())}")
                 lines.append("")
-            content = "\n".join(lines)
+            content = "
+".join(lines)
             return ExportFormat(
                 format="markdown", content=content,
                 filename=f"{deliverable_id}.md",
@@ -3919,7 +3932,8 @@ def create_app(
                 for src in sources:
                     lines.append(f"- {' '.join(src.split())}")
                 lines.append("")
-            content = "\n".join(lines)
+            content = "
+".join(lines)
             return ExportFormat(
                 format="substack", content=content,
                 filename=f"{deliverable_id}.substack.md",
@@ -3937,7 +3951,9 @@ def create_app(
                 heading = sec_title or f"Section {idx + 1}"
                 parts.append(f"<h2>{esc(heading)}</h2>")
                 if prose:
-                    for para in prose.split("\n\n"):
+                    for para in prose.split("
+
+"):
                         parts.append(f"<p>{esc(para)}</p>")
                 else:
                     parts.append("<p><em>(no prose yet)</em></p>")
@@ -3948,7 +3964,8 @@ def create_app(
                     parts.append(f"<li>{esc(src)}</li>")
                 parts.append("</ul>")
             parts.append("</body></html>")
-            content = "\n".join(parts)
+            content = "
+".join(parts)
             return ExportFormat(
                 format="html", content=content,
                 filename=f"{deliverable_id}.html",
