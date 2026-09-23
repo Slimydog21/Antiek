@@ -17,6 +17,7 @@ import { type KeyboardEvent, useId, useMemo, useRef, useState } from "react";
 
 import { FORMATION, type BenchModelView, type LineupChoice, type RoleView, tierStrength } from "../api/settingsLineup";
 import { press } from "../design/motion";
+import { useTheme } from "../design/useTheme";
 import SketchCanvas from "./sketches/SketchCanvas";
 import { renderLineupPitch, DEFAULT_LINEUP_PITCH_PARAMS, type LineupPitchParams } from "./sketches/lineupPitch";
 
@@ -69,11 +70,8 @@ export default function LineupPitch({
   const [benchOpen, setBenchOpen] = useState(false);
   const [pulse, setPulse] = useState<{ role: string; seed: string; at: number } | null>(null);
   const mountWall = useRef<number>(typeof performance !== "undefined" ? performance.now() : 0);
-  const isDark =
-    darkProp ??
-    (typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const theme = useTheme();
+  const isDark = darkProp ?? theme.isDark;
 
   const sketchParams: LineupPitchParams = {
     ...DEFAULT_LINEUP_PITCH_PARAMS,

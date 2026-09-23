@@ -1,35 +1,20 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
+
+import { prefersReducedMotion, subscribeAppearance } from "../design/theme";
 
 /**
- * S11 — honour the operator's OS-level reduced-motion preference.
+ * S11 — should motion be reduced right now?
  *
- * Returns `true` when `prefers-reduced-motion: reduce` matches.
- * Subscribers re-render when the preference changes (e.g. operator
- * toggles macOS Accessibility settings without reloading).
+ * `true` when the in-app Motion setting is "Reduce", or when it is "Match
+ * system" and the OS asks for `prefers-reduced-motion: reduce`. "Full" keeps
+ * app-driven motion on regardless of the OS. Subscribers re-render when either
+ * source changes (Settings > Appearance, or the OS toggle, without a reload).
  *
- * Consumers in S11:
- *   - PanelLayoutPanel framer-motion springs → `duration: 0`
- *   - PanelLayout dock width/height transitions → 0ms instead of 150ms
- *   - LemonToast slide-in → fade-in
- *   - Hover-lift translate transforms → no-op
+ * Consumers: PanelLayoutPanel springs, PanelLayout dock transitions,
+ * LemonToast, the scene clock, hover-lift transforms.
  *
- * SSR-safe: returns `false` when window is undefined.
+ * SSR-safe: `false` when window is undefined.
  */
 export function usePrefersReducedMotion(): boolean {
-  const [reduce, setReduce] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    if (typeof window.matchMedia !== "function") return false;
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (typeof window.matchMedia !== "function") return;
-    const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const handler = (e: MediaQueryListEvent) => setReduce(e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, []);
-
-  return reduce;
+  return useSyncExternalStore(subscribeAppearance, prefersReducedMotion, () => false);
 }

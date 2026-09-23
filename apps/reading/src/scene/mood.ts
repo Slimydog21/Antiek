@@ -1,21 +1,22 @@
 import type { SceneState } from "../api/krea";
+import { resolvedTheme } from "../design/theme";
 
 /**
  * Scene mood model (SPR-04, milestone 7 — day/night sync + milestone 4 — Krea
  * mood states).
  *
- * The app's day/night signal is Tailwind's `darkMode: "media"` strategy
- * (tailwind.config.js) — i.e. the OS `prefers-color-scheme`. There is NO
- * app-level theme store or `.dark` class toggle (verified: Settings reads
- * `matchMedia("(prefers-color-scheme: dark)")` directly; AdBorder uses the
- * `dark:` variant). So we REUSE that exact signal — we do not invent a parallel
- * theme mechanism — via the tiny `prefersDark()` reader below.
+ * The app's day/night signal is the resolved theme on <html data-theme>
+ * (src/design/theme.ts: the in-app Light / Dark / System preference, System
+ * following the OS). Tailwind's `dark:` keys on the same attribute, so the
+ * scene and the chrome can never disagree. `prefersDark()` below reads it for
+ * non-React callers; the Scene itself subscribes through useTheme so it
+ * re-renders when the theme changes without a reload.
  *
  * THEME → MOOD MAPPING (documented contract; drives BOTH the procedural sky
  * palette and the Krea prompt scene-state):
  *
- *   OS prefers-color-scheme = light  ->  daypart "day"   ->  mood "day"
- *   OS prefers-color-scheme = dark   ->  daypart "night" ->  mood "night"
+ *   theme light  ->  daypart "day"   ->  mood "day"
+ *   theme dark   ->  daypart "night" ->  mood "night"
  *
  * We model FOUR dayparts (dawn / day / dusk / night) so the Krea axis and the
  * procedural palette have room to evolve, but the app only emits a binary
@@ -23,7 +24,7 @@ import type { SceneState } from "../api/krea";
  * reserved transitional moods a future time-of-day source can light up WITHOUT
  * changing this contract (they already have palettes + prompts). Until such a
  * source exists, the scene is deterministically day or night, in lockstep with
- * the OS theme — change the OS theme and the whole scene (procedural + Krea
+ * the app theme — change the theme and the whole scene (procedural + Krea
  * mood prompt) follows.
  *
  * WEATHER is a second mood axis, currently fixed to "snow" (the Herzog
@@ -39,13 +40,9 @@ export interface SceneMood {
   weather: Weather;
 }
 
-/** Reuse the app's existing day/night signal (OS prefers-color-scheme).
- *  SSR-safe. This is the SAME query Settings + Tailwind `media` darkMode use. */
+/** The app's resolved theme (in-app preference, else the OS). SSR-safe. */
 export function prefersDark(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-    return false;
-  }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return resolvedTheme() === "dark";
 }
 
 /** The current mood derived from the app theme. Binary today (light→day,
