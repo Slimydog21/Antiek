@@ -388,9 +388,17 @@ class CascadeSession:
         return None
 
     def record_synthesis_tail_skipped(self, reason: SynthesisTailSkip) -> None:
-        """Record a skipped tail on the session and its own trajectory. No
-        lifecycle event is written on the parent, so status surfaces keep
-        deriving it from the leaves (all stopped reads as stopped)."""
+        """Record a skipped tail on the session and its own trajectory, then
+        end the session parent with the terminal that says why.
+
+        Without a parent terminal every status reader guessed differently: the
+        list derived "stopped"/"completed" from the leaves while GET
+        /investigations/{id} read the terminal-less parent as in_progress
+        forever. No leaf finished ends the parent like a stopped research
+        (``completed`` with ``outcome: stopped``, what the runner writes for a
+        stopped leaf). A finished gather with nothing citable ends it failed at
+        phase 6, the verdict the tail itself gives an empty pack. Neither can
+        satisfy DeepResearchComplete, which also requires phases 6-9."""
         self.synthesis_tail_skipped = reason
         log_event(
             self.session_id,
@@ -400,6 +408,19 @@ class CascadeSession:
             role="user_agent",
             events_dir=self._events_dir,
         )
+        if reason is SynthesisTailSkip.NO_LEAF_DONE:
+            action, payload = ActionType.INVESTIGATION_COMPLETED, {"outcome": "stopped"}
+        else:
+            action, payload = ActionType.INVESTIGATION_FAILED, {
+                "phase": 6,
+                "reason": (
+                    "empty substrate-grounded evidence pack: the gather finished but "
+                    "no note cites a chunk present in the substrate; synthesis skipped"
+                ),
+                "last_completed_phase": None,
+            }
+        log_event(self.session_id, action, payload=payload,
+                  role="orchestrator", events_dir=self._events_dir)
 
     def terminal_status(self) -> dict[str, object]:
         """The session's deep-research terminal contract, for status surfaces.

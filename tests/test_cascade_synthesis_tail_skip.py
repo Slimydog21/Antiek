@@ -186,6 +186,13 @@ def _session_lifecycle(sid: str) -> list[str]:
     ]
 
 
+def _parent_terminal_payload(sid: str) -> dict:
+    rows = [r for r in trajectory(sid)
+            if r["action_type"] in ("investigation.completed", "investigation.failed")]
+    assert len(rows) == 1, rows
+    return rows[0]["payload"]
+
+
 def _skips(sid: str) -> list[dict]:
     return [r["payload"] for r in trajectory(sid) if r["action_type"] == SYNTHESIS_TAIL_SKIPPED]
 
@@ -212,13 +219,16 @@ def test_stopping_every_leaf_does_not_dispatch_the_synthesizer(client, monkeypat
     status = client.get(f"/research/sessions/{sid}").json()
     assert {r["state"] for r in status["researches"]} == {"stopped"}
     assert _SYNTH_PROMPTS == []
-    assert _session_lifecycle(sid) == []
+    # The parent ends like a stopped research, so every status reader agrees.
+    assert _session_lifecycle(sid) == ["investigation.completed"]
+    assert _parent_terminal_payload(sid) == {"outcome": "stopped"}
     assert status["deep_research_complete"] is False
     assert status["synthesis_tail_skipped"] == "no_leaf_done"
     assert [p["reason"] for p in _skips(sid)] == ["no_leaf_done"]
     listed = client.get("/investigations").json()["investigations"]
     session_row = next(s for s in listed if s["investigation_id"] == sid)
     assert session_row["status"] == "stopped"
+    assert client.get(f"/investigations/{sid}").json()["status"] == "stopped"
 
 
 def test_done_leaves_with_an_empty_pack_do_not_dispatch_the_synthesizer(client, monkeypatch):
@@ -235,16 +245,60 @@ def test_done_leaves_with_an_empty_pack_do_not_dispatch_the_synthesizer(client, 
     status = client.get(f"/research/sessions/{sid}").json()
     assert {r["state"] for r in status["researches"]} == {"done"}
     assert _SYNTH_PROMPTS == []
-    assert _session_lifecycle(sid) == []
+    # A finished gather with nothing citable fails at phase 6, the verdict the
+    # tail itself gives an empty pack; list and detail must say the same.
+    assert _session_lifecycle(sid) == ["investigation.failed"]
+    assert _parent_terminal_payload(sid)["phase"] == 6
     assert status["deep_research_complete"] is False
     assert status["synthesis_tail_skipped"] == "empty_evidence_pack"
     assert [p["reason"] for p in _skips(sid)] == ["empty_evidence_pack"]
+    listed = client.get("/investigations").json()["investigations"]
+    session_row = next(s for s in listed if s["investigation_id"] == sid)
+    assert session_row["status"] == "failed"
+    assert client.get(f"/investigations/{sid}").json()["status"] == "failed"
+
+
+def _seed_source() -> str:
+    """One real source document + chunk, so a gather can cite substrate text."""
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_chunk, insert_document
+    from substrate.graph.schema import init_database_at_path
+
+    init_database_at_path(os.environ["ANTIEK_DUCKDB_PATH"])
+    text = (
+        "Photonic qubits lose coherence mainly through waveguide scattering, "
+        "and the loss budget sets the fault-tolerance threshold. "
+    ) * 5
+    with connect_write(os.environ["ANTIEK_DUCKDB_PATH"], purpose="test/seed") as con:
+        insert_document(
+            con, document_id="doc-skip-src", source_tier=2, document_type="web",
+            title="Photonics source", raw_text=text,
+            content_class="public_domain", ip_holder_id=None,
+        )
+        insert_chunk(
+            con, document_id="doc-skip-src", chunk_index=0,
+            chunk_id="chunk-skip-src", text=text,
+        )
+    return "doc-skip-src"
+
+
+def _grounded_gather_loop(document_id: str):
+    # The contract stub's placeholder note cites nothing in the substrate, so
+    # since the evidence pack stopped inventing chunk ids (audit wave 5 W03) it
+    # yields an empty pack and the tail is rightly skipped. "Gathered evidence"
+    # has to mean a note on a real ingested document, as the Exa loop makes.
+    async def _loop(ctx):
+        sub_q = await ctx.checkpoint()
+        yield ctx.note(f"source for {sub_q}", document_id=document_id)
+
+    return _loop
 
 
 def test_leaves_that_gathered_evidence_still_run_the_tail(client, monkeypatch):
+    doc_id = _seed_source()
     monkeypatch.setattr(
         cr, "_research_loop_factory",
-        lambda **kw: make_contract_gather_stub(steps=1, cost_per_step=0.0),
+        lambda **kw: _grounded_gather_loop(doc_id),
     )
     root = _approved_plan(client)
     launched = client.post(f"/research/plans/{root}/launch", json={})
