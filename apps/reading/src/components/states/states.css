@@ -1,0 +1,104 @@
+/* Shared loading / empty / error states (design spec §5).
+   Plain CSS on the semantic tokens so the three primitives cost almost no
+   JavaScript: the entry chunk sits within a few hundred bytes of its
+   700,000 B gzip ceiling, and CSS is outside that budget. */
+
+.st {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: var(--text-1);
+  font-family: Inter, "Inter Fallback", system-ui, sans-serif;
+}
+/* A page-level state fills its container and centres its content. */
+.st-page {
+  height: 100%;
+  min-height: 12rem;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+.st-page > * {
+  max-width: 28rem;
+}
+/* An inline state is a flat, bounded surface in the flow. */
+.st-inline {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-hairline);
+  border-radius: 6px;
+  background: var(--bg-card);
+}
+
+.st-title {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.st-page .st-title {
+  justify-content: center;
+}
+.st-body {
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--text-2);
+}
+.st-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.st-page .st-actions {
+  justify-content: center;
+}
+/* The error's word always travels with an icon (never colour alone). */
+.st-icon {
+  flex: none;
+  color: var(--danger);
+}
+
+/* Skeletons: the geometry of what is opening, drawn in a faint ink wash.
+   The pulse is opacity only; motion.css stills it under reduced motion. */
+.st-skel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 40rem;
+  margin-top: 0.5rem;
+}
+.st-skel > span {
+  display: block;
+  border-radius: 6px;
+  background: rgb(var(--text-1-rgb) / 0.07);
+  animation: st-pulse 1.6s ease-in-out infinite;
+}
+.st-skel[data-skeleton="list"] > span {
+  height: 3.5rem;
+}
+.st-skel[data-skeleton="page"] {
+  gap: 0.7rem;
+}
+.st-skel[data-skeleton="page"] > span {
+  height: 0.8rem;
+}
+.st-skel[data-skeleton="page"] > span:first-child {
+  height: 1.4rem;
+  width: 55%;
+  margin-bottom: 0.4rem;
+}
+.st-skel[data-skeleton="page"] > span:nth-child(3n) {
+  width: 92%;
+}
+.st-skel[data-skeleton="page"] > span:last-child {
+  width: 60%;
+}
+@keyframes st-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
