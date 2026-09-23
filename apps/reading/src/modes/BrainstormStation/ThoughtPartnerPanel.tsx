@@ -21,8 +21,10 @@ import {
 
 import { apiFetch, composeContext } from "../../lib/api";
 import { BrainThinking } from "../../brand/mascot/animated";
+import { useOwnerModelChoice } from "../../hooks/useOwnerModelChoice";
 import { LemonButton } from "../../components/lemon/LemonButton";
 import ContextPicker from "../../components/ai/ContextPicker";
+import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
 import {
   parseAssistantReply,
   dispatchAiAction,
@@ -56,6 +58,10 @@ export default function ThoughtPartnerPanel() {
   const [error, setError] = useState<string | null>(null);
   const [aiLog, setAiLog] = useState<DispatchedAction[]>([]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  // SPR-03 Task 3 — the same driver dropdown every AI surface mounts; the
+  // choice rides on the request as model_choice + operation_id.
+  const model = useOwnerModelChoice("brainstorm");
+  const { select: selectModel, launchFields } = model;
 
   useEffect(() => {
     const onSeed = (ev: Event) => {
@@ -68,6 +74,10 @@ export default function ThoughtPartnerPanel() {
       if (typeof detail.system_context === "string") {
         setComposedContext(detail.system_context);
       }
+      // A driver chosen on the CommandPalette applies here too.
+      if (detail.owner_model && typeof detail.owner_model.row_id === "string") {
+        selectModel(detail.owner_model.row_id, detail.owner_model.model_id);
+      }
       setSeedLabel(
         typeof detail.source_label === "string" && detail.source_label.trim()
           ? detail.source_label.trim()
@@ -77,7 +87,7 @@ export default function ThoughtPartnerPanel() {
     };
     window.addEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
     return () => window.removeEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
-  }, []);
+  }, [selectModel]);
 
   const addSlot = useCallback((payload: PaletteDragPayload) => {
     setSlotted((prev) => slotInsight(prev, payload));
@@ -141,6 +151,10 @@ export default function ThoughtPartnerPanel() {
           system_context: composeThoughtPartnerSystemContext(
             merged.trim() ? merged : null,
           ),
+          // Both fields or neither. ThoughtPartnerRequest (app.py) does not
+          // read model_choice yet, so this is reach, not function, until the
+          // route does — see the same note in AISidecar.
+          ...launchFields(prompt),
         }),
       });
       if (!resp.ok) {
@@ -249,6 +263,23 @@ export default function ThoughtPartnerPanel() {
       </div>
 
       <ContextPicker onContextChange={setComposedContext} />
+
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+          Driver
+        </span>
+        <ModelUsagePicker
+          models={model.models}
+          value={model.selectedRowId}
+          valueModelId={model.selectedModelId}
+          onChange={model.select}
+          includeDefault
+          defaultLabel="Default (house route)"
+          triggerLabel={model.triggerLabel}
+          triggerAriaLabel="Model for this brainstorm"
+          size="sm"
+        />
+      </div>
 
       <textarea
         ref={inputRef}
