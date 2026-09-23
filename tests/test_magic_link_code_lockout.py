@@ -171,6 +171,50 @@ def test_email_link_proof_reopens_code_entry(client: TestClient, sender: MockEma
     assert SESSION_COOKIE_NAME in ok.cookies
 
 
+def test_spraying_throwaway_emails_cannot_evict_the_operator_budget(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The failure registry is bounded, so something is evicted when it
+    fills. If the operator's count could be the thing evicted, an attacker
+    would reset the lock by logging one miss at each of enough throwaway
+    addresses: the same attacker-produced reset as a fresh attempt."""
+    cap = 3
+    monkeypatch.setattr(auth_module, "_MAX_TRACKED_CODE_FAILURE_EMAILS", cap)
+    for _ in range(2):
+        _burn_attempt(client, _OPERATOR)
+        _clear_ip_windows()
+
+    for i in range(cap + 3):
+        requested = _request(client, f"spray{i}@evil.test")
+        assert _claim(client, requested, _wrong(_server_code(requested["attempt_id"]))).status_code == 400
+        _clear_ip_windows()
+        assert len(auth_module._code_failures) <= cap
+
+    fresh = _request(client, _OPERATOR)
+    lucky = _claim(client, fresh, _server_code(fresh["attempt_id"]))
+    assert lucky.status_code == 429, lucky.text
+    assert lucky.json()["detail"]["code"] == "code_entry_locked"
+    assert SESSION_COOKIE_NAME not in lucky.cookies
+
+
+def test_correct_code_clears_the_operator_budget(client: TestClient) -> None:
+    """Typing the right code proves possession of the email, so it clears
+    the budget: ordinary typos spread over many sign-ins must never add up
+    to a lockout."""
+    budget = auth_module._MAX_CODE_FAILURES_PER_EMAIL
+    for _ in range(2):
+        for _ in range(budget - 1):
+            requested = _request(client, _OPERATOR)
+            assert _claim(client, requested, _wrong(_server_code(requested["attempt_id"]))).status_code == 400
+            _clear_ip_windows()
+        fresh = _request(client, _OPERATOR)
+        ok = _claim(client, fresh, _server_code(fresh["attempt_id"]))
+        assert ok.status_code == 200, ok.text
+        assert SESSION_COOKIE_NAME in ok.cookies
+        client.cookies.clear()
+        _clear_ip_windows()
+
+
 # ── C02: a code only ever signs in an allowlisted address ────────────
 
 
