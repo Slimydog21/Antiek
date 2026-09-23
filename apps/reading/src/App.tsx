@@ -30,10 +30,8 @@ import Multimedia from "./modes/Multimedia";
 import Notebook from "./modes/Notebook";
 import AutoNotebook from "./modes/Notebook/AutoNotebook";
 import NotebooksIndex from "./modes/NotebooksIndex";
-import OperatorDashboard from "./modes/OperatorDashboard";
 import Outcomes from "./modes/Outcomes";
 import OutcomesIndex from "./modes/OutcomesIndex";
-import PayoutsAudit from "./modes/PayoutsAudit";
 import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
 import BookReader from "./modes/Reading";
@@ -45,7 +43,6 @@ import ResearchWorkstation from "./modes/ResearchWorkstation";
 import MyResearch from "./modes/ResearchWorkstation/MyResearch";
 import Settings from "./modes/Settings";
 import SkillRuleDetail from "./modes/SkillRuleDetail";
-import SkillRules from "./modes/SkillRules";
 import Sources from "./modes/Sources";
 import SpeakConsole from "./modes/Speak";
 import SpeakIndex from "./modes/SpeakIndex";
@@ -67,6 +64,25 @@ const AccountMemory = lazy(() => import("./modes/AccountMemory"));
 // row preview pulls in the style wheel; lazy-loading it keeps both out of the
 // entry chunk, which sits within about 1 KB of the 700 KB gz ceiling.
 const DocumentsIndex = lazy(() => import("./modes/DocumentsIndex"));
+// Operator-only surfaces load on demand: the entry chunk ships on every page
+// load and sits at its 700 KB gz budget, and no reader visits these routes.
+const OperatorDashboard = lazy(() => import("./modes/OperatorDashboard"));
+const PayoutsAudit = lazy(() => import("./modes/PayoutsAudit"));
+const SkillRules = lazy(() => import("./modes/SkillRules"));
+
+function operatorRoute(label: string, page: JSX.Element): JSX.Element {
+  return (
+    <Suspense
+      fallback={
+        <div className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
+          Loading {label}…
+        </div>
+      }
+    >
+      {page}
+    </Suspense>
+  );
+}
 
 /**
  * Top-level route registry.
@@ -233,7 +249,7 @@ function AuthenticatedRoutes() {
         <Route path="/privacy" element={<PrivacyDashboard />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/operator" element={<OperatorDashboard />} />
+        <Route path="/operator" element={operatorRoute("dashboard", <OperatorDashboard />)} />
         {/* antiek-unified SPR-05 — read-only coordination surface (gate ledger
             + 45-sprint roadmap). Slots into the SPR-04 shared/operator bucket
             when the four-workflow NavRail lands; reachable directly meanwhile. */}
@@ -274,7 +290,7 @@ function AuthenticatedRoutes() {
             See docs/decisions/spr-11-biography-template-not-graph.md. */}
         <Route path="/biography" element={<Biography />} />
         <Route path="/loop-3" element={<Loop3 />} />
-        <Route path="/skill-rules" element={<SkillRules />} />
+        <Route path="/skill-rules" element={operatorRoute("skill rules", <SkillRules />)} />
         <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />
         <Route path="/federation" element={<Federation />} />
         <Route path="/cross-graph/citations" element={<CrossGraphCitations />} />
@@ -288,7 +304,7 @@ function AuthenticatedRoutes() {
             cost, replay) preserved in MyResearch. */}
         <Route path="/my-research" element={<MyResearch />} />
         <Route path="/investigations" element={<Navigate to="/my-research" replace />} />
-        <Route path="/payouts" element={<PayoutsAudit />} />
+        <Route path="/payouts" element={operatorRoute("payouts", <PayoutsAudit />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>
