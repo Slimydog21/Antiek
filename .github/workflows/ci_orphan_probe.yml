@@ -1,0 +1,61 @@
+name: ci-orphan-probe
+
+# A cancelled ci.yml run never re-reports. If nothing supersedes it, the PR's
+# required checks sit at `cancelled` forever — auto-merge never fires, the
+# branch is not DIRTY, and NOTHING IS SHOWN AS FAILING. The PR is dead quietly.
+#
+# Measured 2026-09-21: 42 of 54 completed ci.yml runs were cancelled; 22 of
+# those were orphaned, and 19 open PRs were blocked that way simultaneously.
+# Main already carries two commits from an earlier occurrence
+# ("ci: re-trigger checks after out-of-band cancellation").
+#
+# ── WHY THIS IS A SCHEDULED ALARM, NOT A PR GATE ─────────────────────────────
+# The condition is about OTHER PRs, so gating a PR on it would punish the wrong
+# author. Same shape as prod_parity.yml: schedule + manual dispatch, never a
+# required check. Its red is the loud channel, read in the Actions tab.
+#
+# ── WHY IT DOES NOT RE-RUN ANYTHING ──────────────────────────────────────────
+# Under `concurrency: cancel-in-progress` a re-run CANCELS the attempt it just
+# started. An automated re-runner triggered by "cancelled" feeds itself:
+# cancel -> rerun -> cancel. That loop was observed first-hand on 2026-09-21.
+# Re-running stays a human decision, one run at a time, verifying run_attempt
+# actually incremented (`gh run rerun` exits 0 for requests it does not fulfil).
+
+on:
+  schedule:
+    # Twice daily, offset off the hour to miss the cron thundering herd.
+    - cron: "47 6,18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+  checks: read
+
+concurrency:
+  group: ci-orphan-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: probe for PRs blocked on an orphaned run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      # Stdlib only (argparse/json/subprocess/dataclasses) — no install step.
+      # Exit 1 means orphans exist and the job goes red on purpose. Exit 2 means
+      # the scan could not be trusted (a failed ruleset read), which must NOT
+      # read as "clean".
+      - name: Scan for orphaned runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/ci_orphan_scan.py --limit 100

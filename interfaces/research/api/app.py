@@ -203,6 +203,20 @@ class HealthResponse(BaseModel):
     backup_reason: str = ""
 
 
+    # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
+    # these fields existed /health said nothing about Prime or RLM, so an
+    # operator could flip ANTIEK_PRIME_AGENT_RLM_ENABLED + ANTIEK_RLM_RATIFIED
+    # and have the lane silently do nothing. ``prime_agent_binary_present``
+    # is a RESOLVE (which + identity snapshot), never a spawn.
+    # ``prime_agent_invocations_attempted`` is the process-wide count of
+    # backend runs that reached the spawn path, whatever their outcome.
+    # Resolved per request by ``_probe_prime_lane``; never raises.
+    prime_agent_enabled: bool = False
+    rlm_ratified: bool = False
+    prime_agent_binary_present: bool = False
+    prime_agent_invocations_attempted: int = 0
+
+
 def _probe_backup_freshness() -> dict[str, Any]:
     """Read-only backup freshness for /health. Never raises."""
     try:
@@ -224,6 +238,43 @@ def _probe_backup_freshness() -> dict[str, Any]:
             "backup_marker_path": "",
             "backup_reason": f"probe_exception: {type(exc).__name__}: {exc}",
         }
+def _probe_prime_lane() -> dict[str, bool | int]:
+    """Resolve-only readiness of the Prime Agent RLM lane for ``/health``.
+
+    Mirrors ``_resolve_build_sha``'s swallow-to-default: any failure resolves
+    to False/0. Reads the same flag spellings the lane itself uses — the
+    backend factory's truthy set for the enable flag, the bridge's literal
+    "1" for ratification — so /health cannot disagree with the code path.
+    """
+    from orchestration.rlm.bridge import is_ratified
+    from orchestration.rlm.prime_agent_backend import (
+        prime_agent_invocations_attempted,
+    )
+    from runtime.prime_agent.installation import resolve_prime_agent_binary
+
+    enabled = (
+        os.environ.get("ANTIEK_PRIME_AGENT_RLM_ENABLED", "").strip().lower()
+        in {"1", "true", "yes"}
+    )
+    try:
+        resolve_prime_agent_binary()
+        binary_present = True
+    except Exception:
+        binary_present = False
+    try:
+        ratified = is_ratified()
+    except Exception:
+        ratified = False
+    try:
+        attempted = prime_agent_invocations_attempted()
+    except Exception:
+        attempted = 0
+    return {
+        "prime_agent_enabled": enabled,
+        "rlm_ratified": ratified,
+        "prime_agent_binary_present": binary_present,
+        "prime_agent_invocations_attempted": attempted,
+    }
 
 
 def _resolve_build_sha() -> str:
@@ -2229,6 +2280,9 @@ def create_app(
         from .settings_budget import route_ready_provider_ids
 
         route_ready_providers = route_ready_provider_ids(registered_providers)
+        # Resolve-only (which + identity snapshot of a small file); never a
+        # spawn, never raises — see _probe_prime_lane.
+        prime_lane = _probe_prime_lane()
         return HealthResponse(
             drw_gather_mode=_resolved_gather_mode(),
             status="ok",
@@ -2295,6 +2349,12 @@ def create_app(
             duckdb_wal_bytes=duckdb_health.wal_bytes,
             duckdb_error=duckdb_health.error,
             **_probe_backup_freshness(),
+            prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
+            rlm_ratified=bool(prime_lane["rlm_ratified"]),
+            prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
+            prime_agent_invocations_attempted=int(
+                prime_lane["prime_agent_invocations_attempted"]
+            ),
         )
 
     # ── POST typed event ────────────────────────────────────────

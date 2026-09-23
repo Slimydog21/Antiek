@@ -30,6 +30,9 @@ import {
   type ResearchState,
 } from "../shared/researchState";
 import { lastSeenAt } from "../workspace/seen";
+import { useOwnerModelChoice } from "../hooks/useOwnerModelChoice";
+import ModelUsagePicker from "./ai/ModelUsagePicker";
+import { THOUGHT_PARTNER_SEED_EVENT, type ThoughtPartnerSeedDetail } from "./ai/thoughtPartnerSeed";
 import LemonButton from "./lemon/LemonButton";
 import { LemonModal } from "./lemon/LemonModal";
 import { toast } from "./lemon/LemonToast";
@@ -366,6 +369,21 @@ export default function CommandPalette() {
   >(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
+  // SPR-03 Task 3 — the driver dropdown on the palette. The palette runs no
+  // AI call of its own; the choice is broadcast on the thought-partner seed
+  // bus so the AI sidecar (the palette's "Toggle AI sidecar" target) adopts
+  // it, and the trigger here mirrors what was chosen.
+  const driver = useOwnerModelChoice("palette");
+  const chooseDriver = useCallback(
+    (rowId: string, modelId?: string) => {
+      driver.select(rowId, modelId);
+      const detail: ThoughtPartnerSeedDetail = {
+        owner_model: { row_id: rowId, ...(modelId ? { model_id: modelId } : {}) },
+      };
+      window.dispatchEvent(new CustomEvent(THOUGHT_PARTNER_SEED_EVENT, { detail }));
+    },
+    [driver],
+  );
 
   const loadIndex = useCallback(async () => {
     try {
@@ -865,9 +883,23 @@ export default function CommandPalette() {
             ))
           )}
         </ul>
-        <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-xs font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between">
+        <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-xs font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between gap-2">
           <span>↑↓ navigate · Enter select · Esc close</span>
-          <span>⌘K toggle</span>
+          <span className="flex items-center gap-2">
+            <span className="uppercase tracking-wide">Driver</span>
+            <ModelUsagePicker
+              models={driver.models}
+              value={driver.selectedRowId}
+              valueModelId={driver.selectedModelId}
+              onChange={chooseDriver}
+              includeDefault
+              defaultLabel="Default (house route)"
+              triggerLabel={driver.triggerLabel}
+              triggerAriaLabel="Driver model for the AI sidecar"
+              size="sm"
+            />
+            <span>⌘K toggle</span>
+          </span>
         </footer>
       </div>
 
