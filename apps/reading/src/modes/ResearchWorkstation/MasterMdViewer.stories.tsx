@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
+import type { ParsedSynthesis } from "../../lib/synthesisParser";
 import MasterMdViewer from "./MasterMdViewer";
 
 /**
@@ -21,40 +22,85 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const sampleSynthesis = `# Neutral-atom error rates at 100-qubit scale — synthesis
+// The viewer renders a ParsedSynthesis (what parseSynthesis() derives from
+// the event stream), not raw markdown; these fixtures were written against
+// the older `markdown` prop, so the component received no synthesis at all.
+const emptySynthesis: ParsedSynthesis = {
+  synthesisId: null,
+  thesisSummary: "",
+  components: [],
+  falsificationConditions: [],
+  executionRisks: [],
+  recommendation: "undetermined",
+  hardConstraintsSatisfied: null,
+  totalCostUsd: 0,
+  question: null,
+  masterMdPath: null,
+  domainsPatched: [],
+  chunkCitations: {},
+  qualityScore: null,
+  reuseProvenance: [],
+  compoundingStat: null,
+};
 
-## Insights
-
-Neutral-atom platforms have published single-qubit gate error rates
-clustering between 8×10⁻⁴ and 1.5×10⁻³ at the 100-qubit scale across
-three independent groups in 2024-2025. The Lukin lab and the QuEra
-production system both report errors below the surface-code
-threshold; the Vuletic preprint reports values above threshold using
-a different gate decomposition.
-
-The cross-comparison is not trivial because the gate-set choices
-affect the effective error rate. A circuit-depth normalization
-narrows the gap between groups by roughly half an order of
-magnitude but does not eliminate it.
-
-## Open questions
-
-The remaining question worth chasing: is the gap between groups a
-genuine difference in platform physics or an artifact of measurement
-methodology? Resolving it requires a head-to-head benchmark with a
-shared gate decomposition, which no group has yet published.
-`;
-
-export const SampleSynthesis: Story = {
-  args: {
-    markdown: sampleSynthesis,
-    investigationId: "inv-storybook-demo",
+const sampleSynthesis: ParsedSynthesis = {
+  ...emptySynthesis,
+  synthesisId: "syn-storybook-demo",
+  question: "Are neutral-atom gate error rates below threshold at the 100-qubit scale?",
+  thesisSummary:
+    "Neutral-atom platforms have published single-qubit gate error rates " +
+    "clustering between 8×10⁻⁴ and 1.5×10⁻³ at the 100-qubit scale across " +
+    "three independent groups in 2024-2025. Two of the three report errors " +
+    "below the surface-code threshold.",
+  components: [
+    {
+      index: 1,
+      claim:
+        "The Lukin lab and the QuEra production system both report errors " +
+        "below the surface-code threshold.",
+      rationale: "Two independent groups, the same gate decomposition.",
+      confidence: "high",
+      effectiveSourceTier: 1,
+      hedgingRequired: false,
+      chunkIds: ["chunk-lukin-2025", "chunk-quera-2025"],
+      supportingPathIndices: [],
+    },
+    {
+      index: 2,
+      claim:
+        "A circuit-depth normalization narrows the gap between groups by " +
+        "roughly half an order of magnitude but does not eliminate it.",
+      confidence: "moderate",
+      effectiveSourceTier: 2,
+      hedgingRequired: true,
+      chunkIds: ["chunk-vuletic-2025"],
+      supportingPathIndices: [],
+    },
+  ],
+  falsificationConditions: [
+    {
+      condition:
+        "A head-to-head benchmark with a shared gate decomposition shows the " +
+        "gap is methodological.",
+      specificObservable: "Error rates converge within 2×10⁻⁴ under one decomposition.",
+    },
+  ],
+  executionRisks: [
+    { risk: "No group has published a shared-decomposition benchmark yet." },
+  ],
+  recommendation: "conditional",
+  totalCostUsd: 0.42,
+  chunkCitations: {
+    "chunk-lukin-2025": [1],
+    "chunk-quera-2025": [1],
+    "chunk-vuletic-2025": [2],
   },
 };
 
+export const SampleSynthesis: Story = {
+  args: { synthesis: sampleSynthesis },
+};
+
 export const Empty: Story = {
-  args: {
-    markdown: "",
-    investigationId: "inv-storybook-demo",
-  },
+  args: { synthesis: emptySynthesis },
 };

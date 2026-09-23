@@ -193,6 +193,9 @@ const costMeta = {
   component: CostSection,
   parameters: { layout: "padded" },
   tags: ["autodocs"],
+  // The SCREAMING_CASE exports are data fixtures shared with tests, not
+  // stories; without this Storybook renders each one as a crashing story.
+  excludeStories: /^[A-Z0-9_]+$/,
 } satisfies Meta<typeof CostSection>;
 
 export default costMeta;
