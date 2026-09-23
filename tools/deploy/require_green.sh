@@ -16,6 +16,15 @@
 #   0  every main-required context is `success` for $SHA        -> deployable
 #   1  at least one required context is not `success`            -> not yet
 #   3  cannot verify (no gh, not authed, bad sha, API failure)    -> REFUSE
+#   4  $SHA is not main's tip or an ancestor of it                -> REFUSE
+#
+# Why exit 4 exists: green checks say a commit PASSED, not that it was
+# MERGED. A fork PR's head commit gets the same eight contexts from its PR
+# CI, and deploy-backend's workflow_run trigger matches on the triggering
+# run's head_branch — which, for a fork PR, is whatever the fork named its
+# branch (`main` works). Without this check that commit's own playbook would
+# run as root on production with the deploy key. Only code on main ships;
+# the question is answered from the repository, not from event metadata.
 set -euo pipefail
 
 REPO_IN="${1:?usage: require_green.sh <owner/repo | git url> <full 40-char sha>}"
@@ -39,6 +48,22 @@ gh auth status >/dev/null 2>&1 || {
   echo "require_green: SHA must be a FULL 40-char sha (got '$SHA'); refusing." >&2
   exit 3
 }
+
+# Is $SHA on main? compare/<sha>...main is `identical` when it IS main's tip
+# and `ahead` when main has moved past it (a rollback target); `diverged` or
+# `behind` means it is not main's history (a fork or unmerged commit). A SHA
+# unknown to the repository is a 404: cannot verify.
+if ! on_main=$(gh api "repos/$REPO/compare/$SHA...main" --jq .status); then
+  echo "require_green: cannot compare $SHA against main in $REPO — REFUSING (fail-closed)." >&2
+  exit 3
+fi
+case "$on_main" in
+  identical|ahead) ;;
+  *)
+    echo "require_green: $REPO@${SHA:0:9} is not on main (compare status '${on_main:-empty}') — only merged code deploys; REFUSING." >&2
+    exit 4
+    ;;
+esac
 
 # The contexts main's ruleset requires. Kept as a LITERAL list so a ruleset
 # change that silently drops a context does not silently widen what may deploy.

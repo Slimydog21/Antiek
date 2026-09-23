@@ -95,9 +95,21 @@ jobs:
           EVENT: ${{ github.event_name }}
           INPUT_SHA: ${{ inputs.sha }}
           RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          THIS_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           if [ "$EVENT" = "workflow_run" ]; then
+            # `branches: [main]` above matches the triggering run's
+            # head_branch, and a fork PR's head_branch is whatever the fork
+            # named it. Only a push to THIS repository's main may trigger a
+            # deploy. require_green.sh independently refuses any SHA not on
+            # main (exit 4); this is the first of the two locks, not the only.
+            if [ "$RUN_EVENT" != "push" ] || [ "$RUN_REPO" != "$THIS_REPO" ]; then
+              echo "::error::workflow_run from event '$RUN_EVENT' in '$RUN_REPO' — only a push to $THIS_REPO main deploys; refusing."
+              exit 4
+            fi
             SHA="$RUN_SHA"
           elif [ -n "${INPUT_SHA:-}" ]; then
             SHA="$INPUT_SHA"
@@ -151,6 +163,10 @@ jobs:
             # other code (3 = cannot verify, 127 = script missing, anything
             # unexpected) is a verifier failure and fails this job loudly —
             # a missing verifier must never read as "not yet".
+            if [ "$rc" -eq 4 ]; then
+              echo "::error::$SHA is not on main — only merged code deploys; refusing."
+              exit 4
+            fi
             if [ "$rc" -ne 1 ]; then
               echo "::error::require_green could not VERIFY $SHA (exit $rc) — refusing to decide; fix the verifier, do not bypass it."
               exit "$rc"
