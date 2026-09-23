@@ -381,3 +381,90 @@ async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatc
     )
     ok, _ = check_deep_research_complete("leaf-0")
     assert ok is False
+
+class _SlowSynthStubProvider(_SynthStubProvider):
+    """Holds phase 6 in flight long enough to cancel the tail inside it."""
+
+    def call(self, **kw) -> RawProviderResponse:
+        import time as _time
+
+        _time.sleep(1.5)
+        return super().call(**kw)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_synthesis_tail_writes_failed_terminal(monkeypatch):
+    """W5 run-honesty W06 sibling: the cascade Path A tail is a detached task
+    (``cascade_routes._run_to_completion``). A cancel during phase 6 used to
+    leave the session parent's trajectory on its last in-flight event, and
+    ``_run_to_completion`` catches only ``Exception``, so GET
+    /investigations/{session_id} read in_progress forever. The tail now ends
+    with ``investigation.failed`` and the cancellation still propagates."""
+    import asyncio
+
+    import httpx
+
+    from interfaces.research.api.app import create_app
+    from orchestration.session_evidence_pack import PackChunk, PackDocument, SessionEvidencePack
+    from substrate.schemas import Event, InvestigationFailedPayload
+
+    _patch_dispatch(monkeypatch)
+    register_provider(_SlowSynthStubProvider())
+    bus = EventBroadcaster()
+    from interfaces.research.api.synthesizer import register_handlers as _register_synth
+    _register_synth(bus)
+    coordinator = register_handlers(bus)
+
+    sid = "session-tail-cancelled"
+    pack = SessionEvidencePack(
+        session_id=sid,
+        problem_question="Does quantum Path A converge?",
+        chunks=[
+            PackChunk(
+                chunk_id="chunk-1",
+                document_id="doc-1",
+                ip_holder_id=None,
+                text="Provisional gather note.",
+                source_investigation_id="leaf-0",
+                sub_question="sub one",
+            ),
+        ],
+        documents=[PackDocument(document_id="doc-1", title="Gather", ip_holder_id=None)],
+        leaf_investigation_ids=["leaf-0"],
+    )
+    task = asyncio.create_task(
+        run_synthesis_tail_from_pack(pack, broadcaster=bus, coordinator=coordinator),
+    )
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 10.0
+    while loop.time() < deadline:
+        acts = [r["action_type"] for r in trajectory(sid)]
+        if ActionType.SYNTHESIZE_REQUESTED.value in acts:
+            break
+        await asyncio.sleep(0.02)
+    else:
+        pytest.fail(f"phase 6 never started: {acts}")
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert task.cancelled()  # the cancellation still propagates
+
+    terminals = [
+        r for r in trajectory(sid)
+        if r["action_type"] in (
+            ActionType.INVESTIGATION_COMPLETED.value,
+            ActionType.INVESTIGATION_FAILED.value,
+        )
+    ]
+    assert len(terminals) == 1, [r["action_type"] for r in trajectory(sid)]
+    assert terminals[0]["action_type"] == ActionType.INVESTIGATION_FAILED.value
+    assert terminals[0]["policy_id"] == "orchestrator-cascade-tail"
+    p = Event.model_validate(terminals[0]).payload
+    assert isinstance(p, InvestigationFailedPayload)
+    assert p.phase == 6
+    assert p.reason.startswith("cancelled during phase 6"), p.reason
+
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        body = (await ac.get(f"/investigations/{sid}")).json()
+    assert body["status"] == "failed", body
