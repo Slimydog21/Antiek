@@ -87,7 +87,9 @@ real tokens.css and config; a comment with a ratio in it is not evidence.
 
 **Type.** Inter (interface) and JetBrains Mono (data, provenance) ship as
 self-hosted variable woff2 under `src/assets/fonts` (OFL 1.1, licences beside
-them); Charter is the reading face. Minimum text is 11px (`text-xxs`).
+them), each with a metric-matched local fallback ("Inter Fallback", "JetBrains
+Mono Fallback", index.css) named second in every stack so the swap does not
+re-wrap lines; Charter is the reading face. Minimum text is 11px (`text-xxs`).
 
 ### SPR-01 reconciliation (2026-05-25)
 `tokens.css` lagged the a11y-darkening that `tokens.ts` + `tailwind.config.js`

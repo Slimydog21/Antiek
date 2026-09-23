@@ -187,9 +187,10 @@ export default {
         toast: "var(--z-toast)",
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],
+        sans: ["Inter", '"Inter Fallback"', "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],
         mono: [
           '"JetBrains Mono"',
+          '"JetBrains Mono Fallback"',
           "ui-monospace",
           '"SF Mono"',
           "SFMono-Regular",

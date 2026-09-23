@@ -23,6 +23,32 @@
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
     U+2212, U+2215, U+FEFF, U+FFFD;
 }
+/* Metric-matched fallbacks, named second in every stack: until a woff2
+   arrives (swap), text sets in a local face scaled to the web face's advance
+   and vertical metrics, so the swap does not re-wrap lines. Values measured in
+   Chromium against the shipped files: Inter's mean advance over UI copy is
+   106.36% of Arial's, ascent 0.96875 em, descent 0.24121 em; JetBrains Mono
+   is 99.66% of Menlo, ascent 1.02002, descent 0.29980. Overrides are divided
+   by size-adjust because the browser scales them by it. The local() lists are
+   metric-compatible families (Liberation, Arimo, Cousine), so one set of
+   numbers holds on macOS, Windows and Linux. */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial"), local("ArialMT"), local("Liberation Sans"), local("Arimo");
+  size-adjust: 106.36%;
+  ascent-override: 91.08%;
+  descent-override: 22.68%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "JetBrains Mono Fallback";
+  src: local("Menlo"), local("Menlo-Regular"), local("Courier New"), local("CourierNewPSMT"),
+    local("Liberation Mono"), local("Cousine");
+  size-adjust: 99.66%;
+  ascent-override: 102.35%;
+  descent-override: 30.08%;
+  line-gap-override: 0%;
+}
 
 @tailwind base;
 @tailwind components;

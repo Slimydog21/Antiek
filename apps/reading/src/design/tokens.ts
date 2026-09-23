@@ -341,8 +341,8 @@ export const edgeWidth = "2.5px" as const;
  * so a missing file never lands on Courier. Charter is the reading face.
  */
 export const type = {
-  sans: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
-  mono: '"JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+  sans: '"Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI", sans-serif',
+  mono: '"JetBrains Mono", "JetBrains Mono Fallback", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
   serif: '"Charter", "Iowan Old Style", "Source Serif 4", Georgia, serif',
 } as const;
 
