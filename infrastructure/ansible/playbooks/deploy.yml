@@ -66,6 +66,15 @@
     # the pull's `version` is the fact the gate sets only once it cleared, so
     # `--skip-tags gate`, `--skip-tags deploy` or `--start-at-task "git pull"`
     # fail the pull itself instead of deploying an unverified SHA.
+    #
+    # The SHA that is gated is the SHA that ships. deploy_backend.yml passes
+    # the commit it already gated as `antiek_deploy_sha`; a manual run
+    # resolves main's tip. The pull then checks out exactly that commit, never
+    # the branch tip. Re-resolving the tip here refused every deploy while
+    # merges outpaced CI: on 2026-09-23 the workflow cleared 0c458f8b1, main
+    # moved to 95093e84b (6 of 8 pending) before the job ran, the playbook
+    # gated the tip and refused, and prod sat 3 merges behind for 2h.
+    # require_green.sh still refuses a SHA that is not on main (exit 4).
     - name: resolve the SHA this deploy will pull
       ansible.builtin.command:
         cmd: git ls-remote --heads {{ antiek_repo_url }} {{ antiek_repo_branch }}
@@ -77,7 +86,8 @@
 
     - name: set antiek_target_sha
       ansible.builtin.set_fact:
-        antiek_target_sha: "{{ ((remote_head.stdout | trim).split() | first) | default('') }}"
+        antiek_target_sha: >-
+          {{ antiek_deploy_sha | default(((remote_head.stdout | trim).split() | first) | default(''), true) }}
       tags: [deploy, gate, code]
 
     - name: require every main-required check green for the target SHA (fail-closed)
@@ -106,10 +116,14 @@
 
     - name: record the gate-cleared ref (the only source of the pull's version)
       ansible.builtin.set_fact:
-        antiek_gate_cleared_ref: "{{ antiek_repo_branch }}"
+        antiek_gate_cleared_ref: "{{ antiek_target_sha }}"
+      # A full SHA or nothing: the force override skips require_green.sh (which
+      # validates the SHA), so an empty or malformed target must still leave
+      # the ref undefined and fail the pull.
       when: >-
-        (antiek_force_deploy | default(false) | bool)
-        or (required_checks_gate.rc | default(1)) == 0
+        (antiek_target_sha is match('^[0-9a-f]{40}$'))
+        and ((antiek_force_deploy | default(false) | bool)
+             or (required_checks_gate.rc | default(1)) == 0)
       tags: [deploy, gate, code]
 
     - name: git pull

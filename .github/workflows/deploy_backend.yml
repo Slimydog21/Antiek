@@ -332,7 +332,11 @@ jobs:
           # authenticated even when invoked from the deploy job, not only
           # from the earlier gate job.
           GH_TOKEN: ${{ github.token }}
-        run: ansible-playbook -i inventory.ini playbooks/deploy.yml
+          # The commit this run gated. The playbook deploys exactly it (and
+          # re-gates it) instead of re-resolving main's tip, which may have
+          # moved on to a commit whose checks are still running.
+          DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
+        run: ansible-playbook -i inventory.ini playbooks/deploy.yml -e "antiek_deploy_sha=$DEPLOY_SHA"
 
       # The playbook already asserts /health + prod-parity internally. This
       # repeats the assertion from OUTSIDE the playbook so a future edit that
@@ -342,11 +346,14 @@ jobs:
       # WHY THIS IS NOT `--expected-sha <gate sha>`:
       #   It was, and it produced a FALSE RED on run 35592958825 (2026-09-21):
       #     deployed build_sha=3e5f2d624 != expected_sha=0923e2ef7
-      #   Nothing was wrong. playbooks/deploy.yml pulls `antiek_repo_branch`
-      #   (= main), NOT the SHA that triggered this run, so when main advances
-      #   between the trigger and the `git pull` the box legitimately lands
-      #   AHEAD of the gate's SHA. Exact equality calls that a failure and
-      #   reds a deploy that in fact shipped strictly newer, fully-gated code.
+      #   Nothing was wrong. playbooks/deploy.yml then pulled `antiek_repo_branch`
+      #   (= main), NOT the SHA that triggered this run, so when main advanced
+      #   between the trigger and the `git pull` the box legitimately landed
+      #   AHEAD of the gate's SHA. Exact equality called that a failure and
+      #   redded a deploy that in fact shipped strictly newer, fully-gated code.
+      #   The playbook now deploys exactly `antiek_deploy_sha` (passed above),
+      #   so this run expects an exact match; ancestry stays the assertion so a
+      #   concurrent deliberate deploy of a newer gated commit is not a false red.
       #
       # The honest contract is two separate claims, asserted separately:
       #   (1) production contains the code that passed the gate  — ancestry,

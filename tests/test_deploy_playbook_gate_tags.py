@@ -41,14 +41,24 @@ SETUP = PLAYBOOKS / "setup.yml"
 
 # Refuses by default (require_green.sh exits non-zero). With FAKE_GH_GREEN=1
 # it reports all eight main-required contexts `success`, in the TSV shape the
-# script's --jq expression yields.
+# script's --jq expression yields; FAKE_GH_GREEN_ONLY=<sha> narrows that to one
+# SHA (every other SHA reads `pending`). The on-main check
+# (compare/<sha>...main, #3413) answers `ahead`: every commit the box fixture
+# makes is pushed to main.
 _FAKE_GH = """#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$FAKE_GH_LOG"
 [ "${FAKE_GH_GREEN:-0}" = 1 ] || exit 1
 [ "${1:-}" = api ] || exit 0
+case "$*" in
+  */compare/*) echo ahead; exit 0 ;;
+esac
+concl=success
+if [ -n "${FAKE_GH_GREEN_ONLY:-}" ]; then
+  case "$*" in *"/commits/${FAKE_GH_GREEN_ONLY}/"*) ;; *) concl=pending ;; esac
+fi
 for c in tsc vitest keystone 'mypy --strict + ruff (declared scope, baselined)' \\
          'pytest shard 0 of 4' 'pytest shard 1 of 4' 'pytest shard 2 of 4' 'pytest shard 3 of 4'; do
-  printf '%s\\tcompleted\\tsuccess\\t2026-01-01T00:00:00Z\\n' "$c"
+  printf '%s\\tcompleted\\t%s\\t2026-01-01T00:00:00Z\\n' "$c" "$concl"
 done
 """
 
@@ -101,12 +111,13 @@ def box(tmp_path: Path) -> dict:
             "sha_a": sha_a, "sha_b": sha_b}
 
 
-def _deploy(box: dict, *selection: str, green: bool = False,
+def _deploy(box: dict, *selection: str, green: bool = False, green_only: str = "",
             playbook: Path = PLAYBOOK) -> subprocess.CompletedProcess:
     exe = shutil.which("ansible-playbook")
     assert exe
     env = {**os.environ, "PATH": f"{box['bin']}{os.pathsep}{os.environ['PATH']}",
            "FAKE_GH_LOG": str(box["gh_log"]), "FAKE_GH_GREEN": "1" if green else "0",
+           "FAKE_GH_GREEN_ONLY": green_only,
            # setup.yml pip-installs after the clone; fail that offline, fast.
            "PIP_NO_INDEX": "1",
            "ANSIBLE_NOCOLOR": "1",
@@ -184,6 +195,41 @@ def test_force_override_still_pulls_positive_control(box):
     assert _head(box) == box["sha_b"], out[-3000:]
     assert "WITHOUT" in out and "verifying its required checks" in out, out[-3000:]
     assert box["gh_log"].read_text() == ""
+
+
+def _advance_main(box: dict, text: str) -> str:
+    seed = box["tmp"] / "seed"
+    (seed / "f").write_text(text)
+    _git("commit", "-q", "-am", text.split()[0], cwd=seed)
+    _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+    return _git("rev-parse", "HEAD", cwd=seed)
+
+
+@needs_ansible
+def test_pinned_deploy_ships_the_gated_sha_while_main_moves_on(box):
+    # main: A (box) -> B (green) -> C (the tip, checks still pending). The
+    # workflow gated B and passes it in. Re-resolving the tip instead refused
+    # C and shipped nothing, and while merges outpaced CI it refused every
+    # time: prod sat 3 merges behind for 2h on 2026-09-23 (run 35864752296).
+    sha_c = _advance_main(box, "c — merged after B, checks pending\n")
+    proc = _deploy(box, "--tags", "code", "-e", f"antiek_deploy_sha={box['sha_b']}",
+                   green=True, green_only=box["sha_b"])
+    out = proc.stdout + proc.stderr
+    assert _head(box) == box["sha_b"], (
+        f"expected the gated {box['sha_b']}, box is at {_head(box)} (tip {sha_c})\n{out[-3000:]}"
+    )
+    gh_calls = box["gh_log"].read_text()
+    assert box["sha_b"] in gh_calls and sha_c not in gh_calls, gh_calls
+
+
+@needs_ansible
+def test_unpinned_run_gates_the_tip_it_resolves(box):
+    # Manual/runbook path (no antiek_deploy_sha): the tip is resolved, gated
+    # and pulled. A pending tip is refused; nothing moves.
+    _advance_main(box, "c — tip, checks pending\n")
+    proc = _deploy(box, "--tags", "code", green=True, green_only=box["sha_b"])
+    assert _head(box) == box["sha_a"], (proc.stdout + proc.stderr)[-3000:]
+    assert proc.returncode != 0
 
 
 def _setup_code_block(box: dict) -> subprocess.CompletedProcess:
@@ -283,3 +329,18 @@ def test_only_the_gated_pull_can_move_an_existing_checkout():
             "required-checks gate; set `update: false` (clone-if-absent only)."
         )
     assert gated == 1
+
+
+def test_the_gated_sha_is_the_sha_that_ships():
+    # Static twin of the executed pinned-deploy test (CI shards lack ansible).
+    target = _task("set antiek_target_sha")["ansible.builtin.set_fact"]["antiek_target_sha"]
+    assert target.strip().startswith("{{ antiek_deploy_sha | default("), target
+    cleared = _task("record the gate-cleared ref")
+    assert cleared["ansible.builtin.set_fact"]["antiek_gate_cleared_ref"] == "{{ antiek_target_sha }}"
+    assert "match('^[0-9a-f]{40}$')" in cleared["when"], cleared["when"]
+
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "deploy_backend.yml").read_text())
+    step = next(s for s in wf["jobs"]["deploy"]["steps"] if s.get("name") == "Deploy")
+    assert step["env"]["DEPLOY_SHA"] == "${{ needs.gate.outputs.sha }}"
+    assert '-e "antiek_deploy_sha=$DEPLOY_SHA"' in step["run"], step["run"]
+    assert "${{" not in step["run"], "event data must reach the playbook through env"
