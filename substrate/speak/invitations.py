@@ -34,10 +34,44 @@ from .ids import new_invite_id
 from .schema import ensure_speak_schema
 from .takedown import NO_ACTIVE_TAKEDOWN_SQL
 
+# The handle ``mint_open_contribution`` stamps on the interview it creates
+# (with no email). It is the durable marker of an anonymously minted door:
+# ``speak_invites`` has no origin column, and tokens minted before this
+# predicate existed must close too, so the marker is read from the row the
+# mint already wrote rather than from a new column.
+OPEN_CONTRIBUTOR_HANDLE = "open contributor"
+
+# SQL predicate: is this invite-token door open? Every token-keyed surface
+# resolves through it — ``resolve_token`` (so all six ``/speak/invite/{token}``
+# routes and ``/speak/invites/resolve``) and the operator re-ping list/email
+# in ``pushes.py``. Expects ``speak_invites`` aliased ``s`` and ``interviews``
+# aliased ``i``. A door is closed while an active takedown
+#   • targets the door's own interview (the landing replays its transcript
+#     and the write routes would keep adding to it); or
+#   • sits anywhere on the project AND the door was minted anonymously via
+#     open contribution — the same project-wide predicate
+#     (``NO_ACTIVE_TAKEDOWN_SQL``) that hides the project from the public
+#     lists and refuses a fresh mint, since a token nobody vetted is just a
+#     public list entry the caller saved earlier.
+# It is a predicate over ACTIVE takedowns, not a revocation: reversing the
+# takedown reopens exactly the doors the reopened public lists would mint.
+INVITE_DOOR_OPEN_SQL = (
+    "NOT EXISTS (SELECT 1 FROM speak_takedowns t WHERE t.status = 'active' "
+    "AND ((t.target_kind = 'interview' AND t.target_id = s.interview_id) "
+    "OR (t.project_id = s.project_id AND i.informant_email IS NULL "
+    f"AND i.informant_handle = '{OPEN_CONTRIBUTOR_HANDLE}')))"
+)
+
 
 class PublicEcosystemGated(RuntimeError):
     """Raised when the public open-contribution ecosystem is requested
     while G7 is open. v1 is private invitations only."""
+
+
+class InviteDoorClosed(ValueError):
+    """Raised by ``require_open_door`` when a token no longer opens the
+    interview being written. A ``ValueError`` so the Speak routes answer it
+    with the same 404 as an unknown token."""
 
 
 @dataclass(frozen=True)
@@ -143,9 +177,23 @@ def get_invite(con: Any, invite_id: str) -> Invite:
 
 def resolve_token(con: Any, token: str) -> Invite | None:
     """Resolve an invite link's token to its invite (the landing flow).
-    Returns None for an unknown/expired token."""
-    row = _invite_row(con, "token", token, optional=True)
+    Returns None for an unknown/expired token, and for a door an active
+    takedown has closed (``INVITE_DOOR_OPEN_SQL``) — indistinguishable from
+    unknown, so a closed door discloses neither the subject nor that a
+    takedown exists."""
+    row = _invite_row(con, "token", token, optional=True, only_open=True)
     return _row_to_invite(con, row) if row else None
+
+
+def require_open_door(con: Any, token: str, interview_id: str) -> None:
+    """Raise ``InviteDoorClosed`` unless ``token`` is an open door onto
+    ``interview_id``. Token-driven writes call this under the SAME lock as
+    the write: the routes resolve the token first and then write under
+    later, separate locks (the voice route transcribes for seconds in
+    between), so a takedown landing in that gap is only caught here."""
+    iv = resolve_token(con, token)
+    if iv is None or iv.interview_id != interview_id:
+        raise InviteDoorClosed("unknown or expired invite link")
 
 
 def lifecycle(con: Any, project_id: str) -> list[dict[str, Any]]:
@@ -213,7 +261,9 @@ def mint_open_contribution(con: Any, project_id: str) -> Invite:
         landing page (``GET /speak/invite/{token}``) is unauthenticated and
         returns ``subject_ref``, so this door shares the predicate that hides
         the project from ``/speak/feed``, ``/speak/opportunities`` and
-        ``/speak/pushes``.
+        ``/speak/pushes``. Doors minted BEFORE the takedown close with it:
+        ``resolve_token`` applies ``INVITE_DOOR_OPEN_SQL`` to every token
+        route, keyed on the ``OPEN_CONTRIBUTOR_HANDLE`` stamped here.
       • Mints a fresh invite TOKEN (source, not an account) — stranger does
         not need a pre-shared family invite; the token remains the credential.
       • Marks ``invitation_mode=public`` (same flip as ``open_public_contribution``).
@@ -254,7 +304,7 @@ def mint_open_contribution(con: Any, project_id: str) -> Invite:
     return invite_stakeholder(
         con,
         project_id=project_id,
-        informant_handle="open contributor",
+        informant_handle=OPEN_CONTRIBUTOR_HANDLE,
         informant_email=None,
     )
 
@@ -264,12 +314,16 @@ def mint_open_contribution(con: Any, project_id: str) -> Invite:
 # ---------------------------------------------------------------------------
 
 
-def _invite_row(con: Any, by_col: str, value: str, *, optional: bool = False) -> Any:
+def _invite_row(
+    con: Any, by_col: str, value: str, *, optional: bool = False,
+    only_open: bool = False,
+) -> Any:
+    door = f" AND {INVITE_DOOR_OPEN_SQL}" if only_open else ""
     row = con.execute(
         f"SELECT s.invite_id, s.interview_id, s.project_id, s.token, "
         f"s.required_consent_scopes, i.informant_email, i.status "
         f"FROM speak_invites s JOIN interviews i ON i.interview_id = s.interview_id "
-        f"WHERE s.{by_col} = ?",
+        f"WHERE s.{by_col} = ?{door}",
         [value],
     ).fetchone()
     if row is None and not optional:

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from substrate.speak import async_interview
+from substrate.speak.invitations import INVITE_DOOR_OPEN_SQL, InviteDoorClosed
 from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.takedown import NO_ACTIVE_TAKEDOWN_SQL
 
@@ -272,8 +273,11 @@ def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateRep
 
     with connect_write(db_path, purpose="speak/pushes.list_private") as con:
         ensure_speak_schema(con)
+        # A door an active takedown closed is not re-pingable: the link it
+        # would hand out 404s, and pinging someone whose interview was
+        # taken down is exactly what the takedown asked to stop.
         rows = con.execute(
-            """
+            f"""
             SELECT p.project_id, ip.title, i.interview_id,
                    COALESCE(i.informant_email, i.informant_handle, 'invitee'),
                    i.status, s.token
@@ -283,6 +287,7 @@ def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateRep
             JOIN speak_invites s ON s.interview_id = i.interview_id
             WHERE i.status NOT IN ('declined', 'completed')
               AND s.token IS NOT NULL
+              AND {INVITE_DOOR_OPEN_SQL}
             ORDER BY i.invited_at DESC
             LIMIT ?
             """,
@@ -317,6 +322,21 @@ def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateRep
     return out
 
 
+def _closed_door_reping(interview_id: str) -> RepingResult:
+    """The re-ping answer for a door an active takedown closed: no token,
+    no path, no followups, no email."""
+    return RepingResult(
+        interview_id=interview_id,
+        token="",
+        invite_path="",
+        followups_added=0,
+        pending_question_count=0,
+        skipped_reason="active takedown — invite door closed, no re-ping",
+        email_status="skipped_takedown",
+        email_detail="an active takedown closed this invite door",
+    )
+
+
 def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False) -> RepingResult:
     """Consent-scoped continuous ping: generate followups + return invite door.
 
@@ -332,7 +352,8 @@ def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False)
         row = con.execute(
             "SELECT i.status, s.token, "
             "COALESCE(i.informant_email, ''), "
-            "COALESCE(ip.title, p.project_id) "
+            "COALESCE(ip.title, p.project_id), "
+            f"{INVITE_DOOR_OPEN_SQL} "
             "FROM interviews i "
             "LEFT JOIN speak_invites s ON s.interview_id = i.interview_id "
             "LEFT JOIN speak_projects p ON p.project_id = i.project_id "
@@ -342,9 +363,14 @@ def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False)
         ).fetchone()
         if row is None:
             raise ValueError(f"interview {interview_id!r} not found")
-        status, token, informant_email, project_title = (
-            row[0], row[1], row[2], row[3],
+        status, token, informant_email, project_title, door_open = (
+            row[0], row[1], row[2], row[3], row[4],
         )
+        if token and not door_open:
+            # Same predicate resolve_token enforces: never generate
+            # followups for, or email, a door a takedown has closed.
+            # Checked first so no branch below echoes the closed token.
+            return _closed_door_reping(interview_id)
         if status == "declined":
             return RepingResult(
                 interview_id=interview_id,
@@ -369,7 +395,14 @@ def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False)
 
     before = async_interview.resume(db_path, interview_id)
     before_pending = {q["id"] for q in before.pending_questions()}
-    fus = async_interview.next_followups(db_path, interview_id=interview_id)
+    try:
+        # door_token re-checks under the lock that persists the followups:
+        # a takedown landing after the gate above still stops the ping.
+        fus = async_interview.next_followups(
+            db_path, interview_id=interview_id, door_token=token,
+        )
+    except InviteDoorClosed:
+        return _closed_door_reping(interview_id)
     after = async_interview.resume(db_path, interview_id)
     after_pending = after.pending_questions()
     added = sum(1 for q in after_pending if q["id"] not in before_pending)

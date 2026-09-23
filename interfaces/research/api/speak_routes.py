@@ -1209,11 +1209,14 @@ async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
         with _translate(), _write("speak/api:invite_answer_resolve") as con:
             interview_id, _ = _require_token(con, token)
         # submit_answer acquires its own lock(s); call outside ours — but
-        # still on this thread, never the loop.
+        # still on this thread, never the loop. door_token re-checks the
+        # token under submit_answer's own locks: a takedown can land
+        # between ours and theirs.
         with _translate():
             return submit_answer(
                 _db(), interview_id=interview_id, question_id=req.question_id,
                 transcript=req.transcript, duration_seconds=req.duration_seconds,
+                door_token=token,
             )
 
     result = await asyncio.to_thread(_sync)
@@ -1324,7 +1327,9 @@ async def invitee_voice(
         with _translate(), _write("speak/api:invite_voice_resolve") as con:
             interview_id, _ = _require_token(con, token)
         # transcribe + submit acquire their own locks; do them OUTSIDE ours
-        # — and off the loop, since Whisper is CPU-bound for seconds.
+        # — and off the loop, since Whisper is CPU-bound for seconds. That
+        # gap is why door_token re-checks the token under submit_answer's
+        # locks: a takedown landing mid-transcription must still refuse.
         with _translate():
             text = transcribe_voice(
                 audio,
@@ -1335,6 +1340,7 @@ async def invitee_voice(
             return text, submit_answer(
                 _db(), interview_id=interview_id, question_id=question_id,
                 transcript=text, duration_seconds=duration_seconds,
+                door_token=token,
             )
 
     text, result = await asyncio.to_thread(_sync)
@@ -1379,7 +1385,7 @@ async def invitee_followups(token: str) -> dict[str, Any]:
         with _translate(), _write("speak/api:invite_followups_resolve") as con:
             interview_id, _ = _require_token(con, token)
         with _translate():
-            return next_followups(_db(), interview_id=interview_id)
+            return next_followups(_db(), interview_id=interview_id, door_token=token)
 
     fus = await asyncio.to_thread(_sync)
     return {"followups": [
