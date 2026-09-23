@@ -51,7 +51,7 @@ function usageBadge(entry: SettingsUsageKeyEntry): string {
 
 function balanceLabel(
   balance: SettingsBalanceResponse,
-  usage: SettingsUsageKeyEntry,
+  usage: SettingsUsageKeyEntry | null,
 ): {
   text: string;
   tone: "ok" | "unknown";
@@ -59,7 +59,34 @@ function balanceLabel(
   if (balance.kind === "unavailable") {
     return { text: "Live balance unavailable", tone: "unknown" };
   }
+  if (balance.kind === "spend_history") {
+    // Antiek's OWN meter of what this app settled against the key. The
+    // provider was never asked, so this row must not read "Live": a spend
+    // meter presented as provider credit is a wrong number, not a missing one.
+    const spend =
+      typeof balance.spend_usd === "number" && Number.isFinite(balance.spend_usd)
+        ? balance.spend_usd
+        : null;
+    const budget =
+      typeof balance.budget_usd === "number" && Number.isFinite(balance.budget_usd)
+        ? balance.budget_usd
+        : null;
+    if (spend === null) {
+      return { text: "Antiek meter unavailable (not provider credit)", tone: "unknown" };
+    }
+    if (budget === null) {
+      return {
+        text: `Antiek meter: spent ${formatUsd(spend)}, uncapped (not provider credit)`,
+        tone: "ok",
+      };
+    }
+    return {
+      text: `Antiek meter: ${formatUsd(budget - spend)} of ${formatUsd(budget)} cap left (not provider credit)`,
+      tone: "ok",
+    };
+  }
   if (
+    balance.kind === "balance_native" &&
     typeof balance.balance_usd === "number" &&
     Number.isFinite(balance.balance_usd)
   ) {
@@ -68,7 +95,7 @@ function balanceLabel(
       tone: "ok",
     };
   }
-  const usageAvailable = usage.available_cents;
+  const usageAvailable = usage?.available_cents ?? null;
   if (typeof usageAvailable === "number" && Number.isFinite(usageAvailable)) {
     return {
       text: `Live available ${formatCents(usageAvailable)}`,
@@ -107,6 +134,10 @@ export default function UsagePanel() {
   const [balances, setBalances] = useState<Record<string, BalanceState>>({});
   const [limitDrafts, setLimitDrafts] = useState<Record<string, string>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The usage snapshot failed to load. Rows then carry no usage entry at
+  // all: a zero fallback here would print "used $0.00 · held $0.00" for a
+  // meter nobody read, which is the fabrication the header rules out.
+  const [usageUnavailable, setUsageUnavailable] = useState(false);
   const [busyKeyId, setBusyKeyId] = useState<string | null>(null);
   const [message, setMessage] = useState<PanelMessage>(null);
   const loadVersionRef = useRef(0);
@@ -115,7 +146,9 @@ export default function UsagePanel() {
     if (keys == null) return null;
     return keys
       .map((key) => {
-        const usage = usageByKey[key.id] ?? usageFallback(key.id);
+        const entry = usageByKey[key.id];
+        const usage: SettingsUsageKeyEntry | null =
+          entry ?? (usageUnavailable ? null : usageFallback(key.id));
         const modelRow = modelsByProvider[key.id] ?? null;
         const models = [
           ...new Set(
@@ -128,7 +161,7 @@ export default function UsagePanel() {
       .sort((left, right) =>
         left.key.display_name.localeCompare(right.key.display_name),
       );
-  }, [keys, usageByKey, modelsByProvider]);
+  }, [keys, usageByKey, modelsByProvider, usageUnavailable]);
 
   async function refresh() {
     const version = loadVersionRef.current + 1;
@@ -161,6 +194,7 @@ export default function UsagePanel() {
         filteredKeys.map((entry) => [entry.api_key_id, entry]),
       );
       setUsageByKey(byKey);
+      setUsageUnavailable(false);
       setLimitDrafts((current) => {
         const next = { ...current };
         for (const entry of filteredKeys) {
@@ -172,6 +206,7 @@ export default function UsagePanel() {
       });
     } else {
       setUsageByKey({});
+      setUsageUnavailable(true);
     }
 
     if (settingsModelsResult.status === "fulfilled") {
@@ -315,6 +350,18 @@ export default function UsagePanel() {
           </div>
         )}
 
+        {usageUnavailable && !loadError && (
+          <div role="alert" className="space-y-2 text-sm text-danger">
+            <p>
+              Can't load usage right now. No usage figures are shown for any key
+              until it loads; live provider balances are unaffected.
+            </p>
+            <LemonButton size="sm" variant="tertiary" onClick={() => void refresh()}>
+              Retry
+            </LemonButton>
+          </div>
+        )}
+
         {rows === null && !loadError && (
           <p role="status" className="text-sm text-ink-soft dark:text-starlight">
             Loading usage and balances…
@@ -369,7 +416,7 @@ export default function UsagePanel() {
                   </div>
 
                   <p className="font-mono text-xs text-ink-soft dark:text-starlight">
-                    {usageBadge(row.usage)}
+                    {row.usage ? usageBadge(row.usage) : "usage unavailable"}
                   </p>
 
                   <div className="space-y-1">
@@ -408,7 +455,7 @@ export default function UsagePanel() {
                         inputMode="decimal"
                         min={0}
                         step="0.01"
-                        value={limitDrafts[row.id] ?? toLimitDraft(row.usage.limit_cents)}
+                        value={limitDrafts[row.id] ?? toLimitDraft(row.usage?.limit_cents ?? null)}
                         onChange={(event) =>
                           setLimitDrafts((current) => ({
                             ...current,

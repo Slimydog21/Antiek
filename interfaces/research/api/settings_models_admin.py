@@ -90,7 +90,7 @@ from typing import Literal, cast
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from runtime.byok.store import (
     CredentialIntegrityError,
@@ -165,12 +165,27 @@ class UserModelRecord(BaseModel):
     owner_user_id: str = Field(default=_LEGACY_OWNER_USER_ID, min_length=1, max_length=256)
     provider_kind: ProviderKind
     provider_catalog_id: ProviderCatalogId | None = None
+    # ``model_id`` is the PRIMARY variant: the one the live adapter, the
+    # inventory row and every pre-variant caller name. ``model_ids`` is every
+    # variant this ONE key may be asked to drive (SPR-03 Task 2); it always
+    # contains ``model_id`` first, so a pre-variant registry row (no
+    # ``model_ids`` on disk) normalises to a single-variant record and its
+    # fingerprint stays a pure function of the record.
     model_id: str
+    model_ids: list[str] = Field(default_factory=list)
     display_name: str
     base_url: str | None = None
     cred_ref: str
     cred_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def _normalise_variants(self) -> UserModelRecord:
+        # Normalise rather than reject: the registry-integrity read path must
+        # keep loading a row whose file was edited (that mismatch is caught by
+        # the registration fingerprint, which answers 409, not a 500 here).
+        self.model_ids = list(dict.fromkeys([self.model_id, *self.model_ids]))
+        return self
 
 
 def _owner_hash(owner_user_id: str) -> str:
@@ -605,6 +620,8 @@ class UserModelRow(BaseModel):
     provider_kind: ProviderKind
     provider_catalog_id: ProviderCatalogId | None = None
     model_id: str
+    # Every selectable variant under this one key, primary first.
+    model_ids: list[str] = Field(default_factory=list)
     display_name: str
     base_url: str | None
     enabled: bool
@@ -683,6 +700,11 @@ class OwnerModelAuthority:
     credential_id: str
     credential_fingerprint: str
     registration_fingerprint: str
+    # The variant the caller chose, which is one of ``record.model_ids`` and
+    # may differ from ``record.model_id`` (the primary). Dispatch prices and
+    # sends THIS, so one key can drive V4 Pro on one call and V4 Flash on the
+    # next while the ledger stays keyed on ``record.id``.
+    model_id: str
 
 
 def resolve_owner_model_authority(
@@ -693,7 +715,7 @@ def resolve_owner_model_authority(
     registry = _load_registry()
     matches = [
         item for item in registry.values()
-        if item.id == validated.provider_id and item.model_id == validated.model_id
+        if item.id == validated.provider_id and validated.model_id in item.model_ids
     ]
     record = matches[0] if len(matches) == 1 else None
     metadata = _credential_metadata()
@@ -716,6 +738,7 @@ def resolve_owner_model_authority(
         credential_id=credential.cred_id,
         credential_fingerprint=credential.artifact_fingerprint or "",
         registration_fingerprint=registration,
+        model_id=validated.model_id,
     )
 
 
@@ -729,11 +752,15 @@ class UserModelAuthoritySnapshot:
     rate_snapshot: str | None
 
 
-def _route_execution_authority(app: FastAPI, record: UserModelRecord) -> ProviderRouteAuthority:
+def _route_execution_authority(
+    app: FastAPI, record: UserModelRecord, *, model_id: str | None = None,
+) -> ProviderRouteAuthority:
+    # ``model_id`` picks the variant to price; the primary when not given.
+    chosen = model_id or record.model_id
     endpoint = record.base_url or "https://api.anthropic.com"
     identity = ProviderRouteIdentity(
         provider_kind=record.provider_kind,
-        model_id=record.model_id,
+        model_id=chosen,
         endpoint=endpoint,
         seam_id="user.prompt.generate",
         operation="generate",
@@ -742,7 +769,7 @@ def _route_execution_authority(app: FastAPI, record: UserModelRecord) -> Provide
     if record.provider_catalog_id is not None:
         try:
             preset = get_provider_preset(record.provider_catalog_id)
-            get_model_variant(preset, record.model_id)
+            get_model_variant(preset, chosen)
             preset_matches = (
                 record.provider_kind == preset.adapter_kind
                 and canonical_provider_endpoint(endpoint)
@@ -810,18 +837,18 @@ def resolve_user_model_choice(
         or record.owner_user_id != owner_user_id
         or not record.enabled
         or record.id != validated.provider_id
-        or record.model_id != validated.model_id
+        or validated.model_id not in record.model_ids
         or not _credential_matches_record(record, metadata)
         or record.id not in _seam_names(app)
         or fingerprints.get(record.id) != _record_fingerprint(record)
         or not _live_adapter_matches(app, record.id)
     ):
         raise UserModelChoiceUnavailable("user model route is unavailable")
-    authority = _route_execution_authority(app, record)
+    authority = _route_execution_authority(app, record, model_id=validated.model_id)
     return ResolvedUserModelRoute(
         authority="user_model",
         provider_id=record.id,
-        model_id=record.model_id,
+        model_id=validated.model_id,
         credential_ref=record.cred_ref,
         pricing_status=authority.pricing_status,
         hard_ceiling_eligible=authority.hard_ceiling_eligible,
@@ -845,9 +872,25 @@ class _ValidatedCreate:
     provider_kind: ProviderKind
     provider_catalog_id: ProviderCatalogId | None
     model_id: str
+    # Every variant the key may drive, primary first (see UserModelRecord).
+    model_ids: tuple[str, ...]
     display_name: str
     base_url: str | None
     api_key: str
+
+
+_MAX_VARIANTS = 16
+
+
+def _parse_model_id(value: object, *, field: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > _MAX_MODEL_ID_LEN
+        or any(c.isspace() for c in value)
+    ):
+        raise _reject(f"{field} must be a non-empty string without whitespace")
+    return value
 
 
 def _reject(detail: str) -> HTTPException:
@@ -880,19 +923,40 @@ def _parse_create(payload: object) -> _ValidatedCreate:
     else:
         raise _reject("provider_catalog_id must be a string when provided")
 
-    model_id = payload.get("model_id")
-    if (
-        not isinstance(model_id, str)
-        or not model_id
-        or len(model_id) > _MAX_MODEL_ID_LEN
-        or any(c.isspace() for c in model_id)
-    ):
-        raise _reject("model_id must be a non-empty string without whitespace")
+    # One key, many variants: ``model_ids`` lists every variant this ONE
+    # credential may drive; ``model_id`` (optional when ``model_ids`` is sent)
+    # names the primary. A single ``model_id`` alone is the pre-variant shape
+    # and still registers exactly as before.
+    raw_model_ids = payload.get("model_ids")
+    raw_model_id = payload.get("model_id")
+    if raw_model_ids is None:
+        model_ids: tuple[str, ...] = (_parse_model_id(raw_model_id, field="model_id"),)
+    else:
+        if (
+            not isinstance(raw_model_ids, list)
+            or not raw_model_ids
+            or len(raw_model_ids) > _MAX_VARIANTS
+        ):
+            raise _reject(f"model_ids must be a list of 1-{_MAX_VARIANTS} model ids")
+        variants = [_parse_model_id(item, field="model_ids[]") for item in raw_model_ids]
+        if len(set(variants)) != len(variants):
+            raise _reject("model_ids must not repeat a model id")
+        if raw_model_id is not None:
+            primary = _parse_model_id(raw_model_id, field="model_id")
+            if primary not in variants:
+                raise _reject("model_id must be one of model_ids when both are sent")
+            variants.remove(primary)
+            variants.insert(0, primary)
+        model_ids = tuple(variants)
+    model_id = model_ids[0]
     if preset is not None:
-        try:
-            get_model_variant(preset, model_id)
-        except KeyError as exc:
-            raise _reject("model_id is not available for the selected provider preset") from exc
+        for variant_id in model_ids:
+            try:
+                get_model_variant(preset, variant_id)
+            except KeyError as exc:
+                raise _reject(
+                    "model_id is not available for the selected provider preset"
+                ) from exc
 
     display_name = payload.get("display_name")
     if (
@@ -967,6 +1031,7 @@ def _parse_create(payload: object) -> _ValidatedCreate:
         provider_kind=cast(ProviderKind, provider_kind),
         provider_catalog_id=provider_catalog_id,
         model_id=model_id,
+        model_ids=model_ids,
         display_name=display_name.strip(),
         base_url=base_url,
         api_key=api_key,
@@ -1008,6 +1073,7 @@ def _row(
         provider_kind=record.provider_kind,
         provider_catalog_id=record.provider_catalog_id,
         model_id=record.model_id,
+        model_ids=list(record.model_ids),
         display_name=record.display_name,
         base_url=record.base_url,
         enabled=record.enabled,
@@ -1119,6 +1185,7 @@ async def post_user_model(request: Request) -> UserModelRow:
             provider_kind=spec.provider_kind,
             provider_catalog_id=spec.provider_catalog_id,
             model_id=spec.model_id,
+            model_ids=list(spec.model_ids),
             display_name=spec.display_name,
             base_url=spec.base_url,
             cred_ref=cred_ref,

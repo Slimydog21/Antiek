@@ -42,6 +42,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from substrate.dispatch.base import describe_upstream_http_error
+
 # ─── xAI OAuth constants (from grok-cli registration) ───────────────────────
 XAI_ISSUER: str = "https://auth.x.ai"
 XAI_DISCOVERY: str = "https://auth.x.ai/.well-known/openid-configuration"
@@ -79,6 +81,8 @@ class GrokAuthError(Exception):
     status_code: int
     detail: str
     terminal: bool = False
+    endpoint: str | None = None
+    upstream_type: str | None = None
 
     def __str__(self) -> str:
         return self.detail
@@ -192,8 +196,38 @@ def compute_expires_at(access_token: str, fallback_expires_in: int = 3600) -> fl
 # ─── Failure classification ─────────────────────────────────────────────────
 
 
-def _classify_failure(status_code: int, body: dict[str, Any]) -> GrokAuthError:
+def _classify_failure(
+    status_code: int,
+    body: dict[str, Any],
+    *,
+    endpoint: str,
+    secret: str = "",
+) -> GrokAuthError:
     """Map an HTTP error response to the BYOT failure taxonomy."""
+    described = describe_upstream_http_error(
+        body,
+        provider="xai",
+        status_code=status_code,
+        endpoint=endpoint,
+        secret=secret,
+    )
+    if described is not None:
+        detail, upstream_type = described
+        if status_code == 403:
+            failure, terminal = GrokAuthFailure.TIER_DENIED, True
+        elif status_code in (400, 401):
+            failure, terminal = GrokAuthFailure.RELOGIN_REQUIRED, True
+        else:
+            failure, terminal = GrokAuthFailure.TRANSIENT, False
+        return GrokAuthError(
+            failure=failure,
+            status_code=status_code,
+            detail=detail,
+            terminal=terminal,
+            endpoint=endpoint,
+            upstream_type=upstream_type,
+        )
+
     error_str = body.get("error", "")
     detail = body.get("error_description", body.get("message", str(body)))
 
@@ -205,6 +239,7 @@ def _classify_failure(status_code: int, body: dict[str, Any]) -> GrokAuthError:
             "Your plan may not be entitled to API access — "
             "paste an XAI_API_KEY instead.",
             terminal=True,
+            endpoint=endpoint,
         )
     if status_code in (400, 401) or error_str == "invalid_grant":
         return GrokAuthError(
@@ -213,6 +248,7 @@ def _classify_failure(status_code: int, body: dict[str, Any]) -> GrokAuthError:
             detail=f"xAI auth invalid ({status_code}): {detail}. "
             "Credential quarantined — re-onboard required.",
             terminal=True,
+            endpoint=endpoint,
         )
     # 429 or 5xx → transient
     return GrokAuthError(
@@ -220,6 +256,7 @@ def _classify_failure(status_code: int, body: dict[str, Any]) -> GrokAuthError:
         status_code=status_code,
         detail=f"xAI transient error ({status_code}): {detail}",
         terminal=False,
+        endpoint=endpoint,
     )
 
 
@@ -252,7 +289,9 @@ def request_device_code(
             },
         )
         if resp.status_code != 200:
-            raise _classify_failure(resp.status_code, resp.json())
+            raise _classify_failure(
+                resp.status_code, resp.json(), endpoint=device_code_url,
+            )
         body = resp.json()
         return DeviceCodeGrant(
             device_code=body["device_code"],
@@ -327,7 +366,9 @@ def poll_device_token(
                 time.sleep(interval)
                 continue
             # Any other error is terminal for this poll attempt.
-            raise _classify_failure(resp.status_code, body)
+            raise _classify_failure(
+                resp.status_code, body, endpoint=token_url, secret=grant.device_code,
+            )
     finally:
         if own_client:
             http.close()
@@ -360,7 +401,12 @@ def refresh_grok_token(
             },
         )
         if resp.status_code != 200:
-            raise _classify_failure(resp.status_code, resp.json())
+            raise _classify_failure(
+                resp.status_code,
+                resp.json(),
+                endpoint=token_url,
+                secret=refresh_token,
+            )
         body = resp.json()
         access_token = body["access_token"]
         new_refresh = body.get("refresh_token", refresh_token)
