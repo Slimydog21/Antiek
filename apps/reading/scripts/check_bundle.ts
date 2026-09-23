@@ -61,7 +61,21 @@ function findChunk(prefix: string): string | null {
     );
     process.exit(2);
   }
-  return matches[0] ?? null;
+  // Lazy routes whose module file is `index.tsx` emit their own `index-<hash>.js`
+  // chunks beside the entry, and directory order is hash order, so the first
+  // match was sometimes a 3 KB lazy chunk and the entry's ceiling went
+  // unmeasured while the log printed a green line. The eager entry is always
+  // the largest match, so measure every match and budget the largest.
+  let largest: string | null = null;
+  let largestGz = -1;
+  for (const m of matches) {
+    const gz = gzippedSize(m);
+    if (gz > largestGz) {
+      largest = m;
+      largestGz = gz;
+    }
+  }
+  return largest;
 }
 
 function gzippedSize(filename: string): number {

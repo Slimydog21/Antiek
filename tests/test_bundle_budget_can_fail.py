@@ -56,3 +56,20 @@ def test_the_script_still_exits_nonzero_on_failure() -> None:
         "the failure counter no longer drives a non-zero exit; nothing the "
         "loop discovers can change the job's outcome"
     )
+
+
+def test_the_budget_measures_the_largest_matching_chunk() -> None:
+    """Several chunks share the `index-` prefix (lazy `index.tsx` routes), so
+    taking the first directory entry measured a 3 KB lazy chunk against the
+    700 KB entry ceiling on main: green while the entry went unmeasured."""
+    src = _source()
+    body = re.search(r"function findChunk\(prefix: string\)[\s\S]*?\n\}", src)
+    assert body, "findChunk is gone or reshaped"
+    assert "matches[0]" not in body.group(0), (
+        "findChunk returns the first `index-*` file again; with lazy index "
+        "chunks present that is not the entry, and its ceiling is unenforced"
+    )
+    assert "gzippedSize(" in body.group(0), (
+        "findChunk no longer compares match sizes, so it cannot pick the entry"
+    )
+
