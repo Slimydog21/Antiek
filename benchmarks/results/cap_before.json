@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "git_sha": "6384d6c9531f4a98d7e55b5f883cd26f33302cdd",
+  "generated_at": "2026-09-23T11:59:34.995641+00:00",
+  "host": {
+    "platform": "macOS-15.7.3-arm64-arm-64bit",
+    "python": "3.12.13",
+    "cpu_count": 12
+  },
+  "server": {
+    "workers": 1,
+    "register_providers": false,
+    "register_wrestling": false,
+    "bind": "127.0.0.1"
+  },
+  "write_lock_wait_source": "harness wrapper around runtime.db_lock.connect_write (call-to-return)",
+  "write_lock_hold_source": "write_log.duration_s",
+  "params": {
+    "concurrency": [
+      1,
+      5,
+      25
+    ],
+    "starts": 2,
+    "duration_s": 10.0,
+    "requests_per_worker": null,
+    "request_timeout_s": 330.0,
+    "out": "/tmp/cap_before.json"
+  },
+  "runs": [
+    {
+      "concurrency": 1,
+      "starts_workers": 2,
+      "requests_completed": 89,
+      "requests_failed": 0,
+      "status_counts": {
+        "reads": {
+          "200": 89
+        },
+        "starts": {
+          "202": 111
+        }
+      },
+      "p50_ms": 60.08808396290988,
+      "p95_ms": 603.8578329607844,
+      "p99_ms": 1258.7940419325605,
+      "health_p95_ms": 189.00587502866983,
+      "starts_completed": 111,
+      "start_p95_ms": 982.9784999601543,
+      "server_cpu_percent": 51.60588235294117,
+      "server_rss_mb_max": 228.78125,
+      "write_lock_wait_p95_ms": 2.4404169525951147,
+      "write_lock_hold_p95_ms": 46.780332922935486,
+      "write_log_rows": 397,
+      "duration_s": 10.95909241703339,
+      "port": 61276,
+      "project_id": "ivp-c965af29dab147fe",
+      "wait_entries": 394,
+      "wait_entries_ok": 394,
+      "wait_entries_failed": 0,
+      "write_log_rows_total": 398,
+      "write_log_read_error": null,
+      "server_exit": {
+        "returncode": -15,
+        "had_to_sigkill": false
+      }
+    },
+    {
+      "concurrency": 5,
+      "starts_workers": 2,
+      "requests_completed": 323,
+      "requests_failed": 0,
+      "status_counts": {
+        "reads": {
+          "200": 323
+        },
+        "starts": {
+          "202": 77
+        }
+      },
+      "p50_ms": 100.17862496897578,
+      "p95_ms": 507.91141705121845,
+      "p99_ms": 739.4308750517666,
+      "health_p95_ms": 418.2690839515999,
+      "starts_completed": 77,
+      "start_p95_ms": 740.2971250703558,
+      "server_cpu_percent": 52.6125,
+      "server_rss_mb_max": 245.984375,
+      "write_lock_wait_p95_ms": 6.236291024833918,
+      "write_lock_hold_p95_ms": 36.33975004777312,
+      "write_log_rows": 416,
+      "duration_s": 10.556848124950193,
+      "port": 61381,
+      "project_id": "ivp-28dd14d3236e40cd",
+      "wait_entries": 413,
+      "wait_entries_ok": 413,
+      "wait_entries_failed": 0,
+      "write_log_rows_total": 417,
+      "write_log_read_error": null,
+      "server_exit": {
+        "returncode": -15,
+        "had_to_sigkill": false
+      }
+    },
+    {
+      "concurrency": 25,
+      "starts_workers": 2,
+      "requests_completed": 433,
+      "requests_failed": 0,
+      "status_counts": {
+        "reads": {
+          "200": 433
+        },
+        "starts": {
+          "202": 18
+        }
+      },
+      "p50_ms": 611.2866670591757,
+      "p95_ms": 1003.8967499276623,
+      "p99_ms": 1203.432249953039,
+      "health_p95_ms": 1166.0715419566259,
+      "starts_completed": 18,
+      "start_p95_ms": 1956.8511249963194,
+      "server_cpu_percent": 39.2,
+      "server_rss_mb_max": 222.5,
+      "write_lock_wait_p95_ms": 206.1966669280082,
+      "write_lock_hold_p95_ms": 46.17420898284763,
+      "write_log_rows": 297,
+      "duration_s": 10.58584841596894,
+      "port": 61478,
+      "project_id": "ivp-4d0efb0cf8ce4680",
+      "wait_entries": 296,
+      "wait_entries_ok": 294,
+      "wait_entries_failed": 2,
+      "write_log_rows_total": 298,
+      "write_log_read_error": null,
+      "server_exit": {
+        "returncode": -15,
+        "had_to_sigkill": false
+      }
+    }
+  ]
+}
