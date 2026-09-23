@@ -20,6 +20,7 @@ up.
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import json
 import sys
 from collections.abc import Callable
@@ -68,9 +69,16 @@ class AntiekMemoryServer:
 
     The four canonical tools (per master-spec §13.8):
       - search_personal: search the user's personal graph (private +
-        public partitions). Requires per-user OAuth scope; the
-        scope claim is read from the request's `auth_context` field
-        (which the transport layer fills from the bearer token).
+        public partitions). Requires a verified owner. Over stdio the
+        JSON-RPC client writes every byte of `params`, so a client
+        `auth_context` proves nothing on its own: the owner is bound
+        when the server is launched (`bound_owner`, from
+        ANTIEK_MEMORY_OWNER) and the server stamps `auth_context` from
+        that binding (see `_transport_auth_context`). A client claim
+        naming anyone else is refused; an unbound server verifies no
+        one and search_personal fails closed. A handler that declares
+        an `auth_context` keyword receives only this server-derived
+        value (see `_call_handler`), never anything from `arguments`.
       - search_public: search the collective graph. Per-query cost
         flows through IP attribution to publishers (§9) and creators
         (§13.9).
@@ -87,12 +95,29 @@ class AntiekMemoryServer:
     """
 
     tools: list[ToolDescription] = field(default_factory=list)
-    handler_fns: dict[str, Callable[[dict], ToolResult]] = field(default_factory=dict)
+    handler_fns: dict[str, Callable[..., ToolResult]] = field(default_factory=dict)
     resource_handler: Callable[[str], ResourceContent | None] | None = None
+    # The owner this process was launched for; None verifies no one.
+    bound_owner: str | None = None
     server_info: dict = field(default_factory=lambda: {
         "name": "antiek-memory",
         "version": "0.1.0",
     })
+
+    def _transport_auth_context(self, claimed: Any) -> dict[str, str] | None:
+        """The verified caller for this request, derived from the launch
+        binding rather than from the client.
+
+        A client may restate its owner; a claim naming a different owner is
+        an impersonation attempt and yields no identity at all.
+        """
+        if self.bound_owner is None:
+            return None
+        if claimed is not None and (
+            not isinstance(claimed, dict) or claimed.get("user_id") != self.bound_owner
+        ):
+            return None
+        return {"user_id": self.bound_owner}
 
     def handle_request(self, request: dict) -> dict | None:
         """Process one JSON-RPC request and return the response dict.
@@ -129,11 +154,12 @@ class AntiekMemoryServer:
         if method == "tools/call":
             tool_name = params.get("name")
             tool_args = params.get("arguments") or {}
+            auth_context = self._transport_auth_context(params.get("auth_context"))
             handler = self.handler_fns.get(tool_name)
             if handler is None:
                 return _err(rpc_id, -32601, f"Tool not found: {tool_name}")
             try:
-                result = handler(tool_args)
+                result = _call_handler(handler, tool_args, auth_context)
             except Exception as exc:  # defensive
                 return _err(rpc_id, -32603, f"Tool execution error: {exc}")
             return _ok(rpc_id, {
@@ -187,6 +213,29 @@ class AntiekMemoryServer:
 
         # ── unknown method ────────────────────────────────────────
         return _err(rpc_id, -32601, f"Method not found: {method}")
+
+
+def _call_handler(
+    handler: Callable[..., ToolResult],
+    tool_args: dict[str, Any],
+    auth_context: Any,
+) -> ToolResult:
+    """Invoke a tool handler, passing the transport's ``auth_context`` only
+    to handlers that declare the keyword.
+
+    Handlers stay plain ``(args) -> ToolResult`` callables so stubs and the
+    public-graph tools need no auth plumbing; a handler that must know the
+    caller (``search_personal``) opts in by naming ``auth_context``. The
+    value is never merged into ``tool_args`` because ``arguments`` is
+    caller-controlled and an owner claim there would be self-asserted.
+    """
+    try:
+        accepts_auth = "auth_context" in inspect.signature(handler).parameters
+    except (TypeError, ValueError):  # builtins / C callables without a signature
+        accepts_auth = False
+    if accepts_auth:
+        return handler(tool_args, auth_context=auth_context)
+    return handler(tool_args)
 
 
 def _ok(rpc_id: Any, result: dict) -> dict:

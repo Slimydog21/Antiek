@@ -48,6 +48,21 @@ export interface RenderedArtifact {
   sourceHash: string;
 }
 
+/**
+ * A projected INGESTED document (`GET /documents/{id}/render`). There is no
+ * version and no source hash: a document has no version chain the way a
+ * research artifact does, so every render is a side-effect-free projection of
+ * the reader sidecar, identified by the sidecar revision it was built from.
+ */
+export interface RenderedDocument {
+  html: Blob;
+  documentId: string;
+  style: string;
+  hash: string;
+  /** `X-Reader-Revision`; empty when the API did not report one. */
+  readerRevision: string;
+}
+
 const SHA256 = /^[a-f0-9]{64}$/;
 const POSITIVE_VERSION = /^[1-9][0-9]*$/;
 
@@ -77,6 +92,30 @@ function receiptHeaders(
     );
   }
   return { artifactId, style, version, hash, sourceHash };
+}
+
+function documentReceiptHeaders(
+  response: Response,
+  expectedDocumentId: string,
+  expectedStyle: string | undefined,
+): Omit<RenderedDocument, "html"> {
+  const documentId = response.headers.get("X-Document-ID");
+  const style = response.headers.get("X-Artifact-Style");
+  const hash = response.headers.get("X-Content-SHA256");
+  const readerRevision = response.headers.get("X-Reader-Revision") ?? "";
+  const valid =
+    documentId === expectedDocumentId &&
+    typeof style === "string" && style.length > 0 &&
+    (expectedStyle === undefined || style === expectedStyle) &&
+    typeof hash === "string" && SHA256.test(hash);
+  if (!valid) {
+    throw new ApiError(
+      "The render response carried an invalid or mismatched document receipt; it was refused.",
+      502,
+      "invalid document receipt",
+    );
+  }
+  return { documentId, style, hash, readerRevision };
 }
 
 async function checked(response: Response, action: string): Promise<Response> {
@@ -150,6 +189,25 @@ export async function renderArtifact(
     apply ? "Applying style" : "Building preview",
   );
   const receipt = receiptHeaders(response, artifactId, style, apply);
+  return { html: await response.blob(), ...receipt };
+}
+
+/**
+ * Preview an ingested document in a wheel style. GET only: documents have no
+ * `apply` leg, because there is no version chain to apply a style to. The
+ * API refuses a body its serve gate will not release as HTML (`no_reader_html`,
+ * `sanitizer_version_stale`, `rights_denied`, `taken_down`) with that reason
+ * as `detail`, which `checked` surfaces verbatim.
+ */
+export async function renderDocument(
+  documentId: string,
+  style: string | undefined,
+  signal?: AbortSignal,
+): Promise<RenderedDocument> {
+  const query = style === undefined ? "" : `?style=${encodeURIComponent(style)}`;
+  const route = `${API_BASE}/documents/${encodeURIComponent(documentId)}/render${query}`;
+  const response = await checked(await apiFetch(route, { signal }), "Building document preview");
+  const receipt = documentReceiptHeaders(response, documentId, style);
   return { html: await response.blob(), ...receipt };
 }
 

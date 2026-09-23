@@ -59,7 +59,7 @@ from typing import TYPE_CHECKING, Any
 
 import requests
 
-from acquisition.books.pd_jurisdiction import non_serving_pd_qualification
+from acquisition.books.rights_denial import pd_denied_reason
 
 if TYPE_CHECKING:
     from substrate.source_throttle import SourceThrottle as SourceThrottleT
@@ -554,28 +554,13 @@ _ARCHIVE_PD_TOKENS = (
 # ``_ARCHIVE_PD_TOKENS`` substring-matches "public domain" and would otherwise
 # accept text like "NOT in the public domain". A negated PD phrase reads as a
 # rights *denial*, not an assertion.
-_ARCHIVE_NEGATIVE_TOKENS = (
-    "all rights reserved",
-    "all rights",
-    "in copyright",
-    "copyrighted",
-    "not in the public domain",
-    "not in public domain",
-    "not public domain",
-)
 # A negation immediately preceding "public domain" ("not", "no", "isn't",
 # "is not" public domain) also denies the claim.
-_ARCHIVE_NEGATED_PD_RE = re.compile(
-    r"\b(?:not|no|isn't|is not)\s+(?:in\s+(?:the\s+)?)?public\s+domain",
-)
 # An affirmative copyright claim — the © symbol, or "copyright"/"(c)" followed
 # by a year — denies PD even when "public domain" also appears (e.g.
 # "© 2021 Penguin. Public domain text reproduced."). The year anchor is what
 # keeps this from clobbering the legitimate PD token "no known copyright
 # restrictions", which carries no year. CC0/PDM rights never assert ©+year.
-_ARCHIVE_COPYRIGHT_CLAIM_RE = re.compile(
-    r"©|\bcopyright\s+(?:\(c\)\s*)?\d{4}|\(c\)\s*\d{4}",
-)
 
 
 def _archive_pd_basis(meta: dict[str, Any], identifier: str) -> str | None:
@@ -589,14 +574,10 @@ def _archive_pd_basis(meta: dict[str, Any], identifier: str) -> str | None:
     haystack = " ".join(fields).lower()
     # Deny-by-default: any explicit copyright assertion or negated PD phrase
     # disqualifies the item before a PD token can accept it.
-    if any(tok in haystack for tok in _ARCHIVE_NEGATIVE_TOKENS):
-        return None
-    if _ARCHIVE_NEGATED_PD_RE.search(haystack):
-        return None
-    if _ARCHIVE_COPYRIGHT_CLAIM_RE.search(haystack):
-        return None
-    # A PD assertion limited to a non-serving jurisdiction is not PD for us.
-    if non_serving_pd_qualification(haystack) is not None:
+    # Deny-first, from the ONE shared rule — see rights_denial.py. This
+    # gate's own copy of the copyright-claim regex lacked the hedged forms
+    # ("may be under copyright"), so it accepted what the other two denied.
+    if pd_denied_reason(haystack) is not None:
         return None
     if any(tok in haystack for tok in _ARCHIVE_PD_TOKENS):
         asserted = "; ".join(f for f in fields if f)

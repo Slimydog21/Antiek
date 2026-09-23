@@ -40,7 +40,11 @@ export interface UserModelRow {
   id: string;
   provider_kind: ProviderKind;
   provider_catalog_id: string | null;
+  /** The primary variant — what pre-variant callers send and the row shows. */
   model_id: string;
+  /** Every variant this ONE key may drive, primary first. Absent on a
+   *  pre-variant server; readers treat that as `[model_id]`. */
+  model_ids?: string[];
   display_name: string;
   base_url: string | null;
   enabled: boolean;
@@ -66,6 +70,9 @@ export interface AddUserModelRequest {
   provider_kind: ProviderKind;
   provider_catalog_id?: string;
   model_id: string;
+  /** Extra variants to register under the SAME key (one credential, one
+   *  ledger row). `model_id` stays the primary and must be listed. */
+  model_ids?: string[];
   display_name: string;
   api_key: string;
   base_url?: string;
@@ -131,7 +138,18 @@ export function parseUserModelsResponse(raw: unknown): UserModelsResponse {
     "blocked_no_hard_ceiling_adapter", "blocked_hard_ceiling_adapter_mismatch",
   ];
   const models = raw.models.map((value): UserModelRow => {
-    if (!isRecord(value) || !hasExactKeys(value, rowKeys) ||
+    // `model_ids` is the one OPTIONAL key (SPR-03 Task 2): a pre-variant
+    // server omits it. Every other extra is still rejected outright.
+    const hasVariants = isRecord(value) && Object.prototype.hasOwnProperty.call(value, "model_ids");
+    const variantsValid =
+      !hasVariants ||
+      (Array.isArray(value.model_ids) &&
+        value.model_ids.length > 0 &&
+        value.model_ids.every(nonEmptyString) &&
+        value.model_ids.includes(value.model_id as string));
+    if (!isRecord(value) ||
+        !hasExactKeys(value, hasVariants ? [...rowKeys, "model_ids"] : rowKeys) ||
+        !variantsValid ||
         !nonEmptyString(value.id) || !nonEmptyString(value.model_id) ||
         !nonEmptyString(value.display_name) ||
         (value.provider_kind !== "openai_compat" && value.provider_kind !== "anthropic") ||
@@ -147,6 +165,7 @@ export function parseUserModelsResponse(raw: unknown): UserModelsResponse {
     return {
       id: value.id, provider_kind: value.provider_kind,
       provider_catalog_id: value.provider_catalog_id, model_id: value.model_id,
+      ...(hasVariants ? { model_ids: value.model_ids as string[] } : {}),
       display_name: value.display_name, base_url: value.base_url,
       enabled: value.enabled as boolean, key_present: value.key_present as boolean,
       registered: value.registered as boolean, route_eligible: value.route_eligible as boolean,

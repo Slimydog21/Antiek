@@ -65,6 +65,7 @@ class SynthesisAttributionResult:
     option_a: AttributionResult
     option_b: AttributionResult
     option_c: AttributionResult
+    claims: tuple[AttributionClaim, ...] = ()
 
 
 def _build_claims(
@@ -237,6 +238,7 @@ def compute_attribution_for_synthesis(
         option_a=_r("A", a_shares),
         option_b=_r("B", b_shares),
         option_c=_r("C", c_shares),
+        claims=tuple(claims),
     )
 
     if emit_event:
