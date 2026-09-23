@@ -62,7 +62,7 @@ const specificity = (sel: string) => (sel.replace(/\\./g, "x").match(/\.|:(?!:)/
 
 /** The opacity the revealing element ends with. */
 function opacity(css: postcss.Root, d: Device, s: State): string {
-  let best: { spec: number; order: number; value: string } | null = null;
+  const applied: Array<{ spec: number; order: number; value: string }> = [];
   let order = 0;
   css.walkRules((rule: Rule) => {
     order++;
@@ -70,16 +70,16 @@ function opacity(css: postcss.Root, d: Device, s: State): string {
       const at = p as AtRule;
       if (at.name === "media" && !mediaMatches(at.params, d)) return;
     }
-    let value: string | null = null;
-    rule.walkDecls("opacity", (decl) => void (value = decl.value));
-    if (value === null) return;
+    const values: string[] = [];
+    rule.walkDecls("opacity", (decl) => void values.push(decl.value));
+    if (!values.length) return;
     for (const sel of rule.selectors) {
-      if (!matches(sel, s)) continue;
-      const spec = specificity(sel);
-      if (!best || spec > best.spec || (spec === best.spec && order >= best.order)) best = { spec, order, value };
+      if (matches(sel, s)) applied.push({ spec: specificity(sel), order, value: values[values.length - 1] });
     }
   });
-  return best?.value ?? "1";
+  // The winner: highest specificity, then the last in source order.
+  applied.sort((a, b) => a.spec - b.spec || a.order - b.order);
+  return applied.at(-1)?.value ?? "1";
 }
 
 let sheet: postcss.Root;
