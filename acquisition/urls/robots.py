@@ -41,9 +41,11 @@ at the same origin, the licence XML is fetched once and parsed into
 to direct the fetcher at an arbitrary third host (the SSRF shape the
 acquisition layer already guards against elsewhere).
 
-Known limit (stated, not hidden): the policy is resolved for the REQUESTED
-URL's origin. A cross-host redirect target is not re-consulted; the paulgraham
-connector has the same limit because it pins one host.
+Redirects: the fetcher consults robots.txt again for every redirect hop's
+origin (acquisition.urls.client), so a page that redirects to a disallowed
+path on another host is refused before that host is asked for it. The licence
+file is fetched only if robots.txt allows it and only while it stays on the
+declaring origin.
 """
 
 from __future__ import annotations
@@ -82,11 +84,46 @@ UNREACHABLE_RETRY_S = 5 * 60.0
 # time without sleeping.
 _clock: Callable[[], float] = time.monotonic
 
-# ``url -> (status_code, text)``. The fetcher supplies a closure that GETs
-# through its own (possibly injected / arXiv-governed) client, so robots and
-# licence fetches take exactly the transport the page fetch takes. It may
-# raise on a transport error; the policy builder treats that as fail-open.
-FetchText = Callable[[str], tuple[int, str]]
+# The agent the purpose-neutral licence fetch is checked against.
+# urllib.robotparser applies a group to us when the group's token is a
+# substring of this one, so "*" and "Antiek" groups bind it; a
+# purpose-specific group (e.g. "Antiek-Agent") does not.
+LICENCE_FETCH_AGENT = "Antiek"
+
+# Directive names seen in real robots.txt files. A non-empty body with none of
+# them is not a robots file (typically an HTML error page served with 200).
+_KNOWN_DIRECTIVES = frozenset({
+    "user-agent", "allow", "disallow", "sitemap", "crawl-delay", "request-rate",
+    "visit-time", "host", "clean-param", "noindex", "license",
+})
+
+
+# ``url -> (status_code, text, final_url_after_redirects)``. The fetcher
+# supplies a closure that GETs through its own (possibly injected /
+# arXiv-governed) client, so robots and licence fetches take exactly the
+# transport the page fetch takes. It may raise on a transport error; the
+# policy builder treats that as fail-open.
+FetchText = Callable[[str], tuple[int, str, str]]
+
+
+def _body_problem(text: str) -> str | None:
+    """Why a 200 robots.txt body is not a robots file, or None when it is one.
+    An empty or comment-only file IS one: it simply declares no rules."""
+    if "\x00" in text:
+        return "robots.txt contains NUL bytes (binary, not a robots file)"
+    directive_lines = 0
+    content_lines = 0
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        content_lines += 1
+        key = line.partition(":")[0].strip().lower() if ":" in line else ""
+        if key in _KNOWN_DIRECTIVES:
+            directive_lines += 1
+    if content_lines and not directive_lines:
+        return "robots.txt has no robots directives (an HTML error page served with 200?)"
+    return None
 
 
 class RobotsDisallowed(Exception):
@@ -162,9 +199,10 @@ def robots_policy_for(url: str, *, fetch_text: FetchText) -> RobotsPolicy:
     """The policy for ``url``'s origin, building and caching it on first use
     and rebuilding it once the cached entry has expired.
 
-    Concurrent builds for the same origin may both run; the first to store a
-    fresh entry wins and the other's result is discarded. Both are correct,
-    and a duplicate robots fetch beats holding a lock across network I/O.
+    Concurrent builds for the same origin may both run. A concurrently stored
+    entry wins only if it is at least as informative (an applied policy beats
+    a fail-open one); otherwise the newer build is stored. Both paths avoid
+    holding a lock across network I/O.
     """
     origin = origin_of(url)
     with _cache_lock:
@@ -174,7 +212,12 @@ def robots_policy_for(url: str, *, fetch_text: FetchText) -> RobotsPolicy:
     built, ttl_s = _build_policy(origin, fetch_text)
     with _cache_lock:
         current = _cache.get(origin)
-        if current is not None and current is not hit and current[1] > _clock():
+        if (
+            current is not None
+            and current is not hit
+            and current[1] > _clock()
+            and (current[0].applied or not built.applied)
+        ):
             return current[0]
         _cache[origin] = (built, _clock() + ttl_s)
         return built
@@ -215,7 +258,7 @@ def _build_policy(origin: str, fetch_text: FetchText) -> tuple[RobotsPolicy, flo
     parser = urllib.robotparser.RobotFileParser()
     parser.set_url(robots_url)
     try:
-        status, text = fetch_text(robots_url)
+        status, text, _final_url = fetch_text(robots_url)
     except Exception as exc:
         return _fail_open(
             origin, robots_url, parser,
@@ -239,6 +282,9 @@ def _build_policy(origin: str, fetch_text: FetchText) -> tuple[RobotsPolicy, flo
             f"robots.txt is {size} bytes (> {MAX_ROBOTS_BYTES}); not parsed",
             ROBOTS_CACHE_TTL_S,
         )
+    problem = _body_problem(text)
+    if problem:
+        return _fail_open(origin, robots_url, parser, problem, ROBOTS_CACHE_TTL_S)
     try:
         parser.parse(text.splitlines())
     except Exception as exc:
@@ -248,41 +294,83 @@ def _build_policy(origin: str, fetch_text: FetchText) -> tuple[RobotsPolicy, flo
             ROBOTS_CACHE_TTL_S,
         )
     license_url = parse_license_directive(text)
+    try:
+        rights_terms = _load_terms(origin, license_url, fetch_text, parser)
+    except Exception as exc:
+        rights_terms = RightsTerms(
+            source="robots_license_directive",
+            license_url=license_url,
+            parse_error=f"licence unreadable ({type(exc).__name__}: {exc})",
+        )
     policy = RobotsPolicy(
         origin=origin,
         robots_url=robots_url,
         applied=True,
         fail_open_reason=None,
         license_url=license_url,
-        rights_terms=_load_terms(origin, license_url, fetch_text),
+        rights_terms=rights_terms,
         parser=parser,
     )
     return policy, ROBOTS_CACHE_TTL_S
 
 
-def _load_terms(origin: str, license_url: str | None, fetch_text: FetchText) -> RightsTerms:
+def _load_terms(
+    origin: str,
+    license_url: str | None,
+    fetch_text: FetchText,
+    parser: urllib.robotparser.RobotFileParser,
+) -> RightsTerms:
     if license_url is None:
         return NO_TERMS
-    absolute = urljoin(origin + "/", license_url)
-    if origin_of(absolute) != origin:
+    try:
+        absolute = urljoin(origin + "/", license_url)
+        if origin_of(absolute) != origin:
+            logger.warning(
+                "%s: robots.txt License: directive points off-origin (%s); recorded, "
+                "not followed",
+                origin,
+                absolute,
+            )
+            return RightsTerms(
+                source="robots_license_directive",
+                license_url=absolute,
+                parse_error="cross-origin licence URL not followed",
+            )
+    except ValueError as exc:
+        return RightsTerms(
+            source="robots_license_directive",
+            license_url=license_url,
+            parse_error=f"invalid licence URL ({exc})",
+        )
+    if not parser.can_fetch(LICENCE_FETCH_AGENT, absolute):
         logger.warning(
-            "%s: robots.txt License: directive points off-origin (%s); recorded, "
-            "not followed",
+            "%s: robots.txt disallows its licence URL (%s); recorded, not fetched",
             origin,
             absolute,
         )
         return RightsTerms(
             source="robots_license_directive",
             license_url=absolute,
-            parse_error="cross-origin licence URL not followed",
+            parse_error="licence URL is disallowed by robots.txt; not fetched",
         )
     try:
-        status, text = fetch_text(absolute)
+        status, text, final_url = fetch_text(absolute)
     except Exception as exc:
         return RightsTerms(
             source="robots_license_directive",
             license_url=absolute,
             parse_error=f"licence unreachable ({type(exc).__name__}: {exc})",
+        )
+    if origin_of(final_url) != origin:
+        logger.warning(
+            "%s: licence URL redirected off-origin to %s; recorded, not used",
+            origin,
+            final_url,
+        )
+        return RightsTerms(
+            source="robots_license_directive",
+            license_url=absolute,
+            parse_error=f"licence URL redirected off-origin to {final_url}; not used",
         )
     if status >= 400:
         return RightsTerms(

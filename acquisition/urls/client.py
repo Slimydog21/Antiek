@@ -150,7 +150,8 @@ def fetch(
     raises; the count is in-process only and opens no database connection.
 
     Per-host robots.txt is consulted for the purpose's User-Agent before the
-    page is requested; an explicit disallow raises ``RobotsDisallowed``. A missing,
+    page is requested and again for every redirect hop's URL before that hop
+    is requested; an explicit disallow raises ``RobotsDisallowed``. A missing,
     unreachable, or unparseable robots.txt fails OPEN with a WARNING and never
     blocks ingest. The policy is cached in-process once per origin, and any
     RSL licence declared by robots.txt surfaces on ``rights_terms``.
@@ -182,24 +183,41 @@ def fetch(
     }
 
     def _run(c: httpx.Client) -> FetchedHtml:
-        def _get(target: str) -> httpx.Response:
+        def _get(target: str, *, follow: bool) -> httpx.Response:
             def _send() -> httpx.Response:
                 return c.get(
                     target, headers=headers, timeout=timeout_s,
-                    follow_redirects=follow_redirects,
+                    follow_redirects=follow,
                 )
 
             return govern_if_arxiv(target, _send, throttle=canonical_arxiv_throttle())
 
-        def _fetch_text(target: str) -> tuple[int, str]:
-            resp = _get(target)
-            return resp.status_code, resp.text
+        def _send_hop(request: httpx.Request) -> httpx.Response:
+            def _send() -> httpx.Response:
+                return c.send(request, follow_redirects=False)
+
+            return govern_if_arxiv(str(request.url), _send, throttle=canonical_arxiv_throttle())
+
+        def _fetch_text(target: str) -> tuple[int, str, str]:
+            resp = _get(target, follow=True)
+            return resp.status_code, resp.text, str(resp.url)
 
         policy = None if _is_robots_txt(url) else robots_policy_for(url, fetch_text=_fetch_text)
         if policy is not None and not policy.allows(user_agent, url):
             raise RobotsDisallowed(url, user_agent=user_agent, robots_url=policy.robots_url)
 
-        r = _get(url)
+        r = _get(url, follow=False)
+        hops = 0
+        while follow_redirects and r.next_request is not None:
+            if hops >= c.max_redirects:
+                raise httpx.TooManyRedirects("Exceeded maximum allowed redirects.", request=r.request)
+            nxt = r.next_request
+            hop_url = str(nxt.url)
+            policy = None if _is_robots_txt(hop_url) else robots_policy_for(hop_url, fetch_text=_fetch_text)
+            if policy is not None and not policy.allows(user_agent, hop_url):
+                raise RobotsDisallowed(hop_url, user_agent=user_agent, robots_url=policy.robots_url)
+            r = _send_hop(nxt)
+            hops += 1
         if r.status_code in REFUSAL_STATUSES:
             _record_refusal((r.url.host or urlsplit(url).hostname or "").lower(), r.status_code, purpose)
         r.raise_for_status()
