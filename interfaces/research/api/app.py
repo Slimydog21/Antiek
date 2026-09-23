@@ -2679,25 +2679,23 @@ def create_app(
         spawns the per-investigation coroutine that drives phases
         1-9. Returns the investigation_id + start_event_id
         immediately so the caller can poll status."""
-        from .compute_capacity_gate import (
-            attach_capacity_warn_header,
-            commit_start_acu,
-            run_capacity_precheck,
-            warning_body,
-        )
-
-        # Antiek-hosted ACU gate (1 ACU / start). Hard refuse only when
-        # ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT=hard and used >= limit.
-        capacity_gate = run_capacity_precheck(request)
         # Lazy import — avoid pulling InvestigationStartRequestedPayload
         # at module import time so test setups that monkey-patch the
         # schema layer (drift tests) don't see a partially-initialized
         # module.
         import uuid as _uuid
 
+        from substrate.compute_capacity.acu_meter import CapacityGateResult
         from substrate.schemas import (
             InvestigationSpawnedFromPayload,
             InvestigationStartRequestedPayload,
+        )
+
+        from .compute_capacity_gate import (
+            attach_capacity_warn_header,
+            commit_start_acu,
+            run_capacity_precheck,
+            warning_body,
         )
 
         owner_user_id: str | None = None
@@ -2742,15 +2740,78 @@ def create_app(
         if canonical_owner_id is not None and req.investigation_id not in (None, canonical_owner_id):
             raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         investigation_id = req.investigation_id or canonical_owner_id or f"inv-{_uuid.uuid4().hex[:12]}"
-        # Meter 1 ACU for this start (gated, idempotent on investigation_id)
-        # BEFORE anything is claimed, appended or broadcast. A failed charge
-        # (503/429) must mean no run, never an unmetered run behind a 503.
-        post_gate = commit_start_acu(
-            request,
-            investigation_id=investigation_id,
-            reason="post_investigations",
-        )
+        try:
+            start_payload = InvestigationStartRequestedPayload(
+                question=req.question,
+                context=req.context,
+                topic_slug=req.topic_slug,
+                max_sub_questions=req.max_sub_questions,
+                parent_investigation_id=req.parent_investigation_id,
+                spawn_context=req.spawn_context,
+                # SPR-01 M3: record the chosen research tier on the
+                # start event (queryable after the fact). The payload
+                # field is the same CLOSED set.
+                research_tier=req.research_tier,
+
+                source_policy=req.source_policy,
+                owner_user_id=owner_user_id,
+                owner_operation_id=operation_id,
+                owner_model_choices=parsed_choices,
+                owner_launch_digest=launch_digest,
+                owner_launch_version=1 if operation_id is not None else None,
+            )
+        except ValidationError:
+            raise HTTPException(status_code=422, detail="model_selection_invalid") from None
+
+        def _house_replay_event_id() -> str | None:
+            # A house start is keyed on its investigation_id: a retry with the
+            # same id and the same request is a replay of the start event
+            # already on the trajectory, never a second paid run (the ACU
+            # charge is idempotent on the id, so a rerun would be unmetered,
+            # and two runs under one id steal each other's coordinator
+            # futures). The same id with a different request is refused.
+            for row in trajectory(investigation_id):
+                if row.get("action_type") != "investigation.start_requested":
+                    continue
+                if row.get("payload") != start_payload.model_dump(mode="json"):
+                    raise HTTPException(status_code=409, detail="investigation_id_conflict")
+                return str(row["event_id"])
+            return None
+
         replay_event_id: str | None = None
+        if operation_id is None:
+            # Decided before the capacity gate: a replay runs nothing, so it
+            # is neither refused at the cap nor charged (its start may predate
+            # metering or be a chase child that never carried an ACU row), and
+            # a conflict is a 409 that bills nothing.
+            replay_event_id = _house_replay_event_id()
+        capacity_gate: CapacityGateResult | None = None
+        post_gate: CapacityGateResult | None = None
+        conflict_detail = (
+            "owner_model_operation_conflict" if operation_id is not None
+            else "investigation_id_conflict"
+        )
+        if replay_event_id is None:
+            # Antiek-hosted ACU gate (1 ACU / start). Hard refuse only when
+            # ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT=hard and used >= limit, and
+            # never for an id whose start this owner already paid (a retry);
+            # an id another owner paid for is a 409 conflict.
+            capacity_gate = run_capacity_precheck(
+                request, investigation_id=investigation_id,
+                conflict_detail=conflict_detail,
+            )
+            # Meter 1 ACU for this start (gated, idempotent on investigation_id)
+            # BEFORE anything is claimed, appended or broadcast. A failed charge
+            # (503/429) must mean no run, never an unmetered run behind a 503.
+            # An owner operation's canonical id is charged before its claim is
+            # written, so an owner replay or conflict passes the gate above and
+            # is decided by the claim below.
+            post_gate = commit_start_acu(
+                request,
+                investigation_id=investigation_id,
+                reason="post_investigations",
+                conflict_detail=conflict_detail,
+            )
         if operation_id is not None:
             from .research_owner_dispatch import OwnerLaunchConflict, claim_owner_launch
             try:
@@ -2781,42 +2842,9 @@ def create_app(
                             replay_event_id = str(row["event_id"])
                             break
                         raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
-        try:
-            start_payload = InvestigationStartRequestedPayload(
-                question=req.question,
-                context=req.context,
-                topic_slug=req.topic_slug,
-                max_sub_questions=req.max_sub_questions,
-                parent_investigation_id=req.parent_investigation_id,
-                spawn_context=req.spawn_context,
-                # SPR-01 M3: record the chosen research tier on the
-                # start event (queryable after the fact). The payload
-                # field is the same CLOSED set.
-                research_tier=req.research_tier,
-
-                source_policy=req.source_policy,
-                owner_user_id=owner_user_id,
-                owner_operation_id=operation_id,
-                owner_model_choices=parsed_choices,
-                owner_launch_digest=launch_digest,
-                owner_launch_version=1 if operation_id is not None else None,
-            )
-        except ValidationError:
-            raise HTTPException(status_code=422, detail="model_selection_invalid") from None
-        if operation_id is None:
-            # A house start is keyed on its investigation_id: a retry with the
-            # same id and the same request is a replay of the start event
-            # already on the trajectory, never a second paid run (the ACU
-            # charge is idempotent on the id, so a rerun would be unmetered,
-            # and two runs under one id steal each other's coordinator
-            # futures). The same id with a different request is refused.
-            for row in trajectory(investigation_id):
-                if row.get("action_type") != "investigation.start_requested":
-                    continue
-                if row.get("payload") != start_payload.model_dump(mode="json"):
-                    raise HTTPException(status_code=409, detail="investigation_id_conflict")
-                replay_event_id = str(row["event_id"])
-                break
+        elif replay_event_id is None:
+            # A twin may have appended between the check above and the charge.
+            replay_event_id = _house_replay_event_id()
         try:
             event_id = replay_event_id or emit_typed(
                 investigation_id,
@@ -2889,8 +2917,13 @@ def create_app(
                         raise HTTPException(status_code=503, detail="owner_model_start_pending") from None
                 break
 
-        warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
-        attach_capacity_warn_header(response, warn_gate)
+        # A house replay was never gated or charged, so it carries no warning.
+        warn_gate = (
+            post_gate if post_gate is not None and post_gate.verdict == "soft_warn"
+            else capacity_gate
+        )
+        if warn_gate is not None:
+            attach_capacity_warn_header(response, warn_gate)
 
         return InvestigationStartResponse(
             investigation_id=investigation_id,
@@ -2902,7 +2935,7 @@ def create_app(
             # durably queues the launch, so do not call this "accepted".
             owner_model_status=("replayed" if replay_event_id is not None else "queued")
             if operation_id is not None else None,
-            capacity_warning=warning_body(warn_gate),
+            capacity_warning=warning_body(warn_gate) if warn_gate is not None else None,
         )
 
     @app.get(

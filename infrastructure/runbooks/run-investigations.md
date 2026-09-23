@@ -144,8 +144,12 @@ Field guidance (load-bearing — read before you change a default):
   including a re-run of the same question. A known id is an idempotent
   replay of that start: the same body returns the original `start_event_id`
   and runs nothing (polling then shows the earlier run's result), and a
-  different body is refused with 409 `investigation_id_conflict`. Reuse an
-  id only to safely retry a start whose response you did not receive.
+  different body is refused with 409 `investigation_id_conflict`. This holds
+  at the hard compute cap too: the replay (or conflict) is decided before the
+  ACU gate and charges nothing, so a retry after the start that used your last
+  ACU gets its original `start_event_id`, not a 429. A new id at
+  the cap is still refused with 429 `compute_capacity_exhausted`. Reuse an id
+  only to safely retry a start whose response you did not receive.
 
 Save the returned `investigation_id` — you poll with it next.
 
