@@ -483,22 +483,20 @@ def _remap_document_ip_holders(con, remap: dict[str, str]) -> None:
     staging id (the ones this merge just inserted); idempotent on re-run
     because after the first remap no document carries a staging-only id.
 
-    ``documents.ip_holder_id`` is an indexed column, and DuckDB 1.5.2 refuses
-    to UPDATE a secondary-indexed column on a row referenced by a foreign key
-    (chunks/book_assets reference documents). Reuse the substrate's sanctioned
-    workaround: drop the index, UPDATE, recreate — all inside this one
-    transaction so it stays atomic and invisible to readers."""
+    DuckDB refuses to UPDATE a secondary-indexed column on a row referenced
+    by a foreign key (chunks/book_assets reference documents), which is why
+    ``substrate/graph/schema.py`` does not index ``documents.ip_holder_id`` and
+    DROPS ``idx_documents_ip_holder`` at init. The DROP here is defensive for a
+    live file that still carries the legacy index. The index is deliberately
+    NOT re-created afterwards: re-creating it re-armed that failure for every
+    later holder write on a chunked document (the SPR-08 ip_holder persist
+    path and ``tools/backfill_ip_holders.py``), while the warm schema probe
+    reported the file as current."""
     con.execute("DROP INDEX IF EXISTS idx_documents_ip_holder")
-    try:
-        for staging_id, live_id in remap.items():
-            con.execute(
-                "UPDATE documents SET ip_holder_id = ? WHERE ip_holder_id = ?",
-                [live_id, staging_id],
-            )
-    finally:
+    for staging_id, live_id in remap.items():
         con.execute(
-            "CREATE INDEX IF NOT EXISTS idx_documents_ip_holder "
-            "ON documents(ip_holder_id)"
+            "UPDATE documents SET ip_holder_id = ? WHERE ip_holder_id = ?",
+            [live_id, staging_id],
         )
 
 
