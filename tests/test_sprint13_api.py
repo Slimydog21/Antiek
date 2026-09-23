@@ -105,6 +105,31 @@ def test_list_deliverables_returns_summaries(temp_substrate):
 # ─────────────────────────────────────────────────────────────────────
 
 
+def test_list_deliverables_section_stats_come_from_py_analysis(temp_substrate):
+    # SPR-02 task 3: the list projection (read-only) is summarized through the
+    # py_analysis kernel skill. Empty projection -> no stats (not a zero row).
+    client = _client(temp_substrate)
+    assert client.get("/deliverables").json()["section_stats"] is None
+    ids = []
+    for title in ("Memo A", "Memo B"):
+        r = client.post("/deliverables", json={
+            "title": title, "deliverable_kind": "research_memo",
+        })
+        assert r.status_code == 201
+        ids.append(r.json()["deliverable_id"])
+    s = client.post("/sections", json={
+        "deliverable_id": ids[0], "section_index": 0, "title": "Intro",
+    })
+    assert s.status_code == 201
+    stats = client.get("/deliverables").json()["section_stats"]
+    assert stats["name"] == "section_count"
+    assert stats["kind"] == "numeric"
+    assert stats["count"] == 2
+    assert stats["total"] == 1.0
+    assert stats["mean"] == 0.5
+    assert (stats["minimum"], stats["maximum"]) == (0.0, 1.0)
+
+
 def test_post_section_then_get_deliverable_includes_section(temp_substrate):
     client = _client(temp_substrate)
     d = client.post("/deliverables", json={
