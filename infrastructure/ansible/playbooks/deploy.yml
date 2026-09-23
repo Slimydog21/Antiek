@@ -60,18 +60,27 @@
     # running, while both deploy_backend runs had correctly SKIPPED. The gate
     # guarded one caller; it has to guard the action. Same script as the
     # workflow uses, so the two cannot drift.
+    # Automated deploys MUST pass the SHA that already passed the gate:
+    #   ansible-playbook ... -e antiek_target_sha=<sha>
+    # Resolving main here is a TOCTOU race. If main advances after the
+    # workflow gate verified SHA N, this task can resolve pending SHA N+1 and
+    # fail (or, worse, another caller could deploy an ungated tip). Direct
+    # operators may omit the variable; in that case this resolver preserves
+    # the existing fail-closed branch-deploy behavior.
     - name: resolve the SHA this deploy will pull
       ansible.builtin.command:
         cmd: git ls-remote --heads {{ antiek_repo_url }} {{ antiek_repo_branch }}
       delegate_to: localhost
       become: false
       changed_when: false
+      when: antiek_target_sha is not defined
       register: remote_head
       tags: [deploy, gate]
 
     - name: set antiek_target_sha
       ansible.builtin.set_fact:
         antiek_target_sha: "{{ ((remote_head.stdout | trim).split() | first) | default('') }}"
+      when: antiek_target_sha is not defined
       tags: [deploy, gate]
 
     - name: require every main-required check green for the target SHA (fail-closed)
@@ -111,7 +120,9 @@
       ansible.builtin.git:
         repo: "{{ antiek_repo_url }}"
         dest: "{{ antiek_install_dir }}"
-        version: "{{ antiek_repo_branch }}"
+        # Never substitute the branch here. The branch can move between
+        # the required-checks gate and this pull; the exact target cannot.
+        version: "{{ antiek_target_sha }}"
         force: false
       become_user: "{{ antiek_user }}"
       register: git_pull

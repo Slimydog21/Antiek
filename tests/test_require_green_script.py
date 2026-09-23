@@ -331,6 +331,47 @@ def test_gate_step_names_not_on_main_as_its_own_refusal():
     assert '"$rc" -eq 4' in run
 
 
+def _deploy_step() -> dict:
+    wf = yaml.safe_load(WORKFLOW.read_text())
+    return next(
+        s for s in wf["jobs"]["deploy"]["steps"] if s.get("name") == "Deploy"
+    )
+
+
+def _deploy_playbook_tasks() -> list[dict]:
+    playbook = yaml.safe_load(
+        (ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy.yml").read_text()
+    )
+    substrate_play = next(p for p in playbook if p["name"] == "Antiek substrate — deploy update")
+    return substrate_play["tasks"]
+
+
+def test_deploy_pins_the_exact_sha_verified_by_the_gate():
+    # The workflow gate verifies needs.gate.outputs.sha. If the playbook
+    # re-resolves main later, a concurrent merge can make it gate/deploy a
+    # different, pending SHA. This exact failure occurred on run 35922563086:
+    # the workflow gated 1c87d3f1 while Ansible resolved pending 34bbb2ff.
+    step = _deploy_step()
+    assert step["env"]["ANTIEK_TARGET_SHA"] == "${{ needs.gate.outputs.sha }}"
+    assert 'antiek_target_sha=$ANTIEK_TARGET_SHA' in step["run"]
+
+    resolve = next(
+        task for task in _deploy_playbook_tasks()
+        if task["name"] == "resolve the SHA this deploy will pull"
+    )
+    assert resolve["when"] == "antiek_target_sha is not defined"
+    set_target = next(
+        task for task in _deploy_playbook_tasks()
+        if task["name"] == "set antiek_target_sha"
+    )
+    assert set_target["when"] == "antiek_target_sha is not defined"
+    git_pull = next(
+        task for task in _deploy_playbook_tasks()
+        if task["name"] == "git pull"
+    )
+    assert git_pull["ansible.builtin.git"]["version"] == "{{ antiek_target_sha }}"
+
+
 def _resolve_step_run(env: dict[str, str]) -> subprocess.CompletedProcess:
     """Execute the gate's real Resolve step script with the given event data."""
     step = next(s for s in _gate_steps() if s.get("id") == "resolve")
