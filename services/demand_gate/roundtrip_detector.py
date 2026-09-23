@@ -71,9 +71,17 @@ class ExportRegistry:
 
 
 def classify_roundtrip(
-    document_id: str, content_tiptap: dict, registry: ExportRegistry
+    document_id: str,
+    content_tiptap: dict,
+    registry: ExportRegistry,
+    *,
+    user_id: str | None = None,
 ) -> RoundTripResult:
-    """Classify a re-imported artifact against the export registry."""
+    """Classify a re-imported artifact against the export registry.
+
+    ``user_id`` is WHO re-imported it and rides on the event: the verdict's
+    operator exclusion compares it to the operator, and an event with no
+    actor is not admissible as organic demand (see ``compute_verdict``)."""
     h = content_hash(content_tiptap)
     if registry.knows_exact(document_id, h):
         classification = "returned_unmodified"
@@ -90,6 +98,7 @@ def classify_roundtrip(
             "document_id": document_id,
             "classification": classification,
             "content_hash": h,
+            "user_id": user_id,
         }
     return RoundTripResult(
         classification=classification,

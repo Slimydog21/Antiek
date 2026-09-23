@@ -11,6 +11,7 @@ import json
 from typing import Any
 
 from runtime.db_lock import connect_read
+from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 
 from ..adapters.notebook import ResolvedRefData
 
@@ -63,8 +64,14 @@ def _document_rights(
         [document_id],
     ).fetchone()
     if row is None:
-        return None, None, None
+        # The node names a source document that is not there. Its rights are
+        # UNKNOWN, which the rights chokepoint treats as the gated default —
+        # never as None, which the deliverable adapter reads as "the
+        # operator's own content" and exports in full.
+        return None, GATED_DEFAULT_CONTENT_CLASS, None
     title, content_class, ip_holder_id = row
+    if content_class is None:
+        content_class = GATED_DEFAULT_CONTENT_CLASS
     return title, content_class, ip_holder_id
 
 
