@@ -115,6 +115,8 @@ def memory_db(tmp_path: Path) -> Path:
         public_search_cases = (
             ("doc-pd", "public_domain", "chunk-pd",
              "Photosynthesis converts light into chemical energy in chloroplasts."),
+            ("doc-pd2", "public_domain", "chunk-pd2",
+             "Mitochondria generate ATP through cellular respiration."),
             ("doc-r", "restricted_pending_opt_in", "chunk-r",
              "RESTRICTED BODY photosynthesis in a gated book."),
             ("doc-pr", "personal_reading", "chunk-pr",
@@ -447,12 +449,30 @@ class TestToolsCallSearchPublic:
         body = json.loads(raw)
         chunk_ids = {chunk["chunk_id"] for chunk in body["chunks"]}
         assert "chunk-pd" in chunk_ids
+        assert "chunk-pd2" not in chunk_ids
         assert "chunk-r" not in chunk_ids
         assert "chunk-pr" not in chunk_ids
         for chunk in body["chunks"]:
             assert chunk["text"].startswith('<antiek:content trusted="false">')
         assert "RESTRICTED BODY" not in raw
         assert "PERSONAL BODY" not in raw
+
+    def test_search_public_query_matching_nothing_is_empty(self, server_proc):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        resp = _send_and_recv(
+            server_proc,
+            "tools/call",
+            {
+                "name": "search_public",
+                "arguments": {"query": "zzz-no-such-term", "top_k": 10},
+            },
+            rpc_id=5,
+        )
+
+        assert resp["result"]["isError"] is False
+        body = json.loads(resp["result"]["content"][0]["text"])
+        assert body["chunks"] == []
+        assert body["no_match"] is True
 
 
 class TestToolsCallCiteSource:

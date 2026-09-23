@@ -88,6 +88,44 @@ def test_search_public_serves_only_public_servable_classes(db_path: str) -> None
         assert body not in raw
 
 
+def test_query_matching_nothing_returns_an_honest_empty(db_path: str) -> None:
+    handlers, _resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    result = handlers["search_public"]({"query": "zzz-no-such-term", "top_k": 50})
+
+    assert result.is_error is False
+    body = json.loads(result.content[0]["text"])
+    assert body["query"] == "zzz-no-such-term"
+    assert body["chunks"] == []
+    assert body["no_match"] is True
+
+
+def test_non_matching_public_chunk_is_absent(db_path: str) -> None:
+    with connect_write(db_path, purpose="seed-nonmatching-public") as con:
+        _insert_chunk(
+            con, name="unrelated", content_class="public_domain", owner="__operator__",
+            body="Mitochondria generate cellular energy.",
+        )
+    handlers, _resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    result = handlers["search_public"]({"query": "quantum", "top_k": 50})
+
+    assert result.is_error is False
+    chunks = json.loads(result.content[0]["text"])["chunks"]
+    chunk_ids = {chunk["chunk_id"] for chunk in chunks}
+    assert "chunk-pd" in chunk_ids
+    assert "chunk-unrelated" not in chunk_ids
+
+
+@pytest.mark.parametrize("top_k", [0, 51, "5", True])
+def test_top_k_out_of_bounds_is_an_error(db_path: str, top_k) -> None:
+    handlers, _resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    result = handlers["search_public"]({"query": "quantum", "top_k": top_k})
+
+    assert result.is_error is True
+    assert json.loads(result.content[0]["text"])["error"] == (
+        "top_k must be an integer between 1 and 50"
+    )
+
+
 def test_search_public_query_changes_the_answer(db_path: str) -> None:
     with connect_write(db_path, purpose="seed-search-public-ranking") as con:
         _insert_chunk(
