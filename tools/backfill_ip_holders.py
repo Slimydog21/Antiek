@@ -23,11 +23,16 @@ DESIGN INVARIANTS
   ``runtime.db_lock.connect_write`` critical section, ``--workers 1`` only. A
   second parallel connection is rejected at argument parsing: the serialized
   host funnel is the sole graph writer and this tool does not weaken it.
-  ``ip_holder_id`` is unindexed by schema design (``idx_documents_ip_holder``
-  is dropped at init), so the plain UPDATE is safe on rows that chunks or
-  book_assets already reference.
+  ``ip_holder_id`` must not carry a secondary index: DuckDB refuses to
+  UPDATE an indexed column on a row that chunks or book_assets reference.
+  Schema init drops ``idx_documents_ip_holder``, and the warm schema probe
+  treats a file that still carries it as not current, so the
+  ``ensure_initialized`` call ahead of the write lock (the same call the arXiv
+  persist paths make) heals an older database before the pass updates it.
 * **Dry-run by default.** Without ``--apply`` the tool resolves in memory and
-  writes nothing. ``--apply`` is required to mutate.
+  writes no holder. ``--apply`` is required to mutate a row. (Either mode runs
+  ``ensure_initialized`` first, which brings an older file's schema current
+  exactly as any app or harvest open of it would.)
 * **Never prod.** A prod-DB guard mirrors ``tools.backfill_cc0_remap``: a real
   run requires an explicit ``--db-path`` that does NOT resolve to the substrate
   default. Running against the live store is OPERATOR-GATED.
@@ -62,6 +67,7 @@ from middleware.ip_holder_resolver import (  # noqa: E402
     resolve_ip_holder,
 )
 from runtime.db_lock import connect_write  # noqa: E402
+from substrate.graph import ensure_initialized  # noqa: E402
 
 # The only worker count this tool accepts: the pass is one write-lock critical
 # section and the DuckDB single-writer invariant is absolute.
@@ -135,6 +141,7 @@ def run(db_path: str, *, apply: bool) -> BackfillReport:
     reports cannot diverge from the rows an apply rewrites under a concurrent
     writer.
     """
+    db_path = ensure_initialized(db_path)
     purpose = "backfill_ip_holders" if apply else "backfill_ip_holders_dryrun"
     with connect_write(db_path, purpose=purpose) as con:
         return _pass(con, apply=apply)

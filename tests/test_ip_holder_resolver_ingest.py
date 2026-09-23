@@ -32,6 +32,7 @@ from acquisition.arxiv.oai_persist import persist_oai_records
 from acquisition.arxiv.pdf_fetch import FetchedPdf
 from acquisition.arxiv.store import store_pdf_for_arxiv_row
 from runtime.db_lock import connect_read, connect_write
+from substrate.graph import schema
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.graph.schema import init_database_at_path
 from substrate.ip_holders import create_pre_onboarded
@@ -302,6 +303,84 @@ def test_backfill_apply_attributes_null_rows_including_fk_parents(db_path):
     assert _holder_of(db_path, "doc-a") == holder
     assert _holder_of(db_path, "doc-b") == holder
     assert _holder_of(db_path, "doc-c") is None
+
+
+# ── a live file that still carries idx_documents_ip_holder ─────────────────
+#
+# The real local graph was measured carrying this index while the warm schema
+# probe reported it current, so ``ensure_initialized`` never dropped it and the
+# first holder UPDATE on a chunked document raised a foreign-key
+# ConstraintException. ``tools/merge_staging.py`` re-created it after every
+# remap. These tests re-arm that state and forget the in-process init memo,
+# which is what a fresh backfill or harvest process sees.
+
+
+def _arm_legacy_ip_holder_index(db_path: str) -> None:
+    with connect_write(db_path, purpose="ingest-test-legacy-index") as con:
+        con.execute(
+            "CREATE INDEX IF NOT EXISTS idx_documents_ip_holder "
+            "ON documents(ip_holder_id)"
+        )
+    schema._INITIALIZED_PATHS.discard(db_path)
+
+
+def _legacy_index_present(db_path: str) -> bool:
+    con = connect_read(db_path)
+    try:
+        return bool(
+            con.execute(
+                "SELECT count(*) FROM duckdb_indexes() "
+                "WHERE index_name = 'idx_documents_ip_holder'"
+            ).fetchone()[0]
+        )
+    finally:
+        con.close()
+
+
+def test_warm_probe_reports_a_file_with_the_legacy_index_as_not_current(db_path):
+    assert schema._schema_is_present(db_path) is True
+    _arm_legacy_ip_holder_index(db_path)
+    assert schema._schema_is_present(db_path) is False
+    schema.init_database_at_path(db_path)
+    assert _legacy_index_present(db_path) is False
+    assert schema._schema_is_present(db_path) is True
+
+
+def test_backfill_apply_heals_a_db_still_carrying_the_ip_holder_index(db_path):
+    _seed_pre_resolver_rows(db_path)
+    _arm_legacy_ip_holder_index(db_path)
+    holder = _seed_holder(
+        db_path, display_name="Project Gutenberg", domains=["gutenberg.org"]
+    )
+
+    report = backfill_ip_holders.run(db_path, apply=True)
+    assert report.attributed_after == 2
+    assert _holder_of(db_path, "doc-a") == holder  # doc-a has chunks
+    assert _legacy_index_present(db_path) is False
+
+
+def test_oai_re_harvest_resolves_a_chunked_row_on_a_db_with_the_legacy_index(db_path):
+    """The persist path, not only the backfill: a re-harvest of an arXiv row
+    that chunks already reference must resolve its holder, not raise."""
+    arxiv_id = "2402.30003"
+    record = ArxivOaiRecord(
+        arxiv_id=arxiv_id, datestamp="2024-02-15", license_uri=_CC_BY, title="P"
+    )
+    persist_oai_records([record], db_path=db_path)
+    with connect_write(db_path, purpose="ingest-test-seed-chunk") as con:
+        insert_chunk(
+            con, document_id=arxiv_doc_id(arxiv_id), chunk_index=0, text="body"
+        )
+    # An OAI insert leaves twin_source_envelope NULL, which on its own sends
+    # the probe down the healing path. Bring the file fully current first so
+    # the legacy index is the ONLY thing standing between it and "current".
+    schema._INITIALIZED_PATHS.discard(db_path)
+    schema.init_database_at_path(db_path)
+    _arm_legacy_ip_holder_index(db_path)
+    holder = _seed_holder(db_path, display_name="arXiv", domains=["arxiv.org"])
+
+    persist_oai_records([record], db_path=db_path)
+    assert _holder_of(db_path, arxiv_doc_id(arxiv_id)) == holder
 
 
 def test_backfill_second_apply_is_idempotent_and_never_overwrites(db_path):
