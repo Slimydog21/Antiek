@@ -29,6 +29,7 @@ from typing import Any
 try:
     from runtime.db_lock import connect_write
     from substrate.graph.insight_question import (
+        best_supporting_chunk,
         graph_db_path,
         promote_insight,
         promote_question,
@@ -41,6 +42,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from runtime.db_lock import connect_write
     from runtime.research_runner.protocol import StepEvent
     from substrate.graph.insight_question import (
+        best_supporting_chunk,
         graph_db_path,
         promote_insight,
         promote_question,
@@ -97,8 +99,11 @@ def _promotion_metadata(ev: StepEvent) -> dict[str, Any]:
 
 
 
-def _resolve_chunk_id(con: Any, document_id: str | None) -> str | None:
-    """Resolve the most substantive non-boilerplate ``chunk_id`` for a document.
+def _resolve_chunk_id(
+    con: Any, document_id: str | None, note: str = "",
+) -> str | None:
+    """Resolve the non-boilerplate ``chunk_id`` of a document that best
+    supports ``note`` (ties go to the longest chunk).
 
     The funnel's promote path grounds each promoted insight/question on a real
     chunk so ``knowledge_unit_of`` (the flywheel's reuse half) can recover its
@@ -111,6 +116,13 @@ def _resolve_chunk_id(con: Any, document_id: str | None) -> str | None:
     ``tools.run_investigation._pick_substantive_chunk`` heuristic so the two
     deposit paths agree on what "grounded" means.
 
+    Among those substantive chunks the note cites the one that supports it
+    best on its own (``best_supporting_chunk``, the same choice the note-event
+    and document-pass deposits make), not simply the longest: the longest
+    chunk may say something else entirely, and the evidence pack only presents
+    a note its cited chunk supports. Candidates are ordered longest first, so
+    a note no chunk supports (an Exa source pointer) keeps the old choice.
+
     Read-only (a SELECT on the write connection, before the INSERT); it never
     creates a row on read (§16). Returns ``None`` when the document has no
     qualifying chunk (e.g. a placeholder gather doc) — promotion still
@@ -118,8 +130,8 @@ def _resolve_chunk_id(con: Any, document_id: str | None) -> str | None:
     for un-groundable notes."""
     if not document_id:
         return None
-    row = con.execute(
-        """SELECT chunk_id FROM chunks
+    rows = con.execute(
+        """SELECT chunk_id, text FROM chunks
            WHERE document_id = ?
              AND length(text) BETWEEN 400 AND 4000
              AND text NOT ILIKE '%bibliography%'
@@ -128,13 +140,14 @@ def _resolve_chunk_id(con: Any, document_id: str | None) -> str | None:
              AND text NOT ILIKE '## Page%'
              AND text NOT ILIKE 'chapter %'
              AND text NOT ILIKE 'contents%'
-           ORDER BY length(text) DESC
-           LIMIT 1""",
+           ORDER BY length(text) DESC, chunk_id""",
         [document_id],
-    ).fetchone()
-    if not row or row[0] is None:
+    ).fetchall()
+    candidates = {str(cid): str(text) for cid, text in rows if cid is not None}
+    if not candidates:
         return None
-    return str(row[0])
+    chunk_id, _score = best_supporting_chunk(note, candidates)
+    return chunk_id
 
 
 class PromotionFunnel:
@@ -200,12 +213,12 @@ class PromotionFunnel:
                 # Ground the promoted node on a real chunk so the flywheel's
                 # reuse half (knowledge_unit_of) can recover its
                 # claim→chunk→doc grounding and the unit becomes reusable.
-                # The chunk is always the most substantive chunk of the source
-                # document, resolved host-side (read-only SELECT, §16-safe) and
-                # never taken from the producer, which could name a chunk of
-                # another document. Stays None for un-groundable notes,
-                # preserving prior behaviour.
-                chunk_id = _resolve_chunk_id(con, source_document_id)
+                # The chunk is the substantive chunk of the source document
+                # that best supports the note, resolved host-side (read-only
+                # SELECT, §16-safe) and never taken from the producer, which
+                # could name a chunk of another document. Stays None for
+                # un-groundable notes, preserving prior behaviour.
+                chunk_id = _resolve_chunk_id(con, source_document_id, ev.text)
                 if ev.kind == "note":
                     nid = promote_insight(
                         text=ev.text, investigation_id=ev.investigation_id,

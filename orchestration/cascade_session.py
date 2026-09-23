@@ -408,6 +408,7 @@ class CascadeSession:
             role="user_agent",
             events_dir=self._events_dir,
         )
+        payload: dict[str, Any]
         if reason is SynthesisTailSkip.NO_LEAF_DONE:
             action, payload = ActionType.INVESTIGATION_COMPLETED, {"outcome": "stopped"}
         else:

@@ -12,12 +12,13 @@ wrong shape for the synthesizer constraint loop.
 
 ## Contract
 
-``SessionEvidencePack`` (schema version 1) carries:
+``SessionEvidencePack`` (schema version 2; see the second amendment) carries:
 
 - ``session_id`` — parent investigation id (synthesis tail target)
 - ``problem_question`` — plan root question
 - ``chunks[]`` — each with ``chunk_id``, ``document_id``, ``ip_holder_id``
-  (nullable), ``text``, ``source_investigation_id``, ``sub_question``
+  (nullable), ``text`` (the chunk's substrate text), ``note`` (nullable),
+  ``source_investigation_id``, ``sub_question``
 - ``documents[]`` — each chunk's document with matching ``ip_holder_id``
 - ``leaf_investigation_ids`` — gather-only children
 - ``content_hash`` — SHA-256 over canonical body (immutable artifact)
@@ -63,3 +64,27 @@ empty substrate-grounded evidence pack) and returns. No synthesis call is made,
 no `investigation.completed` is written, and DeepResearchComplete stays false.
 The check is scoped to the pack tail; the ordinary Loop 1 Ask path keeps its
 own `insufficient_evidence` completion.
+
+## Amendment — the chunk's text, not the note (2026-09-24, audit wave 5 provenance)
+
+After the first amendment a pack chunk cited a real chunk but carried the
+insight node's label as `text`. A forged remote note ("the moon is made of
+green cheese") naming a real document was grounded by the funnel on that
+document's chunk, and the tail handed it to the synthesizer as a `direct`
+claim citing a chunk that says something else.
+
+`text` is now the cited chunk's own substrate text, read from the `chunks`
+row. The gather note moves to a separate `note` field and is set only when
+that chunk supports it: the note clears the groundedness bar against the one
+chunk and every word of the note, stopwords included, occurs in it. The bar
+alone admits a note that is half source words and half invention, or flips
+meaning through a stopword the scorer ignores. `PackChunk` re-checks this on
+construction, so no pack can carry an unsupported note. The tail presents the
+chunk excerpt as `direct` evidence and a supported note as `inferred`, beside
+the source text. A stored `groundedness_score` is never read. The field
+meaning changed, so `schema_version` is 2 and a v1 pack is refused.
+
+Reconsider if: the lexical bar is replaced by an entailment verifier, at which
+point a supported note could be presented as `direct`. A note built only by
+recombining its chunk's own words still passes the word check; that residue
+is why the note is typed `inferred` and never shown without its source.

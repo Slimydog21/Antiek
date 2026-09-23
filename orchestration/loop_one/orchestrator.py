@@ -1708,23 +1708,33 @@ def _investigation_context_from_pack(pack: SessionEvidencePack) -> Investigation
             ),
         ]
 
+    # ``c.text`` is the cited chunk's source text; ``c.note`` is the gather
+    # note, set only when that chunk supports it (the pack re-checks it). The
+    # answer quotes the sources. A claim is a verbatim excerpt of the chunk it
+    # cites ("direct"), or the supported note typed "inferred": a generated
+    # restatement stays distinguishable from what the source says.
     evidence: list[EvidenceRetrieveDeliveredPayload] = []
     for sq, chunks in sorted(by_sub_q.items()):
-        answer = "\n".join(c.text for c in chunks)
+        answer = "\n".join(c.text[:500] for c in chunks)
         evidence.append(
             EvidenceRetrieveDeliveredPayload(
                 sub_question=sq,
                 answer=answer or "(no gathered evidence)",
                 supporting_claims=[
                     SupportingClaim(
-                        claim=c.text[:500],
-                        evidence_type="direct",
+                        claim=(c.note or c.text)[:500],
+                        evidence_type="inferred" if c.note else "direct",
                         chunk_ids=[c.chunk_id],
                         edge_ids=[],
                         source_tier_min=3,
                         confidence="moderate",
                         confidence_basis=(
-                            f"DRW gather from {c.source_investigation_id}"
+                            f"DRW gather from {c.source_investigation_id}: "
+                            + (
+                                "note supported by the cited chunk"
+                                if c.note
+                                else "verbatim excerpt of the cited chunk"
+                            )
                         ),
                     )
                     for c in chunks

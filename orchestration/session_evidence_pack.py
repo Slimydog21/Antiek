@@ -13,15 +13,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Sequence
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from runtime.db_lock import connect_read
+from substrate.eval.groundedness import DEFAULT_SUPPORTED_THRESHOLD, score_claim
 from substrate.schemas import ActionType
 
-SCHEMA_VERSION = 1
+# v2: ``PackChunk.text`` is the cited chunk's substrate text and the generated
+# note moved to ``PackChunk.note``. A v1 pack's ``text`` is the note itself, so
+# reading one as source text would certify the note; v1 is not accepted.
+SCHEMA_VERSION = 2
 _SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION})
 
 
@@ -37,8 +42,37 @@ class PackDocument(BaseModel):
     source_tier: int = Field(default=3, ge=1, le=5)
 
 
+_WORD = re.compile(r"[a-z0-9]+")
+
+
+def note_support(note: str, chunk_text: str) -> float:
+    """Lexical groundedness of ``note`` against the one chunk it cites."""
+    return float(score_claim(note, [chunk_text]).score)
+
+
+def note_supported(note: str, chunk_text: str) -> bool:
+    """Whether the cited chunk supports ``note`` well enough to present it.
+
+    Two conditions, both against that one chunk: the platform groundedness
+    bar (content coverage, the negation and fabricated-number gates), and
+    every word of the note, stopwords included, occurring in the chunk. The
+    bar alone passes a note that is half source words and half invention
+    ("... fell below the threshold, and the moon is made of green cheese")
+    and ignores stopwords such as over/under; with the second condition a
+    note cannot add a word, name or number its source does not contain."""
+    words = set(_WORD.findall(note.lower()))
+    if not words or not words <= set(_WORD.findall(chunk_text.lower())):
+        return False
+    return note_support(note, chunk_text) >= DEFAULT_SUPPORTED_THRESHOLD
+
+
 class PackChunk(BaseModel):
-    """One evidence chunk with a complete provenance chain."""
+    """One evidence chunk with a complete provenance chain.
+
+    ``text`` is the chunk's own source text. ``note`` is the gather note that
+    cited it, present only when ``text`` supports it (``note_supported``);
+    the model re-checks on construction, so no pack can present a note as
+    evidence its chunk does not contain."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -46,8 +80,19 @@ class PackChunk(BaseModel):
     document_id: str
     ip_holder_id: str | None = None
     text: str
+    note: str | None = None
     source_investigation_id: str
     sub_question: str
+
+    @model_validator(mode="after")
+    def _note_supported_by_text(self) -> PackChunk:
+        if self.note is not None and not note_supported(self.note, self.text):
+            raise ValueError(
+                f"chunk {self.chunk_id!r} note is not supported by its text "
+                f"(groundedness {note_support(self.note, self.text):.3f}, "
+                f"bar {DEFAULT_SUPPORTED_THRESHOLD}, every word in the chunk)"
+            )
+        return self
 
 
 class SessionEvidencePack(BaseModel):
@@ -144,22 +189,23 @@ def parse_session_evidence_pack(data: dict[str, Any]) -> SessionEvidencePack:
 def _substrate_chunk(
     con: Any,
     chunk_id: str,
-) -> tuple[str, str | None, str | None] | None:
-    """``(document_id, ip_holder_id, title)`` for a chunk the substrate holds.
+) -> tuple[str, str | None, str | None, str] | None:
+    """``(document_id, ip_holder_id, title, text)`` for a chunk the substrate
+    holds.
 
     ``None`` when the chunk row, or the document it cites, does not exist.
-    The pack reads both ids and the ip_holder from these rows, never from
-    producer-written node metadata, so it cannot cite a chunk or document
-    that exists nowhere."""
+    The pack reads both ids, the ip_holder and the chunk text from these rows,
+    never from producer-written node metadata, so it cannot cite a chunk or
+    document that exists nowhere, nor put words in a real chunk's mouth."""
     row = con.execute(
-        "SELECT c.document_id, d.ip_holder_id, d.title FROM chunks c "
+        "SELECT c.document_id, d.ip_holder_id, d.title, c.text FROM chunks c "
         "JOIN documents d ON d.document_id = c.document_id "
         "WHERE c.chunk_id = ?",
         [chunk_id],
     ).fetchone()
-    if row is None:
+    if row is None or row[3] is None or not str(row[3]).strip():
         return None
-    return str(row[0]), row[1], row[2]
+    return str(row[0]), row[1], row[2], str(row[3])
 
 
 def _load_problem_question(
@@ -278,10 +324,19 @@ def build_session_evidence_pack(
                 resolved = _substrate_chunk(con, str(meta_chunk))
                 if resolved is None:
                     continue
-                document_id, ip_holder, doc_title = resolved
+                document_id, ip_holder, doc_title, chunk_text = resolved
                 if meta_doc and str(meta_doc) != document_id:
                     continue
                 chunk_id = str(meta_chunk)
+                # The chunk's own text is the evidence. The note is a
+                # generated claim about it: it rides along only when that
+                # chunk supports it, re-checked here against the substrate
+                # text (a stored ``groundedness_score`` is producer or
+                # pipeline written and is not read). An unsupported note
+                # leaves the chunk as a verbatim source excerpt, so the
+                # synthesizer never sees the note as evidence.
+                note = str(label).strip()
+                supported = note_supported(note, chunk_text)
 
                 if document_id not in documents:
                     documents[document_id] = PackDocument(
@@ -297,7 +352,8 @@ def build_session_evidence_pack(
                         chunk_id=chunk_id,
                         document_id=document_id,
                         ip_holder_id=doc.ip_holder_id,
-                        text=str(label).strip(),
+                        text=chunk_text,
+                        note=note if supported else None,
                         source_investigation_id=iid,
                         sub_question=sub_q,
                     )
