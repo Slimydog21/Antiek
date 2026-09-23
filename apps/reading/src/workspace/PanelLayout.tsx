@@ -83,27 +83,10 @@ export function PanelLayout({ mainSlot }: Props) {
     prevTierRef.current = tier;
   }, [tier, dockLeftIds.length, dockRightIds.length]);
 
-  // S11 acceptance: tier `sm` (< 768px) renders a "use a larger
-  // screen" splash; the workspace shell is not designed for phone
-  // widths. The mainSlot still renders so the operator sees real
-  // content if they ignore the splash; the workspace primitives
-  // are hidden so they don't fight the layout at this size.
-  if (tier === "sm") {
-    return (
-      <div className="h-full w-full flex flex-col bg-ice-2 dark:bg-space-2 overflow-hidden">
-        <div className="px-4 py-3 bg-sun text-ink font-mono text-xs flex items-center gap-3">
-          <span aria-hidden="true">⚠</span>
-          <span className="flex-1">
-            Antiek is designed for ≥ 1024 px viewports. Open a larger
-            screen for the workspace chrome.
-          </span>
-        </div>
-        <div className="flex-1 min-h-0 overflow-auto">{mainSlot}</div>
-      </div>
-    );
-  }
-
-  // Pointer-event-based vertical resize of the bottom dock.
+  // Pointer-event-based vertical resize of the bottom dock. Every hook in
+  // this component runs before the tier `sm` early return below: a hook
+  // after it changes the hook count when the viewport crosses 768 px, and
+  // React throws ("Rendered more hooks than during the previous render").
   const startRef = useRef<{ y: number; h: number } | null>(null);
   const onResizeDown = useCallback(
     (e: React.PointerEvent) => {
@@ -123,6 +106,26 @@ export function PanelLayout({ mainSlot }: Props) {
   const onResizeUp = useCallback(() => {
     startRef.current = null;
   }, []);
+
+  // S11 acceptance: tier `sm` (< 768px) renders a "use a larger
+  // screen" splash; the workspace shell is not designed for phone
+  // widths. The mainSlot still renders so the operator sees real
+  // content if they ignore the splash; the workspace primitives
+  // are hidden so they don't fight the layout at this size.
+  if (tier === "sm") {
+    return (
+      <div className="h-full w-full flex flex-col bg-ice-2 dark:bg-space-2 overflow-hidden">
+        <div className="px-4 py-3 bg-sun text-ink font-mono text-xs flex items-center gap-3">
+          <span aria-hidden="true">⚠</span>
+          <span className="flex-1">
+            Antiek is designed for ≥ 1024 px viewports. Open a larger
+            screen for the workspace chrome.
+          </span>
+        </div>
+        <div className="flex-1 min-h-0 overflow-auto">{mainSlot}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full w-full flex bg-transparent overflow-hidden">{/* SPR-04: root made transparent (was bg-ice-2 dark:bg-space-2) so the z-0 living mountainscape shows through the glassy route surface; the docks below keep their opaque chrome bg for legibility. */}
