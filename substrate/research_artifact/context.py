@@ -29,8 +29,11 @@ def synthesis_from_events(
 ) -> tuple[str | None, bool, list[str]]:
     """Return (excerpt, withheld_flag, source_event_ids).
 
-    withheld_flag is True when we only have a completion event but no body
-    should be shown (caller treats like §9.0 guard — excerpt stays None).
+    withheld_flag is always False here: the excerpt is the investigation's own
+    synthesis prose, which the synthesis exporter also serves as the
+    synthesis's own output. This is not a rights guard. Third-party text is
+    rights-filtered per node in ``build_body``; the twin paths set
+    ``synthesis_withheld`` themselves.
     """
     source_ids: list[str] = []
     excerpt: str | None = None

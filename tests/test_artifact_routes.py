@@ -19,6 +19,19 @@ from substrate.research_artifact.paths import artifact_source_path_for
 from substrate.research_artifact.store import ResearchArtifactStore
 
 
+def _seed_servable_sources(db: str, *document_ids: str) -> None:
+    """Give the fixtures' source documents a servable rights class: a research
+    artifact is an export, so an insight whose source rights are unknown
+    renders cite-only (tests/test_research_artifact_rights.py)."""
+    with connect_write(db, purpose="test/servable_sources") as con:
+        for document_id in document_ids:
+            con.execute(
+                "INSERT INTO documents (document_id, source_tier, document_type, "
+                "content_class, title) VALUES (?, 1, 'article', 'public_domain', ?)",
+                [document_id, document_id],
+            )
+
+
 @pytest.fixture
 def api_env(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="ra-api-")
@@ -31,6 +44,7 @@ def api_env(monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", arts)
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     ensure_initialized(db)
+    _seed_servable_sources(db, "doc-1", "doc-2", "doc-compose")
     return {"db": db, "events": events, "arts": arts}
 
 
@@ -205,6 +219,7 @@ def _source_merge_ready_packet(client: TestClient) -> tuple[dict, dict[str, str]
             document_type="book",
             title="Source Merge Book",
             raw_text="Original source book body.",
+            content_class="public_domain",
             on_conflict="ignore",
         )
     for iid, text in [("inv-src-a", "Source merge A"), ("inv-src-b", "Source merge B")]:
