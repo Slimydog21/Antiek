@@ -128,9 +128,24 @@ def test_third_party_and_agent_events_need_evidence_and_the_window(action_type, 
     assert _verdict([{**good, "emitted_at": AFTER}]).verdict == RETIRE
 
 
-def test_tester_set_cannot_smuggle_in_the_operator():
+# Spellings a human reads as "operator" that exact or strip+casefold
+# comparison does not: zero-width and other format characters (Cf), soft
+# hyphen, and fullwidth compatibility forms. Identity is compared on the
+# Unicode caseless-identifier form (NFKC, drop Cf, casefold, NFKC).
+_OPERATOR_SPELLINGS = [
+    " Operator",
+    "operator\u200b",        # zero-width space
+    "\u2060operator",        # word joiner
+    "ope\u00adrator",        # soft hyphen
+    "\uff4f\uff50\uff45\uff52\uff41\uff54\uff4f\uff52",  # fullwidth
+    "OPERATOR\ufeff",        # BOM / zero-width no-break space
+]
+
+
+@pytest.mark.parametrize("spelling", _OPERATOR_SPELLINGS)
+def test_tester_set_cannot_smuggle_in_the_operator(spelling):
     with pytest.raises(analysis.GateNotRunnable):
-        _verdict([], tester_ids=TESTERS | {" Operator"})
+        _verdict([], tester_ids=TESTERS | {spelling})
 
 
 @pytest.mark.parametrize("n", [0, 4, 16])
@@ -202,7 +217,7 @@ def test_changed_reimport_with_an_operator_among_the_exporters_does_not_sustain(
     assert _verdict([{**rt.event, "emitted_at": IN}]).verdict == RETIRE
 
 
-@pytest.mark.parametrize("operator_variant", [OP, "OPERATOR", " operator "])
+@pytest.mark.parametrize("operator_variant", [OP, "OPERATOR", " operator ", *_OPERATOR_SPELLINGS])
 def test_roundtrip_exported_by_a_tester_and_the_operator_does_not_count(operator_variant):
     v = _verdict([_rt("tester-3", exported_by=("tester-2", operator_variant))])
     assert v.verdict == RETIRE and v.counts["organic_roundtrip"] == 0
@@ -288,3 +303,18 @@ def test_ingest_keeps_the_detection_event(tmp_path):
     # ...and the kept event is exactly what the verdict consumes.
     ev = {**ev, "emitted_at": IN}
     assert _verdict([ev]).verdict == SUSTAIN
+
+
+def test_tester_set_cannot_pad_n_with_unicode_spellings_of_one_id():
+    variants = frozenset({
+        "alice", "alice\u200b", "\uff41\uff4c\uff49\uff43\uff45", "ALICE\u2060", "al\u00adice",
+    })
+    assert len(variants) == 5  # distinct raw strings, one person
+    with pytest.raises(analysis.GateNotRunnable, match="variants"):
+        _verdict([], tester_ids=variants)
+
+
+def test_distinct_testers_are_not_collapsed_positive_control():
+    # Normalisation must not merge genuinely different ids.
+    distinct = frozenset({"tester-1", "tester-2", "tester-3", "tester-4", "tester-5"})
+    assert _verdict([_rt("tester-3")], tester_ids=distinct).verdict == SUSTAIN
