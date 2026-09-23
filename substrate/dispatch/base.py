@@ -115,6 +115,15 @@ class NormalizedUsage:
     int; see ``usage_counts_reported``). Zero tokens and
     unknown tokens are different facts: the router bills an unreported call
     at its worst-case ceiling rather than as a free 0-token call.
+
+    ``cache_unknown`` is True when the primary counts are real but the cache
+    split is not (a null / non-int cached count). Only an adapter whose input
+    count is INCLUSIVE of cached tokens may use it (OpenAI-compatible): it
+    bills the whole input at the full rate with ``cached_input_tokens=0``,
+    conservative on the cache discount only, and never discards valid
+    primaries for the whole-call ceiling. An adapter whose input count
+    EXCLUDES the cache (Anthropic) cannot know its total and reports
+    ``reported=False`` instead.
     """
 
     input_tokens: int
@@ -122,6 +131,7 @@ class NormalizedUsage:
     cached_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
     reported: bool = True
+    cache_unknown: bool = False
 
 
 def usage_counts_reported(raw_usage: dict[str, Any], keys: tuple[str, ...]) -> bool:
