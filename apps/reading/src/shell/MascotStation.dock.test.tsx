@@ -91,6 +91,33 @@ describe("the mascot sits in the dock's reserved station", () => {
     expect(drawnAt(screen.getByTestId("brain-mascot"))).toEqual({ x: 326, y: 780 });
   });
 
+  it("re-seats when the dock settles after mount, with no window resize (layout shift)", () => {
+    // Seen in Chromium: the shell laid out 11px larger for its first frame
+    // (the slot at 337,791 at 390x844), then settled to 326,780 without a
+    // window resize event, leaving the mascot hanging off the dock.
+    const observers: Array<() => void> = [];
+    const RO = window.ResizeObserver;
+    (window as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+      cb: () => void;
+      constructor(cb: () => void) {
+        this.cb = cb;
+        observers.push(() => cb());
+      }
+      observe() {}
+      disconnect() {}
+    };
+    try {
+      slotRect = { left: 337, top: 791, width: 64, height: 64 };
+      mount();
+      expect(drawnAt(screen.getByTestId("brain-mascot"))).toEqual({ x: 337, y: 791 });
+      slotRect = { left: 326, top: 780, width: 64, height: 64 };
+      act(() => observers.forEach((fire) => fire()));
+      expect(drawnAt(screen.getByTestId("brain-mascot"))).toEqual({ x: 326, y: 780 });
+    } finally {
+      (window as unknown as { ResizeObserver: unknown }).ResizeObserver = RO;
+    }
+  });
+
   it("stays where the operator drags it (the ratified re-station contract)", () => {
     mount();
     const m = screen.getByTestId("brain-mascot");

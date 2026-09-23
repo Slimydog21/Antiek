@@ -236,13 +236,23 @@ export function MascotStation() {
 
   // Seat Brain on the dock's station once the shell has laid out (the slot
   // does not exist during this component's first render). Layout effect, so
-  // the first painted frame already shows him docked.
+  // the first painted frame already shows him docked. The dock is observed
+  // too: the shell can settle after mount (or a phone's URL bar can change
+  // the viewport) without a window resize, and he must stay seated.
   useLayoutEffect(() => {
-    const d = dockStation();
-    if (!d) return;
-    stationPos.current = d;
-    pos.current = { ...d };
-    applyPos();
+    const seat = () => {
+      const d = docked.current && dockStation();
+      if (!d || dragStart.current) return;
+      stationPos.current = d;
+      if (!roamPaused.current) pos.current = { ...d };
+      applyPos();
+    };
+    seat();
+    const dock = document.querySelector("[data-mascot-station]")?.parentElement;
+    if (!dock || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(seat);
+    ro.observe(dock);
+    return () => ro.disconnect();
   }, [applyPos]);
 
   // ── The stroll primitive (shared by directed excursions + return-home). ──
