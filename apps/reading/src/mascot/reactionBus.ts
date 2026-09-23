@@ -10,7 +10,6 @@ export const PRODUCT_EXPERIENCES = [
   "idle",
   "fail",
   "voice_recording_started",
-  "voice_playback_started",
   "thought_partner_reply_received",
 ] as const;
 
