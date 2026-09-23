@@ -32,16 +32,16 @@ economics.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, TypeVar
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
-from runtime.db_lock import connect_read, connect_write
+from runtime.db_lock import WriteLockTimeout, connect_read, connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.speak import (
     biography,
@@ -110,15 +110,47 @@ def _db() -> str:
     return path
 
 
+# Bounded flock wait for every Speak write; matches compute_capacity_gate._LOCK_TIMEOUT_S
+# and settings_tiers._LOCK_TIMEOUT_S. The 300s connect_write default is pointless
+# behind Cloudflare's ~100s edge timeout, and each waiting request pins one of the
+# default executor's threads (min(32, cpu+4) = 8 on the 4-vCPU prod box), so a long
+# wait exhausts to_thread for the whole app.
+_WRITE_TIMEOUT_S = 15.0
+
+
 @contextmanager
 def _write(purpose: str) -> Iterator[Any]:
     db = _db()
-    con = connect_write(db, purpose=purpose)
+    # Read the module global at CALL TIME, not as a default argument (which
+    # binds at def time) — tests monkeypatch _WRITE_TIMEOUT_S to shrink the
+    # wait and must see the patched value.
+    con = connect_write(db, purpose=purpose, timeout_s=_WRITE_TIMEOUT_S)
     try:
         ensure_speak_schema(con)
         yield con
     finally:
         con.close()
+
+
+_T = TypeVar("_T")
+
+
+async def _off_loop(fn: Callable[[], _T]) -> _T:  # noqa: UP047 -- runtime supports Python 3.11
+    """Run a write-lock-holding sync call off the uvicorn event loop.
+
+    A write-lock timeout is designed backpressure, not a server fault:
+    ``_write`` bounds the flock wait to ``_WRITE_TIMEOUT_S`` so a Speak
+    request fails fast instead of parking a thread (pre-migration, the
+    whole ``--workers 1`` loop) behind a held writer. Uncaught,
+    ``WriteLockTimeout`` (a RuntimeError) surfaces as HTTP 500 — 503 is
+    the retryable signal, the same contract ``agent_work_routes.
+    _write_off_loop`` ("agent_work_writer_busy") and ad_routes
+    ("ad_frame_writer_busy") already return.
+    """
+    try:
+        return await asyncio.to_thread(fn)
+    except WriteLockTimeout as exc:
+        raise HTTPException(status_code=503, detail="speak_writer_busy") from exc
 
 
 @contextmanager
@@ -316,12 +348,15 @@ class ReleasePayoutRequest(BaseModel):
 
 @speak_router.post("/projects", response_model=ProjectResponse, status_code=201)
 async def create_project(req: CreateProjectRequest) -> ProjectResponse:
-    with _translate(), _write("speak/api:create_project") as con:
-        p = project_mod.create_project(
-            con, title=req.title, subject_ref=req.subject_ref,
-            subject_status=req.subject_status, publish_intent=req.publish_intent,
-            topic_description=req.topic_description,
-        )
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:create_project") as con:
+            return project_mod.create_project(
+                con, title=req.title, subject_ref=req.subject_ref,
+                subject_status=req.subject_status, publish_intent=req.publish_intent,
+                topic_description=req.topic_description,
+            )
+
+    p = await _off_loop(_sync)
     return ProjectResponse(**p.__dict__)
 
 
@@ -337,15 +372,18 @@ async def create_biography(req: CreateBiographyRequest) -> BiographyCompositionR
     event. No new store/table — the §16 one-graph guard
     (``test_biography_creates_no_new_store``) asserts this mechanically.
     """
-    with _translate(), _write("speak/api:create_biography") as con:
-        comp = biography_composition.create_biography(
-            con,
-            investigation_id=req.investigation_id,
-            subject_name=req.subject_name,
-            title=req.title,
-            subject_status=req.subject_status,
-            publish_intent=req.publish_intent,
-        )
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:create_biography") as con:
+            return biography_composition.create_biography(
+                con,
+                investigation_id=req.investigation_id,
+                subject_name=req.subject_name,
+                title=req.title,
+                subject_status=req.subject_status,
+                publish_intent=req.publish_intent,
+            )
+
+    comp = await _off_loop(_sync)
     return BiographyCompositionResponse(
         investigation_id=comp.investigation_id,
         deliverable_id=comp.deliverable_id,
@@ -359,16 +397,19 @@ async def list_projects() -> dict:
     """List Speak projects (the operator's project index). Uses a write
     lock only to ensure the Speak schema exists on a fresh DB; the query
     itself is a read."""
-    with _translate(), _write("speak/api:list_projects") as con:
-        rows = con.execute(
-            "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
-            "p.publish_intent, p.invitation_mode, "
-            "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id), "
-            "strftime(p.created_at, '%Y-%m-%dT%H:%M:%S') "
-            "FROM speak_projects p "
-            "JOIN interview_projects ip ON ip.project_id = p.project_id "
-            "ORDER BY p.created_at DESC"
-        ).fetchall()
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:list_projects") as con:
+            return con.execute(
+                "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
+                "p.publish_intent, p.invitation_mode, "
+                "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id), "
+                "strftime(p.created_at, '%Y-%m-%dT%H:%M:%S') "
+                "FROM speak_projects p "
+                "JOIN interview_projects ip ON ip.project_id = p.project_id "
+                "ORDER BY p.created_at DESC"
+            ).fetchall()
+
+    rows = await _off_loop(_sync)
     return {
         "count": len(rows),
         "projects": [
@@ -382,8 +423,11 @@ async def list_projects() -> dict:
 
 @speak_router.get("/projects/{project_id}", response_model=ProjectResponse)
 async def get_project(project_id: str) -> ProjectResponse:
-    with _translate(), _write("speak/api:get_project") as con:
-        p = project_mod.get_project(con, project_id)
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:get_project") as con:
+            return project_mod.get_project(con, project_id)
+
+    p = await _off_loop(_sync)
     return ProjectResponse(**p.__dict__)
 
 
@@ -462,11 +506,15 @@ async def public_feed() -> dict:
 async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
     if not (req.informant_email or req.informant_handle):
         raise HTTPException(status_code=400, detail="informant_email or informant_handle required")
-    with _translate(), _write("speak/api:invite") as con:
-        iv = invitations.invite_stakeholder(
-            con, project_id=project_id,
-            informant_email=req.informant_email, informant_handle=req.informant_handle,
-        )
+
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:invite") as con:
+            return invitations.invite_stakeholder(
+                con, project_id=project_id,
+                informant_email=req.informant_email, informant_handle=req.informant_handle,
+            )
+
+    iv = await _off_loop(_sync)
     return InviteResponse(
         invite_id=iv.invite_id, interview_id=iv.interview_id, link=iv.link,
         token=iv.token,
@@ -477,8 +525,11 @@ async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
 
 @speak_router.get("/projects/{project_id}/invites")
 async def list_invites(project_id: str) -> dict:
-    with _translate(), _write("speak/api:list_invites") as con:
-        rows = invitations.lifecycle(con, project_id)
+    def _sync() -> list[Any]:
+        with _translate(), _write("speak/api:list_invites") as con:
+            return invitations.lifecycle(con, project_id)
+
+    rows = await _off_loop(_sync)
     return {"count": len(rows), "invites": rows}
 
 
@@ -505,8 +556,11 @@ async def resolve_invite(token: str) -> InviteResponse:
 @speak_router.post("/projects/{project_id}/open-public", status_code=200)
 async def open_public(project_id: str) -> dict:
     # Gated on G7 — refuses (403) unless ANTIEK_SPEAK_PUBLIC_ECOSYSTEM.
-    with _translate(), _write("speak/api:open_public") as con:
-        invitations.open_public_contribution(con, project_id)
+    def _sync() -> None:
+        with _translate(), _write("speak/api:open_public") as con:
+            invitations.open_public_contribution(con, project_id)
+
+    await _off_loop(_sync)
     return {"project_id": project_id, "invitation_mode": "public"}
 
 
@@ -595,7 +649,7 @@ async def open_contribute(project_id: str, request: Request) -> dict[str, Any]:
         with _translate(), _write("speak/api:open_contribute") as con:
             return invitations.mint_open_contribution(con, project_id)
 
-    inv = await asyncio.to_thread(_sync)
+    inv = await _off_loop(_sync)
     return {
         "honesty": {
             "open_contribution": "live_g7_will_be_public_only",
@@ -613,9 +667,12 @@ async def open_contribute(project_id: str, request: Request) -> dict[str, Any]:
 
 @speak_router.post("/interviews/{interview_id}/consent", status_code=200)
 async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict:
-    with _translate(), _write("speak/api:consent") as con:
-        scopes = [ConsentScope(s) for s in req.scopes]
-        state = consent_mod.record_consent(con, interview_id=interview_id, scopes=scopes)
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:consent") as con:
+            scopes = [ConsentScope(s) for s in req.scopes]
+            return consent_mod.record_consent(con, interview_id=interview_id, scopes=scopes)
+
+    state = await _off_loop(_sync)
     return {"interview_id": interview_id, "granted": sorted(s.value for s in state.granted)}
 
 
@@ -662,17 +719,20 @@ async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict:
     the interviewee (about_subject / third-party tagging is a confirmed
     judgment, not an inference). Feeds corroboration + authoring +
     economics."""
-    with _translate(), _write("speak/api:claim") as con:
-        row = con.execute(
-            "SELECT project_id FROM interviews WHERE interview_id = ?", [interview_id]
-        ).fetchone()
-        if row is None:
-            raise HTTPException(status_code=404, detail=f"interview {interview_id} not found")
-        claim = third_party.record_claim(
-            con, project_id=row[0], interview_id=interview_id, text=req.text,
-            about_subject=req.about_subject, subject_ref=req.subject_ref,
-            speaker_is_subject=req.speaker_is_subject, confidence=req.confidence,
-        )
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:claim") as con:
+            row = con.execute(
+                "SELECT project_id FROM interviews WHERE interview_id = ?", [interview_id]
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"interview {interview_id} not found")
+            return third_party.record_claim(
+                con, project_id=row[0], interview_id=interview_id, text=req.text,
+                about_subject=req.about_subject, subject_ref=req.subject_ref,
+                speaker_is_subject=req.speaker_is_subject, confidence=req.confidence,
+            )
+
+    claim = await _off_loop(_sync)
     return {"claim_id": claim.claim_id, "is_third_party": claim.is_third_party,
             "verification": claim.verification}
 
@@ -684,8 +744,11 @@ async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict:
 
 @speak_router.post("/projects/{project_id}/corroborate")
 async def corroborate(project_id: str) -> dict:
-    with _translate(), _write("speak/api:corroborate") as con:
-        clusters = corroboration.corroborate_project(con, project_id)
+    def _sync() -> list[Any]:
+        with _translate(), _write("speak/api:corroborate") as con:
+            return corroboration.corroborate_project(con, project_id)
+
+    clusters = await _off_loop(_sync)
     return {"clusters": [
         # canonical_text is the actual remembered statement the "what everyone
         # agrees on" view shows; without it the surface falls back to the
@@ -700,42 +763,55 @@ async def corroborate(project_id: str) -> dict:
 
 @speak_router.post("/projects/{project_id}/subject-consent", status_code=200)
 async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> dict:
-    with _translate(), _write("speak/api:subject_consent") as con:
-        subject_consent_mod.record_subject_consent(
-            con, project_id=project_id, subject_ref=req.subject_ref,
-            subject_status=req.subject_status, consent_granted=req.consent_granted,
-            rationale=req.rationale,
-        )
+    def _sync() -> None:
+        with _translate(), _write("speak/api:subject_consent") as con:
+            subject_consent_mod.record_subject_consent(
+                con, project_id=project_id, subject_ref=req.subject_ref,
+                subject_status=req.subject_status, consent_granted=req.consent_granted,
+                rationale=req.rationale,
+            )
+
+    await _off_loop(_sync)
     return {"project_id": project_id, "subject_ref": req.subject_ref}
 
 
 @speak_router.post("/projects/{project_id}/contributors", status_code=201)
 async def map_contributor(project_id: str, req: ContributorRequest) -> dict:
-    with _translate(), _write("speak/api:contributor") as con:
-        m = contributor_mod.map_contributor(
-            con, interview_id=req.interview_id, project_id=project_id,
-            ip_holder_id=req.ip_holder_id, display_name=req.display_name,
-            legal_contact_email=req.legal_contact_email,
-        )
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:contributor") as con:
+            return contributor_mod.map_contributor(
+                con, interview_id=req.interview_id, project_id=project_id,
+                ip_holder_id=req.ip_holder_id, display_name=req.display_name,
+                legal_contact_email=req.legal_contact_email,
+            )
+
+    m = await _off_loop(_sync)
     return {"interview_id": m.interview_id, "ip_holder_id": m.ip_holder_id,
             "holding_bucket": m.holding_bucket}
 
 
 @speak_router.post("/projects/{project_id}/takedowns", status_code=201)
 async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict:
-    with _translate(), _write("speak/api:takedown") as con:
-        tid = takedown_mod.request_takedown(
-            con, project_id=project_id, target_kind=req.target_kind,
-            target_id=req.target_id, requested_by=req.requested_by, reason=req.reason,
-        )
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:takedown") as con:
+            return takedown_mod.request_takedown(
+                con, project_id=project_id, target_kind=req.target_kind,
+                target_id=req.target_id, requested_by=req.requested_by, reason=req.reason,
+            )
+
+    tid = await _off_loop(_sync)
     return {"takedown_id": tid, "status": "active"}
 
 
 @speak_router.post("/projects/{project_id}/draft")
 async def draft(project_id: str, req: DraftRequest) -> dict:
-    with _translate(), _write("speak/api:draft") as con:
-        outline = biography.assemble_outline(con, project_id=project_id)
-        d = biography.generate_draft(con, project_id=project_id, outline=outline, public=req.public)
+    def _sync() -> tuple[Any, Any]:
+        with _translate(), _write("speak/api:draft") as con:
+            outline = biography.assemble_outline(con, project_id=project_id)
+            d = biography.generate_draft(con, project_id=project_id, outline=outline, public=req.public)
+            return outline, d
+
+    outline, d = await _off_loop(_sync)
     return {
         "deliverable_id": outline.deliverable_id,
         "prose_text": d.prose_text,
@@ -750,12 +826,16 @@ async def draft(project_id: str, req: DraftRequest) -> dict:
 @speak_router.post("/projects/{project_id}/publish", status_code=201)
 async def publish(project_id: str, req: PublishRequest) -> dict:
     ad_revenue = _decimal(req.ad_revenue_usd, "ad_revenue_usd")
-    with _translate(), _write("speak/api:publish") as con:
-        result = publish_mod.publish(
-            con, project_id=project_id, deliverable_id=req.deliverable_id,
-            subject_ref=req.subject_ref, ad_revenue_usd=ad_revenue,
-            quality_scores=req.quality_scores,
-        )
+
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:publish") as con:
+            return publish_mod.publish(
+                con, project_id=project_id, deliverable_id=req.deliverable_id,
+                subject_ref=req.subject_ref, ad_revenue_usd=ad_revenue,
+                quality_scores=req.quality_scores,
+            )
+
+    result = await _off_loop(_sync)
     return {
         "publication_id": result.publication_id, "visibility": result.visibility,
         "served": result.served, "servability": result.servability,
@@ -777,21 +857,24 @@ async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict
     route — production would pass ``substrate.dispatch.dispatch``), NOT by
     the requester. The grade is persisted (kept, even when it fails) and
     returned with its honest/gamed labels. NO money moves here."""
-    with _translate(), _write("speak/api:grade") as con:
-        prow = con.execute(
-            "SELECT project_id FROM interviews WHERE interview_id = ?", [interview_id]
-        ).fetchone()
-        if prow is None:
-            raise HTTPException(status_code=404, detail=f"interview {interview_id} not found")
-        goal = payout_verifier.InterviewGoal(
-            information_goal=req.information_goal,
-            must_cover=tuple(req.must_cover),
-            budget_usd=_decimal(req.budget_usd, "budget_usd"),
-            per_interview_cap_usd=_decimal(req.per_interview_cap_usd, "per_interview_cap_usd"),
-        )
-        grade = payout_verifier.grade_interview(
-            con, project_id=prow[0], interview_id=interview_id, goal=goal,
-        )
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:grade") as con:
+            prow = con.execute(
+                "SELECT project_id FROM interviews WHERE interview_id = ?", [interview_id]
+            ).fetchone()
+            if prow is None:
+                raise HTTPException(status_code=404, detail=f"interview {interview_id} not found")
+            goal = payout_verifier.InterviewGoal(
+                information_goal=req.information_goal,
+                must_cover=tuple(req.must_cover),
+                budget_usd=_decimal(req.budget_usd, "budget_usd"),
+                per_interview_cap_usd=_decimal(req.per_interview_cap_usd, "per_interview_cap_usd"),
+            )
+            return payout_verifier.grade_interview(
+                con, project_id=prow[0], interview_id=interview_id, goal=goal,
+            )
+
+    grade = await _off_loop(_sync)
     return {
         "interview_id": grade.interview_id, "score": grade.score,
         "passed": grade.passed, "honest": grade.honest,
@@ -807,17 +890,20 @@ async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict:
     requester's budget + per-interview cap. With zero ad buyers this
     accrues $0 while still tracking the §9-weighted share fractions; money
     only leaves escrow post-G2/G3 (which this never triggers)."""
-    with _translate(), _write("speak/api:release_payout") as con:
-        goal = payout_verifier.InterviewGoal(
-            information_goal=req.information_goal,
-            budget_usd=_decimal(req.budget_usd, "budget_usd"),
-            per_interview_cap_usd=_decimal(req.per_interview_cap_usd, "per_interview_cap_usd"),
-        )
-        release = payout_verifier.release_payout(
-            con, project_id=project_id, goal=goal,
-            ad_revenue_usd=_decimal(req.ad_revenue_usd, "ad_revenue_usd"),
-            publication_id=req.publication_id,
-        )
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:release_payout") as con:
+            goal = payout_verifier.InterviewGoal(
+                information_goal=req.information_goal,
+                budget_usd=_decimal(req.budget_usd, "budget_usd"),
+                per_interview_cap_usd=_decimal(req.per_interview_cap_usd, "per_interview_cap_usd"),
+            )
+            return payout_verifier.release_payout(
+                con, project_id=project_id, goal=goal,
+                ad_revenue_usd=_decimal(req.ad_revenue_usd, "ad_revenue_usd"),
+                publication_id=req.publication_id,
+            )
+
+    release = await _off_loop(_sync)
     return {
         "spent_usd": str(release.spent_usd),
         "budget_usd": str(release.budget_usd),
@@ -833,11 +919,14 @@ async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict:
 
 @speak_router.post("/projects/{project_id}/book-orders", status_code=201)
 async def order_book(project_id: str, req: BookOrderRequest) -> dict:
-    with _translate(), _write("speak/api:book_order") as con:
-        quote = physical_book.order_physical_book(
-            con, project_id=project_id, book_format=req.book_format,
-            page_count=req.page_count, publication_id=req.publication_id,
-        )
+    def _sync() -> Any:
+        with _translate(), _write("speak/api:book_order") as con:
+            return physical_book.order_physical_book(
+                con, project_id=project_id, book_format=req.book_format,
+                page_count=req.page_count, publication_id=req.publication_id,
+            )
+
+    quote = await _off_loop(_sync)
     return {"order_id": quote.order_id, "book_format": quote.book_format,
             "provider": quote.provider, "cost_usd": str(quote.cost_usd),
             "payer": quote.payer, "fulfilled": quote.fulfilled}
@@ -1168,7 +1257,7 @@ async def invitee_consent(token: str, req: InviteConsentRequest) -> dict:
             )
             return interview_id, state
 
-    interview_id, state = await asyncio.to_thread(_sync)
+    interview_id, state = await _off_loop(_sync)
     return {"interview_id": interview_id, "granted": sorted(s.value for s in state.granted)}
 
 
@@ -1213,7 +1302,7 @@ async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
                 transcript=req.transcript, duration_seconds=req.duration_seconds,
             )
 
-    result = await asyncio.to_thread(_sync)
+    result = await _off_loop(_sync)
     return {"interview_id": result.interview_id, "question_id": result.question_id,
             "document_id": result.document_id, "skipped_reason": result.skipped_reason}
 
@@ -1334,7 +1423,7 @@ async def invitee_voice(
                 transcript=text, duration_seconds=duration_seconds,
             )
 
-    text, result = await asyncio.to_thread(_sync)
+    text, result = await _off_loop(_sync)
     return {
         "interview_id": result.interview_id, "question_id": result.question_id,
         "document_id": result.document_id, "skipped_reason": result.skipped_reason,
@@ -1378,7 +1467,7 @@ async def invitee_followups(token: str) -> dict[str, Any]:
         with _translate():
             return next_followups(_db(), interview_id=interview_id)
 
-    fus = await asyncio.to_thread(_sync)
+    fus = await _off_loop(_sync)
     return {"followups": [
         {"question_id": f.question_id, "text": f.text,
          "follow_up_for_prior_turn": f.follow_up_for_prior_turn}
@@ -1422,5 +1511,5 @@ async def invitee_decline(token: str) -> dict[str, Any]:
         decline(_db(), interview_id)
         return interview_id
 
-    interview_id = await asyncio.to_thread(_sync)
+    interview_id = await _off_loop(_sync)
     return {"interview_id": interview_id, "status": "declined"}

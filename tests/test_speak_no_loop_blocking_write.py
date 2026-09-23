@@ -96,12 +96,14 @@ _UNAUTHENTICATED = frozenset({
 #: credential to trigger, so they are a backlog rather than a hole. Recorded
 #: so the count can only SHRINK: a new coroutine with an on-loop write fails
 #: the test below instead of joining a list nobody re-reads.
+#:
+#: EMPTY since the 2026-09 Speak write migration (the `_off_loop` idiom):
+#: all 18 authenticated on-loop writes moved into `def _sync()` +
+#: `await _off_loop(_sync)`. Keep the name and the shrink-only tests — a new
+#: on-loop write must still fail rather than re-open the backlog.
 _KNOWN_AUTHENTICATED_BLOCKING = frozenset({
-    "corroborate", "create_biography", "create_project", "draft",
-    "get_project", "grade_interview", "invite", "list_invites",
-    "list_projects", "map_contributor", "open_public", "order_book",
-    "publish", "record_consent", "record_interview_claim", "release_payout",
-    "request_takedown", "set_subject_consent",
+    # Empty on purpose. A name added back here is a regression being
+    # grandfathered, not a fix.
 })
 
 
