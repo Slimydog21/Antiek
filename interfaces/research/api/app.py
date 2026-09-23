@@ -1774,7 +1774,9 @@ def create_app(
                     cookie_claims = None
                 if cookie_claims is not None:
                     cookie_email = cookie_claims.email.strip().lower()
-                    if not operator_emails or cookie_email in operator_emails:
+                    # Allowlist, never "no list = anyone": with no
+                    # operator email configured a cookie proves nobody.
+                    if cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
@@ -4805,7 +4807,7 @@ def create_app(
         if claims is None:
             return False
         cookie_email = claims.email.strip().lower()
-        return not operator_emails or cookie_email in operator_emails
+        return cookie_email in operator_emails
 
     @app.websocket("/ws/events")
     async def ws_events(
