@@ -77,7 +77,8 @@ def memory_db(tmp_path: Path) -> Path:
     Inserts:
     - One document (doc-1)
     - Two chunks (chunk-1, chunk-2)
-    - One notebook (nb-1, owner='testuser')
+    - Notebook nb-1 (owner='__operator__') and nb-2 (owner='testuser', the
+      owner the server process is launched for)
     - One notebook_block (block-1, type='note')
     """
     db_path = tmp_path / "graph.duckdb"
@@ -152,6 +153,20 @@ def memory_db(tmp_path: Path) -> Path:
             [
                 "block-1", "nb-1", 0, "note", "note-1",
                 json.dumps({"text": "Private note content for testing."}),
+            ],
+        )
+        con.execute(
+            "INSERT INTO notebooks (notebook_id, title, owner_user_id, content_class) "
+            "VALUES (?, ?, ?, ?)",
+            ["nb-2", "Testuser Notebook", "testuser", "user_owned"],
+        )
+        con.execute(
+            "INSERT INTO notebook_blocks "
+            "(block_id, notebook_id, block_index, block_type, ref_id, content_json) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                "block-2", "nb-2", 0, "note", "note-2",
+                json.dumps({"text": "Testuser private note."}),
             ],
         )
     finally:
@@ -298,14 +313,14 @@ class TestResourcesRead:
         resp = _send_and_recv(
             server_proc,
             "resources/read",
-            {"uri": "antiek://private/notes/__operator__/block-1"},
+            {"uri": "antiek://private/notes/testuser/block-2"},
             rpc_id=4,
         )
         assert "result" in resp
         contents = resp["result"]["contents"]
         assert len(contents) == 1
         content = contents[0]
-        assert content["uri"] == "antiek://private/notes/__operator__/block-1"
+        assert content["uri"] == "antiek://private/notes/testuser/block-2"
         assert content["mimeType"] == "application/json"
 
         # Parse the JSON text to check the envelope
@@ -320,12 +335,30 @@ class TestResourcesRead:
         resp = _send_and_recv(
             server_proc,
             "resources/read",
-            {"uri": "antiek://private/notes/__operator__/block-1"},
+            {"uri": "antiek://private/notes/testuser/block-2"},
             rpc_id=4,
         )
         body = json.loads(resp["result"]["contents"][0]["text"])
-        assert body["user_id"] == "__operator__"
-        assert body["title"] == "Test Notebook"
+        assert body["user_id"] == "testuser"
+        assert body["title"] == "Testuser Notebook"
+
+    def test_another_owners_private_note_is_not_served(self, server_proc):
+        # The process is launched for ``testuser``; naming another owner in the
+        # URI, or claiming to be them, reads as "not found" and leaks nothing.
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        for rpc_id, params in enumerate(
+            (
+                {"uri": "antiek://private/notes/__operator__/block-1"},
+                {
+                    "uri": "antiek://private/notes/__operator__/block-1",
+                    "auth_context": {"user_id": "__operator__"},
+                },
+            ),
+            start=4,
+        ):
+            resp = _send_and_recv(server_proc, "resources/read", params, rpc_id=rpc_id)
+            assert "error" in resp
+            assert "Private note content" not in json.dumps(resp)
 
     def test_private_note_nonexistent_returns_error(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)

@@ -108,7 +108,7 @@ class AntiekMemoryServer:
 
     tools: list[ToolDescription] = field(default_factory=list)
     handler_fns: dict[str, Callable[..., ToolResult]] = field(default_factory=dict)
-    resource_handler: Callable[[str], ResourceContent | None] | None = None
+    resource_handler: Callable[..., ResourceContent | None] | None = None
     # The owner this process was launched for; None verifies no one.
     bound_owner: str | None = None
     server_info: dict[str, Any] = field(default_factory=lambda: {
@@ -214,8 +214,9 @@ class AntiekMemoryServer:
             uri = params.get("uri")
             if not uri or self.resource_handler is None:
                 return _err(rpc_id, -32602, "Missing uri or no resource handler")
+            auth_context = self._transport_auth_context(params.get("auth_context"))
             try:
-                content = self.resource_handler(uri)
+                content = _call_resource_handler(self.resource_handler, uri, auth_context)
             except ResourceError as exc:
                 return _err(rpc_id, exc.code, exc.message, exc.data)
             if content is None:
@@ -230,6 +231,23 @@ class AntiekMemoryServer:
 
         # ── unknown method ────────────────────────────────────────
         return _err(rpc_id, -32601, f"Method not found: {method}")
+
+
+def _call_resource_handler(
+    handler: Callable[..., ResourceContent | None],
+    uri: str,
+    auth_context: Any,
+) -> ResourceContent | None:
+    """Invoke the resource handler, passing the server-derived
+    ``auth_context`` only when the handler declares the keyword (private
+    resources must know the verified caller; public ones need not)."""
+    try:
+        accepts_auth = "auth_context" in inspect.signature(handler).parameters
+    except (TypeError, ValueError):
+        accepts_auth = False
+    if accepts_auth:
+        return handler(uri, auth_context=auth_context)
+    return handler(uri)
 
 
 def _call_handler(

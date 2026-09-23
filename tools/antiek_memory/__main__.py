@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -57,6 +58,16 @@ from .server import (
 from .signing import load_pinned_manifest, manifest_drift
 
 _TRUSTED_FALSE = '<antiek:content trusted="false">{}</antiek:content>'
+_ENVELOPE_TAG = re.compile(r"<(/?\s*antiek:content)", re.IGNORECASE)
+
+
+def _envelope(text: str) -> str:
+    """Wrap untrusted text in the §13.8.3 prompt-injection envelope.
+
+    Any ``antiek:content`` tag inside the text is neutralised first, so the
+    content cannot close the trusted=false region early and speak outside it.
+    """
+    return _TRUSTED_FALSE.format(_ENVELOPE_TAG.sub(r"&lt;\1", text))
 
 # Content classes whose chunk BODY this public MCP surface may return: in the
 # public graph (ad_inventory.attribution) AND full-text servable (constants §I).
@@ -190,6 +201,7 @@ def _make_handlers(
                     owner_user_id=owner,
                     content_classes=None if include_private else PUBLIC_SURFACE_CONTENT_CLASSES,
                     require_term_match=True,
+                    exclude_taken_down=True,
                 )["results"]
             # search() truncates chunk_text for prompt budgets; this surface
             # has always returned the whole chunk, so read it back by id.
@@ -277,7 +289,7 @@ def _make_handlers(
                 continue
             chunks.append({
                 "chunk_id": hit["chunk_id"],
-                "text": _TRUSTED_FALSE.format(full_text),
+                "text": _envelope(full_text),
                 "title": hit["document_title"],
                 "source_tier": hit["source_tier"],
                 "similarity": hit["similarity"],
@@ -509,7 +521,7 @@ def _make_handlers(
         }])
 
     # ── resource handler ──────────────────────────────────────────
-    def resource_handler(uri: str) -> ResourceContent | None:
+    def resource_handler(uri: str, *, auth_context: object = None) -> ResourceContent | None:
         con = connect_read(db_path)
         try:
             if uri.startswith("antiek://private/notes/"):
@@ -518,6 +530,12 @@ def _make_handlers(
                 user_id = parts[4] if len(parts) > 4 else None
                 note_id = parts[5] if len(parts) > 5 else None
                 if not user_id or not note_id:
+                    return None
+                # A private note is served only to its verified owner. The
+                # user_id in the URI is caller-controlled; the owner comes from
+                # the launch-bound auth_context. Anyone else gets "not found",
+                # the same answer as a note that does not exist.
+                if _authenticated_owner(auth_context) != user_id:
                     return None
                 # Notes are stored as notebook_blocks with block_type='note'
                 row = con.execute(
@@ -533,7 +551,7 @@ def _make_handlers(
                     return None
                 # §13.8.3: wrap in prompt-injection envelope
                 raw = row[1] or json.dumps({"note_id": note_id, "title": row[2]})
-                envelope = _TRUSTED_FALSE.format(raw)
+                envelope = _envelope(raw)
                 return ResourceContent(
                     uri=uri,
                     mime_type="application/json",
@@ -562,7 +580,7 @@ def _make_handlers(
                 if row is None:
                     return None
                 raw = row[1] or json.dumps({"note_id": note_id, "title": row[2]})
-                envelope = _TRUSTED_FALSE.format(raw)
+                envelope = _envelope(raw)
                 return ResourceContent(
                     uri=uri,
                     mime_type="application/json",
@@ -635,7 +653,7 @@ def _make_handlers(
                         "title": row[3],
                         "ip_holder_id": row[5],
                         "servability": servability_of(content_class, taken_down=False).value,
-                        "text": _TRUSTED_FALSE.format(row[1]),
+                        "text": _envelope(row[1]),
                     }),
                 )
 
