@@ -47,6 +47,14 @@ def cite_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
                 "graph_scope, metadata) VALUES (?, ?, 'claim', 'depth', ?)",
                 [node_id, label, json.dumps(metadata) if metadata else None],
             )
+        # user-b's private claim, grounded in a public_domain chunk: the
+        # provenance gate passes it, so only the node owner gate can hide it.
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope, "
+            "metadata, owner_user_id) VALUES ('claim-bpriv-pd', "
+            "'USER-B PRIVATE CLAIM TEXT', 'claim', 'depth', ?, 'user-b')",
+            [json.dumps({"chunk_id": "chunk-pd"})],
+        )
         con.execute(
             "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
             "VALUES ('entity-pd', 'Public entity', 'entity', 'depth')"
@@ -138,6 +146,27 @@ def test_claim_citations_use_canonical_node_gate(cite_source: Any) -> None:
     restricted = cite_source({"id": "claim-r", "id_type": "claim"})
     assert restricted.is_error is True
     assert _body(restricted) == {"error": "not found"}
+
+
+def test_owned_claim_on_citable_document_resolves_only_for_its_owner(
+    cite_source: Any,
+) -> None:
+    missing = cite_source({"id": "claim-missing", "id_type": "claim"})
+    for auth_context in (None, {"user_id": "user-c"}):
+        other = cite_source(
+            {"id": "claim-bpriv-pd", "id_type": "claim"}, auth_context=auth_context
+        )
+        assert other.is_error is True
+        assert other.content == missing.content
+        assert "USER-B PRIVATE CLAIM TEXT" not in other.content[0]["text"]
+
+    owned = cite_source(
+        {"id": "claim-bpriv-pd", "id_type": "claim"}, auth_context={"user_id": "user-b"}
+    )
+    assert owned.is_error is False
+    assert _body(owned)["claim_text"] == "USER-B PRIVATE CLAIM TEXT"
+    assert _body(owned)["chunk_id"] == "chunk-pd"
+    assert _body(owned)["document_id"] == "doc-pd"
 
 
 def test_note_visibility_and_document_metadata(cite_source: Any) -> None:
