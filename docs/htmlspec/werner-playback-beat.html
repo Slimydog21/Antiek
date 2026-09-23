@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Werner playback beat</title></head>
+<body>
+  <main>
+    <h1>Werner playback-start beat</h1>
+    <p>Cold-executable contract for the shared ReadAloud surface.</p>
+    <section>
+      <h2>Product truth</h2>
+      <ul>
+        <li>Emit exactly one <code>voice_playback_started</code> experience only after the first <code>HTMLMediaElement.play()</code> promise resolves.</li>
+        <li>Loading, withheld content, empty text, synthesis failure, rejected playback, stale work, and unmount emit nothing.</li>
+        <li>Pause and resume reuse the audio and do not emit a second start beat; Stop or unmount wins over a pending resume.</li>
+        <li>Choreography is observational: observer failure cannot pause audio or rewrite playback state.</li>
+        <li>Map the event to Werner's existing authored thinking pose; do not add a semantically duplicate bitmap.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Integration boundary</h2>
+      <p><code>ReadAloud</code> is the sole shared narration owner. It calls an injectable observer after first-play success. The default observer emits through the Werner reaction bus. The component has no <code>data-werner-target</code>, preventing click choreography duplication.</p>
+    </section>
+    <section>
+      <h2>Accessibility and motion</h2>
+      <p>The reaction bus preserves the existing reduced-motion still-pose path. Audio controls, labels, focus order, and status/error semantics remain unchanged.</p>
+    </section>
+    <section>
+      <h2>Acceptance evidence</h2>
+      <ol>
+        <li>Reaction-map and signal-helper tests prove the exact semantic event.</li>
+        <li>ReadAloud tests prove first-play success once, resume deduplication, rejected-play silence, unmount silence, and observer isolation.</li>
+        <li>Focused tests, typecheck, production build, heterogeneous refutation, hardenx, and exact-head CI pass.</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>
