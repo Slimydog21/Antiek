@@ -24,9 +24,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+
+from substrate.attribution.algorithms import (
+    AttributionClaim,
+    attribution_option_a,
+    attribution_option_b,
+    attribution_option_c,
+)
 
 from .attribution import (
     ATTRIBUTION_ALGORITHM_VERSION,
@@ -36,6 +44,14 @@ from .attribution import (
     compute_attribution_option_b,
     compute_attribution_option_c,
 )
+
+PRODUCER_AD_INVENTORY = "substrate.ad_inventory.attribution"
+PRODUCER_SYNTHESIS_TELEMETRY = "substrate.attribution.algorithms"
+SYNTHESIS_LETTER_TO_ALGORITHM = {
+    "A": AttributionAlgorithm.OPTION_A_EQUAL_SPLIT,
+    "B": AttributionAlgorithm.OPTION_B_CONFIDENCE_TIMES_TIER,
+    "C": AttributionAlgorithm.OPTION_C_LOAD_BEARING,
+}
 
 
 def _now_iso() -> str:
@@ -50,13 +66,13 @@ def _canonical_json(obj: Any) -> str:
 
 
 def _audit_id(*, impression_set_ref: str, algorithm: str, version: str,
-              inputs_json: str) -> str:
-    """Deterministic id from (impression-set, algorithm, version, inputs). Two
+              producer_module: str, inputs_json: str) -> str:
+    """Deterministic id from (impression-set, producer, algorithm, version, inputs). Two
     identical computations collapse to one audit row (idempotent re-record),
     and a changed input or a bumped version produces a distinct row — never an
     in-place mutation of a prior record (append-only)."""
     h = hashlib.sha256(
-        f"{impression_set_ref}\x00{algorithm}\x00{version}\x00{inputs_json}".encode()
+        f"{impression_set_ref}\x00{producer_module}\x00{algorithm}\x00{version}\x00{inputs_json}".encode()
     ).hexdigest()[:24]
     return f"attr-audit-{h}"
 
@@ -73,6 +89,29 @@ _ALGO_INPUT_KEYS: dict[str, tuple[str, ...]] = {
         "chunk_to_document", "claim_load_bearing_scores", "chunk_to_claim_id",
     ),
 }
+_SYNTHESIS_INPUT_KEYS = ("claims", "chunk_to_document", "document_to_tier")
+
+
+def synthesis_audit_inputs(claims: Sequence[AttributionClaim]) -> dict[str, Any]:
+    """Capture the synthesis claims and resolved maps used by the algorithms."""
+    chunk_to_document: dict[str, str] = {}
+    document_to_tier: dict[str, int] = {}
+    for claim in claims:
+        chunk_to_document.update(claim.chunk_to_document)
+        document_to_tier.update(claim.document_to_tier)
+    return {
+        "claims": [
+            {
+                "claim_index": claim.claim_index,
+                "chunk_ids": list(claim.chunk_ids),
+                "confidence": claim.confidence,
+                "load_bearing_weight": claim.load_bearing_weight,
+            }
+            for claim in claims
+        ],
+        "chunk_to_document": chunk_to_document,
+        "document_to_tier": document_to_tier,
+    }
 
 
 @dataclass(frozen=True)
@@ -86,6 +125,7 @@ class AttributionAuditRecord:
     page_id: str
     algorithm: str
     algorithm_version: str
+    producer_module: str
     inputs: dict[str, Any]
     shares: dict[str, float]
     computed_at: str
@@ -113,6 +153,10 @@ def ensure_table(con: Any) -> None:
             """
         )
         con.execute(
+            "ALTER TABLE attribution_audit ADD COLUMN IF NOT EXISTS "
+            "producer_module TEXT DEFAULT 'substrate.ad_inventory.attribution'"
+        )
+        con.execute(
             "CREATE INDEX IF NOT EXISTS idx_attribution_audit_impression_set "
             "ON attribution_audit(impression_set_ref)"
         )
@@ -131,6 +175,7 @@ def record_attribution(
     result: AttributionResult,
     inputs: dict[str, Any],
     algorithm_version: str = ATTRIBUTION_ALGORITHM_VERSION,
+    producer_module: str = PRODUCER_AD_INVENTORY,
 ) -> str:
     """Append one attribution-audit record and return its ``audit_id``.
 
@@ -139,9 +184,15 @@ def record_attribution(
     an identical computation is a no-op returning the existing id, and a prior
     record is NEVER mutated. ``inputs`` MUST be the exact kwargs the algorithm
     was called with — the replay function feeds them straight back."""
+    if producer_module not in (PRODUCER_AD_INVENTORY, PRODUCER_SYNTHESIS_TELEMETRY):
+        raise ValueError(f"unknown attribution producer: {producer_module!r}")
     ensure_table(con)
     algorithm = result.algorithm.value
-    expected = _ALGO_INPUT_KEYS.get(algorithm)
+    expected = (
+        _ALGO_INPUT_KEYS.get(algorithm)
+        if producer_module == PRODUCER_AD_INVENTORY
+        else _SYNTHESIS_INPUT_KEYS
+    )
     if expected is not None and set(inputs.keys()) != set(expected):
         raise ValueError(
             f"inputs for {algorithm} must carry exactly {sorted(expected)}, "
@@ -154,6 +205,7 @@ def record_attribution(
         impression_set_ref=impression_set_ref,
         algorithm=algorithm,
         version=algorithm_version,
+        producer_module=producer_module,
         inputs_json=inputs_json,
     )
     existing = con.execute(
@@ -166,12 +218,12 @@ def record_attribution(
         """
         INSERT INTO attribution_audit (
             audit_id, impression_set_ref, page_id, algorithm,
-            algorithm_version, inputs_json, shares_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            algorithm_version, producer_module, inputs_json, shares_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             audit_id, impression_set_ref, result.page_id, algorithm,
-            algorithm_version, inputs_json, shares_json,
+            algorithm_version, producer_module, inputs_json, shares_json,
         ],
     )
     return audit_id
@@ -184,9 +236,10 @@ def _row_to_record(r: tuple[Any, ...]) -> AttributionAuditRecord:
         page_id=r[2],
         algorithm=r[3],
         algorithm_version=r[4],
-        inputs=json.loads(r[5]),
-        shares=json.loads(r[6]),
-        computed_at=r[7] or "",
+        producer_module=r[5],
+        inputs=json.loads(r[6]),
+        shares=json.loads(r[7]),
+        computed_at=r[8] or "",
     )
 
 
@@ -196,7 +249,8 @@ def load_record(con: Any, audit_id: str) -> AttributionAuditRecord | None:
     row = con.execute(
         """
         SELECT audit_id, impression_set_ref, page_id, algorithm,
-               algorithm_version, inputs_json, shares_json,
+               algorithm_version, COALESCE(producer_module, 'substrate.ad_inventory.attribution'),
+               inputs_json, shares_json,
                strftime(computed_at, '%Y-%m-%dT%H:%M:%S')
         FROM attribution_audit WHERE audit_id = ?
         """,
@@ -213,7 +267,8 @@ def load_for_impression_set(
     rows = con.execute(
         """
         SELECT audit_id, impression_set_ref, page_id, algorithm,
-               algorithm_version, inputs_json, shares_json,
+               algorithm_version, COALESCE(producer_module, 'substrate.ad_inventory.attribution'),
+               inputs_json, shares_json,
                strftime(computed_at, '%Y-%m-%dT%H:%M:%S')
         FROM attribution_audit
         WHERE impression_set_ref = ?
@@ -230,13 +285,39 @@ def load_for_impression_set(
 
 
 def _run_stamped_algorithm(
-    *, page_id: str, algorithm: str, inputs: dict[str, Any],
+    *, page_id: str, algorithm: str, inputs: dict[str, Any], producer_module: str,
 ) -> AttributionResult:
     """Re-run the algorithm a record was stamped with, against its recorded
     inputs. This is the single dispatch point the replay relies on — if a
     future maintainer adds an algorithm they add it here and the version stamp
     forces a new record, so an old record always replays against the math it
     was computed with."""
+    if producer_module == PRODUCER_SYNTHESIS_TELEMETRY:
+        claims = [
+            AttributionClaim(
+                claim_index=claim["claim_index"],
+                chunk_ids=tuple(claim["chunk_ids"]),
+                confidence=claim["confidence"],
+                chunk_to_document=inputs["chunk_to_document"],
+                document_to_tier=inputs["document_to_tier"],
+                load_bearing_weight=claim["load_bearing_weight"],
+            )
+            for claim in inputs["claims"]
+        ]
+        synthesis_algorithms = {
+            AttributionAlgorithm.OPTION_A_EQUAL_SPLIT.value: attribution_option_a,
+            AttributionAlgorithm.OPTION_B_CONFIDENCE_TIMES_TIER.value: attribution_option_b,
+            AttributionAlgorithm.OPTION_C_LOAD_BEARING.value: attribution_option_c,
+        }
+        if algorithm not in synthesis_algorithms:
+            raise ValueError(f"unknown algorithm in audit record: {algorithm!r}")
+        return AttributionResult(
+            algorithm=AttributionAlgorithm(algorithm),
+            page_id=page_id,
+            shares=dict(synthesis_algorithms[algorithm](claims)),
+        )
+    if producer_module != PRODUCER_AD_INVENTORY:
+        raise ValueError(f"unknown attribution producer: {producer_module!r}")
     if algorithm == AttributionAlgorithm.OPTION_A_EQUAL_SPLIT.value:
         return compute_attribution_option_a(
             page_id=page_id,
@@ -283,6 +364,7 @@ def replay(con: Any, audit_id: str) -> ReplayResult:
         page_id=record.page_id,
         algorithm=record.algorithm,
         inputs=record.inputs,
+        producer_module=record.producer_module,
     )
     identical = _canonical_json(recomputed.shares) == _canonical_json(record.shares)
     return ReplayResult(
@@ -375,7 +457,10 @@ def comparison_to_json(cmp: AlgorithmComparison) -> dict[str, Any]:
 __all__ = [
     "AlgorithmComparison",
     "AttributionAuditRecord",
+    "PRODUCER_AD_INVENTORY",
+    "PRODUCER_SYNTHESIS_TELEMETRY",
     "ReplayResult",
+    "SYNTHESIS_LETTER_TO_ALGORITHM",
     "compare_algorithms",
     "comparison_to_json",
     "ensure_table",
@@ -383,4 +468,5 @@ __all__ = [
     "load_record",
     "record_attribution",
     "replay",
+    "synthesis_audit_inputs",
 ]
