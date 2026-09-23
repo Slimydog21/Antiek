@@ -30,6 +30,7 @@ from substrate.graph import (  # noqa: E402
     insert_document,
 )
 
+
 def _derived_owner() -> str:
     from interfaces.research.api.account_memory_identity import (
         derive_owner_from_verified_email,
