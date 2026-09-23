@@ -97,6 +97,14 @@ function mount() {
   return mountReduced(false);
 }
 
+/** The mascot's rendered position. It is placed with a transform (left/top
+ *  stay pinned at 0) so moving him never runs layout. */
+function mascotPos(el: HTMLElement): { x: number; y: number } {
+  const m = el.style.transform.match(/translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\)/);
+  if (!m) throw new Error(`mascot has no translate(): "${el.style.transform}"`);
+  return { x: Number(m[1]), y: Number(m[2]) };
+}
+
 describe("MascotStation (SPR-12 M3)", () => {
   it("lone single-click floats the project tab AFTER the ~250ms window (one floating ProjectTree panel)", () => {
     mount();
@@ -169,8 +177,7 @@ describe("MascotStation (SPR-12 M3)", () => {
     fireEvent.pointerMove(el, { pointerId: 1, clientX: 100000, clientY: 100000 });
     fireEvent.pointerUp(el, { pointerId: 1 });
 
-    const left = parseFloat(el.style.left);
-    const top = parseFloat(el.style.top);
+    const { x: left, y: top } = mascotPos(el);
     // clampRectToViewport keeps >= 80px reachable: x <= innerWidth - 80,
     // y <= innerHeight - 80. So the mascot can't be lost off-screen.
     expect(left).toBeLessThanOrEqual(1200 - 80);
@@ -186,8 +193,7 @@ describe("MascotStation (SPR-12 M3)", () => {
     fireEvent.pointerDown(el, { pointerId: 1, clientX: 88, clientY: 700 });
     fireEvent.pointerMove(el, { pointerId: 1, clientX: -100000, clientY: -100000 });
     fireEvent.pointerUp(el, { pointerId: 1 });
-    const left = parseFloat(el.style.left);
-    const top = parseFloat(el.style.top);
+    const { x: left, y: top } = mascotPos(el);
     // y is clamped to >= 0; x is clamped to >= 80 - width (so >= 80px of the
     // mascot stays on-screen on the left edge too).
     expect(top).toBeGreaterThanOrEqual(0);
@@ -246,15 +252,14 @@ describe("MascotStation — the fixed station", () => {
   it("does NOT walk off to a new spot on its own (fixed — no autonomous roam)", () => {
     mount();
     const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
-    const startLeft = parseFloat(el.style.left);
-    const startTop = parseFloat(el.style.top);
+    const { x: startLeft, y: startTop } = mascotPos(el);
     // Elapse well past what several old roam cycles would have been — the
     // station never moves Brain by itself.
     act(() => {
       vi.advanceTimersByTime(30000);
     });
-    expect(parseFloat(el.style.left)).toBe(startLeft);
-    expect(parseFloat(el.style.top)).toBe(startTop);
+    expect(mascotPos(el).x).toBe(startLeft);
+    expect(mascotPos(el).y).toBe(startTop);
     // And he never spontaneously starts a stroll transition.
     expect(el.style.transition).toBe("");
   });
@@ -272,15 +277,14 @@ describe("MascotStation — the fixed station", () => {
   it("is fully still under prefers-reduced-motion and stays clickable", () => {
     const { container } = mountReduced(true);
     const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
-    const startLeft = parseFloat(el.style.left);
-    const startTop = parseFloat(el.style.top);
+    const { x: startLeft, y: startTop } = mascotPos(el);
     act(() => {
       vi.advanceTimersByTime(30000);
     });
-    expect(parseFloat(el.style.left)).toBe(startLeft);
-    expect(parseFloat(el.style.top)).toBe(startTop);
+    expect(mascotPos(el).x).toBe(startLeft);
+    expect(mascotPos(el).y).toBe(startTop);
     // The still floor is not just "position unchanged" — there must be NO
-    // involuntary motion machinery either: no left/top transition (a glide) and
+    // involuntary motion machinery either: no position transition (a glide) and
     // no walk gait class. This reddens if the stage's freeze() → setRoamPaused
     // path ever starts a return-home stroll under reduced motion.
     expect(el.style.transition === "" || el.style.transition === "none").toBe(true);
@@ -297,7 +301,7 @@ describe("MascotStation — the fixed station", () => {
   it("a drag re-stations him and never leaves a stroll transition fighting the pointer", () => {
     mount();
     const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
-    const startLeft = parseFloat(el.style.left);
+    const startLeft = mascotPos(el).x;
     fireEvent.pointerDown(el, { pointerId: 1, clientX: 88, clientY: 700 });
     // pointerDown clears any transition so the drag tracks 1:1.
     expect(el.style.transition).toBe("");
@@ -306,15 +310,42 @@ describe("MascotStation — the fixed station", () => {
     expect(el.style.transition).toBe("");
     fireEvent.pointerUp(el, { pointerId: 1 });
     // He actually moved to the new station spot (re-stationed).
-    expect(parseFloat(el.style.left)).not.toBe(startLeft);
+    expect(mascotPos(el).x).not.toBe(startLeft);
     // And after the drop nothing drifts him back — the drop IS the new station.
-    const droppedLeft = parseFloat(el.style.left);
-    const droppedTop = parseFloat(el.style.top);
+    const dropped = mascotPos(el);
     act(() => {
       vi.advanceTimersByTime(5000);
     });
-    expect(parseFloat(el.style.left)).toBe(droppedLeft);
-    expect(parseFloat(el.style.top)).toBe(droppedTop);
+    expect(mascotPos(el)).toEqual(dropped);
+  });
+
+  // Design audit 2026-09-23 (M5): the stroll animated left/top, one layout
+  // per frame for the whole walk. It must move him with a transform only.
+  it("a directed stroll moves him with a transform, never left/top", () => {
+    mount();
+    const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
+    const start = mascotPos(el);
+    const target = document.createElement("button");
+    target.setAttribute("data-product-id", "research");
+    target.getBoundingClientRect = () =>
+      ({ x: 900, y: 300, left: 900, top: 300, width: 48, height: 48, right: 948, bottom: 348 }) as DOMRect;
+    document.body.appendChild(target);
+    try {
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent("antiek:product:activate", {
+            detail: { productId: "research", source: "click" },
+          }),
+        );
+      });
+      expect(el.style.transition).toMatch(/^transform \d+ms/);
+      expect(el.style.transition).not.toMatch(/\b(left|top)\b/);
+      expect(el.style.left).toBe("0px");
+      expect(el.style.top).toBe("0px");
+      expect(mascotPos(el)).not.toEqual(start);
+    } finally {
+      target.remove();
+    }
   });
 
   // Round-3 hardening (audit MAJOR/acceptance): SPR-06 M5 claims the waddler

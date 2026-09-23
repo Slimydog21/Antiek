@@ -92,6 +92,14 @@ const MASCOT_SIZE = 64;
  *  station promptly after a bump. */
 const STATION_RETURN_MS = 900;
 
+/** The mascot's position as a transform. The button is pinned at the
+ *  viewport origin (left/top 0) and moved with `translate`, so a stroll or a
+ *  drag never runs layout: a left/top stroll cost one layout per frame for the
+ *  whole 900ms (design audit 2026-09-23, M5). */
+function mascotTransform(p: { x: number; y: number }): string {
+  return `translate(${p.x}px, ${p.y}px)`;
+}
+
 /** Where the Mascot's station is when first shown — lower-left, out of the way
  *  of the main composer but clearly in reach. Recomputed against the live
  *  viewport on mount so it is never seeded off-screen on a small window. */
@@ -182,12 +190,11 @@ export function MascotStation() {
   );
 
   // Apply the current ref position to the element (used on mount, on drag,
-  // during a stroll, and after a viewport resize re-clamp).
+  // during a stroll, and after a viewport resize re-clamp). Transform only.
   const applyPos = useCallback(() => {
     const el = buttonRef.current;
     if (!el) return;
-    el.style.left = `${pos.current.x}px`;
-    el.style.top = `${pos.current.y}px`;
+    el.style.transform = mascotTransform(pos.current);
   }, []);
 
   useEffect(() => {
@@ -238,7 +245,7 @@ export function MascotStation() {
         },
       );
       pos.current = { x: target.x, y: target.y };
-      el.style.transition = `left ${durationMs}ms ease-in-out, top ${durationMs}ms ease-in-out`;
+      el.style.transition = `transform ${durationMs}ms ease-in-out`;
       if (bob) {
         // The at-rest `mascot-wander` and the walking `mascot-waddle`
         // both set `animation` on this one node — stacking them means the later
@@ -570,8 +577,9 @@ export function MascotStation() {
       style={{
         width: MASCOT_SIZE,
         height: MASCOT_SIZE,
-        left: pos.current.x,
-        top: pos.current.y,
+        left: 0,
+        top: 0,
+        transform: mascotTransform(pos.current),
       }}
     >
       {/* The bob wrapper. At rest it carries `mascot-wander` (a small

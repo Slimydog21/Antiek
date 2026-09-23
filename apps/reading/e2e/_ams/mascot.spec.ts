@@ -110,7 +110,7 @@ test.describe("SPR-06 — Brain is ALIVE (real Chromium pixels)", () => {
     await page.waitForTimeout(300);
 
     // PIN the mascot so the gate measures WALK MOTION, not the slide. The
-    // cross-screen TRANSLATION is the removed confound: kill the left/top
+    // cross-screen TRANSLATION is the removed confound: kill the position
     // transition + nail the button at its current position, so the clip rect
     // is STATIC and the story background cannot bleed through a sliding clip.
     // (Historical note: the deleted WernerRig SVG once stepped feet via
@@ -125,9 +125,9 @@ test.describe("SPR-06 — Brain is ALIVE (real Chromium pixels)", () => {
       if (!btn) return null;
       const r = btn.getBoundingClientRect();
       // (1) Freeze position: no easing transition, nailed to where it is now.
+      // The station positions Brain with a transform (left/top stay 0).
       btn.style.transition = "none";
-      btn.style.left = `${r.left}px`;
-      btn.style.top = `${r.top}px`;
+      btn.style.transform = `translate(${r.left}px, ${r.top}px)`;
       // Force the walk signal ON the bob span so the descendant rig keyframes
       // run even after the roam's end-of-leg restGait would strip them.
       const bob = btn.firstElementChild as HTMLElement | null;

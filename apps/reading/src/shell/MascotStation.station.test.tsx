@@ -34,6 +34,14 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { MascotStation } from "./MascotStation";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 
+/** The mascot's rendered position. It is placed with a transform (left/top
+ *  stay pinned at 0) so moving him never runs layout. */
+function mascotPos(el: HTMLElement): { x: number; y: number } {
+  const m = el.style.transform.match(/translate\(\s*(-?[\d.]+)px,\s*(-?[\d.]+)px\)/);
+  if (!m) throw new Error(`mascot has no translate(): "${el.style.transform}"`);
+  return { x: Number(m[1]), y: Number(m[2]) };
+}
+
 const s = () => useWorkspace.getState();
 
 const ORIG_matchMedia = (window as unknown as { matchMedia?: unknown })
@@ -104,8 +112,8 @@ describe("MascotStation — the fixed station (flag on)", () => {
   it("does NOT follow the cursor — a pointermove leaves Brain's position untouched", () => {
     mount();
     const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
-    const startLeft = parseFloat(el.style.left);
-    const startTop = parseFloat(el.style.top);
+    const startLeft = mascotPos(el).x;
+    const startTop = mascotPos(el).y;
 
     // Fire pointer moves all over the viewport, then let many frames run.
     act(() => {
@@ -130,8 +138,8 @@ describe("MascotStation — the fixed station (flag on)", () => {
     advanceFrames(1200);
 
     // The reel is gone: the mascot never chases the pointer. Fixed station.
-    expect(parseFloat(el.style.left)).toBe(startLeft);
-    expect(parseFloat(el.style.top)).toBe(startTop);
+    expect(mascotPos(el).x).toBe(startLeft);
+    expect(mascotPos(el).y).toBe(startTop);
   });
 
   it("stays calm for any pointer state (no fishing gag, no bait class)", () => {
@@ -164,11 +172,11 @@ describe("MascotStation — the fixed station (flag on)", () => {
 it("does not wander off on its own (fixed station)", () => {
     mount();
     const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
-    const startLeft = parseFloat(el.style.left);
-    const startTop = parseFloat(el.style.top);
+    const startLeft = mascotPos(el).x;
+    const startTop = mascotPos(el).y;
     advanceFrames(30000);
-    expect(parseFloat(el.style.left)).toBe(startLeft);
-    expect(parseFloat(el.style.top)).toBe(startTop);
+    expect(mascotPos(el).x).toBe(startLeft);
+    expect(mascotPos(el).y).toBe(startTop);
   });
 
   // The load-bearing seam DESIGN.md §6 flags: deleting the ambient roam must NOT
@@ -212,22 +220,22 @@ it("does not wander off on its own (fixed station)", () => {
       }) as DOMRect;
 
     const el = screen.getByTestId("brain-mascot") as HTMLButtonElement;
-    const homeLeft = parseFloat(el.style.left);
-    const homeTop = parseFloat(el.style.top);
+    const homeLeft = mascotPos(el).x;
+    const homeTop = mascotPos(el).y;
 
     // Activate the control → Brain walks OUT to its center (640, 420).
     act(() => {
       fireEvent.click(target);
     });
-    expect(parseFloat(el.style.left)).not.toBe(homeLeft);
-    expect(parseFloat(el.style.left)).toBeGreaterThan(homeLeft); // toward the button (right)
+    expect(mascotPos(el).x).not.toBe(homeLeft);
+    expect(mascotPos(el).x).toBeGreaterThan(homeLeft); // toward the button (right)
 
     // Advance the full excursion: walk (WADDLE_MS=1800) + hit emote (800) +
     // return-home stroll (STATION_RETURN_MS=900). He must be back on station.
     act(() => {
       vi.advanceTimersByTime(1800 + 800 + 900 + 50);
     });
-    expect(parseFloat(el.style.left)).toBe(homeLeft);
-    expect(parseFloat(el.style.top)).toBe(homeTop);
+    expect(mascotPos(el).x).toBe(homeLeft);
+    expect(mascotPos(el).y).toBe(homeTop);
   });
 });
