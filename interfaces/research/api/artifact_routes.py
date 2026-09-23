@@ -571,8 +571,9 @@ async def get_artifact_html(investigation_id: str, request: Request) -> HTMLResp
     """Serve Profile B research findings as a script-free HTML projection.
 
     DuckDB/graph remains source of truth; this is a Lemon/HTML projection for
-    daily reading (html-first thesis). Rights-aware synthesis excerpt follows
-    ``build_body`` (§9.0). Distinct from POST ``/artifact/export`` which writes
+    daily reading (html-first thesis). Findings and gaps pass ``build_body``'s
+    rights chokepoint (a non-servable source renders cite-only, §9.0).
+    Distinct from POST ``/artifact/export`` which writes
     the editable agent-channel HTML (may include note-taking script) to disk.
     """
     try:
