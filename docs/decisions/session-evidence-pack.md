@@ -55,9 +55,11 @@ supporting claim, and a `proceed` synthesis citing a chunk that exists nowhere
 reached DeepResearchComplete. The field shape is unchanged, so
 `schema_version` stays 1.
 
-A stub-only gather now yields an empty pack, and the tail answers with
-`insufficient_evidence`. Whether an `insufficient_evidence` session should
-count as DeepResearchComplete (the Contract line above says an empty pack
-cannot) is an open operator decision; the tail's empty-pack path in
-`orchestration/loop_one/orchestrator.py` still completes it.
-
+A stub-only gather now yields an empty pack, and the tail enforces the
+Contract line above: `run_synthesis_tail_from_pack` in
+`orchestration/loop_one/orchestrator.py` checks `pack.chunks` before phase 6,
+and on an empty pack emits `investigation.failed` (phase 6, reason naming the
+empty substrate-grounded evidence pack) and returns. No synthesis call is made,
+no `investigation.completed` is written, and DeepResearchComplete stays false.
+The check is scoped to the pack tail; the ordinary Loop 1 Ask path keeps its
+own `insufficient_evidence` completion.

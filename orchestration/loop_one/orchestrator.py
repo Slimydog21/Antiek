@@ -1742,8 +1742,33 @@ async def run_synthesis_tail_from_pack(
     broadcaster: EventBroadcaster,
     coordinator: InvestigationCoordinator,
 ) -> InvestigationContext:
-    """Run Loop 1 phases 6–9 only — DRW gather already happened."""
+    """Run Loop 1 phases 6–9 only — DRW gather already happened.
+
+    An empty pack fails closed before phase 6 (decision
+    ``session-evidence-pack``: "Empty pack is valid; it cannot satisfy
+    DeepResearchComplete"). Every pack chunk is substrate-grounded, so no
+    chunks means the gather retrieved nothing the synthesizer could cite;
+    running synthesis anyway would spend a paid call and end in an
+    ``investigation.completed`` that reads as finished research. The normal
+    Loop 1 Ask path keeps its own insufficient-evidence completion."""
     ctx = _investigation_context_from_pack(pack)
+    if not pack.chunks:
+        ctx.failed_phase = 6
+        ctx.fail_reason = (
+            "empty substrate-grounded evidence pack: no gathered note cites a "
+            "chunk present in the substrate, so there is nothing to synthesize "
+            f"({len(pack.leaf_investigation_ids)} leaf research(es) merged)"
+        )
+        await broadcast_emit(
+            broadcaster,
+            ctx.investigation_id,
+            InvestigationFailedPayload(
+                phase=6, reason=ctx.fail_reason, last_completed_phase=None,
+            ),
+            role="orchestrator",
+            policy_id="orchestrator-cascade-tail",
+        )
+        return ctx
     phases: list[Callable[[], Coroutine[Any, Any, bool]]] = [
         lambda: _run_phase_6(ctx, broadcaster, coordinator),
         lambda: _run_phase_7(ctx),

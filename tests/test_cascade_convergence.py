@@ -331,27 +331,33 @@ async def _run_cascade(
 async def test_stub_gather_cannot_synthesize_on_phantom_evidence(tmp_path, monkeypatch):
     """W03: the contract stub retrieves nothing, so its placeholder note is
     not evidence. The pack must not mint a ``chunk-<node>`` /
-    ``doc-gather-*`` pair for it, and the synthesizer (which cites whatever
-    chunk the evidence block offers) must not be able to deliver a
-    ``proceed`` thesis on it. With no evidence the honest outcome is
-    ``insufficient_evidence``."""
+    ``doc-gather-*`` pair for it, and the tail must fail closed on the empty
+    pack per the ratified contract ("Empty pack is valid; it cannot satisfy
+    DeepResearchComplete"): ``investigation.failed`` at phase 6, no paid
+    synthesis call, no ``investigation.completed``."""
     init_database_at_path(os.environ["ANTIEK_DUCKDB_PATH"])
     session, pack = await _run_cascade(
         "session-stub", make_contract_gather_stub(steps=1), monkeypatch,
     )
-    delivered = [
-        r["payload"] for r in trajectory("session-stub")
-        if r.get("action_type") == ActionType.SYNTHESIZE_DELIVERED.value
-    ]
-    assert [
-        (d.get("implicit_recommendation"),
-         [c.get("supporting_chunk_ids") for c in d.get("thesis_components") or []])
-        for d in delivered
-    ] == [("insufficient_evidence", [])], [
+    assert pack.chunks == [], [
         (c.chunk_id, c.document_id, c.text) for c in pack.chunks
     ]
-    assert pack.chunks == []
     assert pack.documents == []
+    assert not session.is_deep_research_complete()
+    rows = trajectory("session-stub")
+    kinds = [r.get("action_type") for r in rows]
+    assert ActionType.INVESTIGATION_COMPLETED.value not in kinds
+    assert ActionType.SYNTHESIZE_DELIVERED.value not in kinds
+    assert ActionType.SYNTHESIZE_REQUESTED.value not in kinds
+    failed = [
+        r["payload"] for r in rows
+        if r.get("action_type") == ActionType.INVESTIGATION_FAILED.value
+    ]
+    assert len(failed) == 1, failed
+    assert failed[0]["phase"] == 6
+    assert "empty substrate-grounded evidence pack" in failed[0]["reason"]
+    ok, _ = check_deep_research_complete("session-stub")
+    assert ok is False
 
 
 @pytest.mark.asyncio
