@@ -24,7 +24,6 @@ const REACTION_MAP: Readonly<Record<ProductExperience, EmoteKind>> = {
   idle: "sleeping",
   fail: "dizzy",
   voice_recording_started: "thinking",
-  voice_playback_started: "thinking",
 };
 
 export const MASCOT_EXPERIENCE_EVENT = "antiek:mascot-experience";
