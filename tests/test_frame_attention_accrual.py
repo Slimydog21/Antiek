@@ -196,6 +196,34 @@ def test_idempotent_no_double_escrow(con):
     assert n_rows == 1  # not 2
 
 
+def test_unresolved_holder_fails_before_any_ledger_write(con):
+    """documents.ip_holder_id has no FK, so the route can hand accrue_window an
+    id with no ip_holders row. That must fail loudly BEFORE any ledger row is
+    written: a frame_attention_accruals row crediting the id while escrow
+    silently moves nothing is money gone with no trace (reconciles() stayed
+    True). A retry with the id resolved then accrues normally."""
+    batch = _window("w-orphan", 10, (_sample("doc-a", dwell=900),), 1000)
+    with pytest.raises(LookupError):
+        accrue_window(
+            con, batch, asset_to_ip_holder={"doc-a": "ipholder-deadbeef0000"}
+        )
+    assert con.execute(
+        "SELECT COUNT(*) FROM frame_attention_accruals WHERE window_id = 'w-orphan'"
+    ).fetchone()[0] == 0
+    assert con.execute(
+        "SELECT COUNT(*) FROM house_seconds WHERE window_id = 'w-orphan'"
+    ).fetchone()[0] == 0
+
+    h = ip_holders.create_pre_onboarded(con, display_name="Resolved Press")
+    result = accrue_window(con, batch, asset_to_ip_holder={"doc-a": h})
+    assert result.reconciles()
+    line = next(x for x in result.asset_lines if x.asset_id == "doc-a")
+    assert line.amount_cents > 0
+    assert ip_holders.get(con, h).escrow_balance_usd == (
+        Decimal(line.amount_cents) / Decimal(100)
+    )
+
+
 def test_replay_reproduces_accrual(con):
     h = ip_holders.create_pre_onboarded(con, display_name="Replay Press")
     samples = (

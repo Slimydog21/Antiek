@@ -150,7 +150,9 @@ class _SpyConnection:
         # accrue_escrow does a find (list_all SELECT) then an escrow UPDATE.
         # No INSERT here for an existing holder; we pre-seed one below.
         if "escrow_balance_usd = escrow_balance_usd +" in sql:
-            return _Cursor([])
+            # The holder exists, so the UPDATE matches its one row (RETURNING).
+            # An empty result is accrue_escrow's unknown-holder signal.
+            return _Cursor([(params[1],)])
         if "FROM ip_holders" in sql:  # list_all / get
             return _Cursor(self._holder_rows())
         return _Cursor([])
