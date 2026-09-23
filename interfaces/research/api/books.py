@@ -671,12 +671,88 @@ class BookHtmlIndexJobOut(BaseModel):
     policy_notes: list[str]
 
 
+# A personal license is third-party work held for the owner's private reading
+# (substrate.constants): owner-only ``personal_reading``, never the publicly
+# servable ``user_owned`` class (same mapping as upload_routes and the EPUB
+# import default).
 _PUBLISH_CONTENT_CLASS_BY_RIGHTS: dict[str, str] = {
     "public_domain": "public_domain",
     "publisher_opt_in": "opt_in_licensed",
     "platform_authored": "user_owned",
-    "personal_license": "user_owned",
+    "personal_license": "personal_reading",
 }
+
+# Serve-gate reviews and publication requests are RECEIPTS the publish job
+# consults, not strings it trusts by prefix. Created lazily beside the graph
+# (precedent: substrate.book_acquisition.authorization.ensure_schema). Ids are
+# content hashes of every decision input, so one id always names one record and
+# re-recording it is a no-op.
+_IMPORT_GATE_DDL = """
+CREATE TABLE IF NOT EXISTS book_import_gate_receipts (
+    receipt_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('serve_gate_review', 'publication_request')),
+    status TEXT NOT NULL,
+    conversion_result_id TEXT NOT NULL,
+    rights_basis TEXT,
+    serve_gate_review_id TEXT,
+    recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+
+def _record_import_gate_receipt(
+    con: Any,
+    *,
+    receipt_id: str,
+    kind: str,
+    status: str,
+    conversion_result_id: str,
+    rights_basis: str | None = None,
+    serve_gate_review_id: str | None = None,
+) -> None:
+    con.execute(_IMPORT_GATE_DDL)
+    con.execute(
+        "INSERT INTO book_import_gate_receipts (receipt_id, kind, status, "
+        "conversion_result_id, rights_basis, serve_gate_review_id) "
+        "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (receipt_id) DO NOTHING",
+        [receipt_id, kind, status, conversion_result_id, rights_basis, serve_gate_review_id],
+    )
+
+
+def _import_gate_receipt(con: Any, receipt_id: str, kind: str) -> dict[str, Any] | None:
+    con.execute(_IMPORT_GATE_DDL)
+    row = con.execute(
+        "SELECT status, conversion_result_id, rights_basis, serve_gate_review_id "
+        "FROM book_import_gate_receipts WHERE receipt_id = ? AND kind = ?",
+        [receipt_id, kind],
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "status": row[0],
+        "conversion_result_id": row[1],
+        "rights_basis": row[2],
+        "serve_gate_review_id": row[3],
+    }
+
+
+def _approved_serve_gate_review(con: Any, serve_gate_review_id: str) -> dict[str, Any]:
+    """The recorded review, or a 409: missing and ``blocked`` never publish."""
+    review = _import_gate_receipt(con, serve_gate_review_id, "serve_gate_review")
+    if review is None:
+        raise HTTPException(status_code=409, detail="serve_gate_review_not_found")
+    if review["status"] != "ready_for_publication_request":
+        raise HTTPException(status_code=409, detail="serve_gate_review_blocked")
+    return review
+
+
+def _publish_rights_admitted(reviewed: str | None, requested: str) -> bool:
+    """The published basis must be the reviewed one. The single admitted
+    difference narrows an ``unknown`` review to owner-only ``personal_license``
+    (what the Library UI sends for it); nothing may widen it."""
+    return requested == reviewed or (
+        reviewed == "unknown" and requested == "personal_license"
+    )
 
 
 def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
@@ -1597,9 +1673,28 @@ def register_book_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=400, detail="no_publication_ack_required")
 
         publication_allowed = req.servability_decision == "servable_full_text"
+        serve_gate_review_id = _book_html_serve_gate_review_id(req)
+        review_status: Literal["ready_for_publication_request", "blocked"] = (
+            "ready_for_publication_request" if publication_allowed else "blocked"
+        )
+        db = _resolve_db_path()
+        from runtime.db_lock import connect_write
+
+        def _record() -> None:
+            with connect_write(db, purpose="books:html_serve_gate_review") as con:
+                _record_import_gate_receipt(
+                    con,
+                    receipt_id=serve_gate_review_id,
+                    kind="serve_gate_review",
+                    status=review_status,
+                    conversion_result_id=conversion_result_id,
+                    rights_basis=req.rights_basis,
+                )
+
+        await asyncio.to_thread(_record)
         return BookHtmlServeGateReviewOut(
-            serve_gate_review_id=_book_html_serve_gate_review_id(req),
-            status="ready_for_publication_request" if publication_allowed else "blocked",
+            serve_gate_review_id=serve_gate_review_id,
+            status=review_status,
             conversion_result_id=conversion_result_id,
             title=req.title.strip(),
             author=req.author.strip() if req.author else None,
@@ -1645,8 +1740,29 @@ def register_book_routes(app: FastAPI) -> None:
         if not req.acknowledge_no_ingest_or_serve:
             raise HTTPException(status_code=400, detail="no_ingest_or_serve_ack_required")
 
+        publication_request_id = _book_html_publication_request_id(req)
+        db = _resolve_db_path()
+        from runtime.db_lock import connect_write
+
+        def _record() -> None:
+            with connect_write(db, purpose="books:html_publication_request") as con:
+                review = _approved_serve_gate_review(con, serve_gate_review_id)
+                if review["conversion_result_id"] != conversion_result_id:
+                    raise HTTPException(
+                        status_code=409, detail="conversion_result_review_mismatch"
+                    )
+                _record_import_gate_receipt(
+                    con,
+                    receipt_id=publication_request_id,
+                    kind="publication_request",
+                    status="ready_for_explicit_publish_job",
+                    conversion_result_id=conversion_result_id,
+                    serve_gate_review_id=serve_gate_review_id,
+                )
+
+        await asyncio.to_thread(_record)
         return BookHtmlPublicationRequestOut(
-            publication_request_id=_book_html_publication_request_id(req),
+            publication_request_id=publication_request_id,
             status="ready_for_explicit_publish_job",
             serve_gate_review_id=serve_gate_review_id,
             conversion_result_id=conversion_result_id,
@@ -1707,6 +1823,24 @@ def register_book_routes(app: FastAPI) -> None:
         def _publish_write() -> tuple[int, Any]:
             con = connect_write(db, purpose="books:html_publish_job")
             try:
+                # The rights gate: consult the recorded receipts under the
+                # write lock, never the id prefix alone.
+                publication = _import_gate_receipt(
+                    con, publication_request_id, "publication_request"
+                )
+                if publication is None:
+                    raise HTTPException(
+                        status_code=409, detail="publication_request_not_found"
+                    )
+                if publication["serve_gate_review_id"] != serve_gate_review_id:
+                    raise HTTPException(
+                        status_code=409, detail="publication_request_review_mismatch"
+                    )
+                review = _approved_serve_gate_review(con, serve_gate_review_id)
+                if not _publish_rights_admitted(review["rights_basis"], req.rights_basis):
+                    raise HTTPException(
+                        status_code=409, detail="rights_basis_differs_from_review"
+                    )
                 exists = con.execute(
                     "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1",
                     [document_id],

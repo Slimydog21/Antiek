@@ -167,12 +167,16 @@ class UploadResponse(BaseModel):
     for ``personal_reading``; anyone for ``user_owned``). ``chunk_count`` is 0:
     this lane stores the document + sanitized reader body only; chunk/embedding
     ingestion is a separate lane (a named honest gap, not a silent 0).
+
+    ``content_class`` is the rights class IN EFFECT after the call: a re-upload
+    reports the stored class, never just the one the request asked for.
     """
 
     document_id: str
     detected_kind: UploadKind
     reader_html_available: bool
     chunk_count: int
+    content_class: str
 
 
 def _ext_of(filename: str | None) -> str:
@@ -289,7 +293,8 @@ def upload_doc_id(file_bytes: bytes) -> str:
     Re-uploading the same bytes dedups on the id (mirrors
     ``acquisition.books.adapter.book_doc_id``); ``insert_document`` is called
     with ``on_conflict="ignore"`` and ``store_reader_html`` upserts the sidecar,
-    so a re-upload is idempotent.
+    so a re-upload under the SAME attestation is idempotent. A different
+    attestation is governed by ``_REATTESTATION_ALLOWED``.
     """
     if not file_bytes:
         raise ValueError("empty upload body")
@@ -307,6 +312,17 @@ def _content_class_for(attestation: str) -> str:
     if attestation == "user_owned":
         return "user_owned"
     return "personal_reading"
+
+
+# Re-attestation of bytes already stored: (stored class, requested class).
+# Allowlist, not denylist: the only change a re-upload may make is the
+# RESTRICTIVE correction of a user_owned mistake to owner-only
+# personal_reading. Every other difference (an upgrade to publicly servable,
+# or a stored class this lane never mints, e.g. a takedown's restricted) is a
+# 409 naming the stored attestation, with nothing written.
+_REATTESTATION_ALLOWED: frozenset[tuple[str, str]] = frozenset(
+    {("user_owned", "personal_reading")}
+)
 
 
 async def _read_bounded(file: UploadFile, *, max_bytes: int) -> bytes:
@@ -648,15 +664,44 @@ def register_upload_routes(app: FastAPI) -> None:
         )
 
         from substrate.graph import default_db_path, ensure_initialized
-        from substrate.graph.ops import insert_document
+        from substrate.graph.ops import insert_document, update_document_gate_columns
 
         db_path = default_db_path()
         ensure_initialized(db_path)
 
         from substrate.books.model import upsert_book_asset
 
-        def _sync() -> None:
+        def _sync() -> str:
             with connect_write(db_path, purpose="sources/upload") as con:
+                # Decided under the write lock and before any write, so the
+                # documents gate and the book record can never disagree.
+                stored = con.execute(
+                    "SELECT content_class, metadata FROM documents WHERE document_id = ?",
+                    [document_id],
+                ).fetchone()
+                if stored is not None and stored[0] != content_class:
+                    if (stored[0], content_class) not in _REATTESTATION_ALLOWED:
+                        stored_meta = stored[1]
+                        if isinstance(stored_meta, str):
+                            stored_meta = json.loads(stored_meta)
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail={
+                                "code": "upload_attestation_conflict",
+                                "document_id": document_id,
+                                "stored_content_class": stored[0],
+                                "stored_attestation": (stored_meta or {}).get(
+                                    "acquisition_attestation"
+                                ),
+                            },
+                        )
+                    update_document_gate_columns(
+                        con, document_id, content_class=content_class, set_content_class=True
+                    )
+                    con.execute(
+                        "UPDATE documents SET metadata = ? WHERE document_id = ?",
+                        [json.dumps(metadata), document_id],
+                    )
                 insert_document(
                     con,
                     document_id=document_id,
@@ -696,15 +741,17 @@ def register_upload_routes(app: FastAPI) -> None:
                     provenance=f"sources/upload:{detected_kind}",
                     license_basis=acquisition_attestation,
                 )
+                return content_class
 
         # flock wait off the uvicorn loop (#3111 to_thread class).
-        await run_in_threadpool(_sync)
+        effective_class = await run_in_threadpool(_sync)
 
         return UploadResponse(
             document_id=document_id,
             detected_kind=detected_kind,
             reader_html_available=True,
             chunk_count=0,
+            content_class=effective_class,
         )
 
 

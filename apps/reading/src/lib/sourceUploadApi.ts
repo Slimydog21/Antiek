@@ -17,12 +17,15 @@ export interface SourceUploadResponse {
   detected_kind: string;
   reader_html_available: boolean;
   chunk_count: number;
+  /** The rights class in effect after the call (a re-upload reports the stored one). */
+  content_class: string;
 }
 
 export type SourceUploadErrorCode =
   | "too_large"
   | "unsupported"
   | "book_ceremony"
+  | "attestation_conflict"
   | "conversion_failed"
   | "cancelled"
   | "unavailable";
@@ -69,7 +72,20 @@ export async function uploadSource(
       body: form,
       signal,
     });
-    if (!response.ok) throw new SourceUploadError(codeForStatus(response.status));
+    if (!response.ok) {
+      // Two different 409s: the EPUB ceremony, and a re-upload whose
+      // attestation would widen the stored rights class. Only the fixed
+      // detail.code is read — never server text.
+      if (response.status === 409) {
+        const body = (await response.json().catch(() => null)) as
+          | { detail?: { code?: unknown } }
+          | null;
+        if (body?.detail?.code === "upload_attestation_conflict") {
+          throw new SourceUploadError("attestation_conflict");
+        }
+      }
+      throw new SourceUploadError(codeForStatus(response.status));
+    }
     return (await response.json()) as SourceUploadResponse;
   } catch (error) {
     if (error instanceof SourceUploadError) throw error;
