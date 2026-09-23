@@ -44,9 +44,14 @@ import "./scene.css";
  * DEGRADATION LADDER (all seamless):
  *   live Krea  → KreaArtLayer paints art over the procedural sky
  *   fallback   → KreaArtLayer renders nothing; ProceduralSky is the picture
- *   reduced    → useSceneClock freezes (one static frame, no rAF); canvases
+ *   reduced    → every layer is frozen (one static frame, no rAF); canvases
  *                paint once at FROZEN_T; CSS animations are paused
- *   hidden tab → the clock pauses (no canvas repaint, no churn)
+ *   hidden tab → the heartbeat pauses (no canvas repaint, no churn)
+ *
+ * ONE HEARTBEAT: Peaks, KreaArtLayer, Clouds and Snow each subscribe to the
+ * scene heartbeat (useSceneClock.ts) and write their own DOM or canvas per
+ * frame. The Scene itself never re-renders per frame; it renders when the
+ * mood, the motion preference or the art changes.
  */
 
 export interface SceneProps {
@@ -67,9 +72,8 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
   const derivedMood = useMemo(() => moodFromTheme(dark), [dark]);
   const mood = moodProp ?? derivedMood;
 
-  // The single scene clock — running / frozen (reduced-motion) / paused
-  // (hidden). The `frozen` flag flows to the layers so they render one static
-  // frame and drop parallax/crossfade transitions.
+  // The `frozen` flag (reduced motion) flows to the layers so they render one
+  // static frame and never subscribe to the heartbeat.
   const clock = useSceneClock();
   const frozen = reducedMotion ?? clock.frozen;
 
@@ -84,15 +88,14 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
       data-testid="scene-root"
       data-scene-mood={mood.dayPart}
-      data-scene-clock={clock.t}
       data-scene-frozen={frozen ? "true" : "false"}
       data-scene-fallback={art.isFallback ? "true" : "false"}
       aria-hidden="true"
     >
       {/* z-0 sky + peaks (with bounded parallax) */}
-      <Peaks mood={mood} frozen={frozen} clockMs={clock.t} />
+      <Peaks mood={mood} frozen={frozen} />
       {/* z-1 periodic Krea art, crossfaded on mood change (nothing in fallback) */}
-      <KreaArtLayer art={art} frozen={frozen} clockMs={clock.t} />
+      <KreaArtLayer art={art} frozen={frozen} />
       {/* z-2 clouds (canvas) */}
       <Clouds mood={mood} reducedMotion={frozen} />
       {/* z-3 snow (canvas) */}

@@ -74,9 +74,12 @@ export interface PeakBand {
   ridge: { points: number; roughness: number; base: number; amp: number };
 }
 
-/** Absolute parallax cap in px. Pointer travel of the full viewport maps to at
- *  most ±8px of scene shift — deliberately tiny so it reads as depth, never as
- *  motion sickness. This is the documented anti-nausea ceiling. */
+/** Absolute parallax cap in CSS px. Pointer travel of the full viewport maps
+ *  to at most ±8px of scene shift — deliberately tiny so it reads as depth,
+ *  never as motion sickness. This is the documented anti-nausea ceiling, and
+ *  it is a pixel ceiling at every viewport size: the shift is applied as a
+ *  `translate3d` on each band's wrapper (see peakBandShiftPx), never inside the
+ *  stretched 0-100 viewBox, where 1 unit is 1% of the viewport height. */
 export const MAX_PARALLAX_PX = 8;
 
 export const PEAK_BANDS: PeakBand[] = [
@@ -102,10 +105,35 @@ export const PEAK_BANDS: PeakBand[] = [
 
 /** Build an SVG path `d` for a ridge band, given the band's ridge points and a
  *  100×100 viewBox. The polygon closes down to the bottom so it fills as a
- *  silhouette. `yShift` (px, already parallax-bounded) nudges the band. */
-export function ridgePathD(points: RidgePoint[], yShift = 0): string {
+ *  silhouette. `offsetUnits` places the band vertically in VIEWBOX units (a
+ *  fraction of the viewport height: the band's static anchor). Motion never
+ *  goes through here: the path is built once per mood, and parallax + drift
+ *  move the band's wrapper in px (peakBandShiftPx). */
+export function ridgePathD(points: RidgePoint[], offsetUnits = 0): string {
   const pts = points
-    .map((p) => `${(p.x * 100).toFixed(2)},${(100 - p.y * 100 + yShift).toFixed(2)}`)
+    .map((p) => `${(p.x * 100).toFixed(2)},${(100 - p.y * 100 + offsetUnits).toFixed(2)}`)
     .join(" L ");
   return `M -2,102 L ${pts} L 102,102 Z`;
+}
+
+/** A band's vertical shift in CSS px for a pointer position `pointerY` in
+ *  [-1, 1] (clamped) plus the ambient drift `driftYPx`. The pointer term is
+ *  bounded by `depth × MAX_PARALLAX_PX`, so the near band (depth 1) moves at
+ *  most ±8px however tall the viewport is. */
+export function peakBandShiftPx(depth: number, pointerY: number, driftYPx = 0): number {
+  const ny = Math.max(-1, Math.min(1, pointerY));
+  return depth * (MAX_PARALLAX_PX * ny + driftYPx);
+}
+
+/** The transform that places a band `yPx` CSS px down and `xPx` across,
+ *  quantized to 0.1px: the ambient drift moves ~0.006px per frame, so a
+ *  painter that skips unchanged strings writes a band a few times a second
+ *  at rest instead of every frame, with no visible step.
+ *
+ *  A 2D translate on purpose: it never triggers layout, and it does not
+ *  promote each full-viewport band to its own compositor layer. Promoting
+ *  them (translate3d / will-change) measured ~20% fewer frames under
+ *  software compositing (51 -> 40 fps, headless SwiftShader, 2026-09-23). */
+export function peakBandTransform(yPx: number, xPx = 0): string {
+  return `translate(${+xPx.toFixed(1)}px, ${+yPx.toFixed(1)}px)`;
 }

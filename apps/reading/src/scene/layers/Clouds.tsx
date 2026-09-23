@@ -11,9 +11,9 @@ import { sceneLayerTransform } from "../../design/motion/sceneMotion";
  * Clouds (SPR-04, milestone 2 — parallax cloud drift).
  *
  * A Canvas layer of soft radial blobs drifting in two parallax bands (far =
- * slow/high/faint, near = faster/lower). Painted every frame off the SINGLE
- * scene clock (subscribeSceneClock), NOT its own rAF — one heartbeat for the
- * whole scene. The cloud LAYOUT is deterministic (makeClouds(seed)); only the x
+ * slow/high/faint, near = faster/lower). Painted every frame off the scene
+ * heartbeat (subscribeSceneClock, a module singleton), NOT its own rAF — one
+ * loop for the whole scene, however many layers subscribe. The cloud LAYOUT is deterministic (makeClouds(seed)); only the x
  * drift advances with time, so the same mood seed gives the same clouds.
  *
  * CANVAS vs CSS/WebGL (defensibility): clouds are few (CLOUD_COUNT=7) but each
@@ -86,15 +86,24 @@ export function Clouds({ mood, reducedMotion }: CloudsProps) {
       ctx.globalAlpha = 1;
     };
 
+    // Repaint immediately on resize at the CURRENT time (the heartbeat's last
+    // t), not FROZEN_T, so a resize never snaps the layer back in time.
+    let lastT = FROZEN_T;
     const onResize = () => {
       fit();
-      draw(FROZEN_T); // repaint immediately on resize
+      draw(lastT);
     };
     if (typeof window !== "undefined") {
       window.addEventListener("resize", onResize);
     }
 
-    const unsub = subscribeSceneClock((t) => draw(t), { reducedMotion });
+    const unsub = subscribeSceneClock(
+      (t) => {
+        lastT = t;
+        draw(t);
+      },
+      { reducedMotion },
+    );
 
     return () => {
       unsub();

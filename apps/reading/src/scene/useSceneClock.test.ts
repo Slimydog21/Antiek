@@ -6,9 +6,9 @@
  *   - hidden tab     → the loop is torn down on visibilitychange; resumes on
  *                      show.
  *
- * We test the imperative `subscribeSceneClock` (the seam the canvas painters
- * use) because it has no React; the freeze/pause logic is identical to the
- * hook's. We stub rAF + document.hidden so the assertions are deterministic.
+ * We test the imperative `subscribeSceneClock` (the heartbeat every animated
+ * layer rides; the hook only reports `frozen`). We stub rAF + document.hidden
+ * so the assertions are deterministic.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -102,5 +102,52 @@ describe("subscribeSceneClock — visibility pause", () => {
     expect(raf.mock.calls.length).toBeGreaterThan(callsBeforeHide);
 
     stop();
+  });
+});
+
+describe("subscribeSceneClock — one shared heartbeat", () => {
+  it("many subscribers share ONE rAF loop and one clock; the last to leave stops it", () => {
+    const pending = new Map<number, FrameRequestCallback>();
+    let id = 0;
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((fn: FrameRequestCallback) => {
+        pending.set(++id, fn);
+        return id;
+      }),
+    );
+    vi.stubGlobal(
+      "cancelAnimationFrame",
+      vi.fn((h: number) => pending.delete(h)),
+    );
+    const frame = (ts: number) => {
+      const batch = [...pending.values()];
+      pending.clear();
+      for (const cb of batch) cb(ts);
+    };
+
+    const a: number[] = [];
+    const b: number[] = [];
+    const stopA = subscribeSceneClock((t) => a.push(t), { reducedMotion: false });
+    const stopB = subscribeSceneClock((t) => b.push(t), { reducedMotion: false });
+    expect(pending.size).toBe(1); // two painters, one loop
+
+    frame(0);
+    frame(16);
+    expect(pending.size).toBe(1);
+    expect(a).toEqual(b); // same clock for every layer
+
+    // A layer re-subscribing (mood change) joins the running clock: no reset.
+    stopB();
+    const c: number[] = [];
+    const stopC = subscribeSceneClock((t) => c.push(t), { reducedMotion: false });
+    frame(32);
+    expect(c[0]).toBe(a[a.length - 1]);
+    expect(pending.size).toBe(1);
+
+    stopA();
+    expect(pending.size).toBe(1); // C still subscribed
+    stopC();
+    expect(pending.size).toBe(0); // last one out stops the heartbeat
   });
 });

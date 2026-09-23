@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import type { SceneMood } from "../mood";
-import { MAX_PARALLAX_PX, PEAK_BANDS } from "../peaks";
+import { peakBandShiftPx, peakBandTransform, PEAK_BANDS } from "../peaks";
+import { subscribeSceneClock } from "../useSceneClock";
 import { ProceduralSky } from "./ProceduralSky";
 import { sceneLayerTransform } from "../../design/motion/sceneMotion";
 
@@ -9,89 +10,79 @@ import { sceneLayerTransform } from "../../design/motion/sceneMotion";
  * Peaks (SPR-04, milestone 2 — subtle peak parallax).
  *
  * Renders the procedural sky+peaks (ProceduralSky owns the geometry) and adds
- * BOUNDED pointer/scroll parallax: as the pointer moves across the viewport,
- * the peak bands shift by a tiny amount, far bands less than near bands, giving
- * depth without nausea.
+ * BOUNDED pointer parallax: as the pointer moves down the viewport the peak
+ * bands shift a little, far bands less than near bands, giving depth without
+ * nausea. A slow ambient drift rides on top.
  *
- * ANTI-NAUSEA BOUND (acceptance criterion): the absolute shift is capped at
- * MAX_PARALLAX_PX (±8px) and scaled by each band's `depth`. Full pointer travel
- * across the whole viewport produces at most ±8px of near-band shift — read as
- * depth, never as disorienting motion. Under reduced-motion the Scene passes
- * `frozen`, and we render with ZERO shift (a static composed frame).
+ * ANTI-NAUSEA BOUND (acceptance criterion): the pointer shift is capped at
+ * MAX_PARALLAX_PX (±8 CSS px) and scaled by each band's `depth`, whatever the
+ * viewport height; the ambient drift adds at most DRIFT.peaks.yAmplitudePx.
+ * e2e/scene-parallax.spec.ts measures the rendered ridge to hold this.
+ *
+ * COST: no React state and no loop of its own. The pointer listener only
+ * records a target; easing, drift and the band transforms are written on the
+ * scene heartbeat (subscribeSceneClock) as a `transform` on each band wrapper
+ * (never layout, never the path geometry), and only when the 0.1px-quantized
+ * value changes. The easing is frame-rate independent (time constant
+ * PARALLAX_EASE_MS), so it settles in the same wall time at 30 or 120 fps.
+ *
+ * Under reduced motion the Scene passes `frozen`: no listener, no
+ * subscription, zero shift (a static composed frame).
  */
+
+/** Time constant of the pointer easing, in ms. 200ms matches the old
+ *  0.08-per-frame lerp at 60fps, now independent of the frame rate. */
+const PARALLAX_EASE_MS = 200;
 
 export interface PeaksProps {
   mood: SceneMood;
   /** When frozen (reduced-motion), parallax is disabled → static frame. */
   frozen?: boolean;
-  /** Scene-clock timestamp for ambient drift. */
-  clockMs?: number;
 }
 
-/** Bounded pointer parallax: returns a normalized pointer offset in [-1,1] on
- *  each axis, smoothed. Listens at the window so the whole scene reacts. No-op
- *  (returns 0,0) when frozen or when there is no window. */
-function usePointerParallax(frozen: boolean): { nx: number; ny: number } {
-  const [p, setP] = useState({ nx: 0, ny: 0 });
-  const raf = useRef<number | null>(null);
-  const target = useRef({ nx: 0, ny: 0 });
-  const cur = useRef({ nx: 0, ny: 0 });
+export function Peaks({ mood, frozen = false }: PeaksProps) {
+  const bands = useRef<(HTMLDivElement | null)[]>([]);
+  const bandRef = useCallback((i: number, el: HTMLDivElement | null) => {
+    bands.current[i] = el;
+  }, []);
 
   useEffect(() => {
-    if (frozen || typeof window === "undefined") {
-      setP({ nx: 0, ny: 0 });
-      return;
-    }
+    if (frozen || typeof window === "undefined") return;
+    let target = 0;
+    let current = 0;
+    let lastT: number | null = null;
+    const written: string[] = [];
+
     const onMove = (e: PointerEvent) => {
-      const w = window.innerWidth || 1;
-      const h = window.innerHeight || 1;
-      // Map to [-1,1], centered.
-      target.current = {
-        nx: (e.clientX / w) * 2 - 1,
-        ny: (e.clientY / h) * 2 - 1,
-      };
-      if (raf.current == null) raf.current = requestAnimationFrame(ease);
-    };
-    const ease = () => {
-      // Critically-damped-ish lerp toward the target so the parallax glides
-      // (no jitter), and SETTLES (stops the loop) once close enough — so we
-      // don't burn a permanent rAF just for parallax.
-      cur.current = {
-        nx: cur.current.nx + (target.current.nx - cur.current.nx) * 0.08,
-        ny: cur.current.ny + (target.current.ny - cur.current.ny) * 0.08,
-      };
-      setP({ nx: cur.current.nx, ny: cur.current.ny });
-      const settled =
-        Math.abs(target.current.nx - cur.current.nx) < 0.001 &&
-        Math.abs(target.current.ny - cur.current.ny) < 0.001;
-      raf.current = settled ? null : requestAnimationFrame(ease);
+      target = (e.clientY / (window.innerHeight || 1)) * 2 - 1;
     };
     window.addEventListener("pointermove", onMove, { passive: true });
+
+    const unsubscribe = subscribeSceneClock((t) => {
+      const dt = lastT == null ? 0 : t - lastT;
+      lastT = t;
+      current += (target - current) * (1 - Math.exp(-dt / PARALLAX_EASE_MS));
+      const drift = sceneLayerTransform("peaks", t);
+      PEAK_BANDS.forEach((band, i) => {
+        const el = bands.current[i];
+        if (!el) return;
+        const next = peakBandTransform(peakBandShiftPx(band.depth, current, drift.y), drift.x);
+        if (next === written[i]) return; // no style write when nothing moved
+        written[i] = next;
+        el.style.transform = next;
+      });
+    }, { reducedMotion: false });
+
     return () => {
       window.removeEventListener("pointermove", onMove);
-      if (raf.current != null) cancelAnimationFrame(raf.current);
-      raf.current = null;
+      unsubscribe();
+      for (const el of bands.current) if (el) el.style.transform = "";
     };
   }, [frozen]);
 
-  return p;
-}
-
-export function Peaks({ mood, frozen = false, clockMs = 0 }: PeaksProps) {
-  const { ny } = usePointerParallax(frozen);
-  const drift = sceneLayerTransform("peaks", clockMs, { reducedMotion: frozen });
-  // Per-band vertical shift: depth × cap × pointer-y. Bounded by construction.
-  const shifts = PEAK_BANDS.map((b) => b.depth * (MAX_PARALLAX_PX * ny + drift.y));
   return (
-    <div
-      className="absolute inset-0"
-      data-testid="peaks-layer"
-      data-drift-x={drift.x}
-      data-drift-y={drift.y}
-      style={{ transform: `translate3d(${drift.x}px, 0, 0)` }}
-      aria-hidden="true"
-    >
-      <ProceduralSky mood={mood} shifts={shifts} />
+    <div className="absolute inset-0" data-testid="peaks-layer" aria-hidden="true">
+      <ProceduralSky mood={mood} bandRef={bandRef} />
     </div>
   );
 }

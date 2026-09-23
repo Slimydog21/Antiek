@@ -16,7 +16,8 @@ import { sceneLayerTransform } from "../../design/motion/sceneMotion";
  *
  * The Herzog Antarctic motif — an always-on flurry. A Canvas layer of
  * SNOW_COUNT flakes falling + drifting with a wind term, painted every frame
- * off the SINGLE scene clock (subscribeSceneClock), NOT its own loop. The flake
+ * off the scene heartbeat (subscribeSceneClock, a module singleton), NOT its
+ * own loop. The flake
  * SET is deterministic (makeSnow(seed)); positions advance purely with time
  * (snowAt), so the same seed → the same frame N (the determinism test).
  *
@@ -84,15 +85,24 @@ export function Snow({ mood, reducedMotion }: SnowProps) {
       ctx.globalAlpha = 1;
     };
 
+    // Repaint immediately on resize at the CURRENT time (the heartbeat's last
+    // t), not FROZEN_T, so a resize never snaps the layer back in time.
+    let lastT = FROZEN_T;
     const onResize = () => {
       fit();
-      draw(FROZEN_T);
+      draw(lastT);
     };
     if (typeof window !== "undefined") {
       window.addEventListener("resize", onResize);
     }
 
-    const unsub = subscribeSceneClock((t) => draw(t), { reducedMotion });
+    const unsub = subscribeSceneClock(
+      (t) => {
+        lastT = t;
+        draw(t);
+      },
+      { reducedMotion },
+    );
 
     return () => {
       unsub();

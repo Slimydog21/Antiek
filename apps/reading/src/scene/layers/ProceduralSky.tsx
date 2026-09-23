@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import type { SceneMood } from "../mood";
 import { moodKey } from "../mood";
-import { makeRidge, PEAK_BANDS, ridgePathD } from "../peaks";
+import { makeRidge, PEAK_BANDS, peakBandTransform, ridgePathD } from "../peaks";
 import { fieldSeed } from "../field";
 
 /**
@@ -17,6 +17,12 @@ import { fieldSeed } from "../field";
  * — the gradient classes are fixed per daypart and the peak paths come from the
  * pure `makeRidge(seed)`. No Date.now, no Math.random, no rAF. A snapshot of
  * this component for a fixed mood is identical across runs.
+ *
+ * MOTION: each band is its own absolutely positioned wrapper around its own
+ * stretched SVG. The ridge path is built once per mood; parallax and drift
+ * move the WRAPPER with a CSS transform in real px (Peaks writes it on the
+ * scene heartbeat through `bandRef`). A transform inside the 0-100 viewBox
+ * would be in viewBox units, i.e. percent of the viewport height.
  *
  * COLOUR DISCIPLINE: every colour is a design token via Tailwind classes
  * (bg-*, fill-*, text-*) or a CSS `var(--token)` — NO raw hex (token-lint).
@@ -54,24 +60,23 @@ function peakFill(mood: SceneMood, band: number): string {
 
 export interface ProceduralSkyProps {
   mood: SceneMood;
-  /** parallax y-shifts per band in px (already bounded by the Scene). */
+  /** Static per-band vertical shift in CSS px (far → near). Live motion
+   *  bypasses React: Peaks moves the same wrappers through `bandRef`. */
   shifts?: number[];
+  /** Receives each band wrapper (far → near) so a painter can move it. */
+  bandRef?: (index: number, el: HTMLDivElement | null) => void;
 }
 
-/**
- * The CSS/SVG sky + peaks. `shifts` lets the Scene apply bounded parallax to
- * the peak bands without re-generating geometry (cheap transform).
- */
-export function ProceduralSky({ mood, shifts }: ProceduralSkyProps) {
+export function ProceduralSky({ mood, shifts, bandRef }: ProceduralSkyProps) {
   const seed = fieldSeed(moodKey(mood));
   // Memoize the ridge geometry on the mood seed — pure, so this only recomputes
-  // when the mood (and thus the scene) actually changes.
-  const bands = useMemo(
+  // when the mood (and thus the scene) actually changes. The band anchor is a
+  // static placement in viewBox units (a fraction of the height), by design.
+  const paths = useMemo(
     () =>
-      PEAK_BANDS.map((b) => ({
-        band: b,
-        points: makeRidge((seed ^ b.seedOffset) >>> 0, b.ridge),
-      })),
+      PEAK_BANDS.map((b) =>
+        ridgePathD(makeRidge((seed ^ b.seedOffset) >>> 0, b.ridge), b.anchor * 18),
+      ),
     [seed],
   );
 
@@ -82,25 +87,27 @@ export function ProceduralSky({ mood, shifts }: ProceduralSkyProps) {
       data-mood={moodKey(mood)}
       aria-hidden="true"
     >
-      <svg
-        className="absolute inset-0 h-full w-full"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        focusable="false"
-      >
-        {bands.map(({ band, points }, i) => {
-          const yShift = shifts?.[i] ?? 0;
-          // Anchor the band lower on the canvas for nearer bands.
-          const anchorShift = band.anchor * 18;
-          return (
-            <path
-              key={i}
-              d={ridgePathD(points, anchorShift + yShift)}
-              className={peakFill(mood, i)}
-            />
-          );
-        })}
-      </svg>
+      {paths.map((d, i) => {
+        const shift = shifts?.[i] ?? 0;
+        return (
+          <div
+            key={i}
+            className="absolute inset-0"
+            data-peak-band={i}
+            ref={bandRef ? (el) => bandRef(i, el) : undefined}
+            style={shift ? { transform: peakBandTransform(shift) } : undefined}
+          >
+            <svg
+              className="absolute inset-0 h-full w-full"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              focusable="false"
+            >
+              <path d={d} className={peakFill(mood, i)} />
+            </svg>
+          </div>
+        );
+      })}
     </div>
   );
 }

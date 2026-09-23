@@ -9,6 +9,7 @@ import {
   type CrossfadeTransition,
 } from "../../design/motion/sceneMotion";
 import type { SceneArt } from "../useSceneArt";
+import { sceneClockNow, subscribeSceneClock } from "../useSceneClock";
 
 /**
  * KreaArtLayer (SPR-04, milestone 4 — periodic Krea art, crossfaded).
@@ -26,13 +27,20 @@ import type { SceneArt } from "../useSceneArt";
  *
  * Under reduced-motion the envelope collapses to an instant cut, so the art
  * appears statically — consistent with the frozen scene.
+ *
+ * COST: React renders this layer only when the art changes. While live art
+ * is showing, the drift and the crossfade opacity are written to the DOM on
+ * the scene heartbeat (subscribeSceneClock): transform + opacity only, no
+ * React state per frame, no loop of its own.
  */
 
 export interface KreaArtLayerProps {
   art: SceneArt;
   /** When frozen, collapse the crossfade to an instant static cut. */
   frozen?: boolean;
-  /** Scene-clock timestamp used for interruptible crossfade envelopes. */
+  /** Scene-clock time (ms) for the render-time frame. Defaults to the
+   *  heartbeat's current time; tests pin it. Later frames come from the
+   *  heartbeat itself. */
   clockMs?: number;
 }
 
@@ -42,9 +50,13 @@ interface PresentationState {
   transition: CrossfadeTransition;
 }
 
-export function KreaArtLayer({ art, frozen = false, clockMs = 0 }: KreaArtLayerProps) {
-  const clockRef = useRef(clockMs);
-  clockRef.current = clockMs;
+export function KreaArtLayer({ art, frozen = false, clockMs }: KreaArtLayerProps) {
+  const renderClockMs = clockMs ?? sceneClockNow();
+  const clockRef = useRef(renderClockMs);
+  clockRef.current = renderClockMs;
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  const outgoingRef = useRef<HTMLDivElement | null>(null);
+  const incomingRef = useRef<HTMLDivElement | null>(null);
   const [presentation, setPresentation] = useState<PresentationState>(() => ({
     currentUrl: art.imageUrl,
     previousUrl: art.prevImageUrl,
@@ -92,6 +104,44 @@ export function KreaArtLayer({ art, frozen = false, clockMs = 0 }: KreaArtLayerP
     });
   }, [art.fadeKey, art.imageUrl, art.isFallback, art.prevImageUrl, frozen]);
 
+  const live = !art.isFallback && presentation.currentUrl != null;
+  const { transition } = presentation;
+
+  // Per-frame drift + crossfade, written straight to the DOM on the heartbeat.
+  useEffect(() => {
+    if (!live || frozen) return;
+    let lastTransform = "";
+    let fadeSettled = false;
+    return subscribeSceneClock(
+      (t) => {
+        clockRef.current = t;
+        const layer = layerRef.current;
+        if (!layer) return;
+        const drift = sceneLayerTransform("krea", t);
+        // 0.1px quantization: the drift is ~0.005px per frame, so this skips
+        // almost every frame's style write with no visible step.
+        const nextTransform = `translate3d(${drift.x.toFixed(1)}px, ${drift.y.toFixed(1)}px, 0)`;
+        if (nextTransform !== lastTransform) {
+          lastTransform = nextTransform;
+          layer.style.transform = nextTransform;
+        }
+        // Opacity only changes while the envelope runs: write its frames,
+        // then the settled value once, then stop touching it.
+        if (fadeSettled) return;
+        fadeSettled = t >= transition.startedAtMs + transition.durationMs;
+        const incoming = crossfadeOpacity(transition, t);
+        layer.setAttribute("data-crossfade-opacity", incoming.toFixed(4));
+        if (incomingRef.current) incomingRef.current.style.opacity = String(incoming);
+        if (outgoingRef.current) {
+          outgoingRef.current.style.opacity = String(
+            Math.max(0, CROSSFADE.paintedOpacity - incoming),
+          );
+        }
+      },
+      { reducedMotion: false },
+    );
+  }, [live, frozen, transition]);
+
   // Fallback ⇒ render nothing; the procedural sky is the whole picture.
   if (art.isFallback || !presentation.currentUrl) {
     return (
@@ -104,25 +154,25 @@ export function KreaArtLayer({ art, frozen = false, clockMs = 0 }: KreaArtLayerP
     );
   }
 
-  const drift = sceneLayerTransform("krea", clockMs, { reducedMotion: frozen });
-  const incomingOpacity = crossfadeOpacity(presentation.transition, clockMs);
+  const drift = sceneLayerTransform("krea", renderClockMs, { reducedMotion: frozen });
+  const incomingOpacity = crossfadeOpacity(transition, renderClockMs);
   const outgoingOpacity = frozen
     ? 0
     : Math.max(0, CROSSFADE.paintedOpacity - incomingOpacity);
 
   return (
     <div
+      ref={layerRef}
       className="absolute inset-0 overflow-hidden"
       data-testid="krea-art-layer"
       data-krea="live"
       data-crossfade-opacity={incomingOpacity.toFixed(4)}
-      data-drift-x={drift.x}
-      data-drift-y={drift.y}
       style={{ transform: `translate3d(${drift.x}px, ${drift.y}px, 0)` }}
       aria-hidden="true"
     >
       {presentation.previousUrl && presentation.previousUrl !== presentation.currentUrl && (
         <div
+          ref={outgoingRef}
           // The outgoing art sits beneath, fading out.
           className="absolute inset-0 bg-cover bg-center"
           style={{
@@ -132,6 +182,7 @@ export function KreaArtLayer({ art, frozen = false, clockMs = 0 }: KreaArtLayerP
         />
       )}
       <div
+        ref={incomingRef}
         // Opacity is calculated from the scene clock so an interrupted fade can
         // retarget from its current value instead of remounting at 0.
         className="absolute inset-0 bg-cover bg-center"
