@@ -19,6 +19,19 @@ from tools.antiek_memory.server import AntiekMemoryServer
 _NOTE_BODY = "USER B PRIVATE NOTE"
 
 
+class _StubEmbedding:
+    """Offline stand-in: these tests never rank, so no model is downloaded."""
+
+    dim = 4
+
+    def encode(self, text: str) -> list[float]:
+        return [0.0, 0.0, 0.0, 1.0]
+
+
+def _handlers(db_path: str) -> tuple[Any, Any]:
+    return _make_handlers(db_path, embedding_model=_StubEmbedding)
+
+
 @pytest.fixture
 def db_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     path = str(tmp_path / "notes.duckdb")
@@ -64,7 +77,7 @@ def _read(server: AntiekMemoryServer, uri: str, auth_context: Any = None) -> dic
 def test_private_note_is_not_served_to_anyone_but_its_owner(
     db_path: str, bound_owner: str | None, claim: dict[str, str] | None,
 ) -> None:
-    handlers, resources = _make_handlers(db_path)
+    handlers, resources = _handlers(db_path)
     server = AntiekMemoryServer(
         handler_fns=handlers, resource_handler=resources, bound_owner=bound_owner
     )
@@ -74,7 +87,7 @@ def test_private_note_is_not_served_to_anyone_but_its_owner(
 
 
 def test_private_note_is_served_to_its_owner_inside_the_envelope(db_path: str) -> None:
-    handlers, resources = _make_handlers(db_path)
+    handlers, resources = _handlers(db_path)
     server = AntiekMemoryServer(
         handler_fns=handlers, resource_handler=resources, bound_owner="user-b"
     )
@@ -107,7 +120,7 @@ def test_search_public_runs_behind_the_retrieval_gate(
     db_path: str, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = _spy(monkeypatch)
-    handlers, _ = _make_handlers(db_path)
+    handlers, _ = _handlers(db_path)
     handlers["search_public"]({"query": "anything"})
     assert calls and calls[0]["policy_tag"] == "attribution_eligible"
     assert calls[0]["exclude_taken_down"] is True
@@ -117,7 +130,7 @@ def test_search_personal_excludes_taken_down_books(
     db_path: str, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = _spy(monkeypatch)
-    handlers, _ = _make_handlers(db_path)
+    handlers, _ = _handlers(db_path)
     handlers["search_personal"]({"query": "anything"}, auth_context={"user_id": "user-b"})
     assert calls and calls[0]["exclude_taken_down"] is True
 
@@ -143,7 +156,7 @@ def test_search_personal_drops_a_taken_down_hit_the_sql_let_through(
         }]}
 
     monkeypatch.setattr(memory_main, "search", leaky_search)
-    handlers, _ = _make_handlers(db_path)
+    handlers, _ = _handlers(db_path)
     result = handlers["search_personal"](
         {"query": "anything"}, auth_context={"user_id": "user-b"}
     )
