@@ -13,7 +13,12 @@ dispatch tier, less its ``max_tokens``), measured against the prompt Phase 6
 actually sends: the evidence block as Phase 6 serializes it (``json.dumps``
 with ASCII escaping, so a CJK character travels as a six-character
 ``\\uXXXX`` escape), truncation markers and gap entries included, inside the
-rendered synthesizer prompt. When that bound forces a cut, the cut is spread
+rendered synthesizer prompt. The count is the prompt's UTF-8 byte length, an
+upper bound for any tokenizer whose every token spells at least one byte (a
+per-character estimate is not: token-dense ASCII runs near a token a
+character). What the synthesizer bridge may add on a later dispatch, the
+self-repair error and the constraint-loop violation list, is clipped to the
+byte room the handoff reserved for it. When that bound forces a cut, the cut is spread
 max-min fairly across chunks, lands on a clean boundary so no figure is split,
 and every truncated or omitted chunk is named in an ``evidentiary_gaps`` entry
 that says how much was shown and how much was dropped. A pack none of whose
@@ -26,13 +31,19 @@ records the prompt; no paid provider is ever called.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
+import random
 import re
+import string
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from orchestration.loop_one.orchestrator import (
+    _CHAT_TEMPLATE_TOKENS,
     _PROMPT_PREFIX_RESERVE_TOKENS,
     _allot_pack_text,
     _evidence_block,
@@ -48,6 +59,14 @@ from orchestration.session_evidence_pack import (
 )
 from processing.embedding import _reset_default_provider, set_default_embedding_provider
 from processing.embedding.embed import HashEmbedding
+from roles.synthesizer.prompt import (
+    PREFIX_RESERVE_BYTES,
+    REPAIR_PREFIX_MAX_BYTES,
+    REVISION_PREFIX_MAX_BYTES,
+    build_repair_prefix,
+    build_revision_prefix,
+    render_full_prompt,
+)
 from runtime.db_lock import connect_write
 from runtime.remote_exec import RemotePromotionFunnel, RemoteResearchRunner
 from runtime.remote_exec.provider import RemoteStepEvent, Sandbox
@@ -407,7 +426,7 @@ def test_a_cut_falls_on_the_longest_chunk_first():
     the budget on it and drop the short ones."""
     first_long = {k: _TEXTS[k] for k in ("chunk-long", "chunk-mid", "chunk-short")}
     pack = _pack(first_long)
-    window = _window_for(pack, 3_000)
+    window = _window_for(pack, 4_000)
     ctx = _investigation_context_from_pack(pack, input_tokens=window)
     claims = {c.chunk_ids[0]: c.claim for e in ctx.evidence for c in e.supporting_claims}
     assert claims["chunk-short"] == _TEXTS["chunk-short"]
@@ -450,12 +469,11 @@ def test_a_cut_never_splits_a_figure():
 
 
 def test_the_token_ceiling_counts_what_the_synthesizer_is_sent():
-    """The counting rules, on strings small enough to check by hand: an
-    escape costs its 6 bytes, a digit or punctuation mark 1, a non-ASCII
-    character its UTF-8 bytes, letters and whitespace 3 to a token."""
+    """The ceiling is the UTF-8 byte length: an escape costs its 6 bytes, a
+    non-ASCII character its UTF-8 bytes, and a letter one, like a digit."""
     assert _prompt_token_ceiling(json.dumps("中")) == 2 + 6  # quotes + escape
     assert _prompt_token_ceiling("0.00071") == 7
-    assert _prompt_token_ceiling("abc def") == 3
+    assert _prompt_token_ceiling("abc def") == 7
     assert _prompt_token_ceiling("é") == 2
     assert _prompt_token_ceiling("") == 0
 
@@ -463,11 +481,12 @@ def test_the_token_ceiling_counts_what_the_synthesizer_is_sent():
 def test_budget_comes_from_the_synthesizer_context_window(monkeypatch):
     """Without an explicit window the handoff reads the synthesizer role's
     dispatch tier: a tiny window forces a cut, and the cut is named."""
-    window = _window_for(_pack(_TEXTS), 1_000)
+    window = _window_for(_pack(_TEXTS), 3_000)
     _patch_dispatch(monkeypatch, context_budget_tokens=window + 1_000,
                     max_tokens=1_000)
     ctx = _investigation_context_from_pack(_pack(_TEXTS))
-    assert _gaps(ctx), "1,000 tokens cannot hold 2,800 digit-heavy characters twice"
+    assert _gaps(ctx), "3,000 tokens cannot hold 2,817 characters twice"
+    assert any(e.supporting_claims for e in ctx.evidence)
     _assert_every_cut_is_named(ctx, _TEXTS)
     _assert_within_window(ctx, window)
 
@@ -486,19 +505,29 @@ def test_an_unreadable_synthesizer_config_still_bounds_and_names_the_cut(monkeyp
     assert len(_gaps(ctx)) == 3
     _assert_every_cut_is_named(ctx, texts)
     _assert_within_window(ctx, 32_000 - 4_096)
-    shown = sum(len(c.claim) for e in ctx.evidence for c in e.supporting_claims)
-    assert shown > 20_000
+    # What the synthesizer prompt and the retry reserve leave of 27,904 tokens
+    # at a token a byte, each shown character counted twice (answer, claim).
+    claims = [c.claim for e in ctx.evidence for c in e.supporting_claims]
+    assert len(claims) == 3 and sum(map(len, claims)) > 2_000
 
 
-def test_production_window_carries_forty_full_chunks():
-    """The production ``config.yaml`` synthesizer window carries forty
-    4,000-character prose chunks (the funnel's largest citable chunk) whole."""
+def test_production_window_carries_twenty_six_full_chunks():
+    """The production ``config.yaml`` synthesizer window carries twenty-six
+    4,000-character prose chunks (the funnel's largest citable chunk) whole.
+    Each chunk travels twice (answer and claim) at a token a byte, so a
+    forty-chunk pack is cut, and every cut is named."""
     big = {f"chunk-{i:02d}": _prose(4_000, f"w{i:02d} ") for i in range(40)}
     assert all(len(t) > 3_900 for t in big.values())
-    ctx = _investigation_context_from_pack(_pack(big))
+    whole = dict(list(big.items())[:26])
+    ctx = _investigation_context_from_pack(_pack(whole))
     assert _gaps(ctx) == []
     claims = {c.chunk_ids[0]: c.claim for e in ctx.evidence for c in e.supporting_claims}
-    assert claims == big
+    assert claims == whole
+    _assert_within_window(ctx, _PROD_INPUT_TOKENS)
+
+    ctx = _investigation_context_from_pack(_pack(big))
+    assert _gaps(ctx)
+    _assert_every_cut_is_named(ctx, big)
     _assert_within_window(ctx, _PROD_INPUT_TOKENS)
 
 
@@ -557,9 +586,9 @@ def test_metadata_heavy_evidence_is_budgeted_with_its_ids_and_gaps():
     texts = {f"chunk-{long_id}-{i:03d}": _prose(300, f"r{i} ") for i in range(60)}
     pack = _pack(texts, doc=f"doc-{long_id}", leaf=f"leaf-{long_id}")
     text_chars = sum(len(t) for t in texts.values())
-    window = _window_for(pack, 20_000)
-    # Round 1's budget: three characters a token, each shown twice.
-    assert text_chars * 2 / 3 < 20_000, "a text-only budget would show every chunk"
+    window = _window_for(pack, 50_000)
+    # A text-only budget, even at a token a character, each shown twice.
+    assert text_chars * 2 < 50_000, "a text-only budget would show every chunk"
 
     ctx = _investigation_context_from_pack(pack, input_tokens=window)
     _assert_every_cut_is_named(ctx, texts)
@@ -573,14 +602,16 @@ def test_metadata_heavy_evidence_is_budgeted_with_its_ids_and_gaps():
 
 
 async def _run_tail(pack, monkeypatch, *, context_budget_tokens: int,
-                    max_tokens: int) -> tuple[object, _RecordingSynth]:
+                    max_tokens: int,
+                    synth: _RecordingSynth | None = None,
+                    ) -> tuple[object, _RecordingSynth]:
     from interfaces.research.api import EventBroadcaster
     from interfaces.research.api.synthesizer import register_handlers as register_synth
     from orchestration.loop_one import register_handlers, run_synthesis_tail_from_pack
 
     _patch_dispatch(monkeypatch, context_budget_tokens=context_budget_tokens,
                     max_tokens=max_tokens)
-    synth = _RecordingSynth()
+    synth = synth or _RecordingSynth()
     register_provider(synth)
     bus = EventBroadcaster()
     register_synth(bus)
@@ -619,3 +650,172 @@ async def test_a_pack_that_cannot_fit_fails_closed_before_dispatch(graph, monkey
     assert [p for p in synth.prompts if "senior investment analyst" in p] == []
     assert ctx.failed_phase == 6
     assert "none of the 80 gathered chunks fits" in ctx.fail_reason
+
+
+# ---------------------------------------------------------------------------
+# Codex round-3 repro: token-dense text is counted by an independent oracle,
+# and a retry can add no more than the room the handoff reserved.
+# ---------------------------------------------------------------------------
+
+_DEBERTA = "models--MoritzLaurer--DeBERTa-v3-base-mnli-fever-anli"
+
+
+def _dense_texts(n: int = 80, size: int = 3_999) -> dict[str, str]:
+    """Random ASCII letters: no word a tokenizer has merged, so near a token
+    a character, far above any per-character average."""
+    rng = random.Random(20260924)
+    return {
+        f"chunk-dense-{i:02d}": "".join(rng.choices(string.ascii_letters, k=size))
+        for i in range(n)
+    }
+
+
+def _byte_level_worst_case():
+    """An independent counting oracle: a byte-level BPE with no merges, built
+    with the ``tokenizers`` library. It spells every byte as its own token,
+    the most tokens any byte-level BPE (DeepSeek, GLM, MiMo) can produce."""
+    tokenizers = pytest.importorskip("tokenizers")
+    from tokenizers import models, pre_tokenizers
+
+    alphabet = sorted(pre_tokenizers.ByteLevel.alphabet())
+    tk = tokenizers.Tokenizer(
+        models.BPE(vocab={ch: i for i, ch in enumerate(alphabet)}, merges=[]),
+    )
+    tk.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
+    return tk
+
+
+def _cached_deberta():
+    """A real SentencePiece tokenizer from the local Hugging Face cache; the
+    test that needs it skips when the cache does not hold it."""
+    tokenizers = pytest.importorskip("tokenizers")
+    home = Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface")
+    found = sorted((home / "hub").glob(f"{_DEBERTA}/snapshots/*/tokenizer.json"))
+    if not found:
+        pytest.skip("no cached DeBERTa-v3 tokenizer to count with")
+    return tokenizers.Tokenizer.from_file(str(found[0]))
+
+
+def _dense_context():
+    texts = _dense_texts()
+    ctx = _investigation_context_from_pack(_pack(texts), input_tokens=_PROD_INPUT_TOKENS)
+    return texts, ctx
+
+
+def test_token_dense_ascii_fits_the_window_by_an_independent_count():
+    """Eighty chunks of 3,999 random letters on the production window. The
+    handoff cuts, names every cut, and the prompt Phase 6 sends fits the
+    window with the retry reserve kept, counted by a byte-level tokenizer
+    that is not the handoff's own arithmetic."""
+    texts, ctx = _dense_context()
+    assert _gaps(ctx), "640,000 characters of dense text cannot fit whole"
+    _assert_every_cut_is_named(ctx, texts)
+    assert any(e.supporting_claims for e in ctx.evidence)
+    prompt = _sent_prompt(ctx)
+    counted = len(_byte_level_worst_case().encode(prompt).ids)
+    assert counted <= _prompt_token_ceiling(prompt)
+    assert counted <= _PROD_INPUT_TOKENS - _PROMPT_PREFIX_RESERVE_TOKENS
+
+
+def test_token_dense_ascii_is_within_the_ceiling_for_a_real_tokenizer():
+    """The same prompt through a real SentencePiece tokenizer: its count is
+    within the ceiling, and above what three characters a token would say,
+    which is why the ceiling is not a per-character average."""
+    _texts, ctx = _dense_context()
+    prompt = _sent_prompt(ctx)
+    counted = len(_cached_deberta().encode(prompt).ids)
+    assert counted <= _prompt_token_ceiling(prompt)
+    assert counted > len(prompt) // 3
+
+
+@pytest.mark.parametrize("error", [
+    "top: implicit_recommendation 'maybe' not in the allowed set",
+    "top: implicit_recommendation '" + "9" * 10_000 + "' not in the allowed set",
+    "说明" * 4_000,
+    "é" * 1_500 + "x",
+    "é" * 3_000 + "x",
+])
+def test_the_repair_prefix_is_clipped_to_its_bound(error):
+    """The parse error a self-repair retry prepends can quote the response
+    verbatim. It is clipped to ``REPAIR_PREFIX_MAX_BYTES`` at a character
+    boundary, and the marker says exactly how many characters were dropped."""
+    prefix = build_repair_prefix(error)
+    assert len(prefix.encode("utf-8")) <= REPAIR_PREFIX_MAX_BYTES
+    assert prefix.endswith("----\n\n")
+    start = prefix.index(":\n\n    ") + len(":\n\n    ")
+    marker = re.search(r" \[\.\.\. (\d+) more characters of the error not shown\]", prefix)
+    unclipped = len(error.encode("utf-8")) + len(build_repair_prefix("").encode("utf-8"))
+    if unclipped <= REPAIR_PREFIX_MAX_BYTES:
+        assert marker is None
+        assert prefix[start:].startswith(error)
+        return
+    assert marker is not None
+    shown = prefix[start:marker.start()]
+    assert shown and error.startswith(shown)
+    assert len(shown) + int(marker.group(1)) == len(error)
+
+
+def test_a_revision_and_its_repair_add_no_more_than_the_reserve():
+    """The worst a later dispatch of the same request can add: a
+    constraint-loop revision carrying an oversized violation list, whose own
+    parse failure prepends an oversized repair error. Together they add at
+    most ``PREFIX_RESERVE_BYTES`` to the first prompt, the room the handoff
+    keeps (with the chat-template allowance) out of the window."""
+    blocks = {
+        "question": "q?", "decomposition_block": "d", "evidence_block": "e",
+        "parameters_block": "p", "substrate_block": "s",
+    }
+    first = render_full_prompt(**blocks)
+    violations = [
+        SimpleNamespace(constraint_id=f"c{i}", constraint_kind="k",
+                        strictness="hard", reason="超" * 2_000,
+                        target_claim_id=f"claim-{i}")
+        for i in range(50)
+    ]
+    revision = build_revision_prefix(violations)
+    assert len(revision.encode("utf-8")) <= REVISION_PREFIX_MAX_BYTES
+    assert "more characters of the violation list not shown" in revision
+    assert "constraint='c0'" in revision
+    revised = render_full_prompt(**blocks, extra_user_prefix=revision)
+    retry = build_repair_prefix("9" * 10_000) + revised
+    added = len(retry.encode("utf-8")) - len(first.encode("utf-8"))
+    assert added <= PREFIX_RESERVE_BYTES
+    assert _PROMPT_PREFIX_RESERVE_TOKENS == PREFIX_RESERVE_BYTES + _CHAT_TEMPLATE_TOKENS
+
+
+class _OversizedErrorSynth(_RecordingSynth):
+    """The first synthesizer answer names a 10,000-digit recommendation. The
+    parser quotes it back in its error, and the bridge prepends that error to
+    the one self-repair retry."""
+
+    def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
+        resp = super().call(model=model, prompt=prompt, max_tokens=max_tokens,
+                            temperature=temperature)
+        if sum("senior investment analyst" in p for p in self.prompts) != 1:
+            return resp
+        answer = json.loads(resp.text)
+        answer["implicit_recommendation"] = "9" * 10_000
+        return dataclasses.replace(resp, text=json.dumps(answer))
+
+
+@pytest.mark.asyncio
+async def test_a_self_repair_retry_with_an_oversized_error_fits_the_window(
+    graph, monkeypatch,
+):
+    """Codex repro: the Chinese pack fills the production window, the first
+    answer fails the parser with a 10,000-digit value, and the retry prompt
+    carries the error. Every prompt the synthesizer is sent, the retry
+    included, fits the window."""
+    texts = {f"chunk-zh-{i:02d}": _ZH for i in range(40)}
+    _ctx, synth = await _run_tail(_pack(texts), monkeypatch,
+                                  context_budget_tokens=256_000, max_tokens=16_384,
+                                  synth=_OversizedErrorSynth())
+    prompts = [p for p in synth.prompts if "senior investment analyst" in p]
+    assert len(prompts) >= 2, "the oversized answer was retried"
+    first, retry = prompts[0], prompts[1]
+    assert "more characters of the error not shown" in retry
+    # The first prompt fills the window, so an unclipped error would overflow it.
+    room = _PROD_INPUT_TOKENS - _CHAT_TEMPLATE_TOKENS - _prompt_token_ceiling(first)
+    assert room < 10_000 + REPAIR_PREFIX_MAX_BYTES
+    for prompt in prompts:
+        assert _prompt_token_ceiling(prompt) + _CHAT_TEMPLATE_TOKENS <= _PROD_INPUT_TOKENS

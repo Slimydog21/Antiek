@@ -98,7 +98,7 @@ Reconsider if: an entailment verifier that fails closed is wired onto this
 path. A note it accepts could then ride beside its source excerpt, typed
 `inferred`.
 
-## Amendment — the whole chunk reaches the synthesizer (2026-09-24, audit wave 5 provenance, round 2)
+## Amendment — the whole chunk reaches the synthesizer (2026-09-24, audit wave 5 provenance, rounds 2 and 3)
 
 The tail built each answer and each supporting claim from the first 500
 characters of the chunk. A source whose measurement followed its introduction
@@ -110,23 +110,42 @@ bound is the synthesizer's context window: `context_budget_tokens` less
 `max_tokens` of the dispatch tier the `synthesizer` role runs on (239,616
 input tokens on the production `synthesis` tier). What is measured against it
 is the prompt Phase 6 sends: the rendered synthesizer prompt around the
-evidence block, a 4,096-token reserve for the self-repair or constraint-loop
-prefix the bridge may prepend, and the evidence block exactly as Phase 6
-serializes it, with its ids, confidence bases, truncation markers and gap
-entries. A first version of this fix counted characters of chunk text instead.
-Phase 6 serializes with JSON ASCII escaping, so a Chinese character travels as
-a six-character `\uXXXX` escape, twice (answer and claim): forty 3,600-character
-Chinese chunks passed that budget with no gap and serialized to 1.44 million
-characters, far past the window.
+evidence block, a reserve for what a later dispatch of the same request may
+add, and the evidence block exactly as Phase 6 serializes it, with its ids,
+confidence bases, truncation markers and gap entries. A first version of this
+fix counted characters of chunk text instead. Phase 6 serializes with JSON
+ASCII escaping, so a Chinese character travels as a six-character `\uXXXX`
+escape, twice (answer and claim): forty 3,600-character Chinese chunks passed
+that budget with no gap and serialized to 1.44 million characters, far past
+the window.
 
-No tokenizer for the routed models (GLM, DeepSeek, MiMo) is available
-locally, so the count is a ceiling, not a measurement: an escape costs 6 tokens
-and any other non-ASCII character its UTF-8 byte count (a token covers at least
-one byte), a digit or punctuation mark 1, and ASCII letters and whitespace 3 to
-a token, below the roughly 4 these tokenizers average on English. Forty
-4,000-character English chunks still go whole (about 114,000 tokens); forty
-3,600-character Chinese chunks now show about 21,800 characters, each chunk
-named in a gap.
+No tokenizer for the routed models (DeepSeek, GLM, MiMo) is available
+locally, so the count is the prompt's UTF-8 byte length. That is an upper
+bound for byte-level BPE, the scheme those models use: every token spells at
+least one byte of the text, so there are never more tokens than bytes. A
+second version charged ASCII letters at 3 to a token, which is an average,
+not a bound: eighty chunks of 3,999 random letters passed it with no gap, and
+the prompt serialized to 675,121 bytes, which a DeBERTa-v3 tokenizer counts
+as 427,576 tokens against a 239,616-token window. At a token a byte the same
+pack shows 95,976 characters, every cut named, in a 227,965-byte prompt (a
+byte-level tokenizer with no merges, built with the `tokenizers` library,
+checks this count in the tests). The price is paid by ordinary prose: each
+chunk travels twice, so the production window carries twenty-six
+4,000-character English chunks whole, not forty, and forty
+3,600-character Chinese chunks show about 21,800 characters, each chunk named
+in a gap.
+
+The reserve is enforced, not assumed. The bridge adds text it does not control
+on a later dispatch: a self-repair retry prepends the parse error, which can
+quote the model's answer verbatim (a 10,000-digit recommendation came back in
+full), and a constraint-loop revision carries the violation list, whose own
+parse failure can prepend a repair error on top. `roles.synthesizer.prompt`
+clips each prefix to its byte bound (`REPAIR_PREFIX_MAX_BYTES` and
+`REVISION_PREFIX_MAX_BYTES`, 4,096 each) with a marker naming how many
+characters were dropped. The handoff reserves both, plus 256 tokens for the
+special tokens a chat template adds, so every prompt the synthesizer is sent
+for the request, the retries included, fits the window that admitted the
+evidence.
 
 When the pack does not fit whole, two ways of cutting are searched and the one
 showing more text is kept, each settling only on a cut it has measured to fit:
@@ -147,6 +166,10 @@ Reconsider if: the operator's AI Role Lineup routes the synthesizer onto a
 model whose window is smaller than the tier's declared `context_budget_tokens`.
 The budget reads the tier, not the lineup override, so it would then overstate
 the room; the fix is a per-model window on the lineup entry. Also reconsider
-if a tokenizer for the routed models becomes available locally: an exact count
-would replace the ceiling and show more text, most of all for non-ASCII
-sources, which the ceiling charges at the byte bound.
+if the synthesizer is routed onto a model whose tokenizer can emit a token that
+spells no byte of the text beyond a fixed template, which would break the byte
+bound; or if a tokenizer for the routed models becomes available locally, when
+an exact count would replace the byte bound and show roughly three to four
+times more English text. Each chunk is also sent twice, once in the
+sub-question's answer and once in its claim; an answer that pointed at the
+claims instead of repeating them would carry about twice the text.

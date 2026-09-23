@@ -96,6 +96,7 @@ from orchestration.session_evidence_pack import (  # noqa: E402
     PackChunk,
     SessionEvidencePack,
 )
+from roles.synthesizer.prompt import PREFIX_RESERVE_BYTES  # noqa: E402
 
 # connect_read replaces the two lazy `import duckdb` + raw read-only connects below.
 from runtime.db_lock import ReadConnection, connect_read  # noqa: E402
@@ -1686,23 +1687,22 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
 # ASCII escaping, so a CJK character travels as a six-character ``\uXXXX``
 # escape), truncation markers and gap entries included.
 #
-# No tokenizer for the routed models (GLM, DeepSeek, MiMo) is available
-# locally, so the count is a ceiling rather than a measurement. A token covers
-# at least one byte, so a ``\uXXXX`` escape costs at most 6 tokens and any
-# other non-ASCII character at most its UTF-8 byte count; digits, punctuation
-# and symbols are counted one token each (some tokenizers split every digit);
-# only ASCII letters and whitespace are counted at 3 characters a token, below
-# the roughly 4 these tokenizers average on English prose.
+# No tokenizer for the routed models (DeepSeek, GLM, MiMo) is available
+# locally, so the count is the UTF-8 byte length of the prompt. That is an
+# upper bound for any tokenizer whose every token spells at least one byte of
+# the text, which byte-level BPE (the scheme those models use) guarantees: the
+# tokens concatenate back to the text's bytes, so there are never more tokens
+# than bytes. A per-character estimate is not a bound: token-dense text (random
+# identifiers, hashes, base64) runs near one token per character.
 _ROUTER_DEFAULT_CONTEXT_TOKENS = 32_000
 _ROUTER_DEFAULT_MAX_TOKENS = 4_096
-# Room kept for what the synthesizer bridge may prepend to the same prompt:
-# the one self-repair prefix (the parse error) or a constraint-loop revision
-# prefix (the violation list).
-_PROMPT_PREFIX_RESERVE_TOKENS = 4_096
-_ESCAPE_TOKENS = 6
-_LETTERS_PER_TOKEN = 3
-_UNICODE_ESCAPE = re.compile(r"\\u[0-9a-fA-F]{4}")
-_LETTERS_AND_SPACE = re.compile(r"[A-Za-z \t\r\n]+")
+# Tokens the prompt text does not account for: the special tokens a chat
+# template wraps around the message, and a tokenizer's leading dummy prefix.
+_CHAT_TEMPLATE_TOKENS = 256
+# Room kept for what the synthesizer bridge may add to a later dispatch of the
+# same request: a self-repair prefix and a constraint-loop revision prefix,
+# each clipped by the bridge to its byte bound (``roles.synthesizer.prompt``).
+_PROMPT_PREFIX_RESERVE_TOKENS = PREFIX_RESERVE_BYTES + _CHAT_TEMPLATE_TOKENS
 # Characters that bind to a neighbour inside a figure or a word: "0.00071",
 # "10%", "two-qubit", "km/s", "don't".
 _FIGURE_PUNCT = frozenset(".,:%+-_'/")
@@ -1735,18 +1735,9 @@ def _synthesizer_input_tokens() -> int:
 
 
 def _prompt_token_ceiling(text: str) -> int:
-    """An upper bound on the tokens ``text`` costs the synthesizer (the
-    counting rules are above)."""
-    escapes = len(_UNICODE_ESCAPE.findall(text))
-    rest = _UNICODE_ESCAPE.sub("", text) if escapes else text
-    ascii_rest = rest.encode("ascii", "ignore")
-    non_ascii_bytes = len(rest.encode("utf-8")) - len(ascii_rest)
-    dense = len(_LETTERS_AND_SPACE.sub("", ascii_rest.decode("ascii")))
-    light = len(ascii_rest) - dense
-    return (
-        escapes * _ESCAPE_TOKENS + non_ascii_bytes + dense
-        + -(-light // _LETTERS_PER_TOKEN)
-    )
+    """An upper bound on the tokens ``text`` costs the synthesizer: its UTF-8
+    byte length (why that bounds the count is above)."""
+    return len(text.encode("utf-8"))
 
 
 def _evidence_block(evidence: Sequence[EvidenceRetrieveDeliveredPayload]) -> str:

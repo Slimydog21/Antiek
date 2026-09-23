@@ -227,11 +227,62 @@ def render_full_prompt(
     return SYNTHESIZER_SYSTEM_PROMPT + "\n\n" + user
 
 
+# What the bridge may prepend to a synthesizer prompt is bounded, so a caller
+# that sized the first prompt to the model's window knows the most a later
+# dispatch of the same request can add. A self-repair retry prepends the
+# repair prefix to the prompt it retries. A constraint-loop revision puts the
+# revision prefix (and a two-byte separator) inside the user template, and a
+# parse failure on that revision prepends a repair prefix on top. Each prefix
+# carries text the bridge does not control (a validation error can quote the
+# model's own output verbatim; a violation reason can be any length), so each
+# is clipped to its byte bound with a marker naming what was dropped.
+REPAIR_PREFIX_MAX_BYTES = 4_096
+REVISION_PREFIX_MAX_BYTES = 4_096
+PREFIX_RESERVE_BYTES = REPAIR_PREFIX_MAX_BYTES + REVISION_PREFIX_MAX_BYTES + len("\n\n")
+
+
+def _bounded(head: str, body: str, tail: str, *, max_bytes: int, what: str) -> str:
+    """``head + body + tail`` in at most ``max_bytes`` UTF-8 bytes. A body
+    that does not fit is clipped at a character boundary and ends with a
+    marker saying how many of its characters were not shown."""
+    full = head + body + tail
+    if len(full.encode("utf-8")) <= max_bytes:
+        return full
+
+    def marker(dropped: int) -> str:
+        return f" [... {dropped} more characters of the {what} not shown]"
+
+    room = max_bytes - len((head + tail + marker(len(body))).encode("utf-8"))
+    kept = body.encode("utf-8")[: max(room, 0)].decode("utf-8", "ignore")
+    return head + kept + marker(len(body) - len(kept)) + tail
+
+
+def build_repair_prefix(error: str) -> str:
+    """The prefix a self-repair retry prepends: the validation error the
+    previous response failed, clipped so the whole prefix stays within
+    ``REPAIR_PREFIX_MAX_BYTES``."""
+    return _bounded(
+        "Your previous response failed the substrate's structural "
+        "contract with the following error:\n\n    ",
+        error,
+        "\n\n"
+        "This is your one and only chance to fix it. Produce a "
+        "response that satisfies the contract above. Pay particular "
+        "attention to the substrate's non-negotiable constraints in "
+        "the system prompt — they are not stylistic preferences.\n\n"
+        "----\n\n",
+        max_bytes=REPAIR_PREFIX_MAX_BYTES,
+        what="error",
+    )
+
+
 def build_revision_prefix(violations: list[Any]) -> str:
     """Build the user-prompt prefix the bridge prepends when re-
     invoking the synthesizer inside the constraint loop. Violations
     are surfaced concretely so the next pass addresses specific
-    issues rather than blind re-derivation."""
+    issues rather than blind re-derivation. The prefix stays within
+    ``REVISION_PREFIX_MAX_BYTES``; a violation list longer than that is
+    clipped and says so."""
     if not violations:
         return ""
     bullets: list[str] = []
@@ -245,13 +296,16 @@ def build_revision_prefix(violations: list[Any]) -> str:
         bullets.append(
             f"  - constraint={cid!r} (kind={kind}, strictness={strictness}){target_suffix}: {reason}"
         )
-    return (
+    return _bounded(
         "## Constraint-loop revision (one-shot)\n"
         "Your previous response violated the following constraints. "
         "Re-derive the thesis, addressing each violation specifically. "
         "Do NOT remove load-bearing claims unsupported by evidence; "
         "either justify the relaxation in `constraint_compliance."
         "violations_justified` or revise the offending claim to "
-        "satisfy the constraint.\n\n"
-        + "\n".join(bullets)
+        "satisfy the constraint.\n\n",
+        "\n".join(bullets),
+        "",
+        max_bytes=REVISION_PREFIX_MAX_BYTES,
+        what="violation list",
     )
