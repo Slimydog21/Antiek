@@ -8,8 +8,13 @@ import httpx
 import pytest
 
 import acquisition.urls.robots
-from acquisition.urls.client import RobotsDisallowed, clear_refusal_counts, fetch
-from acquisition.urls.robots import robots_policy_for
+from acquisition.urls.client import clear_refusal_counts, fetch
+from acquisition.urls.robots import (
+    FetchText,
+    RobotsDisallowed,
+    cached_origins,
+    robots_policy_for,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -191,3 +196,54 @@ def test_a_comment_only_robots_txt_is_an_applied_empty_policy() -> None:
 
     assert page.status_code == 200
     assert page.robots_fail_open_reason is None
+
+
+def _serving(body: str, calls: list[str]) -> FetchText:
+    def fetch_text(url: str, _follow: bool) -> tuple[int, str, str]:
+        calls.append(url)
+        return 200, body, url
+
+    return fetch_text
+
+
+_MANY_RULES = "User-agent: *\n" + "".join(f"Disallow: /private-{i}/\n" for i in range(40))
+
+
+def test_the_policy_cache_is_bounded_and_drops_the_least_recently_used(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A long-lived process that fetches many origins must not keep every
+    robots.txt it ever parsed."""
+    monkeypatch.setattr(acquisition.urls.robots, "MAX_CACHED_ROBOTS_BYTES", 8 * 1024)
+    agent = "Antiek-Agent/0.1"
+    hot_calls: list[str] = []
+    for i in range(50):
+        robots_policy_for(
+            "https://hot.example/", fetch_text=_serving(_MANY_RULES, hot_calls), user_agent=agent,
+        )
+        robots_policy_for(
+            f"https://o{i}.example/", fetch_text=_serving(_MANY_RULES, []), user_agent=agent,
+        )
+
+    cached = cached_origins()
+    assert len(cached) < 20
+    assert "https://o0.example" not in cached
+    assert "https://o49.example" in cached
+    # Used between every store, the hot origin is never the least recently
+    # used, so it stays cached and its robots.txt is read once.
+    assert "https://hot.example" in cached
+    assert hot_calls == ["https://hot.example/robots.txt"]
+
+
+def test_expired_policies_are_swept_when_another_origin_is_stored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [1_000.0]
+    monkeypatch.setattr(acquisition.urls.robots, "_clock", lambda: now[0])
+    agent = "Antiek-Agent/0.1"
+    robots_policy_for("https://old.example/", fetch_text=_serving(_MANY_RULES, []), user_agent=agent)
+
+    now[0] += acquisition.urls.robots.ROBOTS_CACHE_TTL_S + 1
+    robots_policy_for("https://new.example/", fetch_text=_serving(_MANY_RULES, []), user_agent=agent)
+
+    assert cached_origins() == ("https://new.example",)

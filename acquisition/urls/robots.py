@@ -34,7 +34,9 @@ Three guarantees, in priority order:
 3. **One robots.txt request per origin per cache window.** The cache is an
    in-process ``dict`` keyed by ``scheme://host[:port]`` — not a service, not
    a file, not a DuckDB table — so the general fetcher adds at most one
-   request per host per window, not one per page. A fetched answer (rules
+   request per host per window, not one per page. It holds at most
+   :data:`MAX_CACHED_ROBOTS_BYTES` of robots.txt text; past that, the least
+   recently used origin is dropped and re-read if it is fetched again. A fetched answer (rules
    applied, or a definitive 4xx) is held for :data:`ROBOTS_CACHE_TTL_S`, the
    24 hours RFC 9309 §2.4 allows, so a publisher who adds a ``Disallow`` is
    honoured by a long-lived API process within a day rather than at its next
@@ -89,6 +91,15 @@ MAX_LICENSE_BYTES = 256 * 1024
 # outage cannot switch enforcement off for the life of a long-lived process.
 ROBOTS_CACHE_TTL_S = 24 * 60 * 60.0
 UNREACHABLE_RETRY_S = 5 * 60.0
+
+# The most robots.txt text the policy cache holds, summed over origins
+# (_policy_weight). Measured 2026-09-23, a parsed file takes at most 14x its
+# weight in memory for twelve real files and at most 21x for 512 KiB files of
+# one-wildcard rules, so the cache stays under about 90 MB however many
+# origins a long-lived process fetches, while still holding a few hundred
+# typical ones. The least recently used origin is dropped first; if it is
+# fetched again, its robots.txt is simply read again.
+MAX_CACHED_ROBOTS_BYTES = 4 * 1024 * 1024
 
 # The most character comparisons one robots_allows() decision may spend
 # searching for the literals of wildcard rules (_rule_matches charges each
@@ -555,9 +566,14 @@ def _normalise(value: str) -> str:
     return "".join(out)
 
 
-# origin -> (policy, monotonic expiry). See ROBOTS_CACHE_TTL_S / UNREACHABLE_RETRY_S.
-_cache: dict[str, tuple[RobotsPolicy, float]] = {}
+# origin -> (policy, monotonic expiry, weight), least recently used first.
+# See ROBOTS_CACHE_TTL_S / UNREACHABLE_RETRY_S and MAX_CACHED_ROBOTS_BYTES.
+_cache: dict[str, tuple[RobotsPolicy, float, int]] = {}
 _cache_lock = threading.Lock()
+
+# Per-entry weight on top of the rule text, so a cache of fail-open policies
+# (no rules at all) is bounded too.
+_ENTRY_WEIGHT = 256
 
 
 def clear_robots_cache() -> None:
@@ -567,10 +583,37 @@ def clear_robots_cache() -> None:
 
 
 def cached_origins() -> tuple[str, ...]:
-    """The origins currently held in the in-process cache, expired entries
-    included (introspection)."""
+    """The origins currently held in the in-process cache, least recently used
+    first (introspection). An expired entry stays until the next store sweeps
+    it."""
     with _cache_lock:
         return tuple(_cache)
+
+
+def _policy_weight(policy: RobotsPolicy) -> int:
+    """About the bytes of robots.txt text ``policy`` holds parsed: each kept
+    record's value plus its directive name and newline."""
+    parsed = policy.rules
+    weight = _ENTRY_WEIGHT + sum(len(url) + 10 for url in parsed.global_licenses)
+    for group in parsed.groups:
+        weight += sum(len(agent) + 13 for agent in group.agents)
+        weight += sum(len(rule.path) + 10 for rule in group.rules)
+        weight += sum(len(url) + 10 for url in group.licenses)
+    return weight
+
+
+def _store(origin: str, policy: RobotsPolicy, expiry: float) -> None:
+    """Cache ``policy`` as the most recently used entry, then sweep expired
+    entries and drop least recently used ones until the cache is back under
+    :data:`MAX_CACHED_ROBOTS_BYTES`. The caller holds ``_cache_lock``."""
+    _cache.pop(origin, None)
+    now = _clock()
+    for stale in [key for key, entry in _cache.items() if entry[1] <= now]:
+        del _cache[stale]
+    _cache[origin] = (policy, expiry, _policy_weight(policy))
+    total = sum(entry[2] for entry in _cache.values())
+    while total > MAX_CACHED_ROBOTS_BYTES and len(_cache) > 1:
+        total -= _cache.pop(next(iter(_cache)))[2]
 
 
 def robots_policy_for(
@@ -590,8 +633,9 @@ def robots_policy_for(
     origin = origin_of(url)
     with _cache_lock:
         hit = _cache.get(origin)
-    if hit is not None and hit[1] > _clock():
-        return hit[0]
+        if hit is not None and hit[1] > _clock():
+            _cache[origin] = _cache.pop(origin)  # now the most recently used
+            return hit[0]
     built, ttl_s = _build_policy(origin, fetch_text, user_agent)
     with _cache_lock:
         current = _cache.get(origin)
@@ -602,7 +646,7 @@ def robots_policy_for(
             and (current[0].applied or not built.applied)
         ):
             return current[0]
-        _cache[origin] = (built, _clock() + ttl_s)
+        _store(origin, built, _clock() + ttl_s)
         return built
 
 
@@ -760,6 +804,8 @@ def _load_terms(
 
 __all__ = [
     "MAX_LICENSE_BYTES",
+    "MAX_CACHED_ROBOTS_BYTES",
+    "MAX_MATCH_COST",
     "MAX_ROBOTS_BYTES",
     "ROBOTS_CACHE_TTL_S",
     "UNREACHABLE_RETRY_S",
