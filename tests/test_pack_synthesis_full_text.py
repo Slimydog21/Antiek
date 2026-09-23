@@ -9,10 +9,15 @@ could its reader.
 
 The handoff now carries each cited chunk's full text. The only bound is the
 synthesizer's declared context window (``context_budget_tokens`` of its
-dispatch tier). When that bound forces a cut, the cut is spread max-min fairly
-across chunks, lands on a word boundary so no figure is split, and every
-truncated or omitted chunk is named in an ``evidentiary_gaps`` entry that says
-how much was shown and how much was dropped.
+dispatch tier, less its ``max_tokens``), measured against the prompt Phase 6
+actually sends: the evidence block as Phase 6 serializes it (``json.dumps``
+with ASCII escaping, so a CJK character travels as a six-character
+``\\uXXXX`` escape), truncation markers and gap entries included, inside the
+rendered synthesizer prompt. When that bound forces a cut, the cut is spread
+max-min fairly across chunks, lands on a clean boundary so no figure is split,
+and every truncated or omitted chunk is named in an ``evidentiary_gaps`` entry
+that says how much was shown and how much was dropped. A pack none of whose
+chunks fits fails closed before the synthesizer is dispatched.
 
 These tests drive the real remote runner -> funnel -> pack -> Loop 1 context ->
 Phase 6 synthesizer prompt path with a fake sandbox and a stub provider that
@@ -23,10 +28,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 import pytest
 
-from orchestration.loop_one.orchestrator import _investigation_context_from_pack
+from orchestration.loop_one.orchestrator import (
+    _PROMPT_PREFIX_RESERVE_TOKENS,
+    _allot_pack_text,
+    _evidence_block,
+    _investigation_context_from_pack,
+    _prompt_token_ceiling,
+    _synthesis_frame_blocks,
+)
 from orchestration.session_evidence_pack import (
     PackChunk,
     PackDocument,
@@ -271,27 +284,64 @@ async def test_measurement_past_char_500_reaches_the_synthesis_prompt(
 
 
 # ---------------------------------------------------------------------------
-# A real budget that forces a cut: never silent.
+# A real budget that forces a cut: never silent, never past the window.
 # ---------------------------------------------------------------------------
 
+# The production synthesis tier (substrate/dispatch/config.yaml): a 256,000
+# token window less 16,384 reserved for the answer.
+_PROD_INPUT_TOKENS = 256_000 - 16_384
 
-def _pack(texts: dict[str, str]) -> SessionEvidencePack:
+
+def _pack(texts: dict[str, str], *, doc: str = "doc-b",
+          leaf: str = "leaf-b") -> SessionEvidencePack:
     return SessionEvidencePack(
         session_id="session-budget",
         problem_question="q?",
         chunks=[
-            PackChunk(chunk_id=cid, document_id="doc-b", ip_holder_id=None,
-                      text=text, source_investigation_id="leaf-b",
+            PackChunk(chunk_id=cid, document_id=doc, ip_holder_id=None,
+                      text=text, source_investigation_id=leaf,
                       sub_question="sq")
             for cid, text in texts.items()
         ],
-        documents=[PackDocument(document_id="doc-b", title="d", ip_holder_id=None)],
-        leaf_investigation_ids=["leaf-b"],
+        documents=[PackDocument(document_id=doc, title="d", ip_holder_id=None)],
+        leaf_investigation_ids=[leaf],
     )
 
 
 def _words(n: int, tag: str) -> str:
     return " ".join(f"{tag}{i:04d}" for i in range(n))
+
+
+def _prose(n_chars: int, seed: str = "") -> str:
+    base = (
+        f"{seed}Neutral atom platforms have drawn steady attention from "
+        "laboratories and vendors over the past several years and this report "
+        "surveys the state of the field. "
+    ) * (n_chars // 100 + 2)
+    return base[:n_chars].rsplit(" ", 1)[0]
+
+
+def _frame_tokens(ctx) -> int:
+    from roles.synthesizer.prompt import render_full_prompt
+
+    return _prompt_token_ceiling(
+        render_full_prompt(evidence_block="", **_synthesis_frame_blocks(ctx)),
+    )
+
+
+def _window_for(pack: SessionEvidencePack, evidence_tokens: int) -> int:
+    """The input window that leaves ``evidence_tokens`` for the evidence."""
+    ctx = _investigation_context_from_pack(pack, input_tokens=10**9)
+    return _frame_tokens(ctx) + _PROMPT_PREFIX_RESERVE_TOKENS + evidence_tokens
+
+
+def _sent_prompt(ctx) -> str:
+    """The first synthesizer prompt Phase 6 renders for ``ctx``."""
+    from roles.synthesizer.prompt import render_full_prompt
+
+    return render_full_prompt(
+        evidence_block=_evidence_block(ctx.evidence), **_synthesis_frame_blocks(ctx),
+    )
 
 
 _TEXTS = {
@@ -304,11 +354,11 @@ _TEXTS = {
 def _assert_every_cut_is_named(ctx, texts: dict[str, str]) -> None:
     """The invariant: each chunk reaches the synthesizer whole, or an
     evidentiary gap names it with exactly how much was shown and dropped; a
-    shown part is a verbatim prefix ending on a word boundary."""
+    shown part is a verbatim prefix that does not end inside a word."""
     claims = {c.chunk_ids[0]: c for e in ctx.evidence for c in e.supporting_claims}
     gaps = _gaps(ctx)
     for cid, text in texts.items():
-        named = [g for g in gaps if cid in g]
+        named = [g for g in gaps if f"Chunk {cid} " in g]
         claim = claims.get(cid)
         if claim is not None and claim.claim == text:
             assert named == [], f"{cid} is whole but a gap names it"
@@ -320,18 +370,34 @@ def _assert_every_cut_is_named(ctx, texts: dict[str, str]) -> None:
         if claim is None:
             continue
         assert text.startswith(claim.claim)
-        assert text[len(claim.claim)] == " ", "the cut split a word"
         assert "truncated" in claim.confidence_basis
         answer = "\n".join(e.answer for e in ctx.evidence)
         assert f"[{cid}: truncated" in answer
 
 
-@pytest.mark.parametrize("budget", [0, 40, 120, 500, 900, 1500, 2816, 2817, 10_000])
-def test_every_truncation_is_recorded_as_a_gap(budget):
-    ctx = _investigation_context_from_pack(_pack(_TEXTS), evidence_char_budget=budget)
+def _assert_within_window(ctx, window: int) -> None:
+    """What Phase 6 sends fits the window with the prefix reserve kept."""
+    assert _prompt_token_ceiling(_sent_prompt(ctx)) <= (
+        window - _PROMPT_PREFIX_RESERVE_TOKENS
+    )
+
+
+@pytest.mark.parametrize("evidence_tokens", [0, 150, 400, 700, 1_000, 1_500,
+                                             2_500, 4_000, 100_000])
+def test_every_truncation_is_recorded_as_a_gap(evidence_tokens):
+    pack = _pack(_TEXTS)
+    window = _window_for(pack, evidence_tokens)
+    ctx = _investigation_context_from_pack(pack, input_tokens=window)
     _assert_every_cut_is_named(ctx, _TEXTS)
-    shown = sum(len(c.claim) for e in ctx.evidence for c in e.supporting_claims)
-    assert shown <= budget
+    for cid, text in _TEXTS.items():
+        claim = next((c.claim for e in ctx.evidence for c in e.supporting_claims
+                      if c.chunk_ids == [cid]), "")
+        if claim and claim != text:
+            assert text[len(claim)] == " ", "the cut split a word"
+    if any(e.supporting_claims for e in ctx.evidence):
+        _assert_within_window(ctx, window)
+    else:
+        assert all(e.insufficient_evidence for e in ctx.evidence)
 
 
 def test_a_cut_falls_on_the_longest_chunk_first():
@@ -340,22 +406,22 @@ def test_a_cut_falls_on_the_longest_chunk_first():
     long chunk comes first in the pack, so a first-come allotment would spend
     the budget on it and drop the short ones."""
     first_long = {k: _TEXTS[k] for k in ("chunk-long", "chunk-mid", "chunk-short")}
-    ctx = _investigation_context_from_pack(_pack(first_long), evidence_char_budget=1500)
+    pack = _pack(first_long)
+    window = _window_for(pack, 3_000)
+    ctx = _investigation_context_from_pack(pack, input_tokens=window)
     claims = {c.chunk_ids[0]: c.claim for e in ctx.evidence for c in e.supporting_claims}
     assert claims["chunk-short"] == _TEXTS["chunk-short"]
     assert claims["chunk-mid"] == _TEXTS["chunk-mid"]
     assert 0 < len(claims["chunk-long"]) < len(_TEXTS["chunk-long"])
-    # The shares the short chunks did not need go to the long one: it gets
-    # the whole remainder, less at most one word backed off at the cut.
-    spare = 1500 - len(_TEXTS["chunk-short"]) - len(_TEXTS["chunk-mid"])
-    assert spare - 6 <= len(claims["chunk-long"]) <= spare
     (gap,) = _gaps(ctx)
     assert "chunk-long" in gap
     assert ctx.evidence[0].insufficient_evidence is False
+    _assert_within_window(ctx, window)
 
 
 def test_nothing_fits_is_insufficient_evidence_with_each_chunk_named():
-    ctx = _investigation_context_from_pack(_pack(_TEXTS), evidence_char_budget=0)
+    pack = _pack(_TEXTS)
+    ctx = _investigation_context_from_pack(pack, input_tokens=_window_for(pack, 0))
     (ev,) = ctx.evidence
     assert ev.supporting_claims == []
     assert ev.insufficient_evidence is True
@@ -365,29 +431,45 @@ def test_nothing_fits_is_insufficient_evidence_with_each_chunk_named():
 
 def test_a_cut_never_splits_a_figure():
     """A prefix cut mid-number would put a different figure in the source's
-    mouth ("0.00071" -> "0.000"). The cut backs off to a word boundary."""
+    mouth ("0.00071" -> "0.000", "四十八" -> "四"). The cut backs off to a
+    clean boundary; a CJK text, written without spaces, can still be cut
+    between two ideographs."""
     text = "The error rate was 0.00071 across 48 qubits."
-    budget = text.index("0.00071") + 4
-    ctx = _investigation_context_from_pack(_pack({"chunk-fig": text}),
-                                           evidence_char_budget=budget)
-    presented = [c.claim for e in ctx.evidence for c in e.supporting_claims]
-    assert presented == ["The error rate was"]
-
+    assert _allot_pack_text([text], text.index("0.00071") + 4) == ["The error rate was"]
     # A budget that ends exactly on a word boundary keeps that last word.
-    budget = text.index(" across")
-    ctx = _investigation_context_from_pack(_pack({"chunk-fig": text}),
-                                           evidence_char_budget=budget)
-    presented = [c.claim for e in ctx.evidence for c in e.supporting_claims]
-    assert presented == ["The error rate was 0.00071"]
+    assert _allot_pack_text([text], text.index(" across")) == [
+        "The error rate was 0.00071",
+    ]
+    zh = "测得的错误率为0.00071，覆盖四十八个量子比特。"
+    assert _allot_pack_text([zh], zh.index("0.00071") + 3) == ["测得的错误率为"]
+    assert _allot_pack_text([zh], zh.index("四十八") + 2) == ["测得的错误率为0.00071，覆盖"]
+    assert _allot_pack_text([zh], zh.index("个") + 2) == ["测得的错误率为0.00071，覆盖四十八个量"]
+    # A combining mark stays with its base letter.
+    decomposed = "café au lait"
+    assert _allot_pack_text([decomposed], 4) == [""]
+
+
+def test_the_token_ceiling_counts_what_the_synthesizer_is_sent():
+    """The counting rules, on strings small enough to check by hand: an
+    escape costs its 6 bytes, a digit or punctuation mark 1, a non-ASCII
+    character its UTF-8 bytes, letters and whitespace 3 to a token."""
+    assert _prompt_token_ceiling(json.dumps("中")) == 2 + 6  # quotes + escape
+    assert _prompt_token_ceiling("0.00071") == 7
+    assert _prompt_token_ceiling("abc def") == 3
+    assert _prompt_token_ceiling("é") == 2
+    assert _prompt_token_ceiling("") == 0
 
 
 def test_budget_comes_from_the_synthesizer_context_window(monkeypatch):
-    """Without an explicit budget the handoff reads the synthesizer role's
+    """Without an explicit window the handoff reads the synthesizer role's
     dispatch tier: a tiny window forces a cut, and the cut is named."""
-    _patch_dispatch(monkeypatch, context_budget_tokens=1_500, max_tokens=1_000)
+    window = _window_for(_pack(_TEXTS), 1_000)
+    _patch_dispatch(monkeypatch, context_budget_tokens=window + 1_000,
+                    max_tokens=1_000)
     ctx = _investigation_context_from_pack(_pack(_TEXTS))
-    assert _gaps(ctx), "a 500-token input window cannot hold 2,800 characters twice"
+    assert _gaps(ctx), "1,000 tokens cannot hold 2,800 digit-heavy characters twice"
     _assert_every_cut_is_named(ctx, _TEXTS)
+    _assert_within_window(ctx, window)
 
 
 def test_an_unreadable_synthesizer_config_still_bounds_and_names_the_cut(monkeypatch):
@@ -399,22 +481,141 @@ def test_an_unreadable_synthesizer_config_still_bounds_and_names_the_cut(monkeyp
         raise OSError("config.yaml unreadable")
 
     monkeypatch.setattr(router.DispatchConfig, "from_yaml", classmethod(_broken))
-    texts = {f"chunk-{i}": _words(1_700, f"x{i}") for i in range(3)}
-    assert sum(len(t) for t in texts.values()) > 20_928
+    texts = {f"chunk-{i}": _prose(12_000, f"x{i} ") for i in range(3)}
     ctx = _investigation_context_from_pack(_pack(texts))
     assert len(_gaps(ctx)) == 3
     _assert_every_cut_is_named(ctx, texts)
+    _assert_within_window(ctx, 32_000 - 4_096)
     shown = sum(len(c.claim) for e in ctx.evidence for c in e.supporting_claims)
-    assert 20_000 < shown <= 20_928
+    assert shown > 20_000
 
 
 def test_production_window_carries_forty_full_chunks():
     """The production ``config.yaml`` synthesizer window carries forty
-    4,000-character chunks (the funnel's largest citable chunk) whole."""
-    big = {f"chunk-{i:02d}": _words(666, f"w{i:02d}")[:4000].rsplit(" ", 1)[0]
-           for i in range(40)}
+    4,000-character prose chunks (the funnel's largest citable chunk) whole."""
+    big = {f"chunk-{i:02d}": _prose(4_000, f"w{i:02d} ") for i in range(40)}
     assert all(len(t) > 3_900 for t in big.values())
     ctx = _investigation_context_from_pack(_pack(big))
     assert _gaps(ctx) == []
     claims = {c.chunk_ids[0]: c.claim for e in ctx.evidence for c in e.supporting_claims}
     assert claims == big
+    _assert_within_window(ctx, _PROD_INPUT_TOKENS)
+
+
+# ---------------------------------------------------------------------------
+# Codex round-2 repro: escaping and metadata count against the window.
+# ---------------------------------------------------------------------------
+
+# 3,600 characters of Chinese carrying the figures a cut must not split.
+_ZH = (
+    "中性原子平台在过去几年受到实验室和供应商的持续关注。"
+    "测得的双量子比特门错误率为0.00071，覆盖四十八个量子比特，"
+    "但仅在10 mK以下成立；高于该温度时升至0.0042。"
+) * 60
+_ZH = _ZH[:3_600]
+_ZH_FIGURES = ("0.00071", "四十八", "0.0042", "10 mK")
+
+
+def _assert_no_figure_split(shown: str, text: str) -> None:
+    for fig in _ZH_FIGURES:
+        for m in re.finditer(re.escape(fig), text):
+            assert not m.start() < len(shown) < m.end(), (
+                f"the cut at {len(shown)} splits {fig!r}"
+            )
+
+
+def test_non_ascii_evidence_is_budgeted_as_phase_6_escapes_it():
+    """Forty 3,600-character Chinese chunks are 144,000 characters of text,
+    well inside a character budget, but Phase 6 sends each character as a
+    six-character ``\\uXXXX`` escape, twice (answer and claim): 1.7 million
+    characters, past the production window. The handoff measures the
+    serialized block, so it cuts, names every cut, keeps each shown part a
+    verbatim prefix that splits no figure, and what Phase 6 sends fits."""
+    texts = {f"chunk-zh-{i:02d}": _ZH for i in range(40)}
+    pack = _pack(texts)
+    ctx = _investigation_context_from_pack(pack, input_tokens=_PROD_INPUT_TOKENS)
+
+    assert len(_gaps(ctx)) == 40
+    _assert_every_cut_is_named(ctx, texts)
+    claims = [c.claim for e in ctx.evidence for c in e.supporting_claims]
+    assert len(claims) == 40 and all(claims), "every chunk is still shown in part"
+    for shown in claims:
+        _assert_no_figure_split(shown, _ZH)
+    _assert_within_window(ctx, _PROD_INPUT_TOKENS)
+    prompt = _sent_prompt(ctx)
+    assert "\\u" in prompt, "the prompt carries the escapes that were budgeted"
+    # The reviewer's own measure (three characters a token) also fits.
+    assert len(prompt) / 3 <= _PROD_INPUT_TOKENS
+
+
+def test_metadata_heavy_evidence_is_budgeted_with_its_ids_and_gaps():
+    """Short chunks behind long identifiers: the chunk text is a small part
+    of what Phase 6 sends; the chunk ids, document ids, leaf ids, confidence
+    bases and gap entries are most of it. A budget over chunk text alone
+    passes all of it; the handoff measures the whole block."""
+    long_id = "x" * 100
+    texts = {f"chunk-{long_id}-{i:03d}": _prose(300, f"r{i} ") for i in range(60)}
+    pack = _pack(texts, doc=f"doc-{long_id}", leaf=f"leaf-{long_id}")
+    text_chars = sum(len(t) for t in texts.values())
+    window = _window_for(pack, 20_000)
+    # Round 1's budget: three characters a token, each shown twice.
+    assert text_chars * 2 / 3 < 20_000, "a text-only budget would show every chunk"
+
+    ctx = _investigation_context_from_pack(pack, input_tokens=window)
+    _assert_every_cut_is_named(ctx, texts)
+    assert _gaps(ctx), "the ids and gap entries do not fit whole"
+    _assert_within_window(ctx, window)
+    # Cutting all sixty equal chunks a little would add a marker and a gap
+    # to every one of them; omitting some whole keeps the rest whole.
+    claims = [c.claim for e in ctx.evidence for c in e.supporting_claims]
+    assert len(claims) >= 20
+    assert all(claim in texts.values() for claim in claims)
+
+
+async def _run_tail(pack, monkeypatch, *, context_budget_tokens: int,
+                    max_tokens: int) -> tuple[object, _RecordingSynth]:
+    from interfaces.research.api import EventBroadcaster
+    from interfaces.research.api.synthesizer import register_handlers as register_synth
+    from orchestration.loop_one import register_handlers, run_synthesis_tail_from_pack
+
+    _patch_dispatch(monkeypatch, context_budget_tokens=context_budget_tokens,
+                    max_tokens=max_tokens)
+    synth = _RecordingSynth()
+    register_provider(synth)
+    bus = EventBroadcaster()
+    register_synth(bus)
+    coordinator = register_handlers(bus)
+    ctx = await run_synthesis_tail_from_pack(
+        pack, broadcaster=bus, coordinator=coordinator,
+    )
+    return ctx, synth
+
+
+@pytest.mark.asyncio
+async def test_every_prompt_phase_6_sends_fits_the_window(graph, monkeypatch):
+    """End to end: the Chinese pack goes through Phase 6 on the production
+    window, and every prompt the synthesizer is actually sent (the first and
+    any self-repair retry) fits it."""
+    texts = {f"chunk-zh-{i:02d}": _ZH for i in range(40)}
+    _ctx, synth = await _run_tail(_pack(texts), monkeypatch,
+                                  context_budget_tokens=256_000, max_tokens=16_384)
+    prompts = [p for p in synth.prompts if "senior investment analyst" in p]
+    assert prompts, "the synthesizer was dispatched"
+    for prompt in prompts:
+        assert _prompt_token_ceiling(prompt) <= _PROD_INPUT_TOKENS
+        assert "truncated" in prompt
+
+
+@pytest.mark.asyncio
+async def test_a_pack_that_cannot_fit_fails_closed_before_dispatch(graph, monkeypatch):
+    """When even naming every chunk as omitted overflows the window, no
+    prompt is sent: the tail fails at phase 6 and says why."""
+    long_id = "y" * 180
+    texts = {f"chunk-{long_id}-{i:03d}": _prose(400) for i in range(80)}
+    pack = _pack(texts, doc=f"doc-{long_id}", leaf=f"leaf-{long_id}")
+    window = _window_for(pack, 500)
+    ctx, synth = await _run_tail(pack, monkeypatch,
+                                 context_budget_tokens=window + 1_000, max_tokens=1_000)
+    assert [p for p in synth.prompts if "senior investment analyst" in p] == []
+    assert ctx.failed_phase == 6
+    assert "none of the 80 gathered chunks fits" in ctx.fail_reason

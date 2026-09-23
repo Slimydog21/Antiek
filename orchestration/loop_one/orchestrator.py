@@ -61,6 +61,7 @@ import logging
 import os
 import re
 import sys
+import unicodedata
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC
@@ -1201,29 +1202,18 @@ async def _run_phase_6(
 
     async def work() -> None:
         assert ctx.parameters is not None
-        decomposition_block = (
-            ctx.decomposition.model_dump_json(indent=2)
-            if ctx.decomposition is not None else "(none)"
-        )
-        evidence_block = json.dumps(
-            [e.model_dump() for e in ctx.evidence],
-            indent=2, default=str,
-        )
-        parameters_block = ctx.parameters.model_dump_json(indent=2)
-        substrate_block = (
-            ctx.connector_result.model_dump_json(indent=2)
-            if ctx.connector_result is not None else "(none)"
-        )
-
+        # The same blocks Path A measured its evidence budget against
+        # (``_investigation_context_from_pack``).
+        frame = _synthesis_frame_blocks(ctx)
         await broadcast_emit(
             broadcaster,
             ctx.investigation_id,
             SynthesizeRequestedPayload(
-                question=ctx.question,
-                decomposition_block=decomposition_block,
-                evidence_block=evidence_block,
-                parameters_block=parameters_block,
-                substrate_block=substrate_block,
+                question=frame["question"],
+                decomposition_block=frame["decomposition_block"],
+                evidence_block=_evidence_block(ctx.evidence),
+                parameters_block=frame["parameters_block"],
+                substrate_block=frame["substrate_block"],
                 constraints=list(ctx.parameters.constraints),
             ),
             role="orchestrator",
@@ -1690,24 +1680,36 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
 # Path A hands the synthesizer every cited chunk whole. The one bound is the
 # synthesizer's own context window: ``context_budget_tokens`` of the dispatch
 # tier the ``synthesizer`` role runs on, less the ``max_tokens`` reserved for
-# its answer. The evidence block may use half of that input window (the rest
-# holds the system prompt, template, decomposition, parameters, substrate
-# paths and any constraint-loop revision prefix), at a conservative three
-# characters per token (JSON-escaped figures and identifiers tokenize densely).
-# Each shown character appears twice in the block, once in the sub-question's
-# answer and once in its supporting claim, so the chunk-text budget is half the
-# block's character budget.
-_PACK_EVIDENCE_WINDOW_SHARE = 0.5
-_PACK_CHARS_PER_TOKEN = 3
-_PACK_TEXT_COPIES = 2
-# The router's own defaults for a tier that declares no window.
+# its answer. What is measured against that window is the prompt Phase 6
+# actually sends: the rendered synthesizer prompt around the evidence block,
+# and the evidence block exactly as Phase 6 serializes it (``json.dumps`` with
+# ASCII escaping, so a CJK character travels as a six-character ``\uXXXX``
+# escape), truncation markers and gap entries included.
+#
+# No tokenizer for the routed models (GLM, DeepSeek, MiMo) is available
+# locally, so the count is a ceiling rather than a measurement. A token covers
+# at least one byte, so a ``\uXXXX`` escape costs at most 6 tokens and any
+# other non-ASCII character at most its UTF-8 byte count; digits, punctuation
+# and symbols are counted one token each (some tokenizers split every digit);
+# only ASCII letters and whitespace are counted at 3 characters a token, below
+# the roughly 4 these tokenizers average on English prose.
 _ROUTER_DEFAULT_CONTEXT_TOKENS = 32_000
 _ROUTER_DEFAULT_MAX_TOKENS = 4_096
-_LAST_WHITESPACE = re.compile(r"\s(?=\S*\Z)")
+# Room kept for what the synthesizer bridge may prepend to the same prompt:
+# the one self-repair prefix (the parse error) or a constraint-loop revision
+# prefix (the violation list).
+_PROMPT_PREFIX_RESERVE_TOKENS = 4_096
+_ESCAPE_TOKENS = 6
+_LETTERS_PER_TOKEN = 3
+_UNICODE_ESCAPE = re.compile(r"\\u[0-9a-fA-F]{4}")
+_LETTERS_AND_SPACE = re.compile(r"[A-Za-z \t\r\n]+")
+# Characters that bind to a neighbour inside a figure or a word: "0.00071",
+# "10%", "two-qubit", "km/s", "don't".
+_FIGURE_PUNCT = frozenset(".,:%+-_'/")
 
 
-def _pack_evidence_char_budget() -> int:
-    """Characters of chunk text the synthesizer can be shown on Path A.
+def _synthesizer_input_tokens() -> int:
+    """Input tokens the synthesizer's dispatch tier accepts.
 
     Read from the same ``config.yaml`` the dispatch router loads for the
     ``synthesizer`` role, so the bound moves with the configured window. A
@@ -1729,24 +1731,81 @@ def _pack_evidence_char_budget() -> int:
             "router defaults (%d context, %d output tokens)",
             context_tokens, max_tokens, exc_info=True,
         )
-    input_tokens = max(context_tokens - max_tokens, 0)
-    return int(
-        input_tokens * _PACK_EVIDENCE_WINDOW_SHARE * _PACK_CHARS_PER_TOKEN
-        / _PACK_TEXT_COPIES
+    return max(context_tokens - max_tokens, 0)
+
+
+def _prompt_token_ceiling(text: str) -> int:
+    """An upper bound on the tokens ``text`` costs the synthesizer (the
+    counting rules are above)."""
+    escapes = len(_UNICODE_ESCAPE.findall(text))
+    rest = _UNICODE_ESCAPE.sub("", text) if escapes else text
+    ascii_rest = rest.encode("ascii", "ignore")
+    non_ascii_bytes = len(rest.encode("utf-8")) - len(ascii_rest)
+    dense = len(_LETTERS_AND_SPACE.sub("", ascii_rest.decode("ascii")))
+    light = len(ascii_rest) - dense
+    return (
+        escapes * _ESCAPE_TOKENS + non_ascii_bytes + dense
+        + -(-light // _LETTERS_PER_TOKEN)
     )
+
+
+def _evidence_block(evidence: Sequence[EvidenceRetrieveDeliveredPayload]) -> str:
+    """The evidence block exactly as Phase 6 hands it to the synthesizer."""
+    return json.dumps([e.model_dump() for e in evidence], indent=2, default=str)
+
+
+def _synthesis_frame_blocks(ctx: InvestigationContext) -> dict[str, str]:
+    """Every Phase 6 prompt block except the evidence."""
+    return {
+        "question": ctx.question,
+        "decomposition_block": (
+            ctx.decomposition.model_dump_json(indent=2)
+            if ctx.decomposition is not None else "(none)"
+        ),
+        "parameters_block": (
+            ctx.parameters.model_dump_json(indent=2)
+            if ctx.parameters is not None else "(none)"
+        ),
+        "substrate_block": (
+            ctx.connector_result.model_dump_json(indent=2)
+            if ctx.connector_result is not None else "(none)"
+        ),
+    }
+
+
+def _binds(ch: str) -> bool:
+    """Whether ``ch`` joins its neighbour into one word or figure. Digits and
+    numerals always do (CJK numerals included: "四十八" is one figure);
+    letters and marks of space-delimited scripts do; ideographs and the other
+    letters of scripts written without spaces (category ``Lo``) do not, so a
+    CJK text can be cut between two characters."""
+    if ch in _FIGURE_PUNCT or unicodedata.numeric(ch, None) is not None:
+        return True
+    cat = unicodedata.category(ch)
+    return cat[0] in "LMN" and cat != "Lo"
+
+
+def _cut_is_clean(text: str, at: int) -> bool:
+    before, after = text[at - 1], text[at]
+    if after.isspace() or before.isspace():
+        return True
+    if unicodedata.category(after)[0] == "M":  # never strip a combining mark
+        return False
+    return not (_binds(before) and _binds(after))
 
 
 def _allot_pack_text(texts: Sequence[str], budget: int) -> list[str]:
     """The verbatim part of each text the synthesizer is shown.
 
-    Every text is shown whole when the texts fit ``budget`` together. When
-    they do not, the budget is split max-min fairly: texts shorter than an
-    equal share stay whole and hand the rest of their share on, so only the
-    longest texts are cut, each to about the same length. A cut backs off to the
-    last whitespace inside the allotment, so the shown part never ends inside
-    a word or a figure ("0.00071" is never shown as "0.000"); a text with no
-    whitespace inside its allotment is not shown at all. The caller names
-    every text returned shorter than it came in."""
+    Every text is shown whole when the texts fit ``budget`` characters
+    together. When they do not, the budget is split max-min fairly: texts
+    shorter than an equal share stay whole and hand the rest of their share
+    on, so only the longest texts are cut, each to about the same length. A
+    cut backs off to the last clean boundary inside the allotment, so the
+    shown part never ends inside a word or a figure ("0.00071" is never shown
+    as "0.000", "四十八" never as "四"); a text with no clean boundary inside
+    its allotment is not shown at all. The caller names every text returned
+    shorter than it came in."""
     shown = [""] * len(texts)
     remaining = max(budget, 0)
     order = sorted(range(len(texts)), key=lambda i: (len(texts[i]), i))
@@ -1756,61 +1815,26 @@ def _allot_pack_text(texts: Sequence[str], budget: int) -> list[str]:
         if len(text) <= share:
             shown[i] = text
         else:
-            cut = text[:share]
-            if not text[share].isspace():
-                last_gap = _LAST_WHITESPACE.search(cut)
-                cut = cut[:last_gap.start()] if last_gap else ""
-            shown[i] = cut.rstrip()
+            at = share
+            while at > 0 and not _cut_is_clean(text, at):
+                at -= 1
+            shown[i] = text[:at].rstrip()
         remaining -= len(shown[i])
     return shown
 
 
-def _investigation_context_from_pack(
-    pack: SessionEvidencePack,
-    *,
-    evidence_char_budget: int | None = None,
-) -> InvestigationContext:
-    """Hydrate Loop 1 state for phases 6–9 from a DRW merge pack.
+def _pack_evidence(
+    groups: Sequence[tuple[str, Sequence[tuple[PackChunk, str]]]],
+) -> list[EvidenceRetrieveDeliveredPayload]:
+    """One delivered-evidence payload per sub-question, showing each chunk's
+    paired excerpt and naming every chunk shown short of whole.
 
-    ``evidence_char_budget`` is how many characters of chunk text the
-    synthesizer may be shown in total; ``None`` derives it from the
-    synthesizer's dispatch tier (``_pack_evidence_char_budget``)."""
-    budget = (
-        _pack_evidence_char_budget() if evidence_char_budget is None
-        else evidence_char_budget
-    )
-    excerpts = _allot_pack_text([c.text for c in pack.chunks], budget)
-    by_sub_q: dict[str, list[tuple[PackChunk, str]]] = {}
-    for chunk, excerpt in zip(pack.chunks, excerpts, strict=True):
-        by_sub_q.setdefault(chunk.sub_question, []).append((chunk, excerpt))
-
-    decomposition = [
-        SubQuestion(
-            sub_question=sq,
-            category="technology_risk",
-            rationale="DRW gather leaf — independent sub-question from cascade.",
-            evidence_type_required="mixed",
-        )
-        for sq in sorted(by_sub_q.keys())
-    ]
-    if not decomposition and pack.leaf_investigation_ids:
-        decomposition = [
-            SubQuestion(
-                sub_question=f"Evidence from {pack.session_id}",
-                category="technology_risk",
-                rationale="Empty chunk pack — honest insufficient-evidence path.",
-                evidence_type_required="mixed",
-            ),
-        ]
-
-    # ``c.text`` is the cited chunk's source text, the only text a pack chunk
-    # carries (the generated gather note is not in the pack). Every answer and
-    # claim quotes the source verbatim, so a claim citing a chunk is always
-    # something that chunk says. The whole chunk goes through: the only bound
-    # is the synthesizer's context window, and a cut that bound forces is
-    # named in the sub-question's evidentiary gaps, never made silently.
+    ``c.text`` is the cited chunk's source text, the only text a pack chunk
+    carries (the generated gather note is not in the pack). Every answer and
+    claim quotes the source verbatim, so a claim citing a chunk is always
+    something that chunk says."""
     evidence: list[EvidenceRetrieveDeliveredPayload] = []
-    for sq, chunks in sorted(by_sub_q.items()):
+    for sq, chunks in groups:
         answer_parts: list[str] = []
         claims: list[SupportingClaim] = []
         gaps: list[EvidentiaryGap] = []
@@ -1867,19 +1891,109 @@ def _investigation_context_from_pack(
                 insufficient_evidence=not claims,
             ),
         )
+    return evidence
 
-    if not evidence:
-        evidence.append(
-            EvidenceRetrieveDeliveredPayload(
-                sub_question=pack.problem_question,
-                answer="(no gathered evidence)",
-                supporting_claims=[],
-                evidentiary_gaps=[],
-                insufficient_evidence=True,
-            ),
+
+def _fit_pack_evidence(
+    groups: Sequence[tuple[str, Sequence[PackChunk]]],
+    token_budget: int,
+) -> list[EvidenceRetrieveDeliveredPayload]:
+    """The evidence showing the most chunk text whose block, as Phase 6
+    serializes it with markers and gap entries included, stays within
+    ``token_budget``.
+
+    Every chunk goes whole when that fits. Otherwise two ways of cutting are
+    searched, each settling only on a cut it has measured to fit: the max-min
+    allotment of ``_allot_pack_text``, and the shortest chunks whole with the
+    longest omitted. The second matters when per-chunk metadata outweighs the
+    text: a truncated chunk carries its claim, a marker and a gap, so cutting
+    many chunks a little can cost more than omitting a few. Either way only
+    the longest chunks lose text. When even the block that shows no chunk
+    text (every chunk named as omitted) overflows, that block is returned: it
+    shows nothing, so the caller fails closed rather than send it."""
+    chunks = [c for _, cs in groups for c in cs]
+    texts = [c.text for c in chunks]
+
+    def build(shown: Sequence[str]) -> list[EvidenceRetrieveDeliveredPayload]:
+        excerpt = iter(shown)
+        return _pack_evidence(
+            [(sq, [(c, next(excerpt)) for c in cs]) for sq, cs in groups],
         )
 
-    return InvestigationContext(
+    def fits(evidence: list[EvidenceRetrieveDeliveredPayload]) -> bool:
+        return _prompt_token_ceiling(_evidence_block(evidence)) <= token_budget
+
+    def largest_fit(
+        shape: Callable[[int], list[str]], top: int,
+    ) -> tuple[int, list[EvidenceRetrieveDeliveredPayload]]:
+        # shape(0) shows nothing and is known to fit; shape(top) is every
+        # chunk whole and is known not to.
+        fitting, overflowing = 0, top
+        best = nothing
+        while overflowing - fitting > 1:
+            mid = (fitting + overflowing) // 2
+            candidate = build(shape(mid))
+            if fits(candidate):
+                fitting, best = mid, candidate
+            else:
+                overflowing = mid
+        shown = sum(len(c.claim) for e in best for c in e.supporting_claims)
+        return shown, best
+
+    whole = build(texts)
+    if fits(whole):
+        return whole
+    nothing = build([""] * len(chunks))
+    if not fits(nothing):
+        return nothing
+    rank = {i: r for r, i in enumerate(
+        sorted(range(len(texts)), key=lambda i: (len(texts[i]), i)),
+    )}
+    fair = largest_fit(lambda allot: _allot_pack_text(texts, allot), sum(map(len, texts)))
+    shortest = largest_fit(
+        lambda k: [t if rank[i] < k else "" for i, t in enumerate(texts)], len(texts),
+    )
+    return fair[1] if fair[0] >= shortest[0] else shortest[1]
+
+
+def _investigation_context_from_pack(
+    pack: SessionEvidencePack,
+    *,
+    input_tokens: int | None = None,
+) -> InvestigationContext:
+    """Hydrate Loop 1 state for phases 6–9 from a DRW merge pack.
+
+    ``input_tokens`` is the synthesizer's input window; ``None`` reads it from
+    the synthesizer's dispatch tier (``_synthesizer_input_tokens``). The
+    evidence gets what the rest of the Phase 6 prompt and the prefix reserve
+    leave of it. Each chunk goes through whole when it fits; a cut the window
+    forces is named in the sub-question's evidentiary gaps, never made
+    silently."""
+    window = _synthesizer_input_tokens() if input_tokens is None else input_tokens
+    by_sub_q: dict[str, list[PackChunk]] = {}
+    for chunk in pack.chunks:
+        by_sub_q.setdefault(chunk.sub_question, []).append(chunk)
+
+    decomposition = [
+        SubQuestion(
+            sub_question=sq,
+            category="technology_risk",
+            rationale="DRW gather leaf — independent sub-question from cascade.",
+            evidence_type_required="mixed",
+        )
+        for sq in sorted(by_sub_q.keys())
+    ]
+    if not decomposition and pack.leaf_investigation_ids:
+        decomposition = [
+            SubQuestion(
+                sub_question=f"Evidence from {pack.session_id}",
+                category="technology_risk",
+                rationale="Empty chunk pack — honest insufficient-evidence path.",
+                evidence_type_required="mixed",
+            ),
+        ]
+
+    ctx = InvestigationContext(
         investigation_id=pack.session_id,
         question=pack.problem_question,
         context="DRW cascade synthesis tail (Path A)",
@@ -1887,13 +2001,21 @@ def _investigation_context_from_pack(
             decomposition=decomposition,
             keywords=[],
         ),
-        evidence=evidence,
+        evidence=[],
         parameters=ParameterExtractDeliveredPayload(
             parameters=[],
             constraints=[],
         ),
         chase_mode="off",
     )
+    from roles.synthesizer.prompt import render_full_prompt
+
+    frame = render_full_prompt(evidence_block="", **_synthesis_frame_blocks(ctx))
+    evidence_tokens = (
+        window - _prompt_token_ceiling(frame) - _PROMPT_PREFIX_RESERVE_TOKENS
+    )
+    ctx.evidence = _fit_pack_evidence(sorted(by_sub_q.items()), evidence_tokens)
+    return ctx
 
 
 async def run_synthesis_tail_from_pack(
@@ -1914,14 +2036,24 @@ async def run_synthesis_tail_from_pack(
 
     Guarded like the Loop One handler: the tail runs as a detached task
     (``cascade_routes._run_to_completion``), so a cancel mid-phase would
-    otherwise leave the session parent's trajectory without a terminal."""
+    otherwise leave the session parent's trajectory without a terminal.
+
+    A pack none of whose chunks fits the synthesizer's context window fails
+    closed the same way: the synthesizer would be asked to cite evidence it
+    was not shown, or be sent a prompt past its window."""
     ctx = _investigation_context_from_pack(pack)
-    if not pack.chunks:
+    shown = any(e.supporting_claims for e in ctx.evidence)
+    if not pack.chunks or not shown:
         ctx.failed_phase = 6
         ctx.fail_reason = (
             "empty substrate-grounded evidence pack: no gathered note cites a "
             "chunk present in the substrate, so there is nothing to synthesize "
             f"({len(pack.leaf_investigation_ids)} leaf research(es) merged)"
+        ) if not pack.chunks else (
+            f"none of the {len(pack.chunks)} gathered chunks fits the "
+            "synthesizer's context window, so there is nothing it can be shown "
+            "to synthesize from; each chunk is named in its sub-question's "
+            "evidentiary gaps"
         )
         await broadcast_emit(
             broadcaster,

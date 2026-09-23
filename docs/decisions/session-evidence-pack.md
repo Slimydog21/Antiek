@@ -107,19 +107,46 @@ still reported `insufficient_evidence=false` with no evidentiary gap.
 
 `_investigation_context_from_pack` now passes every chunk's full text. The one
 bound is the synthesizer's context window: `context_budget_tokens` less
-`max_tokens` of the dispatch tier the `synthesizer` role runs on, of which the
-evidence block may use half, at three characters per token, with each shown
-character counted twice because it appears in the answer and in its claim. For
-the production `synthesis` tier that is 179,712 characters of chunk text, about
-45 of the funnel's largest (4,000-character) citable chunks. When the pack
-exceeds it, the budget is split max-min fairly so only the longest chunks are
-cut, each cut backs off to a word boundary so no figure is split, and every
-truncated or omitted chunk gets an `evidentiary_gaps` entry naming the chunk,
-its document, the characters shown and the characters dropped. The claim's
-`confidence_basis` and an inline marker in the answer say the same. A
-sub-question left with no shown chunk is `insufficient_evidence`.
+`max_tokens` of the dispatch tier the `synthesizer` role runs on (239,616
+input tokens on the production `synthesis` tier). What is measured against it
+is the prompt Phase 6 sends: the rendered synthesizer prompt around the
+evidence block, a 4,096-token reserve for the self-repair or constraint-loop
+prefix the bridge may prepend, and the evidence block exactly as Phase 6
+serializes it, with its ids, confidence bases, truncation markers and gap
+entries. A first version of this fix counted characters of chunk text instead.
+Phase 6 serializes with JSON ASCII escaping, so a Chinese character travels as
+a six-character `\uXXXX` escape, twice (answer and claim): forty 3,600-character
+Chinese chunks passed that budget with no gap and serialized to 1.44 million
+characters, far past the window.
+
+No tokenizer for the routed models (GLM, DeepSeek, MiMo) is available
+locally, so the count is a ceiling, not a measurement: an escape costs 6 tokens
+and any other non-ASCII character its UTF-8 byte count (a token covers at least
+one byte), a digit or punctuation mark 1, and ASCII letters and whitespace 3 to
+a token, below the roughly 4 these tokenizers average on English. Forty
+4,000-character English chunks still go whole (about 114,000 tokens); forty
+3,600-character Chinese chunks now show about 21,800 characters, each chunk
+named in a gap.
+
+When the pack does not fit whole, two ways of cutting are searched and the one
+showing more text is kept, each settling only on a cut it has measured to fit:
+a max-min fair split of the chunk text, so only the longest chunks are cut, and
+the shortest chunks whole with the longest omitted, which wins when per-chunk
+metadata outweighs the text (a truncated chunk carries its claim, a marker and
+a gap). Each cut backs off to a clean boundary: never inside a word of a
+space-delimited script or inside a figure ("0.00071", "四十八"), while CJK text
+can be cut between ideographs. Every truncated or omitted chunk gets an
+`evidentiary_gaps` entry naming the chunk, its document, the characters shown
+and the characters dropped; the claim's `confidence_basis` and an inline marker
+in the answer say the same. A sub-question left with no shown chunk is
+`insufficient_evidence`. When no chunk can be shown at all, including when even
+naming every chunk as omitted overflows the window, the tail fails closed at
+phase 6 before the synthesizer is dispatched, as an empty pack does.
 
 Reconsider if: the operator's AI Role Lineup routes the synthesizer onto a
 model whose window is smaller than the tier's declared `context_budget_tokens`.
 The budget reads the tier, not the lineup override, so it would then overstate
-the room; the fix is a per-model window on the lineup entry.
+the room; the fix is a per-model window on the lineup entry. Also reconsider
+if a tokenizer for the routed models becomes available locally: an exact count
+would replace the ceiling and show more text, most of all for non-ASCII
+sources, which the ceiling charges at the byte bound.
