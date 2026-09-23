@@ -120,8 +120,8 @@ def test_post_investigations_hard_gate_is_atomic_with_charge(isolated_db, monkey
     _seed(isolated_db, limit=2, used=1)
     real_precheck = G.run_capacity_precheck
 
-    def precheck_then_twin(request):
-        gate = real_precheck(request)
+    def precheck_then_twin(request, **kw):
+        gate = real_precheck(request, **kw)
         with connect_write(isolated_db, purpose="test:twin") as con:
             record_investigation_start_acu(con, owner_user_id=_OWNER, investigation_id="inv-twin")
         return gate
