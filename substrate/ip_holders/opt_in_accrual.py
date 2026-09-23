@@ -34,9 +34,12 @@ from . import accrue_escrow
 # One row per (holder, work) ever seeded. The seed is once per work, but intake
 # re-runs are routine (resubmission, grant flips, the corpus CLI has no
 # already-ingested check) and the escrow column is a bare running sum, so the
-# key has to live somewhere a re-run cannot reset.
-_SEED_LEDGER_DDL = """
-CREATE TABLE IF NOT EXISTS opt_in_intake_seeds (
+# key has to live somewhere a re-run cannot reset. A staging ingest writes its
+# rows into the staging DB; tools/merge_staging carries them into live together
+# with the escrow balance of each holder it inserts.
+SEED_LEDGER_TABLE = "opt_in_intake_seeds"
+_SEED_LEDGER_DDL = f"""
+CREATE TABLE IF NOT EXISTS {SEED_LEDGER_TABLE} (
     ip_holder_id  TEXT NOT NULL,
     document_id   TEXT NOT NULL,
     amount_usd    DECIMAL(18, 6) NOT NULL,
@@ -44,6 +47,11 @@ CREATE TABLE IF NOT EXISTS opt_in_intake_seeds (
     PRIMARY KEY (ip_holder_id, document_id)
 )
 """
+
+
+def ensure_seed_ledger(con: Any) -> None:
+    """Create the seed ledger if this DB does not have it yet."""
+    con.execute(_SEED_LEDGER_DDL)
 
 
 def accrue_opt_in_escrow(
@@ -61,7 +69,7 @@ def accrue_opt_in_escrow(
     Delegates to the ONE low-level writer (``ip_holders.accrue_escrow``), which
     rejects a non-positive amount and an unknown holder. Accrual only;
     disbursement stays operator-gated (G2/G3)."""
-    con.execute(_SEED_LEDGER_DDL)
+    ensure_seed_ledger(con)
     with con.transaction():
         inserted = con.execute(
             """
@@ -78,4 +86,4 @@ def accrue_opt_in_escrow(
     return True
 
 
-__all__ = ["accrue_opt_in_escrow"]
+__all__ = ["SEED_LEDGER_TABLE", "accrue_opt_in_escrow", "ensure_seed_ledger"]
