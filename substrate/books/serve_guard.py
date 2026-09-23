@@ -67,10 +67,10 @@ from substrate.constants import (
 from substrate.rights import (
     RightsTier,
     T3BodyServeError,
-    ads_allowed,
     body_servable,
     resolve_tier,
 )
+from substrate.rights.ad_eligibility import ad_eligibility, licence_tier_of
 
 
 class LinkBackMissingError(RuntimeError):
@@ -95,14 +95,21 @@ class _RightsContext(NamedTuple):
     ``license_uri`` via ``resolve_tier``, NEVER the stored ``rights_tier`` — so a
     corrupt stored verdict cannot launder a body past the drift cross-check);
     ``arxiv_id`` and ``license_uri`` are the raw values the OAI persist path
-    stamped in (``acquisition.arxiv.oai_persist._record_metadata``). All three
-    are ``None`` for a non-arXiv document (a row with no ``license_uri`` key),
-    which is how the serve contract distinguishes "arXiv paper" from "existing
-    book" downstream."""
+    stamped in (``acquisition.arxiv.oai_persist._record_metadata``).
+
+    ``ad_tier`` is the licence tier ad-eligibility is decided on
+    (``substrate.rights.ad_eligibility.licence_tier_of``): equal to ``tier``
+    when a license_uri key is present, T3 for an arXiv row with no
+    license_uri key, None otherwise. Kept separate from ``tier`` so the drift
+    and link-back arms keep their existing semantics. ``tier``, ``arxiv_id``
+    and ``license_uri`` are all ``None`` for a non-arXiv document (a row with
+    no ``license_uri`` key), which is how the serve contract distinguishes
+    "arXiv paper" from "existing book" downstream."""
 
     tier: RightsTier | None
     arxiv_id: str | None
     license_uri: str | None
+    ad_tier: RightsTier | None = None
 
 
 def _rights_context(con: Any, document_id: str) -> _RightsContext:
@@ -111,11 +118,14 @@ def _rights_context(con: Any, document_id: str) -> _RightsContext:
     This is the SINGLE metadata read that backs BOTH the drift cross-check (via
     ``.tier``) and the serve-contract enrichment (tier / canonical_url /
     license). Defensive parsing: a missing row / missing metadata / unparseable
-    JSON / no ``license_uri`` key all yield a non-arXiv document (everything
-    ``None``), so the tier arm is skipped and behaviour is identical to bare
-    serving. For an arXiv row it returns the tier RE-DERIVED from the immutable
+    JSON all yield a non-arXiv document (everything ``None``), so the tier arm
+    is skipped and behaviour is identical to bare serving. A parsed dict with
+    no ``license_uri`` key is also non-arXiv for those arms, but it still
+    derives ``ad_tier`` — an arXiv id with no recorded licence resolves to T3.
+    For an arXiv row it returns the tier RE-DERIVED from the immutable
     ``license_uri`` (so a corrupt stored ``rights_tier`` cannot launder
-    anything), plus the ``arxiv_id`` and ``license_uri`` the persist path wrote.
+    anything), plus the ``arxiv_id`` and ``license_uri`` the persist path
+    wrote.
     A present-but-blank ``license_uri`` is still an arXiv signal: it flows through
     ``resolve_tier`` to T3 (deny-by-default), and its ``arxiv_id`` is still read.
     """
@@ -141,8 +151,10 @@ def _rights_context_from_metadata(raw_metadata: object) -> _RightsContext:
         # already failed closed if it cleared this body). We do not infer a tier
         # from a corrupt blob.
         return _RightsContext(None, None, None)
-    if not isinstance(metadata, dict) or "license_uri" not in metadata:
+    if not isinstance(metadata, dict):
         return _RightsContext(None, None, None)
+    if "license_uri" not in metadata:
+        return _RightsContext(None, None, None, licence_tier_of(metadata))
     license_uri = metadata["license_uri"]
     arxiv_id = metadata.get("arxiv_id")
     # A whitespace-only arxiv_id is NOT a usable id: it would yield a bogus
@@ -157,6 +169,7 @@ def _rights_context_from_metadata(raw_metadata: object) -> _RightsContext:
         tier=resolve_tier(license_uri),
         arxiv_id=usable_arxiv_id,
         license_uri=license_uri if isinstance(license_uri, str) else None,
+        ad_tier=licence_tier_of(metadata),
     )
 
 
@@ -254,12 +267,11 @@ def serve_full_text_guarded(
     the drift cross-check and the enrichment, so the two can never diverge.
 
     The ad-eligibility rule is REGRESSION-SAFE:
-      * arXiv document (tier resolvable) → ``ads_allowed(tier)`` (T1 only).
-      * non-arXiv document (tier ``None``) → ``servable`` — preserving today's
-        behaviour where the reader mounts ad rails on any servable book.
-    Ad-eligibility is derived ONLY from ``substrate.rights.ads_allowed`` /
-    ``resolve_tier`` (the single source of truth), never re-derived from
-    license/content_class here.
+      * a licence tier decides when present: ``ads_allowed(tier)`` (T1 only),
+        including T3 for an arXiv row with no ``license_uri`` key;
+      * otherwise there is no licence signal, and eligibility is ``servable``
+        — preserving today's behaviour where the reader mounts ad rails on a
+        servable book, page or capture.
     """
     # ``owner`` threads to the binding content_class gate: True admits the
     # operator's personal_reading content (the §9.0 owner-read privilege),
@@ -302,9 +314,10 @@ def serve_full_text_guarded(
                 f"served body; refusing to emit an un-attributed arXiv body "
                 f"(deny-by-default, master-spec §9.0)."
             )
-    # arXiv → ads gate on the tier (T1 only); non-arXiv → preserve today's
-    # "ad rail on any servable book" behaviour. Single source of truth: ads_allowed.
-    ad_eligible = ads_allowed(ctx.tier) if ctx.tier is not None else result.servable
+    # Serve-time and payout-time consult the same predicate
+    # (substrate.rights.ad_eligibility.ad_eligibility) over the same
+    # licence-tier derivation, so they cannot diverge.
+    ad_eligible = ad_eligibility(ctx.ad_tier, servable=result.servable).eligible
     return dataclasses.replace(
         result,
         tier=ctx.tier.value if ctx.tier is not None else None,

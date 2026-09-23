@@ -33,10 +33,19 @@ ad-eligible. This predicate is the single gate the per-second ad border
 (constants Section J) and the SPR-09 accrual ledger consult — they never
 re-derive ad-eligibility from the license, only from the tier, so there is one
 place this rule lives (defensibility bar 5).
+
+That ONE rule now has ONE extension: a document with no licence tier carries
+no licence signal and is decided by whether its body is publicly servable.
+``substrate.books.serve_guard`` and ``substrate.payouts.ledger`` both call
+``ad_eligibility()`` — serve-time and payout-time cannot re-derive it apart.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+from substrate.rights.arxiv_tiers import resolve_tier
 from substrate.schemas.documents import RightsTier
 
 # The ad-eligible tiers. T1 only. A frozenset (not an ``== T1`` literal in the
@@ -57,4 +66,73 @@ def ads_allowed(tier: RightsTier) -> bool:
     return tier in _AD_ELIGIBLE_TIERS
 
 
-__all__ = ["ads_allowed"]
+@dataclass(frozen=True)
+class AdEligibility:
+    """One ad-eligibility decision: whether ads may run on (and ad revenue
+    accrue for) a document, the licence tier it was decided on (``None`` when
+    the document carries no licence signal), and a machine-readable reason."""
+
+    eligible: bool
+    tier: RightsTier | None
+    reason: str
+
+
+def licence_tier_of(metadata: Mapping[str, object]) -> RightsTier | None:
+    """The licence tier a document's ad-eligibility is decided on, derived
+    ONCE from its parsed ``documents.metadata`` for both the serve guard and
+    the payouts ledger.
+
+    - a "license_uri" key present -> resolve_tier(value if it is a str else
+      None) (blank/None resolves to T3, deny-by-default);
+    - no "license_uri" key but a non-empty str "arxiv_id" ->
+      resolve_tier(None), i.e. T3: an arXiv paper whose immutable licence was
+      never recorded is not ad-eligible. content_class is never read as a
+      licence (SPR-02 anti-laundering: a stored class or rights_tier cannot
+      launder revenue);
+    - neither -> None: the document carries no licence signal (a book, a web
+      page, a capture) and is decided by body servability.
+    """
+    if "license_uri" in metadata:
+        value = metadata["license_uri"]
+        return resolve_tier(value if isinstance(value, str) else None)
+    arxiv_id = metadata.get("arxiv_id")
+    if isinstance(arxiv_id, str) and arxiv_id:
+        return resolve_tier(None)
+    return None
+
+
+def ad_eligibility(tier: RightsTier | None, *, servable: bool | None) -> AdEligibility:
+    """THE ad-eligibility predicate.
+
+    ``serve_guard.serve_full_text_guarded`` stamps
+    ``ServeResult.ad_eligible`` from it and ``payouts.ledger`` gates accrual
+    on it, so the reader can never mount an ad border on a document whose
+    revenue the ledger then refuses (or the reverse).
+
+    - A licence tier decides on its own: eligible iff ``ads_allowed(tier)``
+      (T1 only). servability is not consulted (a T1 paper is ad-eligible even
+      while its body is gated; a T2/T3 paper never is).
+    - With no licence tier the document is a book, page or capture: eligible
+      iff its body is publicly servable. That covers
+      ``SourceKind.LICENSED_PUBLISHER``: a §9.10 opt-in
+      (``content_class opt_in_licensed``) is the commercial grant, so an
+      opted-in book is ad-eligible; a gated pre-onboarded book is not (its
+      escrow accrues through attribution, not the reader's ad border).
+
+    ``servable`` must be given when tier is None; it is ignored otherwise.
+    """
+    if tier is not None:
+        if ads_allowed(tier):
+            return AdEligibility(True, tier, f"tier_ad_eligible:{tier.value}")
+        return AdEligibility(False, tier, f"tier_not_ad_eligible:{tier.value}")
+    if servable is None:
+        raise ValueError(
+            "a document with no licence tier is decided by body servability; "
+            "pass servable="
+        )
+    if servable:
+        return AdEligibility(True, None, "servable_body")
+    return AdEligibility(False, None, "body_not_servable")
+
+
+__all__ = ["AdEligibility", "ad_eligibility", "ads_allowed", "licence_tier_of"]
