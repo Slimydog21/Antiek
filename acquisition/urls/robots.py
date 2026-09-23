@@ -14,7 +14,11 @@ Three guarantees, in priority order:
    :meth:`RobotsPolicy.allows` return False and the fetcher raises
    :class:`RobotsDisallowed` BEFORE any
    request for the page is sent. This is the same posture as the paulgraham
-   connector's ``robots_disallowed`` bucket.
+   connector's ``robots_disallowed`` bucket. Matching never backtracks (one
+   substring search per literal, however many wildcards a rule has) and a
+   decision's cost is capped (:data:`MAX_MATCH_COST`), because the rules are
+   the host's own text; a URL whose rules would cost more is refused, not
+   waved through with rules unchecked.
 2. **A missing or broken robots.txt fails OPEN, loudly.** 404, 5xx, a
    transport error, an oversized or unparseable body — all yield a policy
    with ``applied=False`` and a ``fail_open_reason``, a ``WARNING`` log line,
@@ -58,13 +62,11 @@ allows the declaring agent's direct licence URL.
 from __future__ import annotations
 
 import logging
-import re
 import string
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from functools import lru_cache
 from urllib.parse import urljoin, urlsplit
 
 from acquisition.urls.rights_terms import (
@@ -88,6 +90,19 @@ MAX_LICENSE_BYTES = 256 * 1024
 ROBOTS_CACHE_TTL_S = 24 * 60 * 60.0
 UNREACHABLE_RETRY_S = 5 * 60.0
 
+# The most character comparisons one robots_allows() decision may spend
+# searching for the literals of wildcard rules (_rule_matches charges each
+# search the most any substring search can cost; rules without a wildcard cost
+# one prefix comparison and are not charged). The robots.txt is the host's own
+# text and the URL can be the host's own redirect target, so without a bound
+# the host chooses how long a decision holds the GIL: 512 KiB of "/*ab" rules
+# against a 16 KiB path took 0.9 s, and the time grows with the path. Measured
+# 2026-09-23: at this bound every hostile file tried (up to 40k rules, up to
+# 1000 wildcards in a rule) was decided in under 70 ms, while the costliest of
+# twelve real files (github.com, 199 wildcard rules) spent 1.2M comparisons
+# on a 2 KiB URL and 9.7M on a 16 KiB one. Exceeding it refuses the URL.
+MAX_MATCH_COST = 1 << 25
+
 # Monotonic clock for cache expiry. A module attribute so a test can advance
 # time without sleeping.
 _clock: Callable[[], float] = time.monotonic
@@ -110,10 +125,18 @@ FetchText = Callable[[str, bool], tuple[int, str, str]]
 
 @dataclass(frozen=True)
 class RobotsRule:
-    """One Allow/Disallow rule, with its value exactly as written."""
+    """One Allow/Disallow rule, with its value exactly as written.
+
+    ``_compiled`` is the value prepared for matching (see
+    :func:`_compile_rule`). It is derived once, when the rule is parsed, so a
+    decision never re-normalises a rule; it takes no part in equality."""
 
     allow: bool
     path: str
+    _compiled: _CompiledRule = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_compiled", _compile_rule(self.path))
 
 
 @dataclass(frozen=True)
@@ -327,7 +350,13 @@ def robots_allows(
     :func:`_selected_groups` chooses the governing groups.
     Rule matching (RFC 9309 s2.2.2/s2.2.3): the longest matching rule path
     wins, Allow wins a tie, '*' matches any sequence and a trailing '$'
-    anchors the end. No matching rule means allowed."""
+    anchors the end. No matching rule means allowed.
+
+    Matching never backtracks (:func:`_rule_matches`), and one decision
+    spends at most :data:`MAX_MATCH_COST` character comparisons. A decision
+    that would need more returns False with a WARNING: the rules are the
+    host's explicit ones, and skipping those never checked could let through
+    a URL one of them disallows."""
     selected_groups = _selected_groups(robots, user_agent)
     if not selected_groups:
         return True
@@ -341,13 +370,23 @@ def robots_allows(
     if parsed_url.query:
         normalised = f"{normalised}?{_normalise(parsed_url.query)}"
 
+    budget = _MatchBudget(MAX_MATCH_COST)
     matching: list[tuple[int, bool]] = []
-    for rule in rules:
-        if not rule.path:
-            continue
-        pattern, length = _compiled_rule(rule.path)
-        if pattern.match(normalised) is not None:
-            matching.append((length, rule.allow))
+    try:
+        for rule in rules:
+            if rule.path and _rule_matches(rule._compiled, normalised, budget):
+                matching.append((rule._compiled.specificity, rule.allow))
+    except _MatchBudgetExhausted:
+        logger.warning(
+            "%s: robots.txt needs more than %d character comparisons to decide "
+            "%.200r (%d chars); treating it as disallowed rather than skipping "
+            "rules never checked",
+            origin_of(url),
+            MAX_MATCH_COST,
+            url,
+            len(url),
+        )
+        return False
     if not matching:
         return True
     return max(matching)[1]
@@ -391,20 +430,90 @@ def select_license(robots: ParsedRobots, user_agent: str) -> str | None:
     return next(iter(licenses), None)
 
 
-@lru_cache(maxsize=512)
-def _compiled_rule(pattern_text: str) -> tuple[re.Pattern[str], int]:
+@dataclass(frozen=True, slots=True)
+class _CompiledRule:
+    """A rule path split at its wildcards, for matching without backtracking.
+
+    The normalised path must start with ``head`` (the text before the first
+    ``*``). A rule with no ``*`` is then decided: it matches, or for a ``$``
+    rule it matches only if nothing follows. Otherwise each of ``inner`` (the
+    texts between wildcards, empty ones dropped) must occur after the head,
+    in order and without overlapping; and an anchored rule's ``tail`` (the
+    text after its last ``*``) must end the path, after all of them."""
+
+    head: str
+    inner: tuple[str, ...]
+    tail: str
+    wildcard: bool
+    anchored: bool
+    specificity: int
+
+
+def _compile_rule(pattern_text: str) -> _CompiledRule:
     anchored = pattern_text.endswith("$")
     body = pattern_text[:-1] if anchored else pattern_text
-    regex_text = ".*".join(
-        re.escape(_normalise(segment)) for segment in body.split("*")
-    )
-    if anchored:
-        regex_text = f"{regex_text}\\Z"
+    segments = [_normalise(segment) for segment in body.split("*")]
+    head, rest = segments[0], segments[1:]
+    tail = rest.pop() if anchored and rest else ""
     # Precedence is by the octets of the NORMALISED rule (RFC 9309 s2.2.2), so
     # two spellings of the same path ("/caf%C3%A9" and "/café") tie and Allow
     # wins the tie.
-    specificity = len("*".join(_normalise(seg) for seg in body.split("*")))
-    return re.compile(regex_text), specificity + (1 if anchored else 0)
+    specificity = len("*".join(segments)) + (1 if anchored else 0)
+    return _CompiledRule(
+        head=head,
+        inner=tuple(segment for segment in rest if segment),
+        tail=tail,
+        wildcard=len(segments) > 1,
+        anchored=anchored,
+        specificity=specificity,
+    )
+
+
+class _MatchBudgetExhausted(Exception):
+    """A decision would exceed :data:`MAX_MATCH_COST`."""
+
+
+class _MatchBudget:
+    """The character comparisons one decision may still spend."""
+
+    __slots__ = ("remaining",)
+
+    def __init__(self, total: int) -> None:
+        self.remaining = total
+
+    def spend(self, cost: int) -> None:
+        self.remaining -= cost
+        if self.remaining < 0:
+            raise _MatchBudgetExhausted
+
+
+def _rule_matches(rule: _CompiledRule, target: str, budget: _MatchBudget) -> bool:
+    """Whether ``rule`` matches the start of ``target`` (RFC 9309 s2.2.3).
+
+    Each literal between wildcards is placed at its leftmost occurrence after
+    the previous one and never revisited. That is exact: an earlier placement
+    leaves at least as much of the path for everything that follows, so if
+    any placement matches, the leftmost one does. The work is one substring
+    search per literal, whatever the number of wildcards, where a regex with
+    one ``.*`` per wildcard backtracks through every combination of positions.
+
+    Each search is charged ``len(target) - pos`` times the literal's length,
+    which bounds what any substring search can spend on it, so a
+    :data:`MAX_MATCH_COST` budget bounds the whole decision."""
+    if not target.startswith(rule.head):
+        return False
+    if not rule.wildcard:
+        return not rule.anchored or len(target) == len(rule.head)
+    pos = len(rule.head)
+    for literal in rule.inner:
+        budget.spend((len(target) - pos) * len(literal))
+        found = target.find(literal, pos)
+        if found < 0:
+            return False
+        pos = found + len(literal)
+    if not rule.anchored:
+        return True
+    return len(target) - len(rule.tail) >= pos and target.endswith(rule.tail)
 
 
 _UNRESERVED = frozenset(string.ascii_letters + string.digits + "-._~")
