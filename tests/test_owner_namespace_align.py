@@ -66,34 +66,9 @@ def test_fails_closed_on_malformed_email() -> None:
         raise AssertionError("malformed e-mail must 401")
 
 
-def test_migration_refuses_multi_owner_registry(tmp_path: Path) -> None:
-    from tools.migrate_owner_namespace import migrate_registry
-
-    reg = tmp_path / "user_models.json"
-    reg.write_text(
-        '{"models": ['
-        '{"id": "m1", "owner_user_id": "__operator__"},'
-        '{"id": "m2", "owner_user_id": "derived:other"}'
-        "]}"
-    )
-    rc = migrate_registry(reg, "alice@example.com", apply=True)
-    assert rc == 3, "must refuse when more than one legacy owner is present"
-
-
-def test_migration_reowns_only_operator_rows(tmp_path: Path) -> None:
-    from tools.migrate_owner_namespace import migrate_registry
-
-    reg = tmp_path / "user_models.json"
-    reg.write_text(
-        '{"models": ['
-        '{"id": "m1", "owner_user_id": "__operator__"},'
-        '{"id": "m2", "owner_user_id": "__operator__"}'
-        "]}"
-    )
-    rc = migrate_registry(reg, "alice@example.com", apply=True)
-    assert rc == 0
-    body = reg.read_text()
-    assert '"owner_user_id": "__operator__"' not in body and '"owner_user_id":"__operator__"' not in body
-    derived = derive_owner_from_verified_email("alice@example.com")
-    assert derived is not None and derived in body
-    assert "migrated_from_owner" in body
+# The migration-tool tests that used to live here exercised the superseded
+# 71-line draft (wrong registry shape — a silent no-op against real stores,
+# proven in the PR review). Migration coverage now lives in
+# tests/tools/test_migrate_owner_namespace.py, which drives the ported tool
+# against real registry/BYOK/sqlite/DuckDB stores, including the multi-owner
+# refusal and the operator-rows-only re-own these two tests asserted.

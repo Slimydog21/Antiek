@@ -127,6 +127,11 @@ _ENV_HOME = "ANTIEK_HOME"
 _PIPELINE_KIND = "model_provider"
 _ID_PREFIX = "user-"
 _LEGACY_OWNER_USER_ID = "__operator__"
+
+# Auth methods that prove no human: a service token or bearer credential must
+# never be resolved to a person through the e-mail fallback, even if a future
+# auth path attaches an address to them.
+_MACHINE_AUTH_METHODS = frozenset({"bearer_token", "cloudflare_service_token"})
 _REGISTRY_LOCK = threading.RLock()
 _PRIVATE_FILE_MODE = 0o600
 
@@ -233,6 +238,12 @@ def request_owner_user_id(request: Request) -> str:
         and value.casefold() != OPERATOR_STORAGE_SENTINEL.casefold()
     ):
         return value
+    if getattr(request.state, "auth_method", None) in _MACHINE_AUTH_METHODS:
+        # Defense in depth (the #3197 gate, narrowed): machine credentials
+        # never resolve to a person, even if a future auth path attaches an
+        # e-mail to them. Unreachable today — neither machine path sets
+        # user_email — so this changes no current behavior.
+        raise HTTPException(status_code=401, detail="authenticated user identity required")
     derived = derive_owner_from_verified_email(
         getattr(request.state, "user_email", None)
     )
