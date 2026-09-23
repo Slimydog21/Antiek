@@ -87,6 +87,11 @@ class SearchCandidate(BaseModel):
     url: str = Field(max_length=2_048)
     published_at: str | None = Field(default=None, max_length=64)
     author: str | None = Field(default=None, max_length=512)
+    # Whether POST /research/tools/ingest accepts this candidate. A YouTube
+    # search also returns channels and playlists, which are not ingestable
+    # sources; the default keeps journaled responses from before this field
+    # replaying unchanged.
+    ingestable: bool = True
 
 
 class SearchResponse(BaseModel):
@@ -352,6 +357,7 @@ def _youtube(rows: object) -> list[SearchCandidate]:
             url=url,
             published_at=(str(getattr(row, "published_at", ""))[:64] or None) if getattr(row, "published_at", None) else None,
             author=str(getattr(row, "channel_title", ""))[:512] or None,
+            ingestable=kind not in ("channel", "playlist"),
         ))
     return out
 

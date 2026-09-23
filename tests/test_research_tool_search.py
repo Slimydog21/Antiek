@@ -79,6 +79,7 @@ def test_owner_search_replays_without_second_vendor_send(monkeypatch, tmp_path):
             "url": "https://www.youtube.com/watch?v=vid-1",
             "published_at": "2026-08-12T00:00:00Z",
             "author": "Researcher",
+            "ingestable": True,
         }],
     }
     assert replay.status_code == 200
@@ -360,6 +361,7 @@ def test_x_search_yields_candidates_through_the_real_connector(monkeypatch, tmp_
             "url": "https://x.com/labnotes/status/1799999999999999999",
             "published_at": "2026-08-12T09:30:00.000Z",
             "author": "labnotes",
+            "ingestable": True,
         },
         {
             "external_id": "1799999999999999998",
@@ -367,6 +369,7 @@ def test_x_search_yields_candidates_through_the_real_connector(monkeypatch, tmp_
             "url": "https://x.com/labnotes/status/1799999999999999998",
             "published_at": "2026-08-12T09:31:00.000Z",
             "author": "labnotes",
+            "ingestable": True,
         },
     ]
     assert seen[0]["query"] == "fusion materials"
@@ -394,6 +397,7 @@ def test_youtube_search_yields_candidates_for_the_quota_it_spends(monkeypatch, t
         "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         "published_at": "2026-07-01T12:00:00Z",
         "author": "Lab Notes",
+        "ingestable": True,
     }]
     # The 100 units search.list costs were really spent; a call that spends
     # them and returns nothing is the silent failure this pins.
@@ -795,3 +799,24 @@ def test_tools_ingest_in_flight_duplicate_answers_at_once_then_replays(monkeypat
     assert retried.json()["document_id"] == completed.json()["document_id"] == f"doc-yt-{_VIDEO_ID}"
     assert [kw["video"].video_id for _args, kw in adapter.calls].count(_VIDEO_ID) == 1
     assert _ingest_rows(tmp_path, "ingest_operation_dup") == 1
+
+
+def test_youtube_channels_and_playlists_are_not_offered_for_ingest():
+    """A YouTube search returns channels and playlists alongside videos, and
+    ingest refuses anything but an 11-character video id. The candidate says
+    so, so the UI offers no Ingest button that can only fail."""
+    from types import SimpleNamespace
+
+    from interfaces.research.api.research_tool_search import _youtube
+
+    rows = [
+        SimpleNamespace(video_id="dQw4w9WgXcQ", kind="video", title="v", channel_title="c"),
+        SimpleNamespace(video_id="UC-9-kyTW8ZkZNDHQJ6FgpwQ", kind="channel", title="c", channel_title="c"),
+        SimpleNamespace(video_id="PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf", kind="playlist", title="p", channel_title="c"),
+    ]
+    assert [(c.external_id, c.ingestable) for c in _youtube(rows)] == [
+        ("dQw4w9WgXcQ", True),
+        ("UC-9-kyTW8ZkZNDHQJ6FgpwQ", False),
+        ("PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf", False),
+    ]
+

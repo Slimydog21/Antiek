@@ -34,7 +34,7 @@ describe("research tool search API", () => {
   it("rejects malformed provenance timestamps", async () => {
     mockedFetch.mockResolvedValue(new Response(JSON.stringify({
       operation_id: "tool-search-123456789", vendor: "x", status: "completed", candidates: [{
-        external_id: "1", title_or_text: "source", url: "https://x.com/a/status/1", published_at: "None", author: "a",
+        external_id: "1", title_or_text: "source", url: "https://x.com/a/status/1", published_at: "None", author: "a", ingestable: true,
       }],
     }), { status: 200 }));
     await expect(searchResearchTool({ operationId: "tool-search-123456789", vendor: "x", query: "q" }))

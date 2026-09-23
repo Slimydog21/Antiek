@@ -163,6 +163,8 @@ export default function ConnectedToolSearch() {
                 <p role="status" className="mt-2 text-xs text-ink-soft dark:text-starlight">Ingested · personal reading</p>
               ) : state?.status === "skipped" ? (
                 <p role="status" className="mt-2 text-xs text-ink-soft dark:text-starlight">Not ingested · {state.reason}</p>
+              ) : !result.ingestable ? (
+                <p className="mt-2 text-xs text-ink-soft dark:text-starlight">A channel or playlist · open it to pick individual videos to ingest</p>
               ) : (
                 <div className="mt-2">
                   <LemonButton size="sm" variant="secondary" aria-label={`Ingest ${result.title_or_text || result.url}`}

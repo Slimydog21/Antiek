@@ -21,8 +21,8 @@ function Mocked() {
       }
       if (url.endsWith("/research/tools/search") && init?.method === "POST") {
         return new Response(JSON.stringify({ operation_id: "tool-search-123456789", vendor: "youtube", status: "completed", candidates: [
-          { external_id: "a1", title_or_text: "Solid-state batteries: materials, interfaces, and manufacturing", url: "https://www.youtube.com/watch?v=a1", published_at: "2026-07-20T12:00:00Z", author: "Materials Institute" },
-          { external_id: "b2", title_or_text: "Why sulfide electrolytes fail—and what recent research changes", url: "https://www.youtube.com/watch?v=b2", published_at: "2026-06-04T12:00:00Z", author: "Electrochemistry Lab" },
+          { external_id: "a1", title_or_text: "Solid-state batteries: materials, interfaces, and manufacturing", url: "https://www.youtube.com/watch?v=a1", published_at: "2026-07-20T12:00:00Z", author: "Materials Institute", ingestable: true },
+          { external_id: "b2", title_or_text: "Why sulfide electrolytes fail—and what recent research changes", url: "https://www.youtube.com/watch?v=b2", published_at: "2026-06-04T12:00:00Z", author: "Electrochemistry Lab", ingestable: true },
         ] }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
       return original(input, init);

@@ -6,7 +6,7 @@ vi.mock("../../api/toolConnections", () => ({ fetchToolConnections: inventory })
 vi.mock("../../api/researchToolSearch", () => ({ searchResearchTool: search, ingestResearchToolCandidate: ingest }));
 import ConnectedToolSearch from "./ConnectedToolSearch";
 
-const candidate = { external_id: "1", title_or_text: "A source", url: "https://x.com/a/status/1", published_at: null, author: "a" };
+const candidate = { external_id: "1", title_or_text: "A source", url: "https://x.com/a/status/1", published_at: null, author: "a", ingestable: true };
 const ingestResult = {
   operation_id: "tool-ingest-12345678-1234-1234-1234-123456789abc",
   vendor: "x",
@@ -112,5 +112,19 @@ describe("ConnectedToolSearch", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
     expect(search.mock.calls[0][0].operationId).toBe(search.mock.calls[1][0].operationId);
+  });
+  it("offers no Ingest button for a channel or playlist candidate", async () => {
+    search.mockResolvedValue({
+      operation_id: "tool-search-12345678-1234-1234-1234-123456789abc", vendor: "x", status: "completed",
+      candidates: [candidate, { ...candidate, external_id: "2", title_or_text: "A channel", ingestable: false }],
+    });
+    render(<ConnectedToolSearch />);
+    await screen.findByRole("option", { name: "X" });
+    fireEvent.change(screen.getByLabelText("What sources are you looking for?"), { target: { value: "battery" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await screen.findByText("A channel");
+    expect(screen.getByRole("button", { name: "Ingest A source" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ingest A channel" })).toBeNull();
+    expect(screen.getByText(/open it to pick individual videos to ingest/)).toBeTruthy();
   });
 });

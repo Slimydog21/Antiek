@@ -8,6 +8,8 @@ export interface ResearchToolCandidate {
   url: string;
   published_at: string | null;
   author: string | null;
+  /** False for YouTube channels and playlists, which ingest refuses. */
+  ingestable: boolean;
 }
 
 export interface ResearchToolSearchResponse {
@@ -32,7 +34,7 @@ export interface ResearchToolIngestResponse {
 }
 
 const RESPONSE_KEYS = ["candidates", "operation_id", "status", "vendor"];
-const CANDIDATE_KEYS = ["author", "external_id", "published_at", "title_or_text", "url"];
+const CANDIDATE_KEYS = ["author", "external_id", "ingestable", "published_at", "title_or_text", "url"];
 const INGEST_RESPONSE_KEYS = ["chunks_written", "content_class", "document_id", "external_id", "ingest_status", "operation_id", "skipped_reason", "source_tier", "status", "title", "vendor"];
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -58,7 +60,8 @@ function candidate(value: unknown): ResearchToolCandidate {
       typeof value.external_id !== "string" || value.external_id.length === 0 || value.external_id.length > 256 ||
       typeof value.title_or_text !== "string" || value.title_or_text.length > 4_000 ||
       typeof value.url !== "string" || value.url.length > 2_048 ||
-      !nullableString(value.published_at, 64) || !nullableString(value.author, 512)) {
+      !nullableString(value.published_at, 64) || !nullableString(value.author, 512) ||
+      typeof value.ingestable !== "boolean") {
     throw new Error("Tool search returned an invalid response");
   }
   let parsed: URL;
