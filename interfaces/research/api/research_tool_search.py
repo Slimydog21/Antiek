@@ -239,9 +239,23 @@ def _claim[ResponseT: (SearchResponse, IngestResponse)](
     table: _Table,
     model: type[ResponseT],
 ) -> ResponseT | None:
+    """Claim ``body.operation_id`` for ``owner``, or settle the request from the journal.
+
+    Returns None when this request now holds the claim, and the saved response
+    as a replay when the operation already completed. Anything else is a 409.
+
+    A row another request still holds (``claimed`` or ``sent``) answers 409 at
+    once; it is never waited on. This runs on the server's only event loop
+    (``--workers 1``), and the ingest route's holder sits in
+    ``asyncio.to_thread`` needing that same loop to record its result, so a
+    wait here stalled every request for its whole length and then failed
+    anyway. A row left claimed by a request that died mid-flight gets the same
+    409, since nothing will ever finish it. Once the holder finishes, the same
+    operation_id replays. This is the concurrent-retry answer of the IETF
+    Idempotency-Key draft.
+    """
     name = _table(table)
     digest = _digest(body)
-    should_wait = False
     with _connect() as con:
         con.execute("BEGIN IMMEDIATE")
         row = con.execute(
@@ -256,42 +270,12 @@ def _claim[ResponseT: (SearchResponse, IngestResponse)](
                 return saved.model_copy(update={"status": "replayed"})
             if row[1] == "unknown":
                 raise _PublicError(409, "operation outcome is unresolved")
-            should_wait = True
-        else:
-            con.execute(
-                f"INSERT INTO {name} VALUES (?,?,?,?,?,?,?)",
-                (owner, body.operation_id, digest, body.vendor, "claimed", None, int(time.time() * 1000)),
-            )
-    if should_wait:
-        return _wait_for_result(owner, body.operation_id, digest, table=name, model=model)
+            raise _PublicError(409, "operation has not finished")
+        con.execute(
+            f"INSERT INTO {name} VALUES (?,?,?,?,?,?,?)",
+            (owner, body.operation_id, digest, body.vendor, "claimed", None, int(time.time() * 1000)),
+        )
     return None
-
-
-def _wait_for_result[ResponseT: (SearchResponse, IngestResponse)](
-    owner: str,
-    operation_id: str,
-    digest: str,
-    *,
-    table: _Table,
-    model: type[ResponseT],
-) -> ResponseT:
-    name = _table(table)
-    deadline = time.monotonic() + 30.0
-    while time.monotonic() < deadline:
-        time.sleep(0.02)
-        with _connect() as con:
-            row = con.execute(
-                f"SELECT digest,state,response_json FROM {name} WHERE owner=? AND operation_id=?",
-                (owner, operation_id),
-            ).fetchone()
-        if row is None or row[0] != digest:
-            break
-        if row[1] == "completed" and isinstance(row[2], str):
-            saved = model.model_validate_json(row[2])
-            return saved.model_copy(update={"status": "replayed"})
-        if row[1] == "unknown":
-            break
-    raise _PublicError(409, "operation outcome is unresolved")
 
 
 def _complete(owner: str, result: SearchResponse | IngestResponse, *, table: _Table) -> None:
@@ -533,8 +517,10 @@ async def ingest_tool_candidate(request: Request, response: Response) -> IngestR
 
     Replays on ``operation_id``: the same body posted again returns the saved
     response with ``status="replayed"`` and makes no vendor call and no
-    adapter call. A refusal that bought nothing (quota, rate, not found, no
-    connection) releases the operation_id for a retry; a failure whose
+    adapter call; posted while the first is still running, it answers 409 at
+    once rather than waiting (see ``_claim``). A refusal that bought nothing
+    (quota, rate, not found, no connection) releases the operation_id for a
+    retry; a failure whose
     outcome is ambiguous (transport error mid-fetch, adapter failure after a
     paid fetch) marks it unknown, and it answers 409 until someone looks.
     """

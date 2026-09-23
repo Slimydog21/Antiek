@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import itertools
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
@@ -140,6 +142,32 @@ def test_concurrent_duplicate_waits_and_sends_once(monkeypatch, tmp_path):
     assert sorted([first.status_code, second.status_code]) == [200, 200]
     assert {first.json()["status"], second.json()["status"]} == {"completed", "replayed"}
     assert SlowConnector.calls == 1
+
+
+def test_operation_left_in_flight_answers_409_at_once(monkeypatch, tmp_path):
+    """A row a dead request left claimed answers 409 now, not after a stall.
+
+    A restart mid-request leaves the journal row claimed with nothing alive to
+    finish it. A retry used to poll that row with ``time.sleep`` for 30 s on
+    the server's only event loop before answering 409, freezing every other
+    request for the duration.
+    """
+    _Connector.calls = 0
+    client = _client(monkeypatch, tmp_path)
+    body = {"operation_id": "search_operation_001", "vendor": "youtube", "query": "fusion materials", "max_results": 5}
+    orphan = subject._claim(
+        "owner-a", subject.SearchRequest.model_validate(body), table="searches", model=subject.SearchResponse,
+    )
+    assert orphan is None  # claimed, and its holder is gone
+
+    started = time.monotonic()
+    response = client.post("/research/tools/search", json=body)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 10, f"the retry held the event loop for {elapsed:.1f} s"
+    assert response.status_code == 409
+    assert response.json()["detail"] == "operation has not finished"
+    assert _Connector.calls == 0
 
 
 def test_malformed_vendor_response_is_unknown_and_never_retried(monkeypatch, tmp_path):
@@ -704,3 +732,66 @@ def test_tools_ingest_adapter_failure_is_unresolved_not_retried(monkeypatch, tmp
     assert "graph write failed" not in first.text
     assert again.status_code == 409  # a paid fetch with an unknown outcome is not re-sent
     assert fetched == [_VIDEO_ID]
+
+
+def test_tools_ingest_in_flight_duplicate_answers_at_once_then_replays(monkeypatch, tmp_path):
+    """A duplicate of an ingest still in flight gets 409 at once, then the replay.
+
+    The first request waits in ``asyncio.to_thread`` and needs the event loop
+    back to record its result. The duplicate used to poll the journal with
+    ``time.sleep`` for 30 s on that same loop (production runs one uvicorn
+    worker), so the first could not finish, the duplicate got "unresolved",
+    and every other request queued behind it. ``with client`` gives every
+    request here one shared loop, as the single-worker server has.
+    """
+    _no_captions(monkeypatch)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_for_the_first(_url, **kw):
+        video = kw["video"]
+        if video.video_id == _VIDEO_ID:
+            entered.set()
+            release.wait(timeout=60)
+        return IngestYouTubeResult(
+            document_id=f"doc-yt-{video.video_id}", video_id=video.video_id, chunks_written=3,
+            title=video.title, content_class=kw.get("content_class"),
+        )
+
+    adapter = _Recorder(slow_for_the_first)
+    monkeypatch.setattr(subject, "ingest_youtube", adapter)
+    names = itertools.count()
+    client = _app(
+        monkeypatch, tmp_path,
+        lambda *_a, **_k: _youtube_connector(_videos_handler([]), tmp_path, f"yt-flight-{next(names)}"),
+    )
+    body = {"operation_id": "ingest_operation_dup", "vendor": "youtube", "external_id": _VIDEO_ID}
+    other = {"operation_id": "ingest_operation_oth", "vendor": "youtube", "external_id": "aaaaaaaaaaa"}
+    try:
+        with client, ThreadPoolExecutor(max_workers=1) as pool:
+            first = pool.submit(client.post, "/research/tools/ingest", json=body)
+            assert entered.wait(timeout=10), "the first ingest never reached the adapter"
+            started = time.monotonic()
+            duplicate = client.post("/research/tools/ingest", json=body)
+            unrelated = client.post("/research/tools/ingest", json=other)
+            elapsed = time.monotonic() - started
+            release.set()
+            completed = first.result(timeout=10)
+            retried = client.post("/research/tools/ingest", json=body)
+    finally:
+        release.set()
+
+    # Both answered while the first was still inside the adapter.
+    assert elapsed < 10, f"the duplicate held the event loop for {elapsed:.1f} s"
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "operation has not finished"
+    assert unrelated.status_code == 200, unrelated.text
+    assert unrelated.json()["status"] == "completed"
+    # The first finished on its own, and the same operation_id then replays it.
+    assert completed.status_code == 200, completed.text
+    assert completed.json()["status"] == "completed"
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["status"] == "replayed"
+    assert retried.json()["document_id"] == completed.json()["document_id"] == f"doc-yt-{_VIDEO_ID}"
+    assert [kw["video"].video_id for _args, kw in adapter.calls].count(_VIDEO_ID) == 1
+    assert _ingest_rows(tmp_path, "ingest_operation_dup") == 1
