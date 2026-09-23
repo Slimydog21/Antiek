@@ -9,7 +9,9 @@ it permits and what it wants in return: a ``License:`` directive in
 element names the price — ``free``, ``attribution``, ``subscription``,
 ``crawl``, ``inference``, ``purchase`` and so on. ``attribution`` and ``free``
 are the literal signal Antiek is looking for: a publisher who has already
-dropped the API payment gate. Reading the file costs nothing and needs no
+dropped the API payment gate — unless the ``<content>`` names a licence
+server, in which case a client must still obtain a licence token from it
+first (RSL 1.0 s3.3, s3.7). Reading the file costs nothing and needs no
 membership, which is why this — and not a per-fetch marketplace — is the
 bridge (``docs/decisions/tollbit-rejected-2026-09-20.md``).
 
@@ -62,6 +64,9 @@ class RightsTerms:
     (e.g. ``"usage:all"``, ``"usage:train-ai"``) — the RSL element's ``type``
     attribute joined to its text, lower-cased. ``payment_types`` are the
     ``<payment type="...">`` values, lower-cased, in document order.
+    ``license_servers`` are the ``<content server="...">`` values: RSL
+    License Servers a client MUST obtain a licence from before access, "even
+    if the license type is ``free``" (RSL 1.0 s3.3).
     """
 
     source: TermsSource
@@ -71,6 +76,7 @@ class RightsTerms:
     permits: tuple[str, ...] = ()
     prohibits: tuple[str, ...] = ()
     standard_urls: tuple[str, ...] = ()
+    license_servers: tuple[str, ...] = ()
     parse_error: str | None = None
 
     @property
@@ -79,12 +85,22 @@ class RightsTerms:
         return self.source != "none"
 
     @property
+    def token_required(self) -> bool:
+        """True when a licence server is declared: a token must be obtained
+        from it before access, whatever the payment type (RSL 1.0 s3.7)."""
+        return bool(self.license_servers)
+
+    @property
     def no_charge(self) -> bool:
-        """True when every declared payment type is ``free`` / ``attribution`` —
-        the "gate already dropped" publisher this lane exists to find. False
-        when nothing was parsed (no terms is not the same as free terms)."""
-        return bool(self.payment_types) and all(
-            p in NO_CHARGE_PAYMENT_TYPES for p in self.payment_types
+        """True when every declared payment type is ``free`` / ``attribution``
+        and no licence server stands in front of the content — the "gate
+        already dropped" publisher this lane exists to find. False when
+        nothing was parsed (no terms is not the same as free terms), and False
+        for a free licence that still needs a server-issued token."""
+        return (
+            bool(self.payment_types)
+            and all(p in NO_CHARGE_PAYMENT_TYPES for p in self.payment_types)
+            and not self.token_required
         )
 
     @property
@@ -113,9 +129,10 @@ def parse_rsl_xml(xml_text: str, *, license_url: str | None = None) -> RightsTer
     Never raises: a malformed document or a non-``<rsl>`` root yields a record
     with ``source="robots_license_directive"`` (the directive was real; the
     file was not usable) and ``parse_error`` set. Only the FIRST ``<content>``
-    element's ``url`` is recorded; every ``<payment>``, ``<permits>``,
-    ``<prohibits>`` and ``<standard>`` in the document is collected in order,
-    and each ``<license>`` with no ``<payment>`` adds ``free`` (RSL 1.0 s3.7).
+    element's ``url`` is recorded; every ``<content server>``, ``<payment>``,
+    ``<permits>``, ``<prohibits>`` and ``<standard>`` in the document is
+    collected in order, and each ``<license>`` with no ``<payment>`` adds
+    ``free`` (RSL 1.0 s3.7).
     """
     degraded_source: TermsSource = "robots_license_directive" if license_url else "none"
     try:
@@ -137,12 +154,16 @@ def parse_rsl_xml(xml_text: str, *, license_url: str | None = None) -> RightsTer
     permits: list[str] = []
     prohibits: list[str] = []
     standards: list[str] = []
+    servers: list[str] = []
     content_url: str | None = None
     for el in root.iter():
         name = _local_name(el.tag)
         if name == "content":
             if content_url is None:
                 content_url = el.get("url")
+            server = (el.get("server") or "").strip()
+            if server:
+                servers.append(server)
         elif name == "payment":
             kind = (el.get("type") or "").strip().lower()
             if kind:
@@ -172,6 +193,7 @@ def parse_rsl_xml(xml_text: str, *, license_url: str | None = None) -> RightsTer
         permits=tuple(permits),
         prohibits=tuple(prohibits),
         standard_urls=tuple(standards),
+        license_servers=tuple(servers),
     )
 
 
