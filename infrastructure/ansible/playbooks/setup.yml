@@ -405,6 +405,10 @@
         dest: "{{ antiek_install_dir }}"
         version: "{{ antiek_repo_branch }}"
         force: false # don't blow away local edits silently
+        # Clone-if-absent only. Moving an existing checkout is deploy.yml's
+        # job, behind require_green.sh; the default update=yes here would
+        # fast-forward a provisioned box to an unverified tip on re-run.
+        update: false
         # Use the deploy key explicitly via SSH command override.
         # IdentitiesOnly=yes prevents the SSH client from trying other
         # keys in ~/.ssh/ (it would, otherwise, and might fail-fast).
