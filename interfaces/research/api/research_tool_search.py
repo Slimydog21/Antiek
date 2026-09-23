@@ -18,11 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from acquisition.twitter.api_client import XApiError
 from acquisition.youtube.data_api import YouTubeApiError
 from acquisition.youtube.data_api import YouTubeQuotaExhausted as AcquisitionQuotaExhausted
-from interfaces.research.api.account_memory_identity import (
-    FORBIDDEN_OWNERS,
-    OPERATOR_STORAGE_SENTINEL,
-    derive_owner_from_verified_email,
-)
+from interfaces.research.api.account_memory_identity import distinct_signed_owner
 from runtime.connectors.quota_meter import QuotaExhausted
 from runtime.connectors.rate_governor import VendorBanned
 from runtime.connectors.registry import ToolConnectionUnavailable, resolve_tool_connection
@@ -75,38 +71,17 @@ class _PublicError(Exception):
 def _owner(request: Request) -> str:
     """Resolve the person whose connected-tool credential this search may spend.
 
-    This refused ``__operator__`` unconditionally, which is the user_id every production
-    login mints — so every connected-tool search answered 401 and no stored credential
-    could ever be used. Storing one worked (``settings_tool_connections._owner`` refuses
-    the sentinel only for the machine auth methods), which is why the chassis looked
-    wired end to end while nothing downstream of it was reachable: the X and YouTube
-    defects behind this gate had never been reached to be noticed.
-
-    Resolve through the same shared derivation as account memory and BYOT dispatch, so
-    one person is one owner across their memory, their spend and their tools. A
-    session-cookie request has already had its address verified and allowlist-checked by
-    the auth middleware; ``derive_owner_from_verified_email`` returns None when there is
-    no address, so this still fails closed rather than inventing an owner.
+    Delegates to the one shared predicate. This used to hand-roll the same
+    logic, which is how it drifted from the WRITE side in
+    ``settings_tool_connections``: the read half was fixed to derive
+    ``acct_<hash>`` while the write half still stored under ``__operator__``,
+    so a connected tool was stored in one row and looked for in another.
+    Having both delegate makes that disagreement unrepresentable.
     """
-    owner = getattr(request.state, "user_id", None)
-    method = getattr(request.state, "auth_method", None)
-    if not isinstance(owner, str) or not owner.strip() or len(owner) > 256:
+    owner = distinct_signed_owner(request)
+    if owner is None:
         raise _PublicError(401, "authenticated user identity required")
-    if method != "antiek_session_cookie":
-        raise _PublicError(401, "authenticated user identity required")
-
-    normalized = owner.strip()
-    if normalized.casefold() not in FORBIDDEN_OWNERS:
-        return normalized
-    if normalized.casefold() != OPERATOR_STORAGE_SENTINEL:
-        raise _PublicError(401, "authenticated user identity required")
-
-    derived = derive_owner_from_verified_email(
-        getattr(request.state, "user_email", None)
-    )
-    if derived is None:
-        raise _PublicError(401, "authenticated user identity required")
-    return derived
+    return owner
 
 
 def _journal_path() -> Path:

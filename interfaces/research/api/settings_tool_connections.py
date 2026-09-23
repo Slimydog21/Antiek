@@ -26,21 +26,11 @@ from runtime.connectors.x_twitter import (
     estimated_search_cost_usd,
 )
 
+from .account_memory_identity import distinct_signed_owner
+
 tool_connections_router = APIRouter(prefix="/settings/tools", tags=["settings-tools"])
 _PRIVATE_NO_STORE = "private, no-store"
 _MAX_CREDENTIAL_BODY_BYTES = 1_024
-_AUTHENTICATED_METHODS = frozenset(
-    {
-        "antiek_session_cookie",
-        "cloudflare_access_email",
-        "cloudflare_service_token",
-        "bearer_token",
-    }
-)
-_SHARED_OPERATOR_METHODS = frozenset(
-    {"cloudflare_access_email", "cloudflare_service_token", "bearer_token"}
-)
-
 # What a connected X key actually costs its owner. Surfacing only the rate
 # ceiling here used to imply a monthly allowance; X sells pay-per-use credits
 # and bills per post returned, so a search spends real money and the ceiling
@@ -97,20 +87,34 @@ class ToolDisconnectResponse(BaseModel):
 
 
 def _owner(request: Request) -> str:
-    owner_user_id = getattr(request.state, "user_id", None)
-    auth_method = getattr(request.state, "auth_method", None)
-    normalized_owner = owner_user_id.strip() if isinstance(owner_user_id, str) else ""
-    if (
-        not normalized_owner
-        or len(normalized_owner) > 256
-        or auth_method not in _AUTHENTICATED_METHODS
-        or (
-            normalized_owner == "__operator__"
-            and auth_method in _SHARED_OPERATOR_METHODS
-        )
-    ):
+    """Resolve the person whose connected-tool credential this request stores.
+
+    This returned ``request.state.user_id`` verbatim, refusing the
+    ``__operator__`` sentinel only for the machine auth methods. Every
+    production login mints exactly that sentinel on a session cookie, so a
+    connection was WRITTEN under ``__operator__`` while
+    ``research_tool_search`` READ it under the derived ``acct_<hash>``.
+    ``runtime/connectors/registry._record_key`` hashes the owner into the
+    record key, so the two never named the same row: connecting a tool
+    appeared to succeed and the credential was then invisible to every search
+    that would spend it. The read side's own docstring already recorded this
+    asymmetry; only the read half had been fixed.
+
+    Delegates to the one shared predicate (``distinct_signed_owner``) that
+    account memory, BYOT dispatch and connected-tool search all use, so the
+    write side and the read side cannot disagree by construction rather than
+    by keeping four copies of the same logic in step.
+
+    Fails closed: a machine method, a shared sentinel other than the operator
+    one, or a session with no verified address each get 401 rather than an
+    invented owner. Legacy rows written under the sentinel stay invisible
+    until ``tools/migrate_owner_namespace.py`` re-owns them — there is
+    deliberately no read-fallback.
+    """
+    owner = distinct_signed_owner(request)
+    if owner is None:
         raise HTTPException(status_code=401, detail="authenticated user identity required")
-    return normalized_owner
+    return owner
 
 
 def _quota(snapshot: ToolConnectionSnapshot) -> ToolQuotaResponse:
