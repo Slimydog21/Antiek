@@ -28,13 +28,19 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from decimal import Decimal
 
-from orchestration.rlm.prime_agent_backend import PrimeAgentRLMBackend
+from orchestration.rlm.prime_agent_backend import (
+    PrimeAgentRLMBackend,
+    PrimeAgentSessionRequest,
+)
 from orchestration.rlm.session import (
     RLM_DOC_THRESHOLD_TOKENS,
     RLM_SESSION_COST_USD_CAP,
     RLMRatificationRequired,
+    RLMSession,
     create_session,
+    iterate_session,
 )
 from substrate.schemas.events import RLMBridgeDecidedPayload
 
@@ -59,6 +65,13 @@ class RLMBridgeDecision:
     escalated: bool
     session_id: str | None
     reason: str
+    # Execution facts, populated only when the bridge drove the session
+    # itself (root_executor == "prime_agent"). ``iteration_count`` is the
+    # session's recorded iteration count after the drive; ``prime_state``
+    # is the Prime receipt's terminal state. Both stay at their defaults
+    # on the dispatch path, which the bridge does not drive.
+    iteration_count: int = 0
+    prime_state: str | None = None
 
     def to_typed_payload(self) -> RLMBridgeDecidedPayload:
         """Materialize this decision as the canonical typed event
@@ -108,6 +121,58 @@ def _bridge_executor(prime_backend: PrimeAgentRLMBackend | None) -> str:
     if prime_backend is not None and _prime_agent_enabled() and is_ratified():
         return "prime_agent"
     return "dispatch"
+
+
+_BRIDGE_WORKFLOW = "rlm-bridge-escalation"
+
+
+def _drive_prime_session(
+    session: RLMSession,
+    prime_backend: PrimeAgentRLMBackend,
+    *,
+    document_id: str,
+    estimated_tokens: int,
+) -> str:
+    """Run ONE Prime iteration for a freshly escalated session and record it.
+
+    This is the bridge's entire execution path: one ``run_session`` call and
+    one ``iterate_session``. It proves invocation without inventing an
+    iteration planner — ``run_rlm_investigation`` is the full orchestrator
+    but needs ``plan_iteration_fn``/``final_synthesis_fn``, neither of which
+    the bridge has. The iteration is recorded whatever the receipt says, so
+    the session log carries the attempt and its terminal state; a failed
+    attempt is still an iteration the root executor consumed.
+
+    BLOCKING: ``run_session`` waits on a subprocess for up to the backend's
+    timeout. Callers on an event loop must hop to a worker thread.
+
+    Returns the Prime receipt's terminal state value.
+    """
+    outcome = prime_backend.run_session(
+        PrimeAgentSessionRequest(
+            goal_brief=session.state.prime_goal_brief or _BRIDGE_WORKFLOW,
+            iteration_prompt=(
+                f"Document {document_id} is estimated at {estimated_tokens} "
+                "tokens, above the RLM threshold. Produce the opening "
+                "condensation for the wrestler: the document's thesis, its "
+                "load-bearing claims, and the sections a sub-LLM should "
+                "read in full."
+            ),
+            workflow=_BRIDGE_WORKFLOW,
+            request_id=f"{session.state.session_id}:iteration:1",
+        )
+    )
+    summary = (
+        outcome.evidence.text
+        if outcome.evidence is not None
+        else f"prime_agent {outcome.receipt.state.value}: {outcome.receipt.detail or 'no detail'}"
+    )
+    # The one-shot ``-p`` lane returns no usage, so no spend can be
+    # attributed here; metering lives in the JSONL-RPC lane
+    # (prime_rpc_evidence.py + prime_ledger.py). Zero is "unmetered", not
+    # "free", and the session cost cap cannot trip on this path.
+    iterate_session(session, summary=summary, cost_usd=Decimal("0"))
+    return outcome.receipt.state.value
 
 
 def maybe_escalate_to_rlm(
@@ -193,6 +258,20 @@ def maybe_escalate_to_rlm(
             reason="deferred_pending_ratification",
         )
 
+    # Drive the session when Prime is the root executor. Until this call
+    # existed the backend was consumed only as a truthiness token above,
+    # and the session was created and abandoned: flipping both flags with
+    # a binary installed produced a relabelled session and no process.
+    prime_state: str | None = None
+    if root_executor == "prime_agent":
+        assert prime_backend is not None  # _bridge_executor guarantees it
+        prime_state = _drive_prime_session(
+            session,
+            prime_backend,
+            document_id=document_id,
+            estimated_tokens=estimated_tokens,
+        )
+
     return RLMBridgeDecision(
         document_id=document_id,
         investigation_id=investigation_id,
@@ -205,4 +284,6 @@ def maybe_escalate_to_rlm(
         reason=(
             f"escalated_to_rlm cap_usd={RLM_SESSION_COST_USD_CAP}"
         ),
+        iteration_count=session.state.iteration_count,
+        prime_state=prime_state,
     )
