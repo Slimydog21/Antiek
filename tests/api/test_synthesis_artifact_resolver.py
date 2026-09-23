@@ -526,8 +526,8 @@ def test_a_short_supported_by_chain_resolves_to_its_documents(pinned):
 
 
 def test_a_chain_deeper_than_the_walk_bound_withholds_instead_of_crashing(pinned):
-    # 400 hops would exhaust the interpreter stack in a recursive walk; the
-    # bound stops it and counts the unwalked remainder as unresolved.
+    # A 400-hop chain is past the walk bound: the walk stops reading at the
+    # bound and counts the unread remainder as unresolved.
     from services.html_projection.resolvers.substrate_refs import resolve_pin_sources
 
     _supported_by_chain(pinned, "deep", 400)
@@ -538,3 +538,119 @@ def test_a_chain_deeper_than_the_walk_bound_withholds_instead_of_crashing(pinned
         con.close()
     assert ("doc-ok", True) in [(s.document_id, s.resolved) for s in sources]
     assert any(not s.resolved for s in sources)
+
+
+# ── round 4: a visited pointer is not a grounded one ──
+#
+# The walk shares one seen-set so cycles terminate, but a row already on the
+# walk is not evidence of a source. Round 3 read "my only edge is already being
+# followed" as "grounded where the walk reaches it", so an unsupported claim
+# reached through its own supported_by edge (to an entity that needs no
+# source) reported nothing, and a public document pin beside it exported the
+# thesis as fully sourced. Grounding is now decided after the walk: a sourced
+# node is grounded only if some source is reachable from it.
+
+
+def _supported_by_graph(
+    db: str, nodes: list[tuple[str, str]], edges: list[tuple[str, str, str, str | None]]
+) -> None:
+    """``nodes`` are (node_id, node_type); ``edges`` are supported_by edges
+    (edge_id, from, to, chunk_id), a None chunk being an edge over no source."""
+    con = connect_write(db)
+    try:
+        con.executemany(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
+            "VALUES (?, ?, ?, 'depth')",
+            [[node_id, node_id, node_type] for node_id, node_type in nodes],
+        )
+        con.executemany(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "chunk_id, source_tier, extraction_confidence, graph_scope) "
+            "VALUES (?, ?, ?, 'supported_by', ?, 1, 0.9, 'depth')",
+            [list(edge) for edge in edges],
+        )
+    finally:
+        con.close()
+
+
+def _synthesis(db: str, sid: str, thesis: str, pins: list[tuple[str, str]]) -> None:
+    con = connect_write(db)
+    try:
+        con.execute(
+            "INSERT INTO syntheses (synthesis_id, target_question, "
+            "synthesis_timestamp, status, implicit_recommendation, thesis_text) "
+            "VALUES (?, ?, now(), 'passed', 'proceed', ?)",
+            [sid, f"Q {sid}", thesis],
+        )
+        con.executemany(
+            "INSERT INTO synthesis_substrate_manifest "
+            "(synthesis_id, entity_kind, entity_id) VALUES (?, ?, ?)",
+            [[sid, kind, eid] for kind, eid in pins],
+        )
+    finally:
+        con.close()
+
+
+def _sources(db: str, pins: list[tuple[str, str]]) -> list[tuple[str | None, bool]]:
+    from services.html_projection.resolvers.substrate_refs import resolve_pin_sources
+
+    con = connect_write(db)
+    try:
+        return [(s.document_id, s.resolved) for s in resolve_pin_sources(con, pins)]
+    finally:
+        con.close()
+
+
+def test_an_unsupported_claim_reached_through_its_own_edge_is_unresolved(pinned):
+    # codex's probe: claim u supported_by entity x over no source. The node
+    # pin and the edge pin name the same unsupported claim and must agree.
+    _supported_by_graph(pinned, [("u-claim", "claim"), ("u-entity", "entity")],
+                        [("u-edge", "u-claim", "u-entity", None)])
+    assert _sources(pinned, [("node", "u-claim")]) == [(None, False)]
+    assert _sources(pinned, [("edge", "u-edge")]) == [(None, False)]
+
+
+def test_edge_pin_to_an_unsupported_claim_beside_a_public_pin_withholds_the_thesis(pinned):
+    # codex's end-to-end shape: a public document pin plus the unsupported
+    # claim's own edge. Round 3 grounded the edge to nothing and exported the
+    # thesis as fully sourced.
+    _supported_by_graph(pinned, [("v-claim", "claim"), ("v-entity", "entity")],
+                        [("v-edge", "v-claim", "v-entity", None)])
+    _synthesis(pinned, "s-unsup-edge", f"Thesis quoting it: {SECRET}",
+               [("document", "doc-ok"), ("edge", "v-edge")])
+    export = mod.resolve_synthesis_export("s-unsup-edge", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert [(s.document_id, s.resolved) for s in claim.sources] == [
+        ("doc-ok", True), (None, False),
+    ]
+    assert claim.fully_sourced is False
+    html = _html("s-unsup-edge")
+    assert "Provenance incomplete" in html
+    assert SECRET not in html
+
+
+def test_a_supported_by_cycle_with_no_source_anywhere_is_unresolved(pinned):
+    # Two claims supported only by each other: the cycle terminates, and
+    # neither is grounded from whichever row the walk starts.
+    _supported_by_graph(pinned, [("w-1", "claim"), ("w-2", "claim")],
+                        [("w-e1", "w-1", "w-2", None), ("w-e2", "w-2", "w-1", None)])
+    for pin in (("edge", "w-e1"), ("edge", "w-e2"), ("node", "w-1"), ("node", "w-2")):
+        assert _sources(pinned, [pin]) == [(None, False)], pin
+
+
+def test_a_public_grounded_supported_by_cycle_is_fully_sourced(pinned):
+    # Positive control: the same cycle with one edge over a public chunk
+    # grounds both claims from whichever row the walk starts, and the thesis
+    # exports.
+    _supported_by_graph(pinned, [("g-1", "claim"), ("g-2", "claim")],
+                        [("g-e1", "g-1", "g-2", None), ("g-e2", "g-2", "g-1", "c-ok-1")])
+    for pin in (("edge", "g-e1"), ("edge", "g-e2"), ("node", "g-1"), ("node", "g-2")):
+        assert _sources(pinned, [pin]) == [("doc-ok", True)], pin
+    _synthesis(pinned, "s-grounded-cycle", "Thesis K",
+               [("document", "doc-ok"), ("edge", "g-e1")])
+    export = mod.resolve_synthesis_export("s-grounded-cycle", db_path=pinned)
+    assert export is not None
+    (claim,) = export.claims
+    assert claim.fully_sourced is True
+    assert "Thesis K" in _html("s-grounded-cycle")

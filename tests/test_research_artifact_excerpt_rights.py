@@ -814,3 +814,63 @@ def test_a_claim_endpoint_grounded_only_by_the_followed_edge_is_not_unsupported(
     body = _body(env, inv)
     assert body.synthesis_withheld is False
     assert body.synthesis_excerpt == summary
+
+
+# ── round 4: a visited pointer is not a grounded one ──
+#
+# The walk's seen-set stops cycles, but a row already on the walk is not a
+# source. Round 3 read an unsupported claim reached through its own
+# supported_by edge as grounded "where the walk reaches it", and nothing did:
+# the edge reported no source and the public insight cleared the excerpt.
+
+
+def _unsupported_claim_edge(env: dict, prefix: str) -> str:
+    """Claim ``{prefix}-claim`` (no pointer) supported_by an entity over an
+    edge that names no chunk, document or pointer. Returns the edge id."""
+    _node(env, f"{prefix}-claim", "claim")
+    _node(env, f"{prefix}-entity")
+    _endpoint_support(env, f"{prefix}-edge", f"{prefix}-claim",
+                      target=f"{prefix}-entity")
+    return f"{prefix}-edge"
+
+
+def test_excerpt_withheld_when_a_retrieved_edge_is_an_unsupported_claims_own_edge(env):
+    # codex's retrieval-event reproduction.
+    inv = "inv-v1"
+    _public_insight(inv)
+    edge_id = _unsupported_claim_edge(env, "v1")
+    _retrieval(inv, env["events"], edge_ids=[edge_id])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_withheld_when_a_pinned_edge_is_an_unsupported_claims_own_edge(env):
+    # The manifest-edge entrypoint, with a public document pin beside the edge.
+    inv = "inv-v2"
+    _public_insight(inv)
+    edge_id = _unsupported_claim_edge(env, "v2")
+    _archive(env, inv, "syn-v2", [("document", "doc-pd"), ("edge", edge_id)])
+    log_event(
+        inv, ActionType.SYNTHESIS_ARCHIVED, synthesis_id="syn-v2",
+        payload={"thesis_summary": f"Archived. {PASSAGE}"}, events_dir=env["events"],
+    )
+    _assert_withheld(env, inv)
+
+
+def test_excerpt_cleared_through_a_public_grounded_claim_cycle(env):
+    # Positive control: two claims supported only by each other, one of the
+    # two edges over the public chunk. Both entrypoints name the edge that
+    # carries no chunk itself; the cycle is grounded and the excerpt exports.
+    inv = "inv-v3"
+    _public_insight(inv)
+    _node(env, "v3-a", "claim")
+    _node(env, "v3-b", "claim")
+    _endpoint_support(env, "v3-ab", "v3-a", target="v3-b")
+    _endpoint_support(env, "v3-ba", "v3-b", chunk_id="c-pd", target="v3-a")
+    _archive(env, inv, "syn-v3", [("edge", "v3-ab")])
+    _retrieval(inv, env["events"], edge_ids=["v3-ab"])
+    summary = "A thesis over a cycle that rests on the public pamphlet."
+    _complete(inv, env["events"], summary)
+    body = _body(env, inv)
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
