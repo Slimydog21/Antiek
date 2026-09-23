@@ -115,6 +115,11 @@ def _db() -> str:
 # behind Cloudflare's ~100s edge timeout, and each waiting request pins one of the
 # default executor's threads (min(32, cpu+4) = 8 on the 4-vCPU prod box), so a long
 # wait exhausts to_thread for the whole app.
+#
+# The two-hop helpers (submit_answer, next_followups, decline and the two
+# pushes helpers) open connect_write themselves, out of _write's reach. Each
+# takes a ``timeout_s``, and every call site here passes _WRITE_TIMEOUT_S,
+# read inside the handler's _sync so a monkeypatched value is seen.
 _WRITE_TIMEOUT_S = 15.0
 
 
@@ -691,14 +696,15 @@ async def get_interview(interview_id: str) -> dict:
 
 @speak_router.post("/interviews/{interview_id}/answers", status_code=201)
 async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict:
-    # Two-hop write: submit_answer opens connect_write itself
-    # (purpose="speak/async_interview.answer"), which _write's bound
-    # timeout — and the one-hop lint — cannot see.
+    # Two-hop write: submit_answer opens connect_write itself (three times:
+    # consent check, voice-note ingest, answer turn), out of _write's reach
+    # and the one-hop lint's, so the bound is passed explicitly.
     def _sync() -> Any:
         with _translate():
             return submit_answer(
                 _db(), interview_id=interview_id, question_id=req.question_id,
                 transcript=req.transcript, duration_seconds=req.duration_seconds,
+                timeout_s=_WRITE_TIMEOUT_S,
             )
 
     result = await _off_loop(_sync)
@@ -711,10 +717,12 @@ async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict
 @speak_router.post("/interviews/{interview_id}/followups")
 async def interview_followups(interview_id: str) -> dict:
     # Two-hop write: next_followups opens connect_write itself
-    # (purpose="speak/async_interview.followups").
+    # (purpose="speak/async_interview.followups"); the bound is passed in.
     def _sync() -> list[Any]:
         with _translate():
-            return next_followups(_db(), interview_id=interview_id)
+            return next_followups(
+                _db(), interview_id=interview_id, timeout_s=_WRITE_TIMEOUT_S
+            )
 
     fus = await _off_loop(_sync)
     return {"followups": [
@@ -1046,7 +1054,9 @@ async def list_pushes() -> dict[str, Any]:
     # No _translate() — the inline call had none, and the exception
     # mapping must not change.
     def _sync() -> list[Any]:
-        return speak_pushes.list_private_repings_at(_db())
+        return speak_pushes.list_private_repings_at(
+            _db(), timeout_s=_WRITE_TIMEOUT_S
+        )
 
     privates = await _off_loop(_sync)
     return {
@@ -1099,6 +1109,7 @@ async def reping_invitee(req: RepingRequest) -> dict[str, Any]:
                     _db(),
                     interview_id=req.interview_id,
                     send_email=req.send_email,
+                    timeout_s=_WRITE_TIMEOUT_S,
                 )
             except ValueError as e:
                 raise HTTPException(status_code=404, detail=str(e)) from e
@@ -1324,6 +1335,7 @@ async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
             return submit_answer(
                 _db(), interview_id=interview_id, question_id=req.question_id,
                 transcript=req.transcript, duration_seconds=req.duration_seconds,
+                timeout_s=_WRITE_TIMEOUT_S,
             )
 
     result = await _off_loop(_sync)
@@ -1445,6 +1457,7 @@ async def invitee_voice(
             return text, submit_answer(
                 _db(), interview_id=interview_id, question_id=question_id,
                 transcript=text, duration_seconds=duration_seconds,
+                timeout_s=_WRITE_TIMEOUT_S,
             )
 
     text, result = await _off_loop(_sync)
@@ -1489,7 +1502,9 @@ async def invitee_followups(token: str) -> dict[str, Any]:
         with _translate(), _write("speak/api:invite_followups_resolve") as con:
             interview_id, _ = _require_token(con, token)
         with _translate():
-            return next_followups(_db(), interview_id=interview_id)
+            return next_followups(
+                _db(), interview_id=interview_id, timeout_s=_WRITE_TIMEOUT_S
+            )
 
     fus = await _off_loop(_sync)
     return {"followups": [
@@ -1532,7 +1547,7 @@ async def invitee_decline(token: str) -> dict[str, Any]:
             )
         with _translate(), _write("speak/api:invite_decline_resolve") as con:
             interview_id, _ = _require_token(con, token)
-        decline(_db(), interview_id)
+        decline(_db(), interview_id, timeout_s=_WRITE_TIMEOUT_S)
         return interview_id
 
     interview_id = await _off_loop(_sync)
