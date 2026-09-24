@@ -261,7 +261,7 @@ function StreamHeader({
           <LemonButton
             size="sm"
             variant="danger"
-            disabled={steer.busy}
+            disabledReason={steer.busy ? "Stopping" : null}
             onClick={steer.onStop}
           >
             Stop

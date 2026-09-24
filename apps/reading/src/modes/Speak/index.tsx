@@ -447,7 +447,7 @@ export default function Speak() {
                 <LemonButton
                   variant="secondary"
                   size="sm"
-                  disabled={draft.phase === "assembling"}
+                  disabledReason={draft.phase === "assembling" ? "Assembling the story" : null}
                   onClick={() => void assemble()}
                 >
                   {draft.phase === "ready" ? "Reassemble" : "Assemble the story"}

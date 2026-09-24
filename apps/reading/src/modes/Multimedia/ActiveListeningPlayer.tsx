@@ -479,7 +479,7 @@ export function ActiveListeningPlayer({
                 className="mt-2 ml-2"
                 size="sm"
                 variant="secondary"
-                disabled={researchStatus === "submitting"}
+                disabledReason={researchStatus === "submitting" ? "Still preparing the last research" : null}
                 aria-expanded={researchLineId === claim.line_id}
                 onClick={() => {
                   const opening = researchLineId !== claim.line_id;
@@ -517,7 +517,7 @@ export function ActiveListeningPlayer({
                   <LemonButton
                     className="mt-2"
                     size="sm"
-                    disabled={researchStatus === "submitting" || researchStatus === "prepared" || researchQuestion.trim().length < 3}
+                    disabledReason={researchStatus === "submitting" ? "Preparing" : researchStatus === "prepared" ? "This research is already prepared" : researchQuestion.trim().length < 3 ? "Type a longer question" : null}
                     onClick={() => {
                       const question = researchQuestion.trim();
                       if (question.length < 3 || researchSubmittingRef.current) return;

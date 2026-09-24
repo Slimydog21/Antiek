@@ -99,7 +99,7 @@ export default function DeliverableSidebar() {
           size="sm"
           fullWidth
           type="submit"
-          disabled={creating || !newTitle.trim()}
+          disabledReason={creating ? "Creating it" : !newTitle.trim() ? "Give it a title first" : null}
         >
           {creating ? "Creating…" : "New deliverable"}
         </LemonButton>

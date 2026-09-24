@@ -365,22 +365,22 @@ export function VisualReviewPanel({
               Approve this ceiling
             </label>
             {!activeReview.authority && (
-              <LemonButton size="sm" variant="secondary" disabled={!spendAcknowledged || activeReview.pending !== null} onClick={authorize}>
+              <LemonButton size="sm" variant="secondary" disabledReason={activeReview.pending !== null ? "Another step is still running" : !spendAcknowledged ? "Approve the ceiling first" : null} onClick={authorize}>
                 {activeReview.pending === "authorize" ? "Authorizing..." : "Authorize images"}
               </LemonButton>
             )}
             {activeReview.authority && !activeReview.generation && (
-              <LemonButton size="sm" variant="primary" disabled={activeReview.pending !== null} onClick={submit}>
+              <LemonButton size="sm" variant="primary" disabledReason={activeReview.pending !== null ? "Another step is still running" : null} onClick={submit}>
                 {activeReview.pending === "submit" ? "Submitting..." : "Generate candidates"}
               </LemonButton>
             )}
             {activeReview.generation && activeReview.generation.status !== "succeeded" && (
-              <LemonButton size="sm" variant="secondary" disabled={activeReview.pending !== null} onClick={poll}>
+              <LemonButton size="sm" variant="secondary" disabledReason={activeReview.pending !== null ? "Another step is still running" : null} onClick={poll}>
                 {activeReview.pending === "poll" ? "Checking..." : "Check generation"}
               </LemonButton>
             )}
             {activeReview.generation?.status === "succeeded" && !activeReview.candidates.length && (
-              <LemonButton size="sm" variant="secondary" disabled={activeReview.pending !== null} onClick={materialize}>
+              <LemonButton size="sm" variant="secondary" disabledReason={activeReview.pending !== null ? "Another step is still running" : null} onClick={materialize}>
                 {activeReview.pending === "materialize" ? "Preparing..." : "Open contact sheet"}
               </LemonButton>
             )}
@@ -406,7 +406,7 @@ export function VisualReviewPanel({
                           <p className="font-mono text-xxs text-shadow-2 dark:text-moonlight">CANDIDATE {index + 1}</p>
                           <p className="text-xs text-ink dark:text-bright">{Math.ceil(candidate.byte_count / 1024)} KB · generated</p>
                         </div>
-                        <LemonButton size="sm" variant={selected ? "primary" : "tertiary"} disabled={!provenanceAcknowledged || activeReview.pending !== null} onClick={() => void attestAndSelect(candidate)}>
+                        <LemonButton size="sm" variant={selected ? "primary" : "tertiary"} disabledReason={activeReview.pending !== null ? "Another step is still running" : !provenanceAcknowledged ? "Confirm below that these are generated visuals first" : null} onClick={() => void attestAndSelect(candidate)}>
                           {selected ? "Selected" : attested ? "Select" : "Attest & select"}
                         </LemonButton>
                       </div>
@@ -425,7 +425,7 @@ export function VisualReviewPanel({
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-3 dark:border-charcoal-1">
         <p className="text-xs text-shadow-1 dark:text-moonlight">Every spoken chapter needs one attested selection.</p>
-        <LemonButton variant="primary" disabled={!complete || registering} onClick={() => void register()}>
+        <LemonButton variant="primary" disabledReason={registering ? "Locking the sequence" : !complete ? "Select an attested image for every spoken chapter first" : null} onClick={() => void register()}>
           {registering ? "Locking sequence..." : "Lock visual sequence"}
         </LemonButton>
       </div>

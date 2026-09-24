@@ -61,7 +61,7 @@ export default function ParkedQuestion({
         <LemonButton
           variant="primary"
           onClick={onLaunch}
-          disabled={launching}
+          disabledReason={launching ? "Launching" : null}
         >
           {launching ? "Launching…" : "Launch investigation"}
         </LemonButton>

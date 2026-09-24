@@ -117,7 +117,7 @@ export function LocalAudiblePanel({
           className="mt-3"
           variant="secondary"
           onClick={() => command("prepare", () => prepareMultimediaLocalAudible(assetId, revisionId))}
-          disabled={pending !== null}
+          disabledReason={pending !== null ? "Another step is still running" : null}
         >
           {pending === "prepare" ? "Preparing local audio..." : "Prepare audible experience"}
         </LemonButton>
@@ -151,7 +151,7 @@ export function LocalAudiblePanel({
             {recoverable ? (
               <LemonButton
                 variant="primary"
-                disabled={pending !== null}
+                disabledReason={pending !== null ? "Another step is still running" : null}
                 onClick={() => command("recover", () => recoverMultimediaLocalAudible(assetId, revisionId, prepared.set_id))}
               >
                 {pending === "recover" ? "Recovering audio..." : "Recover audible experience"}
@@ -161,7 +161,7 @@ export function LocalAudiblePanel({
             ) : (
               <LemonButton
                 variant="primary"
-                disabled={!ready || pending !== null}
+                disabledReason={pending !== null ? "Another step is still running" : !ready ? "The audio is not ready to produce yet" : null}
                 onClick={() => command("produce", () => produceMultimediaLocalAudible(assetId, revisionId, prepared.set_id))}
               >
                 {pending === "produce" ? "Producing audio..." : "Produce audible experience · $0"}
@@ -170,7 +170,7 @@ export function LocalAudiblePanel({
             <LemonButton
               size="sm"
               variant="tertiary"
-              disabled={pending !== null}
+              disabledReason={pending !== null ? "Another step is still running" : null}
               onClick={() => command("prepare", () => inspectMultimediaLocalAudible(assetId, revisionId, prepared.set_id))}
             >
               Refresh status

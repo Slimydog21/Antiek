@@ -173,7 +173,7 @@ export default function ArtifactOutlineShelf({
         <div className="px-4 py-3 text-sm text-ink-mute">
           <p className="mb-2">No outline blocks yet — export after insights land in the graph.</p>
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <LemonButton size="sm" disabled={busy} onClick={() => void onExport()}>
+            <LemonButton size="sm" disabledReason={busy ? "Exporting" : null} onClick={() => void onExport()}>
               Export research HTML
             </LemonButton>
             <a
@@ -239,7 +239,7 @@ export default function ArtifactOutlineShelf({
           ) : null}
           {blocksLoaded ? (
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <LemonButton size="sm" disabled={mergeBusy} onClick={() => void onDraftMerge()}>
+              <LemonButton size="sm" disabledReason={mergeBusy ? "Drafting the merge" : null} onClick={() => void onDraftMerge()}>
                 Draft merge
               </LemonButton>
               {draftMergePath ? (
@@ -284,7 +284,7 @@ export default function ArtifactOutlineShelf({
           <span className="text-xs font-semibold uppercase tracking-wide text-ink-mute">
             Write Lego · drag into outline
           </span>
-          <LemonButton size="sm" disabled={busy} onClick={() => void onExport()}>
+          <LemonButton size="sm" disabledReason={busy ? "Exporting" : null} onClick={() => void onExport()}>
             Export HTML
           </LemonButton>
           <a
@@ -356,7 +356,7 @@ export default function ArtifactOutlineShelf({
             aria-label="Other research ids"
             className="min-w-[180px] flex-1 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-xs text-ink placeholder:text-ink-mute dark:bg-charcoal-2 dark:text-bright"
           />
-          <LemonButton size="sm" disabled={mergeBusy} onClick={() => void onDraftMerge()}>
+          <LemonButton size="sm" disabledReason={mergeBusy ? "Drafting the merge" : null} onClick={() => void onDraftMerge()}>
             Draft merge
           </LemonButton>
           {draftMergePath ? (

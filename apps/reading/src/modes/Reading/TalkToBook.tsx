@@ -464,7 +464,7 @@ export default function TalkToBook({
               }
             }}
           />
-          <LemonButton className="min-h-11 sm:min-h-7" type="submit" size="sm" variant="primary" disabled={pending || !draft.trim() || !selectedModelEligible || Boolean(modelChoice && selectedDispatchBlocked)}>
+          <LemonButton className="min-h-11 sm:min-h-7" type="submit" size="sm" variant="primary" disabledReason={pending ? "Waiting for the answer" : !draft.trim() ? "Type a question first" : !selectedModelEligible ? "This model is unavailable. Choose another or Default" : modelChoice && selectedDispatchBlocked ? "Resolve the pending model operation first" : null}>
             Ask
           </LemonButton>
         </div>

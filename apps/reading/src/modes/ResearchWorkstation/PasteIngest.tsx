@@ -255,7 +255,7 @@ export default function PasteIngest({
           size="sm"
           variant="tertiary"
           onClick={() => fileInputRef.current?.click()}
-          disabled={outcome.kind === "absorbing"}
+          disabledReason={outcome.kind === "absorbing" ? "Still reading the last file" : null}
         >
           Choose a file
         </LemonButton>

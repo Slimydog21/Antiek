@@ -164,7 +164,7 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
             </span>
           )}
           <div className="flex items-center gap-2">
-            <LemonButton type="button" variant="primary" size="sm" disabled={!transcript.trim()} onClick={() => void save()}>
+            <LemonButton type="button" variant="primary" size="sm" disabledReason={!transcript.trim() ? "Record something first" : null} onClick={() => void save()}>
               Save note
             </LemonButton>
             <LemonButton type="button" variant="tertiary" size="sm" onClick={restart}>

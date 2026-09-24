@@ -439,7 +439,7 @@ function ProseEditor({
             variant="primary"
             size="sm"
             onClick={handleSave}
-            disabled={busy || !text.trim()}
+            disabledReason={busy ? "Saving" : !text.trim() ? "Write something first" : null}
           >
             {busy ? "Saving…" : promote ? "Save & promote" : "Save"}
           </LemonButton>
@@ -493,7 +493,7 @@ function NewSectionForm({
         variant="primary"
         size="sm"
         type="submit"
-        disabled={busy || !title.trim()}
+        disabledReason={busy ? "Still saving" : !title.trim() ? "Give the section a title first" : null}
       >
         Add section
       </LemonButton>

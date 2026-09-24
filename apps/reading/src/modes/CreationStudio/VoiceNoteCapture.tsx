@@ -54,7 +54,7 @@ export function VoiceNoteCapture() {
           variant="primary"
           size="sm"
           onClick={handleIngest}
-          disabled={state === "transcribing" || !transcript.trim()}
+          disabledReason={state === "transcribing" ? "Still adding the last note" : !transcript.trim() ? "Record or type a note first" : null}
         >
           {state === "transcribing" ? "Ingesting…" : "Add voice note"}
         </LemonButton>

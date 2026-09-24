@@ -252,7 +252,7 @@ export default function ArtifactFeedbackReview({
             {state.kind === "error" ? <p role="alert">{state.message}</p> : null}
             <LemonButton
               size="sm"
-              disabled={state.kind === "submitting" || !state.body.trim()}
+              disabledReason={state.kind === "submitting" ? "Sending" : !state.body.trim() ? "Write your feedback first" : null}
               onClick={() => void submit()}
             >
               {state.kind === "submitting" ? "Sending…" : "Send to research agent"}
@@ -281,7 +281,7 @@ export default function ArtifactFeedbackReview({
               <LemonButton
                 size="sm"
                 variant="tertiary"
-                disabled={state.resolution.kind === "submitting"}
+                disabledReason={state.resolution.kind === "submitting" ? "Resolving" : null}
                 onClick={() => void resolveThread()}
               >
                 {state.resolution.kind === "submitting" ? "Resolving…" : "Resolve thread"}

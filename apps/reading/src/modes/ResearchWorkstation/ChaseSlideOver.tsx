@@ -113,7 +113,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
         <LemonButton
           variant="primary"
           onClick={() => void spawn()}
-          disabled={busy || question.trim().length < 3}
+          disabledReason={busy ? "Starting the investigation" : question.trim().length < 3 ? "Type a longer question" : null}
         >
           {busy ? "Spawning…" : "Spawn investigation"}
         </LemonButton>

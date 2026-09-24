@@ -304,8 +304,7 @@ function SuggestionCard({
           variant="secondary"
           size="sm"
           onClick={() => void chase()}
-          disabled={busy || !canLaunch}
-          title={canLaunch ? undefined : "Sign in to chase a thread."}
+          disabledReason={busy ? "Chasing" : !canLaunch ? "Sign in to chase a thread" : null}
         >
           {busy ? "Chasing…" : "Chase this"}
         </LemonButton>

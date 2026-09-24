@@ -203,7 +203,7 @@ export default function ComputeCapacityPanel() {
                 key={tier}
                 size="sm"
                 variant={cap.tier === tier ? "primary" : "tertiary"}
-                disabled={saving}
+                disabledReason={saving ? "Saving" : null}
                 onClick={() => void applyTier(tier)}
               >
                 {TIER_LABELS[tier]}
@@ -233,7 +233,7 @@ export default function ComputeCapacityPanel() {
             <LemonButton
               size="sm"
               variant="secondary"
-              disabled={saving || slider === cap.monthly_compute_units}
+              disabledReason={saving ? "Saving" : slider === cap.monthly_compute_units ? "Move the slider to a new amount first" : null}
               onClick={() => void applySlider()}
             >
               Save custom

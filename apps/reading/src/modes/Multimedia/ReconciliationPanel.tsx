@@ -159,7 +159,7 @@ export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
                 size="sm"
                 variant={chapter?.execution_id === item.execution_id ? "secondary" : "tertiary"}
                 className="w-full justify-between"
-                disabled={!item.reconciliation_available || pending}
+                disabledReason={pending ? "Another check is still running" : !item.reconciliation_available ? "No reconciliation for this execution yet" : null}
                 onClick={() => inspectExecution(item.execution_id)}
               >
                 <span className="truncate">{item.provider}</span>
@@ -187,7 +187,7 @@ export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
         </dl>
       )}
       {action && (
-        <LemonButton type="button" size="sm" variant="primary" className="mt-3 w-full" disabled={pending} onClick={executeAction}>
+        <LemonButton type="button" size="sm" variant="primary" className="mt-3 w-full" disabledReason={pending ? "Working" : null} onClick={executeAction}>
           {pending ? "Working..." : ACTION_LABELS[action]}
         </LemonButton>
       )}
@@ -197,7 +197,7 @@ export function ReconciliationPanel({ assetId }: { assetId: string | null }) {
           <p className="font-mono text-xs text-shadow-2 dark:text-moonlight">Narration runs</p>
           <div className="mt-1 space-y-1">
             {links.narration_runs.map((item) => (
-              <LemonButton key={item.run_id} type="button" size="sm" variant="tertiary" className="w-full justify-between" aria-label={`Inspect narration run ${item.status}`} disabled={pending} onClick={() => inspectRun(item.run_id)}>
+              <LemonButton key={item.run_id} type="button" size="sm" variant="tertiary" className="w-full justify-between" aria-label={`Inspect narration run ${item.status}`} disabledReason={pending ? "Another check is still running" : null} onClick={() => inspectRun(item.run_id)}>
                 <span>Narration</span><span>{item.status}</span>
               </LemonButton>
             ))}

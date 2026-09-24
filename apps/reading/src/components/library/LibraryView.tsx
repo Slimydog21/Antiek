@@ -180,7 +180,7 @@ export default function LibraryView({
           <LemonButton
             size="sm"
             type="button"
-            disabled={page <= 1}
+            disabledReason={page <= 1 ? "This is the first page" : null}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
             ← Previous
@@ -191,7 +191,7 @@ export default function LibraryView({
           <LemonButton
             size="sm"
             type="button"
-            disabled={page >= lastPage}
+            disabledReason={page >= lastPage ? "This is the last page" : null}
             onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
           >
             Next →

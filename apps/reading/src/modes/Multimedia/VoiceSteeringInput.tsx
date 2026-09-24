@@ -124,7 +124,7 @@ export function VoiceSteeringInput({
           size="sm"
           variant="tertiary"
           icon={<span aria-hidden="true">{isRecording ? "■" : "●"}</span>}
-          disabled={disabled || phase === "requesting" || phase === "transcribing"}
+          disabledReason={disabled ? "Available once a plan exists and no step is running" : phase === "requesting" ? "Waiting for the microphone" : phase === "transcribing" ? "Transcribing" : null}
           onClick={toggleRecording}
           aria-pressed={isRecording}
         >
@@ -141,7 +141,7 @@ export function VoiceSteeringInput({
             <span className="font-mono text-xs text-shadow-1 dark:text-moonlight" role="status">
               Voice transcript attached. Review before applying.
             </span>
-            <LemonButton type="button" size="sm" variant="tertiary" onClick={onDiscardTranscript} disabled={disabled || busy}>
+            <LemonButton type="button" size="sm" variant="tertiary" onClick={onDiscardTranscript} disabledReason={disabled ? "Available once a plan exists and no step is running" : busy ? "Still transcribing" : null}>
               Discard voice
             </LemonButton>
           </>

@@ -203,7 +203,7 @@ export default function MetaReading() {
                   </button>
                 ))}
               </div>
-              <LemonButton type="button" variant="primary" size="sm" disabled={busy || !prompt.trim()} onClick={() => void generate()}>
+              <LemonButton type="button" variant="primary" size="sm" disabledReason={busy ? "Reading your corpus" : !prompt.trim() ? "Say what the reading should be about first" : null} onClick={() => void generate()}>
                 {busy ? "Reading your corpus…" : "Make the reading"}
               </LemonButton>
             </div>
@@ -282,7 +282,7 @@ export default function MetaReading() {
               {suggestion && !promoted && (
                 <div className="rounded-md border border-sun/40 bg-sun/10 px-4 py-3 space-y-2" data-testid="promote-suggestion">
                   <p className="text-sm font-serif text-ink dark:text-bright">{suggestion.rationale}</p>
-                  <LemonButton type="button" variant="secondary" size="sm" disabled={promoting} onClick={() => void onAcceptPromotion()}>
+                  <LemonButton type="button" variant="secondary" size="sm" disabledReason={promoting ? "Promoting" : null} onClick={() => void onAcceptPromotion()}>
                     {promoting ? "Promoting…" : "Chase it as a research →"}
                   </LemonButton>
                 </div>

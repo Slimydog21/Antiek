@@ -384,14 +384,14 @@ function NotePanel({
         </p>
       )}
       <div className="flex items-center gap-2 mt-2">
-        <LemonButton variant="primary" size="sm" disabled={busy} onClick={() => void save(text)}>
+        <LemonButton variant="primary" size="sm" disabledReason={busy ? "Saving" : null} onClick={() => void save(text)}>
           {busy ? "Saving…" : "Save note"}
         </LemonButton>
         <LemonButton
           variant="tertiary"
           size="sm"
           onClick={() => void captureVoice()}
-          disabled={voice.phase === "transcribing" || voice.phase === "persisting"}
+          disabledReason={voice.phase === "transcribing" ? "Listening" : voice.phase === "persisting" ? "Saving the voice note" : null}
         >
           {voice.phase === "recording"
             ? "■ Stop"
@@ -510,14 +510,14 @@ function DialoguePanel({
         </p>
       )}
       <div className="flex items-center gap-2 mt-2">
-        <LemonButton variant="primary" size="sm" disabled={pending} onClick={() => void send(followUp)}>
+        <LemonButton variant="primary" size="sm" disabledReason={pending ? "Asking" : null} onClick={() => void send(followUp)}>
           {pending ? "Asking…" : reply ? "Ask again" : "Ask"}
         </LemonButton>
         <LemonButton
           variant="tertiary"
           size="sm"
           onClick={() => void captureVoice()}
-          disabled={voice.phase === "transcribing" || voice.phase === "persisting"}
+          disabledReason={voice.phase === "transcribing" ? "Listening" : voice.phase === "persisting" ? "Saving the voice note" : null}
         >
           {voice.phase === "recording" ? "■ Stop" : "● Speak it"}
         </LemonButton>
@@ -692,7 +692,7 @@ function EditPanel({
           <LemonButton
             variant="primary"
             size="sm"
-            disabled={busy || safeText === null || instruction.trim().length === 0}
+            disabledReason={busy ? "Editing" : safeText === null ? WITHHELD_OUTBOUND_REASON : instruction.trim().length === 0 ? "Say how to edit it first" : null}
             onClick={() => void runEdit()}
           >
             {busy ? "Editing…" : "Edit"}

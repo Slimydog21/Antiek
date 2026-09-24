@@ -982,7 +982,7 @@ export default function Multimedia() {
                   {estimatedCost}
                 </p>
               </div>
-              <LemonButton type="button" variant="primary" onClick={generatePlan} disabled={pendingCommand !== null || knowledgeMutationPending}>
+              <LemonButton type="button" variant="primary" onClick={generatePlan} disabledReason={pendingCommand !== null || knowledgeMutationPending ? "Another step is still running" : null}>
                 {pendingCommand === "create" ? "Creating..." : "Review plan"}
               </LemonButton>
             </div>
@@ -1087,7 +1087,7 @@ export default function Multimedia() {
                           type="button"
                           size="sm"
                           variant="secondary"
-                          disabled={selectedCoverageArcIds.length === 0 || pendingCommand !== null || knowledgeMutationPending}
+                          disabledReason={pendingCommand !== null || knowledgeMutationPending ? "Another step is still running" : selectedCoverageArcIds.length === 0 ? "Choose at least one arc first" : null}
                           onClick={() => createPlan(selectedCoverageArcIds)}
                         >
                           {pendingCommand === "create" ? "Creating..." : "Create focused draft"}
@@ -1171,7 +1171,7 @@ export default function Multimedia() {
                       <LemonButton
                         type="button"
                         onClick={discoverEvidence}
-                        disabled={pendingCommand !== null}
+                        disabledReason={pendingCommand !== null ? "Another step is still running" : null}
                       >
                         {pendingCommand === "evidence-search" ? "Searching..." : "Find evidence"}
                       </LemonButton>
@@ -1215,7 +1215,7 @@ export default function Multimedia() {
                           type="button"
                           variant="primary"
                           onClick={createGroundedDraft}
-                          disabled={pendingCommand !== null || selectedEvidenceIds.length === 0}
+                          disabledReason={pendingCommand !== null ? "Another step is still running" : selectedEvidenceIds.length === 0 ? "Select at least one piece of evidence first" : null}
                         >
                           {pendingCommand === "ground" ? "Creating..." : "Create grounded draft"}
                         </LemonButton>
@@ -1251,7 +1251,7 @@ export default function Multimedia() {
                         type="button"
                         variant="secondary"
                         onClick={authorizeCurrentChapterNarration}
-                        disabled={!narrationSpendAcknowledged || narrationAuthorizationPending}
+                        disabledReason={narrationAuthorizationPending ? "Authorizing" : !narrationSpendAcknowledged ? "Approve this maximum first" : null}
                       >
                         {narrationAuthorizationPending ? "Authorizing..." : "Authorize narration"}
                       </LemonButton>
@@ -1310,11 +1310,7 @@ export default function Multimedia() {
                       type="button"
                       variant="secondary"
                       onClick={produceCurrentDocumentary}
-                      disabled={
-                        !reviewedVisualSet ||
-                        productionWorkerPending ||
-                        planChapters.some((chapter) => !chapterNarrationAuthorities[chapter.id])
-                      }
+                      disabledReason={productionWorkerPending ? "Producing" : !reviewedVisualSet ? "Lock the visual sequence first" : planChapters.some((chapter) => !chapterNarrationAuthorities[chapter.id]) ? "Authorize narration for every chapter first" : null}
                     >
                       {productionWorkerPending ? "Producing..." : "Produce documentary"}
                     </LemonButton>
@@ -1328,9 +1324,7 @@ export default function Multimedia() {
                       type="button"
                       variant="secondary"
                       onClick={produceCurrentAudioLesson}
-                      disabled={productionWorkerPending || planChapters.some(
-                        (chapter) => !chapterNarrationAuthorities[chapter.id]
-                      )}
+                      disabledReason={productionWorkerPending ? "Producing" : planChapters.some((chapter) => !chapterNarrationAuthorities[chapter.id]) ? "Authorize narration for every chapter first" : null}
                     >
                       {productionWorkerPending ? "Producing..." : "Produce audio lesson"}
                     </LemonButton>
@@ -1341,7 +1335,7 @@ export default function Multimedia() {
                   <LemonButton
                     type="button"
                     variant="primary"
-                    disabled={!canApprove || !selectedRecord || pendingCommand !== null || knowledgeMutationPending}
+                    disabledReason={pendingCommand !== null || knowledgeMutationPending ? "Another step is still running" : !selectedRecord ? "Create a plan first" : !canApprove ? (!planReady ? "Review the plan first" : !topic.trim() ? "Add a topic first" : duration < 15 || duration > 45 ? "Pick a length between 15 and 45 minutes" : !routeTierMatchesRecord ? "The tier differs from the saved plan. Create a new draft" : planProjection?.ok !== true ? "The plan has no price yet" : "Every claim needs a source first") : null}
                     onClick={approvePlan}
                   >
                     {pendingCommand === "approve" ? "Approving..." : "Approve render"}
@@ -1354,7 +1348,7 @@ export default function Multimedia() {
                   <LemonButton
                     type="button"
                     variant="secondary"
-                    disabled={knowledgeMutationPending}
+                    disabledReason={knowledgeMutationPending ? "Another step is still running" : null}
                     onClick={() => {
                       setPlanReady(false);
                       setApproved(false);
@@ -1366,7 +1360,7 @@ export default function Multimedia() {
                   <LemonButton
                     type="button"
                     variant="tertiary"
-                    disabled={!canRunAssetCommand}
+                    disabledReason={!selectedRecord ? "Create a plan first" : !canRunAssetCommand ? "Another step is still running" : null}
                     onClick={() => updateSteeringText("Shorten the economics setup and add more diagrams.")}
                   >
                     Steer outline
@@ -1433,7 +1427,7 @@ export default function Multimedia() {
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={!canRunAssetCommand || voiceSteeringBusy}
+                  disabledReason={!selectedRecord ? "Create a plan first" : !canRunAssetCommand || voiceSteeringBusy ? "Another step is still running" : null}
                   onClick={previewSteeringPrompt}
                 >
                   {pendingCommand === "steer-preview" ? "Previewing..." : "Preview steer"}
@@ -1443,7 +1437,7 @@ export default function Multimedia() {
                     type="button"
                     size="sm"
                     variant="primary"
-                    disabled={!canRunAssetCommand || voiceSteeringBusy}
+                    disabledReason={!selectedRecord ? "Create a plan first" : !canRunAssetCommand || voiceSteeringBusy ? "Another step is still running" : null}
                     onClick={applySteeringPrompt}
                   >
                     {pendingCommand === "steer" ? "Applying..." : "Apply preview"}
@@ -1453,7 +1447,7 @@ export default function Multimedia() {
                   type="button"
                   size="sm"
                   variant="tertiary"
-                  disabled={!canRunAssetCommand}
+                  disabledReason={!selectedRecord ? "Create a plan first" : !canRunAssetCommand ? "Another step is still running" : null}
                   onClick={runHardening}
                 >
                   {pendingCommand === "harden" ? "Checking..." : "Run hardening"}
@@ -1567,7 +1561,7 @@ export default function Multimedia() {
                             variant="secondary"
                             className="mt-3"
                             onClick={registerProducedMedia}
-                            disabled={productionRegistrationPending}
+                            disabledReason={productionRegistrationPending ? "Checking the receipt" : null}
                           >
                             {productionRegistrationPending ? "Checking receipt..." : "Register produced media"}
                           </LemonButton>

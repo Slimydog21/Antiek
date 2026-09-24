@@ -191,7 +191,7 @@ export default function ChaseThread({
         <LemonButton
           variant="primary"
           onClick={onFollow}
-          disabled={busy || question.trim().length < 3}
+          disabledReason={busy ? "Following" : question.trim().length < 3 ? "Type a longer question" : null}
         >
           {busy ? "Following…" : "Follow this"}
         </LemonButton>

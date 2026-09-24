@@ -145,7 +145,7 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
           aria-label="Search the corpus"
           className="flex-1 bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-1.5 text-sm border border-rule dark:border-charcoal-1"
         />
-        <LemonButton type="submit" size="sm" variant="primary" disabled={busy}>
+        <LemonButton type="submit" size="sm" variant="primary" disabledReason={busy ? "Searching" : null}>
           {busy ? "Searching…" : "Search"}
         </LemonButton>
         <input

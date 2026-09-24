@@ -106,7 +106,7 @@ function ContributionInviteCta({
       <LemonButton
         variant="secondary"
         size="sm"
-        disabled={busy}
+        disabledReason={busy ? "Getting a link" : null}
         onClick={() => void openDoor()}
         data-testid={`contribution-invite-cta-${projectId}`}
       >

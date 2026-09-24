@@ -469,7 +469,7 @@ export default function UsagePanel() {
                       type="button"
                       size="sm"
                       variant="secondary"
-                      disabled={busyKeyId !== null}
+                      disabledReason={busyKeyId !== null ? "Wait for the current change to finish" : null}
                       onClick={() => void saveLimit(row.id)}
                     >
                       {busyKeyId === row.id ? "Saving…" : "Save cap"}
@@ -478,7 +478,7 @@ export default function UsagePanel() {
                       type="button"
                       size="sm"
                       variant="tertiary"
-                      disabled={busyKeyId !== null}
+                      disabledReason={busyKeyId !== null ? "Wait for the current change to finish" : null}
                       onClick={() => void clearLimit(row.id)}
                     >
                       Clear cap

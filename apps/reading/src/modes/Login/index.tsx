@@ -429,7 +429,7 @@ export default function Login() {
                     aria-label="4-digit code from the email"
                   />
                 </label>
-                <LemonButton type="submit" variant="primary" size="lg" fullWidth disabled={codeWorking || code.length !== 4}>
+                <LemonButton type="submit" variant="primary" size="lg" fullWidth disabledReason={codeWorking ? "Checking the code" : code.length !== 4 ? "Enter the 4-digit code from the email" : null}>
                   {codeWorking ? "Unlocking…" : "Unlock"}
                 </LemonButton>
               </form>
@@ -551,7 +551,7 @@ function EmailForm({ email, setEmail, status, onSubmit, errorMsg, errorHint, dia
         <span>Email</span>
         <LemonInput type="email" autoFocus autoComplete="email" required disabled={status === "sending"} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" sizing="lg" wrapperClassName="w-full" />
       </label>
-      <LemonButton type="submit" variant="primary" size="lg" fullWidth disabled={status === "sending" || !email}>
+      <LemonButton type="submit" variant="primary" size="lg" fullWidth disabledReason={status === "sending" ? "Sending the link" : !email ? "Enter your email first" : null}>
         {status === "sending" ? "Sending secure link…" : "Continue with email"}
       </LemonButton>
       {status === "error" && errorMsg && <ErrorNotice message={errorMsg} hint={errorHint} diagnosticCode={diagnosticCode} />}

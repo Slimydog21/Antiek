@@ -99,7 +99,7 @@ export default function VoiceChaseButton({ onTranscript, disabled }: Props) {
           type="button"
           variant="tertiary"
           size="sm"
-          disabled={disabled || phase === "transcribing"}
+          disabledReason={phase === "transcribing" ? "Listening" : disabled ? "Wait for the current request to finish" : null}
           onClick={() => void recorder.start()}
         >
           {phase === "transcribing" ? "Listening…" : "● Say it instead"}

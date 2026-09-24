@@ -173,7 +173,7 @@ function CaptureDialog({ label, onClose, onSave, checkConflict }: CaptureDialogP
             <LemonButton
               variant="primary"
               size="sm"
-              disabled={!captured || blocking}
+              disabledReason={!captured ? "Press a key combination first" : blocking ? (shapeReason ?? "That combination belongs to a built-in shortcut") : null}
               onClick={() => onSave(captured, overridable)}
             >
               {overridable ? "Reassign anyway" : "Save hotkey"}

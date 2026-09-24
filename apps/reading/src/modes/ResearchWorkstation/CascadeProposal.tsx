@@ -476,7 +476,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                   disabled={interactionLocked}
                   autoFocus
                 />
-                <LemonButton variant="primary" size="sm" type="submit" disabled={interactionLocked}>
+                <LemonButton variant="primary" size="sm" type="submit" disabledReason={interactionLocked ? "Wait for the plan to finish updating" : null}>
                   Save
                 </LemonButton>
               </form>
@@ -637,14 +637,14 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
           {launchCount} {launchCount === 1 ? "research" : "researches"}
         </p>
         <div className="flex gap-2">
-          <LemonButton variant="tertiary" size="sm" onClick={onFallBackToAsk} disabled={interactionLocked}>
+          <LemonButton variant="tertiary" size="sm" onClick={onFallBackToAsk} disabledReason={interactionLocked ? "Wait for the plan to finish updating" : null}>
             Ask one question instead
           </LemonButton>
           <LemonButton
             variant="primary"
             size="lg"
             onClick={() => void onLaunch()}
-            disabled={interactionLocked || !ceilingApproved || !ceilingValid || (spendMode === "hard_ceiling" && authorityDigest === null)}
+            disabledReason={interactionLocked ? (phase === "launching" ? "Starting" : "Wait for the plan to finish updating") : !ceilingApproved ? "Approve the spend limit first" : !ceilingValid ? "Enter a valid spend limit" : spendMode === "hard_ceiling" && authorityDigest === null ? "Wait for the spend authority to be confirmed" : null}
           >
             {phase === "launching"
               ? "Starting…"

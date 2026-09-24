@@ -163,7 +163,7 @@ export default function Biography() {
           <LemonButton
             type="submit"
             variant="primary"
-            disabled={submitting || !name.trim()}
+            disabledReason={submitting ? "Setting it up" : !name.trim() ? "Type their name first" : null}
           >
             {submitting ? "Setting it up…" : "Start a biography"}
           </LemonButton>
@@ -348,7 +348,7 @@ function BiographyOnboarding({
               <LemonButton
                 variant="primary"
                 onClick={() => void sendToAFriend()}
-                disabled={inviting}
+                disabledReason={inviting ? "Getting a link" : null}
               >
                 {inviting ? "Getting a link…" : "Send to a friend"}
               </LemonButton>

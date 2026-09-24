@@ -601,8 +601,7 @@ export default function AddModelPanel() {
                 type="submit"
                 variant="secondary"
                 size="lg"
-                disabled={!canSubmit}
-                aria-describedby="add-model-disabled-reason"
+                disabledReason={submitDisabledReason}
                 fullWidth
               >
                 {busy ? "Adding…" : "Add model"}

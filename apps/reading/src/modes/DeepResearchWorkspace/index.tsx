@@ -322,7 +322,7 @@ export function SourcePolicyPreflightPanel({
             );
           })}
         </div>
-        <LemonButton size="sm" variant="secondary" disabled={busy} onClick={onPreflight}>
+        <LemonButton size="sm" variant="secondary" disabledReason={busy ? "Wait for the current step to finish" : null} onClick={onPreflight}>
           Check sources
         </LemonButton>
       </div>
@@ -368,7 +368,7 @@ function ComposeBar({
         onChange={(e) => setProblem(e.target.value)}
         aria-label="research problem"
       />
-      <LemonButton variant="primary" type="submit" disabled={busy || !problem.trim()}>
+      <LemonButton variant="primary" type="submit" disabledReason={busy ? "Wait for the current step to finish" : !problem.trim() ? "Describe the problem first" : null}>
         Cascade
       </LemonButton>
     </form>

@@ -252,10 +252,10 @@ export default function SpeakSettings({
           </p>
         )}
         <div className="mt-2 flex flex-wrap gap-2">
-          <LemonButton variant="secondary" size="sm" disabled={busy} onClick={onPublish}>
+          <LemonButton variant="secondary" size="sm" disabledReason={busy ? "Wait for the current step to finish" : null} onClick={onPublish}>
             Try to publish
           </LemonButton>
-          <LemonButton variant="tertiary" size="sm" disabled={busy} onClick={onQuoteBook}>
+          <LemonButton variant="tertiary" size="sm" disabledReason={busy ? "Wait for the current step to finish" : null} onClick={onQuoteBook}>
             Get a paperback quote
           </LemonButton>
         </div>
@@ -327,7 +327,7 @@ export default function SpeakSettings({
             <LemonButton
               variant="secondary"
               size="sm"
-              disabled={releaseBusy || !goal.trim()}
+              disabledReason={releaseBusy ? "Grading" : !goal.trim() ? "Set a goal first" : null}
               onClick={() => void doRelease()}
             >
               {releaseBusy ? "Grading…" : "Grade what's been shared & set aside what's owed"}

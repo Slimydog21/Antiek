@@ -97,7 +97,7 @@ export default function VoiceToDraft({
         variant="tertiary"
         size="sm"
         onClick={() => void capture()}
-        disabled={persisting || voice.phase === "transcribing" || voice.phase === "persisting"}
+        disabledReason={persisting || voice.phase === "persisting" ? "Adding it to the draft" : voice.phase === "transcribing" ? "Listening" : null}
       >
         {voice.phase === "recording"
           ? "■ Stop & add"

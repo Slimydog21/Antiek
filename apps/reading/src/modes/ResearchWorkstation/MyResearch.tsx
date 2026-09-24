@@ -356,10 +356,10 @@ function LaunchBar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <LemonButton variant="primary" size="md" onClick={onStartOne} disabled={disabled}>
+      <LemonButton variant="primary" size="md" onClick={onStartOne} disabledReason={disabled ? "Sign in first" : null}>
         Start a research
       </LemonButton>
-      <LemonButton variant="secondary" size="md" onClick={onLaunchSeveral} disabled={disabled}>
+      <LemonButton variant="secondary" size="md" onClick={onLaunchSeveral} disabledReason={disabled ? "Sign in first" : null}>
         Launch several at once
       </LemonButton>
       {disabled && (

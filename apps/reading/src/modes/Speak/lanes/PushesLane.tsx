@@ -162,7 +162,7 @@ export default function PushesLane() {
                 <LemonButton
                   variant="secondary"
                   size="sm"
-                  disabled={busyId === o.projectId}
+                  disabledReason={busyId === o.projectId ? "Opening the invite" : null}
                   onClick={() => void onContribute(o.projectId)}
                 >
                   {PUSHES_COPY.contribute}
@@ -207,7 +207,7 @@ export default function PushesLane() {
                   <LemonButton
                     variant="secondary"
                     size="sm"
-                    disabled={busyId === r.interviewId}
+                    disabledReason={busyId === r.interviewId ? "Preparing the follow-up" : null}
                     onClick={() => void onReping(r)}
                     data-testid={`reping-${r.interviewId}`}
                   >

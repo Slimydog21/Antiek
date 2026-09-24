@@ -595,7 +595,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               type="button"
               variant="tertiary"
               size="sm"
-              disabled={busy || attach.kind === "absorbing"}
+              disabledReason={attach.kind === "absorbing" ? "Still reading the last file" : busy ? "Starting the research" : null}
               onClick={() => fileInputRef.current?.click()}
             >
               {attach.kind === "absorbing" ? "Absorbing…" : "＋ Attach a file or link"}
@@ -787,7 +787,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 variant="secondary"
                 size="lg"
                 onClick={onBreakDown}
-                disabled={busy || question.trim().length < 3}
+                disabledReason={busy ? "Starting the research" : question.trim().length < 3 ? "Type a longer question" : null}
               >
                 Break into sub-questions
               </LemonButton>
@@ -795,7 +795,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 variant="primary"
                 size="lg"
                 onClick={() => void onSubmit()}
-                disabled={busy || question.trim().length < 3 || Boolean(modelChoice && !selectedModel)}
+                disabledReason={busy ? "Starting the research" : question.trim().length < 3 ? "Type a longer question" : modelChoice && !selectedModel ? "Choose an available model or Default" : null}
               >
                 {busy ? "Starting…" : "Ask"}
               </LemonButton>

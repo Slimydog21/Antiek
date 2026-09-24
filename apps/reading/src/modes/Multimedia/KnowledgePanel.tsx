@@ -285,7 +285,7 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
             onChange={setModelAcknowledged}
             label="I approve one note-model call to extract insights and questions."
           />
-          <LemonButton type="button" size="sm" variant="primary" disabled={!modelAcknowledged || pending !== null} onClick={finalize}>
+          <LemonButton type="button" size="sm" variant="primary" disabledReason={pending !== null ? "Another step is still running" : !modelAcknowledged ? "Approve the note-model call first" : null} onClick={finalize}>
             {pending === "finalize" ? "Creating twin..." : "Create knowledge twin"}
           </LemonButton>
         </div>
@@ -304,7 +304,7 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
           </p>
           <Acknowledgement checked={modelAcknowledged} onChange={setModelAcknowledged} label="I approve another note-model call." />
           <Acknowledgement checked={duplicateRiskAcknowledged} onChange={setDuplicateRiskAcknowledged} label="I understand this may duplicate model spend." />
-          <LemonButton type="button" size="sm" variant="primary" disabled={!modelAcknowledged || !duplicateRiskAcknowledged || pending !== null} onClick={recover}>
+          <LemonButton type="button" size="sm" variant="primary" disabledReason={pending !== null ? "Another step is still running" : !modelAcknowledged ? "Approve the note-model call first" : !duplicateRiskAcknowledged ? "Confirm you understand it may duplicate spend" : null} onClick={recover}>
             {pending === "recover" ? "Recovering..." : "Recover knowledge twin"}
           </LemonButton>
         </div>
@@ -324,7 +324,7 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
           <dt className="text-shadow-2 dark:text-moonlight">Questions</dt>
           <dd className="text-right text-ink dark:text-bright">{link.question_node_ids.length}</dd>
         </dl>
-        <LemonButton type="button" size="sm" variant="secondary" className="mt-3" disabled={pending !== null} onClick={openTwin}>
+        <LemonButton type="button" size="sm" variant="secondary" className="mt-3" disabledReason={pending !== null ? "Another step is still running" : null} onClick={openTwin}>
           {pending === "open" ? "Opening..." : "Open twin"}
         </LemonButton>
         </div>
@@ -348,7 +348,7 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
       )}
 
       {ready && pending !== "inspect" && (
-        <LemonButton type="button" size="sm" variant="tertiary" className="mt-3" disabled={pending !== null} onClick={inspect}>
+        <LemonButton type="button" size="sm" variant="tertiary" className="mt-3" disabledReason={pending !== null ? "Another step is still running" : null} onClick={inspect}>
           Refresh status
         </LemonButton>
       )}

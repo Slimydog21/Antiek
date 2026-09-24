@@ -190,7 +190,7 @@ export default function CrossGraphCitations() {
             variant="primary"
             size="sm"
             onClick={() => void submit()}
-            disabled={!canSubmit || submitting}
+            disabledReason={submitting ? "Recording" : !canSubmit ? "Fill in every field first" : null}
           >
             {submitting ? "Recording…" : "Record citation"}
           </LemonButton>

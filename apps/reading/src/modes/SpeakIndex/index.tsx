@@ -149,7 +149,7 @@ export default function SpeakIndex() {
           <LemonButton
             type="submit"
             variant="primary"
-            disabled={submitting || !name.trim()}
+            disabledReason={submitting ? "Starting" : !name.trim() ? "Type their name first" : null}
           >
             {submitting ? "Starting…" : "Start their story"}
           </LemonButton>

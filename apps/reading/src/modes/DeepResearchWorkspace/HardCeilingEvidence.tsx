@@ -59,7 +59,7 @@ export default function HardCeilingEvidence({
           </p>
         </div>
         {unresolved && (
-          <LemonButton variant="secondary" size="sm" disabled={checking} onClick={() => void checkStatus()}>
+          <LemonButton variant="secondary" size="sm" disabledReason={checking ? "Checking" : null} onClick={() => void checkStatus()}>
             {checking ? "Checking…" : "Check provider status"}
           </LemonButton>
         )}

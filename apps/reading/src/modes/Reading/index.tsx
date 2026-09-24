@@ -534,7 +534,7 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
               <LemonButton
                 size="sm"
                 type="button"
-                disabled={pageIndex <= 0}
+                disabledReason={pageIndex <= 0 ? "This is the first page" : null}
                 onClick={() => setPageIndex(pageIndex - 1)}
               >
                 ← Previous
@@ -545,7 +545,7 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
               <LemonButton
                 size="sm"
                 type="button"
-                disabled={pageIndex >= pages.length - 1}
+                disabledReason={pageIndex >= pages.length - 1 ? "This is the last page" : null}
                 onClick={() => setPageIndex(pageIndex + 1)}
               >
                 Next →

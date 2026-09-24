@@ -40,7 +40,7 @@ export default function CuratePrompt({ onCurate, onClear, active, busy }: Curate
         aria-label="Curate the library by prompt"
         className="flex-1"
       />
-      <LemonButton type="submit" variant="primary" size="sm" disabled={busy || !value.trim()}>
+      <LemonButton type="submit" variant="primary" size="sm" disabledReason={busy ? "Curating" : !value.trim() ? "Describe what you want first" : null}>
         {busy ? "Curating…" : "Curate"}
       </LemonButton>
       {active && (

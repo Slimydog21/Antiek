@@ -57,17 +57,17 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
       {!terminal && (
         <div className="flex flex-wrap gap-1.5">
           {isPaused ? (
-            <LemonButton size="sm" variant="secondary" disabled={busy}
+            <LemonButton size="sm" variant="secondary" disabledReason={busy ? "Another change is still being applied" : null}
               onClick={() => onSteer("resume")}>Resume</LemonButton>
           ) : (
-            <LemonButton size="sm" variant="secondary" disabled={busy || !isRunning}
+            <LemonButton size="sm" variant="secondary" disabledReason={busy ? "Another change is still being applied" : !isRunning ? "Only a running research can pause" : null}
               onClick={() => onSteer("pause")}>Pause</LemonButton>
           )}
-          <LemonButton size="sm" variant="danger" disabled={busy}
+          <LemonButton size="sm" variant="danger" disabledReason={busy ? "Another change is still being applied" : null}
             onClick={() => onSteer("stop")}>Stop</LemonButton>
-          <LemonButton size="sm" variant="tertiary" disabled={busy}
+          <LemonButton size="sm" variant="tertiary" disabledReason={busy ? "Another change is still being applied" : null}
             onClick={() => setRedirectOpen((v) => !v)}>Redirect</LemonButton>
-          <LemonButton size="sm" variant="tertiary" disabled={busy}
+          <LemonButton size="sm" variant="tertiary" disabledReason={busy ? "Another change is still being applied" : null}
             onClick={() => onSteer("deepen", { extra_budget_usd: 0.25 })}>Deepen</LemonButton>
         </div>
       )}

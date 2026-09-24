@@ -314,7 +314,7 @@ export default function ModelUsagePicker({
       variant="secondary"
       size={size}
       className={className}
-      disabled={loading || !!loadError}
+      disabledReason={loading ? "Loading your models" : loadError ? "Your models could not load" : null}
       aria-label={triggerAriaLabel}
     >
       {loading ? "…" : selectedLabel}
@@ -404,7 +404,7 @@ export default function ModelUsagePicker({
                         handleChoose(m.id, m.model_id);
                         close();
                       }}
-                      disabled={disabled}
+                      disabledReason={disabled ? "Add a key for this model in Settings first" : null}
                     >
                       <div className="flex flex-col gap-0.5 w-full">
                         <div className="flex items-center justify-between gap-2">
@@ -442,7 +442,7 @@ export default function ModelUsagePicker({
                           handleChoose(m.id, variantId);
                           close();
                         }}
-                        disabled={disabled}
+                        disabledReason={disabled ? "Add a key for this model in Settings first" : null}
                       >
                         <div
                           className="flex items-center gap-2 pl-3 w-full"

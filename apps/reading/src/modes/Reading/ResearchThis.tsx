@@ -77,7 +77,7 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
         type="button"
         variant="secondary"
         size="sm"
-        disabled={busy}
+        disabledReason={busy ? "Starting the research" : null}
         onClick={() => void spin()}
         title="Spin a deep research from this page and hand off to the Research workflow"
       >

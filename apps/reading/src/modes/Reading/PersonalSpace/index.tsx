@@ -304,7 +304,7 @@ function AssetRow({
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={filing}
+                disabledReason={filing ? "Filing" : null}
                 onClick={() => void onAccept(m)}
               >
                 {filing ? "Filing…" : `File into “${truncate(m.question)}”`}

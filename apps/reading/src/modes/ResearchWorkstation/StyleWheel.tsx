@@ -501,7 +501,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
               <LemonButton
                 size="sm"
                 variant={confirmDelete ? "danger" : "tertiary"}
-                disabled={deleting}
+                disabledReason={deleting ? "Deleting" : null}
                 onClick={() => void onDeleteFork()}
                 aria-label={
                   confirmDelete
@@ -613,14 +613,14 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
             Preserve source-first treatment
           </label>
           <div className="style-wheel__form-actions style-wheel__wide">
-            <LemonButton size="sm" disabled={savingFork} type="submit">
+            <LemonButton size="sm" disabledReason={savingFork ? "Saving" : null} type="submit">
               {savingFork ? "Saving…" : "Save fork"}
             </LemonButton>
             <LemonButton
               size="sm"
               variant="tertiary"
               type="button"
-              disabled={savingFork}
+              disabledReason={savingFork ? "Wait for the save to finish" : null}
               onClick={closeForkEditor}
             >
               Cancel
@@ -663,7 +663,7 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
           )}
           <div className="style-wheel__actions">
             <LemonButton
-              disabled={!selected || applying || previewing}
+              disabledReason={applying ? "Applying" : previewing ? "Wait for the preview to finish" : !selected ? "Choose a style first" : null}
               onClick={() => void apply()}
             >
               {applying ? "Applying…" : `Apply ${active?.label ?? "style"}`}

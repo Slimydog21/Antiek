@@ -1142,7 +1142,7 @@ function DecisionTreePanel({
           <input type="number" min={1} max={1000000} value={outputTokens} onChange={(event) => { invalidateDecision(); setOutputTokens(Number(event.target.value) || 0); }} className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright" />
         </label>
       </div>
-      <LemonButton type="button" variant="primary" size="md" disabled={loading || !usageValid} onClick={() => void compare()}>
+      <LemonButton type="button" variant="primary" size="md" disabledReason={loading ? "Comparing" : !usageValid ? "Enter at least 1 input character and 1 output token" : null} onClick={() => void compare()}>
         {loading ? "Comparing..." : "Compare models"}
       </LemonButton>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
@@ -1272,7 +1272,7 @@ function FallbackReceiptHistory({
                 ))}
               </ol>
               {chain.approval_eligible && chain.approval_id === null && reviewingChainId !== chain.chain_id && (
-                <LemonButton type="button" variant="secondary" size="sm" disabled={approvingChainId !== null} onClick={() => setReviewingChainId(chain.chain_id)} className="mt-3">Review approval</LemonButton>
+                <LemonButton type="button" variant="secondary" size="sm" disabledReason={approvingChainId !== null ? "Wait for the current approval to finish" : null} onClick={() => setReviewingChainId(chain.chain_id)} className="mt-3">Review approval</LemonButton>
               )}
               {chain.approval_eligible && chain.approval_id === null && reviewingChainId === chain.chain_id && (
                 <div ref={reviewRegionRef} role="region" aria-label="Fallback approval review" tabIndex={-1} className="mt-3 border-l-2 border-sun pl-3 text-sm text-ink outline-none dark:text-bright">
@@ -1283,8 +1283,8 @@ function FallbackReceiptHistory({
                   </dl>
                   <p className="mt-1 text-xs text-ink-soft dark:text-starlight">Hard ceiling ${(chain.ceiling_cents / 100).toFixed(2)} · maximum sequential exposure ${(chain.maximum_chain_exposure_cents / 100).toFixed(2)}. Fallback routes are attempted one at a time.</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <LemonButton type="button" variant="primary" size="sm" disabled={approvingChainId !== null} onClick={() => void onApprove(chain)}>{approvingChainId === chain.chain_id ? "Approving..." : "Approve exact terms"}</LemonButton>
-                    <LemonButton type="button" variant="secondary" size="sm" disabled={approvingChainId !== null} onClick={() => setReviewingChainId(null)}>Cancel</LemonButton>
+                    <LemonButton type="button" variant="primary" size="sm" disabledReason={approvingChainId !== null ? "Approving" : null} onClick={() => void onApprove(chain)}>{approvingChainId === chain.chain_id ? "Approving..." : "Approve exact terms"}</LemonButton>
+                    <LemonButton type="button" variant="secondary" size="sm" disabledReason={approvingChainId !== null ? "Wait for the approval to finish" : null} onClick={() => setReviewingChainId(null)}>Cancel</LemonButton>
                   </div>
                 </div>
               )}
@@ -1293,7 +1293,7 @@ function FallbackReceiptHistory({
           ))}
         </ol>
       )}
-      {cursor && <LemonButton type="button" variant="secondary" size="sm" disabled={loading} onClick={onLoadOlder} className="mt-4">{loading ? "Loading..." : "Load older"}</LemonButton>}
+      {cursor && <LemonButton type="button" variant="secondary" size="sm" disabledReason={loading ? "Loading" : null} onClick={onLoadOlder} className="mt-4">{loading ? "Loading..." : "Load older"}</LemonButton>}
     </section>
   );
 }
@@ -1379,7 +1379,7 @@ function PasskeySettings() {
         ) : (
           <p className="text-xs text-ink-soft dark:text-starlight">No passkey saved yet.</p>
         )}
-        <LemonButton type="button" variant="secondary" size="md" disabled={working} onClick={() => void addPasskey()}>
+        <LemonButton type="button" variant="secondary" size="md" disabledReason={working ? "Waiting for your device" : null} onClick={() => void addPasskey()}>
           {working ? "Waiting for your device…" : "Add another passkey"}
         </LemonButton>
         {message && <p className="text-xs text-ink-soft dark:text-starlight" role="status">{message}</p>}

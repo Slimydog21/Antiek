@@ -231,7 +231,7 @@ export default function ToolConnectionsPanel() {
                         type="button"
                         variant={row.credential_present ? "secondary" : "primary"}
                         size="lg"
-                        disabled={actionsLocked}
+                        disabledReason={actionsLocked ? "Wait for the current change to finish" : null}
                         aria-expanded={isEditing}
                         aria-controls={`${inputId}-form`}
                         onClick={() => isEditing ? closeEditor(row.vendor) : openEditor(row.vendor)}
@@ -246,7 +246,7 @@ export default function ToolConnectionsPanel() {
                           variant="tertiary"
                           size="lg"
                           className="w-full sm:h-9 sm:w-auto"
-                          disabled={actionsLocked}
+                          disabledReason={actionsLocked ? "Wait for the current change to finish" : null}
                           onClick={() => openDisconnect(row.vendor)}
                         >
                           Disconnect
@@ -281,7 +281,7 @@ export default function ToolConnectionsPanel() {
                           placeholder={row.credential_kind === "contact" ? "name@example.com" : row.auth === "bearer_token" ? "Paste bearer token" : "Paste key"}
                           wrapperClassName="flex-1"
                         />
-                        <LemonButton type="submit" variant="primary" size="lg" className="w-full sm:h-9 sm:w-auto" disabled={isBusy || credential.trim().length === 0}>
+                        <LemonButton type="submit" variant="primary" size="lg" className="w-full sm:h-9 sm:w-auto" disabledReason={isBusy ? "Saving" : credential.trim().length === 0 ? "Paste the credential first" : null}>
                           {isBusy ? "Saving…" : "Save connection"}
                         </LemonButton>
                       </div>
@@ -312,8 +312,8 @@ export default function ToolConnectionsPanel() {
                       <p id={`disconnect-${row.vendor}-title`} className="font-semibold">Disconnect {row.display_name}?</p>
                       <p id={`disconnect-${row.vendor}-description`} className="mt-1 text-sm">Antiek will delete the stored value and stop resolving this tool.</p>
                       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                        <LemonButton ref={cancelDisconnectRef} type="button" variant="tertiary" size="lg" className="w-full sm:h-9 sm:w-auto" disabled={isBusy} onClick={() => closeDisconnect(row.vendor)}>Cancel</LemonButton>
-                        <LemonButton ref={confirmDisconnectRef} type="button" variant="danger" size="lg" className="w-full sm:h-9 sm:w-auto" disabled={isBusy} onClick={() => void disconnect(row)}>{isBusy ? "Disconnecting…" : "Disconnect"}</LemonButton>
+                        <LemonButton ref={cancelDisconnectRef} type="button" variant="tertiary" size="lg" className="w-full sm:h-9 sm:w-auto" disabledReason={isBusy ? "Disconnecting" : null} onClick={() => closeDisconnect(row.vendor)}>Cancel</LemonButton>
+                        <LemonButton ref={confirmDisconnectRef} type="button" variant="danger" size="lg" className="w-full sm:h-9 sm:w-auto" disabledReason={isBusy ? "Disconnecting" : null} onClick={() => void disconnect(row)}>{isBusy ? "Disconnecting…" : "Disconnect"}</LemonButton>
                       </div>
                     </div>
                   )}

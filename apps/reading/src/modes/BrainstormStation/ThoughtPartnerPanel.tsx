@@ -296,7 +296,7 @@ export default function ThoughtPartnerPanel() {
         size="sm"
         fullWidth
         onClick={() => void send()}
-        disabled={pending || !draft.trim()}
+        disabledReason={pending ? "Waiting for the reply" : !draft.trim() ? "Type a message first" : null}
       >
         {pending ? (
           <>

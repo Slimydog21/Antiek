@@ -519,7 +519,7 @@ function AppendProseAffordance({
             </LemonButton>
             <LemonButton
               variant="primary"
-              disabled={!primary.trim()}
+              disabledReason={!primary.trim() ? `Fill in ${form?.primaryLabel ?? "the first field"} first` : null}
               onClick={submit}
             >
               {form?.submitLabel ?? "Add"}

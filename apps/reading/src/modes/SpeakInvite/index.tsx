@@ -283,7 +283,7 @@ export default function SpeakInvite() {
               fullWidth
               className="mt-5"
               onClick={() => void takePart(false)}
-              disabled={busy}
+              disabledReason={busy ? "Saving your answer" : null}
             >
               Yes, I'll share a memory
             </LemonButton>
@@ -299,7 +299,7 @@ export default function SpeakInvite() {
                   fullWidth
                   className="mt-3"
                   onClick={() => void takePart(true)}
-                  disabled={busy}
+                  disabledReason={busy ? "Saving your answer" : null}
                 >
                   Share — and you can use my words in the public story
                 </LemonButton>
@@ -411,7 +411,7 @@ export default function SpeakInvite() {
                   fullWidth
                   className="mt-3"
                   onClick={() => void submitText()}
-                  disabled={busy || !answer.trim()}
+                  disabledReason={busy ? "Sending" : !answer.trim() ? "Write a memory first" : null}
                 >
                   Send this memory
                 </LemonButton>

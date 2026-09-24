@@ -40,15 +40,15 @@ export default function PlanEditor({ tree, launchable, busy, onEdit, onApprove, 
           </p>
         </div>
         <div className="flex gap-2">
-          <LemonButton size="sm" variant="secondary" disabled={busy} onClick={onApprove}>
+          <LemonButton size="sm" variant="secondary" disabledReason={busy ? "Wait for the plan to finish updating" : null} onClick={onApprove}>
             {tree.approval.state === "approved" ? "Re-approve" : "Approve"}
           </LemonButton>
           <LemonButton
             size="sm"
             variant="primary"
-            disabled={busy || !launchable}
+            disabledReason={busy ? "Wait for the plan to finish updating" : !launchable ? "Approve the plan first" : null}
             onClick={onLaunch}
-            title={launchable ? `Launch ${leafCount} researches` : "Approve the plan to launch"}
+            title={launchable ? `Launch ${leafCount} researches` : undefined}
           >
             Launch {leafCount}
           </LemonButton>

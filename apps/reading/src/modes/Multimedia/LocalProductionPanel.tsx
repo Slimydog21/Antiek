@@ -114,7 +114,7 @@ export function LocalProductionPanel({
           className="mt-3"
           variant="secondary"
           onClick={() => command("prepare", () => prepareMultimediaLocal(assetId, revisionId))}
-          disabled={pending !== null}
+          disabledReason={pending !== null ? "Another step is still running" : null}
         >
           {pending === "prepare" ? "Preparing locally..." : "Prepare local chapters"}
         </LemonButton>
@@ -153,7 +153,7 @@ export function LocalProductionPanel({
                     <LemonButton
                       size="sm"
                       variant="secondary"
-                      disabled={pending !== null}
+                      disabledReason={pending !== null ? "Another step is still running" : null}
                       onClick={() => command(
                         "attest",
                         () => attestMultimediaLocalCard(
@@ -173,7 +173,7 @@ export function LocalProductionPanel({
             {recoverable ? (
               <LemonButton
                 variant="primary"
-                disabled={pending !== null}
+                disabledReason={pending !== null ? "Another step is still running" : null}
                 onClick={() => command(
                   "recover",
                   () => recoverMultimediaLocal(assetId, revisionId, prepared.set_id),
@@ -188,7 +188,7 @@ export function LocalProductionPanel({
             ) : (
               <LemonButton
                 variant="primary"
-                disabled={!ready || pending !== null}
+                disabledReason={pending !== null ? "Another step is still running" : !ready ? "The chapters are not ready to produce yet" : null}
                 onClick={() => command(
                   "produce",
                   () => produceMultimediaLocal(assetId, revisionId, prepared.set_id),
@@ -197,7 +197,7 @@ export function LocalProductionPanel({
                 {pending === "produce" ? "Producing locally..." : "Produce locally · $0"}
               </LemonButton>
             )}
-            <LemonButton size="sm" variant="tertiary" disabled={pending !== null} onClick={refresh}>
+            <LemonButton size="sm" variant="tertiary" disabledReason={pending !== null ? "Another step is still running" : null} onClick={refresh}>
               Refresh status
             </LemonButton>
           </div>

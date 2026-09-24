@@ -141,7 +141,7 @@ export default function ChatInputArea({
         <LemonButton
           variant="primary"
           onClick={() => void submit()}
-          disabled={busy || question.trim().length < 3}
+          disabledReason={busy ? "Asking" : question.trim().length < 3 ? "Type a longer question" : null}
         >
           {busy ? "…" : "Ask"}
         </LemonButton>
