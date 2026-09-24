@@ -368,6 +368,10 @@ export default function CommandPalette() {
     | null
   >(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // The palette is a modal dialog: it traps Tab, and closing it gives focus
+  // back to whatever held it when ⌘K (or the Search door) opened it.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const openerRef = useRef<Element | null>(null);
   const navigate = useNavigate();
   // SPR-03 Task 3 — the driver dropdown on the palette. The palette runs no
   // AI call of its own; the choice is broadcast on the thought-partner seed
@@ -548,14 +552,45 @@ export default function CommandPalette() {
 
   useEffect(() => {
     if (open) {
+      if (!panelRef.current?.contains(document.activeElement)) {
+        openerRef.current = document.activeElement;
+      }
       void loadIndex();
       // Defer focus until after the dialog mounts.
       setTimeout(() => inputRef.current?.focus(), 0);
     } else {
       setQuery("");
       setActiveIdx(0);
+      const opener = openerRef.current;
+      openerRef.current = null;
+      const active = document.activeElement;
+      // Only when focus has nowhere better to be (the palette just unmounted
+      // under it); a route change that removed the opener leaves it alone.
+      if (opener instanceof HTMLElement && opener.isConnected && (!active || active === document.body)) {
+        opener.focus({ preventScroll: true });
+      }
     }
   }, [open, loadIndex]);
+
+  // Tab and Shift-Tab cycle inside the palette (aria-modal promises it).
+  const onPanelKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab" || !panelRef.current) return;
+    const items = Array.from(
+      panelRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => !el.closest("[hidden]"));
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   // S8-full — workspace actions over the active store. Built per-render
   // so the action set reflects whatever panels are currently open.
@@ -771,14 +806,16 @@ export default function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-ink/40 flex items-start justify-center pt-24"
+      className="fixed inset-0 z-modal bg-ink/40 flex items-start justify-center pt-24"
       onClick={() => setOpen(false)}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Command palette"
     >
       <div
-        className="w-[640px] max-w-[90vw] bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-lg shadow-2xl overflow-hidden"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        onKeyDown={onPanelKeyDown}
+        className="w-[640px] max-w-[90vw] bg-card border border-rule rounded-lg shadow-island overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <input
@@ -791,7 +828,7 @@ export default function CommandPalette() {
           }}
           onKeyDown={onKeyDown}
           placeholder="Type a route, investigation, document, or notebook…"
-          className="w-full px-4 py-3 text-base font-serif text-ink dark:text-bright placeholder:text-ink-mute dark:text-moonlight outline-none border-b border-rule dark:border-charcoal-1"
+          className="w-full px-4 py-3 text-base font-serif text-1 placeholder:text-ink-mute dark:placeholder:text-moonlight focus-visible:outline-offset-[-2px] border-b border-rule dark:border-charcoal-1"
         />
         {/* herdr transfer P0-5 — state-filter chips: the palette as a
             triage surface. Clicking a chip sets the `state:` query; the
