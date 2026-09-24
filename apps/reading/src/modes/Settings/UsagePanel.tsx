@@ -30,17 +30,6 @@ function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-function usageFallback(apiKeyId: string): SettingsUsageKeyEntry {
-  return {
-    api_key_id: apiKeyId,
-    used_cents: 0,
-    limit_cents: null,
-    remaining_cents: null,
-    held_cents: 0,
-    available_cents: null,
-  };
-}
-
 function toLimitDraft(limitCents: number | null): string {
   return limitCents == null ? "" : (limitCents / 100).toFixed(2);
 }
@@ -136,8 +125,7 @@ export default function UsagePanel() {
     return keys
       .map((key) => {
         const entry = usageByKey[key.id];
-        const usage: SettingsUsageKeyEntry | null =
-          entry ?? (usageUnavailable ? null : usageFallback(key.id));
+        const usage: SettingsUsageKeyEntry | null = entry ?? null;
         const modelRow = modelsByProvider[key.id] ?? null;
         const models = [
           ...new Set(
@@ -150,7 +138,7 @@ export default function UsagePanel() {
       .sort((left, right) =>
         left.key.display_name.localeCompare(right.key.display_name),
       );
-  }, [keys, usageByKey, modelsByProvider, usageUnavailable]);
+  }, [keys, usageByKey, modelsByProvider]);
 
   async function refresh() {
     const version = loadVersionRef.current + 1;
@@ -342,8 +330,10 @@ export default function UsagePanel() {
         {usageUnavailable && !loadError && (
           <div role="alert" className="space-y-2 text-sm text-danger">
             <p>
-              Can't load usage right now. No usage figures are shown for any key
-              until it loads; separate provider balance requests can still complete.
+              Can't load usage right now. The full snapshot is unavailable.
+              A cap update may show that key's returned figures. Keys without
+              a returned update remain unavailable until retry. Provider
+              balance requests can still complete separately.
             </p>
             <LemonButton size="sm" variant="tertiary" onClick={() => void refresh()}>
               Retry
@@ -405,7 +395,11 @@ export default function UsagePanel() {
                   </div>
 
                   <p className="font-mono text-xs text-ink-soft dark:text-starlight">
-                    {row.usage ? usageBadge(row.usage) : "usage unavailable"}
+                    {row.usage
+                      ? usageBadge(row.usage)
+                      : usageUnavailable
+                        ? "usage unavailable"
+                        : "No Antiek usage recorded"}
                   </p>
 
                   <div className="space-y-1">

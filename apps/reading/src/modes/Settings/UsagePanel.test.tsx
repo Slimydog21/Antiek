@@ -414,4 +414,49 @@ describe("UsagePanel", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(within(deepseek).getByText(/used \$1\.20 · cap \$10\.00/)).toBeTruthy();
   });
+
+  it("keeps the failed-snapshot alert accurate after a cap write returns one key's usage", async () => {
+    vi.mocked(fetchSettingsUsage).mockRejectedValueOnce(new Error("ledger unavailable"));
+    render(<UsagePanel />);
+    const deepseek = await screen.findByTestId("usage-row-user-deepseek");
+    expect(within(deepseek).getByText("usage unavailable")).toBeTruthy();
+
+    const user = userEvent.setup();
+    const input = within(deepseek).getByLabelText("Spend cap (USD)");
+    await user.type(input, "25");
+    await user.click(within(deepseek).getByRole("button", { name: "Save cap" }));
+    expect(await within(deepseek).findByText(/used \$1\.20 · cap \$25\.00/)).toBeTruthy();
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("full snapshot is unavailable");
+    expect(alert.textContent).not.toContain("No usage figures are shown for any key");
+  });
+
+  it("does not invent zero usage for a key absent from a successful ledger snapshot", async () => {
+    // A newly connected model can have no ledger row: the API returns only
+    // tracked rows, so absence is not a measured zero.
+    vi.mocked(fetchSettingsUsage).mockResolvedValue({ keys: [], count: 0 });
+    render(<UsagePanel />);
+
+    const deepseek = await screen.findByTestId("usage-row-user-deepseek");
+    expect(within(deepseek).getByText("No Antiek usage recorded")).toBeTruthy();
+    expect(within(deepseek).queryByText(/used \$0\.00/)).toBeNull();
+    expect(within(deepseek).getByText("Provider-reported balance: CNY 42.5000 · USD 1.20")).toBeTruthy();
+    expect(screen.queryByText("Can't load usage right now.")).toBeNull();
+
+    // A successful cap write creates the ledger row and can then report zero.
+    vi.mocked(setSettingsUsageLimit).mockResolvedValueOnce({
+      api_key_id: "user-deepseek",
+      used_cents: 0,
+      limit_cents: 2500,
+      remaining_cents: 2500,
+      held_cents: 0,
+      available_cents: 2500,
+    });
+    const user = userEvent.setup();
+    const input = within(deepseek).getByLabelText("Spend cap (USD)");
+    await user.type(input, "25");
+    await user.click(within(deepseek).getByRole("button", { name: "Save cap" }));
+    expect(await within(deepseek).findByText(/used \$0\.00 · cap \$25\.00/)).toBeTruthy();
+  });
 });
