@@ -140,6 +140,7 @@ describe("UsagePanel", () => {
             { currency: "CNY", total: "42.5000", granted: "40.0000", topped_up: "2.5000" },
             { currency: "USD", total: "1.20", granted: "0.00", topped_up: "1.20" },
           ],
+          native_available: true,
           spend_usd: 57.5,
           budget_usd: null,
           utilization: null,
@@ -157,6 +158,7 @@ describe("UsagePanel", () => {
         balance_usd: null,
         granted_usd: null,
         native_balances: null,
+        native_available: null,
         spend_usd: null,
         budget_usd: null,
         utilization: null,
@@ -193,6 +195,18 @@ describe("UsagePanel", () => {
     expect(within(kimi).getByText(/remaining unknown/)).toBeTruthy();
   });
 
+  it("keeps a reported amount visible when DeepSeek says API calls are insufficient", async () => {
+    const reported = await fetchSettingsBalance("user-deepseek");
+    vi.mocked(fetchSettingsBalance).mockResolvedValue({ ...reported, native_available: false });
+    render(<UsagePanel />);
+    const row = await screen.findByTestId("usage-row-user-deepseek");
+    const label = await within(row).findByText(
+      "Provider-reported balance: CNY 42.5000 · USD 1.20 · insufficient for API calls",
+    );
+    expect(label.className).toContain("text-ink-soft");
+    expect(label.className).not.toContain("text-success");
+  });
+
   it("does not label old-server DeepSeek USD as provider credit", async () => {
     vi.mocked(fetchSettingsBalance).mockImplementation(async (id) => ({
       api_key_id: id,
@@ -209,6 +223,7 @@ describe("UsagePanel", () => {
       held_cents: 0,
       available_cents: 100,
       native_balances: null,
+      native_available: null,
     }));
     render(<UsagePanel />);
     const deepseek = await screen.findByTestId("usage-row-user-deepseek");
@@ -226,6 +241,7 @@ describe("UsagePanel", () => {
       balance_usd: null,
       granted_usd: null,
       native_balances: null,
+      native_available: null,
       spend_usd: 2.5,
       budget_usd: id === "user-deepseek" ? 50 : null,
       utilization: null,

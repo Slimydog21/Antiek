@@ -48,6 +48,7 @@ class BalanceSnapshot:
     # New adapters preserve provider currencies as decimal strings. Legacy
     # USD fields remain for adapters whose currency contract needs migration.
     native_balances: tuple[NativeBalance, ...] | None = None
+    native_available: bool | None = None
     balance_usd: float | None = None
     granted_usd: float | None = None
     # spend_history: provider-reported spend + user-set budget → derived remaining

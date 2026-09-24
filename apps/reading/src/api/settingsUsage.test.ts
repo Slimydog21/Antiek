@@ -88,6 +88,7 @@ describe("parseSettingsBalance", () => {
     expect(parsed.kind).toBe("balance_native");
     expect(parsed.balance_usd).toBeNull();
     expect(parsed.native_balances).toBeNull();
+    expect(parsed.native_available).toBeNull();
     expect(parsed.available_cents).toBe(840);
   });
 
@@ -98,8 +99,10 @@ describe("parseSettingsBalance", () => {
     ];
     const parsed = parseSettingsBalance({
       ...balanceBody, balance_usd: null, granted_usd: null, native_balances,
+      native_available: true,
     });
     expect(parsed.native_balances).toEqual(native_balances);
+    expect(parsed.native_available).toBe(true);
     expect(parsed.balance_usd).toBeNull();
   });
 
@@ -114,7 +117,7 @@ describe("parseSettingsBalance", () => {
     Array.from({ length: 9 }, () => ({ currency: "CNY", total: "1", granted: "0", topped_up: "0" })),
     [],
     ]) {
-      expect(() => parseSettingsBalance({ ...balanceBody, balance_usd: null, granted_usd: null, native_balances })).toThrow(
+      expect(() => parseSettingsBalance({ ...balanceBody, balance_usd: null, granted_usd: null, native_balances, native_available: true })).toThrow(
         "Invalid settings balance response.",
       );
     }
@@ -124,7 +127,31 @@ describe("parseSettingsBalance", () => {
     expect(() => parseSettingsBalance({
       ...balanceBody,
       native_balances: [{ currency: "CNY", total: "1", granted: "0", topped_up: "1" }],
+      native_available: true,
     })).toThrow("Invalid settings balance response.");
+  });
+
+  it.each([undefined, null, "false", 0])("rejects missing or invalid DeepSeek native availability", (native_available) => {
+    const body = {
+      ...balanceBody,
+      balance_usd: null,
+      granted_usd: null,
+      native_balances: [{ currency: "CNY", total: "1", granted: "0", topped_up: "1" }],
+      native_available,
+    };
+    expect(() => parseSettingsBalance(body)).toThrow("Invalid settings balance response.");
+  });
+
+  it("accepts an explicitly unavailable DeepSeek balance without dropping its amount", () => {
+    const parsed = parseSettingsBalance({
+      ...balanceBody,
+      balance_usd: null,
+      granted_usd: null,
+      native_balances: [{ currency: "CNY", total: "1.25", granted: "0", topped_up: "1.25" }],
+      native_available: false,
+    });
+    expect(parsed.native_balances?.[0].total).toBe("1.25");
+    expect(parsed.native_available).toBe(false);
   });
 
   it.each([

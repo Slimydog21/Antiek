@@ -89,8 +89,8 @@ function balanceLabel(
     const entries = balance.native_balances;
     return entries && entries.length > 0
       ? {
-          text: `Provider-reported balance: ${entries.map(({ currency, total }) => `${currency} ${total}`).join(" · ")}`,
-          tone: "ok",
+          text: `Provider-reported balance: ${entries.map(({ currency, total }) => `${currency} ${total}`).join(" · ")}${balance.native_available === false ? " · insufficient for API calls" : ""}`,
+          tone: balance.native_available === false ? "unknown" : "ok",
         }
       : { text: "Provider balance unavailable", tone: "unknown" };
   }

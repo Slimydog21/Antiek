@@ -111,4 +111,5 @@ def fetch_deepseek_balance(
         catalog_id=_CATALOG_ID,
         kind="balance_native",
         native_balances=tuple(balances),
+        native_available=data["is_available"],
     )

@@ -81,6 +81,7 @@ beforeEach(() => {
     kind: "balance_native",
     balance_usd: null,
     native_balances: [{ currency: "CNY", total: "12.3400", granted: "10", topped_up: "2.3400" }],
+    native_available: true,
     held_cents: 0,
     available_cents: 3766,
   });
@@ -98,6 +99,7 @@ function balanceBody(
     budget_usd: number | null;
     note: string | null;
     native_balances: { currency: string; total: string; granted: string; topped_up: string }[] | null;
+    native_available: boolean | null;
   }>,
 ) {
   return {
@@ -115,6 +117,7 @@ function balanceBody(
     held_cents: 0,
     available_cents: null,
     native_balances: null,
+    native_available: null,
     ...overrides,
   };
 }
@@ -175,6 +178,25 @@ describe("ModelUsagePicker", () => {
     });
   });
 
+  it("shows a neutral reported amount when DeepSeek says API calls are insufficient", async () => {
+    mockFetchBalance.mockResolvedValue(balanceBody({
+      native_balances: [
+        { currency: "CNY", total: "42.500", granted: "40", topped_up: "2.500" },
+        { currency: "USD", total: "0.10", granted: "0", topped_up: "0.10" },
+      ],
+      native_available: false,
+    }));
+    render(<ModelUsagePicker value={null} onChange={() => {}} showUsage={false} />);
+    await userEvent.click(screen.getAllByRole("button")[0]);
+    const chip = await waitFor(() => {
+      const element = document.querySelector('[data-balance-kind="balance_native"]');
+      expect(element?.textContent).toContain("CNY 42.500 · USD 0.10 · insufficient for API calls");
+      return element as HTMLElement;
+    });
+    expect(chip.className).toContain("text-ink-soft");
+    expect(chip.className).not.toContain("text-success");
+  });
+
   it("labels balance_native as provider credit and spend_history as Antiek's meter, never the same chip", async () => {
     // um-1 → the provider reported remaining credit; um-2 → no native
     // adapter, so the backend answered with Antiek's own spend meter.
@@ -183,7 +205,7 @@ describe("ModelUsagePicker", () => {
         ? balanceBody({ api_key_id: "um-1", kind: "balance_native", native_balances: [
             { currency: "CNY", total: "42.500", granted: "40", topped_up: "2.500" },
             { currency: "USD", total: "0.10", granted: "0", topped_up: "0.10" },
-          ] })
+          ], native_available: true })
         : balanceBody({ api_key_id: "um-2", catalog_id: "xai", kind: "spend_history", spend_usd: 2.5, budget_usd: 50 }),
     );
     render(<ModelUsagePicker value={null} onChange={() => {}} showBalance />);
@@ -295,7 +317,7 @@ describe("ModelUsagePicker one key, many variants", () => {
     mockFetchBalance.mockResolvedValue(
       balanceBody({ api_key_id: "um-multi", kind: "balance_native", native_balances: [
         { currency: "CNY", total: "42.50", granted: "40", topped_up: "2.50" },
-      ] }),
+      ], native_available: true }),
     );
     const onChange = vi.fn();
     render(<ModelUsagePicker value={null} onChange={onChange} showUsage showBalance />);

@@ -137,10 +137,16 @@ function balanceChip(b?: SettingsBalanceResponse | null, loading?: boolean): Rea
     return (
       <span
         data-balance-kind="balance_native"
-        className="text-xxs tabular-nums px-1 py-px rounded text-success bg-success/10"
+        className={
+          "text-xxs tabular-nums px-1 py-px rounded " +
+          (b.native_available === false
+            ? "text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1"
+            : "text-success bg-success/10")
+        }
         title={`Provider-reported balance from DeepSeek${b.note ? ` · ${b.note}` : ""}`}
       >
         {entries.map(({ currency, total }) => `${currency} ${total}`).join(" · ")}
+        {b.native_available === false ? " · insufficient for API calls" : ""}
       </span>
     );
   }

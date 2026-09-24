@@ -56,6 +56,7 @@ export interface SettingsBalanceResponse {
   held_cents: number;
   available_cents: number | null;
   native_balances: SettingsNativeBalance[] | null;
+  native_available: boolean | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -187,7 +188,7 @@ export function parseSettingsBalance(raw: unknown): SettingsBalanceResponse {
   ];
   if (
     !isRecord(raw) ||
-    !(hasExactKeys(raw, keys) || hasExactKeys(raw, [...keys, "native_balances"])) ||
+    !(hasExactKeys(raw, keys) || hasExactKeys(raw, [...keys, "native_balances", "native_available"])) ||
     typeof raw.api_key_id !== "string" ||
     raw.api_key_id.length === 0 ||
     typeof raw.catalog_id !== "string" ||
@@ -216,12 +217,16 @@ export function parseSettingsBalance(raw: unknown): SettingsBalanceResponse {
   const nativeBalances = "native_balances" in raw
     ? parseNativeBalances(raw.native_balances)
     : null;
+  const nativeAvailable = "native_available" in raw ? raw.native_available : null;
+  if (!(nativeAvailable === null || typeof nativeAvailable === "boolean")) {
+    throw new Error("Invalid settings balance response.");
+  }
   if (raw.catalog_id === "deepseek" && nativeBalances !== null &&
       (raw.balance_usd !== null || raw.granted_usd !== null)) {
     throw new Error("Invalid settings balance response.");
   }
   if (raw.catalog_id === "deepseek" && raw.kind === "balance_native" &&
-      nativeBalances !== null && nativeBalances.length === 0) {
+      nativeBalances !== null && (nativeBalances.length === 0 || nativeAvailable === null)) {
     throw new Error("Invalid settings balance response.");
   }
   return {
@@ -239,6 +244,7 @@ export function parseSettingsBalance(raw: unknown): SettingsBalanceResponse {
     held_cents: raw.held_cents,
     available_cents: raw.available_cents,
     native_balances: nativeBalances,
+    native_available: nativeAvailable,
   };
 }
 

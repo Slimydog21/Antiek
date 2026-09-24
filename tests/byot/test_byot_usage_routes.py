@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -26,6 +27,7 @@ from interfaces.research.api.byot_usage_routes import (
 )
 from runtime.byok.secret_str import SecretStr
 from substrate.byot_usage.balance.base import BalanceSnapshot, NativeBalance
+from substrate.byot_usage.balance.deepseek import fetch_deepseek_balance
 from substrate.byot_usage.ledger import ByotUsageLedger
 
 # ---------------------------------------------------------------------------
@@ -231,6 +233,7 @@ def test_balance_returns_native_balance(
                     NativeBalance(currency="CNY", total="42.50", granted="40.00", topped_up="2.50"),
                     NativeBalance(currency="USD", total="1.25", granted="0.00", topped_up="1.25"),
                 ),
+                native_available=True,
             )
         return BalanceSnapshot(catalog_id=catalog_id, kind="unavailable")
 
@@ -248,10 +251,49 @@ def test_balance_returns_native_balance(
     assert body.balance_usd is None
     assert body.granted_usd is None
     assert body.native_balances is not None
+    assert body.native_available is True
     assert [(entry.currency, entry.total) for entry in body.native_balances] == [
         ("CNY", "42.50"), ("USD", "1.25"),
     ]
     assert body.note is None
+
+
+def test_deepseek_provider_payload_crosses_adapter_and_route_without_usd_coercion(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def provider_response(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={
+            "is_available": False,
+            "balance_infos": [
+                {"currency": "CNY", "total_balance": "42.5000", "granted_balance": "40.00", "topped_up_balance": "2.5000"},
+                {"currency": "USD", "total_balance": "1.25", "granted_balance": "0.00", "topped_up_balance": "1.25"},
+            ],
+        })
+
+    def fetch_from_mock_transport(*, catalog_id: str, key: SecretStr, base_url: str, **kwargs: Any) -> BalanceSnapshot:
+        assert catalog_id == "deepseek"
+        with httpx.Client(transport=httpx.MockTransport(provider_response)) as http:
+            return fetch_deepseek_balance(key, base_url=base_url, http=http)
+
+    monkeypatch.setattr(
+        "interfaces.research.api.byot_usage_routes._fetch_balance",
+        fetch_from_mock_transport,
+    )
+    response = client.get("/settings/balance/key-ds")
+    assert response.status_code == 200
+    body = BalanceResponse.model_validate(response.json())
+    assert [(balance.currency, balance.total) for balance in body.native_balances or []] == [
+        ("CNY", "42.5000"), ("USD", "1.25"),
+    ]
+    assert body.native_available is False
+    assert body.balance_usd is None
+    assert len(requests) == 1
+    assert str(requests[0].url) == "https://api.deepseek.com/user/balance"
+    assert requests[0].headers["Authorization"] == "Bearer sk-test-cred-ds"
 
 
 def test_balance_returns_unavailable_on_adapter_degrade(

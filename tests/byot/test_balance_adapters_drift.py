@@ -87,6 +87,7 @@ def test_deepseek_parses_valid_fixture() -> None:
     assert result.native_balances == (
         NativeBalance(currency="CNY", total="150.50", granted="100.00", topped_up="50.50"),
     )
+    assert result.native_available is True
     assert result.balance_usd is None
     assert result.granted_usd is None
     assert result.note is None
@@ -112,7 +113,24 @@ def test_deepseek_preserves_both_currencies_without_conversion() -> None:
         NativeBalance(currency="CNY", total="150.50000001", granted="100.00", topped_up="50.50000001"),
         NativeBalance(currency="USD", total="2.25", granted="0.25", topped_up="2.00"),
     )
+    assert result.native_available is True
     assert result.balance_usd is None
+
+
+def test_deepseek_reports_call_eligibility_separately_from_amount() -> None:
+    http = _FakeHTTP(_FakeResponse({
+        "is_available": False,
+        "balance_infos": [
+            {"currency": "CNY", "total_balance": "0.00", "granted_balance": "0.00", "topped_up_balance": "0.00"},
+        ],
+    }))
+    result = fetch_deepseek_balance(
+        SecretStr("sk-test-key"), base_url="https://api.deepseek.com", http=http,
+    )
+    assert result.kind == "balance_native"
+    assert result.native_available is False
+    assert result.native_balances is not None
+    assert result.native_balances[0].total == "0.00"
 
 
 def test_deepseek_rejects_unknown_currency_duplicate_or_numeric_amount() -> None:

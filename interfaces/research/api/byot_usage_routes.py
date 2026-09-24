@@ -115,6 +115,7 @@ class BalanceResponse(BaseModel):
     catalog_id: str
     kind: BalanceKind
     native_balances: list[NativeBalanceResponse] | None = None
+    native_available: bool | None = None
     balance_usd: float | None = None
     granted_usd: float | None = None
     spend_usd: float | None = None
@@ -356,6 +357,7 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
             if snapshot.native_balances is not None
             else None
         ),
+        native_available=snapshot.native_available,
         balance_usd=snapshot.balance_usd,
         granted_usd=snapshot.granted_usd,
         spend_usd=snapshot.spend_usd,
