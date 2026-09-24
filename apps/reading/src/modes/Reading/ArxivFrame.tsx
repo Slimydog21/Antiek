@@ -114,7 +114,7 @@ export default function ArxivFrame({
       className="flex flex-col gap-3"
     >
       {/* The RELIABLE primary surface — always rendered, always correct. */}
-      <div className="border-edge border-sun rounded-hog bg-ice-1 dark:bg-charcoal-1 shadow-z1 dark:shadow-z1-night px-4 py-4 flex flex-col gap-3">
+      <div className="border border-rule rounded-hog bg-ice-1 dark:bg-charcoal-1 px-4 py-4 flex flex-col gap-3">
         <h2 className="font-serif text-lg text-ink dark:text-bright">
           {title ?? "This paper"}
         </h2>

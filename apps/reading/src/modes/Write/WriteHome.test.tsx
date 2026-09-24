@@ -249,6 +249,8 @@ describe("WriteHome — the re-homed door", () => {
     const title = await screen.findByPlaceholderText(/what are you writing/i);
     expect((title as HTMLInputElement).value).toBe("Moat memo");
     expect(screen.getByTestId("write-from-notebook-banner")).toBeTruthy();
+    // Spec §4: an informational banner is a neutral bounded note, not a sun rule.
+    expect(screen.getByTestId("write-from-notebook-banner").className).not.toMatch(/\bborder-sun\b/);
     expect(await screen.findByTestId("connect-research-preferred")).toBeTruthy();
   });
 

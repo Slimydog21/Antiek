@@ -368,6 +368,21 @@ describe("BookReader", () => {
     await waitFor(() => expect(screen.getByText(/has been removed/)).toBeTruthy());
   });
 
+  it("draws the removed notice as a neutral bounded note, not a sun block (spec §4)", async () => {
+    // Before: a 2.5px sun edge on a sun tint. The sun belongs to the dock key,
+    // the one primary action and the reading mark; a rights notice is none.
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "taken_down", servable_full_text: false, taken_down: true }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({ servable: false, full_text: null, snippet: null, servability: "taken_down", reason: "taken_down" }),
+    );
+    await renderReader();
+    const notice = await screen.findByText(/has been removed/);
+    expect(notice.className).not.toMatch(/\b(border|bg)-sun\b/);
+    expect(notice.className).toMatch(/\bborder-rule\b/);
+  });
+
   it("renders a not-found note for an unknown book", async () => {
     getBookMock.mockRejectedValue(new Error("book_not_found"));
     getFullTextMock.mockRejectedValue(new Error("book_not_found"));

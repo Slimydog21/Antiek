@@ -14,7 +14,7 @@ function MasterSectionNodeView({ node, deleteNode }: NodeViewProps) {
   const section = (node.attrs.section as string | null) ?? "";
   return (
     <NodeViewWrapper className="my-3" data-block="master-section">
-      <div className="border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 shadow-z1 dark:shadow-z1-night p-4 relative">
+      <div className="border border-rule rounded-hog bg-ice-0 dark:bg-charcoal-2 p-4 relative">
         <header className="flex items-center justify-between mb-2">
           <span className="font-mono text-xxs uppercase tracking-wider text-ink-soft dark:text-moonlight">
             Synthesis · {synthesisId.slice(0, 12)}

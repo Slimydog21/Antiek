@@ -553,3 +553,15 @@ describe("StartResearch — a failed run is surfaced honestly, never a dead rout
     expect(navigateMock).not.toHaveBeenCalled();
   });
 });
+
+describe("StartResearch — example prompts are flat, bounded and neutral (spec §4)", () => {
+  it("draws each example on a rule border with no resting shadow and no sun", () => {
+    // Before: a 2.5px sun edge and a 3px hard shadow on each of three
+    // examples, next to the one primary Ask (sun spent four times).
+    renderStart();
+    const example = screen.getByRole("button", { name: /strongest case against this thesis/ });
+    expect(example.className).not.toMatch(/\bborder-sun\b|hover:border-sun\b/);
+    expect(example.className).not.toMatch(/(^|\s)(dark:)?shadow-z\d/);
+    expect(example.className).toMatch(/\bborder-rule\b/);
+  });
+});

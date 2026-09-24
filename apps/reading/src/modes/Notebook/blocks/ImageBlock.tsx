@@ -15,7 +15,7 @@ function ImageNodeView({ node, deleteNode }: NodeViewProps) {
   const caption = (node.attrs.caption as string | null) ?? "";
   return (
     <NodeViewWrapper className="my-3" data-block="image">
-      <figure className="border-edge border-sun bg-ice-0 dark:bg-charcoal-2 rounded-hog shadow-z1 dark:shadow-z1-night overflow-hidden relative">
+      <figure className="border border-rule bg-ice-0 dark:bg-charcoal-2 rounded-hog overflow-hidden relative">
         {/* S7 WP-7.3 acceptance: "open as panel" affordance.
             For an image, open the src in a lightbox floating panel
             sized to its natural dimensions (capped by the viewport
@@ -64,7 +64,7 @@ function ImageNodeView({ node, deleteNode }: NodeViewProps) {
           </div>
         )}
         {caption && (
-          <figcaption className="font-serif italic text-sm text-ink-soft dark:text-starlight px-4 py-2 border-t-edge border-sun">
+          <figcaption className="font-serif italic text-sm text-ink-soft dark:text-starlight px-4 py-2 border-t border-hairline">
             {caption}
           </figcaption>
         )}

@@ -23,7 +23,7 @@ type Story = StoryObj<typeof meta>;
 export const InPanelFrame: Story = {
   render: () => (
     <div className="p-6 bg-ice-2 dark:bg-space-2 h-screen flex items-center justify-center">
-      <div className="w-[720px] h-[560px] bg-ice-0 dark:bg-charcoal-2 border-edge border-sun rounded-hog shadow-z3 dark:shadow-z3-night overflow-hidden">
+      <div className="w-[720px] h-[560px] bg-ice-0 dark:bg-charcoal-2 border border-rule rounded-hog overflow-hidden">
         <Notebook />
       </div>
     </div>

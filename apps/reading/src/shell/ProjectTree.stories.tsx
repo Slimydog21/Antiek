@@ -27,7 +27,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   render: () => (
-    <div className="w-[320px] h-[640px] bg-ice-1 dark:bg-charcoal-2 border-edge border-sun rounded-hog shadow-z2 dark:shadow-z2-night overflow-y-auto">
+    <div className="w-[320px] h-[640px] bg-ice-1 dark:bg-charcoal-2 border border-rule rounded-hog overflow-y-auto">
       <ProjectTree />
     </div>
   ),
@@ -35,7 +35,7 @@ export const Default: Story = {
 
 export const ReadScope: Story = {
   render: () => (
-    <div className="w-[320px] h-[640px] bg-ice-1 dark:bg-charcoal-2 border-edge border-sun rounded-hog shadow-z2 dark:shadow-z2-night overflow-y-auto">
+    <div className="w-[320px] h-[640px] bg-ice-1 dark:bg-charcoal-2 border border-rule rounded-hog overflow-y-auto">
       <ProjectTree workflow="read" />
     </div>
   ),

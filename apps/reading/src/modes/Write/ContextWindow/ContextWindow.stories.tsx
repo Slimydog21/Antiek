@@ -26,7 +26,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   render: () => (
     <div className="h-screen bg-ice-2 dark:bg-space-2 p-6">
-      <div className="w-full max-w-2xl mx-auto bg-ice-0 dark:bg-charcoal-2 border-edge border-sun rounded-hog shadow-z3 dark:shadow-z3-night">
+      <div className="w-full max-w-2xl mx-auto bg-ice-0 dark:bg-charcoal-2 border border-rule rounded-hog">
         <ContextWindow />
       </div>
     </div>

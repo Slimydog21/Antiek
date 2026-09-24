@@ -25,7 +25,7 @@ type Story = StoryObj<typeof meta>;
 export const Blank: Story = {
   render: () => (
     <div className="h-screen bg-ice-2 dark:bg-space-2 p-6">
-      <div className="w-full max-w-3xl mx-auto h-full bg-ice-0 dark:bg-charcoal-2 border-edge border-sun rounded-hog shadow-z3 dark:shadow-z3-night overflow-hidden">
+      <div className="w-full max-w-3xl mx-auto h-full bg-ice-0 dark:bg-charcoal-2 border border-rule rounded-hog overflow-hidden">
         <EditorPanel notebookId="storybook-blank" />
       </div>
     </div>
@@ -35,7 +35,7 @@ export const Blank: Story = {
 export const WithSampleContent: Story = {
   render: () => (
     <div className="h-screen bg-ice-2 dark:bg-space-2 p-6">
-      <div className="w-full max-w-3xl mx-auto h-full bg-ice-0 dark:bg-charcoal-2 border-edge border-sun rounded-hog shadow-z3 dark:shadow-z3-night overflow-hidden">
+      <div className="w-full max-w-3xl mx-auto h-full bg-ice-0 dark:bg-charcoal-2 border border-rule rounded-hog overflow-hidden">
         <EditorPanel
           notebookId="storybook-sample"
           initialContent={`
@@ -54,6 +54,27 @@ export const WithSampleContent: Story = {
               note, claim card, region embed, cross-doc link, synthesis
               section, headings, lists, blockquote, code.
             </p>
+          `}
+        />
+      </div>
+    </div>
+  ),
+};
+
+/** The embedded block cards (LaTeX, image, synthesis section) beside a note:
+ *  the visual gate's view of the flat, bounded card (design spec §4). */
+export const WithEveryBlock: Story = {
+  render: () => (
+    <div className="h-screen bg-ice-2 dark:bg-space-2 p-6">
+      <div className="w-full max-w-3xl mx-auto h-full bg-ice-0 dark:bg-charcoal-2 border border-rule rounded-hog overflow-hidden">
+        <EditorPanel
+          notebookId="storybook-every-block"
+          initialContent={`
+            <h1>Gate-error survey</h1>
+            <antiek-note text="Compare the decompositions before the error rates."></antiek-note>
+            <antiek-latex source="\\epsilon_{2q} \\approx 1 - F_{\\mathrm{avg}}"></antiek-latex>
+            <antiek-image alt="Randomized benchmarking decay" caption="Figure 2. Decay of sequence fidelity with length."></antiek-image>
+            <antiek-master-section synthesis_id="syn-7f3a2c19e4b1" section="Findings"></antiek-master-section>
           `}
         />
       </div>

@@ -280,7 +280,7 @@ export default function MetaReading() {
               {/* SUGGEST-NOT-AUTOSHIP promote into Research. Appears, never
                   auto-fires; the user must click Accept. */}
               {suggestion && !promoted && (
-                <div className="rounded-md border border-sun/40 bg-sun/10 px-4 py-3 space-y-2" data-testid="promote-suggestion">
+                <div className="rounded-md border border-rule bg-inset px-4 py-3 space-y-2" data-testid="promote-suggestion">
                   <p className="text-sm font-serif text-ink dark:text-bright">{suggestion.rationale}</p>
                   <LemonButton type="button" variant="secondary" size="sm" disabled={promoting} onClick={() => void onAcceptPromotion()}>
                     {promoting ? "Promoting…" : "Chase it as a research →"}
@@ -316,7 +316,7 @@ function ProposedBanner() {
       role="note"
       aria-label="Proposed feature — sign-off pending"
       data-testid="meta-reading-proposed-banner"
-      className="flex items-start gap-2 border-b border-sun/40 bg-sun/15 px-6 py-2.5 text-sm leading-relaxed text-ink dark:text-bright"
+      className="flex items-start gap-2 border-b border-hairline bg-inset px-6 py-2.5 text-sm leading-relaxed text-ink dark:text-bright"
     >
       <span className="mt-[2px] font-mono text-xxs font-bold uppercase tracking-wider text-sun-deep dark:text-sun shrink-0">
         proposed

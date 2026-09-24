@@ -24,7 +24,7 @@ type Story = StoryObj<typeof meta>;
 function frame(children: React.ReactNode) {
   return (
     <div className="h-screen bg-ice-2 dark:bg-space-2 p-6">
-      <div className="w-full max-w-3xl mx-auto bg-ice-0 dark:bg-charcoal-2 border-edge border-sun rounded-hog shadow-z3 dark:shadow-z3-night p-6">
+      <div className="w-full max-w-3xl mx-auto bg-ice-0 dark:bg-charcoal-2 border border-rule rounded-hog p-6">
         {children}
       </div>
     </div>

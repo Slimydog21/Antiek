@@ -300,7 +300,7 @@ function AssetRow({
       )}
       {!filedInto && !dismissed && suggestion && (
         <div
-          className="rounded border border-sun/40 bg-sun/10 px-3 py-2 space-y-2"
+          className="rounded border border-rule bg-inset px-3 py-2 space-y-2"
           data-testid="personal-asset-suggestion"
         >
           <p className="text-xs text-ink dark:text-bright">{suggestion.rationale}</p>

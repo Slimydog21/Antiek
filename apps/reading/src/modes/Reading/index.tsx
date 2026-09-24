@@ -462,7 +462,7 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
                falling through to an empty hosted-body view. */
             <div
               data-arxiv-link-unavailable
-              className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright"
+              className="text-sm border border-rule rounded-md bg-inset px-3 py-2 text-ink dark:text-bright"
             >
               This paper is read on arXiv, but its arXiv link isn’t available
               right now. Try again later or search arXiv for the title above.
@@ -470,7 +470,7 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
           ) : (
             <>
               {!ownerReadable && (
-                <div className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
+                <div className="text-sm border border-rule rounded-md bg-inset px-3 py-2 text-ink dark:text-bright">
                   {book.servability === "taken_down"
                     ? "This title has been removed and is no longer available to read."
                     : "Preview only — this title isn’t licensed for full reading. You’re seeing a short snippet and its metadata."}

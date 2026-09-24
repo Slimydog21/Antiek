@@ -268,7 +268,7 @@ export function SlashMenu({ editor, query, onClose }: Props) {
   return (
     <div
       ref={containerRef}
-      className="absolute z-[120] mt-2 w-[280px] bg-ice-0 dark:bg-charcoal-2 border-edge border-sun rounded-hog shadow-z3 dark:shadow-z3-night py-1 max-h-[320px] overflow-y-auto"
+      className="absolute z-[120] mt-2 w-[280px] bg-ice-0 dark:bg-charcoal-2 border border-rule rounded-hog shadow-z3 dark:shadow-z3-night py-1 max-h-[320px] overflow-y-auto"
       role="listbox"
     >
       {filtered.map((entry, idx) => (

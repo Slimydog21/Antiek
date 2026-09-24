@@ -97,6 +97,18 @@ describe("MetaReading (M4)", () => {
     expect(banner.textContent?.toLowerCase()).toContain("owned");
   });
 
+  it("draws the proposed banner and the promote suggestion without sun (spec §4)", async () => {
+    // Before: both were sun tints with a sun rule. The sun belongs to the dock
+    // key, the one primary action and the reading mark.
+    render(<MetaReading />);
+    expect(screen.getByTestId("meta-reading-proposed-banner").className).not.toMatch(/\b(border|bg)-sun\b/);
+    cleanup();
+    await generate();
+    const sugg = screen.getByTestId("promote-suggestion");
+    expect(sugg.className).not.toMatch(/\b(border|bg)-sun\b/);
+    expect(sugg.className).toMatch(/\bborder-rule\b/);
+  });
+
   it("a cited passage opens the SPR-07 reader at the resolved page", async () => {
     await generate();
     fireEvent.click(screen.getByRole("button", { name: "open at p.12" }));

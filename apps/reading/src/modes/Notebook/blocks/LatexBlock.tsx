@@ -19,8 +19,8 @@ function LatexNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
 
   return (
     <NodeViewWrapper className="my-3" data-block="latex">
-      <div className="border-edge border-sun bg-ice-1 dark:bg-charcoal-2 rounded-hog shadow-z1 dark:shadow-z1-night relative">
-        <div className="px-3 py-2 border-b-edge border-sun flex items-center justify-between">
+      <div className="border border-rule bg-ice-1 dark:bg-charcoal-2 rounded-hog relative">
+        <div className="px-3 py-2 border-b border-hairline flex items-center justify-between">
           <span className="font-mono text-xxs uppercase tracking-wider text-sun-deep dark:text-sun">
             LaTeX · raw source (display-only)
           </span>

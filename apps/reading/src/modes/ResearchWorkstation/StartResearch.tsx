@@ -830,8 +830,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                   disabled={busy}
                   className={
                     "w-full text-left text-sm font-serif text-ink dark:text-bright px-3 py-2 rounded-hog " +
-                    "border-edge border-sun bg-ice-0 dark:bg-charcoal-2 shadow-z1 dark:shadow-z1-night " +
-                    "hover:border-sun dark:hover:border-sun hover:bg-sun/10 disabled:opacity-50 disabled:pointer-events-none " +
+                    "border border-rule bg-ice-0 dark:bg-charcoal-2 hover:bg-wash " +
+                    "disabled:opacity-50 disabled:pointer-events-none " +
                     cardLift
                   }
                 >

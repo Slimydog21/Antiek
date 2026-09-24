@@ -218,7 +218,7 @@ describe("M4 — meta-docs tab", () => {
   });
 });
 
-describe("w3 — shared states", () => {
+describe("w3 — shared states and chrome restraint", () => {
   it("names a failed load, hides the raw message, and retries", async () => {
     // Before: ErrorBanner printed the raw "Failed to fetch" with no retry.
     listMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
@@ -232,5 +232,19 @@ describe("w3 — shared states", () => {
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("How my books treat free will")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("draws the filing suggestion as a neutral bounded note, not a sun tint", async () => {
+    // Design spec §4: the sun is spent on the dock key, the one primary action
+    // and the reading mark. A suggestion is none of those.
+    suggestionMock.mockImplementation(async (docId: string) =>
+      docId === "doc-1"
+        ? { document_id: docId, matches: [{ investigation_id: "inv-x", question: "free will", score: 0.7 }] }
+        : { document_id: docId, matches: [] },
+    );
+    render(<PersonalSpace />);
+    const sugg = await screen.findByTestId("personal-asset-suggestion");
+    expect(sugg.className).not.toMatch(/\b(border|bg)-sun\b/);
+    expect(sugg.className).toMatch(/\bborder-rule\b/);
   });
 });

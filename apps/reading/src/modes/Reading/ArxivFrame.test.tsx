@@ -149,3 +149,16 @@ describe("ArxivFrame", () => {
     expect(shown.getAttribute("src")).toBe(ARXIV);
   });
 });
+
+describe("ArxivFrame — the link card is a flat, bounded card (spec §4)", () => {
+  it("draws the card on a rule border with no sun edge and no resting shadow", () => {
+    // Before: border-edge border-sun + shadow-z1 (a sun shadow at night).
+    const { container } = render(
+      <ArxivFrame canonicalUrl={ARXIV} title="A Paper" author="Dr. X" tier="T2" />,
+    );
+    const card = container.querySelector("[data-arxiv-frame] > div") as HTMLElement;
+    expect(card.className).not.toMatch(/\bborder-sun\b/);
+    expect(card.className).not.toMatch(/(^|\s)(dark:)?shadow-z\d/);
+    expect(card.className).toMatch(/\bborder-rule\b/);
+  });
+});
