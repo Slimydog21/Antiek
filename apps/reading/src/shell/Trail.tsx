@@ -2,8 +2,10 @@ import { WORKFLOWS } from "./workflowTaxonomy";
 import { findForkedHop, type Thread, type ThreadHop } from "./threadModel";
 
 /**
- * ThreadBreadcrumb (antiek-unified SPR-06 M2) — the unified cross-workflow
- * trail.
+ * Trail (antiek-unified SPR-06 M2) — the unified cross-workflow trail.
+ * (MS-01 renamed it: in the mothership glossary "thread" means only a
+ * subagent investigation. This is an entity's hops across workflows, served
+ * by GET /thread/{node_id}; the backend route keeps its name for now.)
  *
  * Renders one graph entity's trajectory across the four workflows as a
  * navigable breadcrumb, e.g.
@@ -12,7 +14,7 @@ import { findForkedHop, type Thread, type ThreadHop } from "./threadModel";
  *
  * Each segment is a workflow touch on the SAME node id (the no-duplicate
  * invariant — copies are provenance bugs). Clicking a built segment jumps to
- * that entity in its workflow (the parent wires `onJump`, see ThreadJump.tsx).
+ * that entity in its workflow (the parent wires `onJump`, see TrailJump.tsx).
  *
  * Honesty contract (intellectual honesty #1):
  *   - A hop into an UNBUILT workflow is shown as a dimmed, non-navigable
@@ -24,12 +26,12 @@ import { findForkedHop, type Thread, type ThreadHop } from "./threadModel";
  *
  * Presentational by design: it takes a `Thread` + an `onJump(hop)` callback,
  * so Storybook can render every thread shape without a router or live API.
- * ThreadJump.tsx supplies the real navigation.
+ * TrailJump.tsx supplies the real navigation.
  *
  * Mounts in SPR-04's chrome (the Topbar breadcrumb row / SceneChrome zone 3);
  * Lemon tokens only, no hardcoded colors.
  */
-export function ThreadBreadcrumb({
+export function Trail({
   thread,
   activeEntityId,
   onJump,
@@ -38,7 +40,7 @@ export function ThreadBreadcrumb({
   /** The entity currently in focus — its segment is shown as the current
    *  (non-link) crumb. Defaults to the canonical entity. */
   activeEntityId?: string;
-  /** Fired when a built segment is clicked. ThreadJump wires this to open the
+  /** Fired when a built segment is clicked. TrailJump wires this to open the
    *  target in its workflow's mode + advance the breadcrumb. */
   onJump?: (hop: ThreadHop) => void;
 }) {
@@ -136,4 +138,4 @@ export function ThreadBreadcrumb({
   );
 }
 
-export default ThreadBreadcrumb;
+export default Trail;

@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
-import ThreadBreadcrumb from "./ThreadBreadcrumb";
-import ThreadJump from "./ThreadJump";
+import Trail from "./Trail";
+import TrailJump from "./TrailJump";
 import type { Thread, ThreadHop } from "./threadModel";
 
 /**
- * ThreadBreadcrumb (antiek-unified SPR-06) — the cross-workflow thread trail.
+ * Trail (antiek-unified SPR-06) — an entity's cross-workflow trail.
  *
  * Stories cover the SPR-06 acceptance surface:
  *   - a 1-hop (degenerate) thread,
@@ -13,7 +13,7 @@ import type { Thread, ThreadHop } from "./threadModel";
  *   - a thread crossing an UNBUILT workflow (honest "not yet" stub hop),
  *   - the integrity-warning state when a forked copy slips through (the
  *     breadcrumb refuses to render a continuity the data can't support),
- *   - the ThreadJump container that advances the breadcrumb on a jump.
+ *   - the TrailJump container that advances the breadcrumb on a jump.
  *
  * Brain skin (Lemon tokens) — no hardcoded colors.
  */
@@ -91,11 +91,11 @@ const FORKED: Thread = {
 };
 
 const meta = {
-  title: "Shell / ThreadBreadcrumb (SPR-06)",
-  component: ThreadBreadcrumb,
+  title: "Shell / Trail (SPR-06)",
+  component: Trail,
   parameters: { layout: "padded" },
   tags: ["autodocs"],
-} satisfies Meta<typeof ThreadBreadcrumb>;
+} satisfies Meta<typeof Trail>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -120,7 +120,7 @@ export const ForkedThreadSuppressed: Story = {
   args: { thread: FORKED },
 };
 
-/** The ThreadJump container — clicking a segment advances the breadcrumb. */
-export const JumpAlongThread: StoryObj<typeof ThreadJump> = {
-  render: () => <ThreadJump thread={FULL_FLYWHEEL} />,
+/** The TrailJump container — clicking a segment advances the breadcrumb. */
+export const JumpAlongThread: StoryObj<typeof TrailJump> = {
+  render: () => <TrailJump thread={FULL_FLYWHEEL} />,
 };

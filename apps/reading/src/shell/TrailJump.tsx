@@ -8,11 +8,11 @@ import {
   type Workflow,
 } from "./workflowTaxonomy";
 import { WorkflowStub } from "./WorkflowStub";
-import { ThreadBreadcrumb } from "./ThreadBreadcrumb";
+import { Trail } from "./Trail";
 import type { Thread, ThreadHop } from "./threadModel";
 
 /**
- * ThreadJump (antiek-unified SPR-06 M3) — cross-workflow jump.
+ * TrailJump (antiek-unified SPR-06 M3) — cross-workflow jump along a Trail.
  *
  * Given an entity's thread, the operator jumps from any hop to a related
  * entity in another workflow (published biography → Speak project → source
@@ -31,13 +31,13 @@ import type { Thread, ThreadHop } from "./threadModel";
  *
  * This component consumes — does NOT fork — SPR-04's IA: `workflowTaxonomy`
  * decides what's built + where each workflow lands, and `WorkflowStub` renders
- * the honest "not yet" state. The breadcrumb is `ThreadBreadcrumb`.
+ * the honest "not yet" state. The breadcrumb is `Trail`.
  *
  * `onOpenPanel` is optional: when provided (production), a jump can also open
  * the target as a workspace panel (the SPR-04 panel system) in addition to
  * navigating. Storybook/tests render without it.
  */
-export function ThreadJump({
+export function TrailJump({
   thread,
   initialEntityId,
   onOpenPanel,
@@ -81,7 +81,7 @@ export function ThreadJump({
   return (
     <div className="flex flex-col min-h-0" data-testid="thread-jump">
       <div className="shrink-0 border-b border-hairline bg-card py-1.5">
-        <ThreadBreadcrumb
+        <Trail
           thread={thread}
           activeEntityId={activeEntityId}
           onJump={jumpTo}
@@ -100,4 +100,4 @@ export function ThreadJump({
   );
 }
 
-export default ThreadJump;
+export default TrailJump;

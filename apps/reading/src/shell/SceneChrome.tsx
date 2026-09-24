@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import { useLocation, useNavigate, type NavigateFunction } from "react-router-dom";
 import type { ReactNode } from "react";
 
@@ -11,7 +11,9 @@ import {
   type Workflow,
 } from "./workflowTaxonomy";
 import { WorkflowStub } from "./WorkflowStub";
-import { ThreadBreadcrumb } from "./ThreadBreadcrumb";
+// The trail renders only when a parent passes one, and none does yet, so it
+// loads on demand rather than riding in the entry chunk.
+const Trail = lazy(() => import("./Trail"));
 import type { Thread, ThreadHop } from "./threadModel";
 
 /**
@@ -132,19 +134,18 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
 export function SceneChrome({
   children,
   /**
-   * The cross-workflow thread for the entity currently in focus (SPR-06). When
-   * present, SceneChrome renders the unified ThreadBreadcrumb in the chrome
-   * (zone 3) row — the entity's trajectory across the four workflows. Absent
-   * when no entity is focused (the breadcrumb only appears when there's a
-   * thread to show). The parent supplies it from GET /thread/{node_id}.
+   * The cross-workflow trail for the entity currently in focus (SPR-06). When
+   * present, SceneChrome renders the unified Trail in the chrome (zone 3)
+   * row — the entity's trajectory across the four workflows. Absent when no
+   * entity is focused. The parent supplies it from GET /thread/{node_id}.
    */
-  thread,
-  /** Fired when a breadcrumb segment is clicked — wire to ThreadJump's jump. */
-  onThreadJump,
+  trail,
+  /** Fired when a breadcrumb segment is clicked — wire to TrailJump's jump. */
+  onTrailJump,
 }: {
   children: ReactNode;
-  thread?: Thread;
-  onThreadJump?: (hop: ThreadHop) => void;
+  trail?: Thread;
+  onTrailJump?: (hop: ThreadHop) => void;
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -239,16 +240,17 @@ export function SceneChrome({
           </nav>
         )}
 
-        {/* SPR-06 — the cross-workflow thread breadcrumb. Shown only when an
-            entity is in focus (a thread to follow). It is the SAME node id at
-            every hop; copies are provenance bugs the breadcrumb refuses to
-            render (see ThreadBreadcrumb). */}
-        {thread && (
+        {/* SPR-06 — the cross-workflow trail. Shown only when an entity is
+            in focus. It is the SAME node id at every hop; copies are
+            provenance bugs the trail refuses to render (see Trail). */}
+        {trail && (
           <div
             className="border-t border-rule/60 dark:border-charcoal-1 py-1"
             data-testid="scene-chrome-thread"
           >
-            <ThreadBreadcrumb thread={thread} onJump={onThreadJump} />
+            <Suspense fallback={null}>
+              <Trail thread={trail} onJump={onTrailJump} />
+            </Suspense>
           </div>
         )}
       </div>
