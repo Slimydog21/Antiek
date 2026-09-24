@@ -11,6 +11,7 @@ import "../src/design/tokens.css";
 // OS reduce-motion setting exactly as the app does.
 import "../src/design/motion.css";
 import { applyTheme, type ThemePreference } from "../src/design/theme";
+import { DARK_SHOT } from "./visual-axes";
 
 /**
  * Global Storybook preview config. Wraps every story in a
@@ -51,6 +52,12 @@ const preview: Preview = {
       ],
     },
     layout: "fullscreen",
+    // The dark visual axis. Every story inherits one lost-pixel extra shot,
+    // `<kind>--<story>--dark__[wN].png`, which lostpixel.config.ts renders with
+    // globals=theme:dark, so night mode has baselines of its own.
+    lostpixel: {
+      extraShots: [{ name: DARK_SHOT.name, suffix: DARK_SHOT.suffix }],
+    },
   },
   // Theme toolbar: System follows the OS (and Playwright's colorScheme), so
   // the a11y and visual runs get night mode through the same <html

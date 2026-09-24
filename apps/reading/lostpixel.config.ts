@@ -1,4 +1,5 @@
 import type { CustomProjectConfig } from "lost-pixel";
+import { expectTheme, isDarkShot, withThemeGlobal } from "./.storybook/visual-axes";
 
 /**
  * Lost-Pixel — visual regression for Antiek's Storybook.
@@ -13,7 +14,16 @@ import type { CustomProjectConfig } from "lost-pixel";
  *
  * Animated composed shots are skipped in `filterShot` until each
  * story has a deterministic still. Mac remints do not match Ubuntu
- * Chromium at the 0.4% ceiling.
+ * Chromium at the 0.4% ceiling, so baselines are minted on the CI runner
+ * (the ubuntu-22.04 job that checks them), never committed from a laptop.
+ *
+ * Two theme axes. Every story is shot in day (`<kind>--<story>__[wN].png`)
+ * and again at night (`<kind>--<story>--dark__[wN].png`). The night shot is
+ * the project-level `lostpixel.extraShots` entry in .storybook/preview.tsx;
+ * `beforeScreenshot` below reloads it with the preview's theme global set to
+ * dark, so the story renders under <html data-theme="dark"> exactly as the
+ * app does. Both axes check data-theme before the shot and fail the run if the
+ * theme did not apply, so neither axis can quietly photograph the other theme.
  */
 export const config: CustomProjectConfig = {
   storybookShots: {
@@ -42,8 +52,31 @@ export const config: CustomProjectConfig = {
   // renders one static frame), so forcing the reduce preference in the
   // screenshot browser makes every shot reproducible instead of catching
   // the aurora/mascots/sketches at a random animation phase.
+  //
+  // Known gap, kept on purpose for determinism: reduced motion is a different
+  // design, not a frozen one. GlassSurface drops to its solid fallback, so the
+  // default glass-over-scene look is never baselined, and the animated
+  // families in filterShot below are not shot at all. Closing it needs a
+  // frozen-motion test mode in the app (zero CSS durations, a pinned scene
+  // clock, glass kept). Until then these baselines prove the reduced-motion
+  // design in both themes, nothing more.
   browserLaunchOptions: {
     chromium: { args: ["--force-prefers-reduced-motion"] },
+  },
+  // The theme axes (see the header). The day shot keeps lost-pixel's own
+  // navigation and only checks the theme. The night shot is reloaded with
+  // globals=theme:dark and a dark colour scheme, so it is a cold load in
+  // night mode rather than a day render switched at the last moment.
+  beforeScreenshot: async (page, { id }) => {
+    if (!isDarkShot(id ?? "")) {
+      await expectTheme(page, "light");
+      return;
+    }
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto(withThemeGlobal(page.url(), "dark"), { waitUntil: "load" });
+    await expectTheme(page, "dark");
+    // Same settle lost-pixel gives the day shot before its fixed wait.
+    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
   },
   imagePathBaseline: ".lostpixel/baseline",
   imagePathCurrent: ".lostpixel/current",

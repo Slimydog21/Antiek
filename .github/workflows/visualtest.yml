@@ -36,7 +36,10 @@ concurrency:
 jobs:
   lostpixel:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    # 30, not 15: every story is shot twice since the dark axis landed (day
+    # plus `--dark`, 1350 shots from 675), and the day-only Lost-Pixel step
+    # alone took 5m20s (run 35996140120).
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: apps/reading
