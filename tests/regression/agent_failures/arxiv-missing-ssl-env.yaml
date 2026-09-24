@@ -37,16 +37,21 @@ actual_failure: |
   the operator had to debug from the stderr.
 
 harness_check_that_now_catches: |
-  GAP — Antiek would need a startup self-check that asserts
-  ssl.create_default_context().get_ca_certs() returns a non-empty
-  set, OR explicit certifi pinning in the HTTP client factory. The
-  Prime Intellect memory entry documents the same root cause
-  (python.org-3.11 + missing certs); a single ssl-bootstrap helper
-  could centralise the fix.
+  runtime/ssl_bootstrap.py bootstrap() exports the certifi bundle when
+  SSL_CERT_FILE is unset or empty and is a no-op when already set. It is
+  called at import by tools/arxiv_oai_sync.py, tools/ingest_arxiv.py,
+  tools/arxiv_verify.py, tools/arxiv_census.py, and tools/run_corpus_ingest.py.
+  Production pinning is infrastructure/ansible/templates/antiek-arxiv-oai-sync.service.j2
+  with regression coverage in tests/test_ssl_bootstrap.py.
 
-fix_commit: GAP
+fix_commit: 0c6c6a0c3
 
 notes: |
   This is the same root cause that affects Prime CLI per the
   reference_prime_intellect_lab memory entry. A unified
   ssl_bootstrap helper in runtime/ would close both at once.
+
+  Closed 2026-09-23 in SPR-05 task 3: the certifi copy formerly private to
+  tools/run_corpus_ingest.py was extracted into runtime/ssl_bootstrap.py and
+  wired into the other four entrypoints. The Prime CLI root cause mentioned
+  above is outside this repo and is not covered by it.

@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from runtime.db_lock import DEFAULT_TIMEOUT_S
 from substrate.speak import async_interview
 from substrate.speak.schema import ensure_speak_schema
 
@@ -261,11 +262,17 @@ def list_public_opportunities(
     return scored[:limit]
 
 
-def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateReping]:
-    """Invitees still in flight; fills pending_question_count via resume()."""
+def list_private_repings_at(
+    db_path: str, *, limit: int = 50, timeout_s: float = DEFAULT_TIMEOUT_S
+) -> list[PrivateReping]:
+    """Invitees still in flight; fills pending_question_count via resume().
+
+    ``timeout_s`` bounds the write-lock wait (see ``async_interview``)."""
     from runtime.db_lock import connect_write
 
-    with connect_write(db_path, purpose="speak/pushes.list_private") as con:
+    with connect_write(
+        db_path, purpose="speak/pushes.list_private", timeout_s=timeout_s
+    ) as con:
         ensure_speak_schema(con)
         rows = con.execute(
             """
@@ -312,17 +319,28 @@ def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateRep
     return out
 
 
-def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False) -> RepingResult:
+def prepare_reping(
+    db_path: str,
+    *,
+    interview_id: str,
+    send_email: bool = False,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+) -> RepingResult:
     """Consent-scoped continuous ping: generate followups + return invite door.
 
     Skips declined interviews. Reuses ``async_interview.next_followups``.
     Optionally delivers the invite door by email via ``reping_mail``
     (AgentMail/Resend/Mock) when ``send_email`` is True, consent allows,
     and ``ANTIEK_SPEAK_REPING_EMAIL`` is set. Never emails declined invitees.
+
+    ``timeout_s`` bounds every write-lock wait here, including the one inside
+    ``next_followups`` (see ``async_interview``).
     """
     from runtime.db_lock import connect_write
 
-    with connect_write(db_path, purpose="speak/pushes.reping_gate") as con:
+    with connect_write(
+        db_path, purpose="speak/pushes.reping_gate", timeout_s=timeout_s
+    ) as con:
         ensure_speak_schema(con)
         row = con.execute(
             "SELECT i.status, s.token, "
@@ -364,7 +382,9 @@ def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False)
 
     before = async_interview.resume(db_path, interview_id)
     before_pending = {q["id"] for q in before.pending_questions()}
-    fus = async_interview.next_followups(db_path, interview_id=interview_id)
+    fus = async_interview.next_followups(
+        db_path, interview_id=interview_id, timeout_s=timeout_s
+    )
     after = async_interview.resume(db_path, interview_id)
     after_pending = after.pending_questions()
     added = sum(1 for q in after_pending if q["id"] not in before_pending)

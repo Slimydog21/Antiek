@@ -39,6 +39,14 @@ required:
 # Checks the workflows emit that are NOT in the fence, each with a reason.
 # This list is where an omission becomes visible instead of invisible.
 emitted_but_not_required:
+  probe for PRs blocked on an orphaned run:
+    why: >-
+      From ci_orphan_probe.yml, which runs on `schedule` only — it never runs on
+      `pull_request`, so it cannot report a context on a PR head and could never
+      be satisfied as a required check. Requiring it would deadlock every PR. It
+      is a read-only alarm: it finds PRs whose required run was cancelled with
+      nothing replacing it, and exits 2 (UNTRUSTED) rather than reporting a false
+      clean when the ruleset read returns too few contexts.
   pytest:
     why: >-
       KNOWN GAP, not a decision. This job runs 17 substantive invariant gates

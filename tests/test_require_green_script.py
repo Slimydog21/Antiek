@@ -36,7 +36,6 @@ cmd="${1:-}"; shift || true
 case "$cmd" in
   auth) exit "${FAKE_GH_AUTH_RC:-0}" ;;
   api)
-    [ "${FAKE_GH_API_RC:-0}" -eq 0 ] || exit "${FAKE_GH_API_RC}"
     jqexpr=""; path=""
     while [ $# -gt 0 ]; do
       case "$1" in
@@ -46,7 +45,14 @@ case "$cmd" in
       esac
     done
     printf '%s\n' "$path" >> "${FAKE_GH_CALLS:-/dev/null}"
-    jq -r "$jqexpr" < "$FAKE_GH_CHECKRUNS"
+    case "$path" in
+      */compare/*)
+        [ "${FAKE_GH_COMPARE_RC:-0}" -eq 0 ] || exit "${FAKE_GH_COMPARE_RC}"
+        jq -r "$jqexpr" < "$FAKE_GH_COMPARE" ;;
+      *)
+        [ "${FAKE_GH_API_RC:-0}" -eq 0 ] || exit "${FAKE_GH_API_RC}"
+        jq -r "$jqexpr" < "$FAKE_GH_CHECKRUNS" ;;
+    esac
     ;;
   *) exit 2 ;;
 esac
@@ -54,7 +60,8 @@ esac
 
 
 def _run(tmp_path: Path, runs: list[dict], *, repo="Slimydog21/Antiek", sha=SHA,
-         auth_rc=0, api_rc=0, with_gh=True) -> tuple[int, str, str, list[str]]:
+         auth_rc=0, api_rc=0, with_gh=True, compare_status="identical",
+         compare_rc=0) -> tuple[int, str, str, list[str]]:
     binw = tmp_path / "bin"
     binw.mkdir(exist_ok=True)
     for tool in ("bash", "sed", "awk", "jq"):
@@ -69,6 +76,8 @@ def _run(tmp_path: Path, runs: list[dict], *, repo="Slimydog21/Antiek", sha=SHA,
         gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
     checkruns = tmp_path / "checkruns.json"
     checkruns.write_text(json.dumps({"check_runs": runs}))
+    compare = tmp_path / "compare.json"
+    compare.write_text(json.dumps({"status": compare_status}))
     calls = tmp_path / "calls.txt"
     calls.write_text("")
     env = {
@@ -76,6 +85,8 @@ def _run(tmp_path: Path, runs: list[dict], *, repo="Slimydog21/Antiek", sha=SHA,
         "FAKE_GH_AUTH_RC": str(auth_rc),
         "FAKE_GH_API_RC": str(api_rc),
         "FAKE_GH_CHECKRUNS": str(checkruns),
+        "FAKE_GH_COMPARE": str(compare),
+        "FAKE_GH_COMPARE_RC": str(compare_rc),
         "FAKE_GH_CALLS": str(calls),
         "HOME": str(tmp_path),
     }
@@ -92,7 +103,10 @@ def test_all_eight_green_exits_0(tmp_path):
     rc, out, _, calls = _run(tmp_path, _green())
     assert rc == 0, out
     assert "all 8 required contexts are success" in out
-    assert calls == [f"repos/Slimydog21/Antiek/commits/{SHA}/check-runs?per_page=100"]
+    assert calls == [
+        f"repos/Slimydog21/Antiek/compare/{SHA}...main",
+        f"repos/Slimydog21/Antiek/commits/{SHA}/check-runs?per_page=100",
+    ]
 
 
 @pytest.mark.parametrize("repo", [
@@ -103,7 +117,10 @@ def test_all_eight_green_exits_0(tmp_path):
 def test_every_repo_spelling_queries_the_same_path(tmp_path, repo):
     rc, _, _, calls = _run(tmp_path, _green(), repo=repo)
     assert rc == 0
-    assert calls == [f"repos/Slimydog21/Antiek/commits/{SHA}/check-runs?per_page=100"]
+    assert calls == [
+        f"repos/Slimydog21/Antiek/compare/{SHA}...main",
+        f"repos/Slimydog21/Antiek/commits/{SHA}/check-runs?per_page=100",
+    ]
 
 
 def test_one_pending_exits_1(tmp_path):
@@ -162,6 +179,31 @@ def test_missing_gh_exits_3(tmp_path):
     assert rc == 3 and "gh CLI not found" in err
 
 
+# ── only merged code deploys ──
+
+
+@pytest.mark.parametrize("status", ["identical", "ahead"])
+def test_main_tip_or_a_main_ancestor_passes(tmp_path, status):
+    # identical = main's tip; ahead = main moved past it (a rollback target).
+    rc, out, _, _ = _run(tmp_path, _green(), compare_status=status)
+    assert rc == 0, out
+
+
+@pytest.mark.parametrize("status", ["behind", "diverged", ""])
+def test_all_green_commit_not_on_main_exits_4(tmp_path, status):
+    # A fork PR's head carries the same eight green contexts from its PR CI.
+    # Green says it passed, not that it merged: refuse before reading checks.
+    rc, out, err, calls = _run(tmp_path, _green(), compare_status=status)
+    assert rc == 4, out + err
+    assert "not on main" in err
+    assert not any("check-runs" in c for c in calls)
+
+
+def test_compare_failure_exits_3(tmp_path):
+    rc, _, err, _ = _run(tmp_path, _green(), compare_rc=1)
+    assert rc == 3 and "cannot compare" in err
+
+
 # ── the workflow that calls it ──
 
 
@@ -172,7 +214,7 @@ def _gate_steps() -> list[dict]:
 
 def test_gate_job_checks_out_the_script_before_calling_it():
     steps = _gate_steps()
-    call_idx = next(i for i, s in enumerate(steps) if "require_green.sh" in (s.get("run") or ""))
+    call_idx = next(i for i, s in enumerate(steps) if s.get("id") == "required")
     checkouts = [
         i for i, s in enumerate(steps[:call_idx])
         if str(s.get("uses", "")).startswith("actions/checkout@")
@@ -183,7 +225,82 @@ def test_gate_job_checks_out_the_script_before_calling_it():
 
 def test_gate_step_treats_only_exit_1_as_not_yet():
     steps = _gate_steps()
-    run = next(s["run"] for s in steps if "require_green.sh" in (s.get("run") or ""))
+    run = next(s["run"] for s in steps if s.get("id") == "required")
     assert 'test -x tools/deploy/require_green.sh' in run
     assert '"$rc" -ne 1' in run, "any exit code other than 1 must fail the job, not read as 'not green yet'"
     assert 'exit "$rc"' in run
+
+
+def test_gate_step_names_not_on_main_as_its_own_refusal():
+    steps = _gate_steps()
+    run = next(s["run"] for s in steps if s.get("id") == "required")
+    assert '"$rc" -eq 4' in run
+
+
+def _deploy_step() -> dict:
+    wf = yaml.safe_load(WORKFLOW.read_text())
+    return next(
+        s for s in wf["jobs"]["deploy"]["steps"] if s.get("name") == "Deploy"
+    )
+
+
+def _deploy_playbook_tasks() -> list[dict]:
+    playbook = yaml.safe_load(
+        (ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy.yml").read_text()
+    )
+    substrate_play = next(p for p in playbook if p["name"] == "Antiek substrate — deploy update")
+    return substrate_play["tasks"]
+
+
+def test_deploy_pins_the_exact_sha_verified_by_the_gate():
+    # The workflow gate verifies needs.gate.outputs.sha. If the playbook
+    # re-resolves main later, a concurrent merge can make it gate/deploy a
+    # different, pending SHA. This exact failure occurred on run 35922563086:
+    # the workflow gated 1c87d3f1 while Ansible resolved pending 34bbb2ff.
+    step = _deploy_step()
+    assert step["env"]["ANTIEK_TARGET_SHA"] == "${{ needs.gate.outputs.sha }}"
+    assert 'antiek_target_sha=$ANTIEK_TARGET_SHA' in step["run"]
+
+    resolve = next(
+        task for task in _deploy_playbook_tasks()
+        if task["name"] == "resolve the SHA this deploy will pull"
+    )
+    assert resolve["when"] == "antiek_target_sha is not defined"
+    set_target = next(
+        task for task in _deploy_playbook_tasks()
+        if task["name"] == "set antiek_target_sha"
+    )
+    assert set_target["when"] == "antiek_target_sha is not defined"
+    git_pull = next(
+        task for task in _deploy_playbook_tasks()
+        if task["name"] == "git pull"
+    )
+    assert git_pull["ansible.builtin.git"]["version"] == "{{ antiek_target_sha }}"
+
+
+def _resolve_step_run(env: dict[str, str]) -> subprocess.CompletedProcess:
+    """Execute the gate's real Resolve step script with the given event data."""
+    step = next(s for s in _gate_steps() if s.get("id") == "resolve")
+    script = step["run"].replace("${{ github.repository }}", "Slimydog21/Antiek")
+    assert "${{" not in script, "resolve step must read event data from env, never interpolate it"
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                          env={"PATH": "/usr/bin:/bin", **env})
+
+
+@pytest.mark.parametrize(("run_event", "run_repo", "expect_rc"), [
+    ("push", "Slimydog21/Antiek", 0),
+    ("pull_request", "someone/Antiek", 4),     # a fork PR whose branch is named main
+    ("pull_request", "Slimydog21/Antiek", 4),  # a same-repo PR run never deploys either
+    ("push", "someone/Antiek", 4),
+])
+def test_resolve_refuses_workflow_run_unless_a_push_to_this_repo(tmp_path, run_event, run_repo, expect_rc):
+    out = tmp_path / "out"
+    out.write_text("")
+    env = {
+        "EVENT": "workflow_run", "RUN_SHA": SHA, "RUN_EVENT": run_event,
+        "RUN_REPO": run_repo, "THIS_REPO": "Slimydog21/Antiek",
+        "INPUT_SHA": "", "GH_TOKEN": "", "GITHUB_OUTPUT": str(out),
+    }
+    p = _resolve_step_run(env)
+    assert p.returncode == expect_rc, p.stdout + p.stderr
+    assert (f"sha={SHA}" in out.read_text()) == (expect_rc == 0)

@@ -33,11 +33,15 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import TYPE_CHECKING
 
 from ..router import register_provider
 from .anthropic import AnthropicProvider
 from .byok_key_source import resolve_provider_key
 from .openai_compat import OpenAICompatProvider
+
+if TYPE_CHECKING:
+    from .prime_agent import PrimeAgentProvider
 
 
 # (provider_name, factory) — factory returns an instance or None when
@@ -219,6 +223,24 @@ def _maybe_zai_reasoning() -> OpenAICompatProvider | None:
     )
 
 
+def _maybe_prime_agent() -> PrimeAgentProvider | None:
+    # Prime Agent — ``prime-agent -p`` behind the bounded RLM backend
+    # (substrate/dispatch/providers/prime_agent.py). Unlike every provider
+    # above it is gated by a FLAG, not a key: ANTIEK_PRIME_AGENT_RLM_ENABLED=1,
+    # read by ``maybe_register_provider`` itself, which is the one gate for
+    # this provider and is deliberately not duplicated here. Until this
+    # entry existed the adapter registered only at its own import time, and
+    # nothing on the production path imported it — /health showed no
+    # ``prime_agent`` with the flag set. The import is local so the
+    # adapter's import-time registration happens when the operator's
+    # ``register_default_providers()`` runs, not when this package loads.
+    # A None here is reported as "skipped (no API key)" like the others;
+    # for this provider that means the flag is unset.
+    from .prime_agent import maybe_register_provider
+
+    return maybe_register_provider(environ=os.environ)
+
+
 # Order doesn't matter — register_provider is name-keyed.
 _DEFAULT_PROVIDERS = [
     ("zai", _maybe_zai),
@@ -228,6 +250,7 @@ _DEFAULT_PROVIDERS = [
     ("openrouter", _maybe_openrouter),
     ("xiaomi", _maybe_xiaomi),
     ("hermes", _maybe_hermes),
+    ("prime_agent", _maybe_prime_agent),
 ]
 
 

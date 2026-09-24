@@ -17,11 +17,17 @@ It mirrors ``acquisition/search/exa/budget.py`` (``check_and_reserve`` /
     (``QuotaMeter(reset_tz=...)``), computed via ``zoneinfo`` on the injected
     clock, not ``datetime.utcnow``.
 
-PERSISTENCE: a date-stamped JSON sidecar ``{state_dir}/{vendor}_quota_{day}.
-json`` — the exa-budget pattern verbatim: the date stamp in the FILENAME
-rolls the budget (no cron, no state migration), the file is written
-atomically (tmp + replace), and the meter does NO DuckDB writes (spec §5.0
-single-writer: connector runtime state is a JSON sidecar, never a DB row).
+PERSISTENCE: a date-stamped JSON sidecar, keyed per OWNER for a connected
+user's own key — ``{state_dir}/{vendor}/{owner_hash}_quota_{day}.json`` —
+because YouTube's budget is per GCP project, which is to say per key, and a
+meter keyed by vendor alone refused user B once user A had spent A's 10,000
+units. A meter built with no owner keeps the host-shared
+``{state_dir}/{vendor}_quota_{day}.json`` layout; that is the explicit
+Antiek-owned-key case, not a default to fall into. Otherwise the exa-budget
+pattern verbatim: the date stamp in the FILENAME rolls the budget (no cron,
+no state migration), the file is written atomically (tmp + replace), and the
+meter does NO DuckDB writes (spec §5.0 single-writer: connector runtime
+state is a JSON sidecar, never a DB row).
 
 ADVISORY-CONSERVATIVE (spec §10 risk 3, honored here, not papered over): a
 client-side counter can undercount Google's real ledger (a crashed process
@@ -57,6 +63,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from runtime.connectors.base import owner_state_key
 
 _ENV_QUOTA_DIR = "ANTIEK_CONNECTOR_QUOTA_DIR"
 
@@ -156,12 +164,17 @@ class QuotaMeter:
     day + reset time are computed IN THE VENDOR RESET TZ, so a test can also
     pin ``reset_tz="UTC"`` (``zoneinfo``'s always-present built-in) to stay
     tzdata-free — production uses the vendor's real reset tz.
+
+    ``owner`` keys the sidecar to one connected user (their key, their
+    budget). ``None`` is the host-shared Antiek-owned-key case and must be
+    chosen on purpose; every meter the tool registry resolves has an owner.
     """
 
     def __init__(
         self,
         vendor: str,
         *,
+        owner: str | None = None,
         units_per_day: int = YOUTUBE_UNITS_PER_DAY,
         reset_tz: str = YOUTUBE_RESET_TZ,
         state_dir: str | None = None,
@@ -187,10 +200,22 @@ class QuotaMeter:
             ) from exc
         state_root = Path(state_dir or default_quota_dir())
         self._state_dir = state_root
+        self._owner = owner
+        self._owner_key = owner_state_key(owner) if owner is not None else None
 
     @property
     def vendor(self) -> str:
         return self._vendor
+
+    @property
+    def owner(self) -> str | None:
+        """The owner this meter belongs to; None means host-shared."""
+        return self._owner
+
+    @property
+    def state_path(self) -> str:
+        """Today's sidecar path — for diagnostics; carries a hash, never the owner id."""
+        return str(self._state_path())
 
     @property
     def units_per_day(self) -> int:
@@ -216,7 +241,10 @@ class QuotaMeter:
     # -- sidecar file I/O (date-stamped filename = day rollover) --------------
 
     def _state_path(self, day: str | None = None) -> Path:
-        return self._state_dir / f"{self._vendor}_quota_{day or self._day_key()}.json"
+        stamp = f"quota_{day or self._day_key()}.json"
+        if self._owner_key is None:
+            return self._state_dir / f"{self._vendor}_{stamp}"
+        return self._state_dir / self._vendor / f"{self._owner_key}_{stamp}"
 
     def _read_state(self) -> _MeterState:
         try:
@@ -243,7 +271,7 @@ class QuotaMeter:
 
     def _write_state(self, state: _MeterState) -> None:
         path = self._state_path(state.day)
-        self._state_dir.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
         # Atomic: tmp + replace so a crash mid-write can't leave a truncated
         # file that reads as "no usage" (the governor's atomic-write rule).
         tmp = path.with_suffix(path.suffix + ".tmp")

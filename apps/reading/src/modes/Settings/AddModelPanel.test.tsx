@@ -167,6 +167,28 @@ describe("AddModelPanel", () => {
     expect(document.body.textContent).not.toContain(SECRET);
   });
 
+  it("registers checked extra variants under the same key as model_ids, primary first", async () => {
+    const user = userEvent.setup();
+    render(<AddModelPanel />);
+    await ready();
+    await user.click(
+      screen.getByRole("checkbox", { name: "Also drive GPT-5.6 Luna with this key" }),
+    );
+    await user.type(screen.getByPlaceholderText("sk-…"), SECRET);
+    await user.click(screen.getByRole("button", { name: "Add model" }));
+    await waitFor(() =>
+      expect(addUserModel).toHaveBeenCalledWith({
+        provider_kind: "openai_compat",
+        provider_catalog_id: "openai",
+        model_id: "gpt-5.6-sol",
+        model_ids: ["gpt-5.6-sol", "gpt-5.6-luna"],
+        display_name: "GPT-5.6 Sol",
+        base_url: "https://api.openai.com",
+        api_key: SECRET,
+      }),
+    );
+  });
+
   it("submits Anthropic without base_url", async () => {
     const user = userEvent.setup();
     render(<AddModelPanel />);

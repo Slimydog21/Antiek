@@ -28,6 +28,7 @@ substrate.books cycle (``substrate.books.ingest`` imports this module).
 from __future__ import annotations
 
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
 
 from runtime.db_lock import LockedConnection
@@ -35,6 +36,7 @@ from substrate import ip_holders
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
     PERSONAL_READING_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
 )
 from substrate.graph.ops import update_document_gate_columns
 
@@ -87,6 +89,85 @@ VALID_CONTENT_CLASSES: frozenset[str] = frozenset({
     "restricted_pending_opt_in",
     PERSONAL_READING_CONTENT_CLASS,  # Personal-Reading Lane SPR-01 — owner-readable, non-servable
 })
+
+
+class DerivationRefusedError(ValueError):
+    """The source class grants no right to transform the work at all."""
+
+
+# ── Derivation rule (SPR-07 task 3) ───────────────────────────────────────
+#
+# The rights half of fork / merge / compress / expand: what content_class a
+# USER-GENERATED TRANSFORMATION of a source document must carry. A decision
+# table, not a product — pure, no connection, no write. Every write still
+# goes one way, through ``register_source_document`` under the host lock; this
+# only tells the caller what class to hand that funnel.
+#
+# The rule is "the derivative inherits the source's rights basis, and a source
+# with NO rights basis cannot be transformed":
+#   public_domain            -> user_owned. The transformation is new expression
+#                               authored by the user; nothing upstream restricts
+#                               it, and a derivative of a PD work is NOT itself
+#                               public domain, so it lands as the user's own.
+#   user_owned               -> user_owned. Same owner on both sides.
+#   user_public_contribution -> user_public_contribution. Another user's public
+#                               posting (§13.9) keeps its terms; a fork may not
+#                               privatize or re-own it.
+#   opt_in_licensed          -> opt_in_licensed. The publisher's §9.10 licence,
+#                               attribution and rev-share follow the derivative.
+#   source_declared_open     -> source_declared_open. CC-BY needs attribution and
+#                               CC-BY-SA needs share-alike; inheriting the class
+#                               is the only stamp that honours both.
+#   restricted_pending_opt_in -> REFUSED. Body withheld, no rights basis; there is
+#                               nothing to transform (master-spec §9.0).
+#   personal_reading         -> REFUSED. Third-party content the owner fetched for
+#                               private reading; it never serves, earns or trains,
+#                               and a transformation would launder it.
+# Every derivable result is in SERVABLE_CONTENT_CLASSES and is a fixed point
+# (a fork of a fork carries the same class); both are asserted at import so a
+# future edit cannot silently break them. The table's key set must equal
+# VALID_CONTENT_CLASSES; a class added without a row here fails at import.
+DERIVED_CONTENT_CLASS_TABLE: MappingProxyType[str, str | None] = MappingProxyType({
+    "public_domain": "user_owned",
+    "user_owned": "user_owned",
+    "user_public_contribution": "user_public_contribution",
+    "opt_in_licensed": "opt_in_licensed",
+    "source_declared_open": "source_declared_open",
+    GATED_DEFAULT_CONTENT_CLASS: None,
+    PERSONAL_READING_CONTENT_CLASS: None,
+})
+assert frozenset(DERIVED_CONTENT_CLASS_TABLE) == VALID_CONTENT_CLASSES, (
+    "DERIVED_CONTENT_CLASS_TABLE must name every VALID_CONTENT_CLASSES member "
+    "exactly once — add a derivation row (or an explicit refusal) for the new class"
+)
+assert all(
+    v is None or (v in SERVABLE_CONTENT_CLASSES and DERIVED_CONTENT_CLASS_TABLE[v] == v)
+    for v in DERIVED_CONTENT_CLASS_TABLE.values()
+), "every derivable result must be servable and a fixed point of the table"
+
+
+def derived_content_class(source_content_class: str) -> str:
+    """Return the ``content_class`` a user-generated transformation (fork,
+    merge, compress, expand) of a document stamped ``source_content_class``
+    must carry. Pure: no connection, no DB, no write.
+
+    Raises :class:`DerivationRefusedError` for ``restricted_pending_opt_in``
+    and ``personal_reading`` — the source grants no right to transform — and
+    a plain ``ValueError`` for a class outside :data:`VALID_CONTENT_CLASSES`
+    (a typo is a rights hazard; raise, never default).
+    """
+    if source_content_class not in DERIVED_CONTENT_CLASS_TABLE:
+        raise ValueError(
+            f"unrecognised content_class {source_content_class!r}; expected one of "
+            f"{sorted(VALID_CONTENT_CLASSES)}"
+        )
+    derived = DERIVED_CONTENT_CLASS_TABLE[source_content_class]
+    if derived is None:
+        raise DerivationRefusedError(
+            f"a document of content_class {source_content_class!r} may not be "
+            "transformed: it carries no rights basis for a derivative work"
+        )
+    return derived
 
 
 def _require_locked(con: Any) -> None:
