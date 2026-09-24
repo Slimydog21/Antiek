@@ -52,7 +52,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import connect_write, flush_warm_writers  # noqa: E402
 
 # Merge order is dependency-respecting: ip_holders before documents (so a
 # document's ip_holder_id can be remapped to a live holder id), documents
@@ -247,6 +247,14 @@ def merge_staging(
 
     attach_lit = _attach_literal(staging_db)
     results: list[TableMergeResult] = []
+
+    # The ingest that staged these rows may have left an in-process warm
+    # writer parked on the STAGING file (runtime.db_lock keepalive, WP-3).
+    # DuckDB refuses to ATTACH a file this process already holds open
+    # ("Unique file handle conflict"), so release that parked writer first.
+    # The merge only reads staging, so nothing is lost by closing it; the
+    # live DB's own lock handling below is untouched.
+    flush_warm_writers(staging_db)
 
     # The ONE write window. Everything below holds the live flock; it opens
     # once (connect_write) and closes once (the `with` exit). Wall-time of

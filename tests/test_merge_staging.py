@@ -30,6 +30,7 @@ import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 
 import duckdb
 import pytest
@@ -42,9 +43,8 @@ if _REPO not in sys.path:
 # Stubs mirroring tests/test_acquisition_books.py so the ingest path is real
 # but PDF-extraction + embedding are deterministic and offline.
 # ---------------------------------------------------------------------------
-from types import SimpleNamespace
-
 from acquisition.books import ingest_servable_book  # noqa: E402
+from runtime import db_lock  # noqa: E402
 from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from runtime.staging_db import prepare_staging_db, resolve_ingest_target  # noqa: E402
 from substrate.graph.migrate_v9_insight_question import (  # noqa: E402
@@ -298,6 +298,41 @@ def test_counts_match_after_merge(env):
     inserted = {t.table: t.inserted for t in result.tables}
     assert inserted["documents"] == staging_counts["documents"]
     assert inserted["chunks"] == staging_counts["chunks"]
+
+
+def test_merge_releases_parked_staging_writer(env, monkeypatch):
+    """Pre-existing defect: the continuous ingest stages rows and then calls
+    merge_staging in the SAME process. With the warm-writer keepalive on
+    (default 20 s; pytest disables it, so re-enable it here) the parked
+    staging writer still holds the file and DuckDB refused the ATTACH with
+    ``BinderException: Unique file handle conflict``. The merge must release
+    that parked writer before attaching."""
+    live = os.path.join(env["tmpdir"], "live.duckdb")
+    staging = os.path.join(env["tmpdir"], "staging.duckdb")
+    init_database_at_path(live)
+    monkeypatch.setattr(db_lock, "_write_keepalive_s", lambda: 20.0)
+
+    try:
+        _stage_books(
+            staging, [{"bytes": b"book-parked", "content_class": "public_domain"}]
+        )
+        # The control: the staging writer really is parked before the merge.
+        assert db_lock._warm_key(staging) in db_lock._warm_slots
+
+        result = merge_staging(live_db=live, staging_db=staging)
+
+        assert result.total_inserted > 0
+        assert db_lock._warm_key(staging) not in db_lock._warm_slots
+        # The live writer parks on exit too; release it before reading.
+        assert db_lock.flush_warm_writers(live) == 1
+        assert _counts(live)["documents"] == 1
+    finally:
+        db_lock.flush_warm_writers(staging)
+        db_lock.flush_warm_writers(live)
+
+
+def test_flush_warm_writers_without_slot(tmp_path):
+    assert db_lock.flush_warm_writers(str(tmp_path / "absent.duckdb")) == 0
 
 
 def test_merge_leaves_no_orphans(env):
