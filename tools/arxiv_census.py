@@ -65,6 +65,12 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from runtime.ssl_bootstrap import bootstrap as _ssl_bootstrap  # noqa: E402
+
+# A python.org interpreter ships no CA bundle (arxiv-missing-ssl-env); point at
+# certifi unless SSL_CERT_FILE is already set (systemd / ca-certificates win).
+_ssl_bootstrap()
+
 from acquisition.arxiv import ArxivThrottle, OaiPmhHarvester  # noqa: E402
 from acquisition.arxiv.oai_records import build_census  # noqa: E402
 from substrate.schemas.documents import (  # noqa: E402
