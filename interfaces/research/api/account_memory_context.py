@@ -7,8 +7,7 @@ rendered string is returned, so no database lock can span provider dispatch.
 
 The current Thought Partner route supplies one raw mixed-trust prompt. Its
 signed session authenticates the caller, not every first-person sentence in
-that prompt. ``record_account_memory_from_turn`` therefore abstains until a
-separate server-typed self-report and later signed confirmation path exists.
+that prompt. It never promotes that prompt into durable owner memory.
 """
 
 from __future__ import annotations
@@ -76,17 +75,4 @@ def account_memory_context(request: Request, query: str) -> str:
     return format_memory_for_prompt(_select_whole_items_within_budget(items))
 
 
-def record_account_memory_from_turn(
-    request: Request, *, prompt: str, investigation_id: str | None = None
-) -> None:
-    """Abstain: this route has no typed span origin or confirmation authority.
-
-    Keep the existing post-dispatch call harmless until its owner adds a
-    server-minted proposal and a later authenticated confirmation action.
-    Neither the feature flag nor the session signature promotes raw prompt
-    text into an owner fact.
-    """
-    pass
-
-
-__all__ = ["account_memory_context", "record_account_memory_from_turn"]
+__all__ = ["account_memory_context"]
