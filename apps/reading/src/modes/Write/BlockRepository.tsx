@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
 import { DRAG_MIME } from "../CreationStudio/BlockPalette";
+import { SOURCE_DOCUMENT_MIME } from "../../workspace/WriteOutlinePane";
 import {
   listFolders,
   searchRepository,
@@ -137,6 +138,14 @@ export default function BlockRepository({
                   label: hit.label,
                 };
                 e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
+                // C5: the SAME drag also carries the source document for the
+                // outline pane's assign-source drop (only when the hit names one).
+                if (hit.document_id) {
+                  e.dataTransfer.setData(
+                    SOURCE_DOCUMENT_MIME,
+                    JSON.stringify({ document_id: hit.document_id, document_title: hit.document_title }),
+                  );
+                }
                 e.dataTransfer.effectAllowed = "copy";
               }}
               title="Tap to add to the outline (or drag)"

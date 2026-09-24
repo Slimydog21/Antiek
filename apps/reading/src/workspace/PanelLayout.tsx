@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { toast } from "../components/lemon/LemonToast";
 import { radius } from "../design/tokens";
-import CompanionPane from "./CompanionPane";
+import RightPaneForMode from "./RightPaneForMode";
 import { DocumentTabStrip } from "./DocumentTabStrip";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { useWorkspace } from "./WorkspaceStore";
@@ -264,7 +264,7 @@ export function PanelLayout({ mainSlot }: Props) {
             style={{ width: rightPaneWidth, borderRadius: radius.lg }}
             onFocusCapture={() => setFocusedPane("right")}
           >
-            <CompanionPane />
+            <RightPaneForMode />
             {dockRightIds.length > 0 && (
               <aside
                 className="flex flex-col shrink-0 min-w-0 max-h-[50%] border-t border-hairline"
