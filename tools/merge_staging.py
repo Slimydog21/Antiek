@@ -52,7 +52,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from runtime.db_lock import connect_write, flush_warm_writers  # noqa: E402
+from runtime.db_lock import connect_write, flush_warm_writers, has_parked_writer  # noqa: E402
 
 # Merge order is dependency-respecting: ip_holders before documents (so a
 # document's ip_holder_id can be remapped to a live holder id), documents
@@ -259,12 +259,21 @@ def merge_staging(
         # writer here. The merge only reads staging, so nothing is lost.
         # Under the gate no other thread can re-park it before the ATTACH,
         # and flush_warm_writers waits for a close the keepalive expiry
-        # timer has already started (or raises, and nothing is opened). The
-        # keystone window starts AFTER this: closing staging is not
-        # live-writer-held time.
+        # timer has already started (or raises, and nothing is opened).
+        #
+        # The keystone window is live-writer-HELD time. Cold live DB: the
+        # flock is free while staging closes, so the clock starts after the
+        # flush. Parked live writer: the flock is already held (keepalive
+        # design), so the close is counted — the warm slot is kept rather
+        # than released, because a cold reopen costs seconds inside the
+        # window while a staging close costs the checkpoint of one round.
         nonlocal started
+        live_flock_already_held = has_parked_writer(live_db)
+        if live_flock_already_held:
+            started = time.monotonic()
         flush_warm_writers(staging_db)
-        started = time.monotonic()
+        if not live_flock_already_held:
+            started = time.monotonic()
 
     # The ONE write window. Everything below holds the live flock; it opens
     # once (connect_write) and closes once (the `with` exit). Wall-time of

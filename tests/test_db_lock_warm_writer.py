@@ -313,3 +313,27 @@ def test_connect_write_before_open_failure_releases_the_gate(tmp_path: Path):
         db_lock.connect_write(db, purpose="hook-fail", before_open=hook)
     assert not db_lock._PROCESS_WRITE_GATE.locked()
     assert not os.path.exists(db)  # nothing was opened or created
+
+
+def test_connect_write_retrying_forwards_before_open(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "0")
+    db = str(tmp_path / "retrying-hook.duckdb")
+    seen: list[bool] = []
+    with db_lock.connect_write_retrying(
+        db, purpose="retrying-hook", max_retries=0,
+        before_open=lambda: seen.append(db_lock._PROCESS_WRITE_GATE.locked()),
+    ) as con:
+        con.execute("SELECT 1")
+    assert seen == [True]
+
+
+def test_has_parked_writer(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    db = str(tmp_path / "parked.duckdb")
+    assert not db_lock.has_parked_writer(db)
+    with db_lock.connect_write(db, purpose="park"):
+        assert not db_lock.has_parked_writer(db)  # active, not parked
+    assert db_lock.has_parked_writer(db)
+    assert db_lock.flush_warm_writers(db) == 1
+    assert not db_lock.has_parked_writer(db)

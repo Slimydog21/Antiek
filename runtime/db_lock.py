@@ -270,6 +270,18 @@ def _schedule_warm_expiry(key: str, slot: _WarmWriterSlot, keepalive_s: float) -
     t.start()
 
 
+def has_parked_writer(db_path: str) -> bool:
+    """True when THIS process holds a parked (warm) writer on ``db_path``.
+
+    While parked, the cross-process flock is still held (that is the
+    keepalive design), so a caller measuring its own live-writer-held window
+    must count time spent under the gate before the reuse — the flock was
+    already theirs.
+    """
+    with _warm_slots_lock:
+        return _warm_key(db_path) in _warm_slots
+
+
 def flush_warm_writers(
     db_path: str | None = None, *, close_wait_s: float = _WARM_CLOSE_WAIT_S
 ) -> int:
@@ -1277,6 +1289,7 @@ def connect_write_retrying(
     max_retries: int = 3,
     retry_delay_s: float = 60.0,
     purpose: str = "",
+    before_open: Callable[[], None] | None = None,
 ) -> LockedConnection:
     """Acquire a write lock with retry across lock-timeout boundaries.
 
@@ -1298,6 +1311,7 @@ def connect_write_retrying(
                 timeout_s=timeout_s,
                 poll_interval_s=poll_interval_s,
                 purpose=purpose,
+                before_open=before_open,
             )
         except WriteLockTimeout as e:
             last_exc = e

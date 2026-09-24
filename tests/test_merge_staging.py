@@ -331,9 +331,10 @@ def test_merge_releases_parked_staging_writer(env, monkeypatch):
         db_lock.flush_warm_writers(live)
 
 
-def test_merge_window_excludes_the_staging_close(env, monkeypatch):
-    """Closing the parked staging writer happens under the write gate but
-    before the live flock; the reported keystone window must not include it."""
+def test_merge_window_excludes_the_staging_close_when_live_is_cold(env, monkeypatch):
+    """Cold live DB: the parked staging writer closes under the write gate
+    but before the live flock is taken, so the reported keystone window must
+    not include it."""
     import tools.merge_staging as ms
 
     live = os.path.join(env["tmpdir"], "live.duckdb")
@@ -354,6 +355,48 @@ def test_merge_window_excludes_the_staging_close(env, monkeypatch):
         assert result.total_inserted > 0
         assert result.window_s < 0.5, result.window_s
     finally:
+        db_lock.flush_warm_writers(staging)
+        db_lock.flush_warm_writers(live)
+
+
+def test_merge_window_counts_the_staging_close_when_live_is_parked(env, monkeypatch):
+    """Parked live writer: the live flock is already held while staging
+    closes, so the reported window must include that time (the guard stays
+    conservative), and the warm live slot is reused rather than released."""
+    import tools.merge_staging as ms
+
+    live = os.path.join(env["tmpdir"], "live.duckdb")
+    staging = os.path.join(env["tmpdir"], "staging.duckdb")
+    init_database_at_path(live)
+    monkeypatch.setattr(db_lock, "_write_keepalive_s", lambda: 20.0)
+    real_flush = db_lock.flush_warm_writers
+
+    def slow_flush(path: str, **kw: object) -> int:
+        time.sleep(0.6)
+        return real_flush(path, **kw)
+
+    monkeypatch.setattr(ms, "flush_warm_writers", slow_flush)
+    opens: list[str] = []
+    real_connect = db_lock.duckdb.connect
+
+    def counting_connect(path, *a, **kw):  # type: ignore[no-untyped-def]
+        opens.append(str(path))
+        return real_connect(path, *a, **kw)
+
+    try:
+        with connect_write(live, purpose="warm-live"):
+            pass  # parks the live writer: the flock stays held
+        assert db_lock.has_parked_writer(live)
+        _stage_books(
+            staging, [{"bytes": b"book-warm-live", "content_class": "public_domain"}]
+        )
+        monkeypatch.setattr(db_lock.duckdb, "connect", counting_connect)
+        result = merge_staging(live_db=live, staging_db=staging)
+        assert result.total_inserted > 0
+        assert result.window_s >= 0.6, result.window_s
+        assert live not in opens  # the parked live writer was reused, not reopened
+    finally:
+        monkeypatch.setattr(db_lock.duckdb, "connect", real_connect)
         db_lock.flush_warm_writers(staging)
         db_lock.flush_warm_writers(live)
 
