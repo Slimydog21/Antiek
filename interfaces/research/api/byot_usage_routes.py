@@ -162,9 +162,9 @@ def _fetch_balance(
 ) -> BalanceSnapshot:
     """Dispatch to the right balance adapter by ``catalog_id``.
 
-    Providers with a native balance endpoint get their dedicated adapter;
-    everything else falls back to the spend-history adapter (client-side
-    meter).  Monkeypatch in tests to avoid live net.
+    Documented native endpoints use their adapters. Z.ai and MiMo return
+    unavailable because their balance API contract is unverified. Remaining
+    catalog IDs use Antiek's spend-history meter. Tests inject transport.
     """
     if catalog_id in _UNDOCUMENTED_NATIVE_BALANCE:
         return BalanceSnapshot(
@@ -173,9 +173,8 @@ def _fetch_balance(
             note=_UNDOCUMENTED_NATIVE_BALANCE_NOTE,
         )
 
-    # Every catalog id NOT listed here (openai, anthropic, xai, custom) reads
-    # Antiek's own spend meter, which the response labels ``spend_history`` so
-    # the chip never presents a meter as provider credit.
+    # Other IDs (openai, anthropic, xai, custom) use Antiek's spend meter.
+    # The chip labels that ``spend_history``, never provider credit.
     native_adapters: dict[str, Any] = {
         "deepseek": fetch_deepseek_balance,
         "kimi": fetch_kimi_balance,
