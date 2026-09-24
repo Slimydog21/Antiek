@@ -46,11 +46,13 @@ from .parser import (
     parse_synthesizer_response,
 )
 from .prompt import (
+    PREFIX_RESERVE_BYTES,
     SYNTHESIZER_PROMPT_VERSION,
     SYNTHESIZER_SYSTEM_PROMPT,
     SYNTHESIZER_TARGET_MODEL,
     SYNTHESIZER_TEMPERATURE,
     SYNTHESIZER_USER_TEMPLATE,
+    build_repair_prefix,
     build_revision_prefix,
     render_full_prompt,
     render_user_template,
@@ -83,4 +85,6 @@ __all__ = [
     "render_user_template",
     "render_full_prompt",
     "build_revision_prefix",
+    "build_repair_prefix",
+    "PREFIX_RESERVE_BYTES",
 ]

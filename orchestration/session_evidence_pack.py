@@ -21,7 +21,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from runtime.db_lock import connect_read
 from substrate.schemas import ActionType
 
-SCHEMA_VERSION = 1
+# v2: ``PackChunk.text`` is the cited chunk's substrate text. A v1 pack's
+# ``text`` is the generated note itself, so reading one as source text would
+# certify the note; v1 is not accepted.
+SCHEMA_VERSION = 2
 _SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION})
 
 
@@ -38,7 +41,14 @@ class PackDocument(BaseModel):
 
 
 class PackChunk(BaseModel):
-    """One evidence chunk with a complete provenance chain."""
+    """One evidence chunk with a complete provenance chain.
+
+    ``text`` is the chunk's own source text, and it is the only text a chunk
+    carries. The gather note that cited the chunk is a generated claim about
+    it, and nothing on this path can establish that the chunk entails it: a
+    word-overlap check passes a reversed relationship ("Beta acquired Alpha")
+    or swapped figures built from the source's own words. So the note is not
+    part of the pack, and ``extra="forbid"`` refuses a chunk that carries one."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -144,22 +154,23 @@ def parse_session_evidence_pack(data: dict[str, Any]) -> SessionEvidencePack:
 def _substrate_chunk(
     con: Any,
     chunk_id: str,
-) -> tuple[str, str | None, str | None] | None:
-    """``(document_id, ip_holder_id, title)`` for a chunk the substrate holds.
+) -> tuple[str, str | None, str | None, str] | None:
+    """``(document_id, ip_holder_id, title, text)`` for a chunk the substrate
+    holds.
 
     ``None`` when the chunk row, or the document it cites, does not exist.
-    The pack reads both ids and the ip_holder from these rows, never from
-    producer-written node metadata, so it cannot cite a chunk or document
-    that exists nowhere."""
+    The pack reads both ids, the ip_holder and the chunk text from these rows,
+    never from producer-written node metadata, so it cannot cite a chunk or
+    document that exists nowhere, nor put words in a real chunk's mouth."""
     row = con.execute(
-        "SELECT c.document_id, d.ip_holder_id, d.title FROM chunks c "
+        "SELECT c.document_id, d.ip_holder_id, d.title, c.text FROM chunks c "
         "JOIN documents d ON d.document_id = c.document_id "
         "WHERE c.chunk_id = ?",
         [chunk_id],
     ).fetchone()
-    if row is None:
+    if row is None or row[3] is None or not str(row[3]).strip():
         return None
-    return str(row[0]), row[1], row[2]
+    return str(row[0]), row[1], row[2], str(row[3])
 
 
 def _load_problem_question(
@@ -224,6 +235,7 @@ def build_session_evidence_pack(
     documents: dict[str, PackDocument] = {}
     chunks: list[PackChunk] = []
     leaf_ids: list[str] = []
+    seen: set[tuple[str, str]] = set()
 
 
     con = connect_read(db_path)
@@ -278,10 +290,18 @@ def build_session_evidence_pack(
                 resolved = _substrate_chunk(con, str(meta_chunk))
                 if resolved is None:
                     continue
-                document_id, ip_holder, doc_title = resolved
+                document_id, ip_holder, doc_title, chunk_text = resolved
                 if meta_doc and str(meta_doc) != document_id:
                     continue
                 chunk_id = str(meta_chunk)
+                # The chunk's own text is the evidence. The node label (the
+                # generated note) is not carried: nothing here can show the
+                # chunk entails it. With the note gone, several notes of one leaf
+                # citing the same chunk would repeat one excerpt as separate
+                # supporting claims, so each (leaf, chunk) enters once.
+                if (iid, chunk_id) in seen:
+                    continue
+                seen.add((iid, chunk_id))
 
                 if document_id not in documents:
                     documents[document_id] = PackDocument(
@@ -297,7 +317,7 @@ def build_session_evidence_pack(
                         chunk_id=chunk_id,
                         document_id=document_id,
                         ip_holder_id=doc.ip_holder_id,
-                        text=str(label).strip(),
+                        text=chunk_text,
                         source_investigation_id=iid,
                         sub_question=sub_q,
                     )
