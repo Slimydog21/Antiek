@@ -68,3 +68,18 @@ describe("NotebooksIndex load and create failures", () => {
     expect((screen.getByPlaceholderText("Title") as HTMLInputElement).value).toBe("Field notes");
   });
 });
+
+describe("NotebooksIndex filters", () => {
+  it("sets the filter buttons in the interface face, not mono (spec §3)", async () => {
+    // Mono never sets a button label. The three filter chips were the last
+    // hand-rolled buttons on this page still in JetBrains Mono.
+    apiFetchMock.mockResolvedValueOnce(ok({ notebooks: [] }));
+    renderIndex();
+    await screen.findByText("No notebooks match this filter.");
+    for (const name of ["all", "user owned", "user public contribution"]) {
+      const chip = screen.getByRole("button", { name });
+      expect(chip.className).not.toMatch(/\bfont-mono\b/);
+      expect(chip.className).toMatch(/\bfont-sans\b/);
+    }
+  });
+});

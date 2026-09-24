@@ -177,7 +177,7 @@ export default function NotebooksIndex() {
                   key={f}
                   type="button"
                   onClick={() => setFilter(f)}
-                  className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors ${
+                  className={`px-2.5 py-1 rounded-md text-xs font-sans font-medium transition-colors ${
                     filter === f
                       ? "bg-ink text-white"
                       : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4 dark:bg-charcoal-1"
