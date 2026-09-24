@@ -1306,21 +1306,6 @@ def connect_read(
                 if remaining <= 0:
                     raise
                 time.sleep(min(_READ_MODE_RETRY_INTERVAL_S, remaining))
-||||||| parent of 549926339 (fix(mcp): route strict startup read through DB lock module)
-    try:
-        return duckdb.connect(db_path, read_only=True)
-    except Exception as exc:
-        msg = str(exc)
-        lazy_ok = (
-            _SAME_FILE_DIFFERENT_CONFIG in msg
-            or "Unique file handle conflict" in msg
-            or "already attached" in msg
-        )
-        if not lazy_ok:
-            raise
-        return _ReadOrientedConnection(duckdb.connect(db_path, read_only=False))
-
-
 @contextlib.contextmanager
 def authority_handoff_guard(
     db_path: str,
