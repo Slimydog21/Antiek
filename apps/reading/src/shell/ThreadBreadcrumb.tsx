@@ -48,7 +48,7 @@ export function ThreadBreadcrumb({
   if (forked) {
     return (
       <div
-        className="px-4 py-1.5 text-xs font-mono text-emperor"
+        className="px-4 py-1.5 text-xs text-emperor"
         data-testid="thread-breadcrumb-integrity-warning"
         role="alert"
       >
