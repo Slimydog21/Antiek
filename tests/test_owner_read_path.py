@@ -454,7 +454,7 @@ def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner
 def test_signed_two_email_route_cannot_cross_spend_byot_on_public_books(
     db, stub_embeddings, monkeypatch, tmp_path,
 ):
-    """The production ask route rejects either owner/document/key mismatch."""
+    """The ask route rejects another owner's key and withholds their book."""
     from fastapi.testclient import TestClient
 
     from interfaces.research.api.account_memory_identity import derive_owner_from_verified_email
