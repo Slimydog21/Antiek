@@ -28,7 +28,7 @@
  * Test/story seam: without a Router context the strip renders nothing (it
  * exists to navigate) — PanelLayout's router-free tests keep their DOM.
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useInRouterContext, useLocation, useNavigate } from "react-router-dom";
 
 import { Trail } from "../shell/Trail";
@@ -101,15 +101,20 @@ function DocumentTabStripInner() {
     };
   }, [location.pathname, mothership]);
 
-  // tree → route: an activated tab with a canonical route navigates there
-  // (strip clicks, the prefix keys, the cross-pane seam). Loop-safe: the
-  // route sync above finds the same tab already active and does nothing.
+  // tree → route: an ACTIVATION (strip clicks, the prefix keys, the
+  // cross-pane seam) navigates to the tab's canonical route. Guarded to
+  // changes only: whatever was already active when this strip mounted (a
+  // stale store from an earlier surface) is NOT a mandate to hijack the
+  // current route — the route sync above is the authority on mount.
   const activeTab = tree?.active_tab_id ? tree.nodes[tree.active_tab_id] : null;
   const activeRoute = activeTab ? routeForTab(activeTab) : null;
+  const prevActiveRef = useRef<string | null>(activeTab?.tab_id ?? null);
   useEffect(() => {
-    if (!activeRoute) return;
-    if (location.pathname !== activeRoute) navigate(activeRoute);
-  }, [activeRoute, location.pathname, navigate]);
+    const id = activeTab?.tab_id ?? null;
+    if (id === prevActiveRef.current) return;
+    prevActiveRef.current = id;
+    if (activeRoute && location.pathname !== activeRoute) navigate(activeRoute);
+  }, [activeTab, activeRoute, location.pathname, navigate]);
 
   function openTab(tab: TabNode) {
     useTabTrees.getState().activateTab(mothership, tab.tab_id);
