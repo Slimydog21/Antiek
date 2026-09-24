@@ -18,11 +18,21 @@ it.
 
 ProRata.ai's Gist Answers is an AI answer engine (and an embeddable
 publisher-site answer widget) that keeps 50% of the ad revenue shown alongside
-an answer and splits the other 50% among the publishers whose content the
-answer drew on, proportionally by per-citation attribution. $40M Series B
-closed September 2025 to launch Gist Answers. 500+ publisher deals including
-the Boston Globe, Vox Media, Future and Raptive. Publisher-side pitch: no
-per-fetch fee, no licensing negotiation, revenue share from day one.
+an answer and pays the other 50% to the publishers whose content the answer
+drew on. ProRata announced a $40M Series B, led by Touring Capital, on
+2025-09-05 to launch Gist Answers [P1, P2]. Status of each claim, as of
+2026-09-24:
+
+- The 50% publisher share and "more than 700" participating publications
+  appear in the 2025-09-05 release [P1] as quoted by search results; the
+  release page itself returned HTTP 403 to a direct fetch, so its body was
+  not read.
+- The round size, date and lead are confirmed by a secondary report [P2].
+- That the split is proportional to per-citation attribution, the
+  publisher-side pitch (no per-fetch fee, no licensing negotiation), and
+  the recon's "500+ deals including the Boston Globe, Vox Media, Future and
+  Raptive" are NOT MEASURED: no primary page was retrieved that states
+  them, and gist.ai's homepage does not.
 
 That is the operator's endgame, shipped by someone else first.
 
@@ -45,9 +55,9 @@ Treat the split as table stakes, not a differentiator.
 
 ### Attribution unit: per-citation vs per-frame attention
 
-ProRata attributes per citation: a source that appears in the answer's
-citation set shares the pool in proportion to its contribution to that
-answer. The unit is the answer.
+ProRata attributes per answer: the sources an answer drew on share its
+pool (the per-citation weighting is the recon's reading, NOT MEASURED
+above). The unit is the answer.
 
 Antiek attributes per second of in-frame attention:
 `substrate/ad_inventory/frame_attention.py` defines the per-second telemetry
@@ -71,8 +81,13 @@ product change, not a parameter change.
 `pre_onboarded` ip_holders account by display name, idempotently, with no
 notification, and `accrue_reading_session()` in
 `substrate/marketplace_metrics/book_escrow.py` is written to accrue the
-publisher's 70 into that account from the first paid impression. Nothing calls
-it in production today. The client-priced impressions endpoint it served,
+publisher's 70 into that account from the first paid impression on an
+ad-eligible document (since the SPR-10 review fix it first asks the shared
+ad-eligibility predicate, so a gated, not-yet-opted-in book earns nothing
+from the reader's border; that holder's balance would come from per-second
+frame attention, `frame_attention_accrual.accrue_window`, whose earn gate
+admits gated-but-public assets). Nothing calls `accrue_reading_session`
+in production today. The client-priced impressions endpoint it served,
 `record_ad_impressions` in `interfaces/research/api/books.py`, returns 410
 `client_priced_ad_impressions_disabled`, and revenue may enter accrual again
 only from a future authoritative settled-fill record. So no money accrues yet.
@@ -120,3 +135,16 @@ what Antiek can offer *because* it sees the second, not the citation.
 - Watch ProRata for (a) an unsigned-publisher balance feature and (b) any
   move toward rendering the page rather than the answer. (a) erases the
   timing advantage; (b) attacks the moat.
+
+## Sources (retrieved 2026-09-24)
+
+- [P1] Business Wire, "ProRata Closes $40 Million Series B Financing and
+  Launches Gist Answers ...", 2025-09-05,
+  https://www.businesswire.com/news/home/20250905771340/en/ (direct fetch
+  returned HTTP 403; quoted via search results only).
+- [P2] Built In LA, "ProRata Closes $40M Series B, Launches AI-Powered
+  Revenue Tool", 2025-09-05,
+  https://www.builtinla.com/articles/prorata-raises-40m-series-b-20250905
+  — "$40 million Series B funding round led by Touring Capital".
+- Gist homepage, https://gist.ai/ — names Gist GEO and Gist Answers; states
+  no split, publisher count or named publishers.

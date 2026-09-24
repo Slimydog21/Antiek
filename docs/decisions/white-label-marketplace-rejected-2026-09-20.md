@@ -24,9 +24,12 @@ The hard part of Antiek's publisher surface is three things: rights clearance
 per-chunk attribution (which asset earned which second of attention), and
 AI-access licensing (machine-readable terms a crawler can read and honour).
 Twenty-seven files under `substrate/ad_inventory/` plus `substrate/rights/`
-already implement more of this than any candidate ships. Against that bar:
+already implement more of this than any candidate ships. Against that bar
+(each description is the recon's reading of the vendor's own site; only the
+first vendor's pricing page was re-read, on 2026-09-24, and it names none of
+the three capabilities; for the other three the absence is NOT MEASURED):
 
-- Yo!Kart (from $1,249): a multi-vendor e-commerce storefront — catalogue, cart, vendor dashboards, commissions on physical or digital SKUs. No rights clearance, no per-chunk attribution, no AI-access licensing. The commission engine is per-order, not per-second-of-attention.
+- Yo!Kart (recon: from $1,249; on 2026-09-24 the lowest package on https://www.yo-kart.com/multivendor-marketplace-packages.html was $1,999, "GoQuick", self-hosted lifetime licence): a multi-vendor e-commerce storefront — catalogue, cart, vendor dashboards, commissions on physical or digital SKUs. No rights clearance, no per-chunk attribution, no AI-access licensing. The commission engine is per-order, not per-second-of-attention.
 - Vendasta: an agency-facing white-label SaaS reseller marketplace — bundles third-party SaaS under a partner brand. It resells software; it has no concept of a licensed text corpus, attribution or crawler terms.
 - RapidDev: a custom-build agency that assembles marketplaces to order; buying it is buying engineering hours, not a product, and the hours would be spent reimplementing what `substrate/ad_inventory/` already has.
 - Kitaboo / MagicBox: white-label eBook and LMS delivery platforms — DRM-wrapped reader, course packaging, institutional licensing. Closest in domain and still wrong: DRM at the reader is the opposite posture from an ad-funded open corpus, there is no attribution-weighted payout, and no machine-readable AI-access terms.
@@ -41,10 +44,13 @@ itself Stripe Connect under the hood).
 
 The pre-publisher revenue surface does not wait on any marketplace: T1 open
 content (CC0 / CC-BY / CC-BY-SA) is already ad-eligible under
-`substrate/rights/ad_eligibility.py`, so the ad border earns on the open
-corpus today, and licensed-publisher content joins through the §9.10 opt-in
-flow and the pre-onboarded escrow in `substrate/rights/register.py` — not
-through a storefront.
+`substrate/rights/ad_eligibility.py`, so the reader mounts its ad border on
+the open corpus today. It does not yet earn money there: fills persist
+unpriced at $0 until a fill is settled through `fill_settlement.py`, and
+settlement is closed (`settlement_open: False` in
+`substrate/ad_inventory/rank0_honesty.py`). Licensed-publisher content joins
+through the §9.10 opt-in flow and the pre-onboarded escrow in
+`substrate/rights/register.py` — not through a storefront.
 
 ## The one metric that would justify revisiting
 
