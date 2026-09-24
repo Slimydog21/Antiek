@@ -105,3 +105,39 @@ def test_a_fifo_in_the_artifacts_dir_is_refused_without_blocking(api_env):  # no
     assert not blocked, "the import-notes route blocked on a FIFO"
     resp = outcome["value"]
     assert resp.status_code == 400 and resp.json()["detail"] == REFUSAL, resp.text
+
+
+def _open_fd_count() -> int:
+    return len(os.listdir("/dev/fd"))
+
+
+def test_refused_malformed_paths_do_not_leak_descriptors(api_env):  # noqa: F811
+    # A NUL in a client path makes os.open raise ValueError rather than
+    # OSError; each refusal must still close every descriptor it opened, or
+    # repeated requests exhaust the server's descriptors.
+    from substrate.research_artifact.paths import (
+        read_importable_artifact,
+        read_reviewed_draft_merge,
+    )
+
+    client = _client()
+    arts = Path(api_env["arts"])
+    arts.mkdir(parents=True, exist_ok=True)
+    readers = (
+        lambda: read_importable_artifact(str(arts / "bad\x00name.html")),
+        lambda: read_reviewed_draft_merge(str(arts / "draft-merge-bad\x00name.html")),
+    )
+    for read in readers:
+        with contextlib.suppress(ValueError):
+            read()  # warm any lazy imports before counting
+        before = _open_fd_count()
+        for _ in range(20):
+            with contextlib.suppress(ValueError):
+                read()
+        assert _open_fd_count() == before
+    _import(client, str(arts / "warm\x00.html"))
+    before = _open_fd_count()
+    for _ in range(20):
+        resp = _import(client, str(arts / "bad\x00name.html"))
+        assert resp.status_code == 400 and resp.json()["detail"] == REFUSAL, resp.text
+    assert _open_fd_count() == before

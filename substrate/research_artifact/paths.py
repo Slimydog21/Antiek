@@ -64,23 +64,27 @@ def read_bounded_nofollow(path: Path, limit: int) -> bytes:
     effect on reading a regular file."""
     parent_fd, name = _open_parent_dir(path, create=False)
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    # Every descriptor is closed on every path out, whatever raises: a name
+    # the OS rejects outright (an embedded NUL raises ValueError, not OSError)
+    # must not leak the parent directory's descriptor.
     try:
-        fd = os.open(name, flags, dir_fd=parent_fd)
-    except OSError as err:
-        os.close(parent_fd)
-        raise ValueError("artifact cannot be opened safely") from err
-    try:
-        metadata = os.fstat(fd)
-        if not stat.S_ISREG(metadata.st_mode):
-            raise ValueError("artifact is not a regular file")
-        if metadata.st_size > limit:
-            raise OverflowError(f"artifact exceeds {limit} bytes")
-        data = os.read(fd, limit + 1)
-        if len(data) > limit:
-            raise OverflowError(f"artifact exceeds {limit} bytes")
-        return data
+        try:
+            fd = os.open(name, flags, dir_fd=parent_fd)
+        except (OSError, ValueError) as err:
+            raise ValueError("artifact cannot be opened safely") from err
+        try:
+            metadata = os.fstat(fd)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("artifact is not a regular file")
+            if metadata.st_size > limit:
+                raise OverflowError(f"artifact exceeds {limit} bytes")
+            data = os.read(fd, limit + 1)
+            if len(data) > limit:
+                raise OverflowError(f"artifact exceeds {limit} bytes")
+            return data
+        finally:
+            os.close(fd)
     finally:
-        os.close(fd)
         os.close(parent_fd)
 
 
