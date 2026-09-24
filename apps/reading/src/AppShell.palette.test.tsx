@@ -102,4 +102,21 @@ describe("F1 — ⌘K opens the palette from the page body (one toggle owner)", 
     pressFromBody({ key: "P", metaKey: true, shiftKey: true });
     expect(palette()).toBeTruthy();
   });
+
+  it("the palette owns no key of its own: without the shell's dispatcher, ⌘K does nothing", () => {
+    // One toggle owner. The palette opens on the dispatcher's
+    // antiek:palette:toggle event only; a second keydown owner is what made
+    // ⌘K cancel itself.
+    render(
+      <MemoryRouter>
+        <CommandPalette />
+      </MemoryRouter>,
+    );
+    pressFromBody({ key: "k", metaKey: true });
+    expect(palette()).toBeNull();
+    act(() => {
+      window.dispatchEvent(new Event("antiek:palette:toggle"));
+    });
+    expect(palette()).toBeTruthy();
+  });
 });

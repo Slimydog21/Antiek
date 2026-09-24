@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { LemonModal } from "../lemon/LemonModal";
 import { readCustomHotkeys } from "../../workspace/persistence";
@@ -25,7 +25,7 @@ import "./KeySheet.css";
  *
  * Grouped by task. Each action shows its prefix form and its direct form
  * side by side. `/` moves to the filter (as in herdr's keybind help), ctrl+u
- * clears it, Esc closes the sheet and HotkeyHud returns focus to where it
+ * clears it, Esc closes the sheet, and closing returns focus to where it
  * was. Every row carries `data-keymap-row` so a test can prove that no table
  * row is missing from the sheet.
  */
@@ -102,6 +102,15 @@ export default function KeySheet({ onClose, platform = currentPlatform() }: KeyS
   const visibleCustom = needle
     ? custom.filter((c) => `${c.label} ${formatBinding(c.spec)} ${c.spec}`.toLowerCase().includes(needle))
     : custom;
+
+  // Give focus back, on close, to whatever had it when the sheet opened. A
+  // layout effect reads it before the dialog's own effect moves focus in.
+  useLayoutEffect(() => {
+    const opener = document.activeElement;
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
+  }, []);
 
   // `/` jumps to the filter from anywhere in the dialog (the close button
   // holds focus when it opens); ctrl+u clears the filter. Scoped to this

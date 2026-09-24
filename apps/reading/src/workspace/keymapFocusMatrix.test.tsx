@@ -115,6 +115,17 @@ describe("text input", () => {
     expect(counts.calls["keysheet.toggle"]).toBe(0);
     expect(q.defaultPrevented, "'?' must reach the field as a character").toBe(false);
   });
+
+  it("on a Mac, ctrl+k in a field stays the field's (delete to end of line); ⌘K still opens", () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    const ctrlK = pressKey(input, { key: "k", code: "KeyK", ctrlKey: true });
+    expect(counts.calls["palette.toggle"]).toBe(0);
+    expect(ctrlK.defaultPrevented).toBe(false);
+    press(input, "mod+k", "mac");
+    expect(counts.calls["palette.toggle"]).toBe(1);
+  });
 });
 
 describe("contenteditable: the Write editor", () => {

@@ -143,9 +143,8 @@ function isTextEditing(t: Element | null): boolean {
   if (t.isContentEditable || t.closest('[contenteditable]:not([contenteditable="false"])')) {
     return true;
   }
-  // SPR-08 — the hotkey-capture box is a role="textbox" <div> that reads raw
-  // keypresses (including "?"), so it counts as text.
-  if (t.closest("[data-hotkey-capture]")) return true;
+  // (The SPR-08 hotkey-capture box needs no case here: it sits in a modal,
+  // which owns every key, and it stops its keys at the element.)
   return false;
 }
 
@@ -369,6 +368,9 @@ export function installShortcuts(
     const row = directRows.find((r) => eventMatchesCombo(e, r.chord!));
     if (row) {
       if (!scopeAllows(row, ctx)) return;
+      // In a Mac text field ctrl+letter is an editing key (ctrl+k deletes to
+      // the end of the line), so there "mod" means ⌘ only.
+      if (ctx.kind !== "default" && platform === "mac" && e.ctrlKey && !e.metaKey && !e.altKey) return;
       if (run(row.action, e)) {
         e.preventDefault();
         e.stopImmediatePropagation();

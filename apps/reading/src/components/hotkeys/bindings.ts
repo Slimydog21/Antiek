@@ -59,7 +59,16 @@
  * the listener, and makes the conflict logic unit-testable without a DOM.
  */
 
-import { ACTIONS, KEYMAP, currentPlatform, isActiveOn, type ActionId, type ActionMeta, type Platform } from "./keymap";
+import {
+  ACTIONS,
+  KEYMAP,
+  currentPlatform,
+  isActiveOn,
+  type ActionId,
+  type ActionMeta,
+  type Platform,
+  type Spr08Kind,
+} from "./keymap";
 
 // ─────────────────────────────────────────────────────────────────────
 // Shared activation contract (the thing the mascot / SPR-06 consumes)
@@ -290,22 +299,18 @@ export interface BindingRow {
   route?: string;
 }
 
-const SPR08_GROUPS = { product: "Products", subaction: "Sub-actions" } as const;
+// The old HUD's section names; nothing renders them since the key sheet.
+const SPR08_GROUPS = { builtin: "Global", product: "Products", subaction: "Sub-actions" } as const;
 
 /** The keymap's legacy-SPR-08 rows of one kind, in the BindingRow shape. */
-function legacyRows(kind: BindingRow["kind"]): BindingRow[] {
+function legacyRows(kind: Spr08Kind): BindingRow[] {
   return KEYMAP.filter((r) => r.spr08 === kind && r.chord).map((r) => {
     const meta: ActionMeta = ACTIONS[r.action];
     const row: BindingRow = {
       id: r.id,
       spec: r.chord!,
       label: meta.label,
-      group:
-        kind === "builtin"
-          ? /^(palette|keysheet)\./.test(r.action)
-            ? "Global"
-            : "Panels"
-          : SPR08_GROUPS[kind as "product" | "subaction"],
+      group: SPR08_GROUPS[kind],
       kind,
     };
     if (meta.productId) row.productId = meta.productId;

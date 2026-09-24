@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 
 import { SHORTCUT_EVENTS } from "../../workspace/shortcuts";
 
@@ -22,9 +22,8 @@ export interface HotkeyHudProps {
  * cheat-sheet). Drop ONE instance high in the tree (AppShell does).
  *
  * It listens for SHORTCUT_EVENTS.HELP_TOGGLE, which the keymap dispatcher
- * fires for `?` and prefix+?, lazy-loads KeySheet (rendered from keymap.ts)
- * and, on close, returns focus to the element that had it when the sheet
- * opened.
+ * fires for `?` and prefix+?, and lazy-loads KeySheet (rendered from
+ * keymap.ts), which gives focus back to where it was when it closes.
  *
  * Summoned, never persistent: a reference that is always on screen occludes
  * the work. The NavRail keycaps carry the always-visible hints.
@@ -33,7 +32,6 @@ export function HotkeyHud({ open: controlledOpen, onClose }: HotkeyHudProps) {
   const isControlled = controlledOpen !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
   const open = isControlled ? controlledOpen : internalOpen;
-  const openerRef = useRef<Element | null>(null);
 
   useEffect(() => {
     if (isControlled) return;
@@ -43,21 +41,6 @@ export function HotkeyHud({ open: controlledOpen, onClose }: HotkeyHudProps) {
     window.addEventListener(SHORTCUT_EVENTS.HELP_TOGGLE, onToggle);
     return () => window.removeEventListener(SHORTCUT_EVENTS.HELP_TOGGLE, onToggle);
   }, [isControlled]);
-
-  // Remember who had focus as the sheet opens (a layout effect runs before
-  // the dialog's own effect moves focus into it), and give it back when the
-  // sheet closes, whichever way it closed.
-  useLayoutEffect(() => {
-    if (open) {
-      openerRef.current = document.activeElement;
-      return;
-    }
-    const opener = openerRef.current;
-    openerRef.current = null;
-    if (opener instanceof HTMLElement && opener.isConnected && opener !== document.body) {
-      opener.focus();
-    }
-  }, [open]);
 
   if (!open) return null;
 
