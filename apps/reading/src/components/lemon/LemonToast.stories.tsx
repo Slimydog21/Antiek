@@ -23,7 +23,7 @@ export const Playground: Story = {
         <LemonButton onClick={() => toast.warn("Popups blocked. Allow popups for this site.")}>
           toast.warn
         </LemonButton>
-        <LemonButton variant="danger" onClick={() => toast.err("Network error: substrate unreachable.")}>
+        <LemonButton variant="danger" onClick={() => toast.err("Couldn't reach the server. Your draft is safe.")}>
           toast.err
         </LemonButton>
         <LemonButton variant="tertiary" onClick={() => toast.info("Generating thumbnail…")}>

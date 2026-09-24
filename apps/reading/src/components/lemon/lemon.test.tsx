@@ -517,3 +517,73 @@ describe("ErrorBanner — the shared error callout (Q4)", () => {
     expect(el.className).not.toContain("red-");
   });
 });
+
+describe("LemonToast — reading and reaching (audit M5)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("an error lands in an assertive alert region; others stay polite", () => {
+    render(<LemonToastViewport />);
+    act(() => {
+      toast.err("Couldn't reach the model", 60_000);
+      toast.ok("Saved", 60_000);
+    });
+    const alert = screen.getByRole("alert");
+    expect(alert.getAttribute("aria-live")).toBe("assertive");
+    expect(alert.textContent).toContain("Couldn't reach the model");
+    expect(alert.textContent).not.toContain("Saved");
+    const status = screen.getAllByRole("status").find((el) => el.textContent?.includes("Saved"));
+    expect(status?.getAttribute("aria-live")).toBe("polite");
+  });
+
+  it("the countdown holds while the pointer rests on a toast, then resumes", () => {
+    vi.useFakeTimers();
+    render(<LemonToastViewport />);
+    act(() => {
+      toast.info("Draft ready to read", { ttl: 1000, target: { path: "/inv/a" } });
+    });
+    const card = screen.getByRole("button", { name: /Draft ready to read/ }).parentElement as HTMLElement;
+    act(() => {
+      vi.advanceTimersByTime(400);
+      fireEvent.pointerEnter(card);
+      vi.advanceTimersByTime(5000);
+    });
+    expect(screen.queryByText("Draft ready to read")).not.toBeNull();
+    act(() => {
+      fireEvent.pointerLeave(card);
+      vi.advanceTimersByTime(700);
+    });
+    expect(screen.queryByText("Draft ready to read")).toBeNull();
+  });
+
+  it("the countdown holds while focus is inside the toast", () => {
+    vi.useFakeTimers();
+    render(<LemonToastViewport />);
+    act(() => {
+      toast.warn("Pop-up held back", 1000);
+    });
+    const dismiss = screen.getAllByRole("button", { name: "Dismiss" }).at(-1) as HTMLElement;
+    act(() => {
+      dismiss.focus();
+      vi.advanceTimersByTime(5000);
+    });
+    expect(screen.queryByText("Pop-up held back")).not.toBeNull();
+    act(() => {
+      fireEvent.click(dismiss);
+    });
+    expect(screen.queryByText("Pop-up held back")).toBeNull();
+  });
+
+  it("the dismiss control is a 28px target drawn in the toast's own text colour", () => {
+    render(<LemonToastViewport />);
+    act(() => {
+      toast.ok("Published", 60_000);
+    });
+    const dismiss = screen.getAllByRole("button", { name: "Dismiss" }).at(-1) as HTMLElement;
+    expect(dismiss.className).toMatch(/\bw-7\b/);
+    expect(dismiss.className).toMatch(/\bh-7\b/);
+    expect(dismiss.className).toMatch(/\btext-current\b/);
+    expect(dismiss.className).not.toMatch(/\/60\b/);
+  });
+});
