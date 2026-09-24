@@ -278,6 +278,62 @@ def test_deploy_pins_the_exact_sha_verified_by_the_gate():
     assert git_pull["ansible.builtin.git"]["version"] == "{{ antiek_target_sha }}"
 
 
+def test_deploy_pause_registers_the_arxiv_sync_pre_pause_state():
+    # The pause stops the in-flight crawl; only a captured pre-state lets the
+    # resume restart it conditionally (never spawning an unscheduled crawl).
+    tasks = _deploy_playbook_tasks()
+    capture = next(
+        task for task in tasks
+        if task.get("register") == "arxiv_sync_pre_pause"
+    )
+    cmd = capture["ansible.builtin.command"]["cmd"]
+    assert "systemctl is-active antiek-arxiv-oai-sync.service" in cmd
+    assert capture["failed_when"] is False
+    assert capture["changed_when"] is False
+    pause = next(
+        task for task in tasks
+        if task["name"] == "pause DB-writing background jobs before schema migration"
+    )
+    assert tasks.index(capture) < tasks.index(pause)
+
+
+def test_deploy_resume_restarts_an_interrupted_arxiv_sync_only():
+    # The asymmetry being fixed: the pause stops FOUR units but the resume
+    # used to start only the two timers, abandoning a SIGTERMed crawl until
+    # the next 04:20Z timer fire (kills observed 2026-09-24 at 08:55:44Z,
+    # 12:08:28Z, 13:13:02Z, 14:26:21Z). The service resume must be
+    # CONDITIONAL on the registered pre-state — a deploy with no crawl in
+    # flight must not start one.
+    resume = next(
+        task for task in _deploy_playbook_tasks()
+        if task["name"] == "resume the interrupted arXiv sync crawl, if any"
+    )
+    systemd = resume["ansible.builtin.systemd"]
+    assert systemd["name"] == "antiek-arxiv-oai-sync.service"
+    assert systemd["state"] == "started"
+    assert "arxiv_sync_pre_pause" in resume["when"]
+    # Type=oneshot reports "activating" mid-crawl; matching only "active"
+    # would miss exactly the in-flight crawls this task exists to resume.
+    assert "activating" in resume["when"]
+
+
+def test_deploy_resume_never_starts_the_backup_service():
+    # Starting antiek-backup.service would trigger an UNSCHEDULED backup;
+    # its timer-only resume is correct, so no task may start the service.
+    tasks = _deploy_playbook_tasks()
+    timers = next(
+        task for task in tasks
+        if task["name"] == "resume DB-writing background jobs after substrate is live"
+    )
+    assert "antiek-backup.service" not in timers["loop"]
+    starters = [
+        task for task in tasks
+        if (task.get("ansible.builtin.systemd") or {}).get("name") == "antiek-backup.service"
+        and (task.get("ansible.builtin.systemd") or {}).get("state") == "started"
+    ]
+    assert starters == []
+
+
 def _resolve_step_run(env: dict[str, str]) -> subprocess.CompletedProcess:
     """Execute the gate's real Resolve step script with the given event data."""
     step = next(s for s in _gate_steps() if s.get("id") == "resolve")
