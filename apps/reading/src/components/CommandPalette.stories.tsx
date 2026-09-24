@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect } from "react";
 
-import CommandPalette, { rankEntries, type PaletteEntry } from "./CommandPalette";
+import CommandPalette from "./CommandPalette";
+import { rankEntries, type PaletteEntry } from "./CommandPalette.impl";
 
 /**
  * CommandPalette is the ⌘K/Ctrl+K palette mounted at the App root
