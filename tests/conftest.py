@@ -1,10 +1,27 @@
 """Process-wide test isolation.
 
-Two autouse fixtures, both function-scoped:
+Three autouse fixtures, all function-scoped:
 
 * ``_isolate_default_breaker`` — resets the dispatch circuit-breaker singleton
   between tests (nygard SPR-04), so a chaos test that trips a provider's
   breaker cannot leak into a later test.
+* ``_isolate_provider_credentials`` — removes the DISPATCH provider credentials
+  from the environment. ``substrate/dispatch`` registers a LIVE provider
+  whenever it finds a key, so a test reaching dispatch on a developer's machine
+  opens a real socket to a real vendor: the suite's result then depends on which
+  keys that machine happens to export, and the run can spend real money. CI
+  already blanks these (enforced by ``tools/lint/provider_env_isolation.py``);
+  this fixture makes a local run match CI instead of diverging from it. Tests
+  that want a provider still set one explicitly — ``monkeypatch.setenv`` runs
+  after this fixture.
+
+  The set is DERIVED from ``substrate/dispatch`` rather than hand-listed, so it
+  cannot drift, and it is deliberately narrower than "every ``*_API_KEY``".
+  Keys outside dispatch — ``EXA_API_KEY`` is the live example — gate opt-in
+  operator tests that skip at MODULE level when the key is absent. A
+  function-scoped fixture runs after module import, so stripping those would let
+  the module decline to skip and then fail the body. Opt-in tests own their own
+  guard; this fixture does not second-guess it.
 * ``_isolate_antiek_store`` (DOGFOOD SPR-04) — points every substrate-touching
   test at a TMP store so no test can mutate the real ``~/.antiek`` store. This
   is the test/prod firewall that closes the test-residue pollution gap at its
@@ -43,6 +60,7 @@ from substrate.dispatch.breaker import default_breaker
 from substrate.graph import default_db_path
 from substrate.graph.insight_question import graph_db_path
 from substrate.graph.schema import init_database_at_path
+from tools.lint.provider_env_isolation import provider_env_vars
 
 
 def _real_store_path() -> str:
@@ -67,6 +85,18 @@ def _check_store_isolated(db_path: str, real: str, *, node_id: str = "") -> None
             "a tmp path, or mark @pytest.mark.real_store_read for a read-only "
             "real-store test."
         )
+
+
+# Computed once per worker process: an AST scan of substrate/dispatch, the same
+# source of truth the CI lint uses, so the two can never disagree.
+_DISPATCH_PROVIDER_KEYS = frozenset(provider_env_vars())
+
+
+@pytest.fixture(autouse=True)
+def _isolate_provider_credentials(monkeypatch):
+    """No test may inherit a real dispatch credential from the host environment."""
+    for name in _DISPATCH_PROVIDER_KEYS:
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)
