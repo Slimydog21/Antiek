@@ -77,6 +77,10 @@ export const ACTIONS = {
   "panel.focusPrev": { label: "Focus the previous panel" },
   "panel.focusNext": { label: "Focus the next panel" },
   "panel.closeFloating": { label: "Close the focused floating panel" },
+  "pane.focusLeft": { label: "Pane: focus the left pane" },
+  "pane.focusRight": { label: "Pane: focus the right pane" },
+  "pane.fullscreen": { label: "Pane: fullscreen the focused pane (toggle)" },
+  "layout.togglePreset": { label: "Layout: docked ⇄ inset preset" },
   "door.research": { label: "Research", productId: "research", route: "/" },
   "door.read": { label: "Read", productId: "read", route: "/library" },
   "door.write": { label: "Write", productId: "write", route: "/write" },
@@ -144,6 +148,20 @@ export const KEYMAP: readonly KeymapRow[] = [
 
   // ── D2 direct chords: every prefix action also has a one-step key ──────
   { id: "chord-sidebar", action: "projecttree.toggle", chord: "ctrl+alt+b", scope: "anywhere", origin: "D2", decision: D },
+
+  // ── D2 cockpit pane keys (C3, 2026-09-24): prefix twin + chord twin ────
+  // h/l are herdr's pane-focus keys; f is fullscreen; i is the inset preset.
+  // The keys used here were moved OUT of RESERVED_FOR_LATER (prefix f, i;
+  // chords ctrl+alt+f, ctrl+alt+i — h and l were never reserved). Never
+  // Cmd+Left/Right/F: the browser owns those.
+  { id: "prefix-pane-left", action: "pane.focusLeft", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-left", action: "pane.focusLeft", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-pane-right", action: "pane.focusRight", prefixKey: "l", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-right", action: "pane.focusRight", chord: "ctrl+alt+l", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-pane-full", action: "pane.fullscreen", prefixKey: "f", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-pane-full", action: "pane.fullscreen", chord: "ctrl+alt+f", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-layout-preset", action: "layout.togglePreset", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-layout-preset", action: "layout.togglePreset", chord: "ctrl+alt+i", scope: "anywhere", origin: "D2", decision: D },
 ];
 
 /**
@@ -158,15 +176,14 @@ export const RESERVED_FOR_LATER = {
   prefixKeys: [
     "1", "2", "3", "4", "5", "6", "7", "8", "9",
     "n", "p", "c", "shift+x", "w", "shift+n", "m", "shift+m",
-    "u", "o", "t", "f", "r", "a", "i",
+    "u", "o", "t", "r", "a",
   ],
   chords: [
     "ctrl+alt+1", "ctrl+alt+2", "ctrl+alt+3", "ctrl+alt+4", "ctrl+alt+5",
     "ctrl+alt+6", "ctrl+alt+7", "ctrl+alt+8", "ctrl+alt+9",
     "ctrl+alt+]", "ctrl+alt+[", "ctrl+alt+c", "ctrl+alt+w",
     "ctrl+alt+shift+]", "ctrl+alt+shift+[", "ctrl+alt+m", "ctrl+alt+u",
-    "ctrl+alt+o", "ctrl+alt+y", "ctrl+alt+f", "ctrl+alt+r", "ctrl+alt+a",
-    "ctrl+alt+i",
+    "ctrl+alt+o", "ctrl+alt+y", "ctrl+alt+r", "ctrl+alt+a",
   ],
 } as const;
 

@@ -130,7 +130,10 @@ function hydrateCustomFromStorage(): void {
   setCustomHotkeys(readCustomHotkeys().bindings);
 }
 
-function isTextEditing(t: Element | null): boolean {
+/** Exported for element-scoped key guards (PanelLayout's fullscreen-pane Esc
+ *  restore ignores Esc pressed while typing, mirroring the dispatcher's
+ *  outside-text rule without adding a global key). */
+export function isTextEditing(t: Element | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
   const tag = t.tagName.toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
@@ -251,6 +254,28 @@ function cycleFocus(direction: 1 | -1) {
   ws.focus(visible[next]);
 }
 
+/**
+ * Cockpit pane focus (C3). In the omarchy-inset preset: move DOM focus to
+ * the named inset pane and set its focus ring. Honest no-op when that pane
+ * is not on screen — collapsed (an empty right dock renders no pane) or
+ * hidden by the other pane's fullscreen: there is nowhere for focus to go,
+ * and pretending otherwise would focus an invisible element. In the docked
+ * preset the keys are never dead: they cycle the dock areas through the
+ * existing cycleFocus mechanics (left = previous, right = next).
+ */
+function focusPane(side: "left" | "right") {
+  const ws = useWorkspace.getState();
+  if (ws.layoutPreset !== "omarchy-inset") {
+    cycleFocus(side === "left" ? -1 : 1);
+    return;
+  }
+  if (ws.fullscreenPane && ws.fullscreenPane !== side) return;
+  const el = document.querySelector<HTMLElement>(`[data-pane="${side}"]`);
+  if (!el) return;
+  ws.setFocusedPane(side);
+  el.focus();
+}
+
 /** Runs an action. Returning false means "not mine after all": the key is
  *  left to the browser and nothing is prevented. */
 export type KeyHandler = (e: KeyboardEvent) => boolean | void;
@@ -290,6 +315,10 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     "panel.focusPrev": () => cycleFocus(-1),
     "panel.focusNext": () => cycleFocus(1),
     "panel.closeFloating": () => closeFocusedFloat(),
+    "pane.focusLeft": () => focusPane("left"),
+    "pane.focusRight": () => focusPane("right"),
+    "pane.fullscreen": () => useWorkspace.getState().toggleFullscreenPane(),
+    "layout.togglePreset": () => useWorkspace.getState().toggleLayoutPreset(),
   };
 }
 

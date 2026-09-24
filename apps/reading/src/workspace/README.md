@@ -50,6 +50,28 @@ S0 leaves this directory empty. S3 lands the system:
 
 Contract: `src/design/FEEL_CONTRACT.md` + `elevation.ts`. ResearchWorkstation IDE is **exempt** (dense opaque center, not a floating stack).
 
+## Cockpit chrome (C2/C3, 2026-09-24)
+
+`PanelLayout` has two layout presets, held on the store outside
+`WorkspaceSnapshot` (`panel.types.ts` `CockpitChrome`):
+
+- `docked` (default) — the docks as above, DOM unchanged.
+- `omarchy-inset` — the same slot structure inside an inset frame: an outer
+  gap where the scene background shows, two tall rounded rectangles
+  (`radius.lg`, `border-hairline`) — primary material (left dock + main
+  slot) left, companion (right dock) right. Presentation only: `dockSide()`
+  collapse behavior, the `{mainSlot}` contract, and the tier-`sm` early
+  return are unchanged, and an empty right dock still collapses.
+
+The preset persists via its own global blob
+(`persistence.ts` `antiek.workspace.layout-preset`, the custom-hotkeys
+precedent — never folded into the per-scope layout snapshot). Pane keys are
+keymap rows like every other key: prefix h/l (+ `ctrl+alt` twins) move pane
+focus with a ring (`ring-focus`; in `docked` they cycle dock areas via
+`cycleFocus`); prefix f fullscreens the focused pane (Esc — element-scoped
+on the layout root, never a global binding — or the same key restores);
+prefix i toggles the preset.
+
 ## Full spec
 
 `docs/ui_redesign_posthog/sprint_03_panel_layout.html`

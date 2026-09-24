@@ -40,12 +40,15 @@ import {
 } from "./panelLayoutLogic";
 import { EMPTY_SNAPSHOT } from "./panel.types";
 import type {
+  CockpitChrome,
+  LayoutPreset,
   PanelDescriptor,
   PanelKind,
   PanelMode,
+  PaneSide,
   WorkspaceSnapshot,
 } from "./panel.types";
-import { project, writeScope } from "./persistence";
+import { project, readLayoutPreset, writeLayoutPreset, writeScope } from "./persistence";
 import type { PersistScope } from "./persistence";
 
 export type OpenOptions = {
@@ -68,10 +71,22 @@ export type WorkspaceActions = {
   unpin: (id: string) => void;
   /** Resize the bottom dock (px). Min 120, max 60% of viewport. */
   setDockBottomHeight: (height: number) => void;
+  /** Cockpit chrome (C2): choose the layout recipe. Persists via its own
+   *  global blob (persistence.ts) — a reload keeps the operator's choice. */
+  setLayoutPreset: (preset: LayoutPreset) => void;
+  /** docked ⇄ omarchy-inset (the layout.togglePreset key row). */
+  toggleLayoutPreset: () => void;
+  /** Mark the inset pane holding the focus ring (null clears). */
+  setFocusedPane: (pane: PaneSide | null) => void;
+  /** Set/clear the fullscreen pane directly (Esc restores via null). */
+  setFullscreenPane: (pane: PaneSide | null) => void;
+  /** Fullscreen the focused pane (default "left") or restore when one is
+   *  already fullscreen — the pane.fullscreen key row. */
+  toggleFullscreenPane: () => void;
   reset: () => void;
 };
 
-type Store = WorkspaceSnapshot & WorkspaceActions;
+type Store = WorkspaceSnapshot & CockpitChrome & WorkspaceActions;
 
 function uniqueId(prefix: string): string {
   return `${prefix}:${Math.random().toString(36).slice(2, 10)}`;
@@ -113,6 +128,12 @@ function insertForMode(
 
 export const useWorkspace = create<Store>()((set, get) => ({
   ...EMPTY_SNAPSHOT,
+  // Cockpit chrome (C2): the persisted preset (default "docked" — nothing
+  // changes until the operator chooses the inset); the pane states are
+  // transient, never written to disk.
+  layoutPreset: readLayoutPreset(),
+  fullscreenPane: null,
+  focusedPane: null,
 
   open: (kind, props = {}, opts = {}) => {
     const id = opts.id ?? uniqueId(kind);
@@ -268,7 +289,37 @@ export const useWorkspace = create<Store>()((set, get) => ({
       return { dockBottomHeight: clamped };
     }),
 
-  reset: () => set({ ...EMPTY_SNAPSHOT }),
+  setLayoutPreset: (preset) => {
+    writeLayoutPreset(preset);
+    // A preset swap clears the fullscreen state: the hidden pane's identity
+    // is preset-relative, so carrying it across the swap could hide the
+    // wrong area. Focused-pane ring state goes with it.
+    set({ layoutPreset: preset, fullscreenPane: null, focusedPane: null });
+  },
+
+  toggleLayoutPreset: () => {
+    get().setLayoutPreset(get().layoutPreset === "docked" ? "omarchy-inset" : "docked");
+  },
+
+  setFocusedPane: (pane) => set({ focusedPane: pane }),
+
+  setFullscreenPane: (pane) => set({ fullscreenPane: pane }),
+
+  toggleFullscreenPane: () => {
+    const s = get();
+    if (s.fullscreenPane) {
+      set({ fullscreenPane: null });
+      return;
+    }
+    set({ fullscreenPane: s.focusedPane ?? "left" });
+  },
+
+  // Wipe the workspace layout. The transient pane states clear with it (they
+  // are ephemeral view state; leaking them into the next layout would hide
+  // panes the operator never hid). The layout PRESET survives: it is the
+  // operator's persisted chrome preference, not layout state — same standing
+  // as custom hotkeys.
+  reset: () => set({ ...EMPTY_SNAPSHOT, fullscreenPane: null, focusedPane: null }),
 }));
 
 /**

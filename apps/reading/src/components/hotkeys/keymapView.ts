@@ -21,6 +21,10 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "panel.focusPrev": "panels",
   "panel.focusNext": "panels",
   "panel.closeFloating": "panels",
+  "pane.focusLeft": "panels",
+  "pane.focusRight": "panels",
+  "pane.fullscreen": "panels",
+  "layout.togglePreset": "panels",
   "door.research": "go",
   "door.read": "go",
   "door.write": "go",
@@ -34,6 +38,8 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
 /** A caveat the sheet shows under an action's label. */
 export const NOTES: Partial<Record<ActionId, string>> = {
   "panel.closeFloating": "Only while a floating panel has focus; otherwise the browser closes the tab.",
+  "pane.fullscreen": "Esc or the same key restores both panes.",
+  "layout.togglePreset": "The inset preset shows two tall panes over the scene; docked stays the default.",
 };
 
 export const TASK_TITLES: Record<KeymapTask, string> = {
