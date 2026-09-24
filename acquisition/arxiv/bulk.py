@@ -316,7 +316,9 @@ def fetch_bulk_pdf(
 
             r = govern_if_arxiv(url, _send, throttle=arxiv_throttle)
     if r.status_code in (429, 503):
-        throttle.note_response(ARXIV_PDF_SOURCE_KEY, r.status_code, dict(r.headers))
+        throttle.note_response(
+            ARXIV_PDF_SOURCE_KEY, r.status_code, dict(r.headers), url=url
+        )
     r.raise_for_status()
     content = r.content
     assert_pdf(content, content_type=r.headers.get("content-type"), url=url)
