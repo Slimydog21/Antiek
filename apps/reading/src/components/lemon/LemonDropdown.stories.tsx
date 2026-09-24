@@ -58,3 +58,23 @@ export const AlignRight: Story = {
     </div>
   ),
 };
+
+// A model picker's shape: one item cannot be used yet and says why. It stays
+// reachable with the arrow keys (Enter on the trigger, then ArrowDown).
+export const WithDisabledItem: Story = {
+  render: () => (
+    <div className="p-6 pb-48">
+      <LemonDropdown trigger={<LemonButton>Model</LemonButton>}>
+        {({ close }) => (
+          <>
+            <LemonMenuItem onClick={() => close()}>House route</LemonMenuItem>
+            <LemonMenuItem onClick={() => close()} disabledReason="No key for this provider yet">
+              Claude via your key
+            </LemonMenuItem>
+            <LemonMenuItem onClick={() => close()}>DeepSeek via your key</LemonMenuItem>
+          </>
+        )}
+      </LemonDropdown>
+    </div>
+  ),
+};

@@ -260,9 +260,10 @@ describe("TalkToBook (M2)", () => {
     const question = screen.getByRole("textbox", { name: "Question for this book" });
     expect(document.activeElement).toBe(question);
     await user.tab({ shift: true });
-    // Keyboard contract (LemonDropdown): Enter toggles, ArrowDown moves through
-    // menu items (Default row first), Enter activates.
-    await user.keyboard("{Enter}{ArrowDown}{ArrowDown}{Enter}");
+    // Keyboard contract (LemonDropdown, WAI-ARIA menu button): Enter opens the
+    // menu on its first item (the Default row), ArrowDown moves to the next,
+    // Enter activates.
+    await user.keyboard("{Enter}{ArrowDown}{Enter}");
     expect(await screen.findByText("Requested: Keyboard model · keyboard-model")).toBeTruthy();
   });
 

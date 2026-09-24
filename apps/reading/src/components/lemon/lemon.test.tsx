@@ -20,6 +20,8 @@ import { LemonModal } from "./LemonModal";
 import { LemonSelect } from "./LemonSelect";
 import { LemonToastViewport, toast } from "./LemonToast";
 import { ErrorBanner } from "./ErrorBanner";
+import { LemonDropdown, LemonMenuItem } from "./LemonDropdown";
+import { useState } from "react";
 import type React from "react";
 
 /**
@@ -151,6 +153,169 @@ describe("LemonModal — ESC + outside-click", () => {
     );
     fireEvent.click(screen.getByText("body content"));
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+function ModalHarness({ withField = true }: { withField?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>Rename</button>
+      <LemonModal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Rename investigation"
+        footer={
+          <>
+            <LemonButton onClick={() => setOpen(false)}>Cancel</LemonButton>
+            <LemonButton variant="primary">Save</LemonButton>
+          </>
+        }
+      >
+        {withField ? <input aria-label="Name" /> : <p>Sure?</p>}
+      </LemonModal>
+    </>
+  );
+}
+
+describe("LemonModal — focus contract (WCAG 2.4.3)", () => {
+  it("gives focus back to the opener when Esc closes it", () => {
+    render(<ModalHarness />);
+    const opener = screen.getByRole("button", { name: "Rename" });
+    opener.focus();
+    fireEvent.click(opener);
+    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Name" }));
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("gives focus back to the opener when a footer action closes it", () => {
+    render(<ModalHarness />);
+    const opener = screen.getByRole("button", { name: "Rename" });
+    opener.focus();
+    fireEvent.click(opener);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("starts on the first text field, not on the close button", () => {
+    render(<ModalHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    expect((document.activeElement as HTMLElement).getAttribute("aria-label")).toBe("Name");
+  });
+
+  it("with no field, starts on the first action (a confirm's Cancel), not on close", () => {
+    render(<ModalHarness withField={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
+  });
+
+  it("is named by its title", () => {
+    render(<ModalHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    expect(screen.getByRole("dialog", { name: "Rename investigation" })).toBeTruthy();
+  });
+
+  it("sits on the modal rung of the z ladder, not a literal", () => {
+    render(<ModalHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    const scrim = screen.getByRole("dialog").parentElement as HTMLElement;
+    expect(scrim.className).toContain("z-modal");
+    expect(scrim.className).not.toMatch(/z-\[\d+\]|z-\d+/);
+  });
+});
+
+function DropdownHarness({ triggerDisabled = false }: { triggerDisabled?: boolean }) {
+  const [picked, setPicked] = useState("");
+  return (
+    <>
+      <LemonDropdown trigger={<LemonButton disabledReason={triggerDisabled ? "Loading models" : null}>Menu</LemonButton>}>
+        {({ close }) => (
+          <>
+            <LemonMenuItem onClick={() => { setPicked("Alpha"); close(); }}>Alpha</LemonMenuItem>
+            <LemonMenuItem onClick={() => setPicked("Beta")} disabledReason="No key for this model">Beta</LemonMenuItem>
+            <button type="button" role="menuitem" disabled>Native</button>
+            <LemonMenuItem onClick={() => { setPicked("Gamma"); close(); }}>Gamma</LemonMenuItem>
+          </>
+        )}
+      </LemonDropdown>
+      <output>{picked}</output>
+    </>
+  );
+}
+
+describe("LemonDropdown — menu button contract", () => {
+  it("the trigger itself carries aria-haspopup and aria-expanded", () => {
+    render(<DropdownHarness />);
+    const trigger = screen.getByRole("button", { name: "Menu" });
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(trigger.getAttribute("aria-controls")).toBe(screen.getByRole("menu").id);
+  });
+
+  it("arrow keys never stick on a disabled item (the ModelUsagePicker trap)", () => {
+    render(<DropdownHarness />);
+    const trigger = screen.getByRole("button", { name: "Menu" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    const seq = [document.activeElement?.textContent];
+    for (let i = 0; i < 4; i++) {
+      fireEvent.keyDown(document.activeElement as Element, { key: "ArrowDown" });
+      seq.push(document.activeElement?.textContent);
+    }
+    // Beta is aria-disabled: focusable (its reason can be read), not usable.
+    // Native is disabled with the attribute: it cannot take focus, so it is skipped.
+    expect(seq).toEqual(["Alpha", "Beta", "Gamma", "Alpha", "Beta"]);
+  });
+
+  it("a disabled item says why and does nothing", () => {
+    render(<DropdownHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    const beta = screen.getByRole("menuitem", { name: "Beta" });
+    expect(computeAccessibleDescription(beta)).toBe("No key for this model");
+    fireEvent.click(beta);
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+
+  it("Esc closes the menu and returns focus to the trigger", () => {
+    render(<DropdownHarness />);
+    const trigger = screen.getByRole("button", { name: "Menu" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(document.activeElement?.textContent).toBe("Alpha");
+    act(() => {
+      fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+    });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("choosing an item returns focus to the trigger", () => {
+    render(<DropdownHarness />);
+    const trigger = screen.getByRole("button", { name: "Menu" });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Gamma" }));
+    expect(screen.getByRole("status").textContent).toBe("Gamma");
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("a disabled trigger does not open the menu", () => {
+    render(<DropdownHarness triggerDisabled />);
+    const trigger = screen.getByRole("button", { name: "Menu" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("the menu sits on the popover rung of the z ladder", () => {
+    render(<DropdownHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    expect(screen.getByRole("menu").className).toContain("z-popover");
   });
 });
 
