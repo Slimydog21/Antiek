@@ -420,6 +420,13 @@ def test_balance_returns_spend_history_fallback(
         lambda cred_ref: SecretStr(f"sk-test-{cred_ref}"),
     )
 
+    fresh = client.get("/settings/balance/key-oai")
+    assert fresh.status_code == 200
+    fresh_body = BalanceResponse.model_validate(fresh.json())
+    assert fresh_body.kind == "spend_history"
+    assert fresh_body.spend_usd is None
+    assert fresh_body.note == "no usage recorded for this key"
+
     # Seed some usage so spend_history has data.
     ledger.record_settlement("key-oai", "test-user", 250, "c" * 64)
     ledger.set_limit("key-oai", "test-user", 5000)

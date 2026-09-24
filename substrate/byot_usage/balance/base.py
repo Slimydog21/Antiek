@@ -51,7 +51,8 @@ class BalanceSnapshot:
     native_available: bool | None = None
     balance_usd: float | None = None
     granted_usd: float | None = None
-    # spend_history: provider-reported spend + user-set budget → derived remaining
+    # spend_history: Antiek's settled ledger spend and user-set local cap;
+    # neither is provider-reported credit or total vendor billing.
     spend_usd: float | None = None
     budget_usd: float | None = None
     # quota_pct: utilization bars, no dollar amounts

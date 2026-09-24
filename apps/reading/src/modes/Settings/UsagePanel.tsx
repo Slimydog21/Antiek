@@ -49,6 +49,14 @@ function balanceLabel(balance: SettingsBalanceResponse): {
     // Antiek's OWN meter of what this app settled against the key. The
     // provider was never asked, so this row must not read "Live": a spend
     // meter presented as provider credit is a wrong number, not a missing one.
+    // Older servers emitted a numeric zero for a missing ledger row. Their
+    // value-free note is the only marker that this was never measured.
+    if (balance.note === "no usage recorded for this key") {
+      return {
+        text: "Antiek meter: no usage recorded (not provider credit)",
+        tone: "unknown",
+      };
+    }
     const spend =
       typeof balance.spend_usd === "number" && Number.isFinite(balance.spend_usd)
         ? balance.spend_usd

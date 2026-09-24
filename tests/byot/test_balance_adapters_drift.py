@@ -352,7 +352,7 @@ def test_spend_history_no_limit_shows_spend_only(tmp_path: Path) -> None:
     assert result.budget_usd is None
 
 
-def test_spend_history_no_ledger_row_returns_zero_spend(tmp_path: Path) -> None:
+def test_spend_history_no_ledger_row_has_no_measured_spend(tmp_path: Path) -> None:
     db = tmp_path / "usage.sqlite3"
     ledger = ByotUsageLedger(db)
 
@@ -366,9 +366,28 @@ def test_spend_history_no_ledger_row_returns_zero_spend(tmp_path: Path) -> None:
     )
 
     assert result.kind == "spend_history"
-    assert result.spend_usd == 0.0
+    assert result.spend_usd is None
     assert result.budget_usd is None
-    assert result.note is not None
+    assert result.note == "no usage recorded for this key"
+
+
+def test_spend_history_tracked_zero_is_measured_spend(tmp_path: Path) -> None:
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    ledger.set_limit("key-oai", "user-A", 2000)
+
+    result = fetch_spend_history_balance(
+        SecretStr("sk-test"),
+        base_url="https://api.openai.com/v1",
+        http=_FakeHTTP(_FakeResponse({})),
+        ledger=ledger,
+        api_key_id="key-oai",
+        owner_user_id="user-A",
+    )
+
+    assert result.kind == "spend_history"
+    assert result.spend_usd == 0.0
+    assert result.budget_usd == 20.0
+    assert result.note is None
 
 
 def test_spend_history_custom_catalog_id(tmp_path: Path) -> None:

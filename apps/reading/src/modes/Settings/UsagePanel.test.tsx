@@ -333,6 +333,59 @@ describe("UsagePanel", () => {
     expect(within(kimi).queryByText(/^Live /)).toBeNull();
   });
 
+  it.each([0, null])(
+    "does not turn an untracked spend-history row into measured zero (spend %s)",
+    async (spend) => {
+      const deepseek = await fetchSettingsBalance("user-deepseek");
+      const kimi = await fetchSettingsBalance("user-kimi");
+      vi.mocked(fetchSettingsBalance).mockImplementation(async (id) =>
+        id === "user-kimi"
+          ? {
+              ...kimi,
+              kind: "spend_history",
+              spend_usd: spend,
+              note: "no usage recorded for this key",
+            }
+          : deepseek,
+      );
+      vi.mocked(fetchSettingsUsage).mockResolvedValue({
+        keys: usage.keys.filter((entry) => entry.api_key_id !== "user-kimi"),
+        count: 1,
+      });
+      render(<UsagePanel />);
+      const row = await screen.findByTestId("usage-row-user-kimi");
+      expect(
+        within(row).getByText("Antiek meter: no usage recorded (not provider credit)"),
+      ).toBeTruthy();
+      expect(within(row).getByText("No Antiek usage recorded")).toBeTruthy();
+      expect(within(row).queryByText(/spent \$0\.00/)).toBeNull();
+    },
+  );
+
+  it("keeps a tracked zero spend visible as a measured Antiek meter value", async () => {
+    const deepseek = await fetchSettingsBalance("user-deepseek");
+    const kimi = await fetchSettingsBalance("user-kimi");
+    vi.mocked(fetchSettingsBalance).mockImplementation(async (id) =>
+      id === "user-kimi"
+        ? { ...kimi, kind: "spend_history", spend_usd: 0, note: null }
+        : deepseek,
+    );
+    vi.mocked(fetchSettingsUsage).mockResolvedValue({
+      ...usage,
+      keys: usage.keys.map((entry) =>
+        entry.api_key_id === "user-kimi"
+          ? { ...entry, used_cents: 0 }
+          : entry,
+      ),
+    });
+    render(<UsagePanel />);
+    const row = await screen.findByTestId("usage-row-user-kimi");
+    expect(
+      within(row).getByText("Antiek meter: spent $0.00, uncapped (not provider credit)"),
+    ).toBeTruthy();
+    expect(within(row).queryByText("No Antiek usage recorded")).toBeNull();
+  });
+
   it("saves and clears spend caps", async () => {
     const user = userEvent.setup();
     render(<UsagePanel />);
