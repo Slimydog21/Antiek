@@ -555,19 +555,23 @@ def test_signed_two_email_route_cannot_cross_spend_byot_on_public_books(
             )
             assert allowed.status_code == 200, allowed.text
             assert allowed.json()["grounded"] is True
-            assert allowed.json()["model_receipt"] == {
+            receipt = allowed.json()["model_receipt"]
+            assert {key: receipt[key] for key in (
+                "authority", "requested_provider_id", "requested_model_id",
+                "actual_provider_id", "actual_model_id",
+            )} == {
                 "authority": "owner_byot",
                 "requested_provider_id": providers["alice"],
                 "requested_model_id": "deepseek-chat",
                 "actual_provider_id": providers["alice"],
                 "actual_model_id": "deepseek-chat",
-                "authority_digest": allowed.json()["model_receipt"]["authority_digest"],
             }
-            assert len(allowed.json()["model_receipt"]["authority_digest"]) == 64
+            assert len(receipt["authority_digest"]) == 64
             assert sends == [(providers["alice"], secrets["alice"])]
             alice_settlement = ledger.operation(owners["alice"], "alice-book-alice-key")
             assert alice_settlement is not None and alice_settlement.state == "settled"
             assert alice_settlement.api_key_id == providers["alice"]
+            assert alice_settlement.actual_cents is not None and alice_settlement.actual_cents > 0
             assert ledger.snapshot(owners["bob"]) == before["bob"]
 
             # Alice owns this book and has a grounded passage, so the production
