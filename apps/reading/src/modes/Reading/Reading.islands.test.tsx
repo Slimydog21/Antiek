@@ -28,6 +28,7 @@ import type { BookAnchor, DistillationResponse } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useWindows } from "../../workspace/windowsStore";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { resetReadingStateBus } from "../../hooks/useReadingState";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 const {
@@ -264,6 +265,7 @@ beforeEach(() => {
   listBooksMock.mockReset().mockResolvedValue({ books: [], count: 0 });
   useInvestigationMock.mockReset().mockReturnValue(projection("in_progress"));
   useWorkspace.getState().reset();
+  resetReadingStateBus();
   useWindows.getState().reset();
 });
 

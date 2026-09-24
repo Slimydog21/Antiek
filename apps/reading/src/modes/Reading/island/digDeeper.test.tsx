@@ -27,6 +27,7 @@ import type { BookDetail, FullTextResponse } from "../../../api/books";
 import type { BookAnchor, DistillationResponse } from "../../../lib/api";
 import type { InvestigationSummary } from "../../../lib/api";
 import { useWorkspace } from "../../../workspace/WorkspaceStore";
+import { resetReadingStateBus } from "../../../hooks/useReadingState";
 import { WindowHostProvider } from "../../../components/windows/windowHostContext";
 import { LemonToastViewport } from "../../../components/lemon/LemonToast";
 
@@ -321,6 +322,7 @@ beforeEach(() => {
   listBooksMock.mockReset().mockResolvedValue({ books: [], count: 0 });
   useInvestigationMock.mockReset().mockReturnValue(projection("in_progress"));
   useWorkspace.getState().reset();
+  resetReadingStateBus();
 });
 
 afterEach(() => {

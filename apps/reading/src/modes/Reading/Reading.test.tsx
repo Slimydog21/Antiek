@@ -7,6 +7,7 @@ import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { resetReadingStateBus } from "../../hooks/useReadingState";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 const {
@@ -283,6 +284,7 @@ describe("BookReader", () => {
     spinResearchMock.mockReset();
     navigateMock.mockReset();
     useWorkspace.getState().reset();
+    resetReadingStateBus();
     // Default: a calm, empty reading thread (the no-key / nothing-yet case).
     useInvestigationMock.mockReset();
     useInvestigationMock.mockReturnValue({

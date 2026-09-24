@@ -22,7 +22,7 @@ import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
 import { paginate, windowForTocPage } from "./paginate";
-import { usePosition } from "./usePosition";
+import { useReadingState } from "../../hooks/useReadingState";
 import { useAnchors } from "../../hooks/useAnchors";
 import {
   createAnchor,
@@ -176,7 +176,7 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     [body],
   );
   const pages = useMemo(() => paginate(normalizedBody), [normalizedBody]);
-  const { pageIndex, setPageIndex } = usePosition(documentId, pages.length);
+  const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
 
   // ── Anchored highlights (anchor-first SPR-02) ─────────────────────────
   // The owner's persisted anchors (SPR-03) and the chunk anchor-map — the

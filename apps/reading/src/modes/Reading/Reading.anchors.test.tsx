@@ -24,6 +24,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { BookDetail, FullTextResponse } from "../../api/books";
 import type { BookAnchor } from "../../lib/api";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { resetReadingStateBus } from "../../hooks/useReadingState";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 const {
@@ -319,6 +320,7 @@ beforeEach(() => {
   startInvestigationMock.mockClear();
   apiFetchMock.mockReset();
   useWorkspace.getState().reset();
+  resetReadingStateBus();
   useInvestigationMock.mockReset().mockReturnValue({
     id: "read-doc-1",
     status: "not_found",
