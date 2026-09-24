@@ -2,6 +2,13 @@
 
 Pinned to product code `160d579a0fcc54905afc231a54f14b9ad74829b6` on 2026-09-24. This is a read-only call-path inventory, not a complete source/rights audit, accepted nonparticipation decision, live deployment claim, or release receipt. Re-run it after integration. The canonical journeys and acceptance criteria remain in the operator's `Antiek/.infinite/goal-2026-09-18-operational/production-handoff-2026-09-20/INGEST-MEMORY-CONTRACT.md`.
 
+The MCP disclosures and missing public predicate below describe that pinned
+baseline. [Draft PR #3436](https://github.com/Slimydog21/Antiek/pull/3436)
+proposes local read/write containment for some of them; it has not established
+a deployed, authenticated multi-account MCP transport. Re-run these call-path
+and negative-control findings on the integrated serving revision before
+crediting a journey.
+
 The current `substrate.memory` surface has three registered non-test call families: signed REST `POST`/`GET /account/memory` in `interfaces/research/api/account_memory_routes.py:140–225` (mounted at `app.py:7732–7733`), Thought Partner recall in `account_memory_context.py:48–75` from `app.py:6687–6705`, and the document-ingest hook in `acquisition/doc_to_html/converter.py:591–616` from `doc_ingest_routes.py:144–149,205–215`. `interaction_extractor.py` still defines an auto-write function, but has no non-test caller in this tree. The MCP executable in `tools/antiek_memory/__main__.py` reads document/chunk graph data through separate SQL, not through `substrate.memory` or REST.
 
 | Journey | Observed producer and consumer paths | Unclosed authority/evidence join |

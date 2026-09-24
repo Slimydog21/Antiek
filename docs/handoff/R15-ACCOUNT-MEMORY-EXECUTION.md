@@ -1,12 +1,29 @@
 # R15 account-memory execution handoff
 
-Status at 2026-09-24: phase-1 Thought Partner containment is proposed in [PR #3430](https://github.com/Slimydog21/Antiek/pull/3430), head `3a5eee204291088df0403c9aa0ba7100d377439c`, merged with `origin/main` `02d3bd99abe0257a1f905a83dc07068c62d76568`; it has not been merged or deployed. The separate local MCP containment is a [draft PR #3436](https://github.com/Slimydog21/Antiek/pull/3436), head `1180f687b7682e18ecd35255e42c01987ff068ac`; its launch-owner binding is not transport authentication. R15-A, R15-B, and M1–M3 remain open. This document is an execution contract, not production evidence. The full release criteria live in the operator's `Antiek/.infinite/goal-2026-09-18-operational/production-handoff-2026-09-20/INGEST-MEMORY-CONTRACT.md` and `REQUIREMENTS.json`.
+Status at 2026-09-24: phase-1 Thought Partner containment is proposed in
+[PR #3430](https://github.com/Slimydog21/Antiek/pull/3430), with tested
+code commit `3a5eee204291088df0403c9aa0ba7100d377439c`. Its code was
+prepared against main `02d3bd99abe0257a1f905a83dc07068c62d76568`;
+the PR has not
+been merged or deployed. The separate local MCP containment is
+[draft PR #3436](https://github.com/Slimydog21/Antiek/pull/3436), containing
+tested code commit `5499263393407bb7aa7e47a1a10b667cf8b03338`;
+its launch-owner binding
+is not transport authentication. R15-A, R15-B, and M1–M3 remain open. This
+document is an execution contract, not production evidence. The full release
+criteria live in the operator's
+`Antiek/.infinite/goal-2026-09-18-operational/production-handoff-2026-09-20/INGEST-MEMORY-CONTRACT.md`
+and `REQUIREMENTS.json`.
+
+The tested code commits above are provenance, not CI verdicts for a later
+documentation or integration head. Query each PR's current SHA and checks
+before review or merge.
 
 ## Current boundary and evidence
 
 `POST /thought-partner` in `interfaces/research/api/app.py` no longer calls `record_account_memory_from_turn`. The route's raw prompt can contain a signed owner's words, pasted source text, quotation, and hypothetical dialogue together; the session signature proves the caller, not authorship of each sentence. `account_memory_context.py` excludes exactly `provenance.source == "thought_partner"` and `provenance.extractor == "first_person_rules_v1"` from that route's recalled provider context. `list_memory` applies this parameter-bound predicate before its bounded candidate ordering and 200-row cap. Other memory readers retain their existing behavior. Existing rows are neither erased nor globally quarantined.
 
-On code commit `3a5eee204291088df0403c9aa0ba7100d377439c`, the focused memory/API/tool suites plus the process-write-gate suite passed (`116 passed, 61 warnings, 238.95 s`), along with Ruff on the five R15 source/test files, `py_compile`, mypy on the three changed memory modules, and `git diff --check`. The decisive route controls cover a signed source-labelled ExampleCo prompt leaving no owner row, a legacy row absent from the actual recording provider prompt, and eight newer legacy rows failing to crowd an eligible older row out of recall. The eligible row is a test fixture, not evidence of owner confirmation. The warnings were dependency deprecations. Repository-wide strict hardenx on this branch still finds the pre-existing YouTube test-fixture credential shape; [PR #3429](https://github.com/Slimydog21/Antiek/pull/3429) proposes its replacement. Full CI, historic-row inventory, live two-account journey, and deployed-revision proof remain open.
+On code commit `3a5eee204291088df0403c9aa0ba7100d377439c`, the focused memory/API/tool suites plus the process-write-gate suite passed (`116 passed, 61 warnings, 238.95 s`), along with Ruff on the five R15 source/test files, `py_compile`, mypy on the three changed memory modules, and `git diff --check`. The decisive route controls cover a signed source-labelled ExampleCo prompt leaving no owner row, a legacy row absent from the actual recording provider prompt, and eight newer legacy rows failing to crowd an eligible older row out of recall. The eligible row is a test fixture, not evidence of owner confirmation. The warnings were dependency deprecations. Repository-wide strict hardenx on this branch still finds the pre-existing YouTube test-fixture credential shape; [PR #3429](https://github.com/Slimydog21/Antiek/pull/3429) proposes its replacement but must pass full CI on its eventual merge head. A local merge of #3429 into the R15 code branch passed strict hardenx with zero REAL findings; this is integration preflight, not a reviewed PR head. Full CI, historic-row inventory, live two-account journey, and deployed-revision proof remain open.
 
 ## Next executable increments
 
