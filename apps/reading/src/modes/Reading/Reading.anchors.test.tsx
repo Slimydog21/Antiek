@@ -467,7 +467,9 @@ describe("the Deep-research spawn write-back (SPR-04 tail)", () => {
     await waitFor(() => expect(spinResearchMock).toHaveBeenCalledTimes(1));
 
     // The pin POST preceded the spin; the PATCH link followed it.
-    const posts = server.calls.filter((c) => c.method === "POST");
+    const posts = server.calls.filter(
+      (c) => c.method === "POST" && c.url.endsWith("/anchors"),
+    );
     expect(posts).toHaveLength(1);
     expect(posts[0].body).toMatchObject({ source: "floatmenu_deep_research" });
     const patches = server.calls.filter((c) => c.method === "PATCH");
