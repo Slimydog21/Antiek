@@ -31,9 +31,7 @@ from runtime.byok.store import load_credential
 from substrate.byot_usage.balance.base import BalanceSnapshot
 from substrate.byot_usage.balance.deepseek import fetch_deepseek_balance
 from substrate.byot_usage.balance.kimi import fetch_kimi_balance
-from substrate.byot_usage.balance.mimo import fetch_mimo_balance
 from substrate.byot_usage.balance.spend_history import fetch_spend_history_balance
-from substrate.byot_usage.balance.zhipu_glm import fetch_zhipu_glm_balance
 from substrate.byot_usage.ledger import ByotUsageLedger, KeyUsageRow
 
 __all__ = [
@@ -92,6 +90,9 @@ BalanceKind = Literal[
     "meter_only",
     "unavailable",
 ]
+
+_UNDOCUMENTED_NATIVE_BALANCE = frozenset({"mimo", "zhipu_glm"})
+_UNDOCUMENTED_NATIVE_BALANCE_NOTE = "Provider has not documented a native balance API."
 
 
 class NativeBalanceResponse(BaseModel):
@@ -165,14 +166,19 @@ def _fetch_balance(
     everything else falls back to the spend-history adapter (client-side
     meter).  Monkeypatch in tests to avoid live net.
     """
+    if catalog_id in _UNDOCUMENTED_NATIVE_BALANCE:
+        return BalanceSnapshot(
+            catalog_id=catalog_id,
+            kind="unavailable",
+            note=_UNDOCUMENTED_NATIVE_BALANCE_NOTE,
+        )
+
     # Every catalog id NOT listed here (openai, anthropic, xai, custom) reads
     # Antiek's own spend meter, which the response labels ``spend_history`` so
     # the chip never presents a meter as provider credit.
     native_adapters: dict[str, Any] = {
         "deepseek": fetch_deepseek_balance,
         "kimi": fetch_kimi_balance,
-        "zhipu_glm": fetch_zhipu_glm_balance,
-        "mimo": fetch_mimo_balance,
     }
     adapter_fn = native_adapters.get(catalog_id)
     if adapter_fn is not None:
@@ -318,6 +324,16 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
     base_url: str = record.base_url or ""
     ledger = _get_ledger()
     usage = ledger.key_usage(api_key_id, owner_user_id)
+
+    if catalog_id in _UNDOCUMENTED_NATIVE_BALANCE:
+        return BalanceResponse(
+            api_key_id=api_key_id,
+            catalog_id=catalog_id,
+            kind="unavailable",
+            note=_UNDOCUMENTED_NATIVE_BALANCE_NOTE,
+            held_cents=usage.held_cents if usage is not None else 0,
+            available_cents=usage.available_cents if usage is not None else None,
+        )
 
     # Load the decrypted credential for the adapter call.
     try:

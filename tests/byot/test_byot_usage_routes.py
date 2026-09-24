@@ -343,6 +343,39 @@ def test_balance_does_not_echo_adapter_diagnostic_with_secret(
     assert response.json()["note"] == "Provider balance unavailable."
 
 
+@pytest.mark.parametrize("catalog_id", ["zhipu_glm", "mimo"])
+def test_undocumented_native_balance_does_not_decrypt_or_call_provider(
+    catalog_id: str,
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "interfaces.research.api.byot_usage_routes._find_user_record",
+        lambda api_key_id, owner_user_id: SimpleNamespace(
+            provider_catalog_id=catalog_id,
+            base_url="https://example.invalid/v1",
+            cred_ref="must-not-load",
+        ),
+    )
+
+    def fail_if_called(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Undocumented balance path decrypted a key or called a provider")
+
+    monkeypatch.setattr(
+        "interfaces.research.api.byot_usage_routes._load_key", fail_if_called,
+    )
+    monkeypatch.setattr(
+        "interfaces.research.api.byot_usage_routes._fetch_balance", fail_if_called,
+    )
+
+    response = client.get("/settings/balance/key-undocumented")
+    assert response.status_code == 200
+    body = BalanceResponse.model_validate(response.json())
+    assert body.kind == "unavailable"
+    assert body.balance_usd is None
+    assert body.note == "Provider has not documented a native balance API."
+
+
 def test_balance_cross_user_404(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
