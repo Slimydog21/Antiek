@@ -10,7 +10,7 @@ full protocol surface per master-spec §13.8:
 * resources/read  → prompt-injection envelope (§13.8.3)
 * tools/call search_personal  → real substrate query path
 * tools/call cite_source  → resolves chunk metadata
-* tools/call record_attribution  → records attribution event
+* tools/call record_attribution  → refuses unverified attribution
 
 No new deps; uses subprocess + json.
 """
@@ -63,6 +63,23 @@ def _send_and_recv(
     proc.stdin.write((_rpc(method, params, rpc_id) + "\n").encode())
     proc.stdin.flush()
     return _read_line(proc)
+
+
+def _run_once(db_path: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["ANTIEK_DUCKDB_PATH"] = str(db_path)
+    env["ANTIEK_MEMORY_OWNER"] = "testuser"
+    env["ANTIEK_HOME"] = str(tmp_path / "home")
+    return subprocess.run(
+        [sys.executable, "-m", "tools.antiek_memory"],
+        input=_rpc("initialize") + "\n",
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+        cwd=str(Path(__file__).resolve().parents[2]),
+        check=False,
+    )
 
 
 # ── fixture setup ────────────────────────────────────────────────────
@@ -289,6 +306,58 @@ class TestInitializeHandshake:
         assert "tools" in result["capabilities"]
         assert "resources" in result["capabilities"]
         assert result["serverInfo"]["name"] == "antiek-memory"
+
+    def test_preinitialized_graph_starts_read_only(self, memory_db, tmp_path):
+        before = memory_db.stat().st_mtime_ns
+        completed = _run_once(memory_db, tmp_path)
+
+        assert completed.returncode == 0
+        assert json.loads(completed.stdout)["result"]["serverInfo"]["name"] == "antiek-memory"
+        assert memory_db.stat().st_mtime_ns == before
+
+    def test_absent_graph_exits_without_creating_file(self, tmp_path):
+        missing = tmp_path / "missing" / "graph.duckdb"
+        completed = _run_once(missing, tmp_path)
+
+        assert completed.returncode != 0
+        assert completed.stdout == ""
+        assert "requires a readable, preinitialized graph" in completed.stderr
+        assert not missing.parent.exists()
+
+    def test_incomplete_graph_exits_without_schema_write(self, tmp_path):
+        incomplete = tmp_path / "incomplete.duckdb"
+        con = duckdb.connect(str(incomplete))
+        try:
+            con.execute("CREATE TABLE documents (document_id TEXT)")
+        finally:
+            con.close()
+
+        completed = _run_once(incomplete, tmp_path)
+
+        assert completed.returncode != 0
+        assert completed.stdout == ""
+        assert "requires a readable, preinitialized graph" in completed.stderr
+        con = duckdb.connect(str(incomplete), read_only=True)
+        try:
+            tables = con.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'main' ORDER BY table_name"
+            ).fetchall()
+        finally:
+            con.close()
+        assert tables == [("documents",)]
+
+    def test_unreadable_graph_exits_without_replacing_file(self, tmp_path):
+        invalid = tmp_path / "corrupt.duckdb"
+        original = b"not a DuckDB database"
+        invalid.write_bytes(original)
+
+        completed = _run_once(invalid, tmp_path)
+
+        assert completed.returncode != 0
+        assert completed.stdout == ""
+        assert "requires a readable, preinitialized graph" in completed.stderr
+        assert invalid.read_bytes() == original
 
 
 class TestToolsList:

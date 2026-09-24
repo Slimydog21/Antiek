@@ -4,8 +4,8 @@ Run with: python -m tools.antiek_memory
 
 Reads ANTIEK_DUCKDB_PATH from the environment (falls back to
 ~/.antiek/research_graph.duckdb) and ANTIEK_MEMORY_OWNER, the owner this
-process serves (unset: private reads refuse every call). Initialises the schema on cold
-start, wires the four canonical tool handlers + resource handler
+process serves (unset: private reads refuse every call). Requires an existing,
+readable graph, wires the four canonical tool handlers + resource handler
 against the real substrate, and serves JSON-RPC over stdio.
 """
 
@@ -17,11 +17,12 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
 
+import duckdb
+
 from interfaces.research.api.account_memory_identity import FORBIDDEN_OWNERS
 from runtime.db_lock import connect_read
 from substrate.books.serve_guard import LinkBackMissingError, guard_candidate_full_text
 from substrate.graph import default_db_path
-from substrate.graph.schema import init_database_at_path
 from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding, search
 from substrate.rights import T3BodyServeError
 
@@ -37,6 +38,23 @@ _TRUSTED_FALSE = '<antiek:content trusted="false">{}</antiek:content>'
 
 # Longest owner id the handler will bind; mirrors account_memory_identity.
 _MAX_OWNER_LENGTH = 256
+
+# These are the tables and columns read by the MCP handlers and the graph
+# search they call. Each query binds without reading private rows or writing.
+_STARTUP_READ_PROBES = (
+    "SELECT document_id, owner_user_id, content_class, ip_holder_id, "
+    "title, author, source_tier, document_type, metadata FROM documents LIMIT 0",
+    "SELECT chunk_id, document_id, chunk_index, text, embedding, "
+    "section_path, token_count FROM chunks LIMIT 0",
+    "SELECT node_id, owner_user_id, canonical_label, node_type, metadata "
+    "FROM nodes LIMIT 0",
+    "SELECT edge_id FROM edges LIMIT 0",
+    "SELECT notebook_id, owner_user_id, content_class, title FROM notebooks LIMIT 0",
+    "SELECT block_id, notebook_id, block_type, content_json "
+    "FROM notebook_blocks LIMIT 0",
+    "SELECT document_id, taken_down FROM book_assets LIMIT 0",
+    "SELECT ip_holder_id, status FROM ip_holders LIMIT 0",
+)
 
 # A public class is necessary but not sufficient for licensed material: its
 # rights holder must still have an active opt-in, and a takedown always wins.
@@ -83,6 +101,25 @@ def _authenticated_owner(auth_context: object) -> str | None:
     if not owner or len(owner) > _MAX_OWNER_LENGTH or owner.casefold() in FORBIDDEN_OWNERS:
         return None
     return owner
+
+
+def _require_preinitialized_graph(db_path: str) -> None:
+    """Refuse startup unless a native read-only handle can use the MCP schema.
+
+    A separate writer process may still prevent a later read-only open. This
+    check does not promise concurrent access to the live DuckDB writer.
+    """
+    try:
+        con = duckdb.connect(db_path, read_only=True)
+        try:
+            for probe in _STARTUP_READ_PROBES:
+                con.execute(probe).fetchone()
+        finally:
+            con.close()
+    except Exception:
+        raise SystemExit(
+            "Antiek Memory requires a readable, preinitialized graph"
+        ) from None
 
 
 def _error_result(message: str, *, query: str) -> ToolResult:
@@ -385,7 +422,7 @@ def _make_handlers(
 
 def main() -> None:
     db_path = default_db_path()
-    init_database_at_path(db_path)
+    _require_preinitialized_graph(db_path)
     handlers, res_handler = _make_handlers(db_path)
     server = AntiekMemoryServer(
         tools=list(CANONICAL_TOOLS),
