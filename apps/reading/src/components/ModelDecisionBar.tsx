@@ -32,8 +32,8 @@ export interface ModelDecisionBarProps {
   onSelect?: (provider: string, model: string) => void;
   /** The currently selected provider+model, if any (curated default when null). */
   selected?: { provider: string; model: string } | null;
-  /** Remaining balance/usage chip for the selected provider key, when available. */
-  selectedProviderBalance?: string | null;
+  /** Antiek's local cap status for the selected key, separate from provider credit. */
+  selectedKeyUsageLabel?: string | null;
 }
 
 function formatUsd(value: number): string {
@@ -150,7 +150,7 @@ export default function ModelDecisionBar({
   error = null,
   onSelect,
   selected = null,
-  selectedProviderBalance = null,
+  selectedKeyUsageLabel = null,
 }: ModelDecisionBarProps) {
   const budgetPct = useMemo(
     () => (projection ? budgetPercent(projection) : null),
@@ -247,12 +247,13 @@ export default function ModelDecisionBar({
             </option>
           ))}
         </select>
-        {selectedProviderBalance && (
+        {selectedKeyUsageLabel && (
           <span
-            data-testid="selected-provider-balance"
-            className="rounded-full bg-ice-2 px-2 py-0.5 text-xs text-success dark:bg-charcoal-1"
+            data-testid="selected-key-usage"
+            role="status"
+            className="rounded-full bg-ice-2 px-2 py-0.5 text-xs text-ink-soft dark:bg-charcoal-1 dark:text-starlight"
           >
-            key remaining {selectedProviderBalance}
+            {selectedKeyUsageLabel}
           </span>
         )}
       </div>

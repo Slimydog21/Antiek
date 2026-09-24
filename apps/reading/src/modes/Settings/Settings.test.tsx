@@ -25,6 +25,7 @@ import {
   estimatePromptCost,
   fetchFallbackReceiptHistory,
   fetchModelDecision,
+  fetchSettingsModels,
   type ModelDecisionResponse,
 } from "../../api/settings";
 import { fetchComposerProjection } from "../../api/composerProjection";
@@ -394,7 +395,7 @@ describe("Settings SPR-01", () => {
     });
   });
 
-  it("shows selected-provider usage chip when the chosen provider key is available", async () => {
+  it("shows held-adjusted Antiek cap headroom for the selected key", async () => {
     vi.mocked(fetchComposerProjection).mockResolvedValueOnce({
       ...composerProjection,
       ranked_candidates: [
@@ -419,9 +420,61 @@ describe("Settings SPR-01", () => {
     render(<Settings />);
     await user.click(screen.getByRole("tab", { name: "Decision tree" }));
     await user.click(screen.getByRole("button", { name: "Compare models" }));
-    expect((await screen.findByTestId("selected-provider-balance")).textContent).toContain(
-      "key remaining $8.80",
-    );
+    const chip = await screen.findByTestId("selected-key-usage");
+    expect(chip.textContent).toBe("Antiek cap snapshot · available $8.40 · held $0.40");
+    expect(chip.className).not.toContain("text-success");
+    expect(chip.getAttribute("role")).toBe("status");
+  });
+
+  it("keeps two keys for the same model vendor on separate cap snapshots", async () => {
+    vi.mocked(fetchSettingsModels).mockResolvedValue({
+      ...models,
+      models: [...models.models, { ...models.models[1], provider_id: "user-custom-2" }],
+      count: 3,
+    });
+    vi.mocked(fetchUserModels).mockResolvedValueOnce({
+      ...userModelInventory,
+      models: [
+        ...userModelInventory.models,
+        { ...userModelInventory.models[0], id: "user-custom-2", display_name: "Second user key" },
+      ],
+      count: 2,
+    });
+    vi.mocked(fetchSettingsUsage).mockResolvedValue({
+      keys: [
+        ...usageSnapshot.keys,
+        {
+          api_key_id: "user-custom-2",
+          used_cents: 500,
+          limit_cents: 1000,
+          remaining_cents: 500,
+          held_cents: 25,
+          available_cents: 475,
+        },
+      ],
+      count: 2,
+    });
+    vi.mocked(fetchComposerProjection).mockResolvedValueOnce({
+      ...composerProjection,
+      ranked_candidates: [{
+        ...composerProjection.ranked_candidates[0],
+        provider: "user-custom-2",
+        model: "deepseek-chat",
+        pricing_status: "known",
+        estimated_usd_low: 0.01,
+        estimated_usd_high: 0.02,
+      }],
+      chosen_provider: "user-custom-2",
+      chosen_model: "deepseek-chat",
+      pricing_status: "known",
+    });
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole("tab", { name: "Decision tree" }));
+    await user.click(screen.getByRole("button", { name: "Compare models" }));
+    const chip = await screen.findByTestId("selected-key-usage");
+    expect(chip.textContent).toBe("Antiek cap snapshot · available $4.75 · held $0.25");
+    expect(chip.textContent).not.toContain("$8.40");
   });
 
   it("renders durable fallback receipts independently from model comparison", async () => {
