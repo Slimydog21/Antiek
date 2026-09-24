@@ -190,11 +190,10 @@ const PREFIX_STORAGE_KEY = "antiek.keymap.prefix";
 export function readPrefix(): string {
   try {
     const saved = window.localStorage.getItem(PREFIX_STORAGE_KEY);
-    // setPrefix, the only writer, runs the full isUsablePrefix check. A read
-    // re-checks only the shape (a ctrl combo), which keeps that check and
-    // its per-platform scan of the table out of the entry chunk.
-    const c = saved ? parseCombo(saved) : null;
-    if (c && c.key && c.ctrl && !c.mod && !c.meta) return saved!;
+    // The read runs the same full check as setPrefix. Storage outlives the
+    // table: a prefix saved before a chord was added (say ctrl+alt+b) would
+    // otherwise collide with that chord (carrier critic r1).
+    if (saved && isUsablePrefix(saved)) return saved;
   } catch {
     // storage unavailable: the default stands
   }
@@ -303,6 +302,28 @@ export function isLoneModifier(e: KeyboardEvent): boolean {
 
 function altGraph(e: KeyboardEvent): boolean {
   return typeof e.getModifierState === "function" && e.getModifierState("AltGraph");
+}
+
+/**
+ * Would keydown `e` type a character into a focused text surface? Inside
+ * text, a ctrl+alt chord fires only when it types nothing (carrier critic
+ * r1). eventMatchesCombo already refuses a press that reports AltGraph; this
+ * covers the presses that don't.
+ *  - Off the Mac, Windows treats left ctrl+alt as AltGr on layouts that type
+ *    characters with it (Hungarian and Czech ctrl+alt+b is "{"), and the
+ *    AltGraph modifier is not always reported. e.key then carries the
+ *    character, or "Dead" for a dead key, and the field keeps the key. A
+ *    shifted chord is judged the same way, so off the Mac it never fires in
+ *    text.
+ *  - On the Mac, Cocoa inserts no text for a Control-modified key (it becomes
+ *    a command, not insertText). So the Option glyph in e.key ("∫") is never
+ *    typed while Control is held, and the chord takes nothing from the field.
+ *    This is not measured on hardware; the prefix path works either way.
+ */
+export function chordTypesText(e: KeyboardEvent, platform: Platform): boolean {
+  if (e.isComposing || e.key === "Dead") return true;
+  if (platform === "mac") return false;
+  return e.key.length === 1 && e.key.toLowerCase() !== codeToKey(e.code ?? "");
 }
 
 /**

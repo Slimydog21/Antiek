@@ -128,6 +128,73 @@ describe("text input", () => {
   });
 });
 
+describe("text surfaces keep keys that type characters (carrier critic r1)", () => {
+  /** Reinstall the dispatcher for `platform`; it reads the platform once. */
+  function reinstallFor(platform: "mac" | "other") {
+    uninstall?.();
+    pinPlatform(platform);
+    uninstall = installShortcuts(vi.fn() as never, { handlers: counts.handlers });
+  }
+  function focusedInput() {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    return input;
+  }
+
+  it("off the Mac, an AltGr-composed ctrl+alt+b ('{' on Hungarian and Czech) stays with the field", () => {
+    reinstallFor("other");
+    const input = focusedInput();
+    // Windows left ctrl+alt acts as AltGr and may not report AltGraph.
+    const e = pressKey(input, { key: "{", code: "KeyB", ctrlKey: true, altKey: true });
+    expect(counts.calls["projecttree.toggle"]).toBe(0);
+    expect(e.defaultPrevented, "'{' must reach the field").toBe(false);
+  });
+
+  it("off the Mac, a dead key on ctrl+alt stays with the field", () => {
+    reinstallFor("other");
+    const input = focusedInput();
+    const e = pressKey(input, { key: "Dead", code: "KeyB", ctrlKey: true, altKey: true });
+    expect(counts.calls["projecttree.toggle"]).toBe(0);
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it("off the Mac, ctrl+alt+b that types nothing (a US layout) fires in the field", () => {
+    reinstallFor("other");
+    const input = focusedInput();
+    const e = pressKey(input, { key: "b", code: "KeyB", ctrlKey: true, altKey: true });
+    expect(counts.calls["projecttree.toggle"]).toBe(1);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("outside text the physical key rules: the same '{' press fires, since nothing can be typed", () => {
+    reinstallFor("other");
+    (document.activeElement as HTMLElement | null)?.blur();
+    const e = pressKey(document.body, { key: "{", code: "KeyB", ctrlKey: true, altKey: true });
+    expect(counts.calls["projecttree.toggle"]).toBe(1);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("on the Mac, ctrl+option+b fires in the field: Control-modified keys insert no text", () => {
+    reinstallFor("mac");
+    const input = focusedInput();
+    // keyInit gives the Option glyph "∫"; with Control held Cocoa types nothing.
+    const e = press(input, "ctrl+alt+b", "mac");
+    expect(e.key).toBe("∫");
+    expect(counts.calls["projecttree.toggle"]).toBe(1);
+  });
+
+  it("a reported AltGraph press never matches, in or out of text", () => {
+    reinstallFor("other");
+    const e = new KeyboardEvent("keydown", {
+      bubbles: true, cancelable: true, key: "{", code: "KeyB", ctrlKey: true, altKey: true,
+    });
+    Object.defineProperty(e, "getModifierState", { value: (m: string) => m === "AltGraph" });
+    document.body.dispatchEvent(e);
+    expect(counts.calls["projecttree.toggle"]).toBe(0);
+  });
+});
+
 describe("contenteditable: the Write editor", () => {
   it("prefix does not arm; the chord and ⌘K fire; ⌘J, ⌘B and '?' stay with the editor", async () => {
     const { container } = render(

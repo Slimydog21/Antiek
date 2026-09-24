@@ -222,5 +222,19 @@ describe("the prefix is configurable, never onto a taken key", () => {
       window.localStorage.removeItem("antiek.keymap.prefix");
     }
   });
-});
 
+  it("a stored prefix that now collides with a key is ignored on read, not trusted (carrier critic r1)", () => {
+    try {
+      // ctrl+alt+b is the sidebar chord; ctrl+k is ⌘K off the Mac. Both are
+      // well-formed ctrl combos, so only the full check refuses them.
+      for (const taken of ["ctrl+alt+b", "ctrl+k"]) {
+        window.localStorage.setItem("antiek.keymap.prefix", taken);
+        expect(readPrefix(), taken).toBe("ctrl+b");
+      }
+      window.localStorage.setItem("antiek.keymap.prefix", "ctrl+a");
+      expect(readPrefix()).toBe("ctrl+a");
+    } finally {
+      window.localStorage.removeItem("antiek.keymap.prefix");
+    }
+  });
+});

@@ -220,4 +220,3 @@ describe("a saved layout survives the route change (critic r1 #2)", () => {
     expect(useWorkspace.getState().dockBottomIds).toContain("rw:chat:abc");
   });
 });
-

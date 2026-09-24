@@ -46,10 +46,12 @@ import { emitProductActivate, normalizeBinding } from "../components/hotkeys/bin
 import {
   ACTIONS,
   KEYMAP,
+  chordTypesText,
   currentPlatform,
   eventMatchesCombo,
   isActiveOn,
   isLoneModifier,
+  parseCombo,
   readPrefix,
   type ActionId,
   type ActionMeta,
@@ -368,6 +370,8 @@ export function installShortcuts(
     const row = directRows.find((r) => eventMatchesCombo(e, r.chord!));
     if (row) {
       if (!scopeAllows(row, ctx)) return;
+      // A ctrl+alt chord that would type a character stays the field's.
+      if (ctx.kind !== "default" && parseCombo(row.chord!).alt && chordTypesText(e, platform)) return;
       // In a Mac text field ctrl+letter is an editing key (ctrl+k deletes to
       // the end of the line), so there "mod" means ⌘ only.
       if (ctx.kind !== "default" && platform === "mac" && e.ctrlKey && !e.metaKey && !e.altKey) return;
