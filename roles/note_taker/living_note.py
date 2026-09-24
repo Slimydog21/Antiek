@@ -183,6 +183,15 @@ def challenge_note(
             embedding_provider=embedding_provider, con=c,
         )
         reserved_child = "inv-" + uuid.uuid4().hex[:16]
+        # The reservation lives in the reserved id's own log (strict), so a
+        # launch into it finds its parent and a reservation that never runs is
+        # still a readable, evidence-free log (THREAD-CONTRACT §1.3).
+        from substrate.event_log import record_reservation
+
+        record_reservation(
+            reserved_child, investigation_id, question_id=qid,
+            role="note_taker", events_dir=events_dir,
+        )
         emit_typed(
             investigation_id,
             QuestionEscalatedToResearchPayload(

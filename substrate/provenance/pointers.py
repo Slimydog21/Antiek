@@ -220,4 +220,61 @@ def evidence_payload_intact(action_type: object, payload: Any) -> bool:
         model.model_validate(declared)
     except ValidationError:
         return False
+    # Validation fills defaults, so a stored record with its evidence deleted
+    # (supporting_claims gone, a claim without chunk_ids) still validates.
+    # Every evidence-bearing field must be present in what was stored.
+    schema = model.model_json_schema()
+    return _evidence_present(schema, schema.get("$defs", {}), declared)
+
+
+def _resolve_ref(node: Any, defs: dict[str, Any]) -> Any:
+    while isinstance(node, dict) and "$ref" in node:
+        node = defs.get(node["$ref"].rsplit("/", 1)[-1], {})
+    return node
+
+
+def _declares_evidence(node: Any, defs: dict[str, Any], seen: frozenset[str] = frozenset()) -> bool:
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str):
+            name = ref.rsplit("/", 1)[-1]
+            return name not in seen and _declares_evidence(defs.get(name, {}), defs, seen | {name})
+        props = node.get("properties")
+        if isinstance(props, dict) and any(is_evidence_key(k) for k in props):
+            return True
+        return any(_declares_evidence(v, defs, seen) for v in node.values())
+    if isinstance(node, list):
+        return any(_declares_evidence(v, defs, seen) for v in node)
+    return False
+
+
+def _evidence_present(schema: Any, defs: dict[str, Any], value: Any) -> bool:
+    """Whether every evidence-bearing field the schema declares is present in
+    ``value`` (recursively through nested objects and arrays)."""
+    schema = _resolve_ref(schema, defs)
+    if not isinstance(schema, dict):
+        return True
+    branches = schema.get("anyOf") or schema.get("oneOf")
+    if branches:
+        if value is None:
+            return True
+        live = [_resolve_ref(b, defs) for b in branches]
+        live = [b for b in live if not (isinstance(b, dict) and b.get("type") == "null")]
+        return any(_evidence_present(b, defs, value) for b in live) if live else True
+    if schema.get("type") == "array":
+        if not isinstance(value, list):
+            return False
+        return all(_evidence_present(schema.get("items", {}), defs, v) for v in value)
+    props = schema.get("properties")
+    if isinstance(props, dict):
+        if not isinstance(value, dict):
+            return False
+        for name, sub_schema in props.items():
+            if name == "action_type":
+                continue
+            if is_evidence_key(name) or _declares_evidence(sub_schema, defs):
+                if name not in value:
+                    return False
+                if not _evidence_present(sub_schema, defs, value[name]):
+                    return False
     return True

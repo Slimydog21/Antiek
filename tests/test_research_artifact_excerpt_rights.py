@@ -770,11 +770,12 @@ def test_an_undecodable_payload_in_its_own_log_withholds_without_raising(env):
 
 
 def _reserve(inv: str, child: str, events: str) -> None:
-    # What the note-taker emits for an unresolvable challenge: a child id
-    # reserved for a chase that may never happen.
-    from substrate.event_log import emit_typed
+    # What the note-taker writes for an unresolvable challenge: the reservation
+    # in the child id's own log, then the escalation in the parent's.
+    from substrate.event_log import emit_typed, record_reservation
     from substrate.schemas.events import QuestionEscalatedToResearchPayload
 
+    record_reservation(child, inv, question_id=f"q-{child}", events_dir=events)
     emit_typed(inv, QuestionEscalatedToResearchPayload(
         question_id=f"q-{child}", child_investigation_id=child, launched=False),
         role="note_taker", document_id="doc-pd", events_dir=events)
@@ -809,14 +810,16 @@ def test_a_reserved_child_with_a_stored_but_empty_log_withholds(env):
     _assert_withheld(env, inv)
 
 
-def test_a_reservation_also_referenced_as_launched_withholds_when_its_log_is_missing(env):
-    # Only a child every reference calls reserved may be absent; one launch
-    # reference (here an escalation that predates the marker) means it ran.
+def test_a_reserved_child_whose_log_is_missing_withholds(env):
+    # A reservation writes the child's own log, so a reserved child whose log
+    # is missing was lost, not merely unlaunched: it is an unresolved
+    # dependency whatever else references it.
     inv, child = "inv-reserve-both", "inv-reserve-both-child"
     _public_insight(inv)
     _reserve(inv, child, env["events"])
     _escalate(inv, child, env["events"])
     _complete(inv, env["events"], f"Thesis. {PUBLIC}")
+    (Path(env["events"]) / f"{child}.jsonl").unlink()
     _assert_withheld(env, inv)
 
 
@@ -925,6 +928,107 @@ def test_excerpt_cleared_when_a_branched_child_stood_on_public_sources(env):
     body = _body(env, session)
     assert body.synthesis_withheld is False
     assert body.synthesis_excerpt == summary
+
+
+@pytest.mark.parametrize("damage", ["claims_deleted", "claim_pointers_deleted"])
+def test_excerpt_withheld_when_a_childs_evidence_fields_were_removed(env, damage):
+    # Codex round 7: validation fills defaults, so a retrieval with its
+    # supporting_claims (or a claim's chunk_ids) deleted still validated and
+    # the thesis cleared. Stored evidence fields must be present.
+    import json as _json
+
+    inv, child = f"inv-strip-{damage}", f"inv-strip-{damage}-child"
+    _public_insight(inv)
+    _escalate(inv, child, env["events"])
+    _retrieval(child, env["events"], chunk_ids=["c-rs"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+    log = Path(env["events"]) / f"{child}.jsonl"
+    rows = [_json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+    for row in rows:
+        if row["action_type"] == "evidence.retrieve.delivered":
+            if damage == "claims_deleted":
+                row["payload"].pop("supporting_claims")
+            else:
+                for claim in row["payload"]["supporting_claims"]:
+                    claim.pop("chunk_ids")
+    log.write_text("".join(_json.dumps(r) + "\n" for r in rows))
+    _assert_withheld(env, inv)
+
+
+def test_a_launch_into_a_reserved_id_without_a_parent_records_the_branch(env):
+    # Codex round 7, through the real entrypoint: POST /investigations with the
+    # reserved id and no parent used to launch with no branch, so a later loss
+    # of the child's log cleared the parent. The launch now takes the
+    # reserving parent from the reservation and branches it.
+    inv, child = "inv-reserve-api", "inv-reserve-api-child"
+    _public_insight(inv)
+    _reserve(inv, child, env["events"])
+    client = TestClient(create_app(register_wrestling=False, register_providers=False, cors_origins=[]))
+    resp = client.post("/investigations", json={"question": "Chase it", "investigation_id": child})
+    assert resp.status_code == 202, resp.text
+    from substrate.event_log import trajectory
+
+    branches = [r for r in trajectory(inv, events_dir=env["events"])
+                if r["action_type"] == "investigation.branched"]
+    assert [(b["payload"]["child_investigation_id"], b["payload"]["via"]) for b in branches] == [
+        (child, "reserved_launch")
+    ]
+    _retrieval(child, env["events"], chunk_ids=["c-rs"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+    (Path(env["events"]) / f"{child}.jsonl").unlink()
+    _assert_withheld(env, inv)
+
+
+def test_a_launch_into_a_reserved_id_under_another_parent_is_refused(env):
+    inv, child = "inv-reserve-owner", "inv-reserve-owner-child"
+    _public_insight(inv)
+    _reserve(inv, child, env["events"])
+    client = TestClient(create_app(register_wrestling=False, register_providers=False, cors_origins=[]))
+    assert client.post("/investigations", json={"question": "Other", "investigation_id": "inv-other"}).status_code == 202
+    resp = client.post("/investigations", json={
+        "question": "Hijack", "investigation_id": child, "parent_investigation_id": "inv-other",
+    })
+    assert resp.status_code == 409 and resp.json()["detail"] == "reservation_parent_mismatch"
+
+
+def test_a_reserved_id_that_never_started_is_not_listed_as_an_investigation(env):
+    inv, child = "inv-reserve-list", "inv-reserve-list-child"
+    _reserve(inv, child, env["events"])
+    client = TestClient(create_app(register_wrestling=False, register_providers=False, cors_origins=[]))
+    assert client.get(f"/investigations/{child}").json()["status"] == "not_found"
+    listed = {s["investigation_id"] for s in client.get("/investigations").json()["investigations"]}
+    assert child not in listed
+
+
+def test_an_abandoned_branch_is_not_a_dependency(env):
+    # A launch refused before the child's first event abandons its branch in
+    # the same request; the child never ran, so the parent is not held.
+    from substrate.event_log import abandon_branch, record_branch
+
+    inv, child = "inv-abandon", "inv-abandon-child"
+    _public_insight(inv)
+    eid = record_branch(inv, child, via="chase", events_dir=env["events"])
+    assert abandon_branch(inv, child, branch_event_id=eid, events_dir=env["events"])
+    summary = "A thesis whose refused chase never ran."
+    _complete(inv, env["events"], summary)
+    body = _body(env, inv)
+    assert body.synthesis_withheld is False and body.synthesis_excerpt == summary
+
+
+def test_a_later_live_branch_to_an_abandoned_child_is_a_dependency(env):
+    # Abandonment cancels exactly its own branch: a retry that branched again
+    # and ran, then lost its log, still holds the parent.
+    from substrate.event_log import abandon_branch, record_branch
+
+    inv, child = "inv-abandon-retry", "inv-abandon-retry-child"
+    _public_insight(inv)
+    first = record_branch(inv, child, via="chase", events_dir=env["events"])
+    abandon_branch(inv, child, branch_event_id=first, events_dir=env["events"])
+    record_branch(inv, child, via="chase", events_dir=env["events"])
+    _complete(inv, env["events"], f"Thesis. {PUBLIC}")
+    _assert_withheld(env, inv)
 
 
 def test_excerpt_withheld_when_a_cited_edge_endpoint_names_a_restricted_document(env):

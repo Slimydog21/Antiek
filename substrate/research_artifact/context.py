@@ -120,17 +120,6 @@ def _spawned_children(events_dir: str | None) -> dict[str, list[str]]:
     return {parent: _ordered_unique(kids) for parent, kids in children.items()}
 
 
-def _reserved_child(row: dict[str, Any]) -> str | None:
-    """The child id an escalation only reserved (``launched`` false), if any."""
-    if row.get("action_type") != ActionType.QUESTION_ESCALATED_TO_RESEARCH.value:
-        return None
-    payload = row.get("payload")
-    if not isinstance(payload, dict) or payload.get("launched") is not False:
-        return None
-    child = payload.get("child_investigation_id")
-    return child.strip() if isinstance(child, str) and child.strip() else None
-
-
 def synthesis_from_events(
     investigation_id: str,
     *,
@@ -143,8 +132,12 @@ def synthesis_from_events(
     excerpt: str | None = None
     unreadable: list[str] = []
     absent: list[str] = []
-    reserved: set[str] = set()
-    launched: set[str] = set()
+    # Children referenced by anything other than a branch (an escalation, a
+    # legacy child key, a backward spawned_from link), and each child's branch
+    # event ids. An abandoned branch cancels exactly its own id.
+    referenced: set[str] = set()
+    branches: dict[str, set[str]] = {}
+    abandoned: set[str] = set()
     spawned = _spawned_children(events_dir)
     # The investigation, then every sub-investigation any of their events
     # hands work to or that names one of them as parent, each read once.
@@ -167,7 +160,7 @@ def synthesis_from_events(
         if not complete:
             (unreadable if stored else absent).append(current)
         backward = spawned.get(current, [])
-        launched.update(backward)
+        referenced.update(backward)
         pending.extend(backward)
         for row in rows:
             at = row.get("action_type")
@@ -175,10 +168,22 @@ def synthesis_from_events(
                 source_ids.append(str(row["event_id"]))
             synthesis_ids.extend(collect_syntheses(row))
             pointers.update(dict.fromkeys(collect_pointers(row)))
-            only_reserved = _reserved_child(row)
-            for child in collect_child_investigations(row):
-                (reserved if child == only_reserved else launched).add(child)
-                pending.append(child)
+            raw_payload = row.get("payload")
+            payload_obj: dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
+            if at == ActionType.INVESTIGATION_BRANCHED.value:
+                child = payload_obj.get("child_investigation_id")
+                if isinstance(child, str) and child:
+                    branches.setdefault(child, set()).add(str(row.get("event_id")))
+                    pending.append(child)
+            elif at == ActionType.INVESTIGATION_BRANCH_ABANDONED.value:
+                # A cancellation, not a reference to the child.
+                cancelled = payload_obj.get("branch_event_id")
+                if isinstance(cancelled, str):
+                    abandoned.add(cancelled)
+            else:
+                for child in collect_child_investigations(row):
+                    referenced.add(child)
+                    pending.append(child)
             payload = row.get("payload") or {}
             if not isinstance(payload, dict):
                 payload = {}
@@ -194,11 +199,16 @@ def synthesis_from_events(
                 excerpt = (
                     payload.get("thesis_summary") or payload.get("summary") or ""
                 ).strip() or None
-    # Decided once every reference is known: a child with no log never ran
-    # only if every event that names it reserved it.
+    # Decided once every reference is known. A child with no log is an
+    # unresolved dependency unless its only references are branches that were
+    # all abandoned (the launch was refused before the child's first event).
+    # A reserved child that never ran has its own reservation log, so it is
+    # never absent.
     unreadable.extend(
         iid for iid in absent
-        if iid == investigation_id or iid in launched or iid not in reserved
+        if iid == investigation_id
+        or iid in referenced
+        or bool(branches.get(iid, set()) - abandoned)
     )
     return SynthesisTrail(
         excerpt=excerpt,

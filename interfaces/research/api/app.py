@@ -80,8 +80,10 @@ from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import (  # noqa: E402
     BranchNotRecorded,
+    abandon_branch,
     emit_typed,
     record_branch,
+    reserving_parent,
     trajectory,
     trajectory_read,
 )
@@ -2746,13 +2748,33 @@ def create_app(
         if canonical_owner_id is not None and req.investigation_id not in (None, canonical_owner_id):
             raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         investigation_id = req.investigation_id or canonical_owner_id or f"inv-{_uuid.uuid4().hex[:12]}"
+        # Lineage is settled before anything is charged (THREAD-CONTRACT §1.3):
+        # a launch into a reserved id takes the reserving parent, and a parent
+        # must exist.
+        effective_parent = req.parent_investigation_id
+        branch_via: Literal["chase", "reserved_launch"] = "chase"
+        branch_event_id: str | None = None
+        if req.investigation_id is not None and operation_id is None:
+            reserved_by = reserving_parent(investigation_id)
+            if reserved_by is not None:
+                if effective_parent not in (None, reserved_by):
+                    raise HTTPException(status_code=409, detail="reservation_parent_mismatch")
+                effective_parent = reserved_by
+                branch_via = "reserved_launch"
+        if effective_parent is not None:
+            try:
+                parent_stored = trajectory_read(effective_parent).stored
+            except Exception:  # noqa: BLE001 - an unreadable parent is not a parent
+                parent_stored = False
+            if not parent_stored:
+                raise HTTPException(status_code=422, detail="parent_investigation_not_found")
         try:
             start_payload = InvestigationStartRequestedPayload(
                 question=req.question,
                 context=req.context,
                 topic_slug=req.topic_slug,
                 max_sub_questions=req.max_sub_questions,
-                parent_investigation_id=req.parent_investigation_id,
+                parent_investigation_id=effective_parent,
                 spawn_context=req.spawn_context,
                 # SPR-01 M3: record the chosen research tier on the
                 # start event (queryable after the fact). The payload
@@ -2806,18 +2828,39 @@ def create_app(
                 request, investigation_id=investigation_id,
                 conflict_detail=conflict_detail,
             )
+            # The parent records the branch before anything is charged: a
+            # branch that cannot be written refuses the launch with nothing
+            # billed (THREAD-CONTRACT §1.3).
+            if effective_parent is not None:
+                try:
+                    branch_event_id = record_branch(
+                        effective_parent, investigation_id, via=branch_via,
+                        spawn_context=req.spawn_context or "",
+                        role="operator", policy_id="operator-cli",
+                    )
+                except BranchNotRecorded:
+                    raise HTTPException(status_code=503, detail="branch_not_recorded") from None
             # Meter 1 ACU for this start (gated, idempotent on investigation_id)
             # BEFORE anything is claimed, appended or broadcast. A failed charge
             # (503/429) must mean no run, never an unmetered run behind a 503.
             # An owner operation's canonical id is charged before its claim is
             # written, so an owner replay or conflict passes the gate above and
-            # is decided by the claim below.
-            post_gate = commit_start_acu(
-                request,
-                investigation_id=investigation_id,
-                reason="post_investigations",
-                conflict_detail=conflict_detail,
-            )
+            # is decided by the claim below. A refusal here comes before any
+            # start event, so this request abandons the branch it just wrote.
+            try:
+                post_gate = commit_start_acu(
+                    request,
+                    investigation_id=investigation_id,
+                    reason="post_investigations",
+                    conflict_detail=conflict_detail,
+                )
+            except HTTPException:
+                if effective_parent is not None:
+                    abandon_branch(
+                        effective_parent, investigation_id,
+                        branch_event_id=branch_event_id, role="operator",
+                    )
+                raise
         if operation_id is not None:
             from .research_owner_dispatch import OwnerLaunchConflict, claim_owner_launch
             try:
@@ -2851,25 +2894,6 @@ def create_app(
         elif replay_event_id is None:
             # A twin may have appended between the check above and the charge.
             replay_event_id = _house_replay_event_id()
-        branch_event_id: str | None = None
-        if req.parent_investigation_id and replay_event_id is None:
-            # A child is branched from a parent that exists, and the parent
-            # records the branch durably as the last step before the child's
-            # first event (THREAD-CONTRACT §1.2, §1.3).
-            try:
-                parent_stored = trajectory_read(req.parent_investigation_id).stored
-            except Exception:  # noqa: BLE001 - an unreadable parent is not a parent
-                parent_stored = False
-            if not parent_stored:
-                raise HTTPException(status_code=422, detail="parent_investigation_not_found")
-            try:
-                branch_event_id = record_branch(
-                    req.parent_investigation_id, investigation_id,
-                    via="chase", spawn_context=req.spawn_context or "",
-                    role="operator", policy_id="operator-cli",
-                )
-            except BranchNotRecorded:
-                raise HTTPException(status_code=503, detail="branch_not_recorded") from None
         try:
             event_id = replay_event_id or emit_typed(
                 investigation_id,
@@ -2907,12 +2931,12 @@ def create_app(
         # Sprint 11: emit the spawn-lineage event when parent provided.
         # Non-fatal if it fails; the start event already encodes the
         # lineage in its own payload. A replay already emitted it.
-        if req.parent_investigation_id and replay_event_id is None:
+        if effective_parent and replay_event_id is None:
             with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
                 emit_typed(
                     investigation_id,
                     InvestigationSpawnedFromPayload(
-                        parent_investigation_id=req.parent_investigation_id,
+                        parent_investigation_id=effective_parent,
                         parent_event_id=branch_event_id,
                         spawn_context=req.spawn_context or "",
                     ),
@@ -2985,7 +3009,9 @@ def create_app(
         from substrate.schemas import ActionType
 
         rows = trajectory(investigation_id)
-        if not rows:
+        if not rows or all(r.get("action_type") == ActionType.INVESTIGATION_RESERVED.value for r in rows):
+            # A reserved id that never started (THREAD-CONTRACT §1.3) is not an
+            # investigation yet.
             return InvestigationStatusResponse(
                 investigation_id=investigation_id, status="not_found",
             )
@@ -3128,7 +3154,7 @@ def create_app(
                 continue
             inv_id = filename[:-len(".jsonl")]
             rows = trajectory(inv_id)
-            if not rows:
+            if not rows or all(r.get("action_type") == "investigation.reserved" for r in rows):
                 continue
             # A non-inv- file is only a research if its trajectory says so;
             # this keeps unrelated logs out of the list while admitting the

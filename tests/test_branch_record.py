@@ -256,3 +256,88 @@ def test_spin_research_records_the_branch_in_the_books_reading_thread(monkeypatc
     origin = branch["payload"]["origin"]
     assert origin["kind"] == "selection" and origin["document_id"] == "doc-spin-branch"
     assert origin["anchor"]["page_index"] == 3
+
+
+# ── money: lineage is settled before anything is charged ──────────────
+
+
+def _acu_env(monkeypatch, *, limit: int, used: int):
+    """An isolated graph + events dir with the hard ACU gate at ``limit``."""
+    from test_acu_start_charge_before_start import _seed
+
+    root = tempfile.mkdtemp(prefix="branch-acu-")
+    db = os.path.join(root, "graph.duckdb")
+    events = os.path.join(root, "events")
+    os.makedirs(events, exist_ok=True)
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events)
+    monkeypatch.setenv("ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT", "hard")
+    from substrate.graph import ensure_initialized
+
+    ensure_initialized(db)
+    _seed(db, limit=limit, used=used)
+    return db, events
+
+
+def _charged_ids(db: str) -> list[str]:
+    from test_acu_start_charge_before_start import _ledger
+
+    return _ledger(db)[0]
+
+
+def test_refusals_before_the_branch_charge_nothing(monkeypatch):
+    # Codex round 7: the parent refusal ran after the ACU charge, so a 422
+    # left a charge for an investigation that never started.
+    import interfaces.research.api.app as app_module
+
+    db, events = _acu_env(monkeypatch, limit=10, used=0)
+    client = _client()
+    root = client.post("/investigations", json={"question": "Root?", "investigation_id": "inv-acu-root"})
+    assert root.status_code == 202, root.text
+    missing = client.post("/investigations", json={"question": "Why?", "parent_investigation_id": "inv-missing"})
+    assert missing.status_code == 422
+    assert _charged_ids(db) == ["inv-acu-root"]
+
+    def refuse(*args, **kwargs):
+        raise BranchNotRecorded("simulated")
+
+    monkeypatch.setattr(app_module, "record_branch", refuse)
+    unwritable = client.post("/investigations", json={"question": "Why?", "parent_investigation_id": "inv-acu-root"})
+    assert unwritable.status_code == 503 and unwritable.json()["detail"] == "branch_not_recorded"
+    assert _charged_ids(db) == ["inv-acu-root"]
+
+
+def test_a_capacity_refusal_after_the_branch_abandons_it(monkeypatch):
+    # The branch is written before the charge; a refused charge comes before
+    # any start event, so the same request abandons exactly that branch. The
+    # refusal is the atomic commit's: a twin is charged between the precheck
+    # (which passes) and the commit, exhausting the cap.
+    from test_acu_start_charge_before_start import _OWNER
+
+    import interfaces.research.api.compute_capacity_gate as G
+    from runtime.db_lock import connect_write
+    from substrate.compute_capacity.acu_meter import record_investigation_start_acu
+
+    db, events = _acu_env(monkeypatch, limit=2, used=0)
+    client = _client()
+    assert client.post("/investigations", json={"question": "Root?", "investigation_id": "inv-cap-root"}).status_code == 202
+    real_precheck = G.run_capacity_precheck
+
+    def precheck_then_twin(request, **kwargs):
+        gate = real_precheck(request, **kwargs)
+        with connect_write(db, purpose="test:twin") as con:
+            record_investigation_start_acu(con, owner_user_id=_OWNER, investigation_id="inv-twin")
+        return gate
+
+    monkeypatch.setattr(G, "run_capacity_precheck", precheck_then_twin)
+    resp = client.post("/investigations", json={
+        "question": "Why?", "parent_investigation_id": "inv-cap-root", "investigation_id": "inv-cap-child",
+    })
+    assert resp.status_code == 429, resp.text
+    (branch,) = _rows("inv-cap-root", BRANCHED)
+    (abandon,) = _rows("inv-cap-root", ActionType.INVESTIGATION_BRANCH_ABANDONED.value)
+    assert abandon["payload"]["branch_event_id"] == branch["event_id"]
+    assert abandon["payload"]["child_investigation_id"] == "inv-cap-child"
+    assert trajectory("inv-cap-child") == []
+    assert _charged_ids(db) == ["inv-cap-root", "inv-twin"]
+

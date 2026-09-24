@@ -133,7 +133,18 @@ def test_parent_investigations_are_found_by_key_shape():
     ("evidence.retrieve.delivered", {"sub_question": "q"}, False),
     ("evidence.retrieve.delivered", "not an object", False),
     # A key its schema does not declare is ignored, not a defect.
-    ("evidence.retrieve.delivered", {"sub_question": "q", "answer": "a", "writer_extra": 1}, True),
+    ("evidence.retrieve.delivered",
+     {"sub_question": "q", "answer": "a", "supporting_claims": [], "writer_extra": 1}, True),
+    # Evidence fields must be stored, not filled in by validation defaults.
+    ("evidence.retrieve.delivered", {"sub_question": "q", "answer": "a"}, False),
+    ("evidence.retrieve.delivered",
+     {"sub_question": "q", "answer": "a", "supporting_claims": [
+         {"claim": "c", "evidence_type": "direct", "edge_ids": [], "confidence": "high",
+          "confidence_basis": "b"}]}, False),
+    ("evidence.retrieve.delivered",
+     {"sub_question": "q", "answer": "a", "supporting_claims": [
+         {"claim": "c", "evidence_type": "direct", "chunk_ids": ["c1"], "edge_ids": [],
+          "confidence": "high", "confidence_basis": "b"}]}, True),
     # Events that carry no evidence pointers are not judged here: the research
     # runners write lineage events their typed models would reject.
     ("investigation.start_requested", {"sub_question": "q"}, True),

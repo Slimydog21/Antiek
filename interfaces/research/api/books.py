@@ -2321,18 +2321,13 @@ def register_book_routes(app: FastAPI) -> None:
         spawn_context = f"read: passage {document_id} p{req.page_index}"
         # Charge (gated) before the start is appended or broadcast: a failed
         # charge must mean no run, never an unmetered run behind a 503.
-        post_gate = commit_start_acu(
-            request,
-            investigation_id=investigation_id,
-            reason="spin_research",
-        )
-        # The book's reading thread records the branch durably, as the last
-        # step before the research's first event (THREAD-CONTRACT §1.3).
-        from substrate.event_log import BranchNotRecorded, record_branch
+        # The book's reading thread records the branch durably before anything
+        # is charged (THREAD-CONTRACT §1.3); a refused charge abandons it.
+        from substrate.event_log import BranchNotRecorded, abandon_branch, record_branch
         from substrate.schemas.events import BranchAnchor, BranchOrigin
 
         try:
-            record_branch(
+            branch_event_id = record_branch(
                 f"read-{document_id}", investigation_id, via="passage_spin",
                 origin=BranchOrigin(
                     kind="selection", document_id=document_id,
@@ -2343,6 +2338,18 @@ def register_book_routes(app: FastAPI) -> None:
             )
         except BranchNotRecorded:
             raise HTTPException(status_code=503, detail="branch_not_recorded") from None
+        try:
+            post_gate = commit_start_acu(
+                request,
+                investigation_id=investigation_id,
+                reason="spin_research",
+            )
+        except HTTPException:
+            abandon_branch(
+                f"read-{document_id}", investigation_id,
+                branch_event_id=branch_event_id, role="read/spin_research",
+            )
+            raise
         event_id = emit_typed(
             investigation_id,
             InvestigationStartRequestedPayload(

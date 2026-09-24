@@ -31,6 +31,8 @@ export const ActionType = {
   INVESTIGATION_SPAWNED_FROM: "investigation.spawned_from",
   INVESTIGATION_CHASE_HALTED: "investigation.chase_halted",
   INVESTIGATION_BRANCHED: "investigation.branched",
+  INVESTIGATION_BRANCH_ABANDONED: "investigation.branch_abandoned",
+  INVESTIGATION_RESERVED: "investigation.reserved",
   CLAIM_ASSERTED_BY_OPERATOR: "claim.asserted_by_operator",
   PAGE_ATTRIBUTION_COMPUTED: "page.attribution.computed",
   DECOMPOSE_QUESTION_REQUESTED: "decompose.requested",
@@ -1873,6 +1875,31 @@ export interface InvestigationBranchedPayload {
 }
 
 /**
+ * The launch behind ``branch_event_id`` was refused before the child's
+ * first event (a capacity refusal after the branch was written), by the same
+ * request that wrote the branch. It cancels exactly that branch; a branch
+ * with no abandonment stays a live dependency.
+ */
+export interface InvestigationBranchAbandonedPayload {
+  action_type: "investigation.branch_abandoned";
+  child_investigation_id: string;
+  branch_event_id: string;
+  reason: "capacity_refused";
+}
+
+/**
+ * This investigation id is reserved by ``parent_investigation_id`` for a
+ * later launch; nothing has run under it. Written into the reserved id's own
+ * log, so a launch into the id finds its parent, and a reserved child that
+ * never ran still has a readable log (no evidence, no false withhold).
+ */
+export interface InvestigationReservedPayload {
+  action_type: "investigation.reserved";
+  parent_investigation_id: string;
+  question_id?: string | null;
+}
+
+/**
  * Emitted when the orchestrator decides not to spawn a child
  * investigation despite chase_mode != "off". The reason field tells
  * the operator (and the UI) why the chase chain stopped here.
@@ -3013,6 +3040,8 @@ export type TypedPayload =
   | InvestigationFailedPayload
   | InvestigationSpawnedFromPayload
   | InvestigationBranchedPayload
+  | InvestigationBranchAbandonedPayload
+  | InvestigationReservedPayload
   | InvestigationChaseHaltedPayload
   | ClaimAssertedByOperatorPayload
   | PageAttributionComputedPayload
@@ -3149,10 +3178,12 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "graph.tier.rewrite_bulk",
   "groundedness.failed",
   "groundedness.scored",
+  "investigation.branch_abandoned",
   "investigation.branched",
   "investigation.chase_halted",
   "investigation.completed",
   "investigation.failed",
+  "investigation.reserved",
   "investigation.spawned_from",
   "investigation.start_requested",
   "knowledge.reused",

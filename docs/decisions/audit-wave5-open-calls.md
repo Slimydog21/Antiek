@@ -1,7 +1,7 @@
 # Audit wave 5: what the repairs leave open
 
 **Date:** 2026-09-23
-**Status:** PROPOSED. Five operator calls, each with a recommendation, plus the routing and pre-existing findings this wave surfaced. None of the calls is executed.
+**Status:** PROPOSED. Six operator calls, each with a recommendation, plus the routing and pre-existing findings this wave surfaced. None of the calls is executed.
 **Owner:** Antiek audit wave 5. It was an executing-refuter audit, at main `95093e84b` with 66 agents, of eight surfaces that waves 2 to 4 did not cover: the loop-one orchestrator, remote-exec fan-out, ads and attribution money, the provenance chain, export and artifacts, agent-memory MCP, interview and Speak, and the reader and workspace frontend. It confirmed 24 findings (10 of them latent), refuted 5 and left 10 low-severity ones unverified.
 **Builds on:** the `fix/audit-wave5` stack. It covers W01–W07, W10–W13, W19–W24, the `/export/my-graph` secret columns, one cross-cluster integration fix and a docs correction. Every repair has a test that was red before its fix, a production-file revert that turns it red again, an independent executing review, and a different-lineage review (codex gpt-6-sol). That last review rejected round 1 with 9 defects, which are being fixed with codex itself as the reviewer. Findings W08 and W09 (frame-attention accrual) and W14–W18 (agent-memory MCP) were routed to the lanes that own those files.
 
@@ -44,6 +44,18 @@ A project created without a `subject_ref` can no longer publish publicly. There 
 Related export call: merging a book's own derived insights back into that same non-servable book (`/research/artifacts/source-merge/*`) now merges cite-only notices. Whether the owner may merge full text back needs the owner-privileged read path, and the fix fails closed until you decide.
 
 ---
+
+### 6. Research that predates the branch record
+
+Since B0 (`investigation.branched`), every launch writes a durable edge into the parent's log before the child starts. The export rights gate therefore sees every child launched from now on, even if the child's own log is later lost, and fails closed on it.
+
+Research launched earlier recorded some children only in the child's own log: cascade leaves and chase children did this through `spawned_from`. For such a parent, the logs cannot tell "had no such child" from "had a child whose only record is gone". Its dependency completeness cannot be proven, only assumed.
+
+Codex holds that a rights gate may not assume. There are two options:
+- **(a)** Withhold the synthesis excerpt of every pre-B0 parent until a reconciliation runs. `tools/backfill_branches.py` would write `investigation.branched` into each parent from every lineage record still readable, then stamp the parent reconciled. Only the excerpt is withheld; the notes and the artifact still export.
+- **(b)** Accept the residual. It needs a child's event log to have been deleted or corrupted before the backfill, and the system never deletes logs: `seal_investigation` replaces a JSONL with its Parquet snapshot but does not remove lineage.
+
+**Recommendation:** (a). Run the backfill as part of the next deploy and let it clear the withheld excerpts in one pass. The gate is the §9.0 legal surface, so an honest "withheld until reconciled" is worth a short, recoverable gap in legacy excerpts. The attestation (b) would rest on can't be verified from the product itself.
 
 ## Routed to other lanes
 

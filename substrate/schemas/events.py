@@ -95,6 +95,12 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     # child's first event. spawned_from on the child stays and points back
     # at it through parent_event_id.
     INVESTIGATION_BRANCHED = "investigation.branched"
+    # A branch whose launch was refused before the child's first event, written
+    # by the same request that wrote the branch (THREAD-CONTRACT §1.3).
+    INVESTIGATION_BRANCH_ABANDONED = "investigation.branch_abandoned"
+    # A child id reserved for a later launch, recorded in the CHILD's own log
+    # (the note-taker's unresolvable challenge; a chase may launch into it).
+    INVESTIGATION_RESERVED = "investigation.reserved"
     # Sprint 15: creation surface edit-back-into-graph (master spec
     # §10.4 Option B). When the operator edits generated prose, the
     # substrate optionally promotes the edit to a first-class claim
@@ -813,7 +819,10 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 #     BranchAnchor, BranchTextLocator), the parent-side edge written before a
 #     child starts; QuestionEscalatedToResearchPayload.launched (False =
 #     reserved, never started); and InvestigationChaseHaltedPayload.reason
-#     "branch_not_recorded". Purely additive. Takes the next free version
+#     "branch_not_recorded"; investigation.branch_abandoned (a branch whose
+#     launch was refused before the child's first event) and
+#     investigation.reserved (a reserved child id, in the child's own log).
+#     Purely additive. Takes the next free version
 #     with a renumber-at-merge preflight (the D2 40->41 plan is superseded).
 #     2026-09-24.
 EVENT_SCHEMA_VERSION: int = 41
@@ -2578,6 +2587,31 @@ class InvestigationBranchedPayload(_PayloadBase):
     ]
     origin: BranchOrigin | None = None
     spawn_context: str = ""
+    question_id: str | None = None
+
+
+class InvestigationBranchAbandonedPayload(_PayloadBase):
+    """The launch behind ``branch_event_id`` was refused before the child's
+    first event (a capacity refusal after the branch was written), by the same
+    request that wrote the branch. It cancels exactly that branch; a branch
+    with no abandonment stays a live dependency."""
+
+    action_type: Literal[ActionType.INVESTIGATION_BRANCH_ABANDONED] = (
+        ActionType.INVESTIGATION_BRANCH_ABANDONED
+    )
+    child_investigation_id: str = Field(min_length=1)
+    branch_event_id: str = Field(min_length=1)
+    reason: Literal["capacity_refused"]
+
+
+class InvestigationReservedPayload(_PayloadBase):
+    """This investigation id is reserved by ``parent_investigation_id`` for a
+    later launch; nothing has run under it. Written into the reserved id's own
+    log, so a launch into the id finds its parent, and a reserved child that
+    never ran still has a readable log (no evidence, no false withhold)."""
+
+    action_type: Literal[ActionType.INVESTIGATION_RESERVED] = ActionType.INVESTIGATION_RESERVED
+    parent_investigation_id: str = Field(min_length=1)
     question_id: str | None = None
 
 
@@ -4421,6 +4455,8 @@ TypedPayload = Annotated[
     | InvestigationFailedPayload
     | InvestigationSpawnedFromPayload
     | InvestigationBranchedPayload
+    | InvestigationBranchAbandonedPayload
+    | InvestigationReservedPayload
     | InvestigationChaseHaltedPayload
     | ClaimAssertedByOperatorPayload
     | PageAttributionComputedPayload
@@ -4563,6 +4599,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
         ActionType.INVESTIGATION_FAILED.value,
         ActionType.INVESTIGATION_SPAWNED_FROM.value,
         ActionType.INVESTIGATION_BRANCHED.value,
+        ActionType.INVESTIGATION_BRANCH_ABANDONED.value,
+        ActionType.INVESTIGATION_RESERVED.value,
         ActionType.INVESTIGATION_CHASE_HALTED.value,
         ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
         ActionType.PAGE_ATTRIBUTION_COMPUTED.value,

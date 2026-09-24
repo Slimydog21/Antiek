@@ -15,7 +15,13 @@ from ..schemas.events import (  # re-exported from the canonical schema source
     ActionType,
     Event,
 )
-from .branches import BranchNotRecorded, record_branch
+from .branches import (
+    BranchNotRecorded,
+    abandon_branch,
+    record_branch,
+    record_reservation,
+    reserving_parent,
+)
 from .events import (
     EventEmitter,
     PhysicalEventObservation,
@@ -61,8 +67,11 @@ __all__ = [
     "log_event",
     "normalize_semantic_event",
     "physical_event_sha256",
+    "abandon_branch",
     "read_physical_event_page",
     "record_branch",
+    "record_reservation",
+    "reserving_parent",
     "query_worker_identity",
     "seal_investigation",
     "TrajectoryRead",
