@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { ErrorBanner, LemonButton, LemonTag } from "../../../components/lemon";
+import { LemonButton, LemonTag } from "../../../components/lemon";
 import {
   getFileSuggestion,
   listPersonalSpace,
@@ -13,7 +13,7 @@ import type {
   ProjectMatch,
 } from "../../../api/books";
 import { acceptFiling, suggestFiling } from "../../../lib/researchSuggestion";
-import { LoadingState } from "../../../components/states";
+import { ErrorState, LoadingState } from "../../../components/states";
 
 /**
  * PersonalSpace — the reader's "personal bed of information that labels itself"
@@ -144,10 +144,16 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
             )}
           </header>
 
+          {/* Design spec §5: what failed and what is safe; the raw message
+              ("Failed to fetch") is for Copy error details. */}
           {error && (
-            <ErrorBanner>
-              {error}
-            </ErrorBanner>
+            <ErrorState
+              variant="inline"
+              title="Couldn’t load your readings"
+              body="Your readings are unchanged. Check your connection, then try again."
+              detail={error}
+              onRetry={() => void reload()}
+            />
           )}
 
           {loading && (

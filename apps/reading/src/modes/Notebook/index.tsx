@@ -9,6 +9,7 @@ import {
   reorderNotebookBlocks,
 } from "../../lib/api";
 import { ArtifactExport } from "../../components/ArtifactExport";
+import { ErrorState, LoadingState } from "../../components/states";
 import NotebookCanvas from "./NotebookCanvas";
 import type {
   NotebookBlockResponse,
@@ -129,11 +130,16 @@ export default function Notebook() {
   return (
     <div className="flex flex-col h-full">
       <main className="flex-1 min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
-        {loading && (
-          <div className="px-8 py-6 text-sm text-shadow-1 dark:text-moonlight">Loading notebook…</div>
-        )}
+        {loading && <LoadingState label="Opening this notebook" shape="page" />}
+        {/* Design spec §5: what failed and what is safe; the raw message
+            ("Failed to fetch") is for Copy error details. */}
         {error && (
-          <div className="px-8 py-6 text-sm text-emperor">{error}</div>
+          <ErrorState
+            title="Couldn’t open this notebook"
+            body="Your notebook is unchanged. Check your connection, then try again."
+            detail={error}
+            onRetry={() => void reload()}
+          />
         )}
         {notebook && (
           <>

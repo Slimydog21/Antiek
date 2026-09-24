@@ -2,11 +2,10 @@ import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
-import { LoadingState } from "../../components/states";
+import { ErrorState, LoadingState } from "../../components/states";
 
 /**
  * Notebooks listing UI (master-spec §4.2 Wedge 2 linchpin).
@@ -39,6 +38,7 @@ export default function NotebooksIndex() {
   const [rows, setRows] = useState<NotebookSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
 
   // New-notebook draft.
@@ -78,7 +78,7 @@ export default function NotebooksIndex() {
   const createNotebook = async () => {
     if (submitting || !draftTitle.trim()) return;
     setSubmitting(true);
-    setError(null);
+    setCreateError(null);
     try {
       const resp = await apiFetch("/notebooks", {
         method: "POST",
@@ -98,7 +98,7 @@ export default function NotebooksIndex() {
         navigate(`/notebook/${encodeURIComponent(created.notebook_id)}`);
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setCreateError(e instanceof Error ? e.message : String(e));
     } finally {
       setSubmitting(false);
     }
@@ -160,6 +160,14 @@ export default function NotebooksIndex() {
             >
               {submitting ? "Creating…" : "Create notebook"}
             </button>
+            {createError && (
+              <ErrorState
+                variant="inline"
+                title="Couldn’t create the notebook"
+                body="Your title is still here, so you can create it again."
+                detail={createError}
+              />
+            )}
           </section>
 
           <section className="flex items-center justify-between gap-3">
@@ -184,10 +192,16 @@ export default function NotebooksIndex() {
             </p>
           </section>
 
+          {/* Design spec §5: what failed and what is safe; the raw message
+              ("Failed to fetch", "HTTP 500") is for Copy error details. */}
           {error && (
-            <ErrorBanner>
-              {error}
-            </ErrorBanner>
+            <ErrorState
+              variant="inline"
+              title="Couldn’t load your notebooks"
+              body="Your notebooks are unchanged. Check your connection, then try again."
+              detail={error}
+              onRetry={() => void reload()}
+            />
           )}
 
           {loading && (

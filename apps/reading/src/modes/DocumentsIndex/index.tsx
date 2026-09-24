@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
-import { LoadingState } from "../../components/states";
+import { ErrorState, LoadingState } from "../../components/states";
 
 /**
  * Documents listing UI (master-spec §4.1).
@@ -135,10 +134,16 @@ export default function DocumentsIndex() {
             />
           </section>
 
+          {/* Design spec §5: what failed and what is safe; the raw message
+              ("Failed to fetch", "HTTP 500") is for Copy error details. */}
           {error && (
-            <ErrorBanner>
-              {error}
-            </ErrorBanner>
+            <ErrorState
+              variant="inline"
+              title="Couldn’t load your documents"
+              body="Your documents are unchanged. Check your connection, then try again."
+              detail={error}
+              onRetry={() => void reload()}
+            />
           )}
 
           {loading && (

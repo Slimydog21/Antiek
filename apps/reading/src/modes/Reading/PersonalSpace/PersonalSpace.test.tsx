@@ -217,3 +217,20 @@ describe("M4 — meta-docs tab", () => {
     expect(screen.getByText("reading")).toBeTruthy();
   });
 });
+
+describe("w3 — shared states", () => {
+  it("names a failed load, hides the raw message, and retries", async () => {
+    // Before: ErrorBanner printed the raw "Failed to fetch" with no retry.
+    listMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    render(<PersonalSpace />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Couldn’t load your readings");
+    expect(document.body.textContent).not.toContain("Failed to fetch");
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("How my books treat free will")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
