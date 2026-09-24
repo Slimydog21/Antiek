@@ -563,7 +563,7 @@ export function MascotStation() {
       // Fixed so it floats over the whole app regardless of scroll/route.
       // z below modals (100) + toasts (200) but above docked panels.
       className={
-        "fixed z-[60] select-none touch-none cursor-grab active:cursor-grabbing " +
+        "fixed z-mascot select-none touch-none cursor-grab active:cursor-grabbing " +
         "rounded-full p-0 border-0 bg-transparent " +
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       }

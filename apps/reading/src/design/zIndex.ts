@@ -52,12 +52,16 @@
  *   toast              200    LemonToast.tsx `z-[200]`
  *   tooltip            250    Tooltip.css `[data-tip]::after` (new, W2)
  *
- * Surfaces whose elevation is a Tailwind class (LemonModal/LemonToast/
- * AdBorder/SlashMenu/MascotStation) are NOT rewired here — those classes are
- * tailwind/token territory (Builder-A) and a class→inline-style swap would be
- * a behaviour change, not a consolidation. They are catalogued in this ladder
- * as the canonical named values so a future token pass has one source to read
- * and `zIndex.test.ts` already pins their numbers against drift.
+ * The Tailwind keys z-raised, z-window, z-mascot, z-modal, z-popover,
+ * z-ad-overlay, z-toast and z-tooltip read the same values through
+ * tokens.css --z-* (token-parity.test.ts pins the pair). Wave 2 moved the
+ * overlay primitives onto them: LemonModal and the CommandPalette (z-modal),
+ * LemonDropdown, LemonSelect, ModelPicker and the CreationStudio export menu
+ * (z-popover), LemonToast (z-toast), MascotStation (z-mascot) and the CSS tip
+ * (--z-tooltip). Still literals, each owned by another open change: AdBorder
+ * `z-[150]` and SlashMenu `z-[120]` (wave 3 rewrote those lines). Local
+ * stacking inside one component (a resize handle's z-10, a sticky header)
+ * is not a ladder concern.
  */
 
 /**

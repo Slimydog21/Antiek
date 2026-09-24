@@ -219,7 +219,7 @@ function ExportButton({ deliverableId }: { deliverableId: string }) {
         Export
       </LemonButton>
       {open && (
-        <div className="absolute right-0 mt-1 bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded shadow-z1 dark:shadow-z1-night text-xs z-10 min-w-[140px]">
+        <div className="absolute right-0 mt-1 bg-card border border-rule rounded shadow-island text-xs z-popover min-w-[140px]">
           {(["markdown", "html", "json"] as ExportFormatName[]).map((f) => (
             <button
               key={f}
