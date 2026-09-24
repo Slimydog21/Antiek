@@ -94,6 +94,10 @@ def _client(temp_substrate):
 
 def test_post_investigation_with_parent_emits_spawned_from(temp_substrate):
     client = _client(temp_substrate)
+    parent = client.post("/investigations", json={
+        "question": "What is X?", "investigation_id": "inv-parent-foo",
+    })
+    assert parent.status_code == 202, parent.text
     resp = client.post("/investigations", json={
         "question": "Why does X happen?",
         "parent_investigation_id": "inv-parent-foo",

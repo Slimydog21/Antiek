@@ -95,9 +95,19 @@ async def broadcast_emit(
     )
     if eid is None:
         return None
-    # Look up the just-emitted event to broadcast the full envelope.
+    await broadcast_recorded(broadcaster, investigation_id, eid)
+    return eid
+
+
+async def broadcast_recorded(
+    broadcaster: EventBroadcaster, investigation_id: str, event_id: str | None
+) -> None:
+    """Broadcast an event that is already durable in the log (for example a
+    strict ``record_branch`` write) so live consumers see it. Never raises."""
+    if event_id is None:
+        return
     for row in reversed(trajectory(investigation_id)):
-        if row.get("event_id") == eid:
+        if row.get("event_id") == event_id:
             try:
                 event = Event.model_validate(row)
                 await broadcaster.broadcast(event)
@@ -111,10 +121,9 @@ async def broadcast_emit(
                         "SSE broadcast failed for investigation_id=%s "
                         "(event_id=%s); event is durable, live consumers may "
                         "miss this update: %r",
-                        investigation_id, eid, e,
+                        investigation_id, event_id, e,
                     )
             break
-    return eid
 
 
 class WaiterAlreadyRegistered(RuntimeError):

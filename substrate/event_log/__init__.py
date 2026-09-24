@@ -15,6 +15,7 @@ from ..schemas.events import (  # re-exported from the canonical schema source
     ActionType,
     Event,
 )
+from .branches import BranchNotRecorded, record_branch
 from .events import (
     EventEmitter,
     PhysicalEventObservation,
@@ -44,6 +45,7 @@ __all__ = [
     "EVENT_SCHEMA_VERSION",
     "DEFAULT_POLICY_ID",
     "ActionType",
+    "BranchNotRecorded",
     "Event",
     "EventEmitter",
     "PhysicalEventObservation",
@@ -60,6 +62,7 @@ __all__ = [
     "normalize_semantic_event",
     "physical_event_sha256",
     "read_physical_event_page",
+    "record_branch",
     "query_worker_identity",
     "seal_investigation",
     "TrajectoryRead",

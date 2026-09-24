@@ -106,6 +106,9 @@ GENERATED_HEADER = """\
 
 # Nested helper models (referenced by payloads). Emit first.
 NESTED_MODELS: tuple[type[BaseModel], ...] = (
+    schema_module.BranchTextLocator,
+    schema_module.BranchAnchor,
+    schema_module.BranchOrigin,
     schema_module.ContextLayer,
     schema_module.Claim,
     schema_module.RouteReceiptCandidate,
@@ -223,6 +226,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.InvestigationCompletedPayload,
     schema_module.InvestigationFailedPayload,
     schema_module.InvestigationSpawnedFromPayload,
+    schema_module.InvestigationBranchedPayload,
     schema_module.InvestigationChaseHaltedPayload,
     schema_module.ClaimAssertedByOperatorPayload,
     schema_module.PageAttributionComputedPayload,

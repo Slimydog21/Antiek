@@ -2326,6 +2326,23 @@ def register_book_routes(app: FastAPI) -> None:
             investigation_id=investigation_id,
             reason="spin_research",
         )
+        # The book's reading thread records the branch durably, as the last
+        # step before the research's first event (THREAD-CONTRACT §1.3).
+        from substrate.event_log import BranchNotRecorded, record_branch
+        from substrate.schemas.events import BranchAnchor, BranchOrigin
+
+        try:
+            record_branch(
+                f"read-{document_id}", investigation_id, via="passage_spin",
+                origin=BranchOrigin(
+                    kind="selection", document_id=document_id,
+                    anchor=BranchAnchor(document_id=document_id, page_index=req.page_index),
+                ),
+                spawn_context=spawn_context, role="read/spin_research",
+                policy_id="read/books/spin_research",
+            )
+        except BranchNotRecorded:
+            raise HTTPException(status_code=503, detail="branch_not_recorded") from None
         event_id = emit_typed(
             investigation_id,
             InvestigationStartRequestedPayload(

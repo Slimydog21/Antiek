@@ -870,6 +870,63 @@ def test_excerpt_cleared_when_a_backward_linked_leaf_stood_on_public_sources(env
     assert body.synthesis_excerpt == summary
 
 
+def _branch(parent: str, child: str, events: str, *, via: str) -> None:
+    # What every launch path now writes into the parent before the child's
+    # first event (THREAD-CONTRACT §1.3).
+    from substrate.event_log import record_branch
+
+    record_branch(parent, child, via=via, events_dir=events)
+
+
+def test_a_reserved_child_that_ran_and_lost_its_log_withholds(env):
+    # Codex round 6: a reservation became an exemption again once the child
+    # that actually ran lost its log. The chase into the reserved id now
+    # records a branch in the parent, so the lost child stays unresolved.
+    inv, child = "inv-reserve-lost", "inv-reserve-lost-child"
+    _public_insight(inv)
+    _reserve(inv, child, env["events"])
+    _branch(inv, child, env["events"], via="reserved_launch")
+    _retrieval(child, env["events"], chunk_ids=["c-rs"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+    (Path(env["events"]) / f"{child}.jsonl").unlink()
+    _assert_withheld(env, inv)
+
+
+@pytest.mark.parametrize("damage", ["deleted", "emptied", "corrupted"])
+def test_a_branched_cascade_leaf_whose_log_is_damaged_withholds(env, damage):
+    # Codex round 6: a leaf linked only from its own log vanished when that log
+    # was emptied or corrupted. The session now holds the branch.
+    session, leaf = f"sess-branch-{damage}", f"sess-branch-{damage}-leaf"
+    _public_insight(session)
+    _branch(session, leaf, env["events"], via="cascade_leaf")
+    _spawn(leaf, session, env["events"], via="spawned_from")
+    _retrieval(leaf, env["events"], chunk_ids=["c-rs"])
+    _complete(session, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, session)
+    log = Path(env["events"]) / f"{leaf}.jsonl"
+    if damage == "deleted":
+        log.unlink()
+    elif damage == "emptied":
+        log.write_text("")
+    else:
+        log.write_text("{not json\n")
+    _assert_withheld(env, session)
+
+
+def test_excerpt_cleared_when_a_branched_child_stood_on_public_sources(env):
+    session, leaf = "sess-branch-public", "sess-branch-public-leaf"
+    _public_insight(session)
+    _branch(session, leaf, env["events"], via="cascade_leaf")
+    _spawn(leaf, session, env["events"], via="spawned_from")
+    _retrieval(leaf, env["events"], chunk_ids=["c-pd"])
+    summary = "A session thesis its branched leaf grounded on the public pamphlet."
+    _complete(session, env["events"], summary)
+    body = _body(env, session)
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
+
+
 def test_excerpt_withheld_when_a_cited_edge_endpoint_names_a_restricted_document(env):
     # The retrieved edge carries no chunk of its own; one endpoint node's
     # metadata records the paywalled essay. An edge stands on its endpoints.

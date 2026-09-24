@@ -99,6 +99,7 @@ from skills.domain import (  # noqa: E402
     extract_and_patch,
     generate_master_md,
 )
+from substrate.event_log import BranchNotRecorded, record_branch  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     ConnectorDeliveredPayload,
@@ -122,7 +123,11 @@ from substrate.schemas import (  # noqa: E402
 )
 from substrate.schemas.events import ROLE_ANSWERED_OUTCOMES  # noqa: E402
 
-from .coordinator import InvestigationCoordinator, broadcast_emit  # noqa: E402
+from .coordinator import (  # noqa: E402
+    InvestigationCoordinator,
+    broadcast_emit,
+    broadcast_recorded,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -2476,6 +2481,28 @@ async def _maybe_spawn_chase_child(
     import uuid as _uuid
 
     child_id = f"inv-{_uuid.uuid4().hex[:12]}"
+    # The parent records the branch first, durably (THREAD-CONTRACT §1.3):
+    # a chase child whose edge is not in the parent's log does not start.
+    try:
+        branch_event_id = record_branch(
+            ctx.investigation_id, child_id, via="chase",
+            spawn_context=next_question, role="orchestrator",
+            policy_id="orchestrator-chase",
+        )
+    except BranchNotRecorded:
+        await broadcast_emit(
+            broadcaster,
+            ctx.investigation_id,
+            InvestigationChaseHaltedPayload(
+                reason="branch_not_recorded",
+                depth_reached=depth,
+                cost_total_usd=round(cost_total, 6),
+            ),
+            role="orchestrator",
+            policy_id="orchestrator-chase",
+        )
+        return
+    await broadcast_recorded(broadcaster, ctx.investigation_id, branch_event_id)
     await broadcast_emit(
         broadcaster,
         child_id,
@@ -2503,6 +2530,7 @@ async def _maybe_spawn_chase_child(
         child_id,
         InvestigationSpawnedFromPayload(
             parent_investigation_id=ctx.investigation_id,
+            parent_event_id=branch_event_id,
             spawn_context=next_question,
         ),
         role="orchestrator",

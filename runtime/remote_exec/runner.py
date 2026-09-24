@@ -44,7 +44,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 try:
-    from substrate.event_log import log_event, seal_investigation
+    from substrate.event_log import BranchNotRecorded, log_event, record_branch, seal_investigation
     from substrate.schemas.events import ActionType
 
     from ..research_runner.budget import BudgetManager
@@ -90,7 +90,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         Status,
         StepEvent,
     )
-    from substrate.event_log import log_event, seal_investigation
+    from substrate.event_log import BranchNotRecorded, log_event, record_branch, seal_investigation
     from substrate.schemas.events import ActionType
 
 
@@ -173,9 +173,37 @@ class RemoteResearchRunner:
         self.budget.register(investigation_id, plan.budget.cost_usd)
 
         if plan.parent_investigation_id:
+            # The parent records the branch first, durably, as the last step
+            # before the leaf's first event (THREAD-CONTRACT §1.3). A leaf whose
+            # edge is not in the parent's log does not run; its own log says why.
+            try:
+                branch_event_id = record_branch(
+                    plan.parent_investigation_id, investigation_id, via="cascade_leaf",
+                    spawn_context=plan.sub_question, role="user_agent",
+                    events_dir=self._events_dir,
+                )
+            except BranchNotRecorded as exc:
+                st.state = RunState.FAILED
+                st.error = f"branch_not_recorded: {exc}"
+                log_event(
+                    investigation_id, ActionType.INVESTIGATION_SPAWNED_FROM,
+                    payload={"parent_investigation_id": plan.parent_investigation_id,
+                             "sub_question": plan.sub_question},
+                    role="user_agent", events_dir=self._events_dir,
+                )
+                log_event(investigation_id, ActionType.INVESTIGATION_FAILED,
+                          payload={"error": st.error}, role="user_agent",
+                          events_dir=self._events_dir)
+                await st.queue.put(StepEvent(investigation_id, 0, "error",
+                                             text=st.error, state=RunState.FAILED))
+                await st.queue.put(StepEvent(investigation_id, 0, "done",
+                                             state=RunState.FAILED))
+                await st.queue.put(_STREAM_DONE)
+                return Handle(investigation_id)
             log_event(
                 investigation_id, ActionType.INVESTIGATION_SPAWNED_FROM,
                 payload={"parent_investigation_id": plan.parent_investigation_id,
+                         "parent_event_id": branch_event_id,
                          "sub_question": plan.sub_question},
                 role="user_agent", events_dir=self._events_dir,
             )

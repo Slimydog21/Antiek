@@ -90,6 +90,11 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     # Sprint 12: continuous chase mode — the orchestrator emits these
     # at the boundary between one chase iteration and the next.
     INVESTIGATION_CHASE_HALTED = "investigation.chase_halted"
+    # Mothership B0 (specs/antiek-mothership/THREAD-CONTRACT.md §1.3): the
+    # durable parent -> child edge, written into the PARENT's log before the
+    # child's first event. spawned_from on the child stays and points back
+    # at it through parent_event_id.
+    INVESTIGATION_BRANCHED = "investigation.branched"
     # Sprint 15: creation surface edit-back-into-graph (master spec
     # §10.4 Option B). When the operator edits generated prose, the
     # substrate optionally promotes the edit to a first-class claim
@@ -803,7 +808,15 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v39: Operator feedback-thread resolution becomes an immutable audit event.
 # v40: Feedback reply audit payload distinguishes reply, decline, and approval
 #     request outcomes without exposing private message text.
-EVENT_SCHEMA_VERSION: int = 40
+# v41: Mothership B0 (specs/antiek-mothership/THREAD-CONTRACT.md §1.3):
+#     new ``investigation.branched`` action + payload (with BranchOrigin,
+#     BranchAnchor, BranchTextLocator), the parent-side edge written before a
+#     child starts; QuestionEscalatedToResearchPayload.launched (False =
+#     reserved, never started); and InvestigationChaseHaltedPayload.reason
+#     "branch_not_recorded". Purely additive. Takes the next free version
+#     with a renumber-at-merge preflight (the D2 40->41 plan is superseded).
+#     2026-09-24.
+EVENT_SCHEMA_VERSION: int = 41
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2482,6 +2495,9 @@ class InvestigationChaseHaltedPayload(_PayloadBase):
         "budget_exceeded",
         "no_open_questions",
         "chase_disabled",
+        # The parent's investigation.branched could not be written durably,
+        # so the child was not started (THREAD-CONTRACT §1.3).
+        "branch_not_recorded",
     ]
     depth_reached: int = Field(default=0, ge=0)
     duration_seconds: float = Field(default=0.0, ge=0.0)
@@ -2506,6 +2522,63 @@ class InvestigationSpawnedFromPayload(_PayloadBase):
     parent_investigation_id: str
     parent_event_id: str | None = None
     spawn_context: str = ""
+
+
+class BranchTextLocator(_PayloadBase):
+    """A character span of a document's canonical text, keyed to that text's
+    hash (the html_projection TextLocator shape): durable across re-renders,
+    remapped when the canonical text changes."""
+
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
+    text_sha256: str = Field(min_length=1)
+
+
+class BranchAnchor(_PayloadBase):
+    """Where in a document a branch was opened (THREAD-CONTRACT §1.4).
+    ``source_locator`` is the durable key; ``region_id`` is per projection;
+    ``quote``/``prefix``/``suffix`` re-find the span after the text moves;
+    ``page_index`` is the legacy passage_research read path."""
+
+    document_id: str = Field(min_length=1)
+    source_locator: BranchTextLocator | None = None
+    region_id: str | None = None
+    quote: str | None = None
+    prefix: str | None = None
+    suffix: str | None = None
+    page_index: int | None = Field(default=None, ge=0)
+
+
+class BranchOrigin(_PayloadBase):
+    """What in the parent the branch was opened from. ``selection`` is a
+    highlighted span (the UI renders it as an island)."""
+
+    kind: Literal["footnote", "reference", "citation", "selection", "research", "manual"]
+    document_id: str | None = None
+    anchor: BranchAnchor | None = None
+
+
+class InvestigationBranchedPayload(_PayloadBase):
+    """A parent investigation handed work to a child investigation.
+
+    Written into the PARENT's trajectory, strictly, before the child's first
+    event: a child whose branch could not be recorded does not start. This
+    is the authoritative edge of the logic tree (D6) and of provenance: a
+    reader that finds a branch here knows the child ran, so a child whose own
+    log is later lost stays an unresolved dependency instead of vanishing.
+    ``via`` says which launch path wrote it."""
+
+    action_type: Literal[ActionType.INVESTIGATION_BRANCHED] = (
+        ActionType.INVESTIGATION_BRANCHED
+    )
+    child_investigation_id: str = Field(min_length=1)
+    via: Literal[
+        "chase", "cascade_leaf", "sub_question", "watch_for_later",
+        "passage_spin", "reserved_launch", "api",
+    ]
+    origin: BranchOrigin | None = None
+    spawn_context: str = ""
+    question_id: str | None = None
 
 
 class PageAttributionComputedPayload(_PayloadBase):
@@ -4347,6 +4420,7 @@ TypedPayload = Annotated[
     | InvestigationCompletedPayload
     | InvestigationFailedPayload
     | InvestigationSpawnedFromPayload
+    | InvestigationBranchedPayload
     | InvestigationChaseHaltedPayload
     | ClaimAssertedByOperatorPayload
     | PageAttributionComputedPayload
@@ -4488,6 +4562,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
         ActionType.INVESTIGATION_COMPLETED.value,
         ActionType.INVESTIGATION_FAILED.value,
         ActionType.INVESTIGATION_SPAWNED_FROM.value,
+        ActionType.INVESTIGATION_BRANCHED.value,
         ActionType.INVESTIGATION_CHASE_HALTED.value,
         ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
         ActionType.PAGE_ATTRIBUTION_COMPUTED.value,

@@ -78,7 +78,13 @@ from roles.thought_partner import (  # noqa: E402
 from substrate.agent_skills.py_analysis import summarize_rows  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import (  # noqa: E402
+    BranchNotRecorded,
+    emit_typed,
+    record_branch,
+    trajectory,
+    trajectory_read,
+)
 from substrate.graph import default_db_path  # noqa: E402
 from substrate.graph.health import DuckDBHealth, probe_duckdb_health  # noqa: E402
 from substrate.schemas import (  # noqa: E402
@@ -2845,6 +2851,25 @@ def create_app(
         elif replay_event_id is None:
             # A twin may have appended between the check above and the charge.
             replay_event_id = _house_replay_event_id()
+        branch_event_id: str | None = None
+        if req.parent_investigation_id and replay_event_id is None:
+            # A child is branched from a parent that exists, and the parent
+            # records the branch durably as the last step before the child's
+            # first event (THREAD-CONTRACT §1.2, §1.3).
+            try:
+                parent_stored = trajectory_read(req.parent_investigation_id).stored
+            except Exception:  # noqa: BLE001 - an unreadable parent is not a parent
+                parent_stored = False
+            if not parent_stored:
+                raise HTTPException(status_code=422, detail="parent_investigation_not_found")
+            try:
+                branch_event_id = record_branch(
+                    req.parent_investigation_id, investigation_id,
+                    via="chase", spawn_context=req.spawn_context or "",
+                    role="operator", policy_id="operator-cli",
+                )
+            except BranchNotRecorded:
+                raise HTTPException(status_code=503, detail="branch_not_recorded") from None
         try:
             event_id = replay_event_id or emit_typed(
                 investigation_id,
@@ -2888,6 +2913,7 @@ def create_app(
                     investigation_id,
                     InvestigationSpawnedFromPayload(
                         parent_investigation_id=req.parent_investigation_id,
+                        parent_event_id=branch_event_id,
                         spawn_context=req.spawn_context or "",
                     ),
                     role="operator",
@@ -5086,6 +5112,14 @@ def create_app(
             )
 
         child_inv_id = f"inv-{_uuid.uuid4().hex[:12]}"
+        try:
+            record_branch(
+                found_source_inv, child_inv_id, via="watch_for_later",
+                question_id=question_id, spawn_context=f"watch-for-later/{question_id}",
+                role="operator", policy_id="operator/brainstorm",
+            )
+        except BranchNotRecorded:
+            raise HTTPException(status_code=503, detail="branch_not_recorded") from None
         try:
             start_event_id = emit_typed(
                 child_inv_id,

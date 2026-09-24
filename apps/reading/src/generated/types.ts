@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 40;
+export const EVENT_SCHEMA_VERSION = 41;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -30,6 +30,7 @@ export const ActionType = {
   INVESTIGATION_FAILED: "investigation.failed",
   INVESTIGATION_SPAWNED_FROM: "investigation.spawned_from",
   INVESTIGATION_CHASE_HALTED: "investigation.chase_halted",
+  INVESTIGATION_BRANCHED: "investigation.branched",
   CLAIM_ASSERTED_BY_OPERATOR: "claim.asserted_by_operator",
   PAGE_ATTRIBUTION_COMPUTED: "page.attribution.computed",
   DECOMPOSE_QUESTION_REQUESTED: "decompose.requested",
@@ -202,6 +203,43 @@ export type DiscoveryProvider = "exa" | "parallel" | "operator";
 export type DiscoveryDecision = "ingested" | "rejected_by_legal_gate" | "rejected_by_operator" | "fetch_failed";
 
 export type ProvenanceSourceKind = "user" | "ai" | "system";
+
+/**
+ * A character span of a document's canonical text, keyed to that text's
+ * hash (the html_projection TextLocator shape): durable across re-renders,
+ * remapped when the canonical text changes.
+ */
+export interface BranchTextLocator {
+  start: number;
+  end: number;
+  text_sha256: string;
+}
+
+/**
+ * Where in a document a branch was opened (THREAD-CONTRACT §1.4).
+ * ``source_locator`` is the durable key; ``region_id`` is per projection;
+ * ``quote``/``prefix``/``suffix`` re-find the span after the text moves;
+ * ``page_index`` is the legacy passage_research read path.
+ */
+export interface BranchAnchor {
+  document_id: string;
+  source_locator?: BranchTextLocator | null;
+  region_id?: string | null;
+  quote?: string | null;
+  prefix?: string | null;
+  suffix?: string | null;
+  page_index?: number | null;
+}
+
+/**
+ * What in the parent the branch was opened from. ``selection`` is a
+ * highlighted span (the UI renders it as an island).
+ */
+export interface BranchOrigin {
+  kind: "footnote" | "reference" | "citation" | "selection" | "research" | "manual";
+  document_id?: string | null;
+  anchor?: BranchAnchor | null;
+}
 
 /**
  * One layer of an assembled context pack. Embedded inside
@@ -1816,6 +1854,25 @@ export interface InvestigationSpawnedFromPayload {
 }
 
 /**
+ * A parent investigation handed work to a child investigation.
+ *
+ * Written into the PARENT's trajectory, strictly, before the child's first
+ * event: a child whose branch could not be recorded does not start. This
+ * is the authoritative edge of the logic tree (D6) and of provenance: a
+ * reader that finds a branch here knows the child ran, so a child whose own
+ * log is later lost stays an unresolved dependency instead of vanishing.
+ * ``via`` says which launch path wrote it.
+ */
+export interface InvestigationBranchedPayload {
+  action_type: "investigation.branched";
+  child_investigation_id: string;
+  via: "chase" | "cascade_leaf" | "sub_question" | "watch_for_later" | "passage_spin" | "reserved_launch" | "api";
+  origin?: BranchOrigin | null;
+  spawn_context?: string;
+  question_id?: string | null;
+}
+
+/**
  * Emitted when the orchestrator decides not to spawn a child
  * investigation despite chase_mode != "off". The reason field tells
  * the operator (and the UI) why the chase chain stopped here.
@@ -1826,7 +1883,7 @@ export interface InvestigationSpawnedFromPayload {
  */
 export interface InvestigationChaseHaltedPayload {
   action_type: "investigation.chase_halted";
-  reason: "depth_reached" | "duration_reached" | "budget_exceeded" | "no_open_questions" | "chase_disabled";
+  reason: "depth_reached" | "duration_reached" | "budget_exceeded" | "no_open_questions" | "chase_disabled" | "branch_not_recorded";
   depth_reached?: number;
   duration_seconds?: number;
   cost_total_usd?: number;
@@ -2955,6 +3012,7 @@ export type TypedPayload =
   | InvestigationCompletedPayload
   | InvestigationFailedPayload
   | InvestigationSpawnedFromPayload
+  | InvestigationBranchedPayload
   | InvestigationChaseHaltedPayload
   | ClaimAssertedByOperatorPayload
   | PageAttributionComputedPayload
@@ -3091,6 +3149,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "graph.tier.rewrite_bulk",
   "groundedness.failed",
   "groundedness.scored",
+  "investigation.branched",
   "investigation.chase_halted",
   "investigation.completed",
   "investigation.failed",
