@@ -6,6 +6,8 @@ import {
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
+  notifyVoiceRecordingStarted,
+  notifyVoicePlaybackStarted,
 } from "./shellExperienceSignals";
 import {
   MASCOT_EXPERIENCE_EVENT,
@@ -59,6 +61,20 @@ describe("Brain shell experience edges", () => {
     const capture = captureExperiences();
     notifyShellFailure();
     expect(capture.seen).toEqual(["fail"]);
+    capture.teardown();
+  });
+
+  it("maps a proven recording start to one listening experience", () => {
+    const capture = captureExperiences();
+    notifyVoiceRecordingStarted();
+    expect(capture.seen).toEqual(["voice_recording_started"]);
+    capture.teardown();
+  });
+
+  it("maps proven narration playback to one listening experience", () => {
+    const capture = captureExperiences();
+    notifyVoicePlaybackStarted();
+    expect(capture.seen).toEqual(["voice_playback_started"]);
     capture.teardown();
   });
 

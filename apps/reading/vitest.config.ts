@@ -28,6 +28,9 @@ export default defineConfig({
     include: [
       "src/**/*.test.{ts,tsx}",
       "e2e/**/*.test.ts",
+      // scripts/bundle_budget.ts picks the file each bundle budget measures;
+      // its unit tests are the gate's own negative controls.
+      "scripts/**/*.test.ts",
       "../../tools/**/*.test.ts",
     ],
     // Storybook stories aren't tests

@@ -7,9 +7,13 @@ import {
 
 import { apiFetch } from "../lib/api";
 import { BrainThinking } from "../brand/mascot/animated";
+import { useOwnerModelChoice } from "../hooks/useOwnerModelChoice";
 import { useReplyMode } from "../hooks/useReplyMode";
+import { notifyThoughtPartnerReplyReceived } from "../mascot";
+import { AISIDECAR_PANEL_ID } from "../workspace/shortcuts";
 import SpokenReply from "./SpokenReply";
 import ContextPicker from "./ai/ContextPicker";
+import ModelUsagePicker from "./ai/ModelUsagePicker";
 import {
   dispatchAiAction,
   parseAssistantReply,
@@ -78,8 +82,14 @@ export default function AISidecar() {
   const thread = useThoughtPartnerThread();
   const [pending, setPending] = useState<boolean>(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const aliveRef = useRef(true);
   // Read SPR-07 — the rabbit hole answers in text OR audio per preference.
   const { mode: replyMode, setMode: setReplyMode } = useReplyMode();
+  // SPR-03 Task 3 — which of the operator's own keys drives the thought
+  // partner. The picker is the same control every other AI surface mounts;
+  // the choice rides on the request as model_choice + operation_id.
+  const model = useOwnerModelChoice("sidecar");
+  const { select: selectModel, launchFields } = model;
 
   /**
    * Actions the AI has dispatched against this workspace. Each entry
@@ -106,11 +116,16 @@ export default function AISidecar() {
       if (typeof detail.system_context === "string") {
         setComposedContext(detail.system_context);
       }
+      // A driver picked elsewhere (the CommandPalette) lands here, so the
+      // palette's dropdown and this one are the same choice.
+      if (detail.owner_model && typeof detail.owner_model.row_id === "string") {
+        selectModel(detail.owner_model.row_id, detail.owner_model.model_id);
+      }
       queueMicrotask(() => inputRef.current?.focus());
     };
     window.addEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
     return () => window.removeEventListener(THOUGHT_PARTNER_SEED_EVENT, onSeed);
-  }, []);
+  }, [selectModel]);
 
 
   const reloadContext = useCallback(async () => {
@@ -189,8 +204,12 @@ export default function AISidecar() {
   // textarea. Refresh on each mount (the panel system unmounts + remounts
   // when the operator closes + reopens, so this is fresh-on-open).
   useEffect(() => {
+    aliveRef.current = true;
     void reloadContext();
     setTimeout(() => inputRef.current?.focus(), 0);
+    return () => {
+      aliveRef.current = false;
+    };
   }, [reloadContext]);
 
   const sendThoughtPartner = async () => {
@@ -211,8 +230,15 @@ export default function AISidecar() {
           system_context: composeThoughtPartnerSystemContext(
             composedContext.trim() ? composedContext : null,
           ),
+          // Both fields or neither (see useOwnerModelChoice). Honest status:
+          // ThoughtPartnerRequest (app.py) does not read model_choice yet and
+          // ignores unknown fields, so today this ships reach, not function —
+          // the same as every owner route until the SPR-03 Task 4 namespace
+          // fix lands. The surface is wired for the day the route reads it.
+          ...launchFields(prompt),
         }),
       });
+      if (!aliveRef.current) return;
       if (!resp.ok) {
         thread.failTurn(
           messageId,
@@ -221,6 +247,7 @@ export default function AISidecar() {
         return;
       }
       const data = await resp.json();
+      if (!aliveRef.current) return;
       const rawText: string = data.text ?? data.body ?? JSON.stringify(data);
       const { prose, actions, parseErrors } = parseAssistantReply(rawText);
       thread.completeTurn(
@@ -228,22 +255,41 @@ export default function AISidecar() {
         prose || rawText,
         normalizeThoughtPartnerShape(data.shape),
       );
+      notifyThoughtPartnerReplyReceived();
       if (actions.length > 0) {
         const ctx = {
           operator_prompt: prompt.slice(0, 2000),
           investigation_id: "__sidecar__",
         };
-        const dispatched = actions.map((a) => dispatchAiAction(a, ctx));
-        setAiLog((prev) => [...dispatched, ...prev].slice(0, 20));
+        const dispatched: DispatchedAction[] = [];
+        for (const action of actions) {
+          // A reply may operate on the workspace, but it cannot erase its own
+          // transparency surface before the operator can inspect what arrived.
+          if (action.kind === "close_panel" && action.id === AISIDECAR_PANEL_ID) {
+            continue;
+          }
+          try {
+            dispatched.push(dispatchAiAction(action, ctx));
+          } catch (error) {
+            if (import.meta.env.DEV) {
+              // eslint-disable-next-line no-console
+              console.warn("[ai] action dispatch failed:", error);
+            }
+          }
+        }
+        if (dispatched.length > 0) {
+          setAiLog((prev) => [...dispatched, ...prev].slice(0, 20));
+        }
       }
       if (parseErrors.length > 0 && import.meta.env.DEV) {
         console.warn("[AISidecar] @@actions parse errors", parseErrors);
       }
     } catch (e: unknown) {
+      if (!aliveRef.current) return;
       const msg = e instanceof Error ? e.message : String(e);
       thread.failTurn(messageId, msg);
     } finally {
-      setPending(false);
+      if (aliveRef.current) setPending(false);
     }
   };
 
@@ -310,6 +356,22 @@ export default function AISidecar() {
               non-owner path (the picker renders what reached the model).
             */}
             <ContextPicker onContextChange={setComposedContext} />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xxs font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                Driver
+              </span>
+              <ModelUsagePicker
+                models={model.models}
+                value={model.selectedRowId}
+                valueModelId={model.selectedModelId}
+                onChange={model.select}
+                includeDefault
+                defaultLabel="Default (house route)"
+                triggerLabel={model.triggerLabel}
+                triggerAriaLabel="Model for the thought partner"
+                size="sm"
+              />
+            </div>
             <textarea
               ref={inputRef}
               value={draft}

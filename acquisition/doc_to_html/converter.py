@@ -37,6 +37,7 @@ from substrate.books.html_sanitizer import sanitize_book_html, strip_trust_marke
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import insert_document
+from substrate.legal_gate.registry import BANNED_DOMAINS
 from substrate.memory import write_memory_item
 from substrate.reader_html.store import store_reader_html
 
@@ -62,30 +63,10 @@ PYPDF_THIN_WORD_THRESHOLD = int(os.environ.get("ANTIEK_PYPDF_THIN_WORDS", "15"))
 
 # Fair-use blocked domains — known non-fair-use sources.
 # Acquisition from these is REFUSED (Bartz v. Anthropic / Hachette v. IA).
-BLOCKED_DOMAINS: frozenset[str] = frozenset({
-    "libgen.is",
-    "libgen.rs",
-    "libgen.li",
-    "libgen.me",
-    "libgen.org",
-    "libgen.io",
-    "annas-archive.org",
-    "annas-archive.cc",
-    "annas-archive.se",
-    "z-lib.org",
-    "zlib.org",
-    "z-lib.is",
-    "z-lib.cc",
-    "singlelogin.re",
-    "singlelogin.site",
-    "1lib.sk",
-    "1lib.domains",
-    "b-ok.cc",
-    "b-ok.org",
-    "bookfi.net",
-    "book4you.org",
-    "book4you.se",
-})
+# The list itself lives in ``substrate.legal_gate.registry.BANNED_DOMAINS``
+# (one source of truth, cite comment per entry); this name is kept for
+# the re-exports in ``acquisition.doc_to_html`` and its tests.
+BLOCKED_DOMAINS: frozenset[str] = frozenset(BANNED_DOMAINS)
 
 
 class FairUseError(ValueError):
