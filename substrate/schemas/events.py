@@ -1265,11 +1265,22 @@ class QuestionIdentifiedPayload(_PayloadBase):
 
 
 class QuestionEscalatedToResearchPayload(_PayloadBase):
+    """A question handed to child research under ``child_investigation_id``.
+
+    ``launched`` is False when the id is only reserved: no research was started
+    under it (the note-taker's unresolvable challenge, which a chase may later
+    launch into). Every path that starts the research leaves it True, and an
+    event from before this field reads as True. A provenance gate may treat a
+    child as never having run only when every reference to it is a
+    reservation and no log exists for it.
+    """
+
     action_type: Literal[ActionType.QUESTION_ESCALATED_TO_RESEARCH] = (
         ActionType.QUESTION_ESCALATED_TO_RESEARCH
     )
     question_id: str
     child_investigation_id: str
+    launched: bool = True
 
 
 class QuestionResolvedByDocPayload(_PayloadBase):

@@ -675,6 +675,136 @@ def test_excerpt_cleared_when_a_readable_sub_investigation_stood_on_public_sourc
     assert body.synthesis_excerpt == summary
 
 
+@pytest.mark.parametrize(
+    "content",
+    ["", "{}\n", '{"event_id": "e-1"}\n',
+     '{"event_id": "e-1", "action_type": "evidence.retrieve.delivered", "payload": "{not json"}\n'],
+    ids=["empty", "empty-object", "no-action-type", "undecodable-payload"],
+)
+def test_excerpt_withheld_when_a_sub_investigations_log_holds_no_usable_event(env, content):
+    # A stored log proves the child existed; one that holds nothing usable as
+    # an event says nothing about what it stood on, so it stays unresolved.
+    inv, child = "inv-odd", "inv-odd-child"
+    _public_insight(inv)
+    _escalate(inv, child, env["events"])
+    _retrieval(child, env["events"], chunk_ids=["c-rs"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+    (Path(env["events"]) / f"{child}.jsonl").write_text(content)
+    _assert_withheld(env, inv)
+
+
+def test_an_undecodable_payload_in_its_own_log_withholds_without_raising(env):
+    inv = "inv-own-payload"
+    _public_insight(inv)
+    _complete(inv, env["events"], f"Thesis. {PUBLIC}")
+    with (Path(env["events"]) / f"{inv}.jsonl").open("a") as f:
+        f.write('{"event_id": "e-bad", "action_type": "graph.node_inserted", '
+                '"emitted_at": "9999", "payload": "{not json"}\n')
+    _assert_withheld(env, inv)
+
+
+def _reserve(inv: str, child: str, events: str) -> None:
+    # What the note-taker emits for an unresolvable challenge: a child id
+    # reserved for a chase that may never happen.
+    from substrate.event_log import emit_typed
+    from substrate.schemas.events import QuestionEscalatedToResearchPayload
+
+    emit_typed(inv, QuestionEscalatedToResearchPayload(
+        question_id=f"q-{child}", child_investigation_id=child, launched=False),
+        role="note_taker", document_id="doc-pd", events_dir=events)
+
+
+def test_a_reserved_child_that_never_ran_does_not_withhold(env):
+    inv = "inv-reserve"
+    _public_insight(inv)
+    _reserve(inv, "inv-reserve-child", env["events"])
+    summary = "A thesis grounded on the public pamphlet, with a challenge parked."
+    _complete(inv, env["events"], summary)
+    body = _body(env, inv)
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
+
+
+def test_a_reserved_child_that_later_ran_is_walked(env):
+    inv, child = "inv-reserve-ran", "inv-reserve-ran-child"
+    _public_insight(inv)
+    _reserve(inv, child, env["events"])
+    _retrieval(child, env["events"], chunk_ids=["c-rs"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+
+
+def test_a_reserved_child_with_a_stored_but_empty_log_withholds(env):
+    inv, child = "inv-reserve-empty", "inv-reserve-empty-child"
+    _public_insight(inv)
+    _reserve(inv, child, env["events"])
+    (Path(env["events"]) / f"{child}.jsonl").write_text("")
+    _complete(inv, env["events"], f"Thesis. {PUBLIC}")
+    _assert_withheld(env, inv)
+
+
+def test_a_reservation_also_referenced_as_launched_withholds_when_its_log_is_missing(env):
+    # Only a child every reference calls reserved may be absent; one launch
+    # reference (here an escalation that predates the marker) means it ran.
+    inv, child = "inv-reserve-both", "inv-reserve-both-child"
+    _public_insight(inv)
+    _reserve(inv, child, env["events"])
+    _escalate(inv, child, env["events"])
+    _complete(inv, env["events"], f"Thesis. {PUBLIC}")
+    _assert_withheld(env, inv)
+
+
+def _spawn(child: str, parent: str, events: str, *, via: str) -> None:
+    from substrate.event_log import emit_typed
+    from substrate.schemas.events import (
+        InvestigationSpawnedFromPayload,
+        InvestigationStartRequestedPayload,
+    )
+
+    payload = (
+        InvestigationSpawnedFromPayload(parent_investigation_id=parent, spawn_context="sub-question")
+        if via == "spawned_from"
+        else InvestigationStartRequestedPayload(question="Sub-question?", parent_investigation_id=parent)
+    )
+    emit_typed(child, payload, role="operator", events_dir=events)
+
+
+@pytest.mark.parametrize("via", ["spawned_from", "start_requested"])
+def test_excerpt_withheld_when_a_leaf_linked_only_from_its_own_log_retrieved_a_restricted_chunk(env, via):
+    # A cascade leaf or chase child records its parent in its own log; the
+    # parent's events never name it. Its evidence feeds the parent's synthesis.
+    session, leaf = f"sess-{via}", f"sess-{via}-leaf"
+    _public_insight(session)
+    _spawn(leaf, session, env["events"], via=via)
+    _retrieval(leaf, env["events"], chunk_ids=["c-rs"])
+    _complete(session, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, session)
+
+
+def test_excerpt_withheld_when_a_backward_linked_leaf_has_an_unreadable_record(env):
+    session, leaf = "sess-torn", "sess-torn-leaf"
+    _public_insight(session)
+    _spawn(leaf, session, env["events"], via="spawned_from")
+    _retrieval(leaf, env["events"], chunk_ids=["c-pd"])
+    with (Path(env["events"]) / f"{leaf}.jsonl").open("a") as f:
+        f.write("{torn record\n")
+    _complete(session, env["events"], f"Thesis. {PUBLIC}")
+    _assert_withheld(env, session)
+
+
+def test_excerpt_cleared_when_a_backward_linked_leaf_stood_on_public_sources(env):
+    session, leaf = "sess-public", "sess-public-leaf"
+    _public_insight(session)
+    _spawn(leaf, session, env["events"], via="spawned_from")
+    _retrieval(leaf, env["events"], chunk_ids=["c-pd"])
+    summary = "A session thesis its leaf grounded on the public pamphlet."
+    _complete(session, env["events"], summary)
+    body = _body(env, session)
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
+
+
 def test_excerpt_withheld_when_a_cited_edge_endpoint_names_a_restricted_document(env):
     # The retrieved edge carries no chunk of its own; one endpoint node's
     # metadata records the paywalled essay. An edge stands on its endpoints.

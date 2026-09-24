@@ -186,7 +186,7 @@ def challenge_note(
         emit_typed(
             investigation_id,
             QuestionEscalatedToResearchPayload(
-                question_id=qid, child_investigation_id=reserved_child),
+                question_id=qid, child_investigation_id=reserved_child, launched=False),
             role="note_taker", document_id=document_id, events_dir=events_dir,
         )
         return ChallengeResult(

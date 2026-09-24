@@ -81,6 +81,8 @@ def _node_ids_from_trajectory(
     for row in trajectory(investigation_id, events_dir=events_dir):
         at = row.get("action_type")
         payload = row.get("payload") or {}
+        if not isinstance(payload, dict):  # a payload that did not decode
+            payload = {}
         nid = payload.get("node_id")
         if at == ActionType.GRAPH_NODE_INSERTED.value and isinstance(nid, str):
             ntype = payload.get("node_type")

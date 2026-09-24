@@ -49,6 +49,12 @@ _CHILD_INVESTIGATION_KEY = re.compile(
     r"(?:^|_)(?:child|sub|launched)_investigation_ids?$", re.IGNORECASE
 )
 
+# The investigation a spawned child names as its parent in its own log: the
+# spawn event's and the start request's parent_investigation_id. A cascade
+# leaf and a chase child are linked this way only; the parent's events never
+# name them.
+_PARENT_INVESTIGATION_KEY = re.compile(r"(?:^|_)parent_investigation_ids?$", re.IGNORECASE)
+
 # A synthesis a recorded value names, wherever the key sits: the envelope's
 # synthesis_id or one carried in a payload. Its manifest pins its sources.
 _SYNTHESIS_KEY = re.compile(r"(?:^|_)synthesis_ids?$", re.IGNORECASE)
@@ -64,6 +70,12 @@ def pointer_kind(key: object) -> PointerKind | None:
 
 def _child_kind(key: object) -> Literal["investigation"] | None:
     if isinstance(key, str) and _CHILD_INVESTIGATION_KEY.search(key):
+        return "investigation"
+    return None
+
+
+def _parent_kind(key: object) -> Literal["investigation"] | None:
+    if isinstance(key, str) and _PARENT_INVESTIGATION_KEY.search(key):
         return "investigation"
     return None
 
@@ -136,6 +148,11 @@ def collect_pointers(value: object) -> list[Pointer]:
 def collect_child_investigations(value: object) -> list[str]:
     """Every investigation id ``value`` hands work on to, in order, each once."""
     return [iid for _, iid in _collect(value, _child_kind)]
+
+
+def collect_parent_investigations(value: object) -> list[str]:
+    """Every investigation ``value`` names as its parent, in order, each once."""
+    return [iid for _, iid in _collect(value, _parent_kind)]
 
 
 def collect_syntheses(value: object) -> list[str]:

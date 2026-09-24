@@ -922,10 +922,21 @@ export interface QuestionIdentifiedPayload {
   anchor_region_id?: string | null;
 }
 
+/**
+ * A question handed to child research under ``child_investigation_id``.
+ *
+ * ``launched`` is False when the id is only reserved: no research was started
+ * under it (the note-taker's unresolvable challenge, which a chase may later
+ * launch into). Every path that starts the research leaves it True, and an
+ * event from before this field reads as True. A provenance gate may treat a
+ * child as never having run only when every reference to it is a
+ * reservation and no log exists for it.
+ */
 export interface QuestionEscalatedToResearchPayload {
   action_type: "question.escalated_to_research";
   question_id: string;
   child_investigation_id: string;
+  launched?: boolean;
 }
 
 export interface QuestionResolvedByDocPayload {

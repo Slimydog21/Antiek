@@ -47,7 +47,31 @@ def test_blank_lines_are_not_unread_records(tmp_path):
 
 
 def test_no_stored_events_is_not_complete(tmp_path):
-    assert trajectory_read("inv-none", events_dir=str(tmp_path)) == TrajectoryRead([], False)
+    assert trajectory_read("inv-none", events_dir=str(tmp_path)) == TrajectoryRead([], False, False)
+
+
+def test_an_empty_log_is_stored_but_not_complete(tmp_path):
+    (tmp_path / "inv-empty.jsonl").write_text("")
+    assert trajectory_read("inv-empty", events_dir=str(tmp_path)) == TrajectoryRead([], False, True)
+
+
+@pytest.mark.parametrize("record", [
+    {},
+    {"event_id": "e-1"},
+    {"event_id": "e-1", "action_type": ""},
+    {"event_id": "", "action_type": "investigation.completed"},
+    {"event_id": "e-1", "action_type": "investigation.completed", "payload": "{not json"},
+    {"event_id": "e-1", "action_type": "investigation.completed", "payload": [1, 2]},
+], ids=["empty-object", "no-action-type", "blank-action-type", "blank-event-id",
+        "undecodable-payload", "non-object-payload"])
+def test_a_record_that_is_not_a_usable_event_is_not_complete(tmp_path, record):
+    _log("inv-odd", tmp_path, n=1)
+    with (tmp_path / "inv-odd.jsonl").open("a") as f:
+        f.write(json.dumps(record) + "\n")
+    read = trajectory_read("inv-odd", events_dir=str(tmp_path))
+    assert read.complete is False and read.stored is True
+    # trajectory() keeps returning what it always returned for such a record.
+    assert read.rows == trajectory("inv-odd", events_dir=str(tmp_path))
 
 
 @pytest.mark.parametrize("bad", ["{torn record", "[1, 2]", '"a string"'])
@@ -72,7 +96,7 @@ def test_an_id_that_is_not_an_event_storage_name_is_never_read(tmp_path, unsafe)
     _log("decoy", outside)
     iid = unsafe.format(abs=str(outside / "decoy"))
     read = trajectory_read(iid, events_dir=str(events))
-    assert read == TrajectoryRead([], False)
+    assert read == TrajectoryRead([], False, False)
 
 
 def test_a_sealed_snapshot_with_a_live_tail_is_complete(tmp_path):

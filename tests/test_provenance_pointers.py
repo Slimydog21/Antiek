@@ -16,6 +16,7 @@ import pytest
 
 from substrate.provenance.pointers import (
     collect_child_investigations,
+    collect_parent_investigations,
     collect_pointers,
     collect_syntheses,
     pointer_kind,
@@ -107,3 +108,17 @@ def test_child_investigations_and_syntheses_are_found_by_key_shape():
     }
     assert collect_child_investigations(row) == ["inv-c1", "inv-c2"]
     assert collect_syntheses(row) == ["s1", "s2"]
+
+
+def test_parent_investigations_are_found_by_key_shape():
+    # The backward link a spawned child records in its own log: the spawn
+    # event's and the start request's parent_investigation_id, at any depth.
+    row = {
+        "payload": {
+            "parent_investigation_id": "inv-p1",
+            "lineage": [{"parent_investigation_ids": ["inv-p2"]}],
+            "child_investigation_id": "inv-c",
+            "parent_event_id": "ev-1",
+        },
+    }
+    assert collect_parent_investigations(row) == ["inv-p1", "inv-p2"]
