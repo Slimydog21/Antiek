@@ -149,9 +149,10 @@
 
     # ──────────────────────────────────────────────────────────────────────
     # 3. UFW firewall
-    # Default deny incoming. Allow 22 (SSH), 80 (Caddy ACME challenge),
-    # 443 (Caddy HTTPS). 8001 (uvicorn) deliberately NOT exposed — only
-    # Caddy reaches it via localhost.
+    # Default deny incoming. Allow 22 (SSH) ONLY — 80 and 443 are
+    # deliberately closed: all ingress is the Cloudflare Tunnel to
+    # 127.0.0.1:443. 8001 (uvicorn) not exposed — only Caddy reaches it
+    # via localhost.
     # ──────────────────────────────────────────────────────────────────────
 
     - name: ufw — default deny incoming
