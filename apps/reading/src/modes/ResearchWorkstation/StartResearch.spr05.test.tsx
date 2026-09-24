@@ -340,6 +340,22 @@ describe("StartResearch — log-as-home consolidation (SPR-05 M3)", () => {
     expect(screen.queryByRole("button", { name: "Launch several at once" })).toBeNull();
   });
 
+  it("with an empty log, the composer is still the one entry: no dead 'Start a research'", () => {
+    // First run: the embedded log is empty. Its empty state used to offer a
+    // primary "Start a research" that navigated to "/", the page already
+    // open, so clicking it did nothing a reader could see. The log now points
+    // at the composer above it and adds no button of its own.
+    listState.current.investigations = [];
+    renderHome(true);
+    expect(screen.getByLabelText("Research question")).toBeTruthy();
+    expect(screen.getByText("No research yet")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Start a research" })).toBeNull();
+    expect(screen.getByText(/Ask a question above/)).toBeTruthy();
+    // The log section itself spends no sun: its only primary is the home's.
+    const log = screen.getByText("Your research").closest("header")?.parentElement as HTMLElement;
+    expect(log.querySelectorAll("button.bg-sun")).toHaveLength(0);
+  });
+
   it("standalone (non-embedded) home shows the composer but NOT the log (composer-only)", () => {
     listState.current.investigations = [inv({ investigation_id: "inv-hidden", question: "Hidden in standalone" })];
     renderHome(false);

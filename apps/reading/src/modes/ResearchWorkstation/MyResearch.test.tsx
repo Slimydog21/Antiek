@@ -85,10 +85,10 @@ function inv(over: Partial<InvestigationSummary> & { investigation_id: string })
   };
 }
 
-function renderMonitor() {
+function renderMonitor(embedded = false) {
   return render(
     <MemoryRouter>
-      <MyResearch />
+      <MyResearch embedded={embedded} />
     </MemoryRouter>,
   );
 }
@@ -202,7 +202,28 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("No research yet")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/engine returned no result|provider/i);
-    expect(screen.getAllByRole("button", { name: "Start a research" }).length).toBeGreaterThan(0);
+    // The invitation points at the view's one door, the launch bar above it.
+    // The empty state used to carry a second primary "Start a research" of
+    // its own, a duplicate of the launch bar's in the same view.
+    expect(screen.getAllByRole("button", { name: "Start a research" })).toHaveLength(1);
+    expect(screen.getByText(/Start a research above and it shows up here/)).toBeTruthy();
+  });
+
+  it("embedded in the Research home, an empty log adds no second door (SPR-05 M3)", () => {
+    // The home's composer, directly above the log, is the one entry. The
+    // empty log used to render a primary "Start a research" that navigated
+    // to "/", the page it was already on: a dead sun button on a first run.
+    listState.current.investigations = [];
+    const { container } = renderMonitor(true);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("No research yet")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Start a research" })).toBeNull();
+    expect(screen.getByText(/Ask a question above and it shows up here/)).toBeTruthy();
+    // The composer is the view's hero and the dock seats the mascot, so the
+    // log's empty row is a quiet bounded block, not a second empty-state hero.
+    expect(container.querySelector("[data-state-art]")).toBeNull();
+    expect(container.querySelector(".st-inline")).not.toBeNull();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it("a failed load says what failed, hides the raw error, and retries", async () => {
@@ -224,8 +245,8 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
 
   it("disables launch with a clear reason when unauthenticated", () => {
     authState.current = { status: "unauthenticated" };
-    // Non-empty list so the empty-state retry button (also "Start a research")
-    // doesn't collide — this test isolates the launch-bar gate.
+    // Non-empty list: this test isolates the launch-bar gate from the empty
+    // state's copy.
     listState.current.investigations = [inv({ investigation_id: "inv-z1", status: "completed" })];
     renderMonitor();
     const start = screen.getByRole("button", { name: "Start a research" }) as HTMLButtonElement;

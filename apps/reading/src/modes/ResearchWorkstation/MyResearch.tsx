@@ -266,17 +266,24 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
         {error && <ListError error={error} onRetry={refetch} />}
 
         {/* An empty list is a first run, not a failure: a neutral empty state
-            that invites the first research (it used to be a red role=alert
-            blaming a missing provider key). */}
+            (it used to be a red role=alert blaming a missing provider key).
+            It invites the first research by naming the view's one door rather
+            than adding a button of its own: standalone that door is the launch
+            bar above; embedded it is the home's composer (M3). A button here
+            would be a second sun primary, and embedded its navigate("/") would
+            land on the page already open. Embedded, the composer is the hero
+            and the dock seats the mascot, so the empty log is a quiet bounded
+            row with no art. */}
         {!loading && !error && investigations.length === 0 && (
           <EmptyState
             title="No research yet"
-            body="Research you start shows up here, running or finished."
-            action={
-              <LemonButton variant="primary" size="sm" onClick={() => navigate("/")}>
-                Start a research
-              </LemonButton>
+            body={
+              embedded
+                ? "Ask a question above and it shows up here, running or finished."
+                : "Start a research above and it shows up here, running or finished."
             }
+            art={!embedded}
+            variant={embedded ? "inline" : "page"}
           />
         )}
 
