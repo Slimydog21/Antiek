@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
-
-import { press } from "../../design/motion";
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 
 /**
  * LemonSelect — generic over the option value type V. Renders as a styled
  * button + a popover of options; keyboard ↑/↓/Enter/Esc.
  *
- * We don't use a native <select> so the visual language matches the rest
- * (sun-yellow border, chunky shadow, JetBrains-mono labels). The minor
- * a11y trade-off: a native select gets free OS-keyboard handling on
+ * We don't use a native <select> so the visual language matches the rest.
+ * The minor a11y trade-off: a native select gets free OS-keyboard handling on
  * touch and mobile screen readers. We add the keyboard nav by hand and
  * mark the wrapper role="combobox".
+ *
+ * A select is a FIELD, so it is flat and bounded like LemonInput (card face,
+ * 1px rule edge), not a raised key (design spec §4). The open list is a
+ * floating island: the hard offset shadow and the popover rung of the z
+ * ladder, so it sits over a modal it opens inside. ArrowDown/ArrowUp on the
+ * closed trigger opens the list; Esc or a choice closes it and puts focus back
+ * on the trigger instead of dropping it to <body>.
  */
 export type LemonOption<V> = {
   value: V;
@@ -58,10 +62,24 @@ export function LemonSelect<V>({
     Math.max(0, options.findIndex((o) => o.value === value)),
   );
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const selected = useMemo(() => options.find((o) => o.value === value), [options, value]);
 
   const close = useCallback(() => setOpen(false), []);
+  // Keyboard closes (Esc, Enter on an option, a click on an option) hand
+  // focus back to the trigger; an outside click leaves it where it landed.
+  const closeToTrigger = useCallback(() => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }, []);
+
+  const onTriggerKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      setOpen(true);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -69,7 +87,11 @@ export function LemonSelect<V>({
       if (!rootRef.current?.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") {
+        // Ours to handle: a modal around this select stays open.
+        e.stopPropagation();
+        closeToTrigger();
+      }
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setHoverIdx((i) => {
@@ -95,7 +117,7 @@ export function LemonSelect<V>({
         const o = options[hoverIdx];
         if (o && !o.disabled) {
           onChange(o.value);
-          close();
+          closeToTrigger();
         }
       }
     };
@@ -105,7 +127,7 @@ export function LemonSelect<V>({
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open, options, hoverIdx, onChange, close]);
+  }, [open, options, hoverIdx, onChange, close, closeToTrigger]);
 
   return (
     <div
@@ -117,14 +139,13 @@ export function LemonSelect<V>({
       aria-label={ariaLabel ?? placeholder}
     >
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={onTriggerKeyDown}
         className={
           `inline-flex items-center justify-between gap-2 px-3 ${heights[sizing]} ` +
-          "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright " +
-          "border-edge border-sun rounded-hog " +
-          "shadow-z1 dark:shadow-z1-night font-mono font-semibold " +
-          press +
+          "bg-card text-1 border border-rule rounded-hog font-sans font-medium" +
           (fullWidth ? " w-full" : "")
         }
       >
@@ -142,10 +163,8 @@ export function LemonSelect<V>({
         <ul
           role="listbox"
           className={
-            "absolute top-[calc(100%+4px)] left-0 z-50 min-w-full " +
-            "bg-ice-0 dark:bg-charcoal-2 " +
-            "border-edge border-sun rounded-hog " +
-            "shadow-z3 dark:shadow-z3-night " +
+            "absolute top-[calc(100%+4px)] left-0 z-popover min-w-full " +
+            "bg-card border border-rule rounded-hog shadow-island " +
             "py-1 max-h-[280px] overflow-y-auto"
           }
         >
@@ -157,20 +176,21 @@ export function LemonSelect<V>({
                 key={String(o.value)}
                 role="option"
                 aria-selected={isSel}
+                aria-disabled={o.disabled || undefined}
                 onMouseEnter={() => setHoverIdx(idx)}
                 onClick={() => {
                   if (o.disabled) return;
                   onChange(o.value);
-                  close();
+                  closeToTrigger();
                 }}
                 className={
                   "px-3 py-1.5 text-sm cursor-pointer " +
                   (o.disabled
-                    ? "opacity-40 cursor-not-allowed "
+                    ? "text-3 cursor-not-allowed "
                     : isHover
-                      ? "bg-sun/25 dark:bg-sun/15 "
+                      ? "bg-inset "
                       : "") +
-                  (isSel ? "font-semibold text-ink dark:text-bright " : "text-ink dark:text-bright")
+                  (o.disabled ? "" : isSel ? "font-semibold text-1 " : "text-1")
                 }
               >
                 {o.label}

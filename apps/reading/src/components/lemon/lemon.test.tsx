@@ -183,6 +183,54 @@ describe("LemonSelect — keyboard nav", () => {
   });
 });
 
+describe("LemonSelect — a flat field that hands focus back", () => {
+  const options = [
+    { value: "a", label: "Alpha" },
+    { value: "b", label: "Bravo" },
+  ];
+
+  it("ArrowDown on the closed trigger opens the list", () => {
+    render(<LemonSelect value="a" onChange={() => {}} options={options} aria-label="Pick" />);
+    const trigger = screen.getAllByRole("button")[0];
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(screen.getByRole("listbox")).toBeTruthy();
+  });
+
+  it("Esc closes the list and returns focus to the trigger", () => {
+    render(<LemonSelect value="a" onChange={() => {}} options={options} aria-label="Pick" />);
+    const trigger = screen.getAllByRole("button")[0];
+    trigger.focus();
+    fireEvent.click(trigger);
+    (screen.getByRole("option", { name: "Bravo" }) as HTMLElement).focus();
+    act(() => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("choosing an option returns focus to the trigger", () => {
+    const onChange = vi.fn();
+    render(<LemonSelect value="a" onChange={onChange} options={options} aria-label="Pick" />);
+    const trigger = screen.getAllByRole("button")[0];
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("option", { name: "Bravo" }));
+    expect(onChange).toHaveBeenCalledWith("b");
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("is flat and bounded like a field; the list is an island on the popover rung", () => {
+    render(<LemonSelect value="a" onChange={() => {}} options={options} aria-label="Pick" />);
+    const trigger = screen.getAllByRole("button")[0];
+    expect(trigger.className).toMatch(/\bborder-rule\b/);
+    expect(trigger.className).not.toMatch(/shadow-z|border-sun/);
+    fireEvent.click(trigger);
+    const list = screen.getByRole("listbox");
+    expect(list.className).toMatch(/\bz-popover\b/);
+    expect(list.className).toMatch(/\bshadow-island\b/);
+  });
+});
+
 describe("LemonToast — queue ordering", () => {
   // The toast queue is a module-level singleton, so reset between tests.
   beforeEach(() => {

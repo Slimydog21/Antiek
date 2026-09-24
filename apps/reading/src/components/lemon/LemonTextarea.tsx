@@ -76,11 +76,11 @@ export const LemonTextarea = forwardRef<HTMLTextAreaElement, LemonTextareaProps>
           }
         }}
         className={
+          // Flat and bounded like every field; the global :focus-visible
+          // ring (--focus) marks focus, so no outline-none here.
           "block w-full px-3 py-2 resize-none rounded-hog " +
-          "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright " +
-          "border-edge border-sun shadow-none focus:shadow-z1 " +
-          "dark:focus:shadow-z1-night transition-shadow " +
-          "font-sans text-sm leading-snug outline-none " +
+          "bg-card text-1 border border-rule " +
+          "font-sans text-sm leading-snug " +
           "placeholder:text-ink-mute dark:placeholder:text-moonlight " +
           className
         }

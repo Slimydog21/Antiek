@@ -2,13 +2,19 @@ import type { ReactNode } from "react";
 
 /**
  * LemonCard — container primitive with optional title row + footer slot.
- * Brand: sun-yellow border, chunky offset shadow. Day ink-shadow,
- * night sun-deep-shadow via dark: classes.
  *
- *   elevation: z1 | z2 | z3
+ * Cards are FLAT and bounded (design spec §4): a surface inside a 1px rule
+ * edge, no shadow. Depth is for things you can press (LemonButton's keycap)
+ * and for things that float (popover, modal, palette). The old default cast
+ * a 5px shadow, deeper than a resting button's 3px, so a static card read as
+ * more pressable than the buttons on it.
+ *
+ *   elevation: flat (default) | z1 | z2 | z3
+ *     `z1` is the lowest legacy tier and renders flat under that rule; `z2`
+ *     and `z3` mean "this card floats" and get the one island offset.
  *   colour:    card | sun | aurora | ink | glacial
  */
-type Elevation = "z1" | "z2" | "z3";
+type Elevation = "flat" | "z1" | "z2" | "z3";
 type Colour = "card" | "sun" | "aurora" | "ink" | "glacial";
 
 type Props = {
@@ -21,23 +27,24 @@ type Props = {
 };
 
 const elev: Record<Elevation, string> = {
-  z1: "shadow-z1 dark:shadow-z1-night",
-  z2: "shadow-z2 dark:shadow-z2-night",
-  z3: "shadow-z3 dark:shadow-z3-night",
+  flat: "",
+  z1: "",
+  z2: "shadow-island",
+  z3: "shadow-island",
 };
 
 const bg: Record<Colour, string> = {
-  card:    "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright",
+  card:    "bg-card text-1",
   sun:     "bg-sun text-ink",
   aurora:  "bg-aurora text-ink",
   ink:     "bg-ink text-ice-1",
-  glacial: "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright",
+  glacial: "bg-inset text-1",
 };
 
 export function LemonCard({
   title,
   footer,
-  elevation = "z2",
+  elevation = "flat",
   colour = "card",
   className = "",
   children,
@@ -45,13 +52,13 @@ export function LemonCard({
   return (
     <section
       className={
-        `border-edge border-sun rounded-hog ${bg[colour]} ${elev[elevation]} ${className}`
+        `border border-rule rounded-hog ${bg[colour]} ${elev[elevation]} ${className}`
       }
     >
       {title && (
         <header
           className={
-            "px-4 py-2.5 border-b-edge border-sun font-mono text-xs uppercase tracking-wider"
+            "px-4 py-2.5 border-b border-hairline font-mono text-xs uppercase tracking-wider"
           }
         >
           {title}
@@ -59,7 +66,7 @@ export function LemonCard({
       )}
       <div className="px-4 py-3">{children}</div>
       {footer && (
-        <footer className="px-4 py-2.5 border-t-edge border-sun">{footer}</footer>
+        <footer className="px-4 py-2.5 border-t border-hairline">{footer}</footer>
       )}
     </section>
   );

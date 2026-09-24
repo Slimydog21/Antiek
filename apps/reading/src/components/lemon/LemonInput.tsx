@@ -5,7 +5,11 @@ import type { InputHTMLAttributes, ReactNode } from "react";
  * LemonInput — single-line text input. Slots for left icon, right icon,
  * and an optional `kbdHint` chip (used by the command palette to show ⌘K).
  *
- * Focus state: sun-yellow border thickens, ink offset shadow appears.
+ * Fields are flat and bounded (design spec §4): the card surface inside a
+ * 1px rule edge (3.55:1 on the page in both themes; the old sun edge was
+ * 1.29:1 by day). Focus draws the one focus ring (--focus: ink by day, sun at
+ * night) around the whole field, on the label, because the input inside is
+ * borderless.
  */
 type Sizing = "sm" | "md" | "lg";
 
@@ -27,9 +31,9 @@ export const LemonInput = forwardRef<HTMLInputElement, LemonInputProps>(
   ({ iconLeft, iconRight, kbdHint, sizing = "md", wrapperClassName = "", className = "", ...rest }, ref) => (
     <label
       className={
-        "inline-flex items-center gap-2 px-3 bg-ice-0 dark:bg-charcoal-2 " +
-        "border-edge border-sun rounded-hog " +
-        "transition-shadow shadow-none focus-within:shadow-z1 dark:focus-within:shadow-z1-night " +
+        "inline-flex items-center gap-2 px-3 bg-card " +
+        "border border-rule rounded-hog " +
+        "focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus " +
         `${heights[sizing]} ${wrapperClassName}`
       }
     >
@@ -47,9 +51,8 @@ export const LemonInput = forwardRef<HTMLInputElement, LemonInputProps>(
       {kbdHint && (
         <kbd
           className={
-            "border-2 border-ink dark:border-bright rounded px-1.5 text-xxs font-mono " +
-            "bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright " +
-            "shadow-z1 dark:shadow-z1-night"
+            "border border-rule rounded px-1.5 text-xxs font-mono " +
+            "bg-inset text-2"
           }
         >
           {kbdHint}

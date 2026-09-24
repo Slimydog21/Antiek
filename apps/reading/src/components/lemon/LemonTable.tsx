@@ -35,6 +35,10 @@ type Props<Row> = {
   dense?: boolean;
 };
 
+// Literal class names so Tailwind's scanner sees all three (a built
+// `text-${align}` only rendered where another file happened to use it).
+const ALIGN = { left: "text-left", right: "text-right", center: "text-center" } as const;
+
 export function LemonTable<Row>({
   rows,
   columns,
@@ -48,10 +52,11 @@ export function LemonTable<Row>({
   const cellY = dense ? "py-1.5" : "py-2.5";
   return (
     <div
+      // Flat and bounded like a card (design spec §4); the header is a quiet
+      // inset eyebrow row, not an ink bar lettered in sun (the sun is spent on
+      // the one primary action, not on every table).
       className={
-        "border-edge border-sun rounded-hog overflow-hidden " +
-        "shadow-z2 dark:shadow-z2-night " +
-        "bg-ice-0 dark:bg-charcoal-2 " +
+        "border border-rule rounded-hog overflow-hidden bg-card " +
         className
       }
     >
@@ -63,9 +68,9 @@ export function LemonTable<Row>({
                 key={c.key}
                 style={c.width ? { width: c.width } : undefined}
                 className={
-                  "bg-ink text-sun font-mono text-xs uppercase tracking-wider font-semibold " +
-                  `px-3 ${cellY} text-${c.align ?? "left"} ` +
-                  "border-b-edge border-sun"
+                  "bg-inset text-2 font-mono text-xs uppercase tracking-wider font-semibold " +
+                  `px-3 ${cellY} ${ALIGN[c.align ?? "left"]} ` +
+                  "border-b border-rule"
                 }
               >
                 {c.header}
@@ -89,17 +94,14 @@ export function LemonTable<Row>({
                 key={rowKey(row, i)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={
-                  "border-b border-rule dark:border-charcoal-1 last:border-b-0 " +
-                  "text-ink dark:text-bright " +
-                  (onRowClick
-                    ? "cursor-pointer hover:bg-sun/15 dark:hover:bg-sun/10"
-                    : "")
+                  "border-b border-hairline last:border-b-0 text-1 " +
+                  (onRowClick ? "cursor-pointer hover:bg-wash" : "")
                 }
               >
                 {columns.map((c) => (
                   <td
                     key={c.key}
-                    className={`px-3 ${cellY} text-${c.align ?? "left"} align-top`}
+                    className={`px-3 ${cellY} ${ALIGN[c.align ?? "left"]} align-top`}
                   >
                     {c.render(row, i)}
                   </td>

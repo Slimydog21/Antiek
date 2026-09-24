@@ -2,8 +2,12 @@ import type { ReactNode } from "react";
 
 /**
  * LemonTag — pill chip used in claim chips, status indicators, filter bars,
- * project-tree node decorations. Brand: sun-yellow outline, ink offset shadow
- * (day) / sun-deep shadow (night).
+ * project-tree node decorations.
+ *
+ * A tag is static, so it is FLAT (design spec §4): a fill inside a 1px edge,
+ * no shadow. The old raised z1 shadow made 56 read-only labels look like
+ * buttons you could press. Filled colours carry their own boundary; the
+ * default and muted tags draw the rule edge.
  */
 type Colour = "default" | "sun" | "aurora" | "success" | "danger" | "muted";
 
@@ -16,22 +20,21 @@ type Props = {
 };
 
 const colourMap: Record<Colour, string> = {
-  default: "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright",
-  sun:     "bg-sun text-ink",
-  aurora:  "bg-aurora text-ink",
+  default: "bg-card text-1 border-rule",
+  sun:     "bg-sun text-ink border-transparent",
+  aurora:  "bg-aurora text-ink border-transparent",
   // success (Q3/D2) — the done/met/passed green; aurora stays reserved for
   // AI-thinking. Filled like sun/aurora/danger. AA pairs (pinned in
   // tokens.contrast.test.ts): ice-0 white on the day green 5.90:1; day-ink
   // #0F1419 on the night sage ~10:1.
-  success: "bg-success text-ice-0 dark:text-ink",
+  success: "bg-success text-ice-0 dark:text-ink border-transparent",
   // text-ice-0 (#FFFFFF) → 4.69:1 contrast against bg-emperor — above
   // WCAG AA 4.5 floor. text-ice-1 was 4.12 (a11y_audit flagged this
   // as a serious contrast violation in S11).
-  danger:  "bg-emperor text-ice-0 font-bold border-ink dark:border-ink",
-  // muted: text-shadow-1 on bg-ice-3 gave 3.99 (below WCAG AA 4.5
-  // for small text). Stepped to text-shadow-2 → 6.51. Night variant
-  // unchanged (text-moonlight on charcoal-1 already passes).
-  muted:   "bg-ice-3 dark:bg-charcoal-1 text-shadow-2 dark:text-moonlight border-rule dark:border-charcoal-2 shadow-none",
+  danger:  "bg-emperor text-ice-0 font-bold border-transparent",
+  // muted: the secondary text role on the inset ground, a hairline edge
+  // (quiet on purpose; pinned in controls.contrast.test.ts, both themes).
+  muted:   "bg-inset text-2 border-hairline",
 };
 
 export function LemonTag({
@@ -41,8 +44,7 @@ export function LemonTag({
     <span
       className={
         "inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full " +
-        "font-mono text-xs font-semibold " +
-        "border-edge border-sun shadow-z1 dark:shadow-z1-night " +
+        "font-mono text-xs font-semibold border " +
         `${colourMap[colour]} ${className}`
       }
     >
@@ -58,7 +60,7 @@ export function LemonTag({
           type="button"
           onClick={onRemove}
           aria-label="Remove"
-          className="ml-0.5 leading-none text-ink/60 hover:text-ink dark:text-bright/60 dark:hover:text-bright"
+          className="ml-0.5 leading-none text-current opacity-80 hover:opacity-100"
         >
           ×
         </button>

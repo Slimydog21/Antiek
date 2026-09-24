@@ -29,9 +29,8 @@ export const Default: Story = {
 export const Elevations: Story = {
   render: () => (
     <div className="grid grid-cols-3 gap-6 p-6">
-      <LemonCard elevation="z1" title="z1"><div>shallow</div></LemonCard>
-      <LemonCard elevation="z2" title="z2"><div>default</div></LemonCard>
-      <LemonCard elevation="z3" title="z3"><div>floating</div></LemonCard>
+      <LemonCard title="flat (default)"><div>a resting card: surface and a rule edge</div></LemonCard>
+      <LemonCard elevation="z2" title="z2"><div>a card that floats: the island offset</div></LemonCard>
     </div>
   ),
 };
