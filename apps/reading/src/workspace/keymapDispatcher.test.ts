@@ -224,6 +224,18 @@ describe("the prefix engine (herdr semantics)", () => {
       expect(prefixState.isArmed(), `repeat ${i} keeps it armed`).toBe(true);
       expect(sidebar(), `repeat ${i} never reaches ⌘B`).toBe(false);
     }
+    // Holding it while a click moves focus into a field: the repeats are the
+    // field's (ctrl+b moves the caret), and the prefix lapses (critic r3).
+    const field = document.createElement("input");
+    document.body.appendChild(field);
+    field.focus();
+    const inField = press(field, "ctrl+b", "mac", { repeat: true });
+    expect(inField.defaultPrevented).toBe(false);
+    expect(prefixState.isArmed()).toBe(false);
+    field.blur();
+    field.remove();
+    press(document.body, "ctrl+b", "mac");
+    expect(prefixState.isArmed()).toBe(true);
     press(document.body, "ctrl+b", "mac"); // a fresh press cancels
     expect(prefixState.isArmed()).toBe(false);
     const late = press(document.body, "ctrl+b", "mac", { repeat: true });

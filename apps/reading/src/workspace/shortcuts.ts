@@ -341,13 +341,13 @@ export function installShortcuts(
       // Shift (for prefix+?) and other lone modifiers are part of the next
       // key, not the next key.
       if (isLoneModifier(e)) return;
-      // A held prefix auto-repeats; it stays armed and the repeats go nowhere.
-      if (isPrefix && e.repeat) return consume(e);
-      prefixState.disarm();
       // Focus moved into a field or a dialog since the prefix armed (a
       // click): the key is theirs, and the prefix just lapses.
-      if (focusContext(e.target).kind !== "default") return;
+      if (focusContext(e.target).kind !== "default") return prefixState.disarm();
       consume(e);
+      // A held prefix auto-repeats; it stays armed and the repeats go nowhere.
+      if (isPrefix && e.repeat) return;
+      prefixState.disarm();
       if (e.key === "Escape" || isPrefix) return;
       const row = prefixRows.find((r) => eventMatchesCombo(e, r.prefixKey!));
       if (row) run(row.action, e);
