@@ -1,6 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 
-import { expectTheme, freezeMotion, type AxisTheme } from "./visual-axes.ts";
+import {
+  AXE_DISABLED_RULES,
+  AXE_TAGS,
+  expectTheme,
+  freezeMotion,
+  type AxisTheme,
+} from "./visual-axes.ts";
 
 // NOTE: this file is NOT in tsconfig's `include` (it runs in the
 // test-runner's own jest+babel context, not the app's tsc -b), and
@@ -34,11 +40,9 @@ type TestRunnerConfig = {
  *     assertion has to be wired by a `postVisit` hook — this file.
  *
  * So this hook is the actual a11y gate: after the runner visits each
- * audited story it runs axe-core (via @axe-core/playwright, the same
- * engine + the same rule set scripts/a11y_audit.ts uses) and FAILS the
- * test on any `serious` or `critical` violation. The two paths
- * (test-runner gate + the a11y_audit.ts report) use the same rule set
- * (tags + disabled rules), kept in sync BY HAND — change one, change both.
+ * audited story it runs axe-core (via @axe-core/playwright, with the rule
+ * set scripts/a11y_audit.ts also imports from ./visual-axes) and FAILS the
+ * test on any `serious` or `critical` violation.
  *
  * Theme. One run audits one theme: `A11Y_THEME=dark` audits night, anything
  * else audits day. `preVisit` emulates that colour scheme before the story
@@ -57,29 +61,6 @@ type TestRunnerConfig = {
  * the Lemon primitives). The hook runs on whatever the runner visits;
  * the tag is the filter.
  */
-/**
- * The shared axe rule set + disabled-rule list. Kept identical to
- * scripts/a11y_audit.ts so the CI gate and the local report agree.
- *
- * The disabled rules are all Storybook-iframe-wrapper noise, never
- * Antiek shell code:
- *   - scrollable-region-focusable / landmark-one-main / region /
- *     page-has-heading-one: a story body is an atomic isolation
- *     context, not a whole page with a <main> landmark.
- *   - empty-heading: Storybook's own hidden `<h1 id="error-message">`
- *     inside iframe.html — confirmed in SPR-08 to be Storybook chrome,
- *     not shell code (the shell stories render zero violations of any
- *     impact from Antiek elements).
- */
-const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
-const AXE_DISABLED_RULES = [
-  "scrollable-region-focusable",
-  "landmark-one-main",
-  "region",
-  "page-has-heading-one",
-  "empty-heading",
-];
-
 const THEME: AxisTheme = process.env.A11Y_THEME === "dark" ? "dark" : "light";
 
 const BLOCKING_IMPACTS = new Set(["serious", "critical"]);

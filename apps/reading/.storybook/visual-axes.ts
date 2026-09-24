@@ -1,7 +1,7 @@
 /**
  * The axes every story verdict is rendered on, shared by the three tools that
- * render stories to judge them: lost-pixel (lostpixel.config.ts) and the
- * Storybook test-runner (test-runner.ts).
+ * render stories to judge them: lost-pixel (lostpixel.config.ts), the axe audit
+ * (scripts/a11y_audit.ts) and the Storybook test-runner (test-runner.ts).
  *
  * Theme. The preview's `theme` global (preview.tsx) writes `data-theme` on the
  * preview <html>, the same attribute the app's boot script sets, so a story
@@ -13,11 +13,11 @@
  * Motion. `FREEZE_MOTION_CSS` zeroes CSS durations and delays so a frame is
  * deterministic without swapping the design (PostHog's runner does the same).
  * Reduced motion is a different design here (GlassSurface drops to its solid
- * fallback), so the test-runner freezes motion instead.
+ * fallback), so the test-runner and the axe audit freeze motion instead.
  * lost-pixel still forces reduced motion; see lostpixel.config.ts for that gap.
  *
  * This file has no imports on purpose: it is loaded by esbuild (lost-pixel),
- * tsx and the test-runner's own transpiler.
+ * tsx (the audit) and the test-runner's own transpiler.
  */
 
 export const AXIS_THEMES = ["light", "dark"] as const;
@@ -53,6 +53,27 @@ export function storyUrl(storybook: string, storyId: string, theme: AxisTheme): 
   const base = storybook.replace(/\/+$/, "");
   return withThemeGlobal(`${base}/iframe.html?id=${storyId}&viewMode=story`, theme);
 }
+
+/**
+ * The axe rule set both a11y paths run: the test-runner gate (test-runner.ts)
+ * and the report (scripts/a11y_audit.ts). One definition, so they cannot drift.
+ *
+ * The disabled rules are Storybook-iframe noise, never Antiek code:
+ *   - scrollable-region-focusable: the iframe scrollport has overflow:auto and
+ *     no tabindex, which is Storybook's choice.
+ *   - landmark-one-main / region / page-has-heading-one: a story is an atomic
+ *     isolation context, not a page with a <main> landmark.
+ *   - empty-heading: Storybook's own hidden <h1 id="error-message"> in
+ *     iframe.html (confirmed in SPR-08; shell stories render none of their own).
+ */
+export const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
+export const AXE_DISABLED_RULES = [
+  "scrollable-region-focusable",
+  "landmark-one-main",
+  "region",
+  "page-has-heading-one",
+  "empty-heading",
+];
 
 export const FREEZE_STYLE_ID = "visual-axes-freeze-motion";
 
