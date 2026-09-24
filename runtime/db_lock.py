@@ -113,6 +113,19 @@ class _WarmWriterSlot:
 
 _warm_slots: dict[str, _WarmWriterSlot] = {}
 _warm_slots_lock = threading.Lock()
+# Keys whose parked writer is being closed by the expiry timer RIGHT NOW.
+# The timer pops the slot under _warm_slots_lock and closes the DuckDB
+# handle outside it, so for those milliseconds the registry says "nothing
+# parked" while the file is still held open. Anyone who then opens or
+# ATTACHes the same file in this process hits DuckDB's "Unique file handle
+# conflict". _take_warm_slot and flush_warm_writers wait for the close.
+_warm_closing: dict[str, threading.Event] = {}
+_WARM_CLOSE_WAIT_S = 60.0
+
+
+def _wait_for_warm_close(pending: threading.Event | None) -> None:
+    if pending is not None:
+        pending.wait(_WARM_CLOSE_WAIT_S)
 
 
 def _warm_key(db_path: str) -> str:
@@ -136,7 +149,9 @@ def _take_warm_slot(db_path: str) -> _WarmWriterSlot | None:
     key = _warm_key(db_path)
     with _warm_slots_lock:
         slot = _warm_slots.pop(key, None)
+        pending = _warm_closing.get(key)
     if slot is None:
+        _wait_for_warm_close(pending)
         return None
     if time.monotonic() >= slot.expires_mono:
         _destroy_warm_slot(slot)
@@ -198,7 +213,15 @@ def _expire_warm_slot(key: str, slot: _WarmWriterSlot) -> None:
         if time.monotonic() < slot.expires_mono:
             return
         _warm_slots.pop(key, None)
-    _destroy_warm_slot(slot)
+        closing = threading.Event()
+        _warm_closing[key] = closing
+    try:
+        _destroy_warm_slot(slot)
+    finally:
+        with _warm_slots_lock:
+            if _warm_closing.get(key) is closing:
+                del _warm_closing[key]
+        closing.set()
 
 
 def _schedule_warm_expiry(key: str, slot: _WarmWriterSlot, keepalive_s: float) -> None:
@@ -222,12 +245,19 @@ def flush_warm_writers(db_path: str | None = None) -> int:
         if db_path is None:
             slots = list(_warm_slots.values())
             _warm_slots.clear()
+            pending = list(_warm_closing.values())
         else:
             key = _warm_key(db_path)
             slot = _warm_slots.pop(key, None)
             slots = [slot] if slot is not None else []
+            closing = _warm_closing.get(key)
+            pending = [closing] if closing is not None else []
     for slot in slots:
         _destroy_warm_slot(slot)
+    # A close the expiry timer already started is not ours to count, but the
+    # caller's next open/ATTACH must not race it.
+    for event in pending:
+        _wait_for_warm_close(event)
     return len(slots)
 
 

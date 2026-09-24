@@ -6,6 +6,7 @@ Cite: runtime/db_lock.py WP-3; #3121 coexist; #3164/#3165 fill contention.
 from __future__ import annotations
 
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -144,3 +145,109 @@ def test_parked_slot_releases_flock_on_expiry_without_another_writer(
     finally:
         os.close(fd)
     assert db_lock.flush_warm_writers(db) == 0
+
+
+# ---------------------------------------------------------------------------
+# Expiry close in flight (2026-09-24): the timer pops the slot under the
+# registry lock and closes the DuckDB handle OUTSIDE it, so for those
+# milliseconds "nothing parked" is true while the file is still held open.
+# Both in-process re-openers must wait for that close, or DuckDB answers
+# "Unique file handle conflict" (seen by merge_staging's ATTACH).
+# ---------------------------------------------------------------------------
+
+
+class _BlockingCon:
+    def __init__(self) -> None:
+        self.started = threading.Event()
+        self.release = threading.Event()
+        self.closed = False
+
+    def close(self) -> None:
+        self.started.set()
+        assert self.release.wait(5.0), "test never released the close"
+        self.closed = True
+
+
+def _park_expired_fake(tmp_path: Path) -> tuple[str, db_lock._WarmWriterSlot, _BlockingCon]:
+    db = str(tmp_path / "race.duckdb")
+    lock_path = db + ".lock"
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    con = _BlockingCon()
+    slot = db_lock._WarmWriterSlot(
+        con=con,
+        lock_fd=fd,
+        lock_path=lock_path,
+        db_path=db,
+        expires_mono=time.monotonic() - 1.0,
+        last_purpose="test",
+    )
+    key = db_lock._warm_key(db)
+    with db_lock._warm_slots_lock:
+        db_lock._warm_slots[key] = slot
+    return db, slot, con
+
+
+def _run_in_thread(fn, *args):
+    out: dict = {}
+
+    def target() -> None:
+        try:
+            out["result"] = fn(*args)
+        except BaseException as exc:  # pragma: no cover - surfaced by the assert
+            out["error"] = exc
+
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    return t, out
+
+
+def test_flush_waits_for_an_expiry_close_in_flight(tmp_path: Path):
+    db, slot, con = _park_expired_fake(tmp_path)
+    key = db_lock._warm_key(db)
+    try:
+        expiry, _ = _run_in_thread(db_lock._expire_warm_slot, key, slot)
+        assert con.started.wait(5.0)
+        # The registry already says "nothing parked" while close() is stuck.
+        with db_lock._warm_slots_lock:
+            assert key not in db_lock._warm_slots
+            assert key in db_lock._warm_closing
+
+        flusher, out = _run_in_thread(db_lock.flush_warm_writers, db)
+        flusher.join(0.3)
+        assert flusher.is_alive(), "flush returned while the expiry close was still in flight"
+
+        con.release.set()
+        flusher.join(5.0)
+        expiry.join(5.0)
+        assert not flusher.is_alive()
+        assert "error" not in out
+        assert out["result"] == 0  # the timer's close is not ours to count
+        assert con.closed
+        with db_lock._warm_slots_lock:
+            assert key not in db_lock._warm_closing
+    finally:
+        con.release.set()
+        db_lock.flush_warm_writers(db)
+
+
+def test_take_warm_slot_waits_for_an_expiry_close_in_flight(tmp_path: Path):
+    db, slot, con = _park_expired_fake(tmp_path)
+    key = db_lock._warm_key(db)
+    try:
+        expiry, _ = _run_in_thread(db_lock._expire_warm_slot, key, slot)
+        assert con.started.wait(5.0)
+
+        taker, out = _run_in_thread(db_lock._take_warm_slot, db)
+        taker.join(0.3)
+        assert taker.is_alive(), "a new writer would have reopened the file mid-close"
+
+        con.release.set()
+        taker.join(5.0)
+        expiry.join(5.0)
+        assert not taker.is_alive()
+        assert "error" not in out
+        assert out["result"] is None
+        assert con.closed
+    finally:
+        con.release.set()
+        db_lock.flush_warm_writers(db)
