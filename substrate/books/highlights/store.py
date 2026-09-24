@@ -15,7 +15,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from runtime.db_lock import LockedConnection
-from substrate.books.highlights.schema import SqlExecutor, init_highlights_schema
+from substrate.books.highlights.schema import (
+    SqlExecutor,
+    highlights_table_exists,
+    init_highlights_schema,
+)
 from substrate.feedback.domain import NodeTextAnchor
 
 
@@ -180,6 +184,32 @@ class HighlightsStore:
             [document_id],
         ).fetchall()
         return [_row_to_anchor(r) for r in rows]
+
+    def find_by_location(
+        self,
+        con: SqlExecutor,
+        *,
+        owner_user_id: str,
+        document_id: str,
+        node_id: str,
+        start_scalar: int,
+        end_scalar: int,
+    ) -> AnchorRow | None:
+        """The anchor pinning this exact passage for this owner, if one
+        exists — the pin idempotency key (owner, document, node, offsets).
+        Read-safe: no row can exist before the table does (the schema is
+        created by the write paths, not here)."""
+        if not highlights_table_exists(con):
+            return None
+        row = con.execute(
+            "SELECT anchor_id FROM anchored_highlights WHERE owner_user_id = ? "
+            "AND document_id = ? AND anchor_node_id = ? "
+            "AND anchor_start_scalar = ? AND anchor_end_scalar = ? LIMIT 1",
+            [owner_user_id, document_id, node_id, start_scalar, end_scalar],
+        ).fetchone()
+        if row is None:
+            return None
+        return self.get(con, str(row[0]))
 
     def update_after_reanchor(
         self,

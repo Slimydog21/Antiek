@@ -40,6 +40,8 @@ import type { Rect as PhysicsRect, RenderContext } from "../../reading-physics/t
 import { makeIslandAugmentation } from "../../reading-physics/augmentations/thread-island";
 import ThreadIsland from "./island/ThreadIsland";
 import { deriveIslandRefs } from "./island/islandModel";
+import { runSpawnFlow } from "./island/spawnFlows";
+import { toast } from "../../components/lemon/LemonToast";
 import {
   HIDDEN_ISLANDS_CHANGED,
   readHiddenIslands,
@@ -497,44 +499,106 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     [pinFromSelection, refetchAnchors],
   );
 
-  // Deep-research (highlight) -> spin-research + /inv/:id. Book-bound provenance
-  // via POST /books/{id}/spin-research. ChaseThread stays the in-investigation
-  // chase path on the Research workstation. Section 9.0: null safeSpawnText = refuse.
-  // SPR-02/SPR-04: pin FIRST (one pin), then spawn, then write the spawned
-  // thread onto the anchor (first link wins — a second spawn never overwrites).
-
+  // Deep-research (highlight) -> pin -> spin-research -> write-back, and the
+  // ISLAND emerges collapsed at the passage (island SPR-03) — the reader does
+  // NOT navigate away; "Open research" on the island is the explicit jump.
+  // Book-bound provenance via POST /books/{id}/spin-research. ChaseThread
+  // stays the in-investigation chase path on the Research workstation.
+  // Section 9.0: null safeSpawnText = refuse. First link wins — a second
+  // spawn never overwrites. The failure matrix (pin / spawn / link) surfaces
+  // honestly, never an anchorless island.
   const onDeepResearch = useCallback(
     (safeSpawnText: string | null, sel: FloatMenuSelection) => {
       if (safeSpawnText === null) return;
       window.getSelection()?.removeAllRanges();
+      const loc = locateSelection(sel.text);
       void (async () => {
-        let anchorId: string | null = null;
-        try {
-          const pinned = await pinFromSelection("floatmenu_deep_research", sel);
-          anchorId = pinned?.anchor_id ?? null;
-        } catch (e) {
-          console.warn("anchor pin (deep-research) failed", e);
-        }
-        try {
-          const res = await spinResearch(documentId, pageIndex, safeSpawnText);
-          if (anchorId) {
-            try {
-              await linkAnchorInvestigation(documentId, anchorId, res.investigation_id);
-              refetchAnchors();
-            } catch (e) {
-              console.warn("anchor investigation link failed", e);
-            }
-          }
-          navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
-        } catch (err: unknown) {
-          console.error("spin-research from highlight failed", err);
+        const result = await runSpawnFlow({
+          anchors,
+          locate: () => loc,
+          pin: async () => {
+            const pinned = await pinFromSelection("floatmenu_deep_research", sel);
+            if (!pinned) throw new Error("the passage could not be anchored");
+            return pinned;
+          },
+          spin: (passageText) => spinResearch(documentId, pageIndex, passageText),
+          link: (anchorId, investigationId) =>
+            linkAnchorInvestigation(documentId, anchorId, investigationId),
+          passageText: safeSpawnText,
+        });
+        if (result.ok) {
+          refetchAnchors();
+          toast.info("Research started — the island is on your passage.");
+        } else {
+          toast.warn(result.message ?? "Couldn't start the research.");
+          refetchAnchors(); // a lawful pinned highlight may remain
         }
       })();
-
     },
-    [documentId, pageIndex, navigate, pinFromSelection, refetchAnchors],
-
+    [documentId, pageIndex, anchors, locateSelection, pinFromSelection, refetchAnchors],
   );
+
+  // Free-inquiry (island SPR-03): pin the current page's LEAD passage first
+  // (source=pin), then spin with the pinned passage, then the island. The
+  // same dedupe + failure matrix as the highlight path; a gated book's
+  // passage can't anchor (no manifest) and refuses honestly with no withheld
+  // text anywhere.
+  const spawnFreeInquiry = useCallback(() => {
+    const page = pages[pageIndex];
+    if (!page) return;
+    const lead = page.text.split(/\n{2,}/).map((b) => b.trim()).find(Boolean);
+    if (!lead) return;
+    const startInPage = page.text.indexOf(lead);
+    const bodyOffset = page.bodyStart + startInPage;
+    const chunkId = chunkIdAtOffset(bodyOffset, anchorMapChunks);
+    const chunk = chunkId ? anchorChunksById.get(chunkId) : undefined;
+    const loc = chunk
+      ? {
+          chunkId: chunk.chunk_id,
+          start: bodyOffset - chunk.body_start,
+          end: bodyOffset + lead.length - chunk.body_start,
+        }
+      : null;
+    void (async () => {
+      const servableForOutbound = ownerReadable;
+      const result = await runSpawnFlow({
+        anchors,
+        locate: () => loc,
+        pin: async () => {
+          if (!loc || !chunkId) throw new Error("the passage could not be anchored");
+          if (servableForOutbound) {
+            return createAnchor(documentId, {
+              quote: lead,
+              prefix: normalizedBody.slice(Math.max(0, bodyOffset - 32), bodyOffset),
+              suffix: normalizedBody.slice(bodyOffset + lead.length, bodyOffset + lead.length + 32),
+              page_index_hint: pageIndex,
+              source: "pin",
+            });
+          }
+          // Metadata-only (owner-readable withheld book): ids/numbers only —
+          // the passage text never leaves the client in the pin.
+          return createAnchor(documentId, {
+            node_id: chunkId,
+            start_scalar: loc.start,
+            end_scalar: loc.end,
+            page_index_hint: pageIndex,
+            source: "pin",
+          });
+        },
+        spin: (passageText) => spinResearch(documentId, pageIndex, passageText),
+        link: (anchorId, investigationId) =>
+          linkAnchorInvestigation(documentId, anchorId, investigationId),
+        passageText: lead,
+      });
+      if (result.ok) {
+        refetchAnchors();
+        toast.info("Research started — the island is on your passage.");
+      } else {
+        toast.warn(result.message ?? "Couldn't start the research.");
+        refetchAnchors();
+      }
+    })();
+  }, [documentId, pageIndex, pages, anchors, anchorMapChunks, anchorChunksById, normalizedBody, ownerReadable, refetchAnchors]);
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the
   // anchored menu would otherwise float over the wrong page. A chase already in
@@ -782,7 +846,8 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
           /events/typed endpoint promotes on emit, backfill is the safety net).
           §9: source_kind "user" is carried onto the node — never conflated with
           a model-emerged insight. Deep-research spins book-bound research and
-          navigates to /inv/:id. §9.0: the outbound chokepoint refuses Search/Deep-research
+          the island emerges on the passage (island SPR-03 — no navigate-away).
+          §9.0: the outbound chokepoint refuses Search/Deep-research
           over a non-servable book. */}
       <FloatMenu
         selection={selection}
@@ -919,6 +984,15 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
                       onClick={() => setShowVoice((v) => !v)}
                     >
                       {showVoice ? "Close voice note" : "＋ Voice note"}
+                    </LemonButton>
+                    <LemonButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={spawnFreeInquiry}
+                      title="Pin this page's lead passage and start a research thread on it — the island stays on the passage"
+                    >
+                      Research from here
                     </LemonButton>
                     <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />
                   </div>

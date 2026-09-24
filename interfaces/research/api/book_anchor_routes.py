@@ -23,6 +23,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from interfaces.research.api.books import (
@@ -152,11 +153,10 @@ def _resolve_explicit(
     build the anchor from the server's own text. The quote NEVER leaves the
     client (a withheld selection's whole point); the context the server
     persists comes from its own store and is gated at persistence as always."""
-    from substrate.books.highlights.resolve import PinResolution
-    from substrate.feedback.domain import NodeTextAnchor, normalize_node_text
     import hashlib
 
-    from substrate.books.highlights.resolve import PinResolutionError
+    from substrate.books.highlights.resolve import PinResolution, PinResolutionError
+    from substrate.feedback.domain import NodeTextAnchor, normalize_node_text
 
     row = con.execute(
         "SELECT text, section_path FROM chunks WHERE chunk_id = ? AND document_id = ? "
@@ -206,7 +206,9 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         status_code=201,
         tags=["books", "anchors"],
     )
-    def create_anchor(document_id: str, body: AnchorIn, request: Request) -> AnchorOut:
+    def create_anchor(
+        document_id: str, body: AnchorIn, request: Request
+    ) -> AnchorOut | JSONResponse:
         from runtime.db_lock import connect_write
 
         owner = _reader_owner_id(request)
@@ -262,6 +264,22 @@ def register_book_anchor_routes(app: FastAPI) -> None:
             # rows — a non-servable document drops the quote fields at the
             # persistence boundary regardless of what the client sent.
             servable = document_servable(con, document_id)
+            # Pin idempotency: re-pinning the exact passage returns the
+            # EXISTING row (200, not 201) — a retry or a second spawn from
+            # the same passage never duplicates an anchor.
+            existing = HighlightsStore().find_by_location(
+                con,
+                owner_user_id=owner,
+                document_id=document_id,
+                node_id=resolution.anchor.node_id,
+                start_scalar=resolution.anchor.start_scalar,
+                end_scalar=resolution.anchor.end_scalar,
+            )
+            if existing is not None:
+                return JSONResponse(
+                    status_code=200,
+                    content=_anchor_out(existing, exact_valid=True).model_dump(),
+                )
             row = HighlightsStore().create_pin(
                 con,
                 CreatePinCommand(
