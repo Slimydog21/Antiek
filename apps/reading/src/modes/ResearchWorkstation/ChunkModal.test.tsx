@@ -58,7 +58,7 @@ describe("ChunkModal Werner evidence boundary", () => {
     await waitFor(() =>
       expect(screen.getByText("Readable evidence")).toBeTruthy(),
     );
-    expect(onEvidenceOpened).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onEvidenceOpened).toHaveBeenCalledTimes(1));
   });
 
   it("stays silent for withheld evidence and fetch failure", async () => {
