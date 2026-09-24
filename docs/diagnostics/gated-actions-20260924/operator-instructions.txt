@@ -1,0 +1,30 @@
+code-level gated actions
+
+  These are also explicitly not automatic:
+
+  1. migrate_v10_account_memory
+      - Production-schema mutation.
+      - This is why live health reports:
+          - memory_node_type_ready=false
+          - memory_edges_owner_ready=false
+          - memory_owner_index_ready=false
+
+      - It needs a deliberate operator run, ideally after a fresh verified backup.
+
+  2. DuckLake Stage 1 → Stage 2 migration
+      - Produces a plan first.
+      - Actual production file moves require explicit operator approval.
+
+  3. Production data backfills/remaps/sweeps
+      - Tools such as prod IP-holder backfill, CC0 remap, and personal-reading reclassification reject production use unless explicitly operator-gated.
+
+  4. Disbursement
+      - Accrual can record amounts owed, but payment remains gated by G2/G3.
+
+  5. Public publishing/export
+      - Requires explicit operator acknowledgement.
+
+  6. Paid or external-execution paths
+      - Live remote execution and paid multimedia/TTS lanes are credential/spend-gated, not auto-enabled.
+
+  The immediate production-relevant one is the v10 account-memory migration. I did not run it automatically because it mutates the production DuckDB schema and is deliberately gated.

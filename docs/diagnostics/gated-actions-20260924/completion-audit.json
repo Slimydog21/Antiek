@@ -1,0 +1,22 @@
+{
+  "checked_at": "2026-09-24T09:04:20.138904+00:00",
+  "source_sha": "874345539e9e2f75d9f85f7f2da54a2bf08e9877",
+  "requirements": {
+    "1": "production v10 applied, restored backup and exact clone rehearsed, all 78 original tables compared, idempotent, all health flags true",
+    "2": "Stage 0 observed; no Stage 1 catalog exists; explicit no-move plan and prerequisites recorded",
+    "3": "three production backfill/refusal controls retained and tested",
+    "4": "G2/G3 disbursement gates retained, mock runtime default observed, no-disbursement tests pass",
+    "5": "public distribution acknowledgement and publication gates retained and tested",
+    "6": "remote execution disabled; execution and media spend authority gates retained and tested"
+  },
+  "user_clarification": "Preserve and verify the existing gates for items 3\u20136",
+  "test_results": {
+    "preflight-tests.txt": 20,
+    "gate-tests.txt": 92,
+    "additional-gate-tests.txt": 35,
+    "public-export-gate-tests.txt": 31
+  },
+  "product_code_changes": false,
+  "runtime_gate_configuration_changed": false,
+  "production_data_preservation": true
+}

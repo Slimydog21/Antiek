@@ -1,0 +1,11 @@
+{
+  "build_sha": "874345539e9e2f75d9f85f7f2da54a2bf08e9877",
+  "archive_sha256": "7615360e98a1ab2816a70dc58e284a8ad058c1112d665b7f1088b0fce77cbcf5",
+  "restored_table_count": 78,
+  "restored_counts_match": true,
+  "migration_changed": true,
+  "second_run_changed": false,
+  "expected_new_write_audit_rows": 2,
+  "every_original_row_and_column_equal": true,
+  "second_run_noop": true
+}

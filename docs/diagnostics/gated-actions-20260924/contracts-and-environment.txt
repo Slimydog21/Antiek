@@ -1,0 +1,8 @@
+cwd: /Users/slimydog/Antiek/worktrees/gated-actions-20260924
+Python: 3.12.13
+SHA: 874345539e9e2f75d9f85f7f2da54a2bf08e9877
+substrate.graph.migrate_v10_account_memory migrate (con: 'LockedConnection') -> 'bool'
+substrate.graph.migrate_v10_account_memory migrate_at_path (db_path: 'str') -> 'bool'
+substrate.ducklake.migration plan_stage1_to_stage2 (*, catalog: 'DuckLakeCatalog', root_dir: 'str', to_strategy: 'HashPrefixSharding', from_strategy: 'ShardingStrategy' = NoSharding()) -> 'MigrationPlan'
+substrate.ducklake.migration execute_migration_plan (plan: 'MigrationPlan', *, catalog: 'DuckLakeCatalog', dry_run: 'bool' = True) -> 'list[MigrationStep]'
+LLM contacted: no

@@ -1,0 +1,26 @@
+{
+  "decision": "defer_stage2_no_stage1_catalog",
+  "source_sha": "874345539e9e2f75d9f85f7f2da54a2bf08e9877",
+  "operator_instruction_sha256": "b49a5b88bd8581e0cd79f28ee8d2ba7d1ae400c867ffe38d9d8fd8e97f6913e8",
+  "observed_stage": "stage_0_single_file",
+  "source_database": "/home/antiek/.antiek/antiek.duckdb",
+  "catalog_snapshot": null,
+  "catalogs_found": [],
+  "personal_graph_file_count": 0,
+  "steps": [],
+  "total_bytes_to_move": 0,
+  "executed": false,
+  "reason": "The deployed application uses the single operator graph. No personal-graph directory or catalog_entries store exists in the configured state tree, and production call sites do not instantiate a DuckLake catalog. There is no Stage 1 catalog from which to derive an executable Stage 2 move plan.",
+  "before_any_move": [
+    "Establish and approve Stage 1 owner routing and catalog identity.",
+    "Demonstrate the file-handle/catalog-contention trigger and measure latency slack.",
+    "Snapshot the real catalog and produce a deterministic source/destination manifest.",
+    "Verify source-file existence, encryption_key_ref preservation, write freeze, backup restore, and crash recovery across file move and catalog update.",
+    "Obtain explicit approval for the concrete move manifest."
+  ],
+  "code_risks_to_resolve_before_execution": [
+    "execute_migration_plan currently drops encryption_key_ref when re-registering entries.",
+    "File move and catalog upsert are separate operations; interrupted moves need independently proven recovery.",
+    "A missing source path still permits catalog upsert; production planning must reject missing sources."
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "runtime_configuration": {
+    "ANTIEK_DUCKDB_PATH": "/home/antiek/.antiek/antiek.duckdb",
+    "ANTIEK_PERSONAL_GRAPHS_DIR": "<unset>",
+    "ANTIEK_SHARED_SUBSTRATE_DB": "<unset>",
+    "ANTIEK_REMOTE_EXEC_ENABLED": "<unset>",
+    "ANTIEK_SPEAK_PUBLIC_PUBLISHING": "<unset>",
+    "ANTIEK_STRIPE_PROVIDER": "<unset>",
+    "ANTIEK_LEGAL_GATE_PLACEHOLDER_ACKED": "<unset>",
+    "ANTIEK_PRIME_AGENT_ENABLED": "<unset>",
+    "ANTIEK_RLM_RATIFIED": "<unset>"
+  },
+  "personal_graph_directory_exists": false,
+  "personal_graph_file_count": 0,
+  "catalogs": [],
+  "sqlite_databases_inspected": 1,
+  "build_sha": "874345539e9e2f75d9f85f7f2da54a2bf08e9877"
+}

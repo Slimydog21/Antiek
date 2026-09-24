@@ -1,0 +1,26 @@
+MainPID=1244121
+ExecMainStartTimestamp=Thu 2026-09-24 09:00:25 UTC
+Id=antiek.service
+ActiveState=active
+SubState=running
+
+MainPID=1244352
+ExecMainStartTimestamp=Thu 2026-09-24 09:00:57 UTC
+Id=antiek-arxiv-oai-sync.service
+ActiveState=activating
+SubState=start
+
+MainPID=0
+ExecMainStartTimestamp=Wed 2026-09-23 13:41:34 UTC
+Id=antiek-continuous-research.service
+ActiveState=inactive
+SubState=dead
+
+MainPID=0
+ExecMainStartTimestamp=Thu 2026-09-24 08:53:01 UTC
+Id=antiek-backup.service
+ActiveState=inactive
+SubState=dead
+Sep 24 09:00:57 antiek-prod-fsn1 systemd[1]: Starting antiek-arxiv-oai-sync.service - Antiek arXiv OAI-PMH incremental sync...
+antiek antiek 664 657731584 /var/lib/antiek-ops-v10-20260924/production-before.duckdb
+{"status":"ok","param_version":"0.2.0","schema_version":40,"subscriber_count":0,"registered_providers":["deepseek","hermes","xiaomi","zai","zai_reasoning"],"providers_ready":true,"drw_gather_mode":"exa","build_sha":"874345539e9e2f75d9f85f7f2da54a2bf08e9877","flywheel_ready":true,"knowledge_reuse_count":1,"turbopuffer_servable_enabled":true,"turbopuffer_shadow_enabled":false,"turbopuffer_api_key_present":true,"turbopuffer_active_pointer":true,"turbopuffer_pointer_context_ok":true,"turbopuffer_hybrid_ready":true,"turbopuffer_probe_error":null,"turbopuffer_resolved_kind":"turbopuffer","turbopuffer_indexed_row_count":4837,"turbopuffer_content_hash":"41e399443ee69c7c305636a0f456d103054413dc19af323e4dadcf47011988ef","turbopuffer_duckdb_is_sot":true,"turbopuffer_thought_partner_hybrid_wired":true,"turbopuffer_production_default_mount":true,"duckdb_ready":true,"duckdb_status":"ok","duckdb_schema_present":true,"duckdb_database_size_ok":true,"duckdb_integrity_check":"ok","duckdb_wal_present":false,"duckdb_wal_bytes":0,"duckdb_error":null,"memory_node_type_ready":true,"memory_edges_owner_ready":true,"memory_owner_index_ready":true,"backup_fresh":true,"backup_completed_at":"2026-09-24T08:56:21Z","backup_age_hours":0.09480220222222223,"backup_marker_path":"/home/antiek/.antiek/backup_freshness.json","backup_reason":"FRESH: last verified backup 2026-09-24T08:56:21Z is 0.1h old (threshold 26.0h)","prime_agent_enabled":false,"rlm_ratified":false,"prime_agent_binary_present":false,"prime_agent_invocations_attempted":0}
