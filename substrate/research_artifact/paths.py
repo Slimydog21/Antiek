@@ -57,9 +57,13 @@ def artifact_source_path_for(artifact_id: str, content_hash: str) -> Path:
 
 
 def read_bounded_nofollow(path: Path, limit: int) -> bytes:
-    """Descriptor-bound read: reject symlinks and size before allocation."""
+    """Descriptor-bound read: reject symlinks and size before allocation.
+
+    O_NONBLOCK: opening a FIFO for reading blocks until a writer appears, and
+    that open comes before the fstat that refuses non-regular files. It has no
+    effect on reading a regular file."""
     parent_fd, name = _open_parent_dir(path, create=False)
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = os.open(name, flags, dir_fd=parent_fd)
     except OSError as err:

@@ -13,6 +13,7 @@ with the same answer whether or not the file exists.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
 
@@ -259,3 +260,47 @@ def test_a_draft_swapped_right_after_the_readers_first_access_is_not_read(api_en
     else:
         assert SECRET not in text
     assert swapped, "the reader never touched the draft"
+
+
+def _returns_promptly(fn, fifo: Path, timeout: float = 3.0):
+    """Run ``fn`` in a thread; report whether it was still blocked after
+    ``timeout``. A blocked reader is released by opening the FIFO for writing,
+    so a regression fails the test instead of hanging the suite."""
+    import threading
+
+    outcome: dict[str, object] = {}
+
+    def run() -> None:
+        try:
+            outcome["value"] = fn()
+        except Exception as err:  # noqa: BLE001 - the test inspects it
+            outcome["error"] = err
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    blocked = worker.is_alive()
+    if blocked:
+        with contextlib.suppress(OSError):
+            os.close(os.open(fifo, os.O_WRONLY | os.O_NONBLOCK))
+        worker.join(5)
+    return blocked, outcome
+
+
+def test_a_fifo_named_like_a_draft_is_refused_without_blocking(api_env):  # noqa: F811
+    # Opening a FIFO for reading blocks until a writer appears; the check that
+    # refuses non-regular files must not sit behind that open.
+    from substrate.research_artifact.paths import read_reviewed_draft_merge
+
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+    fifo = Path(api_env["arts"]) / "draft-merge-fifo.html"
+    os.mkfifo(fifo)
+    blocked, outcome = _returns_promptly(lambda: read_reviewed_draft_merge(str(fifo)), fifo)
+    assert not blocked, "the draft reader blocked on a FIFO"
+    assert REFUSAL in str(outcome.get("error")), outcome
+    blocked, outcome = _returns_promptly(
+        lambda: _preview(client, {**packet, "draft_merge_path": str(fifo)}, hashes), fifo
+    )
+    assert not blocked, "the source-merge preflight blocked on a FIFO"
+    _assert_refused(outcome["value"])

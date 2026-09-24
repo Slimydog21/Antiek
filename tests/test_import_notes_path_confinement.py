@@ -10,6 +10,8 @@ runs as the operator on their own machine, keeps reading local paths.
 
 from __future__ import annotations
 
+import contextlib
+import os
 import shutil
 from pathlib import Path
 
@@ -67,3 +69,39 @@ def test_a_missing_path_and_a_present_one_are_refused_alike(api_env):  # noqa: F
         for r in (_import(client, str(present)), _import(client, str(present.with_name("absent.env"))))
     ]
     assert answers[0] == answers[1] == (400, {"detail": REFUSAL}), answers
+
+
+def _returns_promptly(fn, fifo: Path, timeout: float = 3.0):
+    """Run ``fn`` in a thread; report whether it was still blocked after
+    ``timeout``. A blocked reader is released by opening the FIFO for writing,
+    so a regression fails the test instead of hanging the suite."""
+    import threading
+
+    outcome: dict[str, object] = {}
+
+    def run() -> None:
+        try:
+            outcome["value"] = fn()
+        except Exception as err:  # noqa: BLE001 - the test inspects it
+            outcome["error"] = err
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    blocked = worker.is_alive()
+    if blocked:
+        with contextlib.suppress(OSError):
+            os.close(os.open(fifo, os.O_WRONLY | os.O_NONBLOCK))
+        worker.join(5)
+    return blocked, outcome
+
+
+def test_a_fifo_in_the_artifacts_dir_is_refused_without_blocking(api_env):  # noqa: F811
+    client = _client()
+    fifo = Path(api_env["arts"]) / "notes-fifo.html"
+    fifo.parent.mkdir(parents=True, exist_ok=True)
+    os.mkfifo(fifo)
+    blocked, outcome = _returns_promptly(lambda: _import(client, str(fifo)), fifo)
+    assert not blocked, "the import-notes route blocked on a FIFO"
+    resp = outcome["value"]
+    assert resp.status_code == 400 and resp.json()["detail"] == REFUSAL, resp.text
