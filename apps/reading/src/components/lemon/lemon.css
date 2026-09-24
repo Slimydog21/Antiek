@@ -1,0 +1,65 @@
+/* ============================================================
+   Lemon keycap physics (design spec §4; audit M1).
+
+   A raised Lemon control is a key: a face over a 3px frame (a hard,
+   blur-free box-shadow straight down). Hover lifts the face half a pixel
+   and grows the frame by the same half pixel; press sinks the face and
+   shrinks the frame by the same amount. The frame's far edge therefore
+   stays put on every frame of every transition, which is what makes it
+   read as one physical key, not a card jumping about (PostHog's
+   LemonButton: "total height is conserved").
+
+   The conservation holds mid-transition too, because transform and
+   box-shadow animate TOGETHER with one duration and one easing: the face
+   offset and the frame depth are both linear in the same eased progress,
+   and their sum is constant. The old recipe transitioned transform only,
+   so the shadow snapped to 8px on the first hover frame while the face had
+   not moved (footprint +3 -> +8 -> +6 -> +2 px, measured in Chromium).
+
+   Variants are var overrides, never property overrides: a colourway sets
+   --keycap-frame and nothing else here. Disabled keys (aria-disabled) drop
+   the frame and stop responding; they stay focusable so their reason can
+   be read (disabledReason, Tooltip.css).
+
+   Timing reads the motion scale (tokens.css): base (150ms) for the lift,
+   fast (80ms) for the press, the standard easing for both.
+
+   The resting rule is :where() (zero specificity) so a utility a call site
+   passes in className still wins, whatever order the sheets load in.
+   ============================================================ */
+
+:where(.lemon-keycap) {
+  --keycap-depth: 3px;
+  --keycap-lift: -0.5px;
+  --keycap-sink: 0.5px;
+  --keycap-travel: 0px;
+  --keycap-frame: var(--keycap-edge);
+  box-shadow: 0 calc(var(--keycap-depth) - var(--keycap-travel)) 0 0 var(--keycap-frame);
+  transition-property: transform, box-shadow;
+  transition-duration: var(--motion-base);
+  transition-timing-function: var(--ease-standard);
+}
+
+/* Hover only where a real pointer hovers: a tap on a touch screen must not
+   leave the key stuck in its lifted state. */
+@media (hover: hover) and (pointer: fine) {
+  .lemon-keycap:not([aria-disabled="true"]):hover {
+    --keycap-travel: var(--keycap-lift);
+    transform: translateY(var(--keycap-travel));
+  }
+}
+
+.lemon-keycap:not([aria-disabled="true"]):active {
+  --keycap-travel: var(--keycap-sink);
+  transform: translateY(var(--keycap-travel));
+  transition-duration: var(--motion-fast);
+}
+
+.lemon-keycap[aria-disabled="true"] {
+  --keycap-depth: 0px;
+}
+
+/* Colourways: which frame sits under the face. */
+:where(.lemon-keycap--secondary) {
+  --keycap-frame: var(--border-rule);
+}

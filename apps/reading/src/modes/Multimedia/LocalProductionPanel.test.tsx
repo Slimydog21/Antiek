@@ -11,6 +11,7 @@ import {
 } from "../../api/multimedia";
 import type { MultimediaAssetRecord, MultimediaLocalPreparedSet } from "../../api/multimedia";
 import { LocalProductionPanel } from "./LocalProductionPanel";
+import { isDisabled } from "../../test/isDisabled";
 
 vi.mock("../../api/multimedia", () => ({
   attestMultimediaLocalCard: vi.fn(),
@@ -74,7 +75,7 @@ describe("LocalProductionPanel", () => {
     expect(screen.getByText("Review required")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Attest source card" }));
     const produce = await screen.findByRole("button", { name: "Produce locally · $0" });
-    expect(produce.getAttribute("disabled")).toBeNull();
+    expect(isDisabled(produce)).toBe(false);
     fireEvent.click(produce);
     await screen.findByText("Verified playback ready");
     expect(onRegistered).toHaveBeenCalledOnce();

@@ -8,6 +8,7 @@ import {
   saveToolConnection,
   type ToolConnection,
 } from "../../api/toolConnections";
+import { isDisabled } from "../../test/isDisabled";
 
 const SECRET = "AIza-secret-never-render";
 
@@ -262,9 +263,9 @@ describe("ToolConnectionsPanel", () => {
     await user.click(within(youtube).getByRole("button", { name: "Replace" }));
     await user.type(within(youtube).getByLabelText("API key (write-only)"), SECRET);
     await user.click(within(youtube).getByRole("button", { name: "Save connection" }));
-    expect(within(polygon).getByRole("button", { name: "Connect" }).hasAttribute("disabled")).toBe(true);
+    expect(isDisabled(within(polygon).getByRole("button", { name: "Connect" }))).toBe(true);
     resolveSave({ ...rows[0], credential_present: true });
-    await waitFor(() => expect(within(polygon).getByRole("button", { name: "Connect" }).hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(isDisabled(within(polygon).getByRole("button", { name: "Connect" }))).toBe(false));
   });
 
   it("uses form validation for EDGAR and supports Enter submission", async () => {

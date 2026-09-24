@@ -5,11 +5,22 @@ afterEach(() => {
   cleanup();
 });
 
+/** The accessible description: the text of every aria-describedby target,
+ *  hidden ones included (the accname rule for directly referenced nodes). */
+function computeAccessibleDescription(el: Element): string {
+  return (el.getAttribute("aria-describedby") ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent?.trim() ?? "")
+    .join(" ");
+}
+
 import LemonButton from "./LemonButton";
 import { LemonModal } from "./LemonModal";
 import { LemonSelect } from "./LemonSelect";
 import { LemonToastViewport, toast } from "./LemonToast";
 import { ErrorBanner } from "./ErrorBanner";
+import type React from "react";
 
 /**
  * S1 acceptance criterion: "RTL unit tests for the four primitives
@@ -36,6 +47,75 @@ describe("LemonButton — click", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Disabled" }));
     expect(onClick).not.toHaveBeenCalled();
+  });
+});
+
+describe("LemonButton — disabledReason (never quietly disabled)", () => {
+  it("stays focusable and exposes aria-disabled instead of the native attribute", () => {
+    render(<LemonButton disabledReason="Type a question first">Ask</LemonButton>);
+    const btn = screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(btn.getAttribute("aria-disabled")).toBe("true");
+    btn.focus();
+    expect(document.activeElement).toBe(btn);
+  });
+
+  it("carries the reason as its accessible description and as the visible tip", () => {
+    render(<LemonButton disabledReason="Type a question first">Ask</LemonButton>);
+    const btn = screen.getByRole("button", { name: "Ask" });
+    expect(computeAccessibleDescription(btn)).toBe("Type a question first");
+    expect(btn.getAttribute("data-tip")).toBe("Type a question first");
+    // The reason is not folded into the button's name (it sits outside it).
+    expect(btn.textContent).toBe("Ask");
+  });
+
+  it("keeps a caller's own aria-describedby alongside the reason", () => {
+    render(
+      <>
+        <p id="hint">Costs one credit.</p>
+        <LemonButton aria-describedby="hint" disabledReason="Connect a model first">Run</LemonButton>
+      </>,
+    );
+    const btn = screen.getByRole("button", { name: "Run" });
+    expect(computeAccessibleDescription(btn)).toBe("Costs one credit. Connect a model first");
+  });
+
+  it("does nothing on click, and a disabled submit button does not submit its form", () => {
+    const onClick = vi.fn();
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <LemonButton type="submit" onClick={onClick} disabledReason="Name it first">Save</LemonButton>
+      </form>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onClick).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("an empty or null reason leaves the button enabled", () => {
+    const onClick = vi.fn();
+    render(<LemonButton disabledReason={null} onClick={onClick}>Go</LemonButton>);
+    const btn = screen.getByRole("button", { name: "Go" });
+    expect(btn.hasAttribute("aria-disabled")).toBe(false);
+    expect(btn.hasAttribute("data-tip")).toBe(false);
+    fireEvent.click(btn);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("legacy `disabled` without a reason is aria-disabled too, with no tip", () => {
+    render(<LemonButton disabled>Old</LemonButton>);
+    const btn = screen.getByRole("button", { name: "Old" }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(btn.getAttribute("aria-disabled")).toBe("true");
+    expect(btn.hasAttribute("data-tip")).toBe(false);
+  });
+
+  it("does not bake in pointer-events:none or an opacity fade", () => {
+    render(<LemonButton disabledReason="Not yet">X</LemonButton>);
+    const cls = screen.getByRole("button", { name: "X" }).className;
+    expect(cls).not.toMatch(/pointer-events-none/);
+    expect(cls).not.toMatch(/disabled:opacity/);
   });
 });
 

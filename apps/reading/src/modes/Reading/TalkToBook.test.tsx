@@ -18,6 +18,7 @@ import {
 } from "../../api/books";
 import type { AskBookResponse, BookCitation } from "../../api/books";
 import TalkToBook from "./TalkToBook";
+import { isDisabled } from "../../test/isDisabled";
 
 const {
   askBookMock,
@@ -125,7 +126,7 @@ afterEach(cleanup);
 
 async function openModelPicker() {
   const trigger = await screen.findByRole("button", { name: "Model for this answer" });
-  await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+  await waitFor(() => expect(isDisabled(trigger)).toBe(false));
   fireEvent.click(trigger);
 }
 
@@ -317,7 +318,7 @@ describe("TalkToBook (M2)", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
     expect(await screen.findByText(/provider outcome is not confirmed/i)).toBeTruthy();
-    expect(screen.getByText("clear").hasAttribute("disabled")).toBe(true);
+    expect(isDisabled(screen.getByText("clear"))).toBe(true);
     const stored = JSON.parse(window.sessionStorage.getItem("antiek.read.talk.doc-x") ?? "{}");
     expect(stored.branches[0].messages[0].operation_id).toMatch(/^talk-/);
     expect(stored.branches[0].messages[0].model_operation_state).toBe("unknown");
@@ -332,7 +333,7 @@ describe("TalkToBook (M2)", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Question for this book" }), {
       target: { value: "must not dispatch" },
     });
-    expect(screen.getByRole("button", { name: "Ask" }).hasAttribute("disabled")).toBe(true);
+    expect(isDisabled(screen.getByRole("button", { name: "Ask" }))).toBe(true);
     expect(askBookMock).toHaveBeenCalledTimes(1);
   });
 

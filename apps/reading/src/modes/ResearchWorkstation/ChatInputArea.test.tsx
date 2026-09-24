@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 import ChatInputArea from "./ChatInputArea";
+import { isDisabled } from "../../test/isDisabled";
 
 /**
  * ChatInputArea.test — the composer's model driver actually drives.
@@ -105,7 +106,7 @@ function renderComposer(props: Record<string, unknown> = {}) {
 
 async function chooseDeepSeek() {
   const trigger = await screen.findByRole("button", { name: "Model for this research" });
-  await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+  await waitFor(() => expect(isDisabled(trigger)).toBe(false));
   await userEvent.click(trigger);
   await userEvent.click(await screen.findByText("DeepSeek V4 Pro"));
 }
@@ -139,7 +140,7 @@ describe("ChatInputArea — the model driver reaches the request", () => {
     renderComposer();
     // The picker is present and loaded; it is simply not touched.
     const trigger = await screen.findByRole("button", { name: "Model for this research" });
-    await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(isDisabled(trigger)).toBe(false));
     await ask("what changed in the margin structure?");
 
     const body = startBodies[0];

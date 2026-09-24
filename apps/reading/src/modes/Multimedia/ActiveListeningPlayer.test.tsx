@@ -39,6 +39,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
 });
 
 import { getListeningProgress, prepareResearchIntent, putListeningProgress } from "../../api/multimedia";
+import { isDisabled } from "../../test/isDisabled";
 
 const mockGetProgress = vi.mocked(getListeningProgress);
 const mockPutProgress = vi.mocked(putListeningProgress);
@@ -195,7 +196,7 @@ describe("ActiveListeningPlayer", () => {
     fireEvent.click(researchButtons[0]);
     fireEvent.click(screen.getByRole("button", { name: "Prepare research" }));
     expect(screen.getByLabelText("Research question")).toHaveProperty("disabled", true);
-    expect(researchButtons[1]).toHaveProperty("disabled", true);
+    expect(isDisabled(researchButtons[1])).toBe(true);
     fireEvent.click(researchButtons[1]);
     resolveResearch({} as Awaited<ReturnType<typeof prepareResearchIntent>>);
     await waitFor(() => expect(screen.getByText(/Plan review is the next step/)).toBeTruthy());

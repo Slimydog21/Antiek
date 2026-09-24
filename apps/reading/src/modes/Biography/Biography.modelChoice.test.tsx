@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 import Biography from "./index";
+import { isDisabled } from "../../test/isDisabled";
 
 /**
  * Biography.modelChoice.test — the gathering runs on the chosen route.
@@ -113,7 +114,7 @@ async function startBiographyFor(name: string) {
 
 async function chooseGlm() {
   const trigger = await screen.findByRole("button", { name: "Model for the gathering" });
-  await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+  await waitFor(() => expect(isDisabled(trigger)).toBe(false));
   await userEvent.click(trigger);
   await userEvent.click(await screen.findByText("GLM 5.2"));
 }
@@ -127,7 +128,7 @@ describe("Biography — the picked model does the gathering", () => {
     );
 
     const trigger = await screen.findByRole("button", { name: "Model for the gathering" });
-    await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(isDisabled(trigger)).toBe(false));
     await userEvent.click(trigger);
     await userEvent.click(await screen.findByText("GLM 5.2"));
 
@@ -148,7 +149,7 @@ describe("Biography — the picked model does the gathering", () => {
       </MemoryRouter>,
     );
     const trigger = await screen.findByRole("button", { name: "Model for the gathering" });
-    await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(isDisabled(trigger)).toBe(false));
 
     await startBiographyFor("my grandmother");
 

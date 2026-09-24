@@ -12,6 +12,7 @@ import {
 } from "../../api/multimedia";
 import type { MultimediaAssetRecord } from "../../api/multimedia";
 import { VisualReviewPanel } from "./VisualReviewPanel";
+import { isDisabled } from "../../test/isDisabled";
 
 vi.mock("../../api/multimedia", () => ({
   attestMultimediaVisualCandidate: vi.fn(),
@@ -118,7 +119,7 @@ describe("VisualReviewPanel", () => {
     const { unmount } = render(<VisualReviewPanel record={record} reviewedSet={null} onRegistered={onRegistered} />);
 
     const authorize = screen.getByRole("button", { name: "Authorize images" });
-    expect(authorize.getAttribute("disabled")).not.toBeNull();
+    expect(isDisabled(authorize)).toBe(true);
     fireEvent.click(screen.getByLabelText("Approve this ceiling"));
     fireEvent.click(authorize);
     await screen.findByRole("button", { name: "Generate candidates" });
@@ -129,13 +130,13 @@ describe("VisualReviewPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open contact sheet" }));
 
     const select = await screen.findByRole("button", { name: "Attest & select" });
-    expect(select.getAttribute("disabled")).not.toBeNull();
+    expect(isDisabled(select)).toBe(true);
     fireEvent.click(screen.getByLabelText(/confirm these are generated visuals/i));
     fireEvent.click(select);
     await screen.findByRole("button", { name: "Selected" });
 
     const lock = screen.getByRole("button", { name: "Lock visual sequence" });
-    expect(lock.getAttribute("disabled")).toBeNull();
+    expect(isDisabled(lock)).toBe(false);
     fireEvent.click(lock);
     await waitFor(() => expect(onRegistered).toHaveBeenCalledWith(expect.objectContaining({ set_id: "set-1" })));
     expect(registerMultimediaReviewedVisuals).toHaveBeenCalledWith(

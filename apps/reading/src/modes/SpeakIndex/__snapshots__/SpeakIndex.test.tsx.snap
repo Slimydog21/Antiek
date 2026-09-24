@@ -62,8 +62,8 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           value=""
         />
         <button
-          class="inline-flex items-center justify-center gap-2 font-mono font-semibold border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-sm  "
-          disabled=""
+          aria-disabled="true"
+          class="inline-flex items-center justify-center gap-2 font-sans font-medium border rounded-hog aria-disabled:cursor-not-allowed aria-disabled:bg-inset aria-disabled:text-3 aria-disabled:border-hairline lemon-keycap bg-sun text-ink border-keycap-edge hover:bg-sun-hover active:bg-sun-press h-9  px-3.5 text-sm  "
           type="submit"
         >
           Start their story
@@ -110,7 +110,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
       >
         <div>
           <label
-            class="inline-flex items-center gap-2 px-3 bg-ice-0 dark:bg-charcoal-2 border-edge border-sun rounded-hog transition-shadow shadow-none focus-within:shadow-z1 dark:focus-within:shadow-z1-night h-9 w-full"
+            class="inline-flex items-center gap-2 px-3 bg-card border border-rule rounded-hog focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus h-9 w-full"
           >
             <input
               aria-label="Search public remembrances"
@@ -159,7 +159,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           </p>
         </div>
         <section
-          class="border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright shadow-z1 dark:shadow-z1-night "
+          class="border border-rule rounded-hog bg-card text-1  "
         >
           <div
             class="px-4 py-3"
@@ -274,8 +274,8 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           value=""
         />
         <button
-          class="inline-flex items-center justify-center gap-2 font-mono font-semibold border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-sm  "
-          disabled=""
+          aria-disabled="true"
+          class="inline-flex items-center justify-center gap-2 font-sans font-medium border rounded-hog aria-disabled:cursor-not-allowed aria-disabled:bg-inset aria-disabled:text-3 aria-disabled:border-hairline lemon-keycap bg-sun text-ink border-keycap-edge hover:bg-sun-hover active:bg-sun-press h-9  px-3.5 text-sm  "
           type="submit"
         >
           Start their story
@@ -389,8 +389,8 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           value=""
         />
         <button
-          class="inline-flex items-center justify-center gap-2 font-mono font-semibold border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-sm  "
-          disabled=""
+          aria-disabled="true"
+          class="inline-flex items-center justify-center gap-2 font-sans font-medium border rounded-hog aria-disabled:cursor-not-allowed aria-disabled:bg-inset aria-disabled:text-3 aria-disabled:border-hairline lemon-keycap bg-sun text-ink border-keycap-edge hover:bg-sun-hover active:bg-sun-press h-9  px-3.5 text-sm  "
           type="submit"
         >
           Start their story
@@ -442,7 +442,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
               href="/speak/y1"
             >
               <section
-                class="border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none"
+                class="border border-rule rounded-hog bg-card text-1  transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none"
               >
                 <div
                   class="px-4 py-3"
@@ -476,7 +476,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
               href="/speak/y2"
             >
               <section
-                class="border-edge border-sun rounded-hog bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none"
+                class="border border-rule rounded-hog bg-card text-1  transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none"
               >
                 <div
                   class="px-4 py-3"

@@ -72,6 +72,7 @@ vi.mock("react-router-dom", async (orig) => {
 });
 
 import MyResearch from "./MyResearch";
+import { isDisabled } from "../../test/isDisabled";
 
 function inv(over: Partial<InvestigationSummary> & { investigation_id: string }): InvestigationSummary {
   return {
@@ -209,8 +210,8 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
     renderMonitor();
     const start = screen.getByRole("button", { name: "Start a research" }) as HTMLButtonElement;
     const several = screen.getByRole("button", { name: "Launch several at once" }) as HTMLButtonElement;
-    expect(start.disabled).toBe(true);
-    expect(several.disabled).toBe(true);
+    expect(isDisabled(start)).toBe(true);
+    expect(isDisabled(several)).toBe(true);
     expect(screen.getByText(/Sign in to start a research/i)).toBeTruthy();
   });
 

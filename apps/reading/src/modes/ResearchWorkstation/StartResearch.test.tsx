@@ -74,6 +74,7 @@ vi.mock("./CascadeProposal", () => ({
 }));
 
 import StartResearch from "./StartResearch";
+import { isDisabled } from "../../test/isDisabled";
 
 // AMS2-SPR-03: the idle home now wraps its content column in GlassSurface
 // (landing-glass, M2 for `/`), and GlassSurface reads `prefers-reduced-motion`
@@ -156,12 +157,12 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
   it("Ask is disabled under 3 chars and enabled past it", () => {
     renderStart();
     const ask = screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement;
-    expect(ask.disabled).toBe(true); // empty
+    expect(isDisabled(ask)).toBe(true); // empty
     const input = screen.getByLabelText("Research question");
     fireEvent.change(input, { target: { value: "ab" } });
-    expect(ask.disabled).toBe(true); // 2 chars
+    expect(isDisabled(ask)).toBe(true); // 2 chars
     fireEvent.change(input, { target: { value: "abc" } });
-    expect(ask.disabled).toBe(false); // 3 chars
+    expect(isDisabled(ask)).toBe(false); // 3 chars
   });
 
   it("clicking an example pill populates the input", () => {
@@ -171,7 +172,7 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     expect(input.value).toMatch(/strongest case against this thesis/i);
     // ...and the Ask button is now enabled.
     expect(
-      (screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled,
+      isDisabled(screen.getByRole("button", { name: "Ask" })),
     ).toBe(false);
   });
 
@@ -275,11 +276,11 @@ describe("StartResearch — cascade mode beside the one-shot Ask (SPR-01 M1)", (
       name: /Break into sub-questions/i,
     }) as HTMLButtonElement;
     expect(ask).toBeTruthy();
-    expect(cascade.disabled).toBe(true); // empty composer
+    expect(isDisabled(cascade)).toBe(true); // empty composer
     fireEvent.change(screen.getByLabelText("Research question"), {
       target: { value: "How will the energy transition reshape geopolitics?" },
     });
-    expect(cascade.disabled).toBe(false);
+    expect(isDisabled(cascade)).toBe(false);
   });
 
   it("choosing cascade renders the proposal in place — no navigation away, no POST of a one-shot", () => {
@@ -369,7 +370,7 @@ describe("StartResearch — owner model authority", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Can’t load executable models");
     expect(screen.queryByText(/research-[0-9a-f-]+/i)).toBeNull();
     fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Continue on the default route." } });
-    expect((screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(isDisabled(screen.getByRole("button", { name: "Ask" }))).toBe(false);
   });
 
   it("keeps cascade isolated from the selected owner model", async () => {

@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import ConnectResearch from "./ConnectResearch";
+import { isDisabled } from "../../test/isDisabled";
 
 /**
  * ConnectResearch.modelChoice.test — the backing folder runs on the chosen
@@ -97,7 +98,7 @@ describe("ConnectResearch — the picked model backs the spawned folder", () => 
     const trigger = await screen.findByRole("button", {
       name: "Model for the backing research",
     });
-    await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(isDisabled(trigger)).toBe(false));
     await userEvent.click(trigger);
     await userEvent.click(await screen.findByText("Kimi K2.5"));
 
@@ -117,7 +118,7 @@ describe("ConnectResearch — the picked model backs the spawned folder", () => 
     const trigger = await screen.findByRole("button", {
       name: "Model for the backing research",
     });
-    await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(isDisabled(trigger)).toBe(false));
 
     await userEvent.click(await screen.findByText(/start without a project/i));
     await waitFor(() => expect(startBodies).toHaveLength(1));

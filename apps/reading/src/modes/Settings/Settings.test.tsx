@@ -31,6 +31,7 @@ import { fetchComposerProjection } from "../../api/composerProjection";
 import { fetchSettingsUsage } from "../../api/settingsUsage";
 import { fetchUserModels } from "../../api/settingsModels";
 import Settings from "./index";
+import { isDisabled } from "../../test/isDisabled";
 
 vi.mock("../../workspace/useViewportTier", () => ({
   useViewportTier: () => "desktop",
@@ -505,7 +506,7 @@ describe("Settings SPR-01", () => {
     await user.click(screen.getByRole("tab", { name: "Decision tree" }));
     await user.click(await screen.findByRole("button", { name: "Review approval" }));
     await user.click(screen.getByRole("button", { name: "Approve exact terms" }));
-    expect(screen.getByRole("button", { name: "Approving..." }).hasAttribute("disabled")).toBe(true);
+    expect(isDisabled(screen.getByRole("button", { name: "Approving..." }))).toBe(true);
     expect(approveFallbackReceipt).toHaveBeenCalledTimes(1);
     rejectApproval(new Error("approval terms changed"));
     expect((await screen.findByRole("alert")).textContent).toContain("approval terms changed");
@@ -577,8 +578,7 @@ describe("Settings SPR-01", () => {
     await user.click(screen.getByRole("tab", { name: "Decision tree" }));
     await user.clear(screen.getByLabelText("Input characters"));
     expect(
-      (screen.getByRole("button", { name: "Compare models" }) as HTMLButtonElement)
-        .disabled,
+      isDisabled(screen.getByRole("button", { name: "Compare models" })),
     ).toBe(true);
     expect(fetchModelDecision).not.toHaveBeenCalled();
     expect(fetchComposerProjection).not.toHaveBeenCalled();

@@ -3,6 +3,7 @@ import { render, fireEvent } from "@testing-library/react";
 
 import { AssignHotkey } from "./AssignHotkey";
 import { readCustomHotkeys } from "../../workspace/persistence";
+import { isDisabled } from "../../test/isDisabled";
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -74,7 +75,7 @@ describe("AssignHotkey — SPR-08", () => {
     fireEvent.keyDown(capture, { key: "j", altKey: true });
     const alert = dialog.querySelector('[role="alert"]');
     expect(alert?.textContent).toMatch(/⌘|option-only/i);
-    expect(buttonByText(/save hotkey/i)?.disabled).toBe(true);
+    expect(isDisabled(buttonByText(/save hotkey/i))).toBe(true);
     expect(readCustomHotkeys().bindings).toHaveLength(0);
     unmount();
   });
@@ -88,7 +89,7 @@ describe("AssignHotkey — SPR-08", () => {
     fireEvent.keyDown(capture, { key: "j" });
     const alert = dialog.querySelector('[role="alert"]');
     expect(alert?.textContent).toMatch(/add a modifier/i);
-    expect(buttonByText(/save hotkey/i)?.disabled).toBe(true);
+    expect(isDisabled(buttonByText(/save hotkey/i))).toBe(true);
     expect(readCustomHotkeys().bindings).toHaveLength(0);
     unmount();
   });
@@ -103,7 +104,7 @@ describe("AssignHotkey — SPR-08", () => {
     const alert = dialog.querySelector('[role="alert"]');
     expect(alert?.textContent).toMatch(/can't be overridden/i);
     const save = buttonByText(/save hotkey/i);
-    expect(save?.disabled).toBe(true);
+    expect(isDisabled(save)).toBe(true);
     expect(readCustomHotkeys().bindings).toHaveLength(0);
     unmount();
   });

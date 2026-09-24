@@ -84,6 +84,7 @@ vi.mock("react-router-dom", async (orig) => {
 });
 
 import SuggestedResearch, { type SuggestedChase } from "./SuggestedResearch";
+import { isDisabled } from "../../test/isDisabled";
 
 function sug(over: Partial<Suggestion> & { key: string; question: string }): Suggestion {
   return {
@@ -187,7 +188,7 @@ describe("SuggestedResearch — surfacing adds no spend / explicit click (M3)", 
     renderLane({ canLaunch: false });
     await screen.findByText("Locked thread");
     const btn = screen.getByRole("button", { name: "Chase this" }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
+    expect(isDisabled(btn)).toBe(true);
   });
 });
 

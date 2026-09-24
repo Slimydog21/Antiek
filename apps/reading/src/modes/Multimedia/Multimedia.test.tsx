@@ -21,6 +21,7 @@ import {
 } from "../../api/multimedia";
 import type { MultimediaAssetRecord, MultimediaSteeringPreviewReady } from "../../api/multimedia";
 import type { MultimediaPlanWire } from "../../api/multimedia";
+import { isDisabled } from "../../test/isDisabled";
 
 vi.mock("./VoiceSteeringInput", () => ({
   VoiceSteeringInput: ({ value, onChange, onTranscript, onBusyChange, onDiscardTranscript }: {
@@ -343,7 +344,7 @@ afterEach(() => {
 });
 
 async function waitForApiReady() {
-  await waitFor(() => expect(screen.getByRole("button", { name: "Review plan" }).getAttribute("disabled")).toBeNull());
+  await waitFor(() => expect(isDisabled(screen.getByRole("button", { name: "Review plan" }))).toBe(false));
 }
 
 async function reviewPlan() {
@@ -437,7 +438,7 @@ describe("Multimedia workstation", () => {
     mockCreate.mockResolvedValueOnce(unsourced);
     await reviewPlan();
 
-    expect(screen.getByRole("button", { name: "Approve render" }).getAttribute("disabled")).not.toBeNull();
+    expect(isDisabled(screen.getByRole("button", { name: "Approve render" }))).toBe(true);
 
     await user.click(screen.getByRole("button", { name: "Find evidence" }));
     expect(await screen.findByTestId("multimedia-evidence-results")).toBeTruthy();
@@ -460,7 +461,7 @@ describe("Multimedia workstation", () => {
     const focused = screen.getByRole("button", { name: "Create focused draft" });
     expect((coverage as HTMLInputElement).checked).toBe(true);
     await user.click(coverage);
-    expect(focused.getAttribute("disabled")).not.toBeNull();
+    expect(isDisabled(focused)).toBe(true);
 
     await user.click(coverage);
     await user.click(screen.getByRole("radio", { name: "deep" }));
@@ -477,13 +478,13 @@ describe("Multimedia workstation", () => {
     const user = userEvent.setup();
     await reviewPlan();
     const authorize = screen.getByRole("button", { name: "Authorize narration" });
-    expect(authorize.getAttribute("disabled")).not.toBeNull();
+    expect(isDisabled(authorize)).toBe(true);
     const acknowledgement = screen.getByRole("checkbox", { name: "Approve this maximum" });
     await user.click(acknowledgement);
     expect((acknowledgement as HTMLInputElement).checked).toBe(true);
     await waitFor(() => expect(
-      screen.getByRole("button", { name: "Authorize narration" }).getAttribute("disabled"),
-    ).toBeNull(), { timeout: 5_000 });
+      isDisabled(screen.getByRole("button", { name: "Authorize narration" })),
+    ).toBe(false), { timeout: 5_000 });
     fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
 
     await waitFor(() => expect(mockAuthorizeNarration).toHaveBeenCalledWith(
@@ -541,12 +542,12 @@ describe("Multimedia workstation", () => {
     );
     await reviewPlan();
     const produce = await screen.findByRole("button", { name: "Produce documentary" });
-    expect(produce.getAttribute("disabled")).not.toBeNull();
+    expect(isDisabled(produce)).toBe(true);
 
     const authorizeSelectedChapter = async () => {
       await user.click(screen.getByLabelText("Approve this maximum"));
       const authorize = screen.getByRole("button", { name: "Authorize narration" });
-      await waitFor(() => expect(authorize.getAttribute("disabled")).toBeNull());
+      await waitFor(() => expect(isDisabled(authorize)).toBe(false));
       await user.click(authorize);
     };
 
@@ -556,7 +557,7 @@ describe("Multimedia workstation", () => {
     await authorizeSelectedChapter();
     await screen.findByText("mmauth2-server-mechanism");
 
-    await waitFor(() => expect(produce.getAttribute("disabled")).toBeNull());
+    await waitFor(() => expect(isDisabled(produce)).toBe(false));
     fireEvent.click(produce);
     await waitFor(() => expect(mockProduceAuthorized).toHaveBeenCalledWith(
       "mm-1",
@@ -599,7 +600,7 @@ describe("Multimedia workstation", () => {
 
     await reviewPlan();
 
-    expect(screen.getByRole("button", { name: "Approve render" }).getAttribute("disabled")).not.toBeNull();
+    expect(isDisabled(screen.getByRole("button", { name: "Approve render" }))).toBe(true);
     expect(screen.getByText(/needs an opening source/)).toBeTruthy();
   });
 
@@ -733,7 +734,7 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sim capture busy" }));
     const preview = screen.getByRole("button", { name: "Preview steer" }) as HTMLButtonElement;
 
-    expect(preview.disabled).toBe(true);
+    expect(isDisabled(preview)).toBe(true);
     fireEvent.click(preview);
     expect(mockPreviewSteering).not.toHaveBeenCalled();
     expect(mockSteer).not.toHaveBeenCalled();
@@ -829,7 +830,7 @@ describe("Multimedia workstation", () => {
 
     expect(mockSteer).toHaveBeenCalledTimes(1);
     expect(await screen.findByText("Applying reviewed revision...")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Steer outline" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(isDisabled(screen.getByRole("button", { name: "Steer outline" }))).toBe(true);
     resolveApply?.(steeredRecord);
     expect(await screen.findByText(/mm-1 \/ rev-2/)).toBeTruthy();
   });

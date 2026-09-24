@@ -100,6 +100,7 @@ vi.mock("react-router-dom", async (orig) => {
 });
 
 import StartResearch from "./StartResearch";
+import { isDisabled } from "../../test/isDisabled";
 
 // AMS2-SPR-03: the idle home wraps its content column in GlassSurface, which
 // reads prefers-reduced-motion via window.matchMedia — absent in jsdom. Stub it
@@ -185,7 +186,7 @@ describe("StartResearch — voice fills the prompt (SPR-05 M1)", () => {
     await waitFor(() => expect(transcribeAudioMock).toHaveBeenCalled());
     const input = (await screen.findByLabelText("Research question")) as HTMLTextAreaElement;
     await waitFor(() => expect(input.value).toMatch(/Trace how this idea evolved/i));
-    expect((screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(isDisabled(screen.getByRole("button", { name: "Ask" }))).toBe(false);
   });
 
   it("a transcription failure surfaces an honest error and leaves the prompt untouched (no hallucinated text)", async () => {
@@ -209,7 +210,7 @@ describe("StartResearch — voice fills the prompt (SPR-05 M1)", () => {
     const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
     expect(input.value).toBe("");
     // Ask stays disabled (nothing to ask).
-    expect((screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(isDisabled(screen.getByRole("button", { name: "Ask" }))).toBe(true);
   });
 });
 
@@ -270,7 +271,7 @@ describe("StartResearch — attach a file/link (SPR-05 M1)", () => {
     // …and it is honestly LABELLED as derived (not silently chosen).
     expect(screen.getByText(/Prompt suggested from your attachment/i)).toBeTruthy();
     // The derived prompt enables Ask (so attachment-only is genuinely runnable).
-    expect((screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(isDisabled(screen.getByRole("button", { name: "Ask" }))).toBe(false);
   });
 
   it("does NOT overwrite a prompt the operator already typed", async () => {

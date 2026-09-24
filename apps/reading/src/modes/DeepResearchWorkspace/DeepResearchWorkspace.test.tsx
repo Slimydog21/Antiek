@@ -7,6 +7,7 @@ import ResearchPanel from "./ResearchPanel";
 
 import SessionSourceReceipt from "./SessionSourceReceipt";
 import HardCeilingEvidence from "./HardCeilingEvidence";
+import { isDisabled } from "../../test/isDisabled";
 
 afterEach(() => cleanup());
 
@@ -29,7 +30,7 @@ describe("PlanEditor — the glass-box gate", () => {
     const onLaunch = vi.fn();
     render(<PlanEditor tree={TREE} launchable={false} onEdit={() => {}} onApprove={() => {}} onLaunch={onLaunch} />);
     const launch = screen.getByRole("button", { name: /Launch 2/ });
-    expect((launch as HTMLButtonElement).disabled).toBe(true);
+    expect(isDisabled(launch)).toBe(true);
     fireEvent.click(launch);
     expect(onLaunch).not.toHaveBeenCalled();
   });
@@ -39,7 +40,7 @@ describe("PlanEditor — the glass-box gate", () => {
     render(<PlanEditor tree={{ ...TREE, approval: { ...TREE.approval, state: "approved" } }}
       launchable onEdit={() => {}} onApprove={() => {}} onLaunch={onLaunch} />);
     const launch = screen.getByRole("button", { name: /Launch 2/ });
-    expect((launch as HTMLButtonElement).disabled).toBe(false);
+    expect(isDisabled(launch)).toBe(false);
     fireEvent.click(launch);
     expect(onLaunch).toHaveBeenCalledOnce();
   });

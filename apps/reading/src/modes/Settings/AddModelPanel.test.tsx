@@ -14,6 +14,7 @@ import {
   fetchUserModels,
   removeUserModel,
 } from "../../api/settingsModels";
+import { isDisabled } from "../../test/isDisabled";
 
 const SECRET = "sk-test-super-secret-key-000111222";
 
@@ -275,13 +276,11 @@ describe("AddModelPanel", () => {
     await user.click(screen.getByRole("radio", { name: "Anthropic" }));
     expect(key.value).toBe("");
     expect(
-      (screen.getByRole("button", { name: "Adding…" }) as HTMLButtonElement)
-        .disabled,
+      isDisabled(screen.getByRole("button", { name: "Adding…" })),
     ).toBe(true);
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(
-      (screen.getByRole("button", { name: "Adding…" }) as HTMLButtonElement)
-        .disabled,
+      isDisabled(screen.getByRole("button", { name: "Adding…" })),
     ).toBe(true);
     expect(addUserModel).toHaveBeenCalledTimes(1);
     resolve();

@@ -26,12 +26,26 @@ export const Grid: Story = {
   ),
 };
 
+// Never quietly disabled: each carries the reason, shown as a tip on hover
+// and on keyboard focus (Tab to one) and read out as its description.
 export const Disabled: Story = {
   render: () => (
-    <div className="flex gap-3 p-6">
-      <LemonButton variant="primary" disabled>Disabled primary</LemonButton>
-      <LemonButton variant="secondary" disabled>Disabled secondary</LemonButton>
-      <LemonButton variant="danger" disabled>Disabled danger</LemonButton>
+    <div className="flex flex-wrap gap-3 p-6 pt-14">
+      <LemonButton variant="primary" disabledReason="Type a question first">Ask</LemonButton>
+      <LemonButton variant="secondary" disabledReason="Nothing to export yet">Export HTML</LemonButton>
+      <LemonButton variant="danger" disabledReason="Another action is still running">Delete</LemonButton>
+      <LemonButton variant="tertiary" disabledReason="You are on the first page">Previous</LemonButton>
+    </div>
+  ),
+};
+
+// The reason tip as it shows when the button holds keyboard focus.
+export const DisabledReasonFocused: Story = {
+  render: () => (
+    <div className="p-6 pt-14">
+      <LemonButton variant="primary" disabledReason="Connect a model in Settings first" autoFocus>
+        Start research
+      </LemonButton>
     </div>
   ),
 };

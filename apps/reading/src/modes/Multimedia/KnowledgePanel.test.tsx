@@ -14,6 +14,7 @@ import {
   recoverMultimediaKnowledgeFinalization,
 } from "../../api/multimedia";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
+import { isDisabled } from "../../test/isDisabled";
 
 vi.mock("../../api/multimedia", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/multimedia")>();
@@ -111,10 +112,10 @@ describe("KnowledgePanel", () => {
     render(<KnowledgePanel asset={asset()} onAssetUpdated={updated} onMutationBusyChange={busy} />);
 
     const button = await screen.findByRole("button", { name: "Create knowledge twin" });
-    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(isDisabled(button)).toBe(true);
     expect(finalize).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("checkbox", { name: /approve one note-model call/i }));
-    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(isDisabled(button)).toBe(false);
     fireEvent.click(button);
 
     await waitFor(() => expect(finalize).toHaveBeenCalledWith("asset-1", "rev-1"));
@@ -138,12 +139,12 @@ describe("KnowledgePanel", () => {
     render(<KnowledgePanel asset={asset()} onAssetUpdated={vi.fn()} />);
 
     const button = await screen.findByRole("button", { name: "Recover knowledge twin" });
-    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(isDisabled(button)).toBe(true);
     fireEvent.click(screen.getByRole("checkbox", { name: /approve another note-model call/i }));
-    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(isDisabled(button)).toBe(true);
     expect(recover).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("checkbox", { name: /may duplicate model spend/i }));
-    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(isDisabled(button)).toBe(false);
     fireEvent.click(button);
     await waitFor(() => expect(recover).toHaveBeenCalledWith("asset-1", "rev-1"));
   });
@@ -292,10 +293,10 @@ describe("KnowledgePanel", () => {
     render(<Harness />);
     fireEvent.click(await screen.findByRole("checkbox", { name: /approve one note-model call/i }));
     fireEvent.click(screen.getByRole("button", { name: "Create knowledge twin" }));
-    expect((screen.getByRole("button", { name: "Open another asset" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(isDisabled(screen.getByRole("button", { name: "Open another asset" }))).toBe(true);
     finish?.({ asset: { ...asset(), knowledge_link: LINK }, knowledge_link: LINK });
     await waitFor(() => {
-      expect((screen.getByRole("button", { name: "Open another asset" }) as HTMLButtonElement).disabled).toBe(false);
+      expect(isDisabled(screen.getByRole("button", { name: "Open another asset" }))).toBe(false);
     });
   });
 
