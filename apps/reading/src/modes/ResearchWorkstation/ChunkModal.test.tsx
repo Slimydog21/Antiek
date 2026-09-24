@@ -119,7 +119,7 @@ describe("ChunkModal Werner evidence boundary", () => {
     );
 
     expect(screen.queryByText("Stale evidence")).toBeNull();
-    expect(onEvidenceOpened).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onEvidenceOpened).toHaveBeenCalledTimes(1));
   });
 
   it("a throwing observer cannot corrupt readable evidence", async () => {
