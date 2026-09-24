@@ -154,7 +154,7 @@ export default function ModelPicker({
             id={listboxId}
             role="listbox"
             aria-label={label}
-            className="absolute z-popover mt-1 max-h-64 w-full overflow-auto rounded-md border border-rule bg-card py-1 shadow-island"
+            className="absolute z-popover mt-1 max-h-64 w-full overflow-auto rounded-md border border-rule bg-ice-0 py-1 shadow-island dark:bg-charcoal-1"
           >
             {candidates.map((c, i) => {
               const isActive = i === activeIndex;
