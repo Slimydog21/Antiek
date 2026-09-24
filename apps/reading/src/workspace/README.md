@@ -72,6 +72,22 @@ focus with a ring (`ring-focus`; in `docked` they cycle dock areas via
 on the layout root, never a global binding — or the same key restores);
 prefix i toggles the preset.
 
+## The companion (C4, 2026-09-24)
+
+The right inset pane IS the companion: AI agents as tabs
+(`CompanionPane.tsx`, one component, two mounts — the inset right pane's
+content; the docked preset's "Companion" right-dock panel). State lives in
+`companionStore.ts` (stable per-agent ids, close as a view act, activation
+order, wrap cycling); tab kinds come from `companionRegistry.tsx` as DATA —
+islands and diligence slot in later as new entries. Shipped kinds:
+research-thread (the shared `researchState` vocabulary over
+`useInvestigationList`) and dialogue (the one-shot
+`components/ai/thoughtPartnerOnce.ts` wire — never a chat). Keys: prefix
+n/p (+ `ctrl+alt+]/[` twins) cycle agent tabs, only while the pane is
+visible. The cross-pane seam is `crossPane.ts`: `openDocumentInLeftPane`'s
+EVENT SHAPE is the contract; the PR-2 handler bridges to the reader window,
+PR 3 swaps the handler, callers never change.
+
 ## Full spec
 
 `docs/ui_redesign_posthog/sprint_03_panel_layout.html`

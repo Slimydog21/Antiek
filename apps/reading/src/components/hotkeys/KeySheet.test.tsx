@@ -97,13 +97,16 @@ describe("the filter (herdr keybind-help semantics)", () => {
     render(<KeySheet onClose={() => {}} platform="mac" />);
     const input = sheet().querySelector<HTMLInputElement>('input[aria-label="Filter shortcuts"]')!;
     fireEvent.change(input, { target: { value: "ctrl+alt" } });
-    // Every ctrl+alt chord row: the sidebar's plus the C3 pane/preset twins.
+    // Every ctrl+alt chord row: the sidebar's plus the C3 pane/preset twins
+    // and the C4 companion-tab twins.
     expect(Array.from(sheet().querySelectorAll("[data-keymap-action]")).map((e) => e.getAttribute("data-keymap-action"))).toEqual([
       "projecttree.toggle",
       "pane.focusLeft",
       "pane.focusRight",
       "pane.fullscreen",
       "layout.togglePreset",
+      "companion.nextTab",
+      "companion.prevTab",
     ]);
     fireEvent.change(input, { target: { value: "zzz-nothing" } });
     expect(sheet().textContent).toContain("No shortcut matches");
