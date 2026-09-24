@@ -63,8 +63,11 @@ of the following on the server before publishing a client configuration:
    live HTTP writer is active. The current launcher calls
    `init_database_at_path`, whose failed read-only probe can enter a write
    path. A separate DuckDB process may also fail to open the file while the
-   HTTP process owns a read-write handle. If either occurs, change the
-   architecture (for example, a same-process authenticated adapter or a
+   HTTP process owns a read-write handle. In a local DuckDB 1.4.4 two-process
+   probe on 2026-09-24, the read-only open failed with a conflicting file
+   lock while the writer held the graph file; this is not a production test.
+   If either occurs, change the architecture (for example, a
+   same-process authenticated adapter or a
    declared read-only snapshot with freshness controls) before registration.
    Do not loosen DB privileges or copy a private live file to work around it.
 5. Exercise two separately authenticated accounts through the actual SSH
