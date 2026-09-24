@@ -23,6 +23,7 @@ function questionIdentified(id: string, text: string): Event {
   return {
     event_id: `evt-q-${id}`,
     investigation_id: "inv-storybook-demo",
+    param_version: "storybook",
     document_id: "doc-quantum-paper-1",
     action_type: "question.identified",
     emitted_at: new Date().toISOString(),
@@ -39,6 +40,7 @@ function crossDocLink(qid: string): Event {
   return {
     event_id: `evt-link-${qid}`,
     investigation_id: "inv-storybook-demo",
+    param_version: "storybook",
     document_id: null,
     action_type: "cross_doc.question_answered",
     emitted_at: new Date().toISOString(),

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
@@ -13,8 +13,16 @@ import { LoadingState } from "../../components/states";
  * Operator-facing list of substrate-attached documents with
  * source-tier + investigation filters. Each row links to
  * /wrestle/:documentId where the existing PDF + region-selection
- * surface lives.
+ * surface lives. A row's "Preview styles" opens the ingested document
+ * through the style wheel (`GET /documents/{id}/render?style=`), the one
+ * surface where an ingested asset is viewed as projected HTML.
  */
+
+// The preview opens on demand from a row, and `index` ships on every page
+// load under a 700 KB gz ceiling, so it loads as its own chunk.
+const DocumentStylePreview = lazy(
+  () => import("../ResearchWorkstation/DocumentStylePreview"),
+);
 
 interface DocumentRow {
   document_id: string;
@@ -37,6 +45,7 @@ export default function DocumentsIndex() {
   const [error, setError] = useState<string | null>(null);
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
   const [investigationFilter, setInvestigationFilter] = useState<string>("");
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -214,8 +223,56 @@ export default function DocumentsIndex() {
                     </LemonTag>
                   ),
                 },
+                {
+                  key: "styles",
+                  header: "Styles",
+                  align: "right",
+                  render: (r) => (
+                    <button
+                      type="button"
+                      aria-pressed={previewId === r.document_id}
+                      onClick={(e) => {
+                        // The row itself navigates to /wrestle; this stays here.
+                        e.stopPropagation();
+                        setPreviewId((current) =>
+                          current === r.document_id ? null : r.document_id,
+                        );
+                      }}
+                      className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors whitespace-nowrap ${
+                        previewId === r.document_id
+                          ? "bg-ink text-white"
+                          : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4"
+                      }`}
+                    >
+                      {previewId === r.document_id ? "Hide styles" : "Preview styles"}
+                    </button>
+                  ),
+                },
               ]}
             />
+          )}
+
+          {previewId && (
+            <section
+              aria-label="Document style preview"
+              className="border border-rule dark:border-charcoal-1 rounded-md overflow-hidden"
+            >
+              <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs font-mono text-ink-mute dark:text-moonlight">
+                <span className="truncate" title={previewId}>
+                  {previewId}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewId(null)}
+                  className="underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
+                >
+                  Close preview
+                </button>
+              </div>
+              <Suspense fallback={null}>
+                <DocumentStylePreview key={previewId} documentId={previewId} />
+              </Suspense>
+            </section>
           )}
         </div>
       </main>

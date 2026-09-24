@@ -27,6 +27,7 @@ function noteEvent(
   return {
     event_id: id,
     investigation_id: "inv-storybook-demo",
+    param_version: "storybook",
     document_id: "doc-quantum-2026",
     action_type: "note.emerged",
     emitted_at: new Date().toISOString(),
