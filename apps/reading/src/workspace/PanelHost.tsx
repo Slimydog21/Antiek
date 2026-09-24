@@ -1,12 +1,17 @@
 import { useEffect, type ReactNode } from "react";
 
-import { PanelLayout } from "./PanelLayout";
 import { useWorkspace } from "./WorkspaceStore";
 import type { PanelKind, PanelMode } from "./panel.types";
 
 /**
- * PanelHost — opt-in wrapper a route component renders to live inside
- * the workspace panel shell.
+ * PanelHost — opt-in wrapper a route component renders to open its starter
+ * panels in the workspace panel shell.
+ *
+ * It renders its children as they are. The docks and floating layer belong
+ * to ONE PanelLayout, the shell's (AppShell). PanelHost used to render a
+ * second PanelLayout inside the shell's main slot, which subscribed to the
+ * same dock arrays and drew every docked panel twice: two left docks, two
+ * InvestigationSidebar instances, two polls (MS-01 F4).
  *
  *   export default function ResearchWorkstation() {
  *     return (
@@ -76,7 +81,7 @@ export function PanelHost({ starters = [], children }: Props) {
   // line; this is the harmless way to keep the dependency list visible).
   void panels;
 
-  return <PanelLayout mainSlot={children} />;
+  return <>{children}</>;
 }
 
 export default PanelHost;

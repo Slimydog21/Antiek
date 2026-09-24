@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLayoutEffect, useRef } from "react";
+import { matchPath, useLocation } from "react-router-dom";
 
 import {
   applyOver,
@@ -46,14 +46,36 @@ function routeKey(pathname: string): string {
     .replace(/\/create\/[^/]+/, "/create/:id");
 }
 
+/**
+ * The investigation whose per-investigation layout scope applies at
+ * `pathname`, or null.
+ *
+ * Read from the location, not `useParams()`: this hook runs in AppShell,
+ * OUTSIDE the inner <Routes>, where `useParams()` only ever sees the splat
+ * (`{"*": "inv/abc"}`) and never `investigationId` (MS-01 F3). Only the
+ * Research workstation route carries the scope: /replay/:id and
+ * /notebook/auto/:id are different surfaces over the same id, and sharing
+ * `antiek.workspace.inv.<id>` with them would bleed the workstation's docks
+ * into those pages. The palette's "Reset workspace layout (this
+ * investigation)" matches the same /inv/:id shape.
+ */
+export function investigationIdForPath(pathname: string): string | null {
+  return matchPath("/inv/:investigationId", pathname)?.params.investigationId ?? null;
+}
+
 export function useWorkspaceHydration() {
   const location = useLocation();
-  const params = useParams<{ investigationId?: string }>();
-  const investigationId = params.investigationId ?? null;
+  const investigationId = investigationIdForPath(location.pathname);
   const route = routeKey(location.pathname);
   const lastScope = useRef<string>("");
 
-  useEffect(() => {
+  // A LAYOUT effect, so hydration lands before any route's PanelHost opens its
+  // starters. React runs every layout effect of a commit before its passive
+  // effects, and PanelHost opens starters in a passive effect. As a passive
+  // effect here, hydration ran after the child's starters (child effects run
+  // first) and replaced the whole workspace with the stored (on fresh
+  // storage, empty) layout, so no starter ever docked (MS-01 F2).
+  useLayoutEffect(() => {
     // Disable persistence writes during hydration so we don't write
     // the partially-applied state to localStorage.
     disablePersistence();

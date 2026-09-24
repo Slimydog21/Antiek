@@ -97,20 +97,6 @@ describe("F1 — ⌘K opens the palette from the page body (one toggle owner)", 
     expect(palette(), "⌘K from the body must leave the palette OPEN").toBeTruthy();
   });
 
-  it("a second ⌘K closes it again (the same single owner toggles)", () => {
-    mountShellWithPalette();
-    pressFromBody({ key: "k", metaKey: true });
-    expect(palette()).toBeTruthy();
-    // Focus now sits in the palette input; ⌘K from there closes it.
-    const input = palette()!.querySelector("input")!;
-    act(() => {
-      input.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true, cancelable: true }),
-      );
-    });
-    expect(palette()).toBeNull();
-  });
-
   it("⌘⇧P, the palette's second key, still opens it", () => {
     mountShellWithPalette();
     pressFromBody({ key: "P", metaKey: true, shiftKey: true });

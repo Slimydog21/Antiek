@@ -123,6 +123,7 @@ afterEach(() => {
   cleanup();
   useWorkspace.getState().reset();
   window.localStorage.clear();
+  window.history.replaceState(null, "", "/");
 });
 
 describe("F2 — fresh storage + /inv/abc docks the sidebar and this investigation's chat", () => {
@@ -139,6 +140,9 @@ describe("F2 — fresh storage + /inv/abc docks the sidebar and this investigati
 
 describe("F3 — the per-investigation layout key is written and reset", () => {
   it("writes antiek.workspace.inv.<id>, and 'Reset workspace layout (this investigation)' clears it", async () => {
+    // The palette's reset reads window.location (BrowserRouter in the app),
+    // so the document URL must match the router's location here.
+    window.history.replaceState(null, "", "/inv/abc");
     mountAt("/inv/abc");
     await act(async () => {});
     // The operator changes the layout on this investigation.

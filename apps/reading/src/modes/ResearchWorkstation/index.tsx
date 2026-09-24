@@ -114,8 +114,13 @@ export default function ResearchWorkstation() {
       : []),
   ];
 
+  // Keyed by investigation: "/" and "/inv/:investigationId" render this
+  // component at the same tree position, so without a key React keeps ONE
+  // instance across /inv/a → /inv/b and PanelHost's starters (opened once, on
+  // mount) never open b's chat (MS-01 F5). The key remounts the host, so the
+  // old investigation's chat closes and the new one's opens.
   return (
-    <PanelHost starters={starters}>
+    <PanelHost key={investigationId ?? "research-home"} starters={starters}>
       {investigationId ? (
         <InvestigationCenter investigationId={investigationId} />
       ) : (
