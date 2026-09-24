@@ -20,12 +20,13 @@ name: deploy-backend
 #   something real to read.
 #
 # WHY BOTH workflows are listed:
-#   main's 8 required contexts come from TWO workflows — `CI` supplies the
-#   four pytest shards + keystone + tsc + vitest, and `enforce-declared-bar`
-#   supplies the mypy/ruff context. Either may finish last. Listening to only
-#   one means deploying while the other is still pending. Listening to both
-#   means the gate job runs twice; the run that fires while siblings are
-#   still pending exits without deploying, and the last one through deploys.
+#   The deploy gate checks the 8 branch-required contexts plus the dependent
+#   `pytest` rollup. `CI` supplies the four shards, rollup, keystone, tsc, and
+#   vitest; `enforce-declared-bar` supplies mypy/ruff. Either workflow may
+#   finish last. Listening to only one means deploying while the other is
+#   pending. Listening to both means the gate job runs twice: a run that fires
+#   while siblings are pending exits without deploying, and the last one
+#   through deploys.
 #
 # DELIBERATELY NOT ADDED — a `schedule:` trigger that reconciles drift:
 #   It is the obvious next feature, and it is a trap. This workflow already
@@ -40,9 +41,9 @@ name: deploy-backend
 # WHY the gate re-reads every required context instead of trusting
 # `workflow_run.conclusion`:
 #   That field describes ONE workflow. A green `CI` says nothing about
-#   mypy/ruff. The gate below asserts each of the 8 required contexts is
-#   `success` FOR THE EXACT SHA being deployed, so this cannot ship on a
-#   partially-green commit.
+#   mypy/ruff. The gate below asserts all 8 branch-required contexts and the
+#   `pytest` rollup (9 deploy-gate contexts total) are `success` FOR THE EXACT
+#   SHA being deployed, so this cannot ship on a partially-green commit.
 # ──────────────────────────────────────────────────────────────────────────
 
 on:
@@ -148,7 +149,8 @@ jobs:
           # Single source of truth for the gate: tools/deploy/require_green.sh,
           # shared with infrastructure/ansible/playbooks/deploy.yml so the
           # manual / runbook deploy path is gated IDENTICALLY. The literal
-          # list of 8 required contexts now lives in that script.
+          # list of 8 branch-required contexts plus the `pytest` rollup
+          # (9 deploy-gate contexts total) now lives in that script.
           #
           # Exit codes are distinguished on purpose. Previously the gh call
           # here was `|| true`, so a crashed/unauthenticated gh produced an
