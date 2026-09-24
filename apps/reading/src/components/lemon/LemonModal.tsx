@@ -200,7 +200,7 @@ export function LemonModal({
               onClick={onClose}
               aria-label="Close"
               data-modal-close=""
-              className="w-7 px-0 shrink-0"
+              className="w-7 !px-0 shrink-0"
             >
               <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />

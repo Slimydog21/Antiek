@@ -52,8 +52,10 @@ function PaletteStoryHost() {
         rankEntries() exposes the fuzzy-search algorithm; the unit
         tests below exercise it directly.
       </p>
-      <AutoOpen />
+      {/* After the palette, so its ⌘K listener is registered (effects run
+          in sibling order) before AutoOpen fires the shortcut. */}
       <CommandPalette />
+      <AutoOpen />
     </div>
   );
 }

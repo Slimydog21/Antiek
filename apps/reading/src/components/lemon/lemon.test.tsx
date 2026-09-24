@@ -213,6 +213,16 @@ describe("LemonModal — focus contract (WCAG 2.4.3)", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
   });
 
+  it("the close control is a square 28px tertiary button whose padding cannot squeeze its icon", () => {
+    render(<ModalHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    const close = screen.getByRole("button", { name: "Close" });
+    // sm is h-7 px-2.5; a plain px-0 loses to px-2.5 in the generated CSS
+    // order and left the 14px cross 6px wide (measured in Storybook).
+    expect(close.className).toMatch(/(^|\s)w-7(\s|$)/);
+    expect(close.className).toMatch(/(^|\s)!px-0(\s|$)/);
+  });
+
   it("is named by its title", () => {
     render(<ModalHarness />);
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
