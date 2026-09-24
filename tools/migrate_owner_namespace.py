@@ -98,6 +98,7 @@ from runtime.byok.store import (  # noqa: E402
     store_credential_with_metadata,
 )
 from runtime.byok.store import _default_artifact_path as _byok_artifact_path  # noqa: E402
+from runtime.byok.store import _default_key_file as _byok_key_file  # noqa: E402
 from runtime.connectors import registry as connectors  # noqa: E402
 from runtime.db_lock import (  # noqa: E402
     LockedConnection,
@@ -689,12 +690,55 @@ _APPLIERS = (
 )
 
 
+def _legacy_credential_ids() -> list[str]:
+    return sorted(m.cred_id for m in list_credentials() if m.owner_user_id == LEGACY_OWNER)
+
+
+def _refuse_without_master_key() -> None:
+    """Refuse (in dry-run too) when legacy credentials exist but the master key
+    file this run would use does not. The store's loader creates a fresh key on
+    first use, so without this check an apply run under the wrong environment
+    would mint a new key, fail to decrypt, and fail half-way through the stores.
+    Read-only: the key file is checked with ``lstat``, never created or read."""
+    if not _legacy_credential_ids():
+        return
+    key_file = Path(_byok_key_file())
+    if not (key_file.exists() or key_file.is_symlink()):
+        raise MigrationRefused(
+            f"BYOK master key file {str(key_file)!r} does not exist, but "
+            f"{LEGACY_OWNER!r} credentials do. Run with the API service's environment "
+            "(ANTIEK_BYOK_ARTIFACT, ANTIEK_BYOK_KEY_FILE); nothing was written"
+        )
+
+
+def _refuse_unless_every_legacy_credential_decrypts() -> None:
+    """Before ANY store is written: every legacy credential an applier will
+    re-seal must decrypt under this run's key. Otherwise an applier fails after
+    earlier stores have moved (a partial migration), or re-owns a row without
+    its secret. The plaintext is discarded immediately; nothing is logged."""
+    unreadable: list[str] = []
+    for cred_id in _legacy_credential_ids():
+        try:
+            load_credential(cred_id)
+        except (KeyError, ValueError, CredentialIntegrityError):
+            unreadable.append(cred_id)
+    if unreadable:
+        raise MigrationRefused(
+            f"legacy credential(s) {unreadable!r} do not decrypt with the master key "
+            f"{_byok_key_file()!r}. Run with the API service's key file; nothing was "
+            "written"
+        )
+
+
 def run_migration(email: str, *, apply: bool = False) -> MigrationReport:
     """Plan (and, with ``apply=True``, perform) the one-way re-owning.
 
     The plan phase is fully read-only and never decrypts key material; the
     apply phase re-runs the planners first, so a store that changed between
-    dry-run and apply is re-validated before anything is written.
+    dry-run and apply is re-validated before anything is written. Both phases
+    refuse when legacy credentials exist but the master key file does not;
+    the apply phase also proves every legacy credential decrypts before the
+    first applier runs, so a wrong key can never leave a partial migration.
     """
     target = derive_owner_from_verified_email(email)
     if target is None:
@@ -705,12 +749,14 @@ def run_migration(email: str, *, apply: bool = False) -> MigrationReport:
     report = MigrationReport(target_owner=target)
     for planner in _PLANNERS:
         planner(report)
+    _refuse_without_master_key()
     if not apply:
         return report
     # Re-validate immediately before writing, then apply store by store.
     fresh = MigrationReport(target_owner=target)
     for planner in _PLANNERS:
         planner(fresh)
+    _refuse_unless_every_legacy_credential_decrypts()
     fresh.applied = True
     for applier in _APPLIERS:
         applier(fresh)

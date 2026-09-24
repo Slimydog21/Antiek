@@ -341,6 +341,56 @@ def test_a_disabled_privacy_surface_stays_disabled_for_the_operator_after_apply(
     assert surfaces["skill_invocation_frequency"]["enabled"] is False
 
 
+def _store_bytes(env: Path) -> dict[str, bytes]:
+    return {
+        name: (env / rel).read_bytes()
+        for name, rel in {
+            "user_models": "settings/user_models.json",
+            "telemetry": "telemetry/preferences.sqlite",
+            "tools": "settings/tool_connections.json",
+            "byok": "byok/credentials.enc",
+        }.items()
+    }
+
+
+def test_refuses_before_any_write_when_the_master_key_file_is_missing(
+    env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run with the right artifact but a missing key file used to mint a new
+    key, fail on the first re-seal, and leave models/privacy moved but tools not."""
+    _seed_legacy_state(env)
+    before = _store_bytes(env)
+    missing_key = env / "elsewhere" / "master.key"
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(missing_key))
+
+    for apply in (False, True):
+        with pytest.raises(MigrationRefused, match="master key file"):
+            run_migration(OPERATOR, apply=apply)
+
+    assert _store_bytes(env) == before
+    assert not missing_key.exists(), "the check must never create a key file"
+
+
+def test_refuses_before_any_write_when_a_legacy_credential_does_not_decrypt(
+    env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_legacy_state(env)
+    before = _store_bytes(env)
+    wrong_key = env / "other" / "master.key"
+    wrong_key.parent.mkdir(parents=True)
+    wrong_key.write_bytes(b"\x07" * 32)
+    wrong_key.chmod(0o600)
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(wrong_key))
+
+    run_migration(OPERATOR, apply=False)  # dry-run never decrypts, so it plans normally
+    with pytest.raises(MigrationRefused, match="do not decrypt"):
+        run_migration(OPERATOR, apply=True)
+
+    assert _store_bytes(env) == before
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(env / "byok" / "master.key"))
+    assert run_migration(OPERATOR, apply=True).applied is True
+
+
 def test_apply_is_idempotent_noop_when_nothing_legacy_remains(env: Path) -> None:
     _seed_legacy_state(env)
     run_migration(OPERATOR, apply=True)
