@@ -188,3 +188,32 @@ def draft_merge_path_for(*investigation_ids: str) -> Path:
     if len(investigation_ids) > 8:
         joined += f"-and{len(investigation_ids) - 8}-more"
     return research_artifacts_dir() / f"draft-merge-{joined}.html"
+
+
+_DRAFT_MERGE_NAME = re.compile(r"draft-merge-[^/\\]+\.html")
+
+
+def reviewed_draft_merge_path(candidate: str) -> Path:
+    """The server-written draft-merge file ``candidate`` names, or ValueError.
+
+    A source merge splices this file into a book's body, and the path arrives
+    in a client's review packet. It may only name a draft this server wrote:
+    a regular ``draft-merge-*.html`` file directly inside the research
+    artifacts directory, not a symlink and not reached through ``..`` or an
+    absolute path elsewhere. Every other value, present or missing, raises the
+    same error, so the answer says nothing about files outside the drafts.
+    """
+    refused = ValueError("source_merge_draft_merge_path_invalid")
+    root = research_artifacts_dir().resolve()
+    path = Path(candidate)
+    if not path.is_absolute() or not _DRAFT_MERGE_NAME.fullmatch(path.name):
+        raise refused
+    if path.parent.resolve() != root:
+        raise refused
+    try:
+        info = os.lstat(path)
+    except OSError:
+        raise refused from None
+    if not stat.S_ISREG(info.st_mode):  # lstat: a symlink is not a regular file
+        raise refused
+    return root / path.name

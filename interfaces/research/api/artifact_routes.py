@@ -43,7 +43,10 @@ from substrate.research_artifact import (  # noqa: E402
     research_projection_doc_model,
     restore_source_merge_review,
 )
-from substrate.research_artifact.paths import artifact_path_for  # noqa: E402
+from substrate.research_artifact.paths import (  # noqa: E402
+    artifact_path_for,
+    reviewed_draft_merge_path,
+)
 from substrate.research_artifact.store import ResearchArtifactStore  # noqa: E402
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
@@ -227,6 +230,10 @@ def _validate_source_merge_preflight(body: SourceMergeApplyIn, *, db_path: str) 
     member_ids = _clean_member_ids(packet.member_investigation_ids)
     if len(member_ids) < 2:
         _raise_source_merge_refusal("source_merge_requires_two_members", status_code=400)
+    try:
+        reviewed_draft_merge_path(packet.draft_merge_path)
+    except ValueError:
+        _raise_source_merge_refusal("source_merge_draft_merge_path_invalid", status_code=400)
     if len(packet.hash_conflicts) != packet.hash_conflict_count:
         _raise_source_merge_refusal("source_merge_conflict_count_mismatch", status_code=400)
     if (
