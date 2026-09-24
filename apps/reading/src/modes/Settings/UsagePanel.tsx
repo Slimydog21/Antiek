@@ -100,8 +100,8 @@ function balanceLabel(
     Number.isFinite(balance.balance_usd)
   ) {
     return {
-      text: `Live balance ${formatUsd(balance.balance_usd)}`,
-      tone: "ok",
+      text: `Provider-reported balance ${formatUsd(balance.balance_usd)}${balance.native_available === false ? " · insufficient for API calls" : ""}`,
+      tone: balance.native_available === false ? "unknown" : "ok",
     };
   }
   const usageAvailable = usage?.available_cents ?? null;

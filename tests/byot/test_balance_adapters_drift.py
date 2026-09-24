@@ -197,11 +197,13 @@ def test_deepseek_unavailable_on_empty_balance_infos() -> None:
 
 def test_kimi_parses_valid_fixture() -> None:
     fixture = {
-        "status": "ok",
+        "code": 0,
+        "status": True,
+        "scode": "0x0",
         "data": {
-            "available_balance": "75.25",
-            "voucher_balance": "25.00",
-            "cash_balance": "50.25",
+            "available_balance": 75.25001,
+            "voucher_balance": 25.0,
+            "cash_balance": 50.25001,
         },
     }
     http = _FakeHTTP(_FakeResponse(fixture))
@@ -211,10 +213,50 @@ def test_kimi_parses_valid_fixture() -> None:
 
     assert result.catalog_id == "kimi"
     assert result.kind == "balance_native"
-    assert result.balance_usd == 75.25
-    assert result.granted_usd == 50.25
+    assert result.balance_usd == 75.25001
+    assert result.granted_usd is None  # Cash is not a grant.
+    assert result.native_available is True
     assert result.note is None
     assert http.last_url == "https://api.moonshot.ai/v1/users/me/balance"
+
+
+def test_kimi_refuses_noninternational_host_before_revealing_key() -> None:
+    http = _FakeHTTP(_FakeResponse({}))
+    result = fetch_kimi_balance(
+        SecretStr("sk-test-key"), base_url="https://api.moonshot.cn/v1", http=http,
+    )
+    assert result.kind == "unavailable"
+    assert http.last_url is None
+
+
+def test_kimi_rejects_failed_status_even_with_a_balance_number() -> None:
+    http = _FakeHTTP(_FakeResponse({
+        "code": 0,
+        "status": False,
+        "scode": "0x0",
+        "data": {"available_balance": 75.25, "voucher_balance": 25.0, "cash_balance": 50.25},
+    }))
+    result = fetch_kimi_balance(
+        SecretStr("sk-test-key"), base_url="https://api.moonshot.ai/v1", http=http,
+    )
+    assert result.kind == "unavailable"
+    assert result.balance_usd is None
+
+
+def test_kimi_zero_available_is_not_call_eligible() -> None:
+    http = _FakeHTTP(_FakeResponse({
+        "code": 0,
+        "status": True,
+        "scode": "0x0",
+        "data": {"available_balance": 0, "voucher_balance": 0, "cash_balance": -1.25},
+    }))
+    result = fetch_kimi_balance(
+        SecretStr("sk-test-key"), base_url="https://api.moonshot.ai/v1", http=http,
+    )
+    assert result.kind == "balance_native"
+    assert result.balance_usd == 0
+    assert result.granted_usd is None
+    assert result.native_available is False
 
 
 def test_kimi_unavailable_on_http_error() -> None:
@@ -235,7 +277,7 @@ def test_kimi_unavailable_on_http_error() -> None:
 
 def test_kimi_unavailable_on_schema_drift() -> None:
     # Wrong nesting — "data" is missing
-    http = _FakeHTTP(_FakeResponse({"status": "ok"}))
+    http = _FakeHTTP(_FakeResponse({"code": 0, "status": True, "scode": "0x0"}))
     key = SecretStr("sk-test-key")
 
     result = fetch_kimi_balance(key, base_url="https://api.moonshot.ai/v1", http=http)

@@ -207,6 +207,23 @@ describe("UsagePanel", () => {
     expect(label.className).not.toContain("text-success");
   });
 
+  it("marks a documented Kimi USD balance insufficient when no calls remain", async () => {
+    const deepseek = await fetchSettingsBalance("user-deepseek");
+    const kimi = await fetchSettingsBalance("user-kimi");
+    vi.mocked(fetchSettingsBalance).mockImplementation(async (id) =>
+      id === "user-kimi"
+        ? { ...kimi, kind: "balance_native", balance_usd: 0, native_available: false }
+        : deepseek,
+    );
+    render(<UsagePanel />);
+    const row = await screen.findByTestId("usage-row-user-kimi");
+    const label = await within(row).findByText(
+      "Provider-reported balance $0.00 · insufficient for API calls",
+    );
+    expect(label.className).toContain("text-ink-soft");
+    expect(label.className).not.toContain("text-success");
+  });
+
   it("does not label old-server DeepSeek USD as provider credit", async () => {
     vi.mocked(fetchSettingsBalance).mockImplementation(async (id) => ({
       api_key_id: id,

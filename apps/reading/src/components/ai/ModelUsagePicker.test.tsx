@@ -197,6 +197,24 @@ describe("ModelUsagePicker", () => {
     expect(chip.className).not.toContain("text-success");
   });
 
+  it("does not style a zero Kimi USD balance as spendable credit", async () => {
+    mockFetchBalance.mockResolvedValue(balanceBody({
+      catalog_id: "kimi",
+      kind: "balance_native",
+      balance_usd: 0,
+      native_available: false,
+    }));
+    render(<ModelUsagePicker value={null} onChange={() => {}} showUsage={false} />);
+    await userEvent.click(screen.getAllByRole("button")[0]);
+    const chip = await waitFor(() => {
+      const element = document.querySelector('[data-balance-kind="balance_native"]');
+      expect(element?.textContent).toContain("$0.00 · insufficient for API calls");
+      return element as HTMLElement;
+    });
+    expect(chip.className).toContain("text-ink-soft");
+    expect(chip.textContent).not.toContain("credit");
+  });
+
   it("labels balance_native as provider credit and spend_history as Antiek's meter, never the same chip", async () => {
     // um-1 → the provider reported remaining credit; um-2 → no native
     // adapter, so the backend answered with Antiek's own spend meter.
