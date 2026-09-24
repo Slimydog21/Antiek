@@ -251,3 +251,65 @@ def test_take_warm_slot_waits_for_an_expiry_close_in_flight(tmp_path: Path):
     finally:
         con.release.set()
         db_lock.flush_warm_writers(db)
+
+
+def test_flush_raises_when_the_expiry_close_outlasts_the_bound(tmp_path: Path):
+    """A close that is still running when the bound lapses is NOT silently
+    ignored: the file is still held open, so the caller must not proceed."""
+    db, slot, con = _park_expired_fake(tmp_path)
+    key = db_lock._warm_key(db)
+    try:
+        expiry, _ = _run_in_thread(db_lock._expire_warm_slot, key, slot)
+        assert con.started.wait(5.0)
+        with pytest.raises(db_lock.WarmWriterCloseTimeout, match="still closing"):
+            db_lock.flush_warm_writers(db, close_wait_s=0.2)
+        assert isinstance(db_lock.WarmWriterCloseTimeout("x"), db_lock.WriteLockTimeout)
+        con.release.set()
+        expiry.join(5.0)
+        assert con.closed
+    finally:
+        con.release.set()
+        db_lock.flush_warm_writers(db)
+
+
+def test_take_warm_slot_raises_within_the_caller_deadline(tmp_path: Path):
+    db, slot, con = _park_expired_fake(tmp_path)
+    key = db_lock._warm_key(db)
+    try:
+        expiry, _ = _run_in_thread(db_lock._expire_warm_slot, key, slot)
+        assert con.started.wait(5.0)
+        t0 = time.monotonic()
+        with pytest.raises(db_lock.WarmWriterCloseTimeout):
+            db_lock._take_warm_slot(db, close_wait_s=0.2)
+        assert time.monotonic() - t0 < 2.0
+        con.release.set()
+        expiry.join(5.0)
+    finally:
+        con.release.set()
+        db_lock.flush_warm_writers(db)
+
+
+def test_connect_write_before_open_runs_under_the_gate(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "0")
+    db = str(tmp_path / "hook.duckdb")
+    seen: list[tuple[bool, int]] = []
+
+    def hook() -> None:
+        seen.append((db_lock._PROCESS_WRITE_GATE.locked(), len(db_lock._active_writers)))
+
+    with db_lock.connect_write(db, purpose="hook-test", before_open=hook) as con:
+        con.execute("SELECT 1")
+    assert seen == [(True, 0)]  # gate held, nothing opened yet
+    assert not db_lock._PROCESS_WRITE_GATE.locked()
+
+
+def test_connect_write_before_open_failure_releases_the_gate(tmp_path: Path):
+    db = str(tmp_path / "hook-fail.duckdb")
+
+    def hook() -> None:
+        raise db_lock.WarmWriterCloseTimeout("simulated: staging still closing")
+
+    with pytest.raises(db_lock.WarmWriterCloseTimeout):
+        db_lock.connect_write(db, purpose="hook-fail", before_open=hook)
+    assert not db_lock._PROCESS_WRITE_GATE.locked()
+    assert not os.path.exists(db)  # nothing was opened or created

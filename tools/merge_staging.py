@@ -248,12 +248,31 @@ def merge_staging(
     attach_lit = _attach_literal(staging_db)
     results: list[TableMergeResult] = []
 
+    started = time.monotonic()
+
+    def _release_staging_writer() -> None:
+        # Runs under db_lock's in-process write gate, before the live flock
+        # is taken. The ingest that staged these rows runs in this process
+        # and db_lock parks its writer for the keepalive window (WP-3,
+        # default 20 s); DuckDB refuses to ATTACH a file the process already
+        # holds open ("Unique file handle conflict"), so close that parked
+        # writer here. The merge only reads staging, so nothing is lost.
+        # Under the gate no other thread can re-park it before the ATTACH,
+        # and flush_warm_writers waits for a close the keepalive expiry
+        # timer has already started (or raises, and nothing is opened). The
+        # keystone window starts AFTER this: closing staging is not
+        # live-writer-held time.
+        nonlocal started
+        flush_warm_writers(staging_db)
+        started = time.monotonic()
+
     # The ONE write window. Everything below holds the live flock; it opens
     # once (connect_write) and closes once (the `with` exit). Wall-time of
     # this block is the keystone window.
-    started = time.monotonic()
-    with connect_write(live_db, purpose="merge_staging") as con:
-        _attach_staging(con, attach_lit=attach_lit, staging_db=staging_db)
+    with connect_write(
+        live_db, purpose="merge_staging", before_open=_release_staging_writer
+    ) as con:
+        con.execute(f"ATTACH '{attach_lit}' AS staging (READ_ONLY)")
         try:
             plan = _assert_schema_compatible(con)
 
@@ -295,28 +314,6 @@ def merge_staging(
     window_s = time.monotonic() - started
 
     return MergeResult(tables=tuple(results), window_s=window_s)
-
-
-def _attach_staging(con, *, attach_lit: str, staging_db: str) -> None:
-    """ATTACH the staging file read-only, first releasing any writer THIS
-    process still holds parked on it.
-
-    The ingest that staged these rows runs in the same process, and
-    ``runtime.db_lock`` parks its writer for the keepalive window (WP-3,
-    default 20 s). DuckDB refuses to ATTACH a file the process already holds
-    open ("Unique file handle conflict"), so the parked writer is flushed
-    immediately before the ATTACH. The merge only reads staging, so closing
-    that writer loses nothing; the live DB's lock handling is untouched.
-
-    This runs INSIDE the live write window on purpose. db_lock's process gate
-    is held for the whole window and every in-process writer parks under that
-    same gate, so no other thread can re-park a staging writer between this
-    flush and the ATTACH. The one path that closes a parked writer outside
-    the gate is the keepalive expiry timer, and ``flush_warm_writers`` waits
-    for a close that timer has already started.
-    """
-    flush_warm_writers(staging_db)
-    con.execute(f"ATTACH '{attach_lit}' AS staging (READ_ONLY)")
 
 
 def _projection(

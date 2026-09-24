@@ -331,6 +331,59 @@ def test_merge_releases_parked_staging_writer(env, monkeypatch):
         db_lock.flush_warm_writers(live)
 
 
+def test_merge_window_excludes_the_staging_close(env, monkeypatch):
+    """Closing the parked staging writer happens under the write gate but
+    before the live flock; the reported keystone window must not include it."""
+    import tools.merge_staging as ms
+
+    live = os.path.join(env["tmpdir"], "live.duckdb")
+    staging = os.path.join(env["tmpdir"], "staging.duckdb")
+    init_database_at_path(live)
+    real_flush = db_lock.flush_warm_writers
+
+    def slow_flush(path: str, **kw: object) -> int:
+        time.sleep(0.6)  # a slow checkpoint-on-close
+        return real_flush(path, **kw)
+
+    monkeypatch.setattr(ms, "flush_warm_writers", slow_flush)
+    try:
+        _stage_books(
+            staging, [{"bytes": b"book-slow-close", "content_class": "public_domain"}]
+        )
+        result = merge_staging(live_db=live, staging_db=staging)
+        assert result.total_inserted > 0
+        assert result.window_s < 0.5, result.window_s
+    finally:
+        db_lock.flush_warm_writers(staging)
+        db_lock.flush_warm_writers(live)
+
+
+def test_merge_fails_closed_when_the_staging_close_outlasts_its_bound(env, monkeypatch):
+    """If the staging writer's expiry close cannot be waited out, the merge
+    raises before the live DB is opened — never an ATTACH on an open handle."""
+    import tools.merge_staging as ms
+
+    live = os.path.join(env["tmpdir"], "live.duckdb")
+    staging = os.path.join(env["tmpdir"], "staging.duckdb")
+    init_database_at_path(live)
+
+    def stuck_flush(path: str, **kw: object) -> int:
+        raise db_lock.WarmWriterCloseTimeout("simulated: still closing")
+
+    monkeypatch.setattr(ms, "flush_warm_writers", stuck_flush)
+    try:
+        _stage_books(
+            staging, [{"bytes": b"book-stuck", "content_class": "public_domain"}]
+        )
+        with pytest.raises(db_lock.WarmWriterCloseTimeout):
+            merge_staging(live_db=live, staging_db=staging)
+        assert not db_lock._PROCESS_WRITE_GATE.locked()
+        assert _counts(live)["documents"] == 0
+    finally:
+        db_lock.flush_warm_writers(staging)
+        db_lock.flush_warm_writers(live)
+
+
 def test_flush_warm_writers_without_slot(tmp_path):
     assert db_lock.flush_warm_writers(str(tmp_path / "absent.duckdb")) == 0
 

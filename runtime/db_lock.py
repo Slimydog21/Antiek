@@ -60,7 +60,7 @@ import secrets
 import stat
 import threading
 import time
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from types import TracebackType
 from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
@@ -119,13 +119,36 @@ _warm_slots_lock = threading.Lock()
 # parked" while the file is still held open. Anyone who then opens or
 # ATTACHes the same file in this process hits DuckDB's "Unique file handle
 # conflict". _take_warm_slot and flush_warm_writers wait for the close.
-_warm_closing: dict[str, threading.Event] = {}
+_warm_closing: dict[str, tuple[threading.Event, int]] = {}
 _WARM_CLOSE_WAIT_S = 60.0
 
 
-def _wait_for_warm_close(pending: threading.Event | None) -> None:
-    if pending is not None:
-        pending.wait(_WARM_CLOSE_WAIT_S)
+def _wait_for_warm_close(
+    pending: tuple[threading.Event, int] | None,
+    *,
+    wait_s: float,
+    db_path: str,
+) -> None:
+    """Block until the expiry timer's close of ``db_path`` finishes.
+
+    Raises ``WarmWriterCloseTimeout`` (a ``WriteLockTimeout``) if it has not
+    finished within ``wait_s`` — the caller must NOT proceed to open or
+    ATTACH the file, that is exactly the handle conflict this wait exists to
+    prevent. A DuckDB close checkpoints the database, so on a large DB the
+    close can legitimately take seconds; the bound is the caller's deadline,
+    never silently exceeded. The closing thread itself never waits.
+    """
+    if pending is None:
+        return
+    event, closer = pending
+    if closer == threading.get_ident():
+        return
+    if not event.wait(max(0.0, wait_s)):
+        raise WarmWriterCloseTimeout(
+            f"parked writer for {db_path} is still closing (keepalive expiry) "
+            f"after {wait_s:g}s; refusing to reopen or ATTACH it while its "
+            "handle is open"
+        )
 
 
 def _warm_key(db_path: str) -> str:
@@ -144,14 +167,21 @@ def _destroy_warm_slot(slot: _WarmWriterSlot) -> None:
         os.close(slot.lock_fd)
 
 
-def _take_warm_slot(db_path: str) -> _WarmWriterSlot | None:
-    """Return a live warm slot for reuse, or None. Caller holds process gate."""
+def _take_warm_slot(
+    db_path: str, *, close_wait_s: float = _WARM_CLOSE_WAIT_S
+) -> _WarmWriterSlot | None:
+    """Return a live warm slot for reuse, or None. Caller holds process gate.
+
+    If the expiry timer is closing this path's parked writer right now, wait
+    for it (bounded by ``close_wait_s``) before answering None — otherwise the
+    caller would open a second handle on a file DuckDB still holds.
+    """
     key = _warm_key(db_path)
     with _warm_slots_lock:
         slot = _warm_slots.pop(key, None)
         pending = _warm_closing.get(key)
     if slot is None:
-        _wait_for_warm_close(pending)
+        _wait_for_warm_close(pending, wait_s=close_wait_s, db_path=db_path)
         return None
     if time.monotonic() >= slot.expires_mono:
         _destroy_warm_slot(slot)
@@ -214,12 +244,13 @@ def _expire_warm_slot(key: str, slot: _WarmWriterSlot) -> None:
             return
         _warm_slots.pop(key, None)
         closing = threading.Event()
-        _warm_closing[key] = closing
+        _warm_closing[key] = (closing, threading.get_ident())
     try:
         _destroy_warm_slot(slot)
     finally:
         with _warm_slots_lock:
-            if _warm_closing.get(key) is closing:
+            current_closing = _warm_closing.get(key)
+            if current_closing is not None and current_closing[0] is closing:
                 del _warm_closing[key]
         closing.set()
 
@@ -239,30 +270,42 @@ def _schedule_warm_expiry(key: str, slot: _WarmWriterSlot, keepalive_s: float) -
     t.start()
 
 
-def flush_warm_writers(db_path: str | None = None) -> int:
-    """Drop parked warm writers (tests / deploy). Returns number destroyed."""
+def flush_warm_writers(
+    db_path: str | None = None, *, close_wait_s: float = _WARM_CLOSE_WAIT_S
+) -> int:
+    """Drop parked warm writers (tests / deploy / merge_staging). Returns the
+    number destroyed by THIS call.
+
+    A close the expiry timer already started is not ours to count, but the
+    caller's next open/ATTACH must not race it, so this also waits for any
+    in-flight close of the same path(s), bounded by ``close_wait_s``, and
+    raises ``WarmWriterCloseTimeout`` rather than return while the handle is
+    still open.
+    """
     with _warm_slots_lock:
         if db_path is None:
             slots = list(_warm_slots.values())
             _warm_slots.clear()
-            pending = list(_warm_closing.values())
+            pending = list(_warm_closing.items())
         else:
             key = _warm_key(db_path)
             slot = _warm_slots.pop(key, None)
             slots = [slot] if slot is not None else []
             closing = _warm_closing.get(key)
-            pending = [closing] if closing is not None else []
+            pending = [(key, closing)] if closing is not None else []
     for slot in slots:
         _destroy_warm_slot(slot)
-    # A close the expiry timer already started is not ours to count, but the
-    # caller's next open/ATTACH must not race it.
-    for event in pending:
-        _wait_for_warm_close(event)
+    for pending_key, entry in pending:
+        _wait_for_warm_close(entry, wait_s=close_wait_s, db_path=pending_key)
     return len(slots)
 
 
 def _atexit_flush_warm_writers() -> None:
-    flush_warm_writers()
+    # At interpreter exit a close still in flight on the timer thread is
+    # waited for (it is checkpointing the DB); if it outlasts the bound there
+    # is nothing left to protect, so the timeout is not an error here.
+    with contextlib.suppress(WarmWriterCloseTimeout):
+        flush_warm_writers()
 
 
 atexit.register(_atexit_flush_warm_writers)
@@ -411,6 +454,13 @@ class WriteLockTimeout(RuntimeError):
 # WriteLockTimeout is the same condition. Keep both names so old call sites
 # keep working and new code can use the spec terminology.
 WriteCoordinatorTimeout = WriteLockTimeout
+
+
+class WarmWriterCloseTimeout(WriteLockTimeout):
+    """An in-process parked writer's expiry close did not finish within the
+    caller's bound; the file is still held open, so opening or ATTACHing it
+    now would hit DuckDB's handle conflict. A ``WriteLockTimeout`` so existing
+    contention handlers treat it as the lock wait it is."""
 
 
 class TransactionAborted(RuntimeError):
@@ -782,9 +832,17 @@ def connect_write(
     poll_interval_s: float = 0.25,
     purpose: str = "",
     close_log_max_wait_s: float = 0.25,
+    before_open: Callable[[], None] | None = None,
 ) -> LockedConnection:
     """Acquire an exclusive flock on the sidecar lock file, then open DuckDB
     for write. Returns a LockedConnection that releases the lock on close().
+
+    ``before_open`` runs once the in-process write gate is held and before
+    the flock is taken or the DuckDB file opened: work that must be
+    serialized against every other in-process writer but must NOT count
+    toward the live-writer-held window (merge_staging closes the parked
+    staging writer there). If it raises, the gate is released and the error
+    propagates; nothing was opened.
 
     Blocks up to timeout_s waiting for the lock; raises WriteLockTimeout if
     it can't be acquired. Polls rather than using a blocking flock so we can
@@ -815,6 +873,8 @@ def connect_write(
         )
 
     try:
+        if before_open is not None:
+            before_open()
         return _connect_write_after_process_gate(
             db_path,
             timeout_s=timeout_s,
@@ -836,7 +896,9 @@ def _connect_write_after_process_gate(
     close_log_max_wait_s: float = 0.25,
 ) -> LockedConnection:
     # Fast path: reuse parked in-process writer (skips ~6.8s duckdb.connect).
-    warm = _take_warm_slot(db_path)
+    # If the expiry timer is mid-close on this path, wait for it within the
+    # caller's own deadline rather than open a second handle.
+    warm = _take_warm_slot(db_path, close_wait_s=min(_WARM_CLOSE_WAIT_S, timeout_s))
     if warm is not None:
         try:
             os.ftruncate(warm.lock_fd, 0)
