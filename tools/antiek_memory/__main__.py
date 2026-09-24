@@ -4,7 +4,7 @@ Run with: python -m tools.antiek_memory
 
 Reads ANTIEK_DUCKDB_PATH from the environment (falls back to
 ~/.antiek/research_graph.duckdb) and ANTIEK_MEMORY_OWNER, the owner this
-process serves (unset: search_personal refuses every call).  Initialises the schema on cold
+process serves (unset: private reads refuse every call). Initialises the schema on cold
 start, wires the four canonical tool handlers + resource handler
 against the real substrate, and serves JSON-RPC over stdio.
 """
@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import json
 import os
-import uuid
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 from interfaces.research.api.account_memory_identity import FORBIDDEN_OWNERS
-from runtime.db_lock import connect_read, connect_write
+from runtime.db_lock import connect_read
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
 from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding, search
@@ -36,18 +36,41 @@ _TRUSTED_FALSE = '<antiek:content trusted="false">{}</antiek:content>'
 # Longest owner id the handler will bind; mirrors account_memory_identity.
 _MAX_OWNER_LENGTH = 256
 
+# A public class is necessary but not sufficient for licensed material: its
+# rights holder must still have an active opt-in, and a takedown always wins.
+_NOT_TAKEN_DOWN_SQL = """
+    NOT EXISTS (
+        SELECT 1 FROM book_assets b
+        WHERE b.document_id = d.document_id AND b.taken_down
+    )
+"""
+_PUBLIC_DOCUMENT_SQL = """
+    (
+        d.content_class = 'user_public_contribution'
+        OR (
+            d.owner_user_id = '__operator__'
+            AND (
+                d.content_class IN ('public_domain', 'source_declared_open')
+                OR (
+                    d.content_class = 'opt_in_licensed'
+                    AND EXISTS (
+                        SELECT 1 FROM ip_holders h
+                        WHERE h.ip_holder_id = d.ip_holder_id AND h.status = 'claimed'
+                    )
+                )
+            )
+        )
+    )
+"""
+
 
 def _authenticated_owner(auth_context: object) -> str | None:
-    """Resolve the caller's owner id from the transport-filled ``auth_context``.
+    """Resolve the process-bound owner from the server-filled ``auth_context``.
 
-    The claim is ``auth_context["user_id"]`` — the same subject the API's auth
-    middleware places on ``request.state.user_id``. Storage sentinels that name
-    a deployment rather than a person (``FORBIDDEN_OWNERS``, shared with every
-    other private-memory boundary) are refused: "per-user OAuth scope" in the
-    published manifest means a distinct human, and a shared identity would
-    hand one caller every operator-authenticated document. Returns ``None``
-    whenever proof is absent so the caller fails closed instead of falling
-    back to any default owner.
+    The stdio launcher supplies ``auth_context["user_id"]`` from
+    ``ANTIEK_MEMORY_OWNER``. Storage sentinels that name a deployment rather
+    than a person (``FORBIDDEN_OWNERS``) are refused. The launch environment
+    is not itself proof that an SSH principal owns the chosen account.
     """
     if not isinstance(auth_context, dict):
         return None
@@ -74,7 +97,7 @@ def _make_handlers(
     db_path: str,
     *,
     embedding_model: Callable[[], EmbeddingModel] = SentenceTransformerEmbedding,
-) -> tuple[dict[str, Callable[..., ToolResult]], Callable[[str], ResourceContent | None]]:
+) -> tuple[dict[str, Callable[..., ToolResult]], Callable[..., ResourceContent | None]]:
     """Build handler closures bound to *db_path*.
 
     ``embedding_model`` is a zero-argument factory for the ranked-retrieval
@@ -164,19 +187,26 @@ def _make_handlers(
 
     # ── search_public ─────────────────────────────────────────────
     def search_public(args: dict) -> ToolResult:
-        query = args["query"]
+        query = args.get("query")
+        if not isinstance(query, str) or not query.strip():
+            return _error_result("query is required", query="")
         top_k = args.get("top_k", 5)
+        if not isinstance(top_k, int) or isinstance(top_k, bool) or not 1 <= top_k <= 50:
+            return _error_result("top_k must be between 1 and 50", query=query)
         con = connect_read(db_path)
         try:
             rows = con.execute(
-                """
+                f"""
                 SELECT c.chunk_id, c.text, d.title, d.source_tier
                 FROM chunks c
                 JOIN documents d ON c.document_id = d.document_id
-                ORDER BY c.chunk_index
+                WHERE ({_PUBLIC_DOCUMENT_SQL}) AND {_NOT_TAKEN_DOWN_SQL}
+                  AND (contains(lower(c.text), lower(?))
+                       OR contains(lower(COALESCE(d.title, '')), lower(?)))
+                ORDER BY d.document_id, c.chunk_index
                 LIMIT ?
                 """,
-                [top_k],
+                [query.strip(), query.strip(), top_k],
             ).fetchall()
         finally:
             con.close()
@@ -196,21 +226,24 @@ def _make_handlers(
         }])
 
     # ── cite_source ───────────────────────────────────────────────
-    def cite_source(args: dict) -> ToolResult:
+    def cite_source(args: dict, *, auth_context: object = None) -> ToolResult:
         src_id = args["id"]
         id_type = args.get("id_type", "chunk")
+        owner = _authenticated_owner(auth_context)
         con = connect_read(db_path)
         try:
             if id_type == "chunk":
                 row = con.execute(
-                    """
+                    f"""
                     SELECT c.chunk_id, d.document_id, d.title, d.source_tier,
                            d.author, c.section_path
                     FROM chunks c
                     JOIN documents d ON c.document_id = d.document_id
                     WHERE c.chunk_id = ?
+                      AND (d.owner_user_id = ? OR ({_PUBLIC_DOCUMENT_SQL}))
+                      AND {_NOT_TAKEN_DOWN_SQL}
                     """,
-                    [src_id],
+                    [src_id, owner],
                 ).fetchone()
             else:
                 row = None
@@ -236,47 +269,43 @@ def _make_handlers(
 
     # ── record_attribution ────────────────────────────────────────
     def record_attribution(args: dict) -> ToolResult:
-        chunk_id = args["chunk_id"]
-        investigation_id = args["investigation_id"]
-        dwell = args.get("session_dwell_seconds", 0)
-        audit_id = str(uuid.uuid4())
-        con = connect_write(db_path, purpose="mcp_record_attribution")
-        try:
-            con.execute(
-                """
-                INSERT INTO attribution_audit
-                    (audit_id, impression_set_ref, page_id, algorithm,
-                     algorithm_version, inputs_json, shares_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                [audit_id, investigation_id, chunk_id,
-                 "equal_split_per_chunk_citation", "1.0",
-                 json.dumps({"chunk_id": chunk_id, "investigation_id": investigation_id, "dwell_seconds": dwell}),
-                 json.dumps({chunk_id: 1.0})],
-            )
-        finally:
-            con.close()
-        return ToolResult(content=[{
-            "type": "text",
-            "text": json.dumps({
-                "status": "recorded",
-                "audit_id": audit_id,
-                "chunk_id": chunk_id,
-                "investigation_id": investigation_id,
-                "dwell_seconds": dwell,
-            }),
-        }])
+        # This store has no authenticated investigation or dwell record to join
+        # to a client claim. An unverified event must not become payout evidence.
+        return ToolResult(
+            content=[{"type": "text", "text": json.dumps({"error": "not authorized"})}],
+            is_error=True,
+        )
 
     # ── resource handler ──────────────────────────────────────────
-    def resource_handler(uri: str) -> ResourceContent | None:
+    def resource_handler(
+        uri: str, *, auth_context: object = None
+    ) -> ResourceContent | None:
+        try:
+            parsed = urlsplit(uri)
+        except ValueError:
+            return None
+        if (
+            parsed.scheme != "antiek"
+            or uri != f"antiek://{parsed.netloc}{parsed.path}"
+            or parsed.query
+            or parsed.fragment
+            or "%" in uri
+            or parsed.username is not None
+            or any(part in {".", ".."} for part in parsed.path.split("/"))
+        ):
+            return None
+        parts = parsed.path.split("/")
+        if parsed.netloc == "books":
+            # No persisted ISBN-to-edition and owner entitlement authority
+            # exists in this MCP store. A chunk ID or client ISBN cannot
+            # prove either right, so do not fetch the body or metadata.
+            return None
         con = connect_read(db_path)
         try:
-            if uri.startswith("antiek://private/notes/"):
-                parts = uri.split("/")
-                # antiek://private/notes/{user_id}/{note_id}
-                user_id = parts[4] if len(parts) > 4 else None
-                note_id = parts[5] if len(parts) > 5 else None
-                if not user_id or not note_id:
+            if parsed.netloc == "private" and len(parts) == 4 and parts[1] == "notes":
+                user_id, note_id = parts[2:]
+                owner = _authenticated_owner(auth_context)
+                if not owner or user_id != owner or not note_id or "/" in note_id:
                     return None
                 # Notes are stored as notebook_blocks with block_type='note'
                 row = con.execute(
@@ -285,8 +314,9 @@ def _make_handlers(
                     FROM notebook_blocks nb
                     JOIN notebooks n ON nb.notebook_id = n.notebook_id
                     WHERE nb.block_id = ? AND n.owner_user_id = ?
+                      AND nb.block_type = 'note' AND n.content_class = 'user_owned'
                     """,
-                    [note_id, user_id],
+                    [note_id, owner],
                 ).fetchone()
                 if row is None:
                     return None
@@ -304,9 +334,8 @@ def _make_handlers(
                     }),
                 )
 
-            if uri.startswith("antiek://public/notes/"):
-                parts = uri.split("/")
-                note_id = parts[4] if len(parts) > 4 else None
+            if parsed.netloc == "public" and len(parts) == 3 and parts[1] == "notes":
+                note_id = parts[2]
                 if not note_id:
                     return None
                 row = con.execute(
@@ -314,7 +343,8 @@ def _make_handlers(
                     SELECT nb.block_id, nb.content_json, n.title
                     FROM notebook_blocks nb
                     JOIN notebooks n ON nb.notebook_id = n.notebook_id
-                    WHERE nb.block_id = ? AND n.content_class = 'user_public_contribution'
+                    WHERE nb.block_id = ? AND nb.block_type = 'note'
+                      AND n.content_class = 'user_public_contribution'
                     """,
                     [note_id],
                 ).fetchone()
@@ -329,34 +359,6 @@ def _make_handlers(
                         "note_id": note_id,
                         "title": row[2],
                         "content": envelope,
-                    }),
-                )
-
-            if uri.startswith("antiek://books/"):
-                parts = uri.split("/")
-                isbn = parts[3] if len(parts) > 3 else None
-                chunk_id = parts[4] if len(parts) > 4 else None
-                if not isbn or not chunk_id:
-                    return None
-                row = con.execute(
-                    """
-                    SELECT c.chunk_id, c.text, d.title
-                    FROM chunks c
-                    JOIN documents d ON c.document_id = d.document_id
-                    WHERE c.chunk_id = ?
-                    """,
-                    [chunk_id],
-                ).fetchone()
-                if row is None:
-                    return None
-                return ResourceContent(
-                    uri=uri,
-                    mime_type="application/json",
-                    text=json.dumps({
-                        "chunk_id": row[0],
-                        "isbn": isbn,
-                        "text": row[1],
-                        "title": row[2],
                     }),
                 )
 
