@@ -17,10 +17,8 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlsplit
 
-import duckdb
-
 from interfaces.research.api.account_memory_identity import FORBIDDEN_OWNERS
-from runtime.db_lock import connect_read
+from runtime.db_lock import connect_native_read, connect_read
 from substrate.books.serve_guard import LinkBackMissingError, guard_candidate_full_text
 from substrate.graph import default_db_path
 from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding, search
@@ -110,7 +108,7 @@ def _require_preinitialized_graph(db_path: str) -> None:
     check does not promise concurrent access to the live DuckDB writer.
     """
     try:
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_native_read(db_path)
         try:
             for probe in _STARTUP_READ_PROBES:
                 con.execute(probe).fetchone()
@@ -225,7 +223,7 @@ def _make_handlers(
         }])
 
     # ── search_public ─────────────────────────────────────────────
-    def search_public(args: dict) -> ToolResult:
+    def search_public(args: dict[str, Any]) -> ToolResult:
         query = args.get("query")
         if not isinstance(query, str) or not query.strip():
             return _error_result("query is required", query="")
@@ -247,7 +245,7 @@ def _make_handlers(
                 """,
                 [query.strip(), query.strip()],
             )
-            chunks = []
+            chunks: list[dict[str, Any]] = []
             while len(chunks) < top_k:
                 row = cursor.fetchone()
                 if row is None:
@@ -272,7 +270,7 @@ def _make_handlers(
         }])
 
     # ── cite_source ───────────────────────────────────────────────
-    def cite_source(args: dict, *, auth_context: object = None) -> ToolResult:
+    def cite_source(args: dict[str, Any], *, auth_context: object = None) -> ToolResult:
         src_id = args["id"]
         id_type = args.get("id_type", "chunk")
         owner = _authenticated_owner(auth_context)
@@ -314,7 +312,7 @@ def _make_handlers(
         }])
 
     # ── record_attribution ────────────────────────────────────────
-    def record_attribution(args: dict) -> ToolResult:
+    def record_attribution(args: dict[str, Any]) -> ToolResult:
         # This store has no authenticated investigation or dwell record to join
         # to a client claim. An unverified event must not become payout evidence.
         return ToolResult(
