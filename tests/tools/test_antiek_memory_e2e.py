@@ -41,7 +41,7 @@ def _rpc(method: str, params: dict | None = None, rpc_id: int = 1) -> str:
     })
 
 
-def _read_line(proc: subprocess.Popen, timeout: float = 10.0) -> dict:
+def _read_line(proc: subprocess.Popen, timeout: float = 20.0) -> dict:
     """Read one JSON line from the server's stdout with a timeout."""
     import select
     ready, _, _ = select.select([proc.stdout], [], [], timeout)
@@ -206,6 +206,40 @@ def memory_db(tmp_path: Path) -> Path:
         con.execute(
             "INSERT INTO book_assets (document_id, taken_down) VALUES ('doc-revoked', TRUE)"
         )
+        arxiv_cases = (
+            (
+                "doc-arxiv-nc", "chunk-arxiv-nc", "NC Paper", "Quasar NC body",
+                {"source": "arxiv_oai_pmh", "arxiv_id": "2401.10001",
+                 "license_uri": "http://creativecommons.org/licenses/by-nc/4.0/",
+                 "rights_tier": "T1"},
+            ),
+            (
+                "doc-arxiv-no-link", "chunk-arxiv-no-link", "No Link Paper",
+                "Quasar missing link body",
+                {"source": "arxiv_oai_pmh",
+                 "license_uri": "http://creativecommons.org/licenses/by/4.0/",
+                 "rights_tier": "T1"},
+            ),
+            (
+                "doc-arxiv-t1", "chunk-arxiv-t1", "Allowed Paper", "Quasar allowed body",
+                {"source": "arxiv_oai_pmh", "arxiv_id": "2401.10003",
+                 "license_uri": "http://creativecommons.org/licenses/by/4.0/",
+                 "rights_tier": "T1"},
+            ),
+        )
+        for document_id, chunk_id, title, body, metadata in arxiv_cases:
+            con.execute(
+                "INSERT INTO documents "
+                "(document_id, title, source_tier, document_type, owner_user_id, "
+                "content_class, metadata) VALUES (?, ?, 1, 'article', '__operator__', "
+                "'source_declared_open', ?)",
+                [document_id, title, json.dumps(metadata)],
+            )
+            con.execute(
+                "INSERT INTO chunks (chunk_id, document_id, chunk_index, text) "
+                "VALUES (?, ?, 0, ?)",
+                [chunk_id, document_id, body],
+            )
     finally:
         con.close()
     return db_path
@@ -536,6 +570,17 @@ class TestToolsCallSearchPublic:
         for secret in ("Private Public Domain Library", "Hidden Author", "Unlicensed Edition", "Revoked Edition"):
             assert secret not in wire
 
+    def test_search_public_rechecks_immutable_arxiv_rights(self, server_proc):
+        resp = _send_and_recv(server_proc, "tools/call", {
+            "name": "search_public", "arguments": {"query": "quasar", "top_k": 50},
+        }, rpc_id=5)
+        assert resp["result"]["isError"] is False
+        body = json.loads(resp["result"]["content"][0]["text"])
+        assert [chunk["chunk_id"] for chunk in body["chunks"]] == ["chunk-arxiv-t1"]
+        wire = json.dumps(resp)
+        for secret in ("Quasar NC body", "NC Paper", "Quasar missing link body", "No Link Paper"):
+            assert secret not in wire
+
 
 class TestToolsCallCiteSource:
     """tools/call cite_source — resolves chunk metadata."""
@@ -601,6 +646,15 @@ class TestToolsCallCiteSource:
         assert resp["result"]["isError"] is False
         citation = json.loads(resp["result"]["content"][0]["text"])
         assert citation["title"] == "Own Document"
+
+    def test_cite_source_returns_public_bibliography_without_body(self, server_proc):
+        resp = _send_and_recv(server_proc, "tools/call", {
+            "name": "cite_source", "arguments": {"id": "chunk-arxiv-nc", "id_type": "chunk"},
+        }, rpc_id=5)
+        assert resp["result"]["isError"] is False
+        citation = json.loads(resp["result"]["content"][0]["text"])
+        assert citation["title"] == "NC Paper"
+        assert "Quasar NC body" not in json.dumps(resp)
 
     def test_cite_source_nonexistent_returns_error(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)

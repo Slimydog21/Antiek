@@ -6,6 +6,11 @@ process-bound owner and a private note block. Public search requires a matching
 query, an explicit public class, a collective owner or published contribution,
 an active publisher opt-in where applicable, and no book takedown. Citation
 metadata uses the same public test or the exact private owner.
+Before public search serializes a matching chunk, it also runs the canonical
+candidate-body serve guard. That guard re-derives arXiv rights from the stored
+`license_uri` and requires a usable linkback for a body. A conflicting stored
+rights tier or missing linkback excludes the body and its title from the search
+result. Citation remains bibliographic and carries no body.
 
 Book resource reads now refuse every request. The MCP graph has no authoritative
 ISBN-to-edition/asset mapping and no current owner entitlement record to join at

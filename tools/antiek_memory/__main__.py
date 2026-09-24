@@ -19,9 +19,11 @@ from urllib.parse import urlsplit
 
 from interfaces.research.api.account_memory_identity import FORBIDDEN_OWNERS
 from runtime.db_lock import connect_read
+from substrate.books.serve_guard import LinkBackMissingError, guard_candidate_full_text
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
 from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding, search
+from substrate.rights import T3BodyServeError
 
 from .server import (
     CANONICAL_TOOLS,
@@ -130,7 +132,7 @@ def _make_handlers(
         owner = _authenticated_owner(auth_context)
         if owner is None:
             return _error_result(
-                "search_personal requires an authenticated per-user owner in "
+                "search_personal requires a process-bound owner in "
                 "auth_context.user_id",
                 query=query,
             )
@@ -195,31 +197,38 @@ def _make_handlers(
             return _error_result("top_k must be between 1 and 50", query=query)
         con = connect_read(db_path)
         try:
-            rows = con.execute(
+            cursor = con.execute(
                 f"""
-                SELECT c.chunk_id, c.text, d.title, d.source_tier
+                SELECT c.chunk_id, c.text, d.title, d.source_tier,
+                       d.content_class, d.metadata
                 FROM chunks c
                 JOIN documents d ON c.document_id = d.document_id
                 WHERE ({_PUBLIC_DOCUMENT_SQL}) AND {_NOT_TAKEN_DOWN_SQL}
                   AND (contains(lower(c.text), lower(?))
                        OR contains(lower(COALESCE(d.title, '')), lower(?)))
                 ORDER BY d.document_id, c.chunk_index
-                LIMIT ?
                 """,
-                [query.strip(), query.strip(), top_k],
-            ).fetchall()
+                [query.strip(), query.strip()],
+            )
+            chunks = []
+            while len(chunks) < top_k:
+                row = cursor.fetchone()
+                if row is None:
+                    break
+                try:
+                    body = guard_candidate_full_text(row[1], row[4], row[5])
+                except (T3BodyServeError, LinkBackMissingError):
+                    continue
+                if body is None:
+                    continue
+                chunks.append({
+                    "chunk_id": row[0],
+                    "text": _TRUSTED_FALSE.format(body),
+                    "title": row[2],
+                    "source_tier": row[3],
+                })
         finally:
             con.close()
-        # §13.8.3: wrap public content in prompt-injection envelope
-        chunks = []
-        for r in rows:
-            envelope = _TRUSTED_FALSE.format(r[1])
-            chunks.append({
-                "chunk_id": r[0],
-                "text": envelope,
-                "title": r[2],
-                "source_tier": r[3],
-            })
         return ToolResult(content=[{
             "type": "text",
             "text": json.dumps({"chunks": chunks, "query": query}),
