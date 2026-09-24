@@ -458,3 +458,109 @@ def test_balance_credential_load_failure_returns_unavailable(
     body = BalanceResponse.model_validate(response.json())
     assert body.kind == "unavailable"
     assert "credential load failed" in (body.note or "")
+
+
+def test_verified_operator_sessions_keep_models_usage_and_balance_separate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shared storage sentinel must resolve to a distinct payer per signed person."""
+    from interfaces.research.api.account_memory_identity import derive_owner_from_verified_email
+    from interfaces.research.api.app import create_app
+    from substrate.auth.magic_link import mint_session_cookie
+    from substrate.dispatch.router import reset_provider_registry
+
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "test-only-auth-secret-at-least-32-bytes")
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "user-a@example.test,user-b@example.test")
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "master.key"))
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    monkeypatch.setattr("interfaces.research.api.byot_usage_routes._get_ledger", lambda: ledger)
+    balance_calls: list[tuple[str, str]] = []
+
+    def _offline_balance(*, catalog_id: str, api_key_id: str, owner_user_id: str, **_: Any) -> BalanceSnapshot:
+        balance_calls.append((api_key_id, owner_user_id))
+        return BalanceSnapshot(catalog_id=catalog_id, kind="unavailable")
+
+    monkeypatch.setattr("interfaces.research.api.byot_usage_routes._fetch_balance", _offline_balance)
+    cookies = {
+        name: {"ANTIEK_SESSION": mint_session_cookie(user_id="__operator__", email=f"{name}@example.test")}
+        for name in ("user-a", "user-b")
+    }
+    owners = {
+        name: derive_owner_from_verified_email(f"{name}@example.test")
+        for name in cookies
+    }
+    assert owners["user-a"] and owners["user-b"] and owners["user-a"] != owners["user-b"]
+    body = {
+        "provider_kind": "openai_compat",
+        "provider_catalog_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "display_name": "My DeepSeek",
+    }
+    reset_provider_registry()
+    try:
+        with TestClient(create_app(register_wrestling=False, register_providers=False)) as signed:
+            created = {
+                name: signed.post(
+                    "/settings/models/user",
+                    json={**body, "api_key": f"sk-test-only-{name}-abcdefghijklmnopqrstuvwxyz"},
+                    cookies=cookies[name],
+                )
+                for name in cookies
+            }
+            assert all(response.status_code == 201 for response in created.values())
+            ids = {name: response.json()["id"] for name, response in created.items()}
+            assert ids["user-a"] != ids["user-b"]
+
+            ledger.record_settlement(ids["user-a"], owners["user-a"], 125, "a" * 64)
+            ledger.record_settlement(ids["user-b"], owners["user-b"], 375, "b" * 64)
+            assert signed.post(
+                f"/settings/usage/{ids['user-a']}/limit",
+                json={"limit_cents": 1000}, cookies=cookies["user-a"],
+            ).status_code == 200
+            assert signed.post(
+                f"/settings/usage/{ids['user-a']}/limit",
+                json={"limit_cents": 1}, cookies=cookies["user-b"],
+            ).status_code == 404
+            assert signed.post(
+                f"/settings/usage/{ids['user-b']}/limit",
+                json={"limit_cents": 1}, cookies=cookies["user-a"],
+            ).status_code == 404
+
+            for name, expected_cents in (("user-a", 125), ("user-b", 375)):
+                snapshot = signed.get("/settings/usage", cookies=cookies[name])
+                assert snapshot.status_code == 200
+                assert [(row["api_key_id"], row["used_cents"]) for row in snapshot.json()["keys"]] == [
+                    (ids[name], expected_cents),
+                ]
+                if name == "user-a":
+                    assert snapshot.json()["keys"][0]["limit_cents"] == 1000
+
+            choice = {
+                "authority": "user_model",
+                "provider_id": ids["user-a"],
+                "model_id": "deepseek-chat",
+            }
+            assert signed.post(
+                "/settings/models/user/resolve", json=choice, cookies=cookies["user-b"],
+            ).status_code == 409
+            assert signed.get(
+                f"/settings/balance/{ids['user-a']}", cookies=cookies["user-b"],
+            ).status_code == 404
+            assert signed.get(
+                f"/settings/balance/{ids['user-b']}", cookies=cookies["user-a"],
+            ).status_code == 404
+            assert balance_calls == []
+            own_balance = signed.get(
+                f"/settings/balance/{ids['user-a']}", cookies=cookies["user-a"],
+            )
+            assert own_balance.status_code == 200
+            assert balance_calls == [(ids["user-a"], owners["user-a"])]
+    finally:
+        reset_provider_registry()
