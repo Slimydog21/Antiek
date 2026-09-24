@@ -93,6 +93,14 @@ def _authority_fixture(monkeypatch: pytest.MonkeyPatch):
         owner_user_id="owner-a",
     )
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        request.state.user_id = "owner-a"
+        request.state.user_email = "operator-under-test@example.com"
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
     fingerprint = models_admin._record_fingerprint(record)
     app.state.user_model_registration_fingerprints = {record.id: fingerprint}
     provider = _Provider(record.id, fingerprint)
