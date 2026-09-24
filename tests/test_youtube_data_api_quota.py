@@ -53,7 +53,7 @@ from runtime.connectors.quota_meter import (  # noqa: E402
 from runtime.connectors.youtube import YouTubeDataConnector  # noqa: E402
 
 _TEST_KEY_BYTES = b"0" * nacl.secret.SecretBox.KEY_SIZE  # 32 bytes, test-injected
-# Synthetic GCP-shaped key; this deterministic fixture was never issued.
+# Intentionally synthetic, deterministic GCP-shaped test value.
 _SECRET = "AIza" + "test_only_" + "0" * 25
 
 # A recorded-shape Data API v3 search envelope (fixture-validated,
