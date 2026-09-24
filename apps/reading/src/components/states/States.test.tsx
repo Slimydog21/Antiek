@@ -33,6 +33,16 @@ describe("LoadingState", () => {
     expect(status.textContent).not.toMatch(/^\s*Loading…\s*$/);
   });
 
+  it("inline, draws no box of its own: the skeleton rows are the list's geometry", () => {
+    // A bordered .st-inline card around skeleton rows would be a box around
+    // boxes, and the loaded rows would land inside a frame that then vanishes.
+    const { container } = render(<LoadingState variant="inline" label="Opening your notebooks" />);
+    const status = screen.getByRole("status");
+    expect(status.classList.contains("st-inline")).toBe(false);
+    expect(status.classList.contains("st-page")).toBe(false);
+    expect(container.querySelectorAll("[data-skeleton] > span")).toHaveLength(3);
+  });
+
   it("draws list rows by default and prose lines for a page, hidden from assistive tech", () => {
     const { container, rerender } = render(<LoadingState label="Opening your research" rows={4} />);
     let skel = container.querySelector("[data-skeleton]")!;

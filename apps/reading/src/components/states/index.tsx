@@ -21,7 +21,10 @@ import "./states.css";
  *                 reachable through "Copy error details" for a bug report.
  *
  * `variant="page"` fills and centres in its container (a whole surface that
- * could not load); `variant="inline"` is a flat bounded block in the flow.
+ * could not load). `variant="inline"` sits in the flow: an inline EmptyState
+ * or ErrorState is a flat bounded block (.st-inline), while an inline
+ * LoadingState draws no box of its own, because its skeleton rows already
+ * carry the geometry of the list that replaces them.
  * Styles live in states.css so the primitives add almost no entry JS.
  */
 type Variant = "page" | "inline";
