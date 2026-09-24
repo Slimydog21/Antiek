@@ -368,6 +368,18 @@ describe("BookReader", () => {
     await waitFor(() => expect(screen.getByText(/has been removed/)).toBeTruthy());
   });
 
+  it("lets the book's title wrap instead of truncating it (the page's only title)", async () => {
+    // Before: the h1 carried `truncate`, so at 390px "On the Shortness of
+    // Life" read "On the Shortness…" beside the rights tag.
+    getBookMock.mockResolvedValue(makeDetail({ title: "On the Shortness of Life" }));
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    const title = await screen.findByRole("heading", { level: 1, name: "On the Shortness of Life" });
+    expect(title.className).not.toMatch(/\btruncate\b/);
+    expect(title.className).toMatch(/\btext-balance\b/);
+    expect(title.className).toMatch(/\bmin-w-0\b/);
+  });
+
   it("draws the removed notice as a neutral bounded note, not a sun block (spec §4)", async () => {
     // Before: a 2.5px sun edge on a sun tint. The sun belongs to the dock key,
     // the one primary action and the reading mark; a rights notice is none.

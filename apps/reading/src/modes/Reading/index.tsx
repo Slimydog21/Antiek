@@ -428,11 +428,14 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
       {/* Reading column */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-4 min-h-full">
-          <header className="flex items-center justify-between gap-3">
-            <h1 className="text-2xl font-serif font-semibold text-ink dark:text-bright truncate">
+          {/* The page's only title wraps (balanced) rather than truncating:
+              at 390px a truncated title read "On the Shortness…". The tag
+              keeps its width and sits on the first line. */}
+          <header className="flex items-start justify-between gap-3">
+            <h1 className="min-w-0 text-2xl font-serif font-semibold text-ink dark:text-bright text-balance break-words">
               {book.title ?? documentId}
             </h1>
-            <LemonTag colour={colour} dot>
+            <LemonTag colour={colour} dot className="mt-1 shrink-0">
               {label}
             </LemonTag>
           </header>
