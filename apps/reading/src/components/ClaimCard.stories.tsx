@@ -24,7 +24,7 @@ type Story = StoryObj<typeof meta>;
 
 const baseClaim: Claim = {
   claim_id: "cl-storybook-1",
-  claim_text:
+  text:
     "Neutral-atom platforms have demonstrated single-qubit gate error " +
     "rates below 10⁻³ at the 100-qubit scale, consistent with the " +
     "threshold thesis for fault-tolerant operation.",
@@ -62,9 +62,10 @@ export const WithPassedGrounding: Story = {
     investigationId: "inv-storybook-demo",
     documentId: "doc-quantum-2026",
     grounding: {
-      status: "passed",
+      result: "passed",
       located_region_id: "reg-abc123",
       confidence: 0.92,
+      eventId: "ev-grounding-passed",
     },
   },
 };
@@ -75,9 +76,10 @@ export const WithFailedGrounding: Story = {
     investigationId: "inv-storybook-demo",
     documentId: "doc-quantum-2026",
     grounding: {
-      status: "failed",
+      result: "failed",
       reason: "absent_from_source",
-      searched_region_count: 5,
+      searched_regions: ["reg-abc123", "reg-def456"],
+      eventId: "ev-grounding-failed",
     },
   },
 };
@@ -87,6 +89,6 @@ export const PendingGrounding: Story = {
     claim: baseClaim,
     investigationId: "inv-storybook-demo",
     documentId: "doc-quantum-2026",
-    grounding: { status: "pending" },
+    grounding: { result: "pending", eventId: "ev-grounding-pending" },
   },
 };
