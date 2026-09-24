@@ -1,173 +1,119 @@
-# Antiek Memory MCP — deployment + client registration
+# Antiek Memory MCP — deployment gate and client registration
 
-**Status: ready to deploy as of 2026-05-22.** The MCP server code,
-the rug-pull defense manifest, and the well-known endpoint are all
-live on `main`. What remains is the operator-side step of
-registering the server with the MCP clients that should connect
-(Claude Desktop, ChatGPT MCP catalog, local CLIs, etc.).
+**Status, 2026-09-24: multi-account registration blocked.** The executable
+MCP server is a stdio process (`python -m tools.antiek_memory`). Its scoped
+read/write containment is proposed in [PR #3436](https://github.com/Slimydog21/Antiek/pull/3436),
+not established on a deployed revision. The repository does not contain an
+SSH-principal-to-account binding or an HTTP MCP transport. Do not register a
+remote client for private data using a caller-selected
+`ANTIEK_MEMORY_OWNER` value.
 
-For the master-spec background see §13.8. For the server
-implementation see `tools/antiek_memory/`.
+## Implemented surfaces
 
----
+| Surface | Source | Present behavior |
+|---|---|---|
+| Stdio JSON-RPC process | `tools/antiek_memory/__main__.py`, `server.py` | Reads graph data in a process bound to the launch environment's owner value. That environment value is not authentication. |
+| Public tool-description manifest | `GET /.well-known/mcp-tools.json` in `interfaces/research/api/app.py` | Publishes tool descriptions and hashes. It does not serve MCP calls. |
+| HTTP MCP transport | None | `/mcp` and OAuth/session-to-MCP adapters are not implemented here. |
+| Production service unit | `infrastructure/ansible/templates/antiek.service.j2` | Starts the HTTP Uvicorn app, not a stdio MCP server. |
 
-## What the substrate exposes
+The manifest hash lets a client compare descriptions **if that client
+implements the comparison**. This repository does not prove that Claude
+Desktop, ChatGPT, or another client fetches the manifest, compares hashes,
+or terminates on drift. A successful manifest fetch is not a successful MCP
+connection or authorization check.
 
-| Surface | Where |
-|---|---|
-| MCP stdio server (JSON-RPC over stdin/stdout) | `tools/antiek_memory/server.py` |
-| Tool description signing | `tools/antiek_memory/signing.py` |
-| `.well-known/mcp-tools.json` manifest | `GET https://api.antiek.ai/.well-known/mcp-tools.json` |
+The proposed stdio patch in PR #3436 binds private reads to the process
+owner, filters public search by class and current body rights, and refuses
+book bodies and attribution writes until entitlement and investigation
+authority can be joined. It does not turn the launch environment into a
+verified account identity. See
+[`docs/handoff/r15-mcp-auth-boundary-20260924.md`](../../docs/handoff/r15-mcp-auth-boundary-20260924.md)
+for its exact scope.
 
-The manifest is public by design (no auth). MCP clients fetch it
-on first connect, verify each tool's `description_sha256` matches
-the hash they compute locally from the tools/list response, and
-**terminate the session if any hash drifts**. This is the
-Invariant-Labs rug-pull defense from §13.8.
+## Required SSH launch boundary
 
----
+The former Claude Desktop and CLI recipes logged in as `root` and placed
+`ANTIEK_MEMORY_OWNER=<your-user-id>` in a caller-controlled remote command.
+A client with that SSH key could choose another person's owner ID before
+starting stdio MCP. Those recipes are withdrawn; do not use or copy them.
 
-## Registering with Claude Desktop
+To make SSH stdio suitable for distinct accounts, implement and review all
+of the following on the server before publishing a client configuration:
 
-1. Open Claude Desktop → **Settings** → **Developer** → **Edit config**.
-2. Add an entry to `mcpServers`:
+1. Give each authorized account a distinct SSH key or certified principal.
+   Maintain the principal-to-`owner_user_id` mapping in a server-controlled
+   file or key restriction that the client cannot edit.
+2. Use a dedicated, unprivileged service identity with only the graph
+   access needed for MCP. Disable shell, PTY, agent/port forwarding, and
+   arbitrary commands for the connector key. A forced command must derive
+   the owner from the authenticated key/principal mapping and set
+   `ANTIEK_MEMORY_OWNER` itself. It must ignore client environment requests,
+   command arguments, and `SSH_ORIGINAL_COMMAND` as owner evidence.
+3. Pin `ANTIEK_DUCKDB_PATH` in server-controlled configuration to the
+   authorized live graph path; reject an unset or different path before
+   launch. The HTTP unit sets `{{ antiek_state_dir }}/antiek.duckdb`, whereas
+   the standalone launcher otherwise falls back to
+   `~/.antiek/research_graph.duckdb`.
+   Verify the connector opens the intended graph, not an empty or stale one.
+   Launch the exact reviewed code revision and verify `tools` is installed
+   in that environment; `pyproject.toml` does not put it in the explicit
+   wheel package list.
+4. Prove the connector starts without schema writes and can read while the
+   live HTTP writer is active. The current launcher calls
+   `init_database_at_path`, whose failed read-only probe can enter a write
+   path. A separate DuckDB process may also fail to open the file while the
+   HTTP process owns a read-write handle. If either occurs, change the
+   architecture (for example, a same-process authenticated adapter or a
+   declared read-only snapshot with freshness controls) before registration.
+   Do not loosen DB privileges or copy a private live file to work around it.
+5. Exercise two separately authenticated accounts through the actual SSH
+   connector. Each may read its own private note; each must get the same
+   generic denial for the other's note and citation. Attempt to override
+   the owner in the remote command, environment, and JSON-RPC arguments;
+   none may change the bound owner. Test an unmapped and revoked key.
+6. Repeat the public-search rights negatives (T3/NC license stamped as T1,
+   missing arXiv linkback, takedown) and book/attribution denials on that
+   serving revision. Bound and measure candidate-scan latency under a
+   common query before declaring the public search operational.
 
-```json
-{
-  "mcpServers": {
-    "antiek-memory": {
-      "command": "ssh",
-      "args": [
-        "-i", "/Users/<you>/.ssh/antiek_ed25519",
-        "root@167.235.202.98",
-        "cd /opt/antiek && ANTIEK_MEMORY_OWNER=<your-user-id> /opt/antiek/.venv/bin/python -m tools.antiek_memory"
-      ]
-    }
-  }
-}
-```
+Only after this gate passes should a client registration use a server-issued
+fixed connector command. The owner must not be a placeholder the client
+fills in. Keep the executable private to trusted local operators until then.
 
-Replace `<you>` with your username and `<your-user-id>` with the
-`documents.owner_user_id` your own documents carry. The Claude Desktop
-client will spawn the server over SSH when it needs to call a tool.
+## HTTP catalog path
 
-`ANTIEK_MEMORY_OWNER` is the only identity the stdio server trusts: the
-client writes every byte of a JSON-RPC request, so an owner claimed in
-the request proves nothing. Unset, `search_personal` refuses every call;
-a request naming a different owner is refused too. Deployment sentinels
-such as `__operator__` are rejected as owners.
+ChatGPT-style remote HTTP registration requires a new `/mcp` transport and
+an authentication adapter. The existing HTTP signed-session middleware
+and `distinct_signed_owner` mapper are possible server-side ingredients;
+they do not currently authenticate stdio JSON-RPC. The present stateless
+session-cookie verifier does not by itself revoke one issued session.
+Define the HTTP tool, resource, and streaming protocol contract, then prove
+two signed accounts, expiry, explicit revocation, and wrong-owner
+denials on the integrated adapter before listing a catalog URL. Do not register `https://api.antiek.ai/mcp` as if it
+already existed.
 
-Launch the package (`-m tools.antiek_memory`), not
-`-m tools.antiek_memory.server`: the latter module has no entry point,
-so it imports and exits without answering.
+## Verification and failures
 
-3. Restart Claude Desktop.
-4. In a conversation, ask Claude to "search my private notes for X".
-   Claude should call the `search_personal` tool; the response
-   surfaces in the conversation.
+- `GET /.well-known/mcp-tools.json` returning hashes proves only that the
+  HTTP app generated a manifest. A hash mismatch is meaningful only when
+  the actual client verifier detects and rejects it.
+- A private `tools/call` denial from stdio is governed by the process-bound
+  owner and current handler checks. An HTTP auth cookie or service token
+  is not consumed by this executable.
+- `systemctl status antiek` checks the HTTP Uvicorn service. It does not
+  establish that an MCP stdio client connected or passed its authorization
+  tests.
+- `python -m tools.antiek_memory.server` only imports the module; the
+  executable entry point is `python -m tools.antiek_memory`.
 
-### Verifying the rug-pull defense
+## Source references
 
-After Claude Desktop spawns the server, it fetches
-`https://api.antiek.ai/.well-known/mcp-tools.json` and checks each
-tool's `description_sha256`. To confirm:
-
-```bash
-curl -s https://api.antiek.ai/.well-known/mcp-tools.json | jq .
-```
-
-Expected output: a `{version, server, tools[]}` object with one
-entry per canonical tool. The four canonical tools per §13.8 are:
-
-- `search_personal`
-- `search_public`
-- `cite_source`
-- `record_attribution`
-
-If a future code change adds or modifies a tool, the manifest hashes
-change and Claude Desktop's next session termination loudly with a
-manifest mismatch — by design.
-
----
-
-## Registering with ChatGPT MCP catalog
-
-1. OpenAI's MCP catalog is at https://platform.openai.com/mcp (as of
-   2026-05-22; check the docs for the current URL).
-2. Add a new MCP server entry:
-   - Server name: `Antiek Memory`
-   - Transport: **HTTP** (not stdio — ChatGPT can't spawn local processes)
-   - URL: `https://api.antiek.ai/mcp` (TODO: add HTTP transport adapter,
-     see "HTTP transport wrapper" below)
-   - Auth: **OAuth** scoped to the operator's Antiek session cookie
-
-3. Hit "Test connection" — ChatGPT fetches the well-known manifest
-   and verifies hashes before exposing the tools to a conversation.
-
-### HTTP transport wrapper (open work)
-
-The current server is stdio-only. ChatGPT's MCP integration needs
-HTTP. This is on the Sprint-20+ backlog as a follow-on; for now,
-local clients (Claude Desktop, Cursor, Continue.dev) work via the
-SSH-stdio bridge above.
-
----
-
-## Local CLI usage
-
-For ad-hoc use without a chat client:
-
-```bash
-ssh -i ~/.ssh/antiek_ed25519 root@167.235.202.98 \
-    cd /opt/antiek && ANTIEK_MEMORY_OWNER=<your-user-id> /opt/antiek/.venv/bin/python -m tools.antiek_memory
-```
-
-Then pipe JSON-RPC frames in via stdin. The server speaks JSON-RPC 2.0
-per the MCP spec.
-
----
-
-## Tool descriptions + verification
-
-All canonical tools are defined in
-`tools/antiek_memory/server.py:CANONICAL_TOOLS`. Each one has:
-
-- A stable `name` (no version suffix; version lives in the schema).
-- A description in researcher's-notebook voice per §5.
-- An `input_schema` JSON Schema object.
-
-To regenerate the manifest after editing a tool:
-
-```bash
-./.venv/bin/python -c "
-from tools.antiek_memory.server import CANONICAL_TOOLS
-from tools.antiek_memory.signing import render_well_known_manifest
-import json
-print(json.dumps(render_well_known_manifest(CANONICAL_TOOLS), indent=2))
-"
-```
-
-The HTTP endpoint computes the manifest at request time, so a
-server restart after a tool-description change is sufficient to
-make the new hashes visible.
-
----
-
-## Failure modes
-
-- **Manifest fetch fails (500/timeout):** the server isn't running or
-  the Cloudflare Tunnel is down. Check `systemctl status antiek` on
-  the VM.
-- **Manifest hashes mismatch in clients:** a tool description was
-  edited but the server wasn't restarted to pick up the new
-  CANONICAL_TOOLS. Restart antiek.
-- **`tools/call` rejected:** the operator's auth cookie or service
-  token is missing/expired. See `infrastructure/runbooks/magic-link-auth.md`.
-
----
-
-## Companion docs
-
-- `tools/antiek_memory/` — server implementation
-- `docs/master-product-spec.md` §13.8 — design rationale
-- `infrastructure/runbooks/magic-link-auth.md` — auth side
+- `tools/antiek_memory/__main__.py` — executable, owner environment read,
+  and handlers.
+- `tools/antiek_memory/server.py` — JSON-RPC dispatch and process binding.
+- `interfaces/research/api/app.py` and
+  `interfaces/research/api/account_memory_identity.py` — existing HTTP
+  session authentication and owner mapping, not wired to stdio MCP.
+- `docs/master-product-spec.md` §13.8 — intended product behavior; this
+  runbook distinguishes that intent from implemented and deployed evidence.
