@@ -82,11 +82,11 @@ import re
 import stat
 import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -117,7 +117,7 @@ from runtime.research_runner.provider_route_authority import (
     RouteExecutionStatus,
     canonical_provider_endpoint,
 )
-from substrate.dispatch.base import Provider, ProviderError
+from substrate.dispatch.base import Provider, ProviderError, RawProviderResponse
 from substrate.dispatch.providers.anthropic import AnthropicProvider
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
 from substrate.dispatch.router import get_provider, register_provider
@@ -565,6 +565,42 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
         self._user_model_id = record.id
         self._cred_ref = record.cred_ref
         self._user_model_authority_fingerprint = _record_fingerprint(record)
+        self._provider_catalog_id = record.provider_catalog_id
+
+    def call(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        extra_body: Mapping[str, Any] | None = None,
+    ) -> RawProviderResponse:
+        """Send a catalog variant as the provider knows it: its wire model name
+        plus its mode switch, so a legacy or mode-split id keeps the behaviour
+        it was chosen and priced for. Custom endpoints send ``model`` as is."""
+        wire_model = model
+        body: dict[str, Any] = {}
+        if self._provider_catalog_id is not None:
+            try:
+                variant = get_model_variant(
+                    get_provider_preset(self._provider_catalog_id), model
+                )
+            except KeyError:
+                variant = None
+            if variant is not None:
+                wire_model = variant.request_model_id
+                if variant.thinking is not None:
+                    body["thinking"] = {"type": variant.thinking}
+        if extra_body:
+            body.update(extra_body)
+        return super().call(
+            model=wire_model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            extra_body=body or None,
+        )
 
 
 class _UserAnthropicProvider(_ByokResolvedKeyMixin, AnthropicProvider):
@@ -893,18 +929,22 @@ def resolve_user_model_choice(
         or record.owner_user_id != owner_user_id
         or not record.enabled
         or record.id != validated.provider_id
-        or validated.model_id not in record.model_ids
+        or _current_model_id(record, validated.model_id)
+        not in {_current_model_id(record, m) for m in record.model_ids}
         or not _credential_matches_record(record, metadata)
         or record.id not in _seam_names(app)
         or fingerprints.get(record.id) != _record_fingerprint(record)
         or not _live_adapter_matches(app, record.id)
     ):
         raise UserModelChoiceUnavailable("user model route is unavailable")
-    authority = _route_execution_authority(app, record, model_id=validated.model_id)
+    # Resolve under the provider's current name, like the owner route, so a
+    # choice saved under a retired name is priced and sent as the same variant.
+    chosen = _current_model_id(record, validated.model_id)
+    authority = _route_execution_authority(app, record, model_id=chosen)
     return ResolvedUserModelRoute(
         authority="user_model",
         provider_id=record.id,
-        model_id=validated.model_id,
+        model_id=chosen,
         credential_ref=record.cred_ref,
         pricing_status=authority.pricing_status,
         hard_ceiling_eligible=authority.hard_ceiling_eligible,

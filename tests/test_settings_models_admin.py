@@ -427,6 +427,92 @@ def test_non_exact_choice_fails_value_free(client: TestClient, choice: dict[str,
     assert all(value not in response.text for value in choice.values())
 
 
+@pytest.mark.parametrize(
+    ("stored", "chosen", "resolved", "snapshot"),
+    [
+        # A remembered choice under a retired name, against a current row.
+        ("deepseek-flash-nothink", "deepseek-chat", "deepseek-flash-nothink",
+         "deepseek-flash-v4.1-nothink-2026-09-24"),
+        ("deepseek-flash", "deepseek-reasoner", "deepseek-flash",
+         "deepseek-flash-v4.1-2026-09-23"),
+        # A row saved under a retired name, against a current choice.
+        ("deepseek-chat", "deepseek-flash-nothink", "deepseek-flash-nothink",
+         "deepseek-flash-v4.1-nothink-2026-09-24"),
+        ("deepseek-reasoner", "deepseek-flash", "deepseek-flash",
+         "deepseek-flash-v4.1-2026-09-23"),
+        ("deepseek-v4-flash", "deepseek-v4-flash", "deepseek-flash",
+         "deepseek-flash-v4.1-2026-09-23"),
+    ],
+)
+def test_settings_resolve_matches_and_returns_current_names(
+    env: Path, stored: str, chosen: str, resolved: str, snapshot: str,
+) -> None:
+    """The settings route resolves like the owner dispatch route: both sides
+    compared under current names, the current name returned and priced."""
+    with TestClient(_fresh_app()) as first:
+        created = first.post("/settings/models/user", json={
+            **_ADD_BODY,
+            "provider_catalog_id": "deepseek",
+            "base_url": "https://api.deepseek.com",
+        })
+        assert created.status_code == 201
+    registry_path = env / "settings" / "user_models.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry[_pid("my-deepseek")]["model_id"] = stored
+    registry[_pid("my-deepseek")]["model_ids"] = [stored]
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    reset_provider_registry()
+    with TestClient(_fresh_app()) as reborn:
+        response = reborn.post("/settings/models/user/resolve", json={
+            "authority": "user_model",
+            "provider_id": _pid("my-deepseek"),
+            "model_id": chosen,
+        })
+    reset_provider_registry()
+    assert response.status_code == 200
+    assert response.json()["model_id"] == resolved
+    assert response.json()["pricing_status"] == "known"
+    assert response.json()["rate_snapshot"] == snapshot
+
+
+@pytest.mark.parametrize(
+    ("stored", "chosen"),
+    [
+        # The mode is part of the variant: thinking never answers for no-thinking.
+        ("deepseek-flash", "deepseek-chat"),
+        ("deepseek-chat", "deepseek-flash"),
+        # And a Flash row never resolves a Pro choice.
+        ("deepseek-reasoner", "deepseek-v4-pro"),
+    ],
+)
+def test_settings_resolve_refuses_a_different_variant(
+    env: Path, stored: str, chosen: str,
+) -> None:
+    with TestClient(_fresh_app()) as first:
+        assert first.post("/settings/models/user", json={
+            **_ADD_BODY,
+            "provider_catalog_id": "deepseek",
+            "base_url": "https://api.deepseek.com",
+        }).status_code == 201
+    registry_path = env / "settings" / "user_models.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry[_pid("my-deepseek")]["model_id"] = stored
+    registry[_pid("my-deepseek")]["model_ids"] = [stored]
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    reset_provider_registry()
+    with TestClient(_fresh_app()) as reborn:
+        response = reborn.post("/settings/models/user/resolve", json={
+            "authority": "user_model",
+            "provider_id": _pid("my-deepseek"),
+            "model_id": chosen,
+        })
+    reset_provider_registry()
+    assert response.status_code == 409
+    assert response.json() == {"detail": "user model route is unavailable"}
+
+
 def test_deleted_stale_and_credential_rebound_routes_fail_closed(
     client: TestClient,
     env: Path,

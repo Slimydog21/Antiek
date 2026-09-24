@@ -191,6 +191,12 @@ def _bench_for_request(request: Request) -> list[BenchModel]:
 
         for preset in BYOT_PROVIDER_PRESETS:
             for variant in preset.models:
+                # A mode variant (sent under another model name plus a mode
+                # switch) is translated only by a user-registered adapter; the
+                # house adapter under the preset id would send its catalog id
+                # verbatim, which the provider rejects.
+                if variant.request_model_id != variant.model_id:
+                    continue
                 key = (preset.catalog_id, variant.model_id)
                 if key in seen:
                     continue
