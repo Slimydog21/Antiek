@@ -79,7 +79,8 @@ beforeEach(() => {
     api_key_id: "um-1",
     catalog_id: "deepseek",
     kind: "balance_native",
-    balance_usd: 12.34,
+    balance_usd: null,
+    native_balances: [{ currency: "CNY", total: "12.3400", granted: "10", topped_up: "2.3400" }],
     held_cents: 0,
     available_cents: 3766,
   });
@@ -96,6 +97,7 @@ function balanceBody(
     spend_usd: number | null;
     budget_usd: number | null;
     note: string | null;
+    native_balances: { currency: string; total: string; granted: string; topped_up: string }[] | null;
   }>,
 ) {
   return {
@@ -112,6 +114,7 @@ function balanceBody(
     note: null,
     held_cents: 0,
     available_cents: null,
+    native_balances: null,
     ...overrides,
   };
 }
@@ -168,7 +171,7 @@ describe("ModelUsagePicker", () => {
     await userEvent.click(btn);
     await waitFor(() => {
       const txt = document.body.textContent || "";
-      expect(txt).toContain("$12.34");
+      expect(txt).toContain("CNY 12.3400");
     });
   });
 
@@ -177,7 +180,10 @@ describe("ModelUsagePicker", () => {
     // adapter, so the backend answered with Antiek's own spend meter.
     mockFetchBalance.mockImplementation(async (id: string) =>
       id === "um-1"
-        ? balanceBody({ api_key_id: "um-1", kind: "balance_native", balance_usd: 42.5, granted_usd: 40 })
+        ? balanceBody({ api_key_id: "um-1", kind: "balance_native", native_balances: [
+            { currency: "CNY", total: "42.500", granted: "40", topped_up: "2.500" },
+            { currency: "USD", total: "0.10", granted: "0", topped_up: "0.10" },
+          ] })
         : balanceBody({ api_key_id: "um-2", catalog_id: "xai", kind: "spend_history", spend_usd: 2.5, budget_usd: 50 }),
     );
     render(<ModelUsagePicker value={null} onChange={() => {}} showBalance />);
@@ -195,9 +201,9 @@ describe("ModelUsagePicker", () => {
     });
 
     // Provider credit reads as credit, with the sign and the word.
-    expect(native.textContent).toContain("+$42.50");
-    expect(native.textContent).toContain("credit");
-    expect(native.getAttribute("title")).toContain("Provider credit");
+    expect(native.textContent).toContain("CNY 42.500 · USD 0.10");
+    expect(native.textContent).not.toContain("credit");
+    expect(native.getAttribute("title")).toContain("Provider-reported balance");
     // The meter reads as spend against a cap, says it is not credit, and is
     // styled differently — a meter presented as credit is a wrong number.
     expect(meter.textContent).toContain("spent $2.50");
@@ -219,6 +225,17 @@ describe("ModelUsagePicker", () => {
       expect(document.body.textContent || "").toContain("DeepSeek V4 Pro");
       expect(document.querySelector("[data-balance-kind]")).toBeNull();
       expect(document.body.textContent || "").not.toContain("$");
+    });
+  });
+
+  it("does not show legacy DeepSeek USD credit from an old server", async () => {
+    mockFetchBalance.mockResolvedValue(balanceBody({ balance_usd: 42.5 }));
+    render(<ModelUsagePicker value={null} onChange={() => {}} showUsage={false} />);
+    await userEvent.click(screen.getAllByRole("button")[0]);
+    await waitFor(() => expect(mockFetchBalance).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(document.querySelector("[data-balance-kind]")).toBeNull();
+      expect(document.body.textContent).not.toContain("$42.50");
     });
   });
 });
@@ -276,7 +293,9 @@ describe("ModelUsagePicker one key, many variants", () => {
       count: 1,
     });
     mockFetchBalance.mockResolvedValue(
-      balanceBody({ api_key_id: "um-multi", kind: "balance_native", balance_usd: 42.5 }),
+      balanceBody({ api_key_id: "um-multi", kind: "balance_native", native_balances: [
+        { currency: "CNY", total: "42.50", granted: "40", topped_up: "2.50" },
+      ] }),
     );
     const onChange = vi.fn();
     render(<ModelUsagePicker value={null} onChange={onChange} showUsage showBalance />);

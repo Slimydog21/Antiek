@@ -25,7 +25,7 @@ from interfaces.research.api.byot_usage_routes import (
     register_byot_usage_routes,
 )
 from runtime.byok.secret_str import SecretStr
-from substrate.byot_usage.balance.base import BalanceSnapshot
+from substrate.byot_usage.balance.base import BalanceSnapshot, NativeBalance
 from substrate.byot_usage.ledger import ByotUsageLedger
 
 # ---------------------------------------------------------------------------
@@ -227,8 +227,10 @@ def test_balance_returns_native_balance(
             return BalanceSnapshot(
                 catalog_id="deepseek",
                 kind="balance_native",
-                balance_usd=42.50,
-                granted_usd=40.00,
+                native_balances=(
+                    NativeBalance(currency="CNY", total="42.50", granted="40.00", topped_up="2.50"),
+                    NativeBalance(currency="USD", total="1.25", granted="0.00", topped_up="1.25"),
+                ),
             )
         return BalanceSnapshot(catalog_id=catalog_id, kind="unavailable")
 
@@ -243,8 +245,12 @@ def test_balance_returns_native_balance(
     assert body.api_key_id == "key-ds"
     assert body.catalog_id == "deepseek"
     assert body.kind == "balance_native"
-    assert body.balance_usd == 42.50
-    assert body.granted_usd == 40.00
+    assert body.balance_usd is None
+    assert body.granted_usd is None
+    assert body.native_balances is not None
+    assert [(entry.currency, entry.total) for entry in body.native_balances] == [
+        ("CNY", "42.50"), ("USD", "1.25"),
+    ]
     assert body.note is None
 
 
@@ -272,6 +278,27 @@ def test_balance_returns_unavailable_on_adapter_degrade(
     assert body.kind == "unavailable"
     assert body.balance_usd is None
     assert "schema drift" in (body.note or "")
+
+
+def test_balance_does_not_echo_adapter_diagnostic_with_secret(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _mock_fetch_degrade(*, catalog_id: str, **kwargs: Any) -> BalanceSnapshot:
+        return BalanceSnapshot(
+            catalog_id=catalog_id,
+            kind="unavailable",
+            note="HTTP/parse error: sk-sensitive-test-key",
+        )
+
+    monkeypatch.setattr(
+        "interfaces.research.api.byot_usage_routes._fetch_balance",
+        _mock_fetch_degrade,
+    )
+    response = client.get("/settings/balance/key-ds")
+    assert response.status_code == 200
+    assert "sk-sensitive-test-key" not in response.text
+    assert response.json()["note"] == "Provider balance unavailable."
 
 
 def test_balance_cross_user_404(

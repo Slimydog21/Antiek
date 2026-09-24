@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from runtime.byok.secret_str import SecretStr
+from substrate.byot_usage.balance.base import NativeBalance
 from substrate.byot_usage.balance.deepseek import fetch_deepseek_balance
 from substrate.byot_usage.balance.kimi import fetch_kimi_balance
 from substrate.byot_usage.balance.spend_history import fetch_spend_history_balance
@@ -83,11 +84,52 @@ def test_deepseek_parses_valid_fixture() -> None:
 
     assert result.catalog_id == "deepseek"
     assert result.kind == "balance_native"
-    assert result.balance_usd == 150.50
-    assert result.granted_usd == 100.00
+    assert result.native_balances == (
+        NativeBalance(currency="CNY", total="150.50", granted="100.00", topped_up="50.50"),
+    )
+    assert result.balance_usd is None
+    assert result.granted_usd is None
     assert result.note is None
     assert http.last_url == "https://api.deepseek.com/user/balance"
     assert http.last_headers == {"Authorization": "Bearer sk-test-deepseek-key"}
+
+
+def test_deepseek_preserves_both_currencies_without_conversion() -> None:
+    http = _FakeHTTP(_FakeResponse({
+        "is_available": True,
+        "balance_infos": [
+            {"currency": "CNY", "total_balance": "150.50000001", "granted_balance": "100.00", "topped_up_balance": "50.50000001"},
+            {"currency": "USD", "total_balance": "2.25", "granted_balance": "0.25", "topped_up_balance": "2.00"},
+        ],
+    }))
+
+    result = fetch_deepseek_balance(
+        SecretStr("sk-test-key"), base_url="https://api.deepseek.com", http=http,
+    )
+
+    assert result.kind == "balance_native"
+    assert result.native_balances == (
+        NativeBalance(currency="CNY", total="150.50000001", granted="100.00", topped_up="50.50000001"),
+        NativeBalance(currency="USD", total="2.25", granted="0.25", topped_up="2.00"),
+    )
+    assert result.balance_usd is None
+
+
+def test_deepseek_rejects_unknown_currency_duplicate_or_numeric_amount() -> None:
+    valid = {"currency": "CNY", "total_balance": "1.00", "granted_balance": "0.00", "topped_up_balance": "1.00"}
+    invalid_lists = [
+        [{**valid, "currency": "EUR"}],
+        [valid, valid],
+        [{**valid, "total_balance": 1.0}],
+        [{**valid, "total_balance": "NaN"}],
+    ]
+    for infos in invalid_lists:
+        http = _FakeHTTP(_FakeResponse({"is_available": True, "balance_infos": infos}))
+        result = fetch_deepseek_balance(
+            SecretStr("sk-test-key"), base_url="https://api.deepseek.com", http=http,
+        )
+        assert result.kind == "unavailable"
+        assert result.native_balances is None
 
 
 def test_deepseek_unavailable_on_http_error() -> None:
@@ -104,7 +146,8 @@ def test_deepseek_unavailable_on_http_error() -> None:
 
     assert result.kind == "unavailable"
     assert result.note is not None
-    assert "429" in result.note or "Too Many" in result.note
+    assert "HTTP/parse error" in result.note
+    assert "Too Many" not in result.note
 
 
 def test_deepseek_unavailable_on_malformed_json() -> None:

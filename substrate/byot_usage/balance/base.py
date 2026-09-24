@@ -14,7 +14,18 @@ from runtime.byok.secret_str import SecretStr
 __all__ = [
     "BalanceAdapter",
     "BalanceSnapshot",
+    "NativeBalance",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class NativeBalance:
+    """One provider-reported balance, with its original currency and precision."""
+
+    currency: str
+    total: str
+    granted: str
+    topped_up: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +45,9 @@ class BalanceSnapshot:
         "meter_only",
         "unavailable",
     ]
-    # balance_native: real dollars held at the provider
+    # New adapters preserve provider currencies as decimal strings. Legacy
+    # USD fields remain for adapters whose currency contract needs migration.
+    native_balances: tuple[NativeBalance, ...] | None = None
     balance_usd: float | None = None
     granted_usd: float | None = None
     # spend_history: provider-reported spend + user-set budget → derived remaining

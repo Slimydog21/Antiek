@@ -129,6 +129,21 @@ function balanceChip(b?: SettingsBalanceResponse | null, loading?: boolean): Rea
       </span>
     );
   }
+  if (b.catalog_id === "deepseek" && b.kind === "balance_native") {
+    const entries = b.native_balances;
+    if (!entries?.length) {
+      return <span className="text-xxs text-ink-mute dark:text-moonlight">—</span>;
+    }
+    return (
+      <span
+        data-balance-kind="balance_native"
+        className="text-xxs tabular-nums px-1 py-px rounded text-success bg-success/10"
+        title={`Provider-reported balance from DeepSeek${b.note ? ` · ${b.note}` : ""}`}
+      >
+        {entries.map(({ currency, total }) => `${currency} ${total}`).join(" · ")}
+      </span>
+    );
+  }
   if (b.kind === "balance_native" && b.balance_usd != null) {
     const negative = b.balance_usd < 0;
     return (

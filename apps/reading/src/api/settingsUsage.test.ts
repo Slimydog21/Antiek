@@ -86,8 +86,45 @@ describe("parseSettingsBalance", () => {
   it("parses a normalized live balance payload", () => {
     const parsed = parseSettingsBalance(balanceBody);
     expect(parsed.kind).toBe("balance_native");
-    expect(parsed.balance_usd).toBe(42.5);
+    expect(parsed.balance_usd).toBeNull();
+    expect(parsed.native_balances).toBeNull();
     expect(parsed.available_cents).toBe(840);
+  });
+
+  it("preserves each native currency and exact decimal string", () => {
+    const native_balances = [
+      { currency: "CNY", total: "12345678901234567890.0010", granted: "10.00", topped_up: "2.50" },
+      { currency: "USD", total: "0.020", granted: "0.00", topped_up: "0.020" },
+    ];
+    const parsed = parseSettingsBalance({
+      ...balanceBody, balance_usd: null, granted_usd: null, native_balances,
+    });
+    expect(parsed.native_balances).toEqual(native_balances);
+    expect(parsed.balance_usd).toBeNull();
+  });
+
+  it("rejects malformed native balances", () => {
+    for (const native_balances of [
+    [{ currency: "CNY", total: 1.2, granted: "0", topped_up: "0" }],
+    [{ currency: "cny", total: "1", granted: "0", topped_up: "0" }],
+    [{ currency: "CNY", total: "1e3", granted: "0", topped_up: "0" }],
+    [{ currency: "CNY", total: "01", granted: "0", topped_up: "0" }],
+    [{ currency: "CNY", total: "1", granted: "0", topped_up: "0" }, { currency: "CNY", total: "2", granted: "0", topped_up: "0" }],
+    [{ currency: "CNY", total: "1", granted: "0", topped_up: "0", extra: true }],
+    Array.from({ length: 9 }, () => ({ currency: "CNY", total: "1", granted: "0", topped_up: "0" })),
+    [],
+    ]) {
+      expect(() => parseSettingsBalance({ ...balanceBody, balance_usd: null, granted_usd: null, native_balances })).toThrow(
+        "Invalid settings balance response.",
+      );
+    }
+  });
+
+  it("rejects DeepSeek native entries paired with legacy USD fields", () => {
+    expect(() => parseSettingsBalance({
+      ...balanceBody,
+      native_balances: [{ currency: "CNY", total: "1", granted: "0", topped_up: "1" }],
+    })).toThrow("Invalid settings balance response.");
   });
 
   it.each([

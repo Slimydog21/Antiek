@@ -134,8 +134,12 @@ describe("UsagePanel", () => {
           api_key_id: "user-deepseek",
           catalog_id: "deepseek",
           kind: "balance_native",
-          balance_usd: 42.5,
-          granted_usd: 100,
+          balance_usd: null,
+          granted_usd: null,
+          native_balances: [
+            { currency: "CNY", total: "42.5000", granted: "40.0000", topped_up: "2.5000" },
+            { currency: "USD", total: "1.20", granted: "0.00", topped_up: "1.20" },
+          ],
           spend_usd: 57.5,
           budget_usd: null,
           utilization: null,
@@ -152,6 +156,7 @@ describe("UsagePanel", () => {
         kind: "unavailable",
         balance_usd: null,
         granted_usd: null,
+        native_balances: null,
         spend_usd: null,
         budget_usd: null,
         utilization: null,
@@ -179,13 +184,36 @@ describe("UsagePanel", () => {
     const deepseek = await screen.findByTestId("usage-row-user-deepseek");
     expect(within(deepseek).getByText("DeepSeek key")).toBeTruthy();
     expect(within(deepseek).getByText(/used \$1\.20 · cap \$10\.00 · remaining \$8\.80/)).toBeTruthy();
-    expect(within(deepseek).getByText("Live balance $42.50")).toBeTruthy();
+    expect(within(deepseek).getByText("Provider-reported balance: CNY 42.5000 · USD 1.20")).toBeTruthy();
     expect(within(deepseek).getByText("deepseek-chat")).toBeTruthy();
 
     const kimi = await screen.findByTestId("usage-row-user-kimi");
     expect(within(kimi).getByText("Live balance unavailable")).toBeTruthy();
     expect(within(kimi).getByText("provider timeout")).toBeTruthy();
     expect(within(kimi).getByText(/remaining unknown/)).toBeTruthy();
+  });
+
+  it("does not label old-server DeepSeek USD as provider credit", async () => {
+    vi.mocked(fetchSettingsBalance).mockImplementation(async (id) => ({
+      api_key_id: id,
+      catalog_id: "deepseek",
+      kind: "balance_native",
+      balance_usd: 42.5,
+      granted_usd: 100,
+      spend_usd: null,
+      budget_usd: null,
+      utilization: null,
+      window_label: null,
+      resets_at: null,
+      note: null,
+      held_cents: 0,
+      available_cents: 100,
+      native_balances: null,
+    }));
+    render(<UsagePanel />);
+    const deepseek = await screen.findByTestId("usage-row-user-deepseek");
+    expect(within(deepseek).getByText("Provider balance unavailable")).toBeTruthy();
+    expect(within(deepseek).queryByText("Live balance $42.50")).toBeNull();
   });
 
   it("labels a spend_history balance as Antiek's meter, never as a live provider balance", async () => {
@@ -197,6 +225,7 @@ describe("UsagePanel", () => {
       kind: "spend_history",
       balance_usd: null,
       granted_usd: null,
+      native_balances: null,
       spend_usd: 2.5,
       budget_usd: id === "user-deepseek" ? 50 : null,
       utilization: null,
@@ -293,7 +322,7 @@ describe("UsagePanel", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("Can't load usage right now");
     // Live provider balances still render from their own fetch.
-    expect(within(deepseek).getByText("Live balance $42.50")).toBeTruthy();
+    expect(within(deepseek).getByText("Provider-reported balance: CNY 42.5000 · USD 1.20")).toBeTruthy();
 
     // Retry restores real figures and clears the alert.
     vi.mocked(fetchSettingsUsage).mockResolvedValue(usage);

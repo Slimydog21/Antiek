@@ -94,6 +94,15 @@ BalanceKind = Literal[
 ]
 
 
+class NativeBalanceResponse(BaseModel):
+    """Exact provider amount with an explicit currency."""
+
+    currency: str
+    total: str
+    granted: str
+    topped_up: str
+
+
 class BalanceResponse(BaseModel):
     """``GET /settings/balance/{api_key_id}`` response.
 
@@ -105,6 +114,7 @@ class BalanceResponse(BaseModel):
     api_key_id: str
     catalog_id: str
     kind: BalanceKind
+    native_balances: list[NativeBalanceResponse] | None = None
     balance_usd: float | None = None
     granted_usd: float | None = None
     spend_usd: float | None = None
@@ -175,7 +185,7 @@ def _fetch_balance(
             return BalanceSnapshot(
                 catalog_id=catalog_id,
                 kind="unavailable",
-                note=f"adapter error: {type(exc).__name__}: {exc}",
+                note=f"adapter error: {type(exc).__name__}",
             )
 
     # Fallback: spend-history (client-side meter from the ledger).
@@ -205,6 +215,19 @@ def _find_user_record(api_key_id: str, owner_user_id: str) -> Any:
     if record is None or record.owner_user_id != owner_user_id:
         return None
     return record
+
+
+def _public_balance_note(snapshot: BalanceSnapshot) -> str | None:
+    """Reduce adapter diagnostics to fixed text before crossing the API boundary."""
+    if snapshot.kind == "spend_history":
+        return "no usage recorded for this key" if snapshot.note else None
+    if snapshot.kind != "unavailable":
+        return None
+    if snapshot.note and snapshot.note.startswith("schema drift"):
+        return "Provider balance response changed (schema drift)."
+    if snapshot.note and snapshot.note.startswith("credential load failed"):
+        return "Credential load failed."
+    return "Provider balance unavailable."
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +326,7 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
             api_key_id=api_key_id,
             catalog_id=catalog_id,
             kind="unavailable",
-            note=f"credential load failed: {type(exc).__name__}: {exc}",
+            note=f"credential load failed: {type(exc).__name__}",
             held_cents=usage.held_cents if usage is not None else 0,
             available_cents=usage.available_cents if usage is not None else None,
         )
@@ -320,6 +343,19 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
         api_key_id=api_key_id,
         catalog_id=snapshot.catalog_id,
         kind=snapshot.kind,
+        native_balances=(
+            [
+                NativeBalanceResponse(
+                    currency=balance.currency,
+                    total=balance.total,
+                    granted=balance.granted,
+                    topped_up=balance.topped_up,
+                )
+                for balance in snapshot.native_balances
+            ]
+            if snapshot.native_balances is not None
+            else None
+        ),
         balance_usd=snapshot.balance_usd,
         granted_usd=snapshot.granted_usd,
         spend_usd=snapshot.spend_usd,
@@ -327,7 +363,7 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
         utilization=snapshot.utilization,
         window_label=snapshot.window_label,
         resets_at=snapshot.resets_at,
-        note=snapshot.note,
+        note=_public_balance_note(snapshot),
         held_cents=usage.held_cents if usage is not None else 0,
         available_cents=usage.available_cents if usage is not None else None,
     )

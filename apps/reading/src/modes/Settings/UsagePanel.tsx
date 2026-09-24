@@ -85,6 +85,15 @@ function balanceLabel(
       tone: "ok",
     };
   }
+  if (balance.catalog_id === "deepseek" && balance.kind === "balance_native") {
+    const entries = balance.native_balances;
+    return entries && entries.length > 0
+      ? {
+          text: `Provider-reported balance: ${entries.map(({ currency, total }) => `${currency} ${total}`).join(" · ")}`,
+          tone: "ok",
+        }
+      : { text: "Provider balance unavailable", tone: "unknown" };
+  }
   if (
     balance.kind === "balance_native" &&
     typeof balance.balance_usd === "number" &&
