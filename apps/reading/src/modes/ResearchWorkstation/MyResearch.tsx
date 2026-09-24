@@ -271,9 +271,11 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
             than adding a button of its own: standalone that door is the launch
             bar above; embedded it is the home's composer (M3). A button here
             would be a second sun primary, and embedded its navigate("/") would
-            land on the page already open. Embedded, the composer is the hero
-            and the dock seats the mascot, so the empty log is a quiet bounded
-            row with no art. */}
+            land on the page already open. It is an inline block in both modes:
+            it sits in the flow under the header, and the page variant's
+            height: 100% of the scroll region pushed it below the fold.
+            Embedded, the composer is the hero and the dock seats the mascot,
+            so the empty log is a quiet bounded row with no art. */}
         {!loading && !error && investigations.length === 0 && (
           <EmptyState
             title="No research yet"
@@ -283,7 +285,7 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
                 : "Start a research above and it shows up here, running or finished."
             }
             art={!embedded}
-            variant={embedded ? "inline" : "page"}
+            variant="inline"
           />
         )}
 

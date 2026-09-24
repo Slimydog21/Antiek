@@ -209,6 +209,19 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
     expect(screen.getByText(/Start a research above and it shows up here/)).toBeTruthy();
   });
 
+  it("standalone, the empty state sits in the flow under the launch bar, not a page-filling block", () => {
+    // The page variant takes height: 100% of the shell's scroll region. Placed
+    // after the header, launch bar and suggestions it grew to that region's
+    // height (549-791px rendered), which pushed "No research yet" below the
+    // fold on load at 1280x800 and 390x844. Every other in-flow adopter of
+    // the shared states already uses the inline variant.
+    listState.current.investigations = [];
+    const { container } = renderMonitor();
+    const empty = screen.getByText("No research yet").closest(".st") as HTMLElement;
+    expect(empty.classList.contains("st-inline")).toBe(true);
+    expect(container.querySelector(".st-page")).toBeNull();
+  });
+
   it("embedded in the Research home, an empty log adds no second door (SPR-05 M3)", () => {
     // The home's composer, directly above the log, is the one entry. The
     // empty log used to render a primary "Start a research" that navigated
