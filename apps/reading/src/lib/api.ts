@@ -1213,6 +1213,141 @@ export async function ingestSource(
   return resp.json();
 }
 
+// ── Anchored highlights (anchor-first SPR-03) ────────────────────────────
+// Mirrors interfaces/research/api/book_anchor_routes.py. The anchor payload
+// is the proven lease field set (agent_work_routes.py:199-208); quote fields
+// are null on metadata-only anchors (a non-servable book's body is never
+// persisted, never surfaced here either).
+
+export interface BookAnchorPayload {
+  normalization: string;
+  node_id: string;
+  node_text_sha256: string;
+  start_scalar: number;
+  end_scalar: number;
+  quote: string | null;
+  prefix: string | null;
+  suffix: string | null;
+}
+
+export type BookAnchorStatus = "active" | "drifted" | "orphaned";
+
+export interface BookAnchor {
+  anchor_id: string;
+  document_id: string;
+  anchor: BookAnchorPayload;
+  servable_at_pin: boolean;
+  selection_text_sha256: string;
+  page_index_hint: number | null;
+  source: string;
+  status: BookAnchorStatus;
+  exact_valid: boolean;
+  /** The SPR-04 seam — present from day one, null until a thread links. */
+  investigation_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookAnchorListResponse {
+  document_id: string;
+  anchors: BookAnchor[];
+  count: number;
+}
+
+export interface AnchorMapChunk {
+  chunk_id: string;
+  section_path: string | null;
+  body_start: number;
+  body_end: number;
+  node_text_sha256: string;
+}
+
+export interface AnchorMapResponse {
+  document_id: string;
+  chunks: AnchorMapChunk[];
+  complete: boolean;
+}
+
+/** GET /books/{id}/anchors — the owner's anchors with live exact validity. */
+export async function listAnchors(documentId: string): Promise<BookAnchorListResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/anchors`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /books/{id}/anchors failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json() as Promise<BookAnchorListResponse>;
+}
+
+/** POST /books/{id}/anchors — pin a passage; the server resolves the unique
+ * (chunk_id, offsets) and drops quote fields for non-servable books. */
+export async function createAnchor(
+  documentId: string,
+  body: {
+    quote?: string;
+    prefix?: string;
+    suffix?: string;
+    page_index_hint?: number;
+    source?: string;
+  },
+): Promise<BookAnchor> {
+  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/anchors`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /books/{id}/anchors failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json() as Promise<BookAnchor>;
+}
+
+/** DELETE /books/{id}/anchors/{anchorId} — idempotent (second delete is a
+ * 204, not a 404), so a missing anchor is not an error to surface. */
+export async function deleteAnchor(documentId: string, anchorId: string): Promise<void> {
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/anchors/${encodeURIComponent(anchorId)}`,
+    { method: "DELETE" },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `DELETE /books/{id}/anchors/{anchorId} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+}
+
+/** GET /books/{id}/anchor-map — the chunk manifest (ids/offsets/hashes only,
+ * never body text), gated like the public body serve. `owner: true` uses the
+ * owner-readable mirror for personal-reading books. */
+export async function getAnchorMap(
+  documentId: string,
+  opts?: { owner?: boolean },
+): Promise<AnchorMapResponse> {
+  const suffix = opts?.owner ? "/anchor-map/owner" : "/anchor-map";
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}${suffix}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /books/{id}/anchor-map failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json() as Promise<AnchorMapResponse>;
+}
+
+
 // ── SPR-03: distill surface (insights / open questions / living notes) ──
 //
 // Mirrors interfaces/research/api/distill_routes.py. The node_id is an

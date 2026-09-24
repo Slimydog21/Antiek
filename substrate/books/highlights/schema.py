@@ -17,7 +17,20 @@ the §9.0 no-leak chokepoint extended from transit to rest).
 
 from __future__ import annotations
 
+from typing import Any, Protocol
+
 from runtime.db_lock import LockedConnection
+
+
+class SqlExecutor(Protocol):
+    """The one call every connection in this package needs. Both the write
+    side (runtime.db_lock.LockedConnection) and the read side
+    (connect_read's DuckDBPyConnection) satisfy it structurally, so read
+    paths (GET) and write paths (POST/DELETE/re-resolution) share the store
+    without lying to the type checker about which they hold."""
+
+    def execute(self, sql: str, parameters: Any = None) -> Any: ...
+
 
 DDL = """
 CREATE TABLE IF NOT EXISTS anchored_highlights (
@@ -66,3 +79,12 @@ CREATE INDEX IF NOT EXISTS idx_anchored_highlights_owner
 def init_highlights_schema(con: LockedConnection) -> None:
     """Create the additive highlights schema on an existing writer connection."""
     con.execute(DDL)
+
+
+def highlights_table_exists(con: object) -> bool:
+    """Whether the table is present (read paths must not run DDL — a CREATE
+    on a read connection fails, and a GET acquires no write lock for this)."""
+    row = con.execute(  # type: ignore[attr-defined]
+        "SELECT 1 FROM duckdb_tables() WHERE table_name = 'anchored_highlights' LIMIT 1"
+    ).fetchone()
+    return row is not None

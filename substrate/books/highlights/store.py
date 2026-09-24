@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from runtime.db_lock import LockedConnection
-from substrate.books.highlights.schema import init_highlights_schema
+from substrate.books.highlights.schema import SqlExecutor, init_highlights_schema
 from substrate.feedback.domain import NodeTextAnchor
 
 
@@ -147,8 +147,11 @@ class HighlightsStore:
             raise RuntimeError("the pin just written could not be read back")
         return row
 
-    def get(self, con: LockedConnection, anchor_id: str) -> AnchorRow | None:
-        init_highlights_schema(con)
+    def get(self, con: SqlExecutor, anchor_id: str) -> AnchorRow | None:
+        # No init here: this is a READ path (a CREATE on a read connection
+        # fails). Write entry points (create_pin / updates / delete) ensure
+        # the schema; a read on a store without pins finds zero rows via the
+        # router's highlights_table_exists guard.
         row = con.execute(
             "SELECT anchor_id, owner_user_id, document_id, normalization, "
             "anchor_node_id, anchor_node_text_sha256, anchor_start_scalar, "
@@ -162,8 +165,10 @@ class HighlightsStore:
             return None
         return _row_to_anchor(row)
 
-    def list_for_document(self, con: LockedConnection, document_id: str) -> list[AnchorRow]:
-        init_highlights_schema(con)
+    def list_for_document(self, con: SqlExecutor, document_id: str) -> list[AnchorRow]:
+        # No init here — a READ path (see get()). The router guards a
+        # never-pinned store with highlights_table_exists; write entry
+        # points ensure the schema.
         rows = con.execute(
             "SELECT anchor_id, owner_user_id, document_id, normalization, "
             "anchor_node_id, anchor_node_text_sha256, anchor_start_scalar, "
