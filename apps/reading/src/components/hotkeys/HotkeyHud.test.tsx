@@ -1,9 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
-import { render, act } from "@testing-library/react";
+/**
+ * HotkeyHud.test.tsx — the key sheet's mount point (MS-01; was SPR-08's HUD).
+ *
+ * HotkeyHud toggles on the keymap's HELP_TOGGLE event (`?` or prefix+?),
+ * lazy-loads the sheet, and gives focus back to whatever had it when the
+ * sheet opened. The sheet's own content is KeySheet.test.tsx.
+ */
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 
 import { HotkeyHud } from "./HotkeyHud";
 import { SHORTCUT_EVENTS } from "../../workspace/shortcuts";
-import { writeCustomHotkeys } from "../../workspace/persistence";
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -24,86 +30,50 @@ beforeAll(() => {
   }
 });
 
-describe("HotkeyHud — SPR-08", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-  afterEach(() => {
-    window.localStorage.clear();
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+  document.body.innerHTML = "";
+});
+
+const dialog = () => document.body.querySelector('[role="dialog"]');
+
+describe("HotkeyHud — the lazy key sheet", () => {
+  it("renders the sheet when controlled open", async () => {
+    render(<HotkeyHud open onClose={() => {}} />);
+    await waitFor(() => expect(dialog()).toBeTruthy());
+    expect(dialog()!.textContent).toContain("Keyboard shortcuts");
+    expect(dialog()!.textContent).toContain("Switcher (command palette)");
   });
 
-  it("renders a dialog listing built-in + product bindings when open", () => {
-    const { unmount } = render(<HotkeyHud open onClose={() => {}} />);
-    // The modal portals to document.body.
-    const dialog = document.body.querySelector('[role="dialog"]');
-    expect(dialog).toBeTruthy();
-    expect(dialog!.textContent).toContain("Command palette");
-    expect(dialog!.textContent).toContain("Research");
-    expect(dialog!.textContent).toContain("Read");
-    unmount();
-  });
-
-  it("M3 — the HUD is ⌘-ONLY: no 'Go to (chords)' group and no chip shows 'then'", () => {
-    const { unmount } = render(<HotkeyHud open onClose={() => {}} />);
-    const dialog = document.body.querySelector('[role="dialog"]')!;
-    // The chord group heading is gone.
-    expect(dialog.textContent).not.toContain("Go to (chords)");
-    // No group heading mentions "chord" at all.
-    const headings = Array.from(dialog.querySelectorAll(".antiek-hud__heading")).map(
-      (h) => h.textContent ?? "",
-    );
-    expect(headings.some((h) => /chord/i.test(h))).toBe(false);
-    // No KeyChip renders a "then" separator — every live spec is a combo.
-    expect(dialog.querySelector(".antiek-keychip__then")).toBeNull();
-    // Every rendered chip is a single glyph group (no chord sequence wrapper).
-    expect(dialog.querySelector(".antiek-keychip__seq")).toBeNull();
-    // It DOES surface the Products group (the ⌘+key doors).
-    expect(headings).toContain("Products");
-    unmount();
-  });
-
-  it("M3 — keeps a custom-bindings section + an empty-state when none are set", () => {
-    const { unmount } = render(<HotkeyHud open onClose={() => {}} />);
-    const dialog = document.body.querySelector('[role="dialog"]')!;
-    // Empty-state copy invites the operator to assign one.
-    expect(dialog.textContent).toMatch(/haven.t assigned any custom hotkeys/i);
-    unmount();
-  });
-
-  it("lists custom bindings from the persisted blob", () => {
-    writeCustomHotkeys({
-      schemaVersion: 1,
-      bindings: [
-        {
-          id: "c1",
-          spec: "alt+j",
-          route: "/inv/x",
-          entityId: "x",
-          entityKind: "investigation",
-          label: "My pinned research",
-        },
-      ],
-    });
-    const { unmount } = render(<HotkeyHud open onClose={() => {}} />);
-    const dialog = document.body.querySelector('[role="dialog"]')!;
-    expect(dialog.textContent).toContain("My pinned research");
-    expect(dialog.textContent).toContain("Your custom hotkeys");
-    unmount();
-  });
-
-  it("toggles open via the HELP_TOGGLE window event (uncontrolled)", () => {
-    const { unmount } = render(<HotkeyHud />);
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-    // The toggle runs in a window listener (outside React's event system),
-    // so flush the state update with act().
+  it("toggles open and shut on the HELP_TOGGLE window event (uncontrolled)", async () => {
+    render(<HotkeyHud />);
+    expect(dialog()).toBeNull();
     act(() => {
       window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
     });
-    expect(document.body.querySelector('[role="dialog"]')).toBeTruthy();
+    await waitFor(() => expect(dialog()).toBeTruthy());
     act(() => {
       window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
     });
-    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
-    unmount();
+    expect(dialog()).toBeNull();
+  });
+
+  it("returns focus to the element that had it when the sheet opened", async () => {
+    const opener = document.createElement("button");
+    opener.textContent = "where I was";
+    document.body.appendChild(opener);
+    opener.focus();
+    render(<HotkeyHud />);
+    act(() => {
+      window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
+    });
+    await waitFor(() => expect(dialog()).toBeTruthy());
+    // The dialog took focus.
+    await waitFor(() => expect(dialog()!.contains(document.activeElement)).toBe(true));
+    act(() => {
+      window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
+    });
+    expect(document.activeElement).toBe(opener);
   });
 });

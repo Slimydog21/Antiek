@@ -20,10 +20,13 @@ import { ProductsLauncher } from "./ProductsLauncher";
 import BrainMark from "../brand/BrainMark";
 import { KeyChip } from "../components/hotkeys/KeyChip";
 import {
+  ariaKeyshortcutsFor,
   bindingForProduct,
   emitProductActivate,
+  formatBinding,
   BUILTIN_BINDINGS,
 } from "../components/hotkeys/bindings";
+import type { ActionId } from "../components/hotkeys/keymap";
 
 /**
  * NavRail (SPR-04) — the four-workflow content-first rail.
@@ -157,6 +160,7 @@ function RailButton({
   orientation = "bottom",
   productId,
   binding,
+  action,
   badge,
 }: {
   icon: ReactNode;
@@ -174,6 +178,10 @@ function RailButton({
    *  combo from the shared map (e.g. "mod+e" for Read). Post-SPR-08 there are
    *  NO vim g-chords; the prop is always fed a real `mod+` spec. */
   binding?: string;
+  /** MS-01: the keymap action this button runs. The button's
+   *  aria-keyshortcuts is generated from the keymap table for it, and the
+   *  keycap chip becomes decorative (the button is the announcer). */
+  action?: ActionId;
   /** herdr transfer P0-2: attention count chip (blocked + unseen-done).
    *  Rendered only when > 0 — an absent badge is the calm state. */
   badge?: number;
@@ -205,6 +213,7 @@ function RailButton({
       title={title}
       onClick={onClick}
       aria-current={active ? "page" : undefined}
+      aria-keyshortcuts={action ? ariaKeyshortcutsFor(action) : undefined}
       data-product-id={productId}
       className={
         (orientation === "left" ? "mx-1.5 " : "mx-0.5 ") +
@@ -237,13 +246,13 @@ function RailButton({
       </span>
       {/* SPR-08 — the on-bar hotkey chip. A tiny, unobtrusive indicator under
           the door label so the shortcut is "shown on-screen" (the operator's
-          headline ask). The chip is the announcer (it carries its own
-          aria-keyshortcuts); the button has none, so there's no double-
-          announce. */}
+          headline ask). MS-01: the button carries aria-keyshortcuts, generated
+          from the keymap, so the chip is decorative (no double announce). */}
       {binding && (
         <KeyChip
           binding={binding}
           label={label}
+          decorative={action !== undefined}
           className="mt-0.5 scale-90 opacity-80"
         />
       )}
@@ -357,6 +366,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       type="button"
       title="Antiek · home"
       aria-label="Antiek home"
+      aria-keyshortcuts={ariaKeyshortcutsFor("door.home")}
       data-product-id="home"
       onClick={() => {
         navigate("/home");
@@ -388,11 +398,12 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     </button>
   );
 
+  const paletteSpec = BUILTIN_BINDINGS.find((b) => b.id === "palette")!.spec;
   const searchButton = (
     <RailButton
       icon={<I d={UTIL_ICONS.search} size={15} />}
       label="Search"
-      title="Search · ⌘K"
+      title={`Search · ${formatBinding(paletteSpec)}`}
       onClick={openSearch}
       variant="utility"
       orientation={orientation}
@@ -400,7 +411,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       // is the SPR-08 built-in `palette` (⌘K / mod+k). We read it from the
       // shared built-in table by id rather than re-typing "mod+k", so the chip
       // can never drift from shortcuts.ts.
-      binding={BUILTIN_BINDINGS.find((b) => b.id === "palette")?.spec}
+      binding={paletteSpec}
+      action="palette.toggle"
     />
   );
 
@@ -430,6 +442,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
           orientation={orientation}
           productId={wf}
           binding={compact ? undefined : bindingForProduct(wf)?.spec}
+          action={compact ? undefined : (`door.${wf}` as ActionId)}
           badge={wf === "research" ? researchSummons : undefined}
         />
       ))}
@@ -452,6 +465,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       orientation={orientation}
       productId="more"
       binding={compact ? undefined : bindingForProduct("more")?.spec}
+      action={compact ? undefined : "door.more"}
     />
   );
 

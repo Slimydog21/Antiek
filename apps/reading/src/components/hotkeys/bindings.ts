@@ -4,12 +4,12 @@
  * This module is the *framework-agnostic* half of the hotkey system: it
  * knows nothing about React or the DOM event listener. It owns:
  *
- *   1. The canonical, human-readable BUILT-IN binding table (the keys
- *      `shortcuts.ts` already implements). This is a DESCRIPTION of the
- *      built-ins, not a second implementation — `shortcuts.ts` stays the
- *      single place that *handles* them. The table exists so the HUD,
- *      the KeyChips, and the conflict detector can all reason about the
- *      same set of keys without re-parsing `shortcuts.ts`.
+ *   1. The SPR-08 views of the keymap: BUILT-IN, PRODUCT and SUB-ACTION
+ *      rows in the BindingRow shape the KeyChips, the NavRail and the
+ *      conflict detector read. MS-01: these are no longer tables of their
+ *      own. They are DERIVED from `keymap.ts`, the one table every key is
+ *      defined in and dispatched from; this file only reshapes its
+ *      `legacy-SPR-08` rows.
  *
  *   2. The PRODUCT binding table — every product/sub-action hotkey this
  *      sprint gives a UNIFORM, single ⌘+key combo (one modifier, one
@@ -46,12 +46,20 @@
  * rest of the desktop. So SPR-08 rips the chord machinery out entirely and
  * gives every product/sub-action/destination ONE ⌘+key.
  *
+ * SUPERSEDED IN PART (MS-01, operator ruling D2, 2026-09-24): the mothership
+ * needs keys for 174-tab workspaces that 22 free ⌘⇧ letters cannot address,
+ * so a herdr-style prefix (ctrl+b, no timeout, a visible armed chip) and
+ * ctrl+alt direct chords now sit beside these ⌘ combos, which keep working.
+ * See keymap.ts and docs/decisions/mothership-keys-herdr-prefix.md.
+ *
  * Why a separate file from `shortcuts.ts`: `shortcuts.ts` is the imperative
  * keydown handler mounted once at AppShell. Pulling the *data* (the tables)
  * and the *pure helpers* (normalise / format / conflict) out here keeps the
  * handler small, lets the React surfaces import the tables without importing
  * the listener, and makes the conflict logic unit-testable without a DOM.
  */
+
+import { ACTIONS, KEYMAP, currentPlatform, isActiveOn, type ActionId, type ActionMeta, type Platform } from "./keymap";
 
 // ─────────────────────────────────────────────────────────────────────
 // Shared activation contract (the thing the mascot / SPR-06 consumes)
@@ -161,7 +169,7 @@ export function isChord(spec: BindingSpec): boolean {
 const KEY_GLYPHS: Record<string, string> = {
   mod: navigatorIsMac() ? "⌘" : "Ctrl",
   meta: "⌘",
-  ctrl: "Ctrl",
+  ctrl: navigatorIsMac() ? "⌃" : "Ctrl",
   alt: navigatorIsMac() ? "⌥" : "Alt",
   shift: "⇧",
   "/": "/",
@@ -174,8 +182,7 @@ const KEY_GLYPHS: Record<string, string> = {
 };
 
 function navigatorIsMac(): boolean {
-  if (typeof navigator === "undefined") return true; // SSR/test default: mac glyphs
-  return /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent);
+  return currentPlatform() === "mac"; // SSR default: mac glyphs
 }
 
 /** Human-display form for chips + the HUD, e.g. "mod+e" → "⌘E",
@@ -243,6 +250,23 @@ export function ariaBinding(spec: BindingSpec): string {
   return n.split("+").map(speak).join("+");
 }
 
+/**
+ * The `aria-keyshortcuts` value for a control that runs keymap `action`:
+ * every direct key the keymap table gives it on this platform,
+ * space-separated. Prefix sequences are left out because the attribute
+ * cannot express a sequence; the key sheet lists them. Undefined when the
+ * action has no direct key.
+ */
+export function ariaKeyshortcutsFor(
+  action: ActionId,
+  platform: Platform = currentPlatform(),
+): string | undefined {
+  const keys = KEYMAP.filter((r) => r.action === action && r.chord && isActiveOn(r, platform)).map((r) =>
+    ariaBinding(r.chord!),
+  );
+  return keys.length ? keys.join(" ") : undefined;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Built-in binding table (DESCRIPTION of what shortcuts.ts implements)
 // ─────────────────────────────────────────────────────────────────────
@@ -266,9 +290,35 @@ export interface BindingRow {
   route?: string;
 }
 
+const SPR08_GROUPS = { product: "Products", subaction: "Sub-actions" } as const;
+
+/** The keymap's legacy-SPR-08 rows of one kind, in the BindingRow shape. */
+function legacyRows(kind: BindingRow["kind"]): BindingRow[] {
+  return KEYMAP.filter((r) => r.spr08 === kind && r.chord).map((r) => {
+    const meta: ActionMeta = ACTIONS[r.action];
+    const row: BindingRow = {
+      id: r.id,
+      spec: r.chord!,
+      label: meta.label,
+      group:
+        kind === "builtin"
+          ? /^(palette|keysheet)\./.test(r.action)
+            ? "Global"
+            : "Panels"
+          : SPR08_GROUPS[kind as "product" | "subaction"],
+      kind,
+    };
+    if (meta.productId) row.productId = meta.productId;
+    if (meta.actionId) row.actionId = meta.actionId;
+    if (meta.route) row.route = meta.route;
+    return row;
+  });
+}
+
 /**
- * The built-ins, mirroring `shortcuts.ts` exactly. Kept in sync by the
- * `bindings.test.ts` assertions that pin the count + the load-bearing keys.
+ * The built-ins: the keymap's legacy-SPR-08 "builtin" rows (keymap.ts is
+ * the only place they are defined; `bindings.test.ts` pins the load-bearing
+ * keys).
  * NOTE on ⌘W: `shortcuts.ts` only intercepts ⌘W when a floating panel is
  * focused — otherwise it lets the browser's native "close tab" through.
  * The HUD says so (see label) rather than claiming a clean ⌘W binding.
@@ -277,16 +327,7 @@ export interface BindingRow {
  * one deliberate lone key (the universal help key; it carries no modifier so
  * it works on every layout without a chord).
  */
-export const BUILTIN_BINDINGS: readonly BindingRow[] = [
-  { id: "palette", spec: "mod+k", label: "Command palette", group: "Global", kind: "builtin" },
-  { id: "palette-alt", spec: "mod+shift+p", label: "Command palette (alt)", group: "Global", kind: "builtin" },
-  { id: "projecttree", spec: "mod+b", label: "Toggle project tree", group: "Panels", kind: "builtin" },
-  { id: "aisidecar", spec: "mod+/", label: "Toggle AI sidecar", group: "Panels", kind: "builtin" },
-  { id: "cycle-prev", spec: "mod+[", label: "Focus previous panel", group: "Panels", kind: "builtin" },
-  { id: "cycle-next", spec: "mod+]", label: "Focus next panel", group: "Panels", kind: "builtin" },
-  { id: "close-float", spec: "mod+w", label: "Close focused floating panel (only when one is focused — otherwise the browser closes the tab)", group: "Panels", kind: "builtin" },
-  { id: "help", spec: "?", label: "Show keyboard shortcuts", group: "Global", kind: "builtin" },
-];
+export const BUILTIN_BINDINGS: readonly BindingRow[] = legacyRows("builtin");
 
 // ─────────────────────────────────────────────────────────────────────
 // Product + sub-action binding table — UNIFORM ⌘+key (NO chords)
@@ -326,28 +367,12 @@ export const BUILTIN_BINDINGS: readonly BindingRow[] = [
  * hotkey. The routeless More row only emits activate (no navigation), which
  * the More button's handler turns into "open the launcher".
  */
-export const PRODUCT_BINDINGS: readonly BindingRow[] = [
-  { id: "prod-research", spec: "mod+j", label: "Research", group: "Products", kind: "product", productId: "research", route: "/" },
-  { id: "prod-read", spec: "mod+e", label: "Read", group: "Products", kind: "product", productId: "read", route: "/library" },
-  { id: "prod-write", spec: "mod+y", label: "Write", group: "Products", kind: "product", productId: "write", route: "/write" },
-  { id: "prod-speak", spec: "mod+u", label: "Speak", group: "Products", kind: "product", productId: "speak", route: "/speak" },
-  { id: "prod-home", spec: "mod+o", label: "Home", group: "Products", kind: "product", productId: "home", route: "/home" },
-  { id: "prod-more", spec: "mod+i", label: "More (all products)", group: "Products", kind: "product", productId: "more" },
-];
+export const PRODUCT_BINDINGS: readonly BindingRow[] = legacyRows("product");
 
 /** A couple of representative sub-actions, wired the same way, to prove the
  *  sub-action path also lives in the uniform ⌘+key world. (On-bar/launcher
  *  placement of these chips is SPR-07.) */
-export const SUBACTION_BINDINGS: readonly BindingRow[] = [
-  // "/" is the Research home — its landing surface IS where you start a
-  // research (StartResearch serves it). Labelled for what the press does
-  // (go to the Research home) rather than implying it resets a live session.
-  // ⌘G ("Go") is the Find-Next browser combo but Chrome lets the page
-  // intercept it; it is not in the hard-reserved set.
-  { id: "sub-research-new", spec: "mod+g", label: "Research · go to the Research home", group: "Sub-actions", kind: "subaction", productId: "research", actionId: "new", route: "/" },
-  // ⌘; (semicolon) — a free safe punctuation key, library is a Read sub-action.
-  { id: "sub-read-library", spec: "mod+;", label: "Read · open the library", group: "Sub-actions", kind: "subaction", productId: "read", actionId: "library", route: "/library" },
-];
+export const SUBACTION_BINDINGS: readonly BindingRow[] = legacyRows("subaction");
 
 /** All non-custom rows, used for conflict checks + the HUD's fixed groups. */
 export function fixedBindings(): BindingRow[] {
@@ -480,11 +505,13 @@ export const RESERVED_COMBOS: ReadonlyArray<{ spec: BindingSpec; reason: string 
  * extra shift modifier, e.g. `mod+shift+w`, are reserved as full specs but
  * don't remove the single-mod letter from the safe range.)
  */
-const RESERVED_MOD_KEYS: ReadonlySet<string> = new Set(
-  RESERVED_COMBOS.map((r) => normalizeBinding(r.spec))
-    .filter((s) => /^mod\+[^+]+$/.test(s))
-    .map((s) => s.slice("mod+".length)),
-);
+function reservedModKeys(): ReadonlySet<string> {
+  return new Set(
+    RESERVED_COMBOS.map((r) => normalizeBinding(r.spec))
+      .filter((s) => /^mod\+[^+]+$/.test(s))
+      .map((s) => s.slice("mod+".length)),
+  );
+}
 
 /**
  * SAFE_ASSIGNABLE — the policy that names which `mod+<key>` combos a custom
@@ -521,9 +548,12 @@ export const SAFE_ASSIGNABLE = {
    * a–z minus the reserved letters (browser/OS owns those). Computed, not
    * hand-listed, so it can never drift from RESERVED_COMBOS.
    */
-  letters: "abcdefghijklmnopqrstuvwxyz"
-    .split("")
-    .filter((c) => !RESERVED_MOD_KEYS.has(c)),
+  // A getter, computed on read, so the entry chunk (which never assigns a
+  // custom key) does not carry the reserved list just to build this set.
+  get letters(): string[] {
+    const reserved = reservedModKeys();
+    return "abcdefghijklmnopqrstuvwxyz".split("").filter((c) => !reserved.has(c));
+  },
   /**
    * Is `spec` within the safe-assignable shape (single modifier-cluster +
    * one key, key not a bare lone key, not a chord)? This checks SHAPE only;

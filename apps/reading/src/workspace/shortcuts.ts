@@ -1,49 +1,59 @@
 /**
- * Keyboard shortcut module for the workspace shell.
+ * The keymap dispatcher: the ONE window-level owner of every global key.
  *
- * Mounted once at the AppShell level via `useWorkspaceShortcuts()`.
- * The handler ignores key events when the active element is an
- * `<input>`, `<textarea>`, or contenteditable so the operator can
- * type without the shortcuts intercepting.
+ * Mounted once, in AppShell, via `useWorkspaceShortcuts()`. It reads the one
+ * table, `components/hotkeys/keymap.ts` (rows, origins, scopes, the prefix),
+ * and runs each row's action from {@link createActionHandlers}. No other
+ * keydown listener in the app may claim a global combo; the ones that remain
+ * are scoped to an element or to an open overlay (Esc, arrows, Tab).
  *
- * Convention: macOS Cmd vs Linux/Windows Ctrl — `mod` matches either.
+ * Two listeners, one dispatcher:
  *
- * SPR-08 — UNIFORM ⌘+key. The old vim g-chords are GONE: every product,
- * sub-action and built-in destination is a single ⌘+key combo (one modifier,
- * one keypress, no sequence and no timing window). The leader-key sequence
- * machinery (the pending-key state, its clear fn, and its window constant)
- * has been removed entirely — see the no-chord grep guard in the spec.
+ *   capture phase  the PREFIX ENGINE. The prefix (ctrl+b by default) arms
+ *                  only from a non-text, non-modal focus. While armed, the
+ *                  next key belongs to the keymap and to nothing else: it is
+ *                  consumed (preventDefault + stopPropagation), runs its
+ *                  prefix row if one exists, and disarms. Esc disarms. There
+ *                  is no timeout (herdr/tmux semantics); leaving the window
+ *                  disarms, because the next key can no longer reach us.
  *
- *   ⌘K       toggle command palette          → window.dispatchEvent("antiek:palette:toggle")
- *   ⌘B       toggle ProjectTree panel        → workspace open/close
- *   ⌘/       toggle AISidecar panel          → workspace open/close
- *   ⌘⇧P      same as ⌘K (Linear muscle memory)
- *   ⌘W       close focused floating panel    → workspace.close(focusedPanelId)
- *   ⌘[ / ⌘]  cycle focused panel             → workspace.focus(prev/next)
- *   ?        toggle the keyboard HUD
- *   ⌘J       Research (/)         ⌘E Read (/library)   ⌘Y Write (/write)
- *   ⌘U       Speak (/speak)       ⌘O Home (/home)      ⌘I More (launcher)
- *   ⌘G       Research home        ⌘; Read · library
+ *   bubble phase   DIRECT KEYS: the ctrl+alt chords, the legacy ⌘ combos and
+ *                  "?". Bubble phase, so an element that owns a key first
+ *                  (the Write editor's own shortcuts, a WorkspaceWindow's
+ *                  arrows, the hotkey capture box) handles it and marks it
+ *                  defaultPrevented, and the dispatcher then leaves it alone.
  *
- *   (⌘M would shadow macOS minimize-window and ⌘H macOS hide-app — both are
- *    in RESERVED_COMBOS, so More takes the free safe letter ⌘I instead.)
- *
- * The product/sub-action combos live in the binding tables in
- * `components/hotkeys/bindings.ts`; `resolveExtended` fires them so a click
- * and a hotkey emit the IDENTICAL `antiek:product:activate` event.
+ * Focus decides what may fire (see keymap.ts "scope"):
+ *   default  every row.
+ *   text     an input, textarea, select, contenteditable or the capture box:
+ *            only "anywhere" rows (⌘K, ⌘⇧P, the ctrl+alt chords). The prefix
+ *            does not arm, "?" types a "?", ⌘B stays bold.
+ *   modal    focus inside an aria-modal dialog: only the dialog's own toggle
+ *            (its data-keymap-owner), so ⌘K closes the palette and "?" closes
+ *            the key sheet. Everything else belongs to the dialog.
+ * A cross-origin iframe (the arXiv embed) never delivers its keys to this
+ * window, so nothing fires while focus is inside one.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
 import { readCustomHotkeys } from "./persistence";
+import { emitProductActivate, normalizeBinding } from "../components/hotkeys/bindings";
 import {
-  PRODUCT_BINDINGS,
-  SUBACTION_BINDINGS,
-  emitProductActivate,
-  normalizeBinding,
-} from "../components/hotkeys/bindings";
+  ACTIONS,
+  KEYMAP,
+  currentPlatform,
+  eventMatchesCombo,
+  isActiveOn,
+  isLoneModifier,
+  readPrefix,
+  type ActionId,
+  type ActionMeta,
+  type KeymapRow,
+} from "../components/hotkeys/keymap";
+import { prefixState } from "../components/hotkeys/prefixState";
 
 /** Event names emitted/consumed via window.dispatchEvent. Components
  *  that own their own toggle state listen for these instead of being
@@ -59,10 +69,9 @@ export const SHORTCUT_EVENTS = {
 // SPR-08 EXTENSION SEAM — custom per-entity bindings
 // ─────────────────────────────────────────────────────────────────────
 //
-// The injection point the sprint asked for: a runtime map of custom
-// bindings, checked AFTER the isTextEditing guard and inside the same
-// mod-combo branch as the product/sub-action lookup, WITHOUT touching the
-// built-in branches. The custom-hotkeys hook (`useCustomHotkeys`) pushes the
+// Custom per-entity bindings are user DATA, not keymap rows: a runtime map
+// the dispatcher consults only after no keymap row matched, only from a
+// non-text, non-modal focus. The custom-hotkeys hook (`useCustomHotkeys`) pushes the
 // current map here via `setCustomHotkeys`; the handler reads it. Precedence
 // (documented in bindings.ts `detectConflict`): a custom binding can NEVER
 // shadow a built-in/product/sub-action — the assign affordance refuses such
@@ -125,44 +134,66 @@ function hydrateCustomFromStorage(): void {
   );
 }
 
-function isTextEditing(t: EventTarget | null): boolean {
+function isTextEditing(t: Element | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
   const tag = t.tagName.toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
-  if (t.isContentEditable) return true;
-  // SPR-08 — the hotkey-capture box is a role="textbox" <div> that is
-  // actively reading raw keypresses (including "?"). Treat it as text editing
-  // so the global HUD handler bails while it is open; otherwise "?" pops the
-  // HUD over the capture modal and can never be bound.
+  // isContentEditable, plus the attribute for environments that do not
+  // compute it (jsdom); the attribute check also covers descendants.
+  if (t.isContentEditable || t.closest('[contenteditable]:not([contenteditable="false"])')) {
+    return true;
+  }
+  // SPR-08 — the hotkey-capture box is a role="textbox" <div> that reads raw
+  // keypresses (including "?"), so it counts as text.
   if (t.closest("[data-hotkey-capture]")) return true;
   return false;
 }
 
-function isMod(e: KeyboardEvent): boolean {
-  return e.metaKey || e.ctrlKey;
+export type FocusContext =
+  | { kind: "default" }
+  | { kind: "text" }
+  | { kind: "modal"; owner: string | null; text: boolean };
+
+/** Where a key event lands, for the scope rules above. */
+export function focusContext(target: EventTarget | null): FocusContext {
+  let el: Element | null = target instanceof Element ? target : null;
+  if (!el || el === document.body || el === document.documentElement) {
+    el = document.activeElement;
+  }
+  const bodyish = !el || el === document.body || el === document.documentElement;
+  const modal =
+    (el && el.closest('[aria-modal="true"]')) ||
+    (bodyish ? document.querySelector('[aria-modal="true"]') : null);
+  if (modal) {
+    const owner =
+      modal.getAttribute("data-keymap-owner") ??
+      modal.querySelector("[data-keymap-owner]")?.getAttribute("data-keymap-owner") ??
+      null;
+    return { kind: "modal", owner, text: isTextEditing(el) };
+  }
+  return isTextEditing(el) ? { kind: "text" } : { kind: "default" };
 }
 
-/** Does the event carry ANY modifier (mod / alt / shift)? Used to gate the
- *  combo-resolution branch: a custom binding may legitimately be `alt+j`, so
- *  the resolver runs for any modifier, not only Cmd/Ctrl. */
+function scopeAllows(row: KeymapRow, ctx: FocusContext): boolean {
+  if (ctx.kind === "default") return true;
+  if (ctx.kind === "text") return row.scope === "anywhere";
+  return row.action === ctx.owner && (row.scope === "anywhere" || !ctx.text);
+}
+
 function hasAnyModifier(e: KeyboardEvent): boolean {
   return e.metaKey || e.ctrlKey || e.altKey || e.shiftKey;
 }
 
-/** Build the canonical combo spec for a keydown event, e.g. ⌘E → "mod+e",
- *  ⌘⇧P → "mod+shift+p", ⌥J → "alt+j". `mod` collapses Cmd/Ctrl. Single-char
- *  keys are lower-cased; named keys (`/`, `[`) pass through. Returns null
- *  when the keydown is a lone modifier (no real key yet) or carries no
- *  modifier at all (a bare key is never a combo we resolve). */
+/** The canonical combo for a keydown, for the custom-binding lookup:
+ *  ⌘E → "mod+e", ⌥J → "alt+j". Null for a lone modifier or a bare key. */
 function comboSpecFor(e: KeyboardEvent): string | null {
   const key = e.key.toLowerCase();
-  // Ignore a lone modifier keydown (e.g. ⌘ down with no real key yet).
   if (["meta", "control", "shift", "alt"].includes(key)) return null;
   const parts: string[] = [];
-  if (isMod(e)) parts.push("mod");
+  if (e.metaKey || e.ctrlKey) parts.push("mod");
   if (e.altKey) parts.push("alt");
   if (e.shiftKey) parts.push("shift");
-  if (parts.length === 0) return null; // bare key — not a combo
+  if (parts.length === 0) return null;
   parts.push(key);
   return normalizeBinding(parts.join("+"));
 }
@@ -178,18 +209,10 @@ function toggleProjectTree() {
   }
 }
 
-/** Toggle the AISidecar panel via the workspace store. S8-full
- *  refactored AISidecar into a real PanelKind; ⌘/ opens it docked-
- *  right or closes it via `workspace.open` / `workspace.close`
- *  exactly like ⌘B does for ProjectTree.
- *
- *  Exported so every "Ask"/"Toggle AI sidecar" affordance (SceneChrome
- *  action bar, CommandPalette) goes through the SAME toggle as the ⌘/
- *  hotkey — the bare `AISIDECAR_TOGGLE` CustomEvent has NO production
- *  listener (it never did the toggling; this function does).
- *
- *  The custom-event dispatch is kept for backward-compat with any
- *  Storybook stories that listen for the event directly. */
+/** Toggle the AISidecar panel via the workspace store. Exported so every
+ *  "Ask"/"Toggle AI sidecar" affordance (SceneChrome action bar,
+ *  CommandPalette) goes through the SAME toggle as the ⌘/ key. The
+ *  custom-event dispatch is kept for stories that listen for it. */
 export const AISIDECAR_PANEL_ID = "shortcuts:aisidecar";
 export function toggleAISidecar() {
   const ws = useWorkspace.getState();
@@ -205,14 +228,16 @@ export function toggleAISidecar() {
   window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.AISIDECAR_TOGGLE));
 }
 
-/** Close the focused floating panel; no-op otherwise. */
-function closeFocusedFloat() {
+/** Close the focused floating panel. False (the key is not ours) otherwise,
+ *  so ⌘W falls through to the browser's close-tab. */
+function closeFocusedFloat(): boolean {
   const ws = useWorkspace.getState();
   const fid = ws.focusedPanelId;
-  if (!fid) return;
+  if (!fid) return false;
   const p = ws.panels[fid];
-  if (!p || p.mode !== "floating") return;
+  if (!p || p.mode !== "floating") return false;
   ws.close(fid);
+  return true;
 }
 
 /** Cycle focus across visible panels (docked + floating, ignoring popout). */
@@ -232,166 +257,169 @@ function cycleFocus(direction: 1 | -1) {
   ws.focus(visible[next]);
 }
 
+/** Runs an action. Returning false means "not mine after all": the key is
+ *  left to the browser and nothing is prevented. */
+export type KeyHandler = (e: KeyboardEvent) => boolean | void;
+
 /**
- * Install the keyboard shortcut handler. Returns the unsubscribe fn.
+ * One handler per keymap action. keymap.test.ts fails if a table row names
+ * an action missing here; the Record type makes tsc fail first.
+ */
+export function createActionHandlers(navigate: NavigateFunction): Record<ActionId, KeyHandler> {
+  // A product door: navigate (when it has a route) AND emit the activation a
+  // click emits, so the mascot cannot tell a key from a click. Every action
+  // whose metadata names a product is a door.
+  const doors = {} as Record<ActionId, KeyHandler>;
+  for (const id of Object.keys(ACTIONS) as ActionId[]) {
+    const meta: ActionMeta = ACTIONS[id];
+    if (!meta.productId) continue;
+    doors[id] = () => {
+      if (meta.route) navigate(meta.route);
+      emitProductActivate({
+        productId: meta.productId!,
+        ...(meta.actionId ? { actionId: meta.actionId } : {}),
+        route: meta.route,
+        source: "hotkey",
+      });
+    };
+  }
+  return {
+    ...doors,
+    "palette.toggle": () => {
+      window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE));
+    },
+    "keysheet.toggle": () => {
+      window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
+    },
+    "projecttree.toggle": () => toggleProjectTree(),
+    "aisidecar.toggle": () => toggleAISidecar(),
+    "panel.focusPrev": () => cycleFocus(-1),
+    "panel.focusNext": () => cycleFocus(1),
+    "panel.closeFloating": () => closeFocusedFloat(),
+  };
+}
+
+function consume(e: KeyboardEvent): void {
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+export interface InstallOptions {
+  /** Test seam: replace some action handlers (e.g. with counters). */
+  handlers?: Partial<Record<ActionId, KeyHandler>>;
+}
+
+/**
+ * Install the dispatcher. Returns the uninstall fn.
  *
- * `navigate` is required for the product/sub-action/custom combo nav; pass
+ * `navigate` is required for the product doors and custom bindings; pass
  * `useNavigate()`'s return value from inside AppShell.
  */
-export function installShortcuts(navigate: NavigateFunction): () => void {
+export function installShortcuts(
+  navigate: NavigateFunction,
+  opts: InstallOptions = {},
+): () => void {
   // Seed the live custom-binding map from the persisted blob on every mount,
-  // so a custom hotkey the operator set in a previous session fires after a
-  // reload WITHOUT waiting for an <AssignHotkey> surface to mount (M2).
+  // so a custom hotkey set in a previous session fires after a reload
+  // WITHOUT waiting for an <AssignHotkey> surface to mount (SPR-08 M2).
   hydrateCustomFromStorage();
   // A custom binding assigned in another tab lands in localStorage; re-hydrate
   // on the cross-tab `storage` signal so this tab's handler sees it too.
   const onStorage = (e: StorageEvent) => {
     if (e.key === null || e.key.endsWith("custom-hotkeys")) hydrateCustomFromStorage();
   };
-  if (typeof window !== "undefined") {
-    window.addEventListener("storage", onStorage);
+
+  const handlers: Record<ActionId, KeyHandler> = {
+    ...createActionHandlers(navigate),
+    ...opts.handlers,
+  };
+  const platform = currentPlatform();
+  const rows = KEYMAP.filter((r) => isActiveOn(r, platform));
+  const prefixRows = rows.filter((r) => r.prefixKey);
+  const directRows = rows.filter((r) => r.chord);
+
+  function run(action: ActionId, e: KeyboardEvent): boolean {
+    return handlers[action](e) !== false;
   }
 
-  /** Resolve a fully-formed ⌘+key combo spec against the product +
-   *  sub-action tables + the custom map. Returns true if it fired. The
-   *  built-in combos are handled by their own branches in `handler`; this
-   *  only fires NEW (product/sub-action/custom) bindings, and it checks
-   *  product/sub-action BEFORE custom so a custom binding can never override
-   *  one (defence-in-depth on top of detectConflict's assign-time block). */
-  function resolveExtended(spec: string): boolean {
-    const norm = normalizeBinding(spec);
-    // Product activation — navigate AND emit the shared activation event
-    // (the click≡hotkey contract: identical to a click).
-    const prod = PRODUCT_BINDINGS.find((b) => normalizeBinding(b.spec) === norm);
-    if (prod) {
-      // A product with a route navigates; a routeless product (More opens the
-      // launcher, no nav) only emits. Either way it fires the shared activate
-      // event so a click and a hotkey are indistinguishable.
-      if (prod.route) navigate(prod.route);
-      emitProductActivate({
-        productId: prod.productId!,
-        route: prod.route,
-        source: "hotkey",
-      });
-      return true;
-    }
-    const sub = SUBACTION_BINDINGS.find((b) => normalizeBinding(b.spec) === norm);
-    if (sub && sub.route) {
-      navigate(sub.route);
-      emitProductActivate({
-        productId: sub.productId!,
-        actionId: sub.actionId,
-        route: sub.route,
-        source: "hotkey",
-      });
-      return true;
-    }
-    // Custom per-entity binding.
-    const custom = customBindings.find((b) => b.spec === norm);
-    if (custom) {
-      navigate(custom.route);
-      emitProductActivate({
-        productId: "custom",
-        route: custom.route,
-        entityId: custom.entityId,
-        source: "hotkey",
-      });
-      return true;
-    }
-    return false;
-  }
-
-  function handler(e: KeyboardEvent) {
-    if (isTextEditing(e.target)) return;
-
-    // ? — toggle the hotkey HUD (Shift+/ on most layouts). Guarded by
-    // isTextEditing above so it never fires while the operator is typing.
-    if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      e.preventDefault();
-      window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
+  function onCapture(e: KeyboardEvent) {
+    if (e.isComposing) return;
+    if (prefixState.isArmed()) {
+      // Shift (for prefix+?) and other lone modifiers are part of the next
+      // key, not the next key.
+      if (isLoneModifier(e)) return;
+      consume(e);
+      prefixState.disarm();
+      if (e.key === "Escape" || eventMatchesCombo(e, readPrefix())) return;
+      const row = prefixRows.find((r) => eventMatchesCombo(e, r.prefixKey!));
+      if (row) run(row.action, e);
       return;
     }
-
-    if (isMod(e)) {
-      // ⌘K — command palette toggle (also ⌘⇧P for Linear muscle memory)
-      if (e.key === "k" || (e.shiftKey && (e.key === "P" || e.key === "p"))) {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE));
-        return;
-      }
-      // ⌘B — toggle ProjectTree
-      if (e.key === "b") {
-        e.preventDefault();
-        toggleProjectTree();
-        return;
-      }
-      // ⌘/ — toggle AI sidecar
-      if (e.key === "/") {
-        e.preventDefault();
-        toggleAISidecar();
-        return;
-      }
-      // ⌘[ / ⌘] — cycle focused panel
-      if (e.key === "[") {
-        e.preventDefault();
-        cycleFocus(-1);
-        return;
-      }
-      if (e.key === "]") {
-        e.preventDefault();
-        cycleFocus(1);
-        return;
-      }
-      // ⌘W — close focused floating panel (only when one is focused;
-      // otherwise the native ⌘W = close tab passes through)
-      if (e.key === "w") {
-        const ws = useWorkspace.getState();
-        const fid = ws.focusedPanelId;
-        if (fid && ws.panels[fid]?.mode === "floating") {
-          e.preventDefault();
-          closeFocusedFloat();
-        }
-        return;
-      }
-    }
-
-    // Product / sub-action / custom modifier combos (the uniform ⌘+key
-    // scheme; a custom binding may also be ⌥+key, so this runs for ANY
-    // modifier). The built-in combos above already returned, so this only
-    // ever resolves a product/sub-action/custom binding — never a built-in,
-    // and resolveExtended checks product/sub-action BEFORE custom so a custom
-    // binding can never shadow one.
-    if (hasAnyModifier(e)) {
-      const spec = comboSpecFor(e);
-      if (spec && resolveExtended(spec)) {
-        e.preventDefault();
-        return;
-      }
-    }
+    if (e.repeat || !eventMatchesCombo(e, readPrefix())) return;
+    // Never steal the prefix from text (ctrl+b moves the caret on macOS) or
+    // from a dialog.
+    if (focusContext(e.target).kind !== "default") return;
+    consume(e);
+    prefixState.arm();
   }
 
-  window.addEventListener("keydown", handler);
-  return () => {
-    window.removeEventListener("keydown", handler);
-    if (typeof window !== "undefined") {
-      window.removeEventListener("storage", onStorage);
+  function onBubble(e: KeyboardEvent) {
+    if (e.defaultPrevented || e.isComposing) return;
+    const ctx = focusContext(e.target);
+    const row = directRows.find((r) => eventMatchesCombo(e, r.chord!));
+    if (row) {
+      if (!scopeAllows(row, ctx)) return;
+      if (run(row.action, e)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      return;
     }
+    // A custom per-entity binding (always a modifier combo; a table row
+    // always wins, because rows were checked first).
+    if (ctx.kind !== "default" || !hasAnyModifier(e)) return;
+    const spec = comboSpecFor(e);
+    const custom = spec ? customBindings.find((b) => b.spec === spec) : undefined;
+    if (!custom) return;
+    e.preventDefault();
+    navigate(custom.route);
+    emitProductActivate({
+      productId: "custom",
+      route: custom.route,
+      entityId: custom.entityId,
+      source: "hotkey",
+    });
+  }
+
+  const onBlur = () => prefixState.disarm();
+
+  window.addEventListener("storage", onStorage);
+  window.addEventListener("keydown", onCapture, true);
+  window.addEventListener("keydown", onBubble);
+  window.addEventListener("blur", onBlur);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener("keydown", onCapture, true);
+    window.removeEventListener("keydown", onBubble);
+    window.removeEventListener("blur", onBlur);
+    prefixState.disarm();
   };
 }
 
 /**
- * Hook form for mounting inside AppShell.
- *
- *   import { useWorkspaceShortcuts } from "./workspace/shortcuts";
- *
- *   function AppShell({ children }) {
- *     useWorkspaceShortcuts();
- *     return ...
- *   }
- *
- * The hook depends on the React Router context, so it MUST be called
- * inside a `<Router>` subtree (AppShell qualifies).
+ * Hook form for mounting inside AppShell. Installs once: the latest
+ * `navigate` is read through a ref, because react-router hands out a new
+ * function on every location change and reinstalling would drop an armed
+ * prefix and reorder the window listeners.
  */
 export function useWorkspaceShortcuts(navigate: NavigateFunction) {
-  useEffect(() => installShortcuts(navigate), [navigate]);
+  const ref = useRef(navigate);
+  useEffect(() => {
+    ref.current = navigate;
+  }, [navigate]);
+  useEffect(() => {
+    const stable = ((...args: unknown[]) =>
+      (ref.current as (...a: unknown[]) => unknown)(...args)) as NavigateFunction;
+    return installShortcuts(stable);
+  }, []);
 }

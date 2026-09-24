@@ -1,0 +1,209 @@
+/* KeySheet — the keymap rendered as a reference. Quiet: type and keycaps on
+ * the card, hairline rules, no accent colour. Painted from the W1 semantic
+ * tokens so day and night both hold. */
+
+.antiek-keysheet {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--text-1);
+}
+
+.antiek-keysheet__intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.antiek-keysheet__keys {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+}
+
+.antiek-keysheet__key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-1);
+  background: var(--bg-inset);
+  border: 1px solid var(--keycap-edge);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+.antiek-keysheet__filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-rule);
+  border-radius: 6px;
+  background: var(--bg-card);
+}
+
+.antiek-keysheet__filter:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.antiek-keysheet__filter-label {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.antiek-keysheet__filter-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--text-1);
+}
+
+.antiek-keysheet__filter-input::placeholder {
+  color: var(--text-3);
+}
+
+.antiek-keysheet__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.antiek-keysheet__heading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.antiek-keysheet__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.antiek-keysheet__table thead th {
+  padding: 0 8px 4px 0;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--text-3);
+}
+
+.antiek-keysheet__table tbody tr {
+  border-top: 1px solid var(--border-hairline);
+}
+
+.antiek-keysheet__label {
+  width: 44%;
+  padding: 7px 8px 7px 0;
+  font-weight: 400;
+  text-align: left;
+  vertical-align: top;
+}
+
+.antiek-keysheet__note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.antiek-keysheet__forms {
+  padding: 7px 8px 7px 0;
+  vertical-align: top;
+}
+
+.antiek-keysheet__form {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 1px 0;
+}
+
+.antiek-keysheet__then,
+.antiek-keysheet__or {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.antiek-keysheet__or {
+  margin: 0 6px;
+}
+
+.antiek-keysheet__none {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.antiek-keysheet__empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.antiek-keysheet__custom {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.antiek-keysheet__custom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 13px;
+  border-top: 1px solid var(--border-hairline);
+}
+
+/* Phone width: each action becomes a stacked card, the column names move
+ * next to their keys. */
+@media (max-width: 640px) {
+  .antiek-keysheet__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .antiek-keysheet__table,
+  .antiek-keysheet__table tbody,
+  .antiek-keysheet__table tr,
+  .antiek-keysheet__label,
+  .antiek-keysheet__forms {
+    display: block;
+    width: 100%;
+  }
+
+  .antiek-keysheet__table tbody tr {
+    padding: 6px 0;
+  }
+
+  .antiek-keysheet__label,
+  .antiek-keysheet__forms {
+    padding: 2px 0;
+  }
+
+  .antiek-keysheet__forms::before {
+    content: attr(data-column);
+    display: inline-block;
+    min-width: 108px;
+    font-size: 11px;
+    color: var(--text-3);
+  }
+}

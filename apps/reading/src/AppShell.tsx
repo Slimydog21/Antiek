@@ -9,6 +9,7 @@ import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport, setToastNavigator } from "./components/lemon/LemonToast";
 import { HotkeyHud } from "./components/hotkeys/HotkeyHud";
+import { PrefixChip } from "./components/hotkeys/PrefixChip";
 import { PanelLayout } from "./workspace/PanelLayout";
 import { useWorkspace } from "./workspace/WorkspaceStore";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
@@ -65,10 +66,10 @@ type Props = {
 };
 
 export function AppShell({ children }: Props) {
-  // S8 — mount the keyboard shortcut handler once at the shell level.
-  // Lives here (not lower) so ⌘K, ⌘B, ⌘/, ⌘[, ⌘], G+I etc. fire from
-  // any route. The handler ignores key events when the active element
-  // is editable, so the operator can still type freely.
+  // MS-01 — the keymap dispatcher, mounted once: the ONE owner of every
+  // global key (the table is components/hotkeys/keymap.ts). The prefix
+  // (ctrl+b), the ctrl+alt chords and the ⌘ combos fire from any route; the
+  // scope rules keep typing, the Write editor and dialogs undisturbed.
   const navigate = useNavigate();
   useWorkspaceShortcuts(navigate);
 
@@ -189,11 +190,15 @@ export function AppShell({ children }: Props) {
       {/* Toast viewport — single mount-point for the whole app */}
       <LemonToastViewport />
 
-      {/* SPR-08 — the keyboard cheat-sheet. Mounted ONCE here so a single
-          uncontrolled instance self-subscribes to the HELP_TOGGLE window event
-          (fired by `?` in shortcuts.ts, guarded so it never fires while
-          typing); ESC closes it via LemonModal's focus trap. */}
+      {/* The key sheet (`?` or prefix+?). Mounted ONCE here; the uncontrolled
+          instance self-subscribes to the HELP_TOGGLE window event the keymap
+          dispatches, and lazy-loads the sheet itself (KeySheet.tsx) on first
+          open. ESC closes it via LemonModal. */}
       <HotkeyHud />
+
+      {/* MS-01 — the quiet "prefix armed" chip, shown while the keymap's
+          prefix waits for its next key. */}
+      <PrefixChip />
     </div>
   );
 }

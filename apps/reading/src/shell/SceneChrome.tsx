@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 
 import { createDeliverable } from "../lib/api";
 import { toggleAISidecar } from "../workspace/shortcuts";
+import { ariaKeyshortcutsFor } from "../components/hotkeys/bindings";
+import type { ActionId } from "../components/hotkeys/keymap";
 import {
   WORKFLOWS,
   workflowForPath,
@@ -50,6 +52,9 @@ type Action = {
    *  the navigate so it can land on the newly-created entity. */
   run?: (navigate: NavigateFunction) => Promise<void>;
   primary?: boolean;
+  /** MS-01: the keymap action this verb shares, so its button carries
+   *  aria-keyshortcuts generated from the keymap table. */
+  keymapAction?: ActionId;
 };
 
 type Tab = { id: string; label: string; to: string };
@@ -74,7 +79,7 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
       // as ⌘/ (shortcuts.ts toggleAISidecar). It used to dispatch the bare
       // AISIDECAR_TOGGLE CustomEvent, which has no production listener — a
       // dead verb on the primary action bar.
-      { id: "ask", label: "Ask", act: toggleAISidecar },
+      { id: "ask", label: "Ask", act: toggleAISidecar, keymapAction: "aisidecar.toggle" },
       { id: "outcomes", label: "Outcomes", to: "/outcomes" },
     ],
     tabs: [
@@ -203,6 +208,7 @@ export function SceneChrome({
                   onClick={() => runAction(a)}
                   disabled={busy}
                   aria-busy={busy || undefined}
+                  aria-keyshortcuts={a.keymapAction ? ariaKeyshortcutsFor(a.keymapAction) : undefined}
                   className={
                     "px-2.5 py-1 rounded text-xs disabled:opacity-60 " +
                     (a.primary ? "bg-sun text-ink hover:bg-sun-hover" : "text-2 hover:bg-wash hover:text-1")

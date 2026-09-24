@@ -183,22 +183,11 @@ export default function AISidecar() {
     }
   }, [period]);
 
-  // S8 refactor: ⌘J as a legacy shortcut now closes the panel (since
-  // mounting === open, "toggling" while mounted means closing). The
-  // workspace store handles open via the shortcut module's ⌘/ binding.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
-        e.preventDefault();
-        // Defer to shortcuts.ts via the custom-event channel; the
-        // shortcut module knows the panel id + routes through workspace.
-        window.dispatchEvent(new CustomEvent("antiek:aisidecar:toggle"));
-        return;
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
+  // MS-01: the sidecar no longer listens for ⌘J itself. That listener only
+  // dispatched "antiek:aisidecar:toggle", which nothing handles, while the
+  // keymap dispatcher ALSO took ⌘J to the Research door: two owners for one
+  // key. The keymap (components/hotkeys/keymap.ts) owns ⌘J (Research) and ⌘/
+  // (toggle this sidecar).
 
   // Mount-load: fetch usage + dispatch context immediately + focus the
   // textarea. Refresh on each mount (the panel system unmounts + remounts
@@ -305,14 +294,9 @@ export default function AISidecar() {
   // positioning, no own slide-over chrome). The workspace mounts it
   // via `PanelLayoutPanel` when ⌘/ opens the "AISidecar" PanelKind
   // docked-right; the panel chrome (handle + drag) is provided by
-  // the panel system, not by this component.
-  //
-  // For backward-compat, the legacy ⌘J toggle still works — it
-  // routes through the workspace store (open or focus). The
-  // `antiek:aisidecar:toggle` dispatch above is kept only for
-  // Storybook listeners; production toggling (⌘/, SceneChrome "Ask",
-  // CommandPalette) goes through `toggleAISidecar` in shortcuts.ts —
-  // the event itself has no production listener.
+  // the panel system, not by this component. Toggling (⌘/ via the keymap,
+  // SceneChrome "Ask", CommandPalette) goes through
+  // `toggleAISidecar` in shortcuts.ts.
   return (
     <aside
       className="h-full overflow-hidden flex flex-col"

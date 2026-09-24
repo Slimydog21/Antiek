@@ -18,6 +18,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { NavRail } from "./NavRail";
+import { formatBinding } from "../components/hotkeys/bindings";
 import { WORKFLOW_ORDER, WORKFLOWS } from "./workflowTaxonomy";
 
 // SPR-08 — the rail now renders on-bar KeyChips, which read
@@ -100,7 +101,8 @@ describe("NavRail SPR-06 — bottom orientation + igloo home", () => {
           <NavRail orientation={orientation} />
         </MemoryRouter>,
       );
-      expect(screen.getByTitle("Search · ⌘K")).toBeTruthy();
+      // The keys in the title come from the keymap (⌘K on a Mac, CtrlK elsewhere).
+      expect(screen.getByTitle(`Search · ${formatBinding("mod+k")}`)).toBeTruthy();
       expect(screen.getByTitle(/More - all products/)).toBeTruthy();
       unmount();
     }
