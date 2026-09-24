@@ -16,8 +16,11 @@ build/
 dist/
 
 # Virtual environments
-.venv/
-venv/
+# No trailing slash on tool directories: `x/` matches directories only,
+# never a symlink, so a worktree's `.venv -> /abs/path` would be stageable
+# (see node_modules below and tests/test_no_tracked_symlink_escapes_repo.py).
+.venv
+venv
 env/
 .python-version
 
@@ -89,5 +92,5 @@ docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/
 
 # hardenx scratch output (triage layer; never source)
 .harden/
-.venv314/
+.venv314
 .antiek-home/
