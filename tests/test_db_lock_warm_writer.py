@@ -337,3 +337,31 @@ def test_has_parked_writer(tmp_path: Path, monkeypatch):
     assert db_lock.has_parked_writer(db)
     assert db_lock.flush_warm_writers(db) == 1
     assert not db_lock.has_parked_writer(db)
+
+
+def test_process_holds_write_flock_states(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    db = str(tmp_path / "held.duckdb")
+    assert not db_lock.process_holds_write_flock(db)
+    with db_lock.connect_write(db, purpose="active"):
+        assert db_lock.process_holds_write_flock(db)  # active session
+    assert db_lock.process_holds_write_flock(db)  # parked
+    assert db_lock.flush_warm_writers(db) == 1
+    assert not db_lock.process_holds_write_flock(db)
+
+
+def test_process_holds_write_flock_during_an_expiry_close(tmp_path: Path):
+    db, slot, con = _park_expired_fake(tmp_path)
+    key = db_lock._warm_key(db)
+    try:
+        expiry, _ = _run_in_thread(db_lock._expire_warm_slot, key, slot)
+        assert con.started.wait(5.0)
+        assert not db_lock.has_parked_writer(db)  # slot already popped ...
+        assert db_lock.process_holds_write_flock(db)  # ... but the flock is still held
+        con.release.set()
+        expiry.join(5.0)
+        assert not db_lock.process_holds_write_flock(db)
+    finally:
+        con.release.set()
+        db_lock.flush_warm_writers(db)

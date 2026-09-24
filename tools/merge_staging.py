@@ -52,7 +52,11 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from runtime.db_lock import connect_write, flush_warm_writers, has_parked_writer  # noqa: E402
+from runtime.db_lock import (  # noqa: E402
+    connect_write,
+    flush_warm_writers,
+    process_holds_write_flock,
+)
 
 # Merge order is dependency-respecting: ip_holders before documents (so a
 # document's ip_holder_id can be remapped to a live holder id), documents
@@ -248,7 +252,17 @@ def merge_staging(
     attach_lit = _attach_literal(staging_db)
     results: list[TableMergeResult] = []
 
+    # The keystone window is live-writer-HELD time, as seen by other
+    # processes waiting on the flock. If this process already holds the live
+    # flock at entry — an active writer elsewhere in the process, a parked
+    # (warm) writer, or one whose expiry close is in flight — every second
+    # from here on is held time, the wait for the in-process gate included,
+    # so the clock starts now. Otherwise it starts once the live DB is
+    # actually opened (after the staging close, during which the flock is
+    # free). The check is repeated under the gate: a writer that parks
+    # during our gate wait was holding the flock the whole time.
     started = time.monotonic()
+    live_flock_held_at_entry = process_holds_write_flock(live_db)
 
     def _release_staging_writer() -> None:
         # Runs under db_lock's in-process write gate, before the live flock
@@ -261,18 +275,14 @@ def merge_staging(
         # and flush_warm_writers waits for a close the keepalive expiry
         # timer has already started (or raises, and nothing is opened).
         #
-        # The keystone window is live-writer-HELD time. Cold live DB: the
-        # flock is free while staging closes, so the clock starts after the
-        # flush. Parked live writer: the flock is already held (keepalive
-        # design), so the close is counted — the warm slot is kept rather
-        # than released, because a cold reopen costs seconds inside the
-        # window while a staging close costs the checkpoint of one round.
+        # A parked live writer is kept and reused rather than released: on
+        # a production-scale DB a cold reopen costs the documented ~6.8 s
+        # (db_lock WP-3) inside the window, while the staging close costs
+        # one ingest round's checkpoint (~20 ms on the test fixture).
         nonlocal started
-        live_flock_already_held = has_parked_writer(live_db)
-        if live_flock_already_held:
-            started = time.monotonic()
+        live_flock_held = live_flock_held_at_entry or process_holds_write_flock(live_db)
         flush_warm_writers(staging_db)
-        if not live_flock_already_held:
+        if not live_flock_held:
             started = time.monotonic()
 
     # The ONE write window. Everything below holds the live flock; it opens

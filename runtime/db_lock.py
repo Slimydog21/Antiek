@@ -271,15 +271,29 @@ def _schedule_warm_expiry(key: str, slot: _WarmWriterSlot, keepalive_s: float) -
 
 
 def has_parked_writer(db_path: str) -> bool:
-    """True when THIS process holds a parked (warm) writer on ``db_path``.
-
-    While parked, the cross-process flock is still held (that is the
-    keepalive design), so a caller measuring its own live-writer-held window
-    must count time spent under the gate before the reuse — the flock was
-    already theirs.
-    """
+    """True when THIS process holds a parked (warm) writer on ``db_path``."""
     with _warm_slots_lock:
         return _warm_key(db_path) in _warm_slots
+
+
+def process_holds_write_flock(db_path: str) -> bool:
+    """True when THIS process currently holds the cross-process write flock
+    on ``db_path`` for any reason: an active writer session, a parked (warm)
+    writer, or a parked writer whose expiry close is still in flight (the
+    flock is released only at the end of that close).
+
+    For a caller measuring its own live-writer-held window this is the
+    honest question — while it is true, every second the caller spends
+    (waiting for the in-process gate included) is flock-held time.
+    """
+    key = _warm_key(db_path)
+    with _warm_slots_lock:
+        if key in _warm_slots or key in _warm_closing:
+            return True
+    identity = _db_identity(db_path)
+    with _active_writer_lock:
+        registered_pid, count = _active_writers.get(identity, (os.getpid(), 0))
+    return registered_pid == os.getpid() and count > 0
 
 
 def flush_warm_writers(

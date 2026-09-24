@@ -401,6 +401,47 @@ def test_merge_window_counts_the_staging_close_when_live_is_parked(env, monkeypa
         db_lock.flush_warm_writers(live)
 
 
+def test_merge_window_counts_the_gate_wait_when_live_is_parked(env, monkeypatch):
+    """Parked live writer + another in-process writer holding the process
+    gate: the live flock is held throughout the gate wait, so the window
+    must include it (round-4 finding)."""
+    import threading
+
+    live = os.path.join(env["tmpdir"], "live.duckdb")
+    staging = os.path.join(env["tmpdir"], "staging.duckdb")
+    other = os.path.join(env["tmpdir"], "other.duckdb")
+    init_database_at_path(live)
+    monkeypatch.setattr(db_lock, "_write_keepalive_s", lambda: 20.0)
+    gate_taken = threading.Event()
+    release = threading.Event()
+
+    def hold_gate() -> None:
+        with connect_write(other, purpose="gate-holder"):
+            gate_taken.set()
+            release.wait(5.0)
+
+    try:
+        with connect_write(live, purpose="warm-live"):
+            pass  # parks the live writer: the flock stays held
+        _stage_books(
+            staging, [{"bytes": b"book-gate-wait", "content_class": "public_domain"}]
+        )
+        assert db_lock.process_holds_write_flock(live)
+        holder = threading.Thread(target=hold_gate, daemon=True)
+        holder.start()
+        assert gate_taken.wait(5.0)
+        threading.Timer(0.6, release.set).start()
+        result = merge_staging(live_db=live, staging_db=staging)
+        holder.join(5.0)
+        assert result.total_inserted > 0
+        assert result.window_s >= 0.6, result.window_s  # the gate wait was held time
+    finally:
+        release.set()
+        db_lock.flush_warm_writers(staging)
+        db_lock.flush_warm_writers(live)
+        db_lock.flush_warm_writers(other)
+
+
 def test_merge_fails_closed_when_the_staging_close_outlasts_its_bound(env, monkeypatch):
     """If the staging writer's expiry close cannot be waited out, the merge
     raises before the live DB is opened — never an ATTACH on an open handle."""
