@@ -40,9 +40,15 @@ _DOCUMENTED_BASE_URL = "https://api.moonshot.ai/v1"
 
 
 def _usd_number(raw: object) -> float:
-    if not isinstance(raw, (int, float)) or isinstance(raw, bool) or not math.isfinite(raw):
+    if not isinstance(raw, (int, float)) or isinstance(raw, bool):
         raise ValueError("invalid USD balance")
-    return float(raw)
+    try:
+        value = float(raw)
+    except OverflowError as exc:
+        raise ValueError("invalid USD balance") from exc
+    if not math.isfinite(value):
+        raise ValueError("invalid USD balance")
+    return value
 
 
 def fetch_kimi_balance(
