@@ -195,3 +195,29 @@ describe("F5 — /inv/a → /inv/b opens b's chat starter", () => {
     expect(document.querySelectorAll('[data-stub-panel="InvestigationSidebar"]').length).toBe(1);
   });
 });
+
+describe("a saved layout survives the route change (critic r1 #2)", () => {
+  it("the sidebar moved right at 555 px on /inv/abc is still there after / → /inv/abc", async () => {
+    mountAt("/inv/abc");
+    await act(async () => {});
+    act(() => {
+      useWorkspace.getState().setMode("rw:investigation-sidebar", "docked-right");
+      useWorkspace.getState().setSize("rw:investigation-sidebar", { width: 555 });
+    });
+    await act(async () => {
+      await wait(300); // persisted under antiek.workspace.inv.abc
+    });
+    await act(async () => {
+      navRef.current!("/");
+    });
+    await act(async () => {
+      navRef.current!("/inv/abc");
+    });
+    // The outgoing host's cleanup must not close what hydration restored.
+    const p = useWorkspace.getState().panels["rw:investigation-sidebar"];
+    expect(p?.mode).toBe("docked-right");
+    expect(p?.size.width).toBe(555);
+    expect(useWorkspace.getState().dockBottomIds).toContain("rw:chat:abc");
+  });
+});
+

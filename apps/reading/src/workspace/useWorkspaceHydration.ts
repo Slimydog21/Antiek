@@ -10,6 +10,7 @@ import {
 import {
   disablePersistence,
   enablePersistence,
+  markHydrated,
   setPersistScope,
   useWorkspace,
 } from "./WorkspaceStore";
@@ -143,6 +144,7 @@ export function useWorkspaceHydration() {
 
     // Apply everything in one set
     useWorkspace.setState(next);
+    markHydrated();
 
     // Target the writes for THIS route + investigation
     setPersistScope(

@@ -14,8 +14,10 @@
  *                  next key belongs to the keymap and to nothing else: it is
  *                  consumed (preventDefault + stopPropagation), runs its
  *                  prefix row if one exists, and disarms. Esc disarms. There
- *                  is no timeout (herdr/tmux semantics); leaving the window
- *                  disarms, because the next key can no longer reach us.
+ *                  is no timeout (herdr/tmux semantics). The prefix lapses
+ *                  without taking the key if focus has meanwhile moved into
+ *                  a field or a dialog, and when the window loses focus,
+ *                  because then the next key is not the keymap's to take.
  *
  *   bubble phase   DIRECT KEYS: the ctrl+alt chords, the legacy ⌘ combos and
  *                  "?". Bubble phase, so an element that owns a key first
@@ -123,15 +125,7 @@ export function getCustomHotkeys(): CustomHotkeyBinding[] {
  * data/instruction boundary the daemon work flagged.
  */
 function hydrateCustomFromStorage(): void {
-  const persisted = readCustomHotkeys().bindings;
-  setCustomHotkeys(
-    persisted.map((b) => ({
-      id: b.id,
-      spec: b.spec,
-      route: b.route,
-      entityId: b.entityId,
-    })),
-  );
+  setCustomHotkeys(readCustomHotkeys().bindings);
 }
 
 function isTextEditing(t: Element | null): boolean {
@@ -210,8 +204,8 @@ function toggleProjectTree() {
 
 /** Toggle the AISidecar panel via the workspace store. Exported so every
  *  "Ask"/"Toggle AI sidecar" affordance (SceneChrome action bar,
- *  CommandPalette) goes through the SAME toggle as the ⌘/ key. The
- *  custom-event dispatch is kept for stories that listen for it. */
+ *  CommandPalette) goes through the SAME toggle as the ⌘/ key. (It no longer
+ *  also fires AISIDECAR_TOGGLE: nothing, not even a story, listens for it.) */
 export const AISIDECAR_PANEL_ID = "shortcuts:aisidecar";
 export function toggleAISidecar() {
   const ws = useWorkspace.getState();
@@ -224,7 +218,6 @@ export function toggleAISidecar() {
       { mode: "docked-right", title: "AI", id: AISIDECAR_PANEL_ID },
     );
   }
-  window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.AISIDECAR_TOGGLE));
 }
 
 /** Close the focused floating panel. False (the key is not ours) otherwise,
@@ -347,8 +340,11 @@ export function installShortcuts(
       // Shift (for prefix+?) and other lone modifiers are part of the next
       // key, not the next key.
       if (isLoneModifier(e)) return;
-      consume(e);
       prefixState.disarm();
+      // Focus moved into a field or a dialog since the prefix armed (a
+      // click): the key is theirs, and the prefix just lapses.
+      if (focusContext(e.target).kind !== "default") return;
+      consume(e);
       if (e.key === "Escape" || eventMatchesCombo(e, readPrefix())) return;
       const row = prefixRows.find((r) => eventMatchesCombo(e, r.prefixKey!));
       if (row) run(row.action, e);

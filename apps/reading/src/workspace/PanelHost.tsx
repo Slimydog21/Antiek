@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 
-import { useWorkspace } from "./WorkspaceStore";
+import { getHydrationGeneration, useWorkspace } from "./WorkspaceStore";
 import type { PanelKind, PanelMode } from "./panel.types";
 
 /**
@@ -49,6 +49,7 @@ export function PanelHost({ starters = [], children }: Props) {
   const panels = useWorkspace((s) => s.panels);
 
   useEffect(() => {
+    const generation = getHydrationGeneration();
     const openedIds: string[] = [];
     for (const starter of starters) {
       const id = open(starter.kind, starter.props ?? {}, {
@@ -59,6 +60,11 @@ export function PanelHost({ starters = [], children }: Props) {
       openedIds.push(id);
     }
     return () => {
+      // A newer hydration (the route changed) already replaced the workspace
+      // with the next scope's stored layout, keeping only pinned panels from
+      // this one. Closing "our" ids now would delete that layout's panels
+      // that share a starter id.
+      if (getHydrationGeneration() !== generation) return;
       // Honor pinned: a pinned panel survives the route unmount.
       // We read the latest snapshot lazily via getState() to avoid
       // stale-closure pinning state.

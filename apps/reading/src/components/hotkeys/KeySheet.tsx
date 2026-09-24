@@ -159,6 +159,7 @@ export default function KeySheet({ onClose, platform = currentPlatform() }: KeyS
           </span>
         </label>
 
+        <div className="antiek-keysheet__list">
         {visible.length === 0 && visibleCustom.length === 0 && (
           <p className="antiek-keysheet__empty" role="status">
             No shortcut matches &ldquo;{filter}&rdquo;.
@@ -171,6 +172,11 @@ export default function KeySheet({ onClose, platform = currentPlatform() }: KeyS
               {TASK_TITLES[g.task]}
             </h3>
             <table className="antiek-keysheet__table">
+              <colgroup>
+                <col className="antiek-keysheet__col-action" />
+                <col />
+                <col />
+              </colgroup>
               <thead>
                 <tr>
                   <th scope="col">Action</th>
@@ -238,6 +244,7 @@ export default function KeySheet({ onClose, platform = currentPlatform() }: KeyS
             </ul>
           )}
         </section>
+        </div>
       </div>
     </LemonModal>
   );

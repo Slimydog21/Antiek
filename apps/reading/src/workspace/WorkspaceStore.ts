@@ -303,6 +303,21 @@ export function enablePersistence(): void {
   persistenceEnabled = true;
 }
 
+/**
+ * Bumped each time the shell's hydration replaces the workspace with a stored
+ * layout. A route's PanelHost compares it in its cleanup: when a newer
+ * hydration has run (the route changed), that layout is authoritative, so
+ * the outgoing host must not close panels in it, even ones sharing its
+ * starter ids (MS-01, critic r1: a saved sidebar was reset to its default).
+ */
+let hydrationGeneration = 0;
+export function markHydrated(): void {
+  hydrationGeneration += 1;
+}
+export function getHydrationGeneration(): number {
+  return hydrationGeneration;
+}
+
 useWorkspace.subscribe((state, prev) => {
   if (!persistenceEnabled) return;
   // Cheap reference-equality check on the bits we care about — avoid

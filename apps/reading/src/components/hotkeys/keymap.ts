@@ -190,8 +190,9 @@ const PREFIX_STORAGE_KEY = "antiek.keymap.prefix";
 export function readPrefix(): string {
   try {
     const saved = window.localStorage.getItem(PREFIX_STORAGE_KEY);
-    // setPrefix is the only writer and runs the full isUsablePrefix check;
-    // this read only refuses a hand-edited value that could eat typing.
+    // setPrefix, the only writer, runs the full isUsablePrefix check. A read
+    // re-checks only the shape (a ctrl combo), which keeps that check and
+    // its per-platform scan of the table out of the entry chunk.
     const c = saved ? parseCombo(saved) : null;
     if (c && c.key && c.ctrl && !c.mod && !c.meta) return saved!;
   } catch {
@@ -213,15 +214,23 @@ export function setPrefix(spec: string | null): boolean {
   return true;
 }
 
-/** A prefix needs ctrl or alt (a bare or shift-only key would eat typing, a
- *  ⌘ combo would collide with the legacy rows) and must not be a row's chord. */
+/**
+ * Can `spec` be the prefix? It needs ctrl: a bare or shift-only key would eat
+ * typing, plain alt composes characters on macOS, and a ⌘ combo would take
+ * a legacy row. And it must not be any row's key on ANY platform, where
+ * "mod" is ⌘ on a Mac and Ctrl elsewhere: ctrl+k is ⌘K's key off the Mac,
+ * so it is refused (critic r1). ctrl+b, the default, is free on both: its
+ * only neighbour, the ⌘B row, exists on the Mac alone.
+ */
 export function isUsablePrefix(spec: string): boolean {
   const c = parseCombo(spec);
-  if (!c.key || c.mod || c.meta) return false;
-  if (!c.ctrl && !c.alt) return false;
-  if (c.alt && !c.ctrl) return false; // plain alt composes characters on macOS
-  const phys = physicalKey(c, "mac");
-  return !KEYMAP.some((r) => r.chord && physicalKey(parseCombo(r.chord), "mac") === phys);
+  if (!c.key || c.mod || c.meta || !c.ctrl) return false;
+  return (["mac", "other"] as const).every((platform) => {
+    const phys = physicalKey(c, platform);
+    return !KEYMAP.some(
+      (r) => r.chord && isActiveOn(r, platform) && physicalKey(parseCombo(r.chord), platform) === phys,
+    );
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────

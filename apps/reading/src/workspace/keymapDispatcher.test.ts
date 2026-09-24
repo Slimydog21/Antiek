@@ -221,6 +221,31 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(prefixState.isArmed()).toBe(false);
   });
 
+  it("if focus moves into a text field or a dialog while armed, the key is the field's (critic r1 #1)", () => {
+    const { handlers, total } = countingHandlers();
+    uninstall = installShortcuts(vi.fn() as never, { handlers });
+    press(document.body, "ctrl+b", "mac");
+    expect(prefixState.isArmed()).toBe(true);
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    const g = press(input, "g", "mac");
+    expect(g.defaultPrevented, "the typed 'g' must reach the field").toBe(false);
+    expect(total()).toBe(0);
+    expect(prefixState.isArmed()).toBe(false);
+
+    press(document.body, "ctrl+b", "mac");
+    const dialog = document.createElement("div");
+    dialog.setAttribute("aria-modal", "true");
+    const button = document.createElement("button");
+    dialog.appendChild(button);
+    document.body.appendChild(dialog);
+    button.focus();
+    const esc = pressKey(button, { key: "Escape", code: "Escape" });
+    expect(esc.defaultPrevented, "the dialog's Esc is the dialog's").toBe(false);
+    expect(prefixState.isArmed()).toBe(false);
+  });
+
   it("leaving the window (focus into an iframe or another app) disarms", () => {
     uninstall = installShortcuts(vi.fn() as never);
     press(document.body, "ctrl+b", "mac");

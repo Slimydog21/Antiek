@@ -15,6 +15,8 @@ import {
   KEYMAP,
   KEYMAP_DECISION,
   isUsablePrefix,
+  readPrefix,
+  setPrefix,
   validateKeymap,
   type ActionId,
   type KeymapRow,
@@ -119,8 +121,18 @@ describe("the guard fails when the table is wrong (negative controls)", () => {
     expect(problems.some((p) => p.kind === "duplicate")).toBe(true);
     expect(isUsablePrefix("ctrl+alt+b")).toBe(false);
     expect(isUsablePrefix("ctrl+a")).toBe(true);
+    expect(isUsablePrefix("ctrl+b")).toBe(true); // the default
     expect(isUsablePrefix("b")).toBe(false);
     expect(isUsablePrefix("alt+b")).toBe(false);
+    expect(isUsablePrefix("mod+b")).toBe(false);
+  });
+
+  it("refuses a prefix that is a row's key on the other platform (critic r1 #3)", () => {
+    // Off the Mac, "mod" is Ctrl: ctrl+k is ⌘K's key and ctrl+j is ⌘J's.
+    expect(isUsablePrefix("ctrl+k")).toBe(false);
+    expect(isUsablePrefix("ctrl+j")).toBe(false);
+    expect(isUsablePrefix("ctrl+shift+p")).toBe(false);
+    expect(validateKeymap(KEYMAP, handlerIds, { prefix: "ctrl+k" }).some((p) => p.kind === "duplicate")).toBe(true);
   });
 });
 
@@ -191,3 +203,24 @@ describe("rendering helpers read the same table", () => {
     expect(comboParts("mod+shift+p", "mac")).toEqual(["⌘", "⇧", "P"]);
   });
 });
+
+describe("the prefix is configurable, never onto a taken key", () => {
+  it("setPrefix saves a free combo, refuses a taken one, and null restores ctrl+b", () => {
+    try {
+      expect(setPrefix("ctrl+k")).toBe(false);
+      expect(readPrefix()).toBe("ctrl+b");
+      expect(setPrefix("Ctrl+A")).toBe(true);
+      expect(readPrefix()).toBe("ctrl+a");
+      // A hand-edited value that is not a ctrl combo is ignored.
+      for (const bad of ["b", "meta+b", "mod+b", "alt+b", "shift+b"]) {
+        window.localStorage.setItem("antiek.keymap.prefix", bad);
+        expect(readPrefix(), bad).toBe("ctrl+b");
+      }
+      expect(setPrefix(null)).toBe(true);
+      expect(readPrefix()).toBe("ctrl+b");
+    } finally {
+      window.localStorage.removeItem("antiek.keymap.prefix");
+    }
+  });
+});
+

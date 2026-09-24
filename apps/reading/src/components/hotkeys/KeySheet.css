@@ -73,6 +73,17 @@
   color: var(--text-3);
 }
 
+/* The groups scroll under the intro and the filter, so the filter stays in
+ * view and a long list never outgrows the dialog. */
+.antiek-keysheet__list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: min(64vh, 620px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .antiek-keysheet__group {
   display: flex;
   flex-direction: column;
@@ -90,8 +101,13 @@
 
 .antiek-keysheet__table {
   width: 100%;
+  table-layout: fixed; /* the same columns in every group */
   border-collapse: collapse;
   font-size: 13px;
+}
+
+.antiek-keysheet__col-action {
+  width: 44%;
 }
 
 .antiek-keysheet__table thead th {
@@ -107,7 +123,6 @@
 }
 
 .antiek-keysheet__label {
-  width: 44%;
   padding: 7px 8px 7px 0;
   font-weight: 400;
   text-align: left;
@@ -197,6 +212,15 @@
   .antiek-keysheet__label,
   .antiek-keysheet__forms {
     padding: 2px 0;
+  }
+
+  /* On a phone a "none" line is noise; the other form carries the key. */
+  .antiek-keysheet__forms:has(> .antiek-keysheet__none) {
+    display: none;
+  }
+
+  .antiek-keysheet__list {
+    max-height: 70vh;
   }
 
   .antiek-keysheet__forms::before {
