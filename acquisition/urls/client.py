@@ -34,9 +34,12 @@ DEFAULT_TIMEOUT_S = 20.0
 class FetchPurpose(StrEnum):
     """Why Antiek is fetching a page.
 
-    Each purpose sends its own User-Agent so a site, or a CDN such as
-    Cloudflare (which since 2026-09-15 blocks mixed-use AI crawlers by default
-    on ad-carrying pages), can allow or refuse each use separately. A
+    Each purpose sends its own User-Agent so a site, or a CDN, can allow or
+    refuse each use separately. Cloudflare's 2026-09-15 post
+    (https://blog.cloudflare.com/accountable-mixed-use-ai-crawlers/)
+    describes per-purpose controls whose defaults, for new domains under its
+    ad-supported preset, allow Search and block Agent on pages carrying ads;
+    a crawler that declares no separate purposes cannot be told apart. A
     robots.txt group naming a purpose's own token binds that purpose; a
     purpose with no group of its own falls back to a group naming plain
     ``Antiek``, then to ``*`` (acquisition.urls.robots.robots_allows)."""
@@ -83,11 +86,16 @@ def refusal_counts() -> dict[str, dict[int, int]]:
     """Per-host 401/402/403 refusal counts seen by fetch() in this process, as
     ``{host: {status: n}}``. In-process only: nothing is written to DuckDB, so
     the single-writer invariant is untouched. A host that starts refusing is
-    coverage silently lost. The WARNING line fetch() logs for each refusal,
-    with the running per-host total, is what an operator can see today. Nothing
-    exports this count as a metric: no production code reads it, and the tree
-    has no metrics sink yet (runtime/monitoring describes a planned one). It
-    resets when the process restarts."""
+    coverage silently lost.
+
+    DIAGNOSTIC ONLY, not a metric. No production code reads this: the tests
+    do, and an operator can from a shell in the serving process. The signal
+    an operator actually sees is the WARNING line fetch() logs for each
+    refusal, carrying the running per-host total. Exporting it needs a
+    metrics sink the tree does not have (runtime/monitoring/README.md lists
+    Prometheus dashboards as planned), and /health is public, so per-host
+    crawl targets do not belong there. It resets when the process
+    restarts."""
     with _refusals_lock:
         out: dict[str, dict[int, int]] = {}
         for (host, status), n in _refusals.items():
@@ -157,8 +165,11 @@ def fetch(
     page is requested and again for every redirect hop's URL before that hop
     is requested; an explicit disallow raises ``RobotsDisallowed``. A missing,
     unreachable, or unparseable robots.txt fails OPEN with a WARNING and never
-    blocks ingest. The policy is cached in-process once per origin, and any
-    RSL licence declared by robots.txt surfaces on ``rights_terms``.
+    blocks ingest. The policy is cached in-process once per origin. The RSL
+    licence robots.txt declares for the purpose's agent is narrowed to the
+    ``<content>`` scope covering the URL the fetch ended on (after
+    redirects) and surfaces on ``rights_terms``; a licence with no scope
+    covering that URL surfaces as ``source="rsl_out_of_scope"``.
 
     HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``url`` is an ARBITRARY
     caller-supplied URL (any web/news/blog source), so it could resolve to an
@@ -203,7 +214,11 @@ def fetch(
             return govern_if_arxiv(str(request.url), _send, throttle=canonical_arxiv_throttle())
 
         def _fetch_text(target: str, follow: bool) -> tuple[int, str, str]:
+            # robots.py asks with follow=False and walks each hop itself; for
+            # a redirect it needs where the Location points (FetchText).
             resp = _get(target, follow=follow)
+            if not follow and resp.next_request is not None:
+                return resp.status_code, "", str(resp.next_request.url)
             return resp.status_code, resp.text, str(resp.url)
 
         policy = None if _is_robots_txt(url) else robots_policy_for(url, fetch_text=_fetch_text, user_agent=user_agent)
@@ -236,7 +251,7 @@ def fetch(
             charset=_detect_charset(content_type),
             body=r.content,
             rights_terms=(
-                policy.terms_for(user_agent, fetch_text=_fetch_text)
+                policy.terms_for(user_agent, str(r.url), fetch_text=_fetch_text)
                 if policy is not None
                 else NO_TERMS
             ),
