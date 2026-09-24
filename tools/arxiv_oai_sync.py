@@ -77,6 +77,14 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+# Defensive SSL bootstrap (SPR-05 task 3) — must run BEFORE any import that can
+# open a socket. A python.org interpreter has no system CA bundle, so without it
+# the OAI harvest against export.arxiv.org dies with SSLCertVerificationError.
+# No-op when SSL_CERT_FILE is already set, so the systemd unit keeps priority.
+from runtime.ssl_bootstrap import bootstrap as _ssl_bootstrap  # noqa: E402
+
+_ssl_bootstrap()
+
 from acquisition.arxiv import ArxivBanned, ArxivThrottle, OaiPmhHarvester  # noqa: E402
 from acquisition.arxiv.bulk import (  # noqa: E402
     default_bulk_snapshot_path,

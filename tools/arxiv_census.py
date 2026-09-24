@@ -65,6 +65,14 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+# Defensive SSL bootstrap (SPR-05 task 3) — the --live census harvests
+# export.arxiv.org over HTTPS, and a python.org interpreter has no system CA
+# bundle. httpx builds no SSLContext at import, so running here is early
+# enough. No-op when SSL_CERT_FILE is already set.
+from runtime.ssl_bootstrap import bootstrap as _ssl_bootstrap  # noqa: E402
+
+_ssl_bootstrap()
+
 from acquisition.arxiv import ArxivThrottle, OaiPmhHarvester  # noqa: E402
 from acquisition.arxiv.oai_records import build_census  # noqa: E402
 from substrate.schemas.documents import (  # noqa: E402

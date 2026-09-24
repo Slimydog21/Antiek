@@ -61,25 +61,24 @@ import argparse
 import logging
 import os
 import sys
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-# Defensive SSL bootstrap: a python.org-3.11 interpreter ships without a system
-# CA bundle (the arxiv-missing-ssl-env failure mode). Point at certifi when the
-# env is unset so the HTTPS handshake to arxiv.org / OA sources does not fail
-# silently mid-window. Idempotent and read-only w.r.t. the DB.
-if not os.environ.get("SSL_CERT_FILE"):
-    try:
-        import certifi
+# Defensive SSL bootstrap: a python.org interpreter ships without a system CA
+# bundle (the arxiv-missing-ssl-env failure mode). Point at certifi when the env
+# is unset so the HTTPS handshake to arxiv.org / OA sources does not fail
+# silently mid-window. Must run BEFORE anything opens a socket. This file used
+# to carry its own copy; SPR-05 task 3 moved the one implementation into
+# runtime/ssl_bootstrap.py and wired the four entrypoints that had none.
+from runtime.ssl_bootstrap import bootstrap as _ssl_bootstrap  # noqa: E402
 
-        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
-        os.environ.setdefault("SSL_CERT_DIR", os.path.dirname(certifi.where()))
-    except Exception:
-        pass  # certifi absent -> leave env as-is; fall through to system default
+_ssl_bootstrap()
 
 from acquisition.corpus_quality import (  # noqa: E402
     CandidateRef,
@@ -96,6 +95,9 @@ from substrate.dedup import (  # noqa: E402
     identity_basis,
     identity_key,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from substrate.source_throttle import SourceThrottle
 
 logger = logging.getLogger("tools.run_corpus_ingest")
 
@@ -455,6 +457,30 @@ def _arxiv_bulk_candidates(
     return out
 
 
+def _mirror_ban_if_active(
+    banned_until: float,
+    shared: SourceThrottle,
+    source_key: str,
+    *,
+    now: Callable[[], float] = time.time,
+) -> bool:
+    """Mirror an arXiv export ban into the SHARED source sentinel, but only
+    while that ban is still in the future.
+
+    The shared sentinel exists so the orchestrator's source rotation skips a
+    banned endpoint at the top of the next run. A ban that has already expired
+    carries no such instruction, and ``SourceThrottle.note_response_at`` takes
+    the LATER of the stored and supplied expiry, so mirroring a dead timestamp
+    both re-publishes a ban nobody is serving and writes it into a file shared
+    with every other source. Returns True when a mirror was actually written,
+    so the caller (and a test) can tell a skipped mirror from a performed one.
+    """
+    if banned_until <= now():
+        return False
+    shared.note_response_at(source_key, banned_until)
+    return True
+
+
 def _arxiv_candidates(
     *, query: str | None, category: str | None,
     ids: Sequence[str] | None, limit: int, investigation_id: str,
@@ -490,9 +516,7 @@ def _arxiv_candidates(
     shared = SourceThrottle()
 
     def _mirror_export_ban() -> None:
-        until = throttle.banned_until()
-        if until > 0:
-            shared.note_response_at(ARXIV_EXPORT_KEY, until)
+        _mirror_ban_if_active(throttle.banned_until(), shared, ARXIV_EXPORT_KEY)
 
     papers: list[ArxivPaper] = []
     # Isolate arXiv discovery like the PD/OA paths: a live 429 (export.arxiv.org

@@ -208,6 +208,16 @@ class ArxivThrottle:
             self._sleep(self._min_spacing - elapsed)
             now = self._now()
 
+        # Reaching here PROVES no ban is active: the raise above is the only
+        # path out while ``now < banned_until``. So any sentinel still on disk
+        # has expired, and leaving it there is not harmless bookkeeping — it is
+        # read back as fact. ``tools/arxiv_verify.py`` reports ban state from
+        # this field, and ``run_corpus_ingest``'s export-ban mirror copies it
+        # into the SHARED source sentinel, so a months-dead ban is re-published
+        # on every ingest run. Clearing it on the first successful request is
+        # what makes the field mean "were we banned recently" rather than
+        # "were we ever banned".
+        state.banned_until = 0.0
         state.last_request_at = now
         self._write_state(state)
 

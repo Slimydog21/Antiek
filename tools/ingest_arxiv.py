@@ -53,6 +53,14 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+# Defensive SSL bootstrap (SPR-05 task 3) — a python.org interpreter has no
+# system CA bundle, so without it the export-search and PDF fetch legs die with
+# SSLCertVerificationError. httpx builds no SSLContext at import, so running
+# here is early enough. No-op when SSL_CERT_FILE is already set.
+from runtime.ssl_bootstrap import bootstrap as _ssl_bootstrap  # noqa: E402
+
+_ssl_bootstrap()
+
 from acquisition.arxiv import (  # noqa: E402
     ArxivBanned,
     ArxivPaper,
