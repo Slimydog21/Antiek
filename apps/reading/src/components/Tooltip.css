@@ -1,0 +1,82 @@
+/* ============================================================
+   Tooltip: the CSS-only tip (design spec §4, audit B1 + M10).
+
+   Any element with data-tip="…" shows that text above itself while it is
+   hovered or holds keyboard focus (:focus-visible). No JavaScript runs,
+   so the tip costs the entry chunk nothing and works in every lazy chunk.
+   The native title attribute this replaces never appeared on keyboard
+   focus and could not be styled.
+
+   The tip is drawn by ::after and only EXISTS while shown (content: none
+   otherwise). A hidden-but-present box would still count toward the page's
+   scrollable overflow and could push a sideways scroll at 390px.
+
+   Screen readers do not read ::after content from an attribute reliably,
+   so a component that sets data-tip also points aria-describedby at a
+   hidden element holding the same words (see Tooltip.tsx, LemonButton).
+
+   Colours are the inverse of the page (ink on paper by day, paper on the
+   night sky), so the tip reads against whatever sits under it: 17.6:1 by
+   day, 16.8:1 at night (tokens.contrast.test.ts pins text-1 on bg-page).
+   Placement: above and centred by default; data-tip-placement="bottom"
+   flips it, data-tip-align="start" | "end" pins an edge for a control
+   that sits against the viewport's side.
+   ============================================================ */
+
+:where([data-tip]) {
+  position: relative;
+}
+
+/* Raise the element while its tip shows, so a later sibling that makes
+   its own stacking context (a lifted keycap) cannot paint over the tip. */
+:where([data-tip]:hover, [data-tip]:focus-visible) {
+  z-index: var(--z-tooltip);
+}
+
+[data-tip]::after {
+  content: none;
+}
+
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-tooltip);
+  width: max-content;
+  max-width: min(240px, calc(100vw - 32px));
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--text-1);
+  color: var(--bg-page);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  pointer-events: none;
+}
+
+[data-tip][data-tip-placement="bottom"]:hover::after,
+[data-tip][data-tip-placement="bottom"]:focus-visible::after {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+[data-tip][data-tip-align="start"]:hover::after,
+[data-tip][data-tip-align="start"]:focus-visible::after {
+  left: 0;
+  transform: none;
+}
+
+[data-tip][data-tip-align="end"]:hover::after,
+[data-tip][data-tip-align="end"]:focus-visible::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
