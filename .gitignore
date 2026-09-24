@@ -21,7 +21,7 @@ dist/
 # (see node_modules below and tests/test_no_tracked_symlink_escapes_repo.py).
 .venv
 venv
-env/
+env
 .python-version
 
 # Editor / OS

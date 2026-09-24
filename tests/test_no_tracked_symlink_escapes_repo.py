@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import posixpath
 import subprocess
+import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +55,13 @@ _MAX_LINK_HOPS = 40  # the Linux ELOOP bound; a cycle never resolves
 _AMBIGUOUS = object()
 
 
+def _fold(path: str) -> str:
+    """Unicode canonical caseless form (NFD(casefold(NFD(x)))): how a
+    case-insensitive, normalization-insensitive checkout (APFS, the macOS
+    default) compares names."""
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", path).casefold())
+
+
 def _folded_links(links: dict[str, str], tracked: list[str]) -> dict[str, object]:
     """Links keyed by case-folded path, as a case-insensitive checkout (the
     macOS default) resolves them. A link whose folded name collides with any
@@ -61,10 +69,10 @@ def _folded_links(links: dict[str, str], tracked: list[str]) -> dict[str, object
     from the index."""
     spellings: dict[str, set[str]] = {}
     for p in [*tracked, *links]:
-        spellings.setdefault(p.casefold(), set()).add(p)
+        spellings.setdefault(_fold(p), set()).add(p)
     folded: dict[str, object] = {}
     for path, target in links.items():
-        key = path.casefold()
+        key = _fold(path)
         folded[key] = _AMBIGUOUS if len(spellings.get(key, ())) > 1 else target
     return folded
 
@@ -91,7 +99,7 @@ def _resolve_in_index(path: str, links: dict[str, object], *, fold: bool = False
             resolved.pop()
             continue
         candidate = "/".join([*resolved, part])
-        target = links.get(candidate.casefold() if fold else candidate)
+        target = links.get(_fold(candidate) if fold else candidate)
         if target is None:
             resolved.append(part)
             continue
@@ -175,6 +183,21 @@ def test_a_case_variant_of_a_tracked_link_is_followed():
     assert escapes_repo("dir/link", links["dir/link"], links)
 
 
+def test_a_reverse_case_reference_to_a_tracked_link_is_followed():
+    # The mirror of the case above: the link is spelled lower-case, the
+    # reference upper-case.
+    links = {"dir/alias": "..", "dir/link": "Alias/../../outside"}
+    assert escapes_repo("dir/link", links["dir/link"], links)
+
+
+def test_a_differently_normalized_reference_to_a_tracked_link_is_followed():
+    # Codex round 3 on #3412: APFS matches names normalization-insensitively,
+    # so a precomposed `\u00c9lan` opens a link stored decomposed (NFD).
+    nfd, nfc = "E\u0301lan", "\u00c9lan"
+    links = {f"dir/{nfd}": "..", "dir/link": f"{nfc}/../../outside"}
+    assert escapes_repo("dir/link", links["dir/link"], links)
+
+
 def test_case_colliding_entries_are_treated_as_escapes():
     # Two entries that differ only in case collapse into one path on a
     # case-insensitive checkout; which target wins is not knowable from the
@@ -222,6 +245,20 @@ def test_the_case_variant_chain_is_caught_in_a_real_index(tmp_path):
     assert _offenders(repo) == ["dir/link -> alias/../../outside"]
 
 
+def test_a_decomposed_link_name_is_caught_in_a_real_index(tmp_path):
+    # Codex's round-3 repro: with precomposeunicode off the index keeps the
+    # decomposed name, and a precomposed reference still opens it on APFS.
+    nfd, nfc = "E\u0301lan", "\u00c9lan"
+    repo = tmp_path / "repo"
+    (repo / "dir").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "core.precomposeunicode", "false"], cwd=repo, check=True)
+    (repo / "dir" / nfd).symlink_to("..")
+    (repo / "dir" / "link").symlink_to(f"{nfc}/../../outside")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    assert _offenders(repo) == [f"dir/link -> {nfc}/../../outside"]
+
+
 def test_ignored_tool_directories_cannot_enter_the_index_as_symlinks(tmp_path):
     # A trailing slash in .gitignore matches directories only, never a
     # symlink: that is how a worktree's `node_modules -> /abs/path` reached
@@ -231,7 +268,7 @@ def test_ignored_tool_directories_cannot_enter_the_index_as_symlinks(tmp_path):
     repo.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     (repo / ".gitignore").write_text((ROOT / ".gitignore").read_text())
-    for name in ("node_modules", ".venv", "venv", ".venv314"):
+    for name in ("node_modules", ".venv", "venv", ".venv314", "env"):
         (repo / name).symlink_to("/nonexistent/absolute/target")
         (repo / "nested").mkdir(exist_ok=True)
         (repo / "nested" / name).symlink_to("/nonexistent/absolute/target")
