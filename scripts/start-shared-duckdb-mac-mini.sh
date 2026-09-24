@@ -57,6 +57,16 @@ source "$PL/.env"
 set +a
 export PYTHONPATH="$WT"
 export ANTIEK_HOME="$HOME_ISO"
+# ANTIEK_HOME also moves the arXiv and source ban sentinels, the arXiv governor
+# flock and the ban-event log. arXiv bans the IP, not the worktree, so pin all
+# four back to the shared home. Without these pins this API gets a private
+# governor: it can fire inside the operator CLI's 3.5s window, ignores a ban the
+# CLI armed, and logs its own bans where `tools.arxiv_verify --ban-events` in a
+# normal shell never looks.
+export ANTIEK_ARXIV_THROTTLE_PATH="$SHARED_HOME/arxiv_throttle.json"
+export ANTIEK_ARXIV_GOVERNOR_LOCK_PATH="$SHARED_HOME/arxiv_throttle.json.governor.lock"
+export ANTIEK_SOURCE_THROTTLE_PATH="$SHARED_HOME/source_throttle.json"
+export ANTIEK_BAN_EVENT_LOG_PATH="$SHARED_HOME/ban_events.jsonl"
 export ANTIEK_RESEARCH_EVENTS_DIR="$EVENTS_ISO"
 export ANTIEK_DUCKDB_PATH="$SHARED_DB"
 # Skips DuckDB knowledge-projector recovery (boot/CPU). Loop One still runs
@@ -94,6 +104,7 @@ fi
   echo "ANTIEK_DUCKDB_PATH=$ANTIEK_DUCKDB_PATH"
   echo "ANTIEK_RESEARCH_EVENTS_DIR=$ANTIEK_RESEARCH_EVENTS_DIR"
   echo "ANTIEK_TURBOPUFFER_MANIFEST_DIR=$ANTIEK_TURBOPUFFER_MANIFEST_DIR"
+  echo "ANTIEK_ARXIV_THROTTLE_PATH=$ANTIEK_ARXIV_THROTTLE_PATH"
   echo "Start: scripts/start-shared-duckdb-mac-mini.sh"
 } >"$LOG/STATUS-shared-duckdb.txt"
 
