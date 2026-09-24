@@ -44,6 +44,10 @@ REFUSALS (fail-closed, no partial silent migration):
   * a legacy tool connection's stored credential is not bound to that row
     (owner, kind, handle, fingerprint), so re-sealing it could hand someone
     else's secret to the target owner;
+  * a legacy tool connection's credential is absent from the BYOK artifact
+    this run reads. That is almost always a run without the API service's
+    ANTIEK_BYOK_* environment, and moving the row anyway would strand the key
+    for good;
   * ``--email`` does not derive (``derive_owner_from_verified_email``
     returns None).
 
@@ -93,6 +97,7 @@ from runtime.byok.store import (  # noqa: E402
     store_credential,
     store_credential_with_metadata,
 )
+from runtime.byok.store import _default_artifact_path as _byok_artifact_path  # noqa: E402
 from runtime.connectors import registry as connectors  # noqa: E402
 from runtime.db_lock import (  # noqa: E402
     LockedConnection,
@@ -571,6 +576,7 @@ def _legacy_tool_connections(
     moves: list[_ToolMove] = []
     conflicts: list[str] = []
     unbound: list[str] = []
+    missing: list[str] = []
     for key, record in records.items():
         if record.owner_user_id != LEGACY_OWNER:
             continue
@@ -579,7 +585,9 @@ def _legacy_tool_connections(
             conflicts.append(f"{record.vendor}/{new_key}")
             continue
         meta = metadata.get(record.cred_id)
-        if meta is not None and not connectors._metadata_matches(record, meta):
+        if meta is None:
+            missing.append(f"{record.vendor}/{record.cred_id}")
+        elif not connectors._metadata_matches(record, meta):
             unbound.append(f"{record.vendor}/{record.cred_id}")
         moves.append((key, new_key, record))
     _check_no_target_conflict(conflicts, "tool connections")
@@ -588,6 +596,14 @@ def _legacy_tool_connections(
             f"tool connections: stored credential(s) {unbound!r} are not bound to "
             f"their {LEGACY_OWNER!r} row; refusing to re-seal a secret whose owner "
             "cannot be proven"
+        )
+    if missing:
+        raise MigrationRefused(
+            f"tool connections: credential(s) {missing!r} are not in the BYOK artifact "
+            f"{_byok_artifact_path()!r}. Run with the API service's environment "
+            "(ANTIEK_BYOK_ARTIFACT, ANTIEK_BYOK_KEY_FILE); moving a row without its "
+            "credential strands the key. If a credential is genuinely gone, remove "
+            "that row from tool_connections.json with the API stopped"
         )
     return moves
 
@@ -616,45 +632,35 @@ def _apply_tool_connections(report: MigrationReport) -> None:
         moves = _legacy_tool_connections(records, report.target_owner)
         if not moves:
             return
-        stored = {m.cred_id for m in list_credentials()}
         resealed: list[str] = []
         retired: list[connectors.PendingDeletion] = []
         try:
             for key, new_key, record in moves:
-                cred_id, fingerprint = record.cred_id, record.credential_fingerprint
-                if record.cred_id in stored:
-                    # Decrypt-then-restore is the only route: the SecretBox key
-                    # is bound to (owner, handle). Plaintext never leaves here.
-                    plaintext: str | None = None
-                    try:
-                        plaintext = load_credential(record.cred_id).reveal()
-                        meta = store_credential_with_metadata(
-                            record.account_handle,
-                            plaintext,
-                            pipeline_kind=f"connector_{record.vendor}",
-                            owner_user_id=report.target_owner,
-                        )
-                    finally:
-                        plaintext = None
-                    resealed.append(meta.cred_id)
-                    retired.append(connectors._pending_for(record))
-                    cred_id, fingerprint = meta.cred_id, meta.artifact_fingerprint
-                else:
-                    logger.warning(
-                        "tool_connections.json: %s has no stored credential; "
-                        "re-owning the row without re-sealing (it stays degraded)", key,
+                # Decrypt-then-restore is the only route: the SecretBox key is
+                # bound to (owner, handle). Plaintext never leaves here.
+                plaintext: str | None = None
+                try:
+                    plaintext = load_credential(record.cred_id).reveal()
+                    meta = store_credential_with_metadata(
+                        record.account_handle,
+                        plaintext,
+                        pipeline_kind=f"connector_{record.vendor}",
+                        owner_user_id=report.target_owner,
                     )
+                finally:
+                    plaintext = None
+                resealed.append(meta.cred_id)
+                retired.append(connectors._pending_for(record))
                 del records[key]
                 records[new_key] = replace(
                     record,
                     owner_user_id=report.target_owner,
-                    cred_id=cred_id,
-                    credential_fingerprint=fingerprint,
+                    cred_id=meta.cred_id,
+                    credential_fingerprint=meta.artifact_fingerprint,
                 )
                 logger.info(
-                    "tool_connections.json: %s %s -> %s (owner %s -> %s%s)",
+                    "tool_connections.json: %s %s -> %s (owner %s -> %s, cred re-sealed)",
                     record.vendor, key, new_key, LEGACY_OWNER, report.target_owner,
-                    ", cred re-sealed" if cred_id != record.cred_id else "",
                 )
             connectors._write_unlocked(records, [*pending, *retired])
         except Exception:
