@@ -176,11 +176,29 @@ def _lineup_app() -> FastAPI:
 
     @app.middleware("http")
     async def _identity(request: Request, call_next: Any) -> Any:
-        request.state.user_id = request.headers.get("x-test-owner", "__operator__")
+        # A header names another owner. Without one the request is the verified
+        # operator session, whose owner #3382 derives from its e-mail; the bare
+        # "__operator__" sentinel names nobody and is refused (401).
+        other = request.headers.get("x-test-owner")
+        request.state.user_id = other or "__operator__"
+        request.state.user_email = None if other else _OPERATOR_EMAIL
         request.state.auth_method = "antiek_session_cookie"
         return await call_next(request)
 
     return app
+
+
+_OPERATOR_EMAIL = "operator@localhost"
+
+
+def _operator_owner() -> str:
+    from interfaces.research.api.account_memory_identity import (
+        derive_owner_from_verified_email,
+    )
+
+    owner = derive_owner_from_verified_email(_OPERATOR_EMAIL)
+    assert owner is not None
+    return owner
 
 
 def _role_id() -> str:
@@ -193,7 +211,7 @@ def _seed(path: Path) -> dict[str, Any]:
     role = _role_id()
     seed = {
         "owners": {
-            "__operator__": {
+            _operator_owner(): {
                 "general": {role: {"provider_id": "p", "model_id": "m"}},
                 "advanced": {},
                 "updated_at": "x",
@@ -274,7 +292,7 @@ def test_c04_valid_registry_still_round_trips_other_owners(lineup_env: Path) -> 
     put = client.put("/settings/lineup", json={"general": {_role_id(): None}, "advanced": {}})
     assert put.status_code == 200, put.text
     persisted = json.loads(lineup_env.read_text(encoding="utf-8"))["owners"]
-    assert sorted(persisted) == ["__operator__", "owner-b"]
+    assert sorted(persisted) == sorted([_operator_owner(), "owner-b"])
 
 
 # ---------------------------------------------------------------------------
