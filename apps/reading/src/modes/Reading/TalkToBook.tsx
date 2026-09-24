@@ -456,7 +456,7 @@ export default function TalkToBook({
             placeholder="Ask about this book…"
             aria-label="Question for this book"
             rows={2}
-            className="min-w-0 flex-1 resize-none rounded-md border border-rule bg-ice-1 px-2 py-1.5 text-sm text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+            className="min-w-0 flex-1 resize-none rounded-md border border-rule bg-ice-1 px-2 py-1.5 text-sm text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();

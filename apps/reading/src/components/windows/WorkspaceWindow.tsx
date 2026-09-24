@@ -292,7 +292,7 @@ export function WorkspaceWindow({
           titleBarShadow +
           " " +
           (isFull ? "cursor-default" : "cursor-grab active:cursor-grabbing") +
-          " focus:outline-none focus-visible:ring-2 focus-visible:ring-sun"
+          " focus:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         }
         onPointerDown={onDragDown}
         onPointerMove={onDragMove}

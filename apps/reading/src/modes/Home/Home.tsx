@@ -94,7 +94,7 @@ export function Home() {
                   "group flex flex-col items-start rounded-hog border-edge border-sun " +
                   "bg-ice-0 p-5 text-left shadow-z1 dark:shadow-z1-night " +
                   press +
-                  " focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun " +
+                  " focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus " +
                   "dark:bg-charcoal-2"
                 }
               >

@@ -362,7 +362,7 @@ function NotePanel({
         onChange={(e) => setText(e.target.value)}
         placeholder="Type a note, or speak it…"
         rows={3}
-        className="w-full bg-shadow-2 text-bright rounded p-1.5 resize-none outline-none"
+        className="w-full bg-shadow-2 text-bright rounded p-1.5 resize-none focus-visible:outline-bright"
         autoFocus
       />
       {/* Mic-permission-denied surfaces honestly (rigor #3), never a crash.
@@ -496,7 +496,7 @@ function DialoguePanel({
         onChange={(e) => setFollowUp(e.target.value)}
         placeholder="Ask about this passage (one-shot)…"
         rows={2}
-        className="w-full bg-shadow-2 text-bright rounded p-1.5 resize-none outline-none"
+        className="w-full bg-shadow-2 text-bright rounded p-1.5 resize-none focus-visible:outline-bright"
         autoFocus
       />
       {voice.recorderState === "denied" && (
@@ -685,7 +685,7 @@ function EditPanel({
           onChange={(e) => setInstruction(e.target.value)}
           placeholder="e.g. make it more concise"
           rows={2}
-          className="w-full rounded border border-charcoal-2 bg-shadow-2 p-1.5 text-bright"
+          className="w-full rounded border border-charcoal-2 bg-shadow-2 p-1.5 text-bright focus-visible:outline-bright"
           disabled={busy}
         />
         <div className="flex gap-1.5">

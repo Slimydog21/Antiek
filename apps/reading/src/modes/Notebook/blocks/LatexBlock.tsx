@@ -77,7 +77,7 @@ function LatexNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            className="w-full min-h-[80px] px-4 py-3 font-mono text-sm bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright outline-none resize-y"
+            className="w-full min-h-[80px] px-4 py-3 font-mono text-sm bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright resize-y"
             placeholder="\\sum_{i=1}^{n} \\binom{n}{i}…"
           />
         ) : (

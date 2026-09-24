@@ -75,7 +75,7 @@ export default function InsightLegoShelf({
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search graph insights…"
         aria-label="Search insight Legos"
-        className="w-full px-2 py-1 text-xs border border-rule dark:border-charcoal-1 rounded bg-ice-1 dark:bg-charcoal-2 focus:outline-none focus:ring-1 focus:ring-sun"
+        className="w-full px-2 py-1 text-xs border border-rule dark:border-charcoal-1 rounded bg-ice-1 dark:bg-charcoal-2 focus:outline-none focus:ring-1 focus:ring-focus"
       />
       <ul className="max-h-36 overflow-y-auto space-y-1" aria-label="Draggable insights">
         {hits.length === 0 && !loading ? (

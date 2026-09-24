@@ -668,10 +668,10 @@ export default function Library() {
                 value={searchDraft}
                 maxLength={256}
                 onChange={(event) => setSearchDraft(event.target.value)}
-                className="mt-1 min-h-11 w-full rounded-md border border-rule bg-ice-0 px-3 text-sm text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-sun dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+                className="mt-1 min-h-11 w-full rounded-md border border-rule bg-ice-0 px-3 text-sm text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-focus dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
               />
             </label>
-            <button type="submit" className="min-h-11 rounded-md bg-ink px-4 text-sm font-medium text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sun">
+            <button type="submit" className="min-h-11 rounded-md bg-ink px-4 text-sm font-medium text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-focus">
               Search catalog
             </button>
           </form>
@@ -1505,11 +1505,11 @@ export default function Library() {
               </p>
               <div className="flex gap-2">
                 <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}
-                  className="min-h-11 rounded-md border border-rule px-4 text-sm disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sun dark:border-charcoal-1">
+                  className="min-h-11 rounded-md border border-rule px-4 text-sm disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus dark:border-charcoal-1">
                   Previous
                 </button>
                 <button type="button" disabled={page * PAGE_SIZE >= total} onClick={() => setPage((value) => value + 1)}
-                  className="min-h-11 rounded-md border border-rule px-4 text-sm disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sun dark:border-charcoal-1">
+                  className="min-h-11 rounded-md border border-rule px-4 text-sm disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus dark:border-charcoal-1">
                   Next
                 </button>
               </div>

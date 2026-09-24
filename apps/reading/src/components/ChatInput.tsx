@@ -87,7 +87,7 @@ export default function ChatInput({
           placeholder={placeholder}
           disabled={disabled || busy}
           rows={2}
-          className="flex-1 resize-none rounded-md border border-rule dark:border-charcoal-1 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-sun disabled:bg-ice-3 dark:bg-charcoal-1 disabled:text-ink-mute dark:text-moonlight"
+          className="flex-1 resize-none rounded-md border border-rule dark:border-charcoal-1 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-focus disabled:bg-ice-3 dark:bg-charcoal-1 disabled:text-ink-mute dark:text-moonlight"
           onKeyDown={(e) => {
             // Cmd/Ctrl+Enter submits — matches Cursor's chat ergonomics.
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {

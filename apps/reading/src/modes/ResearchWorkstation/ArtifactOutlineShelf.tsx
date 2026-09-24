@@ -354,7 +354,7 @@ export default function ArtifactOutlineShelf({
             onChange={(e) => setMergeIds(e.target.value)}
             placeholder="other research ids"
             aria-label="Other research ids"
-            className="min-w-[180px] flex-1 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-xs text-ink outline-none placeholder:text-ink-mute focus:border-sun dark:bg-charcoal-2 dark:text-bright"
+            className="min-w-[180px] flex-1 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-xs text-ink placeholder:text-ink-mute dark:bg-charcoal-2 dark:text-bright"
           />
           <LemonButton size="sm" disabled={mergeBusy} onClick={() => void onDraftMerge()}>
             Draft merge

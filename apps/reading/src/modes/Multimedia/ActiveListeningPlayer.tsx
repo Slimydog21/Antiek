@@ -440,7 +440,7 @@ export function ActiveListeningPlayer({
             aria-label={`${chapter.title}, ${formatTime(chapter.start_offset_seconds)} to ${formatTime(chapter.end_offset_seconds)}`}
             aria-current={index === currentIndex ? "true" : undefined}
             onClick={() => seekChapter(index)}
-            className="grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 px-1 py-2 text-left hover:bg-ice-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun dark:hover:bg-charcoal-1"
+            className="grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 px-1 py-2 text-left hover:bg-ice-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus dark:hover:bg-charcoal-1"
           >
             <span className="font-mono text-xxs text-shadow-2">{String(index + 1).padStart(2, "0")}</span>
             <span className="truncate text-xs font-semibold">{chapter.title}</span>
@@ -601,7 +601,7 @@ function Control({ label, icon, ...props }: { label: string; icon: ReactNode } &
 }
 
 function speedClass(active: boolean) {
-  return `h-7 min-w-10 rounded-hog border px-2 font-mono text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun ${active ? "border-sun bg-sun text-ink" : "border-rule bg-transparent dark:border-charcoal-1"}`;
+  return `h-7 min-w-10 rounded-hog border px-2 font-mono text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus ${active ? "border-sun bg-sun text-ink" : "border-rule bg-transparent dark:border-charcoal-1"}`;
 }
 
 function formatTime(seconds: number) {

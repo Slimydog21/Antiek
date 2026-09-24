@@ -198,7 +198,7 @@ export default function WriteHome() {
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="What are you writing? (a title)"
-            className="w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1"
+            className="w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-focus dark:border-charcoal-1"
           />
           {/* M4: open-ended project type — presets seed, do not gate. */}
           <ProjectTypeField

@@ -78,7 +78,7 @@ export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
       onClick={action}
       disabled={removed}
       aria-label={ariaLabel}
-      className="group flex flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sun rounded-hog disabled:opacity-60 disabled:cursor-not-allowed"
+      className="group flex flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-hog disabled:opacity-60 disabled:cursor-not-allowed"
     >
       <div
         className={`relative aspect-[2/3] w-full rounded-hog border-edge border-sun overflow-hidden shadow-z1 dark:shadow-z1-night ${

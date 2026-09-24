@@ -45,7 +45,7 @@ export default function HouseSlot({ promo, onOpen }: HouseSlotProps) {
     <button
       type="button"
       onClick={() => onOpen?.(promo.documentId)}
-      className="flex items-center gap-3 w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sun rounded-md px-2 py-1"
+      className="flex items-center gap-3 w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-md px-2 py-1"
       aria-label={`Next read from the library: ${promo.title}`}
     >
       <LemonTag colour="sun">Next read</LemonTag>

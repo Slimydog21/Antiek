@@ -79,12 +79,12 @@ export default function DeliverableSidebar() {
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           placeholder="New deliverable title…"
-          className="w-full px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
+          className="w-full px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-focus"
         />
         <select
           value={newKind}
           onChange={(e) => setNewKind(e.target.value as DeliverableKind)}
-          className="w-full px-2 py-1.5 text-xs border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
+          className="w-full px-2 py-1.5 text-xs border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-focus"
         >
           {(Object.keys(DELIVERABLE_KIND_LABELS) as DeliverableKind[]).map(
             (k) => (

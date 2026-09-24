@@ -77,7 +77,7 @@ export default function InterviewNotes({ interviewId }: Props) {
         placeholder={
           "Body-language cues, emphasis, follow-ups… stored locally only."
         }
-        className="flex-1 w-full p-3 font-serif text-sm leading-relaxed bg-transparent text-ink dark:text-bright outline-none resize-none"
+        className="flex-1 w-full p-3 font-serif text-sm leading-relaxed bg-transparent text-ink dark:text-bright focus-visible:outline-offset-[-2px] resize-none"
       />
       <footer className="px-3 py-2 border-t border-rule dark:border-charcoal-1 text-xxs font-mono text-ink-mute dark:text-moonlight">
         Notes are operator-private (localStorage). Substrate events are

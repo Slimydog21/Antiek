@@ -47,7 +47,7 @@ export function VoiceNoteCapture() {
         onChange={(e) => setTranscript(e.target.value)}
         rows={3}
         placeholder="Transcript…"
-        className="mt-2 w-full px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
+        className="mt-2 w-full px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-focus"
       />
       <div className="mt-2 flex items-center justify-between gap-2">
         <LemonButton

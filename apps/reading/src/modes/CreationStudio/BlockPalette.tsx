@@ -64,7 +64,7 @@ export default function BlockPalette() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search insights, claims, notes…"
-        className="w-full px-2 py-1.5 text-xs border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
+        className="w-full px-2 py-1.5 text-xs border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-focus"
       />
       <ul className="flex-1 overflow-y-auto space-y-1 min-h-0">
         {hits.length === 0 && !loading && (

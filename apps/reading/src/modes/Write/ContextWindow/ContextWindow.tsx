@@ -87,7 +87,7 @@ export function ContextWindow({ className }: ContextWindowProps) {
         value={state.title}
         onChange={(e) => setState((s) => ({ ...s, title: e.target.value }))}
         placeholder="Title (optional — defaults to your objective)"
-        className="px-3 py-1.5 border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
+        className="px-3 py-1.5 border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-focus"
       />
 
       {/* Drop zone for repository blocks. */}
@@ -129,7 +129,7 @@ export function ContextWindow({ className }: ContextWindowProps) {
         onChange={(e) => setState((s) => ({ ...s, objective: e.target.value }))}
         rows={2}
         placeholder="State the writing objective (text or voice)…"
-        className="px-3 py-2 border border-rule dark:border-charcoal-1 rounded font-serif focus:outline-none focus:ring-2 focus:ring-sun"
+        className="px-3 py-2 border border-rule dark:border-charcoal-1 rounded font-serif focus:outline-none focus:ring-2 focus:ring-focus"
       />
 
       <div className="flex items-center gap-3">

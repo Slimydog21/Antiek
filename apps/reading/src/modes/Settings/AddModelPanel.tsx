@@ -386,7 +386,7 @@ export default function AddModelPanel() {
           <h3
             ref={formHeadingRef}
             tabIndex={-1}
-            className="font-mono text-sm font-semibold text-ink outline-none focus-visible:ring-2 focus-visible:ring-sun dark:text-bright"
+            className="font-mono text-sm font-semibold text-ink outline-none focus-visible:ring-2 focus-visible:ring-focus dark:text-bright"
           >
             Add a provider model
           </h3>

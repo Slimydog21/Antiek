@@ -143,7 +143,7 @@ export default function CorpusSearch({ onOpen, themeContext }: CorpusSearchProps
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search your books — or drop a file to find books like it"
           aria-label="Search the corpus"
-          className="flex-1 bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-1.5 text-sm outline-none border border-rule dark:border-charcoal-1"
+          className="flex-1 bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-1.5 text-sm border border-rule dark:border-charcoal-1"
         />
         <LemonButton type="submit" size="sm" variant="primary" disabled={busy}>
           {busy ? "Searching…" : "Search"}

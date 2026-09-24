@@ -79,7 +79,7 @@ export function ProjectTypeField({ value, onChange, disabled }: ProjectTypeField
         onChange={(e) => commit(e.target.value)}
         disabled={disabled}
         placeholder="What kind of piece? (anything — memo, chapter, toast, rebuttal…)"
-        className="w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1"
+        className="w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-focus dark:border-charcoal-1"
       />
       <div className="flex flex-wrap gap-1">
         {PROJECT_TYPE_PRESETS.map((p) => (

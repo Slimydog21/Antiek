@@ -774,7 +774,7 @@ function NewSectionForm({
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder={`Add section #${nextIndex + 1}…`}
-        className="flex-1 rounded border border-rule px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1"
+        className="flex-1 rounded border border-rule px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-focus dark:border-charcoal-1"
       />
       <button
         type="submit"

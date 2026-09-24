@@ -287,7 +287,7 @@ function AutoNotebookBody({
             >
               <a
                 href={`#notebook-section-${s.kind}`}
-                className="underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+                className="underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
               >
                 {s.heading}
               </a>

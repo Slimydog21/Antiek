@@ -144,7 +144,7 @@ export default function SpeakIndex() {
             onChange={(e) => setName(e.target.value)}
             placeholder="A name — e.g. my grandmother, Dad, Maria"
             aria-label="Who do you want to remember?"
-            className="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-base text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
+            className="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-base text-ink focus:outline-none focus:ring-2 focus:ring-focus dark:border-charcoal-1 dark:text-bright"
           />
           <LemonButton
             type="submit"

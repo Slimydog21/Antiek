@@ -171,7 +171,7 @@ export default function MetaReading() {
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="What should this reading be about? (e.g. how my books treat free will)"
               rows={3}
-              className="w-full bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-2 text-sm resize-none outline-none border border-rule dark:border-charcoal-1"
+              className="w-full bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-2 text-sm resize-none border border-rule dark:border-charcoal-1"
             />
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-sm text-ink dark:text-bright">
@@ -182,7 +182,7 @@ export default function MetaReading() {
                   value={amount}
                   onChange={(e) => setAmount(parseInt(e.target.value, 10) || 0)}
                   aria-label="Length amount"
-                  className="w-16 bg-ice-0 dark:bg-charcoal-1 rounded px-2 py-1 text-sm outline-none border border-rule dark:border-charcoal-1"
+                  className="w-16 bg-ice-0 dark:bg-charcoal-1 rounded px-2 py-1 text-sm border border-rule dark:border-charcoal-1"
                 />
               </label>
               <div role="radiogroup" aria-label="Length unit" className="flex items-center gap-1">

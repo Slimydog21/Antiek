@@ -30,7 +30,7 @@ export default function BookCard({ book, onOpen }: BookCardProps) {
       type="button"
       onClick={() => { if (!unavailable) onOpen?.(book.document_id); }}
       disabled={unavailable}
-      className="group flex flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sun rounded-hog"
+      className="group flex flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-focus rounded-hog"
       aria-label={`${action} ${title}${book.author ? ` by ${book.author}` : ""}`}
     >
       <div

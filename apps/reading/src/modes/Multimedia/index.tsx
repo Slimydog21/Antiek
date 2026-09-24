@@ -885,7 +885,7 @@ export default function Multimedia() {
                   value={customDuration}
                   onChange={(event) => setCustom(event.target.value)}
                   aria-label="Custom duration"
-                  className="h-8 w-20 rounded-md border border-rule bg-ice-0 px-2 text-sm text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                  className="h-8 w-20 rounded-md border border-rule bg-ice-0 px-2 text-sm text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
                 />
                 <span>15-45 minutes</span>
               </label>

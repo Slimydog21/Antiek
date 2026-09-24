@@ -98,7 +98,7 @@ export default function BlockRepository({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search insights, questions, claims…"
-        className="mb-2 w-full rounded border border-rule px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1"
+        className="mb-2 w-full rounded border border-rule px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-focus dark:border-charcoal-1"
       />
 
       {folders.length > 0 && (

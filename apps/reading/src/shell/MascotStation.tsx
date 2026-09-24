@@ -565,7 +565,7 @@ export function MascotStation() {
       className={
         "fixed z-[60] select-none touch-none cursor-grab active:cursor-grabbing " +
         "rounded-full p-0 border-0 bg-transparent " +
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun"
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
       }
       style={{
         width: MASCOT_SIZE,

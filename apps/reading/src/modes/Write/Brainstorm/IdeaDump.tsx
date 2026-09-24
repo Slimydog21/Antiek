@@ -72,7 +72,7 @@ export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps)
         onChange={(e) => setIdea(e.target.value)}
         rows={3}
         placeholder="Think aloud here (text or voice). The agent identifies what's driving it."
-        className="px-3 py-2 border border-rule dark:border-charcoal-1 rounded font-serif focus:outline-none focus:ring-2 focus:ring-sun"
+        className="px-3 py-2 border border-rule dark:border-charcoal-1 rounded font-serif focus:outline-none focus:ring-2 focus:ring-focus"
       />
 
       {/* Clarifying-question loop — bounded by the turn cap. */}
@@ -156,7 +156,7 @@ function DriverColumn({
         onChange={(e) => onChange(e.target.value)}
         rows={4}
         placeholder="one per line"
-        className="px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded font-serif focus:outline-none focus:ring-2 focus:ring-sun"
+        className="px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded font-serif focus:outline-none focus:ring-2 focus:ring-focus"
       />
       {hint && <span className="text-xxs text-ink-mute leading-tight">{hint}</span>}
     </div>
