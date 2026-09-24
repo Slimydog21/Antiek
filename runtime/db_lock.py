@@ -767,16 +767,22 @@ def connect_write(
 
     assert_write_path_not_real_store(db_path)
 
-    gate_deadline = time.monotonic() + timeout_s
-    while True:
-        if _PROCESS_WRITE_GATE.acquire(blocking=False):
-            break
-        if time.monotonic() >= gate_deadline:
-            raise WriteLockTimeout(
-                f"Could not acquire in-process write gate within {timeout_s}s "
-                f"(another connect_write holds it in this process)."
-            )
-        time.sleep(min(poll_interval_s, max(0.0, gate_deadline - time.monotonic())))
+    # Block on the in-process gate with a deadline rather than sleep-polling
+    # it. The gate is a threading.Lock, so a waiter can be woken the moment
+    # the holder releases; polling it every poll_interval_s instead cost each
+    # in-process waiter up to 250 ms of dead time per contention, with no
+    # ordering between waiters. That was invisible while API writes ran on
+    # the event loop (the loop serialized them, so the gate was never
+    # contended) and became the dominant cost once they moved to threads:
+    # benchmarks/capacity_probe.py measured write-lock wait p95 rising from
+    # ~0.1 ms to ~1.2 s at 25 concurrent readers. Same lock, same deadline,
+    # same WriteLockTimeout; only the wake-up changes. The cross-process
+    # flock below still polls, because flock has no timed wait.
+    if not _PROCESS_WRITE_GATE.acquire(timeout=max(0.0, float(timeout_s))):
+        raise WriteLockTimeout(
+            f"Could not acquire in-process write gate within {timeout_s}s "
+            f"(another connect_write holds it in this process)."
+        )
 
     try:
         return _connect_write_after_process_gate(
