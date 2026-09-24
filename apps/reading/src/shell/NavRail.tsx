@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
@@ -27,8 +27,11 @@ import {
 // The More drawer is ~6.6 KB of minified JS that nothing needs until More is
 // pressed, so it stays out of the entry chunk (design spec §7, 700,000 B gzip)
 // and is prefetched two seconds after the rail mounts, ahead of a first click.
-const loadLauncher = () => import("./ProductsLauncher");
-const ProductsLauncher = lazy(loadLauncher);
+// It is held in state rather than React.lazy: nothing above the rail catches
+// a render error, so a chunk that fails to load must close the drawer, not
+// throw through the app. The next press retries.
+type Launcher = typeof import("./ProductsLauncher").ProductsLauncher;
+const loadLauncher = () => import("./ProductsLauncher").then((m) => m.ProductsLauncher);
 
 /**
  * NavRail (SPR-04) — the four-workflow content-first rail.
@@ -270,14 +273,18 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const tier = useViewportTier();
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const [launcherOpen, setLauncherOpen] = useState<boolean>(false);
+  const [Launcher, setLauncher] = useState<Launcher | null>(null);
+  const fetchLauncher = () =>
+    loadLauncher().then(
+      (L) => setLauncher(() => L),
+      () => setLauncherOpen(false),
+    );
   useEffect(() => {
-    const t = window.setTimeout(() => void loadLauncher(), 2000);
+    const t = window.setTimeout(() => void fetchLauncher(), 2000);
     return () => window.clearTimeout(t);
   }, []);
-  const launcher = launcherOpen && (
-    <Suspense fallback={null}>
-      <ProductsLauncher open onClose={() => setLauncherOpen(false)} />
-    </Suspense>
+  const launcher = Launcher && (
+    <Launcher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
   );
   const isMobile = tier === "sm" || tier === "md";
   const showRail = !isMobile || !collapsed;
@@ -458,6 +465,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       active={launcherOpen}
       onClick={() => {
         setLauncherOpen(true);
+        if (!Launcher) void fetchLauncher();
         // SPR-08/SPR-10 — More OPENS the launcher (no nav), so it emits a
         // routeless activation, identical to the `g m` hotkey path.
         emitProductActivate({ productId: "more", source: "click" });
