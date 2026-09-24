@@ -212,13 +212,24 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(total()).toBe(0);
   });
 
-  it("pressing the prefix again cancels it; a held (repeating) prefix does not toggle", () => {
+  it("a held prefix stays armed, its repeats reach nothing; pressing it again cancels (critic r2 #1)", () => {
+    // On a Mac "mod" also accepts Ctrl, so a leaked ctrl+b repeat would be
+    // the legacy ⌘B row and toggle the sidebar.
     uninstall = installShortcuts(vi.fn() as never);
+    const sidebar = () => Boolean(useWorkspace.getState().panels["shortcuts:projecttree"]);
     press(document.body, "ctrl+b", "mac");
-    press(document.body, "ctrl+b", "mac", { repeat: true });
+    for (let i = 0; i < 4; i++) {
+      const r = press(document.body, "ctrl+b", "mac", { repeat: true });
+      expect(r.defaultPrevented, `repeat ${i} swallowed`).toBe(true);
+      expect(prefixState.isArmed(), `repeat ${i} keeps it armed`).toBe(true);
+      expect(sidebar(), `repeat ${i} never reaches ⌘B`).toBe(false);
+    }
+    press(document.body, "ctrl+b", "mac"); // a fresh press cancels
     expect(prefixState.isArmed()).toBe(false);
-    press(document.body, "ctrl+b", "mac", { repeat: true });
+    const late = press(document.body, "ctrl+b", "mac", { repeat: true });
+    expect(late.defaultPrevented).toBe(true);
     expect(prefixState.isArmed()).toBe(false);
+    expect(sidebar()).toBe(false);
   });
 
   it("if focus moves into a text field or a dialog while armed, the key is the field's (critic r1 #1)", () => {
@@ -234,13 +245,19 @@ describe("the prefix engine (herdr semantics)", () => {
     expect(total()).toBe(0);
     expect(prefixState.isArmed()).toBe(false);
 
+    // Arm again from a neutral focus (critic r2 #2: with the input still
+    // focused the prefix never armed, and this half proved nothing).
+    input.blur();
+    input.remove();
     press(document.body, "ctrl+b", "mac");
+    expect(prefixState.isArmed(), "re-armed from the page body").toBe(true);
     const dialog = document.createElement("div");
     dialog.setAttribute("aria-modal", "true");
     const button = document.createElement("button");
     dialog.appendChild(button);
     document.body.appendChild(dialog);
     button.focus();
+    expect(document.activeElement).toBe(button);
     const esc = pressKey(button, { key: "Escape", code: "Escape" });
     expect(esc.defaultPrevented, "the dialog's Esc is the dialog's").toBe(false);
     expect(prefixState.isArmed()).toBe(false);

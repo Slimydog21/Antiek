@@ -336,26 +336,30 @@ export function installShortcuts(
 
   function onCapture(e: KeyboardEvent) {
     if (e.isComposing) return;
+    const isPrefix = eventMatchesCombo(e, readPrefix());
     if (prefixState.isArmed()) {
       // Shift (for prefix+?) and other lone modifiers are part of the next
       // key, not the next key.
       if (isLoneModifier(e)) return;
+      // A held prefix auto-repeats; it stays armed and the repeats go nowhere.
+      if (isPrefix && e.repeat) return consume(e);
       prefixState.disarm();
       // Focus moved into a field or a dialog since the prefix armed (a
       // click): the key is theirs, and the prefix just lapses.
       if (focusContext(e.target).kind !== "default") return;
       consume(e);
-      if (e.key === "Escape" || eventMatchesCombo(e, readPrefix())) return;
+      if (e.key === "Escape" || isPrefix) return;
       const row = prefixRows.find((r) => eventMatchesCombo(e, r.prefixKey!));
       if (row) run(row.action, e);
       return;
     }
-    if (e.repeat || !eventMatchesCombo(e, readPrefix())) return;
     // Never steal the prefix from text (ctrl+b moves the caret on macOS) or
     // from a dialog.
-    if (focusContext(e.target).kind !== "default") return;
+    if (!isPrefix || focusContext(e.target).kind !== "default") return;
     consume(e);
-    prefixState.arm();
+    // A repeat of a prefix that was just cancelled is swallowed, not re-armed
+    // and never passed on (on a Mac, ctrl+b would reach the ⌘B row).
+    if (!e.repeat) prefixState.arm();
   }
 
   function onBubble(e: KeyboardEvent) {
