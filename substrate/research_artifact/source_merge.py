@@ -16,7 +16,7 @@ from typing import Any
 
 from runtime.db_lock import LockedConnection
 from substrate.event_log import log_event
-from substrate.research_artifact.paths import reviewed_draft_merge_path
+from substrate.research_artifact.paths import read_reviewed_draft_merge
 
 SOURCE_MERGE_APPLIED = "source_merge.applied"
 SOURCE_MERGE_COMMITTED = "source_merge.committed"
@@ -189,7 +189,7 @@ def _hash_text(value: str | None) -> str:
 def _read_reviewed_draft(draft_merge_path: str) -> str:
     # Only a draft this server wrote may be spliced into a book: the path comes
     # from the client's review packet.
-    return reviewed_draft_merge_path(draft_merge_path).read_text(encoding="utf-8")
+    return read_reviewed_draft_merge(draft_merge_path)
 
 
 def _preview_merge_payload(

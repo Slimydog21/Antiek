@@ -45,7 +45,8 @@ from substrate.research_artifact import (  # noqa: E402
 )
 from substrate.research_artifact.paths import (  # noqa: E402
     artifact_path_for,
-    reviewed_draft_merge_path,
+    read_importable_artifact,
+    read_reviewed_draft_merge,
 )
 from substrate.research_artifact.store import ResearchArtifactStore  # noqa: E402
 
@@ -231,7 +232,7 @@ def _validate_source_merge_preflight(body: SourceMergeApplyIn, *, db_path: str) 
     if len(member_ids) < 2:
         _raise_source_merge_refusal("source_merge_requires_two_members", status_code=400)
     try:
-        reviewed_draft_merge_path(packet.draft_merge_path)
+        read_reviewed_draft_merge(packet.draft_merge_path)
     except ValueError:
         _raise_source_merge_refusal("source_merge_draft_merge_path_invalid", status_code=400)
     if len(packet.hash_conflicts) != packet.hash_conflict_count:
@@ -300,8 +301,16 @@ async def get_artifact_status(investigation_id: str, request: Request) -> Artifa
 
 @artifact_router.post("/{investigation_id}/artifact/import-notes", response_model=ImportNotesOut)
 async def post_import_notes(investigation_id: str, body: ImportNotesIn) -> ImportNotesOut:
+    # The path comes from the client: read it only from the artifacts
+    # directory, through one anchored descriptor, before parsing anything.
     try:
-        res = import_agent_notes(Path(body.path), investigation_id=investigation_id)
+        html_text = read_importable_artifact(body.path)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="import_notes_path_invalid") from None
+    try:
+        res = import_agent_notes(
+            Path(body.path), investigation_id=investigation_id, html_text=html_text
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ImportNotesOut(

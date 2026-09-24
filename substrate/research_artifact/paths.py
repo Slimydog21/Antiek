@@ -191,29 +191,42 @@ def draft_merge_path_for(*investigation_ids: str) -> Path:
 
 
 _DRAFT_MERGE_NAME = re.compile(r"draft-merge-[^/\\]+\.html")
+_CONFINED_READ_LIMIT = 10 * 1024 * 1024
 
 
-def reviewed_draft_merge_path(candidate: str) -> Path:
-    """The server-written draft-merge file ``candidate`` names, or ValueError.
+def _read_confined_text(candidate: str, *, refusal: str, direct_child: re.Pattern[str] | None) -> str:
+    """UTF-8 text of a file under the research artifacts directory, read
+    through one descriptor anchored at that directory (no symlink component,
+    no ``..`` escape, regular file, bounded). The check and the read are the
+    same open, so the file cannot be swapped between them. Every refusal,
+    present or missing, raises ``ValueError(refusal)``."""
+    path = Path(os.path.abspath(candidate))
+    if direct_child is not None and (
+        path.parent != Path(os.path.abspath(research_artifacts_dir()))
+        or not direct_child.fullmatch(path.name)
+    ):
+        raise ValueError(refusal)
+    try:
+        return read_bounded_nofollow(path, _CONFINED_READ_LIMIT).decode("utf-8")
+    except (OSError, ValueError, OverflowError):
+        raise ValueError(refusal) from None
+
+
+def read_reviewed_draft_merge(candidate: str) -> str:
+    """The text of the server-written draft-merge file ``candidate`` names.
 
     A source merge splices this file into a book's body, and the path arrives
     in a client's review packet. It may only name a draft this server wrote:
-    a regular ``draft-merge-*.html`` file directly inside the research
-    artifacts directory, not a symlink and not reached through ``..`` or an
-    absolute path elsewhere. Every other value, present or missing, raises the
-    same error, so the answer says nothing about files outside the drafts.
+    a ``draft-merge-*.html`` directly inside the research artifacts directory.
+    Anything else raises ``ValueError("source_merge_draft_merge_path_invalid")``.
     """
-    refused = ValueError("source_merge_draft_merge_path_invalid")
-    root = research_artifacts_dir().resolve()
-    path = Path(candidate)
-    if not path.is_absolute() or not _DRAFT_MERGE_NAME.fullmatch(path.name):
-        raise refused
-    if path.parent.resolve() != root:
-        raise refused
-    try:
-        info = os.lstat(path)
-    except OSError:
-        raise refused from None
-    if not stat.S_ISREG(info.st_mode):  # lstat: a symlink is not a regular file
-        raise refused
-    return root / path.name
+    return _read_confined_text(
+        candidate, refusal="source_merge_draft_merge_path_invalid", direct_child=_DRAFT_MERGE_NAME
+    )
+
+
+def read_importable_artifact(candidate: str) -> str:
+    """The text of a research artifact under the artifacts directory, for an
+    HTTP notes import whose path arrives from the client. Anything outside it
+    raises ``ValueError("import_notes_path_invalid")``."""
+    return _read_confined_text(candidate, refusal="import_notes_path_invalid", direct_child=None)

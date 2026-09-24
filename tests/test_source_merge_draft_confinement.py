@@ -176,3 +176,86 @@ def test_the_substrate_reader_is_confined_without_the_route(api_env):  # noqa: F
             expected_content_hashes=hashes,
             hash_conflicts=[],
         )
+
+
+def test_a_draft_swapped_for_a_symlink_after_validation_is_not_read(api_env, monkeypatch):  # noqa: F811
+    # The route validates the draft, then the substrate reads it. Replacing the
+    # draft with a symlink between the two must not reach the target: the read
+    # itself refuses a symlink, it does not rely on the earlier check.
+    import interfaces.research.api.artifact_routes as routes
+
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+    secret = _secret_file(api_env)
+    real = routes._validate_source_merge_preflight
+
+    def validate_then_swap(body, *, db_path):
+        members = real(body, db_path=db_path)
+        draft = Path(body.reviewed_packet.draft_merge_path)
+        draft.unlink()
+        draft.symlink_to(secret)
+        return members
+
+    monkeypatch.setattr(routes, "_validate_source_merge_preflight", validate_then_swap)
+    resp = _preview(client, packet, hashes)
+    assert resp.status_code != 200, resp.text
+    assert REFUSAL in resp.text, resp.text
+    assert SECRET not in resp.text
+
+
+def test_a_relative_artifacts_dir_still_previews_its_own_draft(api_env, monkeypatch, tmp_path):  # noqa: F811
+    # Compose returns a relative draft path when the artifacts directory is
+    # configured relative; the confinement must read it the same way.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", "relative-artifacts")
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+    resp = _preview(client, packet, hashes)
+    assert resp.status_code == 200, resp.text
+
+
+def test_a_draft_swapped_right_after_the_readers_first_access_is_not_read(api_env, monkeypatch):  # noqa: F811
+    # The race inside the reader: once its first filesystem access to the draft
+    # completes, the draft is replaced by a symlink to another file. A reader
+    # that checks and then reopens by name follows the symlink; one that reads
+    # from the descriptor it opened cannot.
+    from substrate.research_artifact import source_merge
+
+    client = _client()
+    packet, _ = _source_merge_ready_packet(client)
+    draft = Path(packet["draft_merge_path"])
+    secret = _secret_file(api_env)
+    swapped: list[bool] = []
+
+    def swap_once() -> None:
+        if not swapped:
+            swapped.append(True)
+            draft.unlink()
+            draft.symlink_to(secret)
+
+    def names_draft(target) -> bool:
+        return os.fspath(target).endswith(draft.name)
+
+    real_lstat, real_open = os.lstat, os.open
+
+    def lstat_then_swap(target, *args, **kwargs):
+        result = real_lstat(target, *args, **kwargs)
+        if names_draft(target):
+            swap_once()
+        return result
+
+    def open_then_swap(target, *args, **kwargs):
+        result = real_open(target, *args, **kwargs)
+        if names_draft(target):
+            swap_once()
+        return result
+
+    monkeypatch.setattr(os, "lstat", lstat_then_swap)
+    monkeypatch.setattr(os, "open", open_then_swap)
+    try:
+        text = source_merge._read_reviewed_draft(str(draft))
+    except ValueError as err:
+        assert REFUSAL in str(err)
+    else:
+        assert SECRET not in text
+    assert swapped, "the reader never touched the draft"
