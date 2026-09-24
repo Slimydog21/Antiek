@@ -1951,6 +1951,10 @@ def create_app(
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
     register_book_routes(app)
+    # Anchor-first SPR-03 — anchored highlights: owner-scoped pin/list/delete
+    # + the chunk anchor-map (ids/offsets/hashes only, gated like the body).
+    from .book_anchor_routes import register_book_anchor_routes
+    register_book_anchor_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
