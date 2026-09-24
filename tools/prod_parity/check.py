@@ -5,7 +5,9 @@ extended SPR-11 (antiek-flywheel-foundation).
 Fetch ``/health`` from a live Antiek API and check three things:
 
   (a) the SHA the running process reports (``build_sha``) equals the
-      expected ref (default: ``git rev-parse origin/main``)  — BLOCKING,
+      expected ref (default: ``git rev-parse origin/main``), or, in
+      drift-tolerant mode, is an ancestor within the configured age
+      budget — BLOCKING,
   (b) the live provider registry (``registered_providers``) is non-empty
       — BLOCKING, and
   (c) the research-DEPTH flywheel is ALIVE (``flywheel_ready`` is true) —
@@ -45,8 +47,10 @@ assertion comparing deployed-SHA to ``main`` is exactly the control the
 pipeline lacked. Trust is not a control.
 
 Exit codes:
-    0 — build_sha == expected_sha AND len(registered_providers) > 0 (a dead
-        flywheel only warns here unless ``--require-flywheel`` is set).
+    0 — SHA gate passes AND len(registered_providers) > 0 (a dead flywheel
+        only warns here unless ``--require-flywheel`` is set). By default
+        the SHA gate requires equality; ``--max-lag-hours`` uses ancestry
+        and age instead.
     1 — a parity failure (SHA mismatch and/or empty provider registry; plus a
         dead flywheel only when ``--require-flywheel`` is set), with a message
         naming which condition failed.
@@ -289,9 +293,10 @@ def run(
     """Fetch + assert; return the process exit code. Pure-enough to call
     from tests (they pass a fake ``url`` or monkeypatch ``fetch_health``).
 
-    SHA + provider parity always block (exit 1 on failure). Flywheel liveness
-    is INFORMATIONAL by default (a ``::warning`` / stderr note, exit unchanged)
-    and only blocks when ``require_flywheel`` is set — see ``flywheel_warnings``.
+    The selected SHA gate and provider registry always block (exit 1 on
+    failure). Flywheel liveness is INFORMATIONAL by default (a ``::warning``
+    / stderr note, exit unchanged) and only blocks when ``require_flywheel``
+    is set — see ``flywheel_warnings``.
     """
     try:
         health = fetch_health(url)
@@ -327,8 +332,17 @@ def run(
         if not flywheel
         else "flywheel informational (not yet live — see warning above)"
     )
+    observed_sha = health.get("build_sha", "")
+    sha_note = (
+        f"build_sha {observed_sha} matches expected_sha {expected_sha}"
+        if observed_sha == expected_sha
+        else (
+            f"converging: build_sha {observed_sha} is an ancestor of expected_sha "
+            f"{expected_sha} within the {max_lag_hours:g}h lag budget"
+        )
+    )
     print(
-        f"prod-parity: OK — build_sha {expected_sha} matches main, "
+        f"prod-parity: OK — {sha_note}, "
         f"{len(health.get('registered_providers', []))} providers registered, "
         f"{flywheel_note}",
     )

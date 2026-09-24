@@ -212,7 +212,7 @@ def test_run_sha_mismatch_exits_nonzero(monkeypatch):
     assert rc != 0, "a SHA mismatch must exit non-zero, not log-and-pass"
 
 
-def test_run_providers_present_and_sha_match_exits_zero(monkeypatch):
+def test_run_providers_present_and_sha_match_exits_zero(monkeypatch, capsys):
     monkeypatch.setattr(
         parity,
         "fetch_health",
@@ -220,6 +220,30 @@ def test_run_providers_present_and_sha_match_exits_zero(monkeypatch):
     )
     rc = parity.run("http://fake.invalid", expected_sha=_GOOD_SHA)
     assert rc == 0, "matching SHA + providers present must exit 0"
+    output = capsys.readouterr().out
+    assert f"build_sha {_GOOD_SHA} matches expected_sha {_GOOD_SHA}" in output
+    assert "matches main" not in output
+
+
+def test_run_converging_success_reports_observed_sha(monkeypatch, capsys):
+    monkeypatch.delenv("ANTIEK_API_BASE", raising=False)
+    monkeypatch.setattr(
+        parity,
+        "fetch_health",
+        lambda url, **kw: _fake_health(
+            build_sha=_OTHER_SHA, providers=["openrouter"]
+        ),
+    )
+    monkeypatch.setattr(parity, "staleness_failures", lambda *args, **kw: [])
+
+    rc = parity.run("http://fake.invalid", expected_sha=_GOOD_SHA, max_lag_hours=720)
+    output = capsys.readouterr().out
+
+    assert rc == 0
+    assert f"build_sha {_OTHER_SHA}" in output
+    assert f"expected_sha {_GOOD_SHA}" in output
+    assert "converging" in output
+    assert "matches main" not in output
 
 
 def test_run_empty_providers_exits_nonzero(monkeypatch):
