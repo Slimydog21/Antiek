@@ -102,6 +102,14 @@ def test_first_party_presets_pin_exact_kind_endpoint_path_and_prices() -> None:
 
 def test_onboarding_catalog_endpoint_is_exact_stable_non_secret_projection() -> None:
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        request.state.user_id = "__operator__"
+        request.state.user_email = "operator-under-test@example.com"
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
     register_settings_budget_routes(app)
     with TestClient(app) as client:
         response = client.get("/settings/models/catalog")
@@ -146,6 +154,14 @@ def test_preset_user_key_is_registered_route_eligible_and_priced(
     monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "master.key"))
     reset_provider_registry()
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        request.state.user_id = "__operator__"
+        request.state.user_email = "operator-under-test@example.com"
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
     register_settings_budget_routes(app)
     with TestClient(app) as client:
         response = client.post(

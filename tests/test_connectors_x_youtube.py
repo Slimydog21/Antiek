@@ -532,3 +532,160 @@ def test_x_tool_quota_source_carries_no_retired_flat_tier_reasoning() -> None:
     # The rate must be stated with a source and a date it was read.
     assert "https://docs.x.com/x-api/getting-started/pricing" in source
     assert X_POST_READ_USD == 0.005
+
+
+# ---------------------------------------------------------------------------
+# (g) Single-item fetches — the seam /research/tools/ingest reads (SPR-04 task 5)
+#
+# Ingesting a candidate fetches that one item again with the owner's own key.
+# YouTube's videos.list is 1 quota unit; X's GET /2/tweets/:id is one billed
+# post read. A malformed id must be refused before either is spent.
+# ---------------------------------------------------------------------------
+
+
+def test_youtube_video_metadata_spends_one_unit_and_parses_snippet(
+    artifact: str, tmp_path: Path
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        assert request.url.path == "/youtube/v3/videos"
+        assert request.url.params["id"] == "dQw4w9WgXcQ"
+        assert request.url.params["part"] == "snippet,contentDetails"
+        return httpx.Response(
+            200,
+            json={"items": [{
+                "id": "dQw4w9WgXcQ",
+                "snippet": {
+                    "title": "A lecture on solid-state batteries",
+                    "channelTitle": "Materials Lab",
+                    "description": "Full description.",
+                    "publishedAt": "2026-08-12T00:00:00Z",
+                },
+                "contentDetails": {"duration": "PT1H2M3S"},
+            }]},
+        )
+
+    conn = YouTubeDataConnector(
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+        client=httpx.Client(transport=_mock_transport(handler)),
+        meter=_fake_meter(tmp_path / "quota-meta"),
+    )
+    conn.attach_key(_YT_KEY)
+    before = conn.quota_remaining().remaining
+    meta = conn.video_metadata("dQw4w9WgXcQ")
+    assert before - conn.quota_remaining().remaining == 1
+    assert len(seen) == 1
+    assert meta.title == "A lecture on solid-state batteries"
+    assert meta.channel_title == "Materials Lab"
+    assert meta.description == "Full description."
+    assert meta.published_at == "2026-08-12T00:00:00Z"
+    assert meta.duration_seconds == 3723
+    conn.close()
+
+
+def test_youtube_video_metadata_rejects_bad_id_before_any_send(
+    artifact: str, tmp_path: Path
+) -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json={"items": []})
+
+    conn = YouTubeDataConnector(
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+        client=httpx.Client(transport=_mock_transport(handler)),
+        meter=_fake_meter(tmp_path / "quota-bad-id"),
+    )
+    conn.attach_key(_YT_KEY)
+    for bad in ("short", "dQw4w9WgXcQ&x=1", "../../etc/pw", ""):
+        with pytest.raises(ValueError):
+            conn.video_metadata(bad)
+    assert calls == []
+    assert conn.quota_remaining().remaining == 10000
+    conn.close()
+
+
+def test_youtube_video_metadata_of_an_unknown_video_is_a_404(
+    artifact: str, tmp_path: Path
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": []})
+
+    conn = YouTubeDataConnector(
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+        client=httpx.Client(transport=_mock_transport(handler)),
+        meter=_fake_meter(tmp_path / "quota-404"),
+    )
+    conn.attach_key(_YT_KEY)
+    with pytest.raises(YouTubeError) as exc_info:
+        conn.video_metadata("aaaaaaaaaaa")
+    assert exc_info.value.status_code == 404
+    conn.close()
+
+
+def test_x_get_tweet_joins_the_author_handle(artifact: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/2/tweets/1790000000000000001"
+        assert request.url.params["expansions"] == "author_id"
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "id": "1790000000000000001",
+                    "text": "A thread worth reading",
+                    "author_id": "42",
+                    "created_at": "2026-08-12T10:00:00.000Z",
+                    "conversation_id": "1790000000000000001",
+                },
+                "includes": {"users": [{"id": "42", "username": "@researcher", "verified": True}]},
+            },
+        )
+
+    conn = XTwitterConnector(
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+        client=httpx.Client(transport=_mock_transport(handler)),
+        governor=_fake_governor(tmp_dir="/tmp/unused-get"),
+    )
+    conn.attach_key(_X_BEARER)
+    record = conn.get_tweet("1790000000000000001")
+    assert record == {
+        "tweet_id": "1790000000000000001",
+        "text": "A thread worth reading",
+        "author_handle": "researcher",
+        "created_at": "2026-08-12T10:00:00.000Z",
+        "conversation_id": "1790000000000000001",
+        "author_verified": True,
+    }
+    conn.close()
+
+
+def test_x_get_tweet_refuses_a_malformed_id_and_reports_a_missing_post(
+    artifact: str,
+) -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json={"errors": [{"title": "Not Found Error"}]})
+
+    conn = XTwitterConnector(
+        artifact_path=artifact,
+        key_bytes=_TEST_KEY_BYTES,
+        client=httpx.Client(transport=_mock_transport(handler)),
+        governor=_fake_governor(tmp_dir="/tmp/unused-get-404"),
+    )
+    conn.attach_key(_X_BEARER)
+    with pytest.raises(ValueError):
+        conn.get_tweet("12ab")
+    assert calls == []
+    with pytest.raises(XTwitterError) as exc_info:
+        conn.get_tweet("123")
+    assert exc_info.value.status_code == 404
+    conn.close()

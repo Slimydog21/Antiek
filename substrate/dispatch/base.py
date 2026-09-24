@@ -40,6 +40,8 @@ class ProviderError(Exception):
         latency_ms: int,
         retryable: bool = False,
         request_id: str | None = None,
+        endpoint: str | None = None,
+        upstream_type: str | None = None,
     ):
         super().__init__(message)
         self.provider = provider
@@ -47,6 +49,86 @@ class ProviderError(Exception):
         self.latency_ms = latency_ms
         self.retryable = retryable
         self.request_id = request_id
+        self.endpoint = endpoint
+        self.upstream_type = upstream_type
+
+
+def parse_upstream_error_envelope(body: Any) -> tuple[str, str, Any] | None:
+    """Return ``(message, type, param)`` for an OpenAI-shaped error object.
+
+    OAuth token errors use a string ``error`` plus ``error_description``.
+    Those are not this envelope. A match requires ``error.message``,
+    ``error.type``, and an explicit ``error.param`` (null is valid).
+    """
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    if not isinstance(error, dict) or "param" not in error:
+        return None
+    message = error.get("message")
+    error_type = error.get("type")
+    if not isinstance(message, str) or not message.strip():
+        return None
+    if not isinstance(error_type, str) or not error_type.strip():
+        return None
+    return message, error_type, error.get("param")
+
+
+_MAX_UPSTREAM_MESSAGE_CHARS = 400
+_MAX_UPSTREAM_META_CHARS = 120
+
+
+def _bounded(value: str, limit: int) -> str:
+    """Keep hostile upstream fields from becoming oversized log lines."""
+    return value if len(value) <= limit else f"{value[:limit]}…"
+
+
+def describe_upstream_http_error(
+    body: Any,
+    *,
+    provider: str,
+    status_code: int,
+    endpoint: str,
+    secret: str = "",
+) -> tuple[str, str | None] | None:
+    """Classify an upstream/proxy envelope with provider and endpoint context.
+
+    Returns ``(detail, upstream_type)``. The detail names who was called and
+    the upstream message. ``type=server_error`` stays a field on that detail,
+    not the whole error. Credential material reflected by an untrusted
+    endpoint is omitted.
+    """
+    parsed = parse_upstream_error_envelope(body)
+    if parsed is None:
+        return None
+    message, error_type, param = parsed
+    if bool(secret) and secret in endpoint:
+        endpoint = endpoint.replace(secret, "[redacted]")
+    type_leaks = bool(secret) and secret in error_type
+    message_leaks = bool(secret) and secret in message
+    param_leaks = bool(secret) and isinstance(param, str) and secret in param
+    safe_type = None if type_leaks else error_type
+    if message_leaks or param_leaks:
+        bounded_type = (
+            _bounded(safe_type, _MAX_UPSTREAM_META_CHARS)
+            if safe_type is not None
+            else None
+        )
+        return f"{provider}: HTTP {status_code}: {endpoint}: upstream error", bounded_type
+    if param is None:
+        param_text = "null"
+    elif isinstance(param, str):
+        param_text = param
+    else:
+        param_text = str(param)
+    bounded_message = _bounded(message, _MAX_UPSTREAM_MESSAGE_CHARS)
+    bounded_type = _bounded(error_type, _MAX_UPSTREAM_META_CHARS)
+    bounded_param = _bounded(param_text, _MAX_UPSTREAM_META_CHARS)
+    detail = (
+        f"{provider}: HTTP {status_code}: {endpoint}: {bounded_message} "
+        f"(type={bounded_type}, param={bounded_param})"
+    )
+    return detail, safe_type
 
 
 def response_contains_secret(value: Any, secret: str) -> bool:
