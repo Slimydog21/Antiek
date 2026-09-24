@@ -148,7 +148,7 @@ export default function ConnectResearch({
           size="sm"
         />
         {model.state === "error" && (
-          <span className="text-xxs font-mono text-emperor" aria-live="polite">
+          <span className="text-xs text-emperor" aria-live="polite">
             Your models couldn’t load. Default is still available.
           </span>
         )}

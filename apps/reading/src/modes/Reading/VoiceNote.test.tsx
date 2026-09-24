@@ -135,3 +135,23 @@ describe("VoiceNote", () => {
     window.removeEventListener("antiek:thought-partner:seed", onSeed);
   });
 });
+
+describe("VoiceNote — error sentences are set in the interface face", () => {
+  it("shows a recorder error in sans, not mono", () => {
+    // Design spec §3: mono never carries an error sentence.
+    recorderState.error = "Microphone access was blocked.";
+    render(<VoiceNote documentId="doc-1" pageIndex={0} investigationId="read-doc-1" />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Microphone access was blocked.");
+    expect(alert.className).not.toMatch(/\bfont-mono\b/);
+  });
+
+  it("shows a transcription error in sans, not mono", async () => {
+    transcribeMock.mockRejectedValue(new Error("Transcription isn’t available right now."));
+    recorderState.state = "stopped";
+    recorderState.blob = new Blob(["audio"], { type: "audio/webm" });
+    render(<VoiceNote documentId="doc-1" pageIndex={0} investigationId="read-doc-1" />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.className).not.toMatch(/\bfont-mono\b/);
+  });
+});

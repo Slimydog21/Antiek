@@ -94,3 +94,24 @@ describe("ResearchThis", () => {
     expect(openWindowMock).not.toHaveBeenCalled();
   });
 });
+
+describe("ResearchThis — error sentences are set in the interface face", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("shows a failed spin in sans, not mono", async () => {
+    // Design spec §3: mono never carries an error sentence.
+    spinResearchMock.mockRejectedValue(new Error("book_not_found"));
+    render(
+      <MemoryRouter>
+        <ResearchThis documentId="doc-1" pageIndex={0} passageText="x" />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Research this page/i }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Book not found.");
+    expect(alert.className).not.toMatch(/\bfont-mono\b/);
+  });
+});

@@ -135,7 +135,7 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
             </LemonButton>
           )}
           {recorder.error && (
-            <span className="text-xs font-mono text-emperor" role="alert">
+            <span className="text-xs text-emperor" role="alert">
               {recorder.error}
             </span>
           )}
@@ -159,7 +159,7 @@ export default function VoiceNote({ documentId, pageIndex, investigationId, onSa
             aria-label="Voice note transcript (editable)"
           />
           {error && (
-            <span className="text-xs font-mono text-emperor" role="alert">
+            <span className="text-xs text-emperor" role="alert">
               {error}
             </span>
           )}

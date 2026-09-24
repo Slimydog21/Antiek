@@ -77,3 +77,17 @@ describe("ConnectResearch — M1 connect or auto-spawn", () => {
     expect(onConnect).not.toHaveBeenCalled();
   });
 });
+
+describe("ConnectResearch — error sentences are set in the interface face", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("says the models couldn't load in sans at 12px or more, not 10px mono", async () => {
+    // Design spec §3: mono never carries an error sentence, and no text is
+    // under 11px. Before: text-xxs font-mono.
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    render(<ConnectResearch pieceTitle="My memo" onConnect={vi.fn()} />);
+    const sentence = await screen.findByText(/models couldn’t load/);
+    expect(sentence.className).not.toMatch(/\bfont-mono\b/);
+    expect(sentence.className).not.toMatch(/\btext-xxs\b/);
+  });
+});

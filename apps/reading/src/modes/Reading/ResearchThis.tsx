@@ -84,7 +84,7 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
         {busy ? "Spinning research…" : "Research this page"}
       </LemonButton>
       {error && (
-        <span className="text-xs font-mono text-emperor" role="alert">
+        <span className="text-xs text-emperor" role="alert">
           {error === "book_not_found" ? "Book not found." : error}
         </span>
       )}
