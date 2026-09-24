@@ -27,20 +27,11 @@ from runtime.connectors.x_twitter import (
     estimated_search_cost_usd,
 )
 
+from .account_memory_identity import distinct_signed_owner
+
 tool_connections_router = APIRouter(prefix="/settings/tools", tags=["settings-tools"])
 _PRIVATE_NO_STORE = "private, no-store"
 _MAX_CREDENTIAL_BODY_BYTES = 1_024
-_AUTHENTICATED_METHODS = frozenset(
-    {
-        "antiek_session_cookie",
-        "cloudflare_access_email",
-        "cloudflare_service_token",
-        "bearer_token",
-    }
-)
-_SHARED_OPERATOR_METHODS = frozenset(
-    {"cloudflare_access_email", "cloudflare_service_token", "bearer_token"}
-)
 
 # What a connected X key actually costs its owner. Surfacing only the rate
 # ceiling here used to imply a monthly allowance; X sells pay-per-use credits
@@ -102,20 +93,26 @@ class ToolDisconnectResponse(BaseModel):
 
 
 def _owner(request: Request) -> str:
-    owner_user_id = getattr(request.state, "user_id", None)
-    auth_method = getattr(request.state, "auth_method", None)
-    normalized_owner = owner_user_id.strip() if isinstance(owner_user_id, str) else ""
-    if (
-        not normalized_owner
-        or len(normalized_owner) > 256
-        or auth_method not in _AUTHENTICATED_METHODS
-        or (
-            normalized_owner == "__operator__"
-            and auth_method in _SHARED_OPERATOR_METHODS
-        )
-    ):
+    """Resolve the person whose connected-tool credential this request stores.
+
+    This used to return ``request.state.user_id`` verbatim. Every production
+    login mints ``__operator__`` on a session cookie, so a connection was
+    written under ``__operator__`` while ``research_tool_search`` read it
+    under the derived ``acct_<hash>``. The registry hashes the owner into the
+    record key, so the two never named the same row: connecting a tool
+    succeeded and every search that would spend it answered 503.
+
+    Both halves now call ``distinct_signed_owner``, so they cannot disagree.
+    It derives the same ``acct_<hash>`` that ``request_owner_user_id`` gives
+    model keys, so one login owns its tools and its models under one id.
+    Rows written under the sentinel stay invisible until
+    ``tools/migrate_owner_namespace.py`` re-owns them; there is deliberately
+    no read-fallback.
+    """
+    owner = distinct_signed_owner(request)
+    if owner is None:
         raise HTTPException(status_code=401, detail="authenticated user identity required")
-    return normalized_owner
+    return owner
 
 
 def _quota(snapshot: ToolConnectionSnapshot, owner_user_id: str) -> ToolQuotaResponse:
