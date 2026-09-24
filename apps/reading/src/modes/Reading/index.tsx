@@ -174,10 +174,11 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     remove: removeAnchor,
   } = useAnchors(documentId);
   const [anchorMapChunks, setAnchorMapChunks] = useState<AnchorMapChunk[]>([]);
-  const anchorChunksById = useMemo(
-    () => new Map(anchorMapChunks.map((c) => [c.chunk_id, c])),
-    [anchorMapChunks],
-  );
+  const anchorChunksById = useMemo(() => {
+    const byId = new Map<string, AnchorMapChunk>();
+    for (const chunk of anchorMapChunks) byId.set(chunk.chunk_id, chunk);
+    return byId;
+  }, [anchorMapChunks]);
 
   // Citation → page jump (M2). A talk-to-book / search citation carries a
   // resolved 0-based page; map it to the window index and move the reader.
