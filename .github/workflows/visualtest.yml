@@ -136,7 +136,8 @@ jobs:
     #      but checked nothing. The version is pinned (no `@latest`) so a
     #      future runner release can't silently move the flag again.
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    # Two test-runner passes now (day and night), each ~1-2 min locally.
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/reading
@@ -152,31 +153,45 @@ jobs:
         run: npm ci
 
       - name: Install Playwright chromium
-        run: node node_modules/playwright-core/cli.js install chromium --with-deps
+        # The browser the test-runner launches belongs to ITS playwright (npx
+        # resolves @storybook/test-runner's own dependency, not this
+        # project's playwright-core), so install through that package, or the
+        # runner finds no executable once it gets past the index fetch.
+        run: npx -y -p @storybook/test-runner@0.24.4 playwright install chromium --with-deps
 
       - name: Build Storybook
         run: npm run build-storybook
 
-      - name: Run axe-core against the a11y-audit stories (informational)
-        # INFORMATIONAL (does not block the merge): this harvested a11y CI job
-        # currently fails in CI at the Storybook test-runner's getIndexJson
-        # step — a test-runner/Storybook index-resolution infra issue, NOT a
-        # real accessibility violation. Accessibility is still exercised by
-        # scripts/a11y_audit.ts and the Storybook a11y addon. We keep running
-        # the job + surface a warning; re-enable blocking once the test-runner
-        # index resolution is stable in CI.
+      - name: Run axe-core against the a11y-audit stories, day and night (informational)
+        # INFORMATIONAL (does not block the merge). This job has been running
+        # zero stories: every run failed at the test-runner's getIndexJson
+        # ("Failed to fetch index data from the project", run 35996140120).
+        # The cause was the server command, not the runner: in
+        # `http-server -p 6006 -s storybook-static` the directory is parsed
+        # as the value of `-s`, so http-server fell back to ./public and
+        # answered 404 for /index.json (reproduced locally). The directory
+        # now comes first, the server binds 127.0.0.1, and the step waits for
+        # index.json instead of a fixed `sleep 3`. Keep it informational until
+        # it has run green on CI, then re-enable blocking.
         run: |
-          npx -y http-server -p 6006 -s storybook-static &
+          npx -y http-server storybook-static -a 127.0.0.1 -p 6006 -s &
           SERVER_PID=$!
-          sleep 3
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:6006/index.json > /dev/null && break
+            sleep 1
+          done
           # The test-runner picks up .storybook/test-runner.ts (the axe
           # postVisit hook). `--includeTags a11y-audit` selects the shell
           # chrome + primitive stories tagged for the audit. The hook throws on
-          # any serious/critical axe violation.
-          npx -y @storybook/test-runner@0.24.4 \
-            --url http://localhost:6006 \
-            --index-json \
-            --includeTags a11y-audit \
-            --maxWorkers 2 \
-            || echo "::warning title=axe-core informational::Storybook test-runner could not load the story index on CI (getIndexJson) — harvested a11y CI infra not yet stable; a11y still checked via scripts/a11y_audit.ts + the Storybook a11y addon."
+          # any serious/critical axe violation. A11Y_THEME picks the theme:
+          # the hook emulates it before each story renders and checks
+          # <html data-theme> before axe runs.
+          for theme in light dark; do
+            A11Y_THEME=$theme npx -y @storybook/test-runner@0.24.4 \
+              --url http://127.0.0.1:6006 \
+              --index-json \
+              --includeTags a11y-audit \
+              --maxWorkers 2 \
+              || echo "::warning title=axe-core informational (${theme})::The Storybook test-runner failed in the ${theme} theme, either a serious/critical axe violation or a runner error (see the log above). Informational until this job has run green on CI."
+          done
           kill $SERVER_PID || true
