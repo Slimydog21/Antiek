@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "git_sha": "a84a76bf1a7f929259913eade7cad283cb4e1a70",
+  "generated_at": "2026-09-23T12:53:49.681940+00:00",
+  "host": {
+    "platform": "macOS-15.7.3-arm64-arm-64bit",
+    "python": "3.12.13",
+    "cpu_count": 12
+  },
+  "server": {
+    "workers": 1,
+    "register_providers": false,
+    "register_wrestling": false,
+    "bind": "127.0.0.1"
+  },
+  "write_lock_wait_source": "harness wrapper around runtime.db_lock.connect_write (call-to-return)",
+  "write_lock_hold_source": "write_log.duration_s",
+  "params": {
+    "concurrency": [
+      1,
+      5,
+      25
+    ],
+    "starts": 2,
+    "duration_s": 10.0,
+    "requests_per_worker": null,
+    "request_timeout_s": 330.0,
+    "out": "/tmp/cap_final_before_1.json"
+  },
+  "runs": [
+    {
+      "concurrency": 1,
+      "starts_workers": 2,
+      "requests_completed": 185,
+      "requests_failed": 0,
+      "status_counts": {
+        "reads": {
+          "200": 185
+        },
+        "starts": {
+          "202": 195
+        }
+      },
+      "p50_ms": 26.020082994364202,
+      "p95_ms": 59.518624912016094,
+      "p99_ms": 1206.2196250772104,
+      "health_p95_ms": 59.518624912016094,
+      "starts_completed": 195,
+      "start_p95_ms": 473.0744999833405,
+      "server_cpu_percent": 77.312,
+      "server_rss_mb_max": 234.96875,
+      "write_lock_wait_p95_ms": 0.6710829911753535,
+      "write_lock_hold_p95_ms": 17.627667053602636,
+      "write_log_rows": 681,
+      "duration_s": 10.021070500020869,
+      "port": 55691,
+      "project_id": "ivp-388b30c2a5b045ff",
+      "wait_entries": 680,
+      "wait_entries_ok": 678,
+      "wait_entries_failed": 2,
+      "write_log_rows_total": 682,
+      "write_log_read_error": null,
+      "server_exit": {
+        "returncode": -15,
+        "had_to_sigkill": false
+      }
+    },
+    {
+      "concurrency": 5,
+      "starts_workers": 2,
+      "requests_completed": 610,
+      "requests_failed": 0,
+      "status_counts": {
+        "reads": {
+          "200": 610
+        },
+        "starts": {
+          "202": 134
+        }
+      },
+      "p50_ms": 47.13324992917478,
+      "p95_ms": 164.4402079982683,
+      "p99_ms": 831.026375060901,
+      "health_p95_ms": 75.98387496545911,
+      "starts_completed": 134,
+      "start_p95_ms": 824.1900410503149,
+      "server_cpu_percent": 79.54615384615384,
+      "server_rss_mb_max": 225.875,
+      "write_lock_wait_p95_ms": 0.5477910162881017,
+      "write_lock_hold_p95_ms": 12.687708018347621,
+      "write_log_rows": 726,
+      "duration_s": 10.199317417107522,
+      "port": 55744,
+      "project_id": "ivp-f47dd154e06f4ee3",
+      "wait_entries": 725,
+      "wait_entries_ok": 723,
+      "wait_entries_failed": 2,
+      "write_log_rows_total": 727,
+      "write_log_read_error": null,
+      "server_exit": {
+        "returncode": -15,
+        "had_to_sigkill": false
+      }
+    },
+    {
+      "concurrency": 25,
+      "starts_workers": 2,
+      "requests_completed": 952,
+      "requests_failed": 0,
+      "status_counts": {
+        "reads": {
+          "200": 952
+        },
+        "starts": {
+          "202": 44
+        }
+      },
+      "p50_ms": 159.6033750101924,
+      "p95_ms": 578.4623340005055,
+      "p99_ms": 732.498790952377,
+      "health_p95_ms": 634.1589579824358,
+      "starts_completed": 44,
+      "start_p95_ms": 847.0446669962257,
+      "server_cpu_percent": 68.96923076923078,
+      "server_rss_mb_max": 241.484375,
+      "write_lock_wait_p95_ms": 0.8270420366898179,
+      "write_lock_hold_p95_ms": 10.275457985699177,
+      "write_log_rows": 631,
+      "duration_s": 10.096263707964681,
+      "port": 55792,
+      "project_id": "ivp-e89ae495082441e9",
+      "wait_entries": 629,
+      "wait_entries_ok": 628,
+      "wait_entries_failed": 1,
+      "write_log_rows_total": 632,
+      "write_log_read_error": null,
+      "server_exit": {
+        "returncode": -15,
+        "had_to_sigkill": false
+      }
+    }
+  ],
+  "git_sha_source": "git archive a84a76bf1a7f929259913eade7cad283cb4e1a70 extracted to a temp dir; the harness ran outside a git checkout and recorded \"unknown\", so the SHA is filled in from the archive source",
+  "tree": "pre-migration tree (capacity harness commit, before any Speak handler moved off the loop)",
+  "measurement_context": "before and after taken back to back, alternating before/after twice on the same machine (macOS arm64, 12 CPUs, load average 14-22 from other sessions); this file is the FIRST pair, chosen before looking at results"
+}
