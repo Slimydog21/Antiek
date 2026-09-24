@@ -17,6 +17,12 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, act, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
+// The key sheet is lazy. Load its module once up front, so a slow first
+// transform under a loaded full-suite run cannot outlast waitFor.
+beforeAll(async () => {
+  await import("./components/hotkeys/KeySheet");
+}, 30_000);
+
 beforeAll(() => {
   if (!window.matchMedia) {
     Object.defineProperty(window, "matchMedia", {

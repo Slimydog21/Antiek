@@ -11,6 +11,12 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { HotkeyHud } from "./HotkeyHud";
 import { SHORTCUT_EVENTS } from "../../workspace/shortcuts";
 
+// The key sheet is lazy. Load its module once up front, so a slow first
+// transform under a loaded full-suite run cannot outlast waitFor.
+beforeAll(async () => {
+  await import("./KeySheet");
+}, 30_000);
+
 beforeAll(() => {
   if (!window.matchMedia) {
     Object.defineProperty(window, "matchMedia", {
