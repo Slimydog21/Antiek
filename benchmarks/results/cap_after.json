@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "git_sha": "20c80256eba255e46b6e24d283abb0f0c21b2e6c",
+  "generated_at": "2026-09-23T12:54:32.256108+00:00",
+  "host": {
+    "platform": "macOS-15.7.3-arm64-arm-64bit",
+    "python": "3.12.13",
+    "cpu_count": 12
+  },
+  "server": {
+    "workers": 1,
+    "register_providers": false,
+    "register_wrestling": false,
+    "bind": "127.0.0.1"
+  },
+  "write_lock_wait_source": "harness wrapper around runtime.db_lock.connect_write (call-to-return)",
+  "write_lock_hold_source": "write_log.duration_s",
+  "params": {
+    "concurrency": [
+      1,
+      5,
+      25
+    ],
+    "starts": 2,
+    "duration_s": 10.0,
+    "requests_per_worker": null,
+    "request_timeout_s": 330.0,
+    "out": "/tmp/cap_final_after_1.json"
+  },
+  "runs": [
+    {
+      "concurrency": 1,
+      "starts_workers": 2,
+      "requests_completed": 217,
+      "requests_failed": 0,
+      "status_counts": {
+        "reads": {
+          "200": 217
+        },
+        "starts": {
+          "202": 332
+        }
+      },
+      "p50_ms": 33.46479206811637,
+      "p95_ms": 101.06954199727625,
+      "p99_ms": 121.62620900198817,
+      "health_p95_ms": 53.01341705489904,
+      "starts_completed": 332,
+      "start_p95_ms": 128.21925000753254,
+      "server_cpu_percent": 108.148,
+      "server_rss_mb_max": 253.828125,
+      "write_lock_wait_p95_ms": 19.15854192338884,
+      "write_lock_hold_p95_ms": 16.87862502876669,
+      "write_log_rows": 1099,
+      "duration_s": 10.068693374982104,
+      "port": 55847,
+      "project_id": "ivp-20a7f25836b143c1",
+      "wait_entries": 1096,
+      "wait_entries_ok": 1096,
+      "wait_entries_failed": 0,
+      "write_log_rows_total": 1100,
+      "write_log_read_error": null,
+      "server_exit": {
+        "returncode": -15,
+        "had_to_sigkill": false
+      }
+    },
+    {
+      "concurrency": 5,
+      "starts_workers": 2,
+      "requests_completed": 747,
+      "requests_failed": 0,
+      "status_counts": {
+        "reads": {
+          "200": 747
+        },
+        "starts": {
+          "202": 236
+        }
+      },
+      "p50_ms": 56.05408304836601,
+      "p95_ms": 127.55666603334248,
+      "p99_ms": 170.47779203858227,
+      "health_p95_ms": 98.6750409938395,
+      "starts_completed": 236,
+      "start_p95_ms": 162.55883302073926,
+      "server_cpu_percent": 117.87692307692308,
+      "server_rss_mb_max": 261.09375,
+      "write_lock_wait_p95_ms": 25.64933302346617,
+      "write_lock_hold_p95_ms": 18.44062504824251,
+      "write_log_rows": 1085,
+      "duration_s": 10.037974791019224,
+      "port": 55924,
+      "project_id": "ivp-e454ba0c7786487e",
+      "wait_entries": 1082,
+      "wait_entries_ok": 1082,
+      "wait_entries_failed": 0,
+      "write_log_rows_total": 1086,
+      "write_log_read_error": null,
+      "server_exit": {
+        "returncode": -15,
+        "had_to_sigkill": false
+      }
+    },
+    {
+      "concurrency": 25,
+      "starts_workers": 2,
+      "requests_completed": 1479,
+      "requests_failed": 0,
+      "status_counts": {
+        "reads": {
+          "200": 1479
+        },
+        "starts": {
+          "202": 104
+        }
+      },
+      "p50_ms": 167.7339170128107,
+      "p95_ms": 279.5556669589132,
+      "p99_ms": 347.05016599036753,
+      "health_p95_ms": 263.04291700944304,
+      "starts_completed": 104,
+      "start_p95_ms": 297.7433329215273,
+      "server_cpu_percent": 115.8153846153846,
+      "server_rss_mb_max": 258.84375,
+      "write_lock_wait_p95_ms": 91.55454207211733,
+      "write_lock_hold_p95_ms": 15.43716702144593,
+      "write_log_rows": 1081,
+      "duration_s": 10.189220083062537,
+      "port": 55967,
+      "project_id": "ivp-c40fce9a39684b37",
+      "wait_entries": 1078,
+      "wait_entries_ok": 1078,
+      "wait_entries_failed": 0,
+      "write_log_rows_total": 1082,
+      "write_log_read_error": null,
+      "server_exit": {
+        "returncode": -15,
+        "had_to_sigkill": false
+      }
+    }
+  ],
+  "git_sha_source": "git archive 20c80256eba255e46b6e24d283abb0f0c21b2e6c extracted to a temp dir; the harness ran outside a git checkout and recorded \"unknown\", so the SHA is filled in from the archive source",
+  "tree": "post-migration tree (all 22 Speak write handlers off the loop, db_lock gate wakes on release)",
+  "measurement_context": "before and after taken back to back, alternating before/after twice on the same machine (macOS arm64, 12 CPUs, load average 14-22 from other sessions); this file is the FIRST pair, chosen before looking at results"
+}

@@ -3,24 +3,49 @@
 # Caddy reverse proxy in front of uvicorn + static SPA for the
 # redesigned reading app (apps/reading).
 #
-# Routing:
+# Routing (all of it happens on loopback — see topology below):
 #   /<api-prefix>/*  → reverse_proxy uvicorn (40 prefixes enumerated below)
 #   else             → file_server {{ frontend_dist_dir }} with SPA fallback
 #
+# Topology (mirrors cloudflared-config.yml.j2):
+#   Cloudflare edge — terminates public TLS; api.antiek.ai is a
+#     PROXIED DNS record
+#         │
+#         ▼ cloudflared tunnel — outbound-only from this box; the box
+#           answers on neither 80 nor 443 from the internet
+#   127.0.0.1:443 — Caddy. The tunnel dials loopback, and its
+#     originRequest sets originServerName: api.antiek.ai and
+#     noTLSVerify: true. This site block has no `bind`, so Caddy itself
+#     listens on every interface; UFW, not the bind address, is what
+#     keeps 80/443 unreachable from the internet.
+#         ├─ /<api-prefix>/*  → 127.0.0.1:8001 (uvicorn)
+#         └─ everything else  → {{ frontend_dist_dir }} (SPA)
+#
+#   UFW (setup.yml §3) allows 22 only; 80/443 are closed.
+#
+# ORIGIN CERT STORY — UNRESOLVED. This file still has no `tls`
+# directive, so Caddy defaults to automatic ACME for api.antiek.ai.
+# That cannot succeed here: a box the internet cannot reach cannot
+# complete validation — neither the port-80 ACME challenge nor
+# TLS-ALPN-01 can be answered while 80/443 stay closed behind the
+# proxied record. And because the tunnel connects with noTLSVerify, an
+# expired origin cert would keep serving silently. Resolution is
+# SPR-09 task 9 (~/specs/antiek-v1-connect/SPR-09-infra-scale.md); the
+# decision will be recorded in docs/decisions/caddy-cert-strategy-2026-09-20.md
+# after the operator captures `caddy list-certificates` on the box.
+# Until then nothing about the certificate mechanism changes here.
+#
 # Why Caddy not nginx?
-#   1. Automatic Let's Encrypt — no certbot, no cron renewal job, no
-#      ACME-challenge plumbing.
+#   1. Path routing API-vs-SPA on loopback: one `route` block sends the
+#      API prefixes to uvicorn and everything else to the SPA
+#      file_server with fallback — the job Caddy actually does behind
+#      the tunnel.
 #   2. Sane default timeouts (long enough to not break 10-minute LLM
 #      calls without explicit overrides — though we set them explicitly
 #      below for documentation).
 #   3. WebSocket support is automatic on `upgrade` requests; no special
 #      `proxy_pass` config like nginx demands.
 #   4. One file, mostly self-explanatory; nginx config blocks are dense.
-#
-# The TLS cert is provisioned on first request to https://api.antiek.ai
-# via ACME HTTP-01 (port 80). UFW must allow ports 80 AND 443 (setup.yml
-# does this). Cloudflare DNS for api.antiek.ai is NOT proxied (grey
-# cloud) so the ACME challenge hits Caddy directly.
 
 {{ api_domain }} {
     # ── Path-based routing via `route` ────────────────────────────────
