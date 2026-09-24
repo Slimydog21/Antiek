@@ -57,6 +57,7 @@ def _pid(slug: str) -> str:
 
     return _owner_id_prefix(_owner()) + slug
 
+
 _TWO_VARIANTS = {
     "provider_kind": "openai_compat",
     "provider_catalog_id": "deepseek",
