@@ -162,14 +162,22 @@ describe("every SPR-08 binding moved into the table (M4 migration list)", () => 
   });
 });
 
-describe("the cockpit pane rows (C3) and companion rows (C4): bound, twinned, and out of RESERVED_FOR_LATER", () => {
+describe("the cockpit pane rows (C3), companion rows (C4), and tab-tree rows (D6): bound, twinned, and out of RESERVED_FOR_LATER", () => {
   it.each([
     ["prefix-pane-left", "pane.focusLeft", "h", "ctrl+alt+h"],
     ["prefix-pane-right", "pane.focusRight", "l", "ctrl+alt+l"],
     ["prefix-pane-full", "pane.fullscreen", "f", "ctrl+alt+f"],
     ["prefix-layout-preset", "layout.togglePreset", "i", "ctrl+alt+i"],
-    ["prefix-agent-next", "companion.nextTab", "n", "ctrl+alt+]"],
-    ["prefix-agent-prev", "companion.prevTab", "p", "ctrl+alt+["],
+    // D6: the corpus reserved n/p + ctrl+alt+]/[ for TABS — the document
+    // tree takes them; companion cycling moved to the free ,/. pair.
+    ["prefix-agent-next", "companion.nextTab", ",", "ctrl+alt+,"],
+    ["prefix-agent-prev", "companion.prevTab", ".", "ctrl+alt+."],
+    ["prefix-tab-next", "tab.nextSibling", "n", "ctrl+alt+]"],
+    ["prefix-tab-prev", "tab.prevSibling", "p", "ctrl+alt+["],
+    ["prefix-tab-parent", "tab.parent", "u", "ctrl+alt+u"],
+    ["prefix-tab-child", "tab.visitChild", "o", "ctrl+alt+o"],
+    ["prefix-tab-close", "tab.close", "c", "ctrl+alt+c"],
+    ["prefix-tab-tree", "tab.treeToggle", "t", "ctrl+alt+y"],
   ])("%s binds %s as prefix+%s with the %s twin", (id, action, prefixKey, chord) => {
     const prefixRow = KEYMAP.find((r) => r.id === id);
     expect(prefixRow?.action).toBe(action);
@@ -182,13 +190,24 @@ describe("the cockpit pane rows (C3) and companion rows (C4): bound, twinned, an
     expect(chordRow?.origin).toBe("D2");
   });
 
+  it("tab.prune is prefix+shift+x with NO chord twin (none was lawfully reserved)", () => {
+    const row = KEYMAP.find((r) => r.id === "prefix-tab-prune");
+    expect(row?.action).toBe("tab.prune");
+    expect(row?.prefixKey).toBe("shift+x");
+    expect(row?.scope).toBe("outside-text");
+    expect(KEYMAP.some((r) => r.action === "tab.prune" && r.chord)).toBe(false);
+  });
+
   it("no reserved row is left behind for the keys the cockpit rows took", () => {
-    // h and l were never reserved; f, i, n, p (prefix) and the six chords
-    // were, and must be gone now that the rows own them.
-    for (const k of ["h", "l", "f", "i", "n", "p"]) {
+    // h and l and , and . were never reserved; the rest were, and must be
+    // gone now that the rows own them.
+    for (const k of ["h", "l", "f", "i", "n", "p", "u", "o", "c", "t", "shift+x"]) {
       expect(RESERVED_FOR_LATER.prefixKeys).not.toContain(k);
     }
-    for (const c of ["ctrl+alt+h", "ctrl+alt+l", "ctrl+alt+f", "ctrl+alt+i", "ctrl+alt+]", "ctrl+alt+["]) {
+    for (const c of [
+      "ctrl+alt+h", "ctrl+alt+l", "ctrl+alt+f", "ctrl+alt+i",
+      "ctrl+alt+]", "ctrl+alt+[", "ctrl+alt+u", "ctrl+alt+o", "ctrl+alt+c", "ctrl+alt+y",
+    ]) {
       expect(RESERVED_FOR_LATER.chords).not.toContain(c);
     }
     // And every remaining reserved key is still refused to a probing row.

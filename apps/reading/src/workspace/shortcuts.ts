@@ -42,6 +42,8 @@ import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
 import { companionVisible, useCompanion } from "./companionStore";
+import { mothershipForPath } from "./documentSpace";
+import { useTabTrees } from "./tabTreeStore";
 import { readCustomHotkeys } from "./persistence";
 import { emitProductActivate, normalizeBinding } from "../components/hotkeys/bindings";
 import {
@@ -289,6 +291,20 @@ function cycleCompanionTab(direction: 1 | -1) {
   useCompanion.getState().cycleAgentTab(direction);
 }
 
+/**
+ * Document tab-tree keys (D6). They act on the CURRENT route's mothership
+ * tree, and only once that tree has loaded — an honest no-op before then
+ * (never a dead key in a surface whose tree is not up). The store's own
+ * no-op cases (a root has no parent, a leaf has no children, no siblings)
+ * stay silent by the model's semantics.
+ */
+function tabTreeKey(run: (mothership: ReturnType<typeof mothershipForPath>) => void) {
+  const mothership = mothershipForPath(window.location.pathname);
+  const s = useTabTrees.getState();
+  if (!s.loaded[mothership] || !s.trees[mothership]) return;
+  run(mothership);
+}
+
 /** Runs an action. Returning false means "not mine after all": the key is
  *  left to the browser and nothing is prevented. */
 export type KeyHandler = (e: KeyboardEvent) => boolean | void;
@@ -332,6 +348,13 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     "pane.focusRight": () => focusPane("right"),
     "pane.fullscreen": () => useWorkspace.getState().toggleFullscreenPane(),
     "layout.togglePreset": () => useWorkspace.getState().toggleLayoutPreset(),
+    "tab.nextSibling": () => tabTreeKey((m) => useTabTrees.getState().cycleSibling(m, 1)),
+    "tab.prevSibling": () => tabTreeKey((m) => useTabTrees.getState().cycleSibling(m, -1)),
+    "tab.parent": () => tabTreeKey((m) => useTabTrees.getState().goToParent(m)),
+    "tab.visitChild": () => tabTreeKey((m) => useTabTrees.getState().visitChildOfActive(m)),
+    "tab.close": () => tabTreeKey((m) => useTabTrees.getState().closeActiveTab(m, "lift_children")),
+    "tab.prune": () => tabTreeKey((m) => useTabTrees.getState().closeActiveTab(m, "prune")),
+    "tab.treeToggle": () => useTabTrees.getState().toggleTreePanel(),
     "companion.nextTab": () => cycleCompanionTab(1),
     "companion.prevTab": () => cycleCompanionTab(-1),
   };

@@ -81,6 +81,13 @@ export const ACTIONS = {
   "pane.focusRight": { label: "Pane: focus the right pane" },
   "pane.fullscreen": { label: "Pane: fullscreen the focused pane (toggle)" },
   "layout.togglePreset": { label: "Layout: docked ⇄ inset preset" },
+  "tab.nextSibling": { label: "Tab: next sibling tab" },
+  "tab.prevSibling": { label: "Tab: previous sibling tab" },
+  "tab.parent": { label: "Tab: up to the parent tab" },
+  "tab.visitChild": { label: "Tab: down to the last-visited child tab" },
+  "tab.close": { label: "Tab: close the active tab (children lift)" },
+  "tab.prune": { label: "Tab: prune the active subtree" },
+  "tab.treeToggle": { label: "Tab: toggle the tab tree panel" },
   "companion.nextTab": { label: "Companion: next agent tab" },
   "companion.prevTab": { label: "Companion: previous agent tab" },
   "door.research": { label: "Research", productId: "research", route: "/" },
@@ -165,15 +172,37 @@ export const KEYMAP: readonly KeymapRow[] = [
   { id: "prefix-layout-preset", action: "layout.togglePreset", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-layout-preset", action: "layout.togglePreset", chord: "ctrl+alt+i", scope: "anywhere", origin: "D2", decision: D },
 
-  // ── D2 companion agent-tab keys (C4): herdr's n/p tab cycling ──────────
-  // Moved OUT of RESERVED_FOR_LATER (prefix n, p; chords ctrl+alt+], [) —
-  // tab keys were reserved for exactly this. n = next, p = previous (herdr);
-  // the bracket chords are the one-step twins. They act on the companion
-  // pane only when it is visible (an honest no-op otherwise).
-  { id: "prefix-agent-next", action: "companion.nextTab", prefixKey: "n", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-agent-next", action: "companion.nextTab", chord: "ctrl+alt+]", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-agent-prev", action: "companion.prevTab", prefixKey: "p", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-agent-prev", action: "companion.prevTab", chord: "ctrl+alt+[", scope: "anywhere", origin: "D2", decision: D },
+  // ── D2 companion agent-tab keys (C4) — RETARGETED in PR 3 (D6) ─────────
+  // The D2 table reserved prefix n/p and ctrl+alt+]/[ for TABS — and the
+  // document tab tree (below) is the canonical tab surface, so PR 3 gives
+  // those keys to tree sibling cycling. Companion cycling moves to the
+  // adjacent free punctuation pair: prefix , / . with ctrl+alt+, / . twins
+  // (never reserved, free on both platforms).
+  { id: "prefix-agent-next", action: "companion.nextTab", prefixKey: ",", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-agent-next", action: "companion.nextTab", chord: "ctrl+alt+,", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-agent-prev", action: "companion.prevTab", prefixKey: ".", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-agent-prev", action: "companion.prevTab", chord: "ctrl+alt+.", scope: "anywhere", origin: "D2", decision: D },
+
+  // ── D2 document tab-tree keys (D6): the corpus's canonical tab keys ────
+  // n/p + ctrl+alt+]/[ were reserved FOR tabs from the start; the tree is
+  // their intended surface. u/o/c/t/shift+x and the four chords move OUT of
+  // RESERVED_FOR_LATER. ctrl+alt+u collides with Konsole's global on KDE —
+  // recorded in the key-sheet NOTES; the prefix twin works everywhere.
+  // tab.prune is prefix-only: no lawfully reserved chord twin exists and
+  // inventing an unreserved one mints a key the D2 table never contemplated.
+  { id: "prefix-tab-next", action: "tab.nextSibling", prefixKey: "n", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-next", action: "tab.nextSibling", chord: "ctrl+alt+]", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-prev", action: "tab.prevSibling", prefixKey: "p", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-prev", action: "tab.prevSibling", chord: "ctrl+alt+[", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-parent", action: "tab.parent", prefixKey: "u", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-parent", action: "tab.parent", chord: "ctrl+alt+u", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-child", action: "tab.visitChild", prefixKey: "o", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-child", action: "tab.visitChild", chord: "ctrl+alt+o", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-close", action: "tab.close", prefixKey: "c", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-close", action: "tab.close", chord: "ctrl+alt+c", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-prune", action: "tab.prune", prefixKey: "shift+x", scope: "outside-text", origin: "D2", decision: D },
+  { id: "prefix-tab-tree", action: "tab.treeToggle", prefixKey: "t", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-tree", action: "tab.treeToggle", chord: "ctrl+alt+y", scope: "anywhere", origin: "D2", decision: D },
 ];
 
 /**
@@ -187,15 +216,15 @@ export const KEYMAP: readonly KeymapRow[] = [
 export const RESERVED_FOR_LATER = {
   prefixKeys: [
     "1", "2", "3", "4", "5", "6", "7", "8", "9",
-    "c", "shift+x", "w", "shift+n", "m", "shift+m",
-    "u", "o", "t", "r", "a",
+    "w", "shift+n", "m", "shift+m",
+    "r", "a",
   ],
   chords: [
     "ctrl+alt+1", "ctrl+alt+2", "ctrl+alt+3", "ctrl+alt+4", "ctrl+alt+5",
     "ctrl+alt+6", "ctrl+alt+7", "ctrl+alt+8", "ctrl+alt+9",
-    "ctrl+alt+c", "ctrl+alt+w",
-    "ctrl+alt+shift+]", "ctrl+alt+shift+[", "ctrl+alt+m", "ctrl+alt+u",
-    "ctrl+alt+o", "ctrl+alt+y", "ctrl+alt+r", "ctrl+alt+a",
+    "ctrl+alt+w",
+    "ctrl+alt+shift+]", "ctrl+alt+shift+[", "ctrl+alt+m",
+    "ctrl+alt+r", "ctrl+alt+a",
   ],
 } as const;
 

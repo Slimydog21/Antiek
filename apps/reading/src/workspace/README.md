@@ -85,8 +85,26 @@ research-thread (the shared `researchState` vocabulary over
 `components/ai/thoughtPartnerOnce.ts` wire — never a chat). Keys: prefix
 n/p (+ `ctrl+alt+]/[` twins) cycle agent tabs, only while the pane is
 visible. The cross-pane seam is `crossPane.ts`: `openDocumentInLeftPane`'s
-EVENT SHAPE is the contract; the PR-2 handler bridges to the reader window,
-PR 3 swaps the handler, callers never change.
+EVENT SHAPE is the contract; since PR 3 (D6) the handler spawns a left child
+tab in the current mothership's tab tree — callers never change.
+
+## Document tab tree (D6, 2026-09-24)
+
+The left pane's document space is an infinitely nested tab tree over the
+pure model (`tabTree.ts`, MS-04 — TAB ≠ BRANCH: navigation state, never
+provenance). One tree per mothership (research/writing/reading), driven by
+`tabTreeStore.ts` and rendered by `DocumentTabStrip.tsx` (mounted once in
+PanelLayout's shared centre column — inset left pane and docked main area
+share it; router-guarded). The strip shows the active path (hier numbers are
+the addressing), the Opus `Trail` as the ancestry breadcrumb (fed by
+`documentSpace.threadForPath` in Trail's lawful one-entity form), a tree
+panel with subtree focus (prefix `t`), and an undo affordance after closes.
+Keys: prefix `n`/`p` siblings (the corpus's canonical tab keys — companion
+cycling moved to prefix `,`/`.`), `u` parent, `o` last-visited child, `c`
+close-with-lift, `shift+x` prune, all with `ctrl+alt` twins where one was
+lawfully reserved. Persistence is ONLY through a `TabTreeAdapter` (§1.6:
+never web storage) — the in-memory adapter makes trees session-scoped until
+lane B's HTTP adapter lands (`setTabTreeAdapter` is the seam).
 
 ## Full spec
 
