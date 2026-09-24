@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
@@ -16,7 +16,6 @@ import { useSeenVersion } from "../hooks/useSeenVersion";
 import { countSummoningGroups } from "../shared/attention";
 import { isUnseen, researchStateStyle } from "../shared/researchState";
 import { lastSeenAt } from "../workspace/seen";
-import { ProductsLauncher } from "./ProductsLauncher";
 import BrainMark from "../brand/BrainMark";
 import { KeyChip } from "../components/hotkeys/KeyChip";
 import {
@@ -24,6 +23,12 @@ import {
   emitProductActivate,
   BUILTIN_BINDINGS,
 } from "../components/hotkeys/bindings";
+
+// The More drawer is ~6.6 KB of minified JS that nothing needs until More is
+// pressed, so it stays out of the entry chunk (design spec §7, 700,000 B gzip)
+// and is prefetched two seconds after the rail mounts, ahead of a first click.
+const loadLauncher = () => import("./ProductsLauncher");
+const ProductsLauncher = lazy(loadLauncher);
 
 /**
  * NavRail (SPR-04) — the four-workflow content-first rail.
@@ -265,6 +270,15 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const tier = useViewportTier();
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const [launcherOpen, setLauncherOpen] = useState<boolean>(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => void loadLauncher(), 2000);
+    return () => window.clearTimeout(t);
+  }, []);
+  const launcher = launcherOpen && (
+    <Suspense fallback={null}>
+      <ProductsLauncher open onClose={() => setLauncherOpen(false)} />
+    </Suspense>
+  );
   const isMobile = tier === "sm" || tier === "md";
   const showRail = !isMobile || !collapsed;
   const isBottom = orientation === "bottom";
@@ -491,7 +505,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
           <span data-mascot-station aria-hidden="true" className="w-16 shrink-0" />
         </aside>
 
-        <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
+        {launcher}
       </>
     );
   }
@@ -542,7 +556,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         </nav>
       </aside>
 
-      <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
+      {launcher}
     </>
   );
 }
