@@ -1,5 +1,15 @@
 # Turbopuffer Namespace Sharding — Integration Addendum (2026-08-12)
 
+> **SUPERSEDED by `docs/decisions/tpuf-sharding-verdict-2026-09-20.md`** (§3
+> Decision, §4 Integration points). The verdict is
+> **DEFER**: do not set `sharding: {num_shards: N}` on any namespace and do not
+> add `shard_count` to the adapter factory. Wedge 1 shipped unsharded with 4,837
+> rows servable, 0.00097 percent of one shard's 500M-document ceiling, and the
+> per-content-digest staging namespace makes later adoption one rebuild plus one
+> `promote()`, not a migration. Reconsider only when `turbopuffer_indexed_row_count`
+> exceeds 50,000,000 or the namespace exceeds 100 GB. §1 (what sharding is) and
+> §5 (guardrails) remain accurate and are not superseded.
+
 **Status**: operator-brief response ("build with Turbopuffer and embed their new
 sharding feature"). Companion to `docs/integration_turbopuffer.md` (spike-first
 verdict matrix). All sharding facts verified against turbopuffer.com/docs/sharding
@@ -33,7 +43,7 @@ criteria. Sharding is therefore **not an immediate need** — it is a
 **first-write configuration decision** that cannot be retrofitted cheaply
 (copy-to-new-namespace is the only resize path).
 
-## 3. Decision
+## 3. Decision (SUPERSEDED — see the banner at the top of this file)
 
 **Adopt `num_shards` from day one of Wedge 1 (hybrid search spike), sized for
 the 3–5 year trajectory, not today's corpus.** Rationale:
@@ -48,7 +58,7 @@ the 3–5 year trajectory, not today's corpus.** Rationale:
   round up for headroom → 2), with the sharding plan documented so a future
   resize is a deliberate, spec'd migration.
 
-## 4. Integration points (concrete)
+## 4. Integration points (concrete) (SUPERSEDED — do not execute; see banner)
 
 1. `substrate/graph/retrieval_adapters/turbopuffer.py` — the SPIKE adapter
    must set `sharding: {num_shards: 2}` in namespace metadata on first write
