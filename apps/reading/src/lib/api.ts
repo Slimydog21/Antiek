@@ -1285,15 +1285,23 @@ export async function listAnchors(documentId: string): Promise<BookAnchorListRes
 
 /** POST /books/{id}/anchors — pin a passage; the server resolves the unique
  * (chunk_id, offsets) and drops quote fields for non-servable books. */
+export interface CreateAnchorBody {
+  quote?: string;
+  prefix?: string;
+  suffix?: string;
+  page_index_hint?: number;
+  source?: string;
+  /** The explicit-anchor form (all three): a client-resolved metadata-only
+   *  location — a withheld selection's text never leaves the client. Send a
+   *  quote OR these, never both (the server 422s otherwise). */
+  node_id?: string;
+  start_scalar?: number;
+  end_scalar?: number;
+}
+
 export async function createAnchor(
   documentId: string,
-  body: {
-    quote?: string;
-    prefix?: string;
-    suffix?: string;
-    page_index_hint?: number;
-    source?: string;
-  },
+  body: CreateAnchorBody,
 ): Promise<BookAnchor> {
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/anchors`, {
     method: "POST",
@@ -1324,6 +1332,32 @@ export async function deleteAnchor(documentId: string, anchorId: string): Promis
       await resp.text(),
     );
   }
+}
+
+/** PATCH /books/{id}/anchors/{anchorId} — the SPR-04 write-back: link the
+ * spawned research thread to its anchor. FIRST LINK WINS (a second spawn
+ * with a different thread throws ApiError 409 anchor_already_linked). */
+export async function linkAnchorInvestigation(
+  documentId: string,
+  anchorId: string,
+  investigationId: string,
+): Promise<BookAnchor> {
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/anchors/${encodeURIComponent(anchorId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ investigation_id: investigationId }),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `PATCH /books/{id}/anchors/{anchorId} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json() as Promise<BookAnchor>;
 }
 
 /** GET /books/{id}/anchor-map — the chunk manifest (ids/offsets/hashes only,

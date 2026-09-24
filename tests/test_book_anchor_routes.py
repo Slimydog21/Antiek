@@ -355,3 +355,105 @@ def test_anchor_map_404s_for_an_unknown_book(api_env) -> None:
     client = _client()
     assert client.get("/books/doc-missing/anchor-map").status_code == 404
     assert client.get("/books/doc-missing/anchors").status_code == 404
+
+
+# ── The SPR-04 write-back + the explicit (metadata-only) pin form ──────────
+
+
+def test_link_investigation_first_link_wins(api_env) -> None:
+    db = api_env["db"]
+    _seed_default_chunks(db)
+    client = _client()
+    created = client.post("/books/doc-anchor/anchors", json=_pin_payload())
+    assert created.status_code == 201
+    anchor_id = created.json()["anchor_id"]
+    assert created.json()["investigation_id"] is None
+
+    linked = client.patch(
+        f"/books/doc-anchor/anchors/{anchor_id}",
+        json={"investigation_id": "inv-spawned"},
+    )
+    assert linked.status_code == 200
+    assert linked.json()["investigation_id"] == "inv-spawned"
+
+    # Re-linking the SAME thread is the idempotent 200…
+    again = client.patch(
+        f"/books/doc-anchor/anchors/{anchor_id}",
+        json={"investigation_id": "inv-spawned"},
+    )
+    assert again.status_code == 200
+    # …but a DIFFERENT thread never overwrites (first link wins).
+    conflict = client.patch(
+        f"/books/doc-anchor/anchors/{anchor_id}",
+        json={"investigation_id": "inv-other"},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "anchor_already_linked"
+
+    missing = client.patch(
+        "/books/doc-anchor/anchors/ahl-missing",
+        json={"investigation_id": "inv-x"},
+    )
+    assert missing.status_code == 404
+
+
+def test_explicit_metadata_only_pin_form(api_env) -> None:
+    """The client-resolved location (ids/numbers only — the withheld text
+    never leaves the client): the server validates and, for a non-servable
+    document, persists no quote."""
+    db = api_env["db"]
+    _seed_book(
+        db,
+        document_id="doc-private",
+        content_class="personal_reading",
+        body=PRIVATE_BODY,
+        chunks=[("p-1", PRIVATE_BODY, None)],
+    )
+    client = _client()
+    start = PRIVATE_BODY.index("private reading habits")
+    end = start + len("private reading habits")
+    created = client.post(
+        "/books/doc-private/anchors",
+        json={
+            "node_id": "p-1",
+            "start_scalar": start,
+            "end_scalar": end,
+            "source": "floatmenu_note",
+        },
+    )
+    assert created.status_code == 201
+    anchor = created.json()
+    assert anchor["servable_at_pin"] is False
+    assert anchor["anchor"]["quote"] is None
+    assert anchor["anchor"]["node_id"] == "p-1"
+    assert anchor["anchor"]["start_scalar"] == start
+
+    # The same explicit form on a SERVABLE book derives + persists the
+    # context from the server's own text.
+    _seed_default_chunks(db)
+    qstart = BODY_TEXT.index("sentence worth remembering")
+    qend = qstart + len("sentence worth remembering")
+    servable = client.post(
+        "/books/doc-anchor/anchors",
+        json={"node_id": "c-1", "start_scalar": qstart, "end_scalar": qend, "source": "pin"},
+    )
+    assert servable.status_code == 201
+    assert servable.json()["anchor"]["quote"] == "sentence worth remembering"
+
+    # Validation: offsets outside the chunk and a missing chunk refuse honestly.
+    outside = client.post(
+        "/books/doc-anchor/anchors",
+        json={"node_id": "c-1", "start_scalar": 0, "end_scalar": len(BODY_TEXT) + 50, "source": "pin"},
+    )
+    assert outside.status_code == 422
+    missing_chunk = client.post(
+        "/books/doc-anchor/anchors",
+        json={"node_id": "c-missing", "start_scalar": 0, "end_scalar": 2, "source": "pin"},
+    )
+    assert missing_chunk.status_code == 422
+    conflict = client.post(
+        "/books/doc-anchor/anchors",
+        json=_pin_payload(node_id="c-1", start_scalar=0, end_scalar=2),
+    )
+    assert conflict.status_code == 422
+    assert "anchor_location_conflicting" in conflict.json()["detail"]
