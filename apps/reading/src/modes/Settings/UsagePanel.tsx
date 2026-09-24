@@ -49,15 +49,12 @@ function usageBadge(entry: SettingsUsageKeyEntry): string {
   return `used ${formatCents(entry.used_cents)} · cap ${formatCents(entry.limit_cents)} · remaining ${formatCents(entry.remaining_cents)} · held ${formatCents(entry.held_cents)} · available ${formatCents(entry.available_cents)}`;
 }
 
-function balanceLabel(
-  balance: SettingsBalanceResponse,
-  usage: SettingsUsageKeyEntry | null,
-): {
+function balanceLabel(balance: SettingsBalanceResponse): {
   text: string;
   tone: "ok" | "unknown";
 } {
   if (balance.kind === "unavailable") {
-    return { text: "Live balance unavailable", tone: "unknown" };
+    return { text: "Provider balance unavailable", tone: "unknown" };
   }
   if (balance.kind === "spend_history") {
     // Antiek's OWN meter of what this app settled against the key. The
@@ -81,7 +78,7 @@ function balanceLabel(
       };
     }
     return {
-      text: `Antiek meter: ${formatUsd(budget - spend)} of ${formatUsd(budget)} cap left (not provider credit)`,
+      text: `Antiek meter: ${formatUsd(spend)} settled of ${formatUsd(budget)} cap; holds excluded (not provider credit)`,
       tone: "ok",
     };
   }
@@ -104,25 +101,8 @@ function balanceLabel(
       tone: balance.native_available === false ? "unknown" : "ok",
     };
   }
-  const usageAvailable = usage?.available_cents ?? null;
-  if (typeof usageAvailable === "number" && Number.isFinite(usageAvailable)) {
-    return {
-      text: `Live available ${formatCents(usageAvailable)}`,
-      tone: "ok",
-    };
-  }
   if (
-    typeof balance.budget_usd === "number" &&
-    Number.isFinite(balance.budget_usd) &&
-    typeof balance.spend_usd === "number" &&
-    Number.isFinite(balance.spend_usd)
-  ) {
-    return {
-      text: `Budget remaining ${formatUsd(balance.budget_usd - balance.spend_usd)}`,
-      tone: "ok",
-    };
-  }
-  if (
+    balance.kind === "quota_pct" &&
     typeof balance.utilization === "number" &&
     Number.isFinite(balance.utilization) &&
     balance.utilization >= 0 &&
@@ -133,7 +113,7 @@ function balanceLabel(
       tone: "ok",
     };
   }
-  return { text: "Live balance unavailable", tone: "unknown" };
+  return { text: "Provider balance unavailable", tone: "unknown" };
 }
 
 export default function UsagePanel() {
@@ -346,8 +326,8 @@ export default function UsagePanel() {
     <LemonCard title="Usage & balances (BYOT)" elevation="z1">
       <div className="p-4 space-y-4" data-testid="usage-panel">
         <p className="text-sm text-ink-soft dark:text-starlight">
-          Per-key usage and live provider balance. Unknown or unavailable values
-          stay unknown — never fabricated as $0.00.
+          Per-key Antiek usage and provider-reported balance snapshots, when
+          available. Provider freshness is not verified; unknown values stay unknown.
         </p>
 
         {loadError && (
@@ -363,7 +343,7 @@ export default function UsagePanel() {
           <div role="alert" className="space-y-2 text-sm text-danger">
             <p>
               Can't load usage right now. No usage figures are shown for any key
-              until it loads; live provider balances are unaffected.
+              until it loads; separate provider balance requests can still complete.
             </p>
             <LemonButton size="sm" variant="tertiary" onClick={() => void refresh()}>
               Retry
@@ -389,10 +369,10 @@ export default function UsagePanel() {
               const balance = balances[row.id];
               const label =
                 balance?.state === "ready"
-                  ? balanceLabel(balance.value, row.usage)
+                  ? balanceLabel(balance.value)
                   : balance?.state === "loading"
-                    ? { text: "Checking live balance…", tone: "unknown" as const }
-                    : { text: "Live balance unavailable", tone: "unknown" as const };
+                    ? { text: "Checking provider balance…", tone: "unknown" as const }
+                    : { text: "Provider balance unavailable", tone: "unknown" as const };
               const capInputId = `usage-cap-${row.id}`;
               const panelMessage = message?.keyId === row.id ? message : null;
               return (

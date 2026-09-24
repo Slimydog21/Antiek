@@ -190,7 +190,7 @@ describe("UsagePanel", () => {
     expect(within(deepseek).getByText("deepseek-chat")).toBeTruthy();
 
     const kimi = await screen.findByTestId("usage-row-user-kimi");
-    expect(within(kimi).getByText("Live balance unavailable")).toBeTruthy();
+    expect(within(kimi).getByText("Provider balance unavailable")).toBeTruthy();
     expect(within(kimi).getByText("provider timeout")).toBeTruthy();
     expect(within(kimi).getByText(/remaining unknown/)).toBeTruthy();
   });
@@ -248,9 +248,55 @@ describe("UsagePanel", () => {
     expect(within(deepseek).queryByText("Live balance $42.50")).toBeNull();
   });
 
+  it("never presents local cap headroom as a live provider balance", async () => {
+    const deepseek = await fetchSettingsBalance("user-deepseek");
+    const kimi = await fetchSettingsBalance("user-kimi");
+    vi.mocked(fetchSettingsBalance).mockImplementation(async (id) =>
+      id === "user-kimi"
+        ? { ...kimi, kind: "balance_native", available_cents: 840 }
+        : deepseek,
+    );
+    vi.mocked(fetchSettingsUsage).mockResolvedValue({
+      ...usage,
+      keys: usage.keys.map((entry) =>
+        entry.api_key_id === "user-kimi"
+          ? {
+              ...entry,
+              limit_cents: 1000,
+              remaining_cents: 880,
+              held_cents: 40,
+              available_cents: 840,
+            }
+          : entry,
+      ),
+    });
+    render(<UsagePanel />);
+    const row = await screen.findByTestId("usage-row-user-kimi");
+    expect(within(row).getByText("Provider balance unavailable")).toBeTruthy();
+    expect(
+      within(row).getByText(/remaining \$8\.80 · held \$0\.40 · available \$8\.40/),
+    ).toBeTruthy();
+    expect(within(row).queryByText(/Live available/)).toBeNull();
+  });
+
   it("labels a spend_history balance as Antiek's meter, never as a live provider balance", async () => {
     // A key whose provider has no native balance adapter: the backend answers
     // with Antiek's own settled-spend meter against the user's cap.
+    vi.mocked(fetchSettingsUsage).mockResolvedValue({
+      ...usage,
+      keys: usage.keys.map((entry) =>
+        entry.api_key_id === "user-deepseek"
+          ? {
+              ...entry,
+              used_cents: 250,
+              limit_cents: 5000,
+              remaining_cents: 4750,
+              held_cents: 300,
+              available_cents: 4450,
+            }
+          : entry,
+      ),
+    });
     vi.mocked(fetchSettingsBalance).mockImplementation(async (id) => ({
       api_key_id: id,
       catalog_id: id === "user-deepseek" ? "deepseek" : "kimi",
@@ -265,13 +311,18 @@ describe("UsagePanel", () => {
       window_label: null,
       resets_at: null,
       note: null,
-      held_cents: 0,
-      available_cents: 4750,
+      held_cents: id === "user-deepseek" ? 300 : 0,
+      available_cents: id === "user-deepseek" ? 4450 : null,
     }));
     render(<UsagePanel />);
     const deepseek = await screen.findByTestId("usage-row-user-deepseek");
     expect(
-      within(deepseek).getByText("Antiek meter: $47.50 of $50.00 cap left (not provider credit)"),
+      within(deepseek).getByText(
+        "Antiek meter: $2.50 settled of $50.00 cap; holds excluded (not provider credit)",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(deepseek).getByText(/remaining \$47\.50 · held \$3\.00 · available \$44\.50/),
     ).toBeTruthy();
     expect(within(deepseek).queryByText(/^Live /)).toBeNull();
 
@@ -348,7 +399,7 @@ describe("UsagePanel", () => {
     expect(within(deepseek).getByText("usage unavailable")).toBeTruthy();
     const kimi = screen.getByTestId("usage-row-user-kimi");
     expect(within(kimi).getByText("usage unavailable")).toBeTruthy();
-    // Scoped to the rows: the header itself says "never fabricated as $0.00".
+    // Scoped to the rows: missing usage must not be rendered as zero usage.
     const rows = screen.getByRole("list", { name: "BYOT usage rows" });
     expect(rows.textContent).not.toContain("$0.00");
     expect(document.body.textContent).not.toContain("sk-secret");
