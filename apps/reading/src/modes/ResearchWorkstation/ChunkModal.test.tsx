@@ -138,7 +138,7 @@ describe("ChunkModal Werner evidence boundary", () => {
     await waitFor(() =>
       expect(screen.getByText("Readable evidence")).toBeTruthy(),
     );
-    expect(observer).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(observer).toHaveBeenCalledTimes(1));
   });
 
   it("notifies once under StrictMode effect replay", async () => {
@@ -157,7 +157,7 @@ describe("ChunkModal Werner evidence boundary", () => {
     await waitFor(() =>
       expect(screen.getByText("Readable evidence")).toBeTruthy(),
     );
-    expect(onEvidenceOpened).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onEvidenceOpened).toHaveBeenCalledTimes(1));
   });
 
   it("treats a deliberate close and reopen as a fresh evidence opening", async () => {
