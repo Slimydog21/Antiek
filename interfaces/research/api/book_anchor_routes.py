@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from interfaces.research.api.books import (
     _OWNER_READ_POLICY_TAG,
@@ -55,6 +55,14 @@ class AnchorIn(BaseModel):
     suffix: str = ""
     page_index_hint: int | None = None
     source: str = "pin"
+    """The explicit-anchor form (all three or none): the client-resolved
+    location for a METADATA-ONLY pin — a withheld selection whose text must
+    not leave the client resolves chunk+offsets locally via the anchor-map
+    and sends ids/numbers only. The server validates the location and
+    derives the context from its own text (persisting it only when servable)."""
+    node_id: str | None = None
+    start_scalar: int | None = Field(default=None, ge=0)
+    end_scalar: int | None = None
 
 
 class AnchorOut(BaseModel):
@@ -131,6 +139,63 @@ def _anchor_out(row: AnchorRow, *, exact_valid: bool) -> AnchorOut:
     )
 
 
+def _resolve_explicit(
+    con: Any,
+    *,
+    document_id: str,
+    node_id: str,
+    start_scalar: int,
+    end_scalar: int,
+    page_index_hint: int | None,
+) -> Any:
+    """Validate a client-resolved location against the server's own chunk and
+    build the anchor from the server's own text. The quote NEVER leaves the
+    client (a withheld selection's whole point); the context the server
+    persists comes from its own store and is gated at persistence as always."""
+    from substrate.books.highlights.resolve import PinResolution
+    from substrate.feedback.domain import NodeTextAnchor, normalize_node_text
+    import hashlib
+
+    from substrate.books.highlights.resolve import PinResolutionError
+
+    row = con.execute(
+        "SELECT text, section_path FROM chunks WHERE chunk_id = ? AND document_id = ? "
+        "LIMIT 1",
+        [node_id, document_id],
+    ).fetchone()
+    if row is None:
+        raise PinResolutionError(
+            "not_found", "the pinned chunk does not exist in this document"
+        )
+    normalized = normalize_node_text(str(row[0]))
+    if not (0 <= start_scalar < end_scalar <= len(normalized)):
+        raise PinResolutionError(
+            "not_found", "the pinned offsets are outside the chunk's text"
+        )
+    from substrate.books.page_anchor import page_index_from_section_path
+
+    return PinResolution(
+        anchor=NodeTextAnchor(
+            node_id=node_id,
+            node_text_sha256=hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
+            start_scalar=start_scalar,
+            end_scalar=end_scalar,
+            quote=normalized[start_scalar:end_scalar],
+            prefix=normalized[max(0, start_scalar - 32) : start_scalar],
+            suffix=normalized[end_scalar : min(len(normalized), end_scalar + 32)],
+        ),
+        page_index_hint=(
+            page_index_hint
+            if page_index_hint is not None
+            else page_index_from_section_path(None if row[1] is None else str(row[1]))
+        ),
+    )
+
+
+class AnchorLinkIn(BaseModel):
+    investigation_id: str = Field(min_length=1)
+
+
 def register_book_anchor_routes(app: FastAPI) -> None:
     """Mount the anchored-highlight routes. Mirrors register_book_routes —
     one call from create_app."""
@@ -147,24 +212,48 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         owner = _reader_owner_id(request)
         if body.source not in _VALID_SOURCES:
             raise HTTPException(status_code=422, detail=f"anchor_source_invalid: {body.source}")
-        if body.quote is None or not body.quote.strip():
+        explicit = [body.node_id, body.start_scalar, body.end_scalar]
+        if body.quote is None and not all(v is not None for v in explicit):
             raise HTTPException(
                 status_code=422,
-                detail="anchor_quote_required: the server locates the passage from the quote",
+                detail=(
+                    "anchor_location_required: send a quote to resolve, or the "
+                    "explicit node_id + start_scalar + end_scalar of a "
+                    "client-resolved metadata-only pin"
+                ),
+            )
+        if body.quote is not None and any(v is not None for v in explicit):
+            raise HTTPException(
+                status_code=422,
+                detail="anchor_location_conflicting: send a quote OR an explicit location, not both",
             )
         db = _resolve_db_path()
         with connect_write(db, purpose="books/anchors/create") as con:
             if not _document_exists(con, document_id):
                 raise HTTPException(status_code=404, detail="book_not_found")
             try:
-                resolution = resolve_pin(
-                    con,
-                    document_id=document_id,
-                    quote=body.quote,
-                    prefix=body.prefix,
-                    suffix=body.suffix,
-                    page_index_hint=body.page_index_hint,
-                )
+                if body.quote is not None:
+                    if not body.quote.strip():
+                        raise PinResolutionError(
+                            "not_found", "an empty quote locates nothing"
+                        )
+                    resolution = resolve_pin(
+                        con,
+                        document_id=document_id,
+                        quote=body.quote,
+                        prefix=body.prefix,
+                        suffix=body.suffix,
+                        page_index_hint=body.page_index_hint,
+                    )
+                else:
+                    resolution = _resolve_explicit(
+                        con,
+                        document_id=document_id,
+                        node_id=body.node_id or "",
+                        start_scalar=int(body.start_scalar or 0),
+                        end_scalar=int(body.end_scalar or 0),
+                        page_index_hint=body.page_index_hint,
+                    )
             except PinResolutionError as exc:
                 raise HTTPException(
                     status_code=422, detail=f"anchor_resolution_{exc.reason}: {exc}"
@@ -257,6 +346,39 @@ def register_book_anchor_routes(app: FastAPI) -> None:
             anchors=[_anchor_out(r, exact_valid=exact[r.anchor_id]) for r in rows],
             count=len(rows),
         )
+
+    @app.patch(
+        "/books/{document_id}/anchors/{anchor_id}",
+        response_model=AnchorOut,
+        tags=["books", "anchors"],
+    )
+    def link_anchor_investigation(
+        document_id: str, anchor_id: str, body: AnchorLinkIn, request: Request
+    ) -> AnchorOut:
+        """The SPR-04 write-back: link the spawned research thread to its
+        anchor. FIRST LINK WINS — a second spawn with a different thread is a
+        409 (never a silent overwrite); re-linking the SAME thread is the
+        idempotent 200."""
+        from runtime.db_lock import connect_read, connect_write
+
+        owner = _reader_owner_id(request)
+        db = _resolve_db_path()
+        with connect_write(db, purpose="books/anchors/link") as con:
+            outcome = HighlightsStore().set_investigation_link(
+                con, anchor_id, owner, body.investigation_id
+            )
+            if outcome == "not_found":
+                raise HTTPException(status_code=404, detail="anchor_not_found")
+            if outcome == "already_linked":
+                raise HTTPException(status_code=409, detail="anchor_already_linked")
+        rcon = connect_read(db)
+        try:
+            row = HighlightsStore().get(rcon, anchor_id)
+        finally:
+            rcon.close()
+        if row is None:  # pragma: no cover - database invariant
+            raise HTTPException(status_code=404, detail="anchor_not_found")
+        return _anchor_out(row, exact_valid=True)
 
     @app.delete(
         "/books/{document_id}/anchors/{anchor_id}",

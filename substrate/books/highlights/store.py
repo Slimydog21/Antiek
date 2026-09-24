@@ -230,6 +230,36 @@ class HighlightsStore:
             [str(status), anchor_id],
         )
 
+    def set_investigation_link(
+        self,
+        con: LockedConnection,
+        anchor_id: str,
+        owner_user_id: str,
+        investigation_id: str,
+    ) -> str:
+        """The SPR-04 seam write-back: link a spawned research thread to its
+        anchor. FIRST LINK WINS — an anchor owns at most one thread link, so
+        a second spawn never overwrites. Returns "linked", "already_linked"
+        (a different thread already holds it — the caller surfaces honestly),
+        or "not_found"."""
+        init_highlights_schema(con)
+        row = con.execute(
+            "SELECT investigation_id FROM anchored_highlights "
+            "WHERE anchor_id = ? AND owner_user_id = ?",
+            [anchor_id, owner_user_id],
+        ).fetchone()
+        if row is None:
+            return "not_found"
+        existing = row[0]
+        if existing is not None:
+            return "already_linked" if str(existing) != investigation_id else "linked"
+        con.execute(
+            "UPDATE anchored_highlights SET investigation_id = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE anchor_id = ? AND owner_user_id = ?",
+            [investigation_id, anchor_id, owner_user_id],
+        )
+        return "linked"
+
     def delete(self, con: LockedConnection, anchor_id: str, owner_user_id: str) -> bool:
         """The ONLY removal path — an explicit owner delete. Anything else
         (drift, orphan) keeps the row, per the never-silently-lost invariant."""
