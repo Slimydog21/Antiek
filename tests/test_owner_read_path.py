@@ -504,9 +504,11 @@ def test_signed_two_email_route_cannot_cross_spend_byot_on_public_books(
         self: _UserOpenAICompatProvider, *, model: str, prompt: str,
         max_tokens: int, temperature: float,
     ) -> RawProviderResponse:
-        sends.append(self._resolve_api_key())
+        sends.append((self.name, self._resolve_api_key()))
         return RawProviderResponse(
-            text="offline answer", raw_usage={}, finish_reason="stop", latency_ms=1,
+            text="offline answer",
+            raw_usage={"prompt_tokens": 1000, "completion_tokens": 1000},
+            finish_reason="stop", latency_ms=1,
         )
 
     monkeypatch.setattr(_UserOpenAICompatProvider, "call", offline_call)
@@ -539,6 +541,35 @@ def test_signed_two_email_route_cannot_cross_spend_byot_on_public_books(
                 }
 
             before = {name: ledger.snapshot(owners[name]) for name in owners}
+
+            # Control: Alice's own grounded request using her key goes through
+            # this same production route, sends once, and settles only her ledger.
+            allowed = client.post(
+                "/books/doc-public-alice/ask",
+                cookies=cookies["alice"],
+                json={
+                    "question": "GATEDPROBE quantum passage about entanglement and superposition",
+                    "operation_id": "alice-book-alice-key",
+                    "model_choice": choice("alice"),
+                },
+            )
+            assert allowed.status_code == 200, allowed.text
+            assert allowed.json()["grounded"] is True
+            assert allowed.json()["model_receipt"] == {
+                "authority": "owner_byot",
+                "requested_provider_id": providers["alice"],
+                "requested_model_id": "deepseek-chat",
+                "actual_provider_id": providers["alice"],
+                "actual_model_id": "deepseek-chat",
+                "authority_digest": allowed.json()["model_receipt"]["authority_digest"],
+            }
+            assert len(allowed.json()["model_receipt"]["authority_digest"]) == 64
+            assert sends == [(providers["alice"], secrets["alice"])]
+            alice_settlement = ledger.operation(owners["alice"], "alice-book-alice-key")
+            assert alice_settlement is not None and alice_settlement.state == "settled"
+            assert alice_settlement.api_key_id == providers["alice"]
+            assert ledger.snapshot(owners["bob"]) == before["bob"]
+
             # Alice owns this book and has a grounded passage, so the production
             # route reaches the BYOT authority check and refuses Bob's key.
             operation_id = "alice-book-bob-key"
@@ -572,8 +603,10 @@ def test_signed_two_email_route_cannot_cross_spend_byot_on_public_books(
             assert bob_book.json()["context_chunk_count"] == 0
             assert bob_book.json()["model_receipt"] is None
 
-            assert sends == []
-            assert {name: ledger.snapshot(owners[name]) for name in owners} == before
+            assert sends == [(providers["alice"], secrets["alice"])]
+            assert ledger.snapshot(owners["bob"]) == before["bob"]
+            assert len(ledger.snapshot(owners["alice"])) == 1
+            assert ledger.operation(owners["bob"], "alice-book-alice-key") is None
             assert all(ledger.operation(owner, operation_id) is None for owner in owners.values())
             assert all(
                 ledger.operation(owner, "bob-book-alice-key") is None
