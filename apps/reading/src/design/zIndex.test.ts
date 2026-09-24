@@ -28,6 +28,7 @@ describe("zIndex ladder — pinned values (no behaviour change)", () => {
     expect(zIndex.popover).toBe(120); //             SlashMenu z-[120]
     expect(zIndex.adOverlay).toBe(150); //           AdBorder z-[150]
     expect(zIndex.toast).toBe(200); //               LemonToast z-[200]
+    expect(zIndex.tooltip).toBe(250); //             Tooltip.css [data-tip]::after (W2)
   });
 
   it("WINDOW_Z_BASE is still 40 and sources from the ladder (no value change)", () => {
@@ -76,6 +77,7 @@ describe("zIndex ladder — pinned values (no behaviour change)", () => {
     expect(zIndex.mobileRailToggle).toBeLessThan(zIndex.mascot);
     expect(zIndex.windowBase).toBeLessThan(zIndex.modal);
     expect(zIndex.modal).toBeLessThan(zIndex.toast);
+    expect(zIndex.toast).toBeLessThan(zIndex.tooltip);
   });
 
   it("covers every named layer in the ordering array (no orphan layer)", () => {

@@ -50,6 +50,7 @@
  *   popover            120    Notebook/SlashMenu.tsx `z-[120]`
  *   adOverlay          150    AdBorder.tsx `z-[150]`
  *   toast              200    LemonToast.tsx `z-[200]`
+ *   tooltip            250    Tooltip.css `[data-tip]::after` (new, W2)
  *
  * Surfaces whose elevation is a Tailwind class (LemonModal/LemonToast/
  * AdBorder/SlashMenu/MascotStation) are NOT rewired here — those classes are
@@ -124,8 +125,14 @@ export const zIndex = Object.freeze({
   popover: 120,
   /** Full-bleed ad border overlay (pointer-events-none) over the modal layer. */
   adOverlay: 150,
-  /** LemonToast stack — the top of the ladder; nothing occludes a toast. */
+  /** LemonToast stack — nothing but a tooltip occludes a toast. */
   toast: 200,
+  /**
+   * The CSS-only tip (components/Tooltip.css) — the top of the ladder. A tip
+   * explains the control under the pointer or focus, so it must read over any
+   * layer that control can sit in, a toast's dismiss button included.
+   */
+  tooltip: 250,
 } as const);
 
 export type ZIndexLayer = keyof typeof zIndex;
@@ -152,6 +159,7 @@ export const Z_LADDER_ORDER = [
   "popover",
   "adOverlay",
   "toast",
+  "tooltip",
 ] as const satisfies readonly ZIndexLayer[];
 
 /**

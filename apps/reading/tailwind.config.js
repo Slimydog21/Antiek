@@ -156,6 +156,9 @@ export default {
         "z2-night": "5px 5px 0 0 var(--sun-deep)",
         "z3-night": "8px 8px 0 0 var(--sun-deep)",
         "lift-night": "12px 12px 0 0 var(--sun-deep)",
+        // Floating islands (popover, modal, palette, toast): theme-aware,
+        // ink by day and near-black at night (tokens.css --shadow-island).
+        island: "var(--shadow-island)",
       },
       borderWidth: {
         edge: "2.5px",
@@ -189,6 +192,7 @@ export default {
         popover: "var(--z-popover)",
         "ad-overlay": "var(--z-ad-overlay)",
         toast: "var(--z-toast)",
+        tooltip: "var(--z-tooltip)",
       },
       fontFamily: {
         sans: ["Inter", '"Inter Fallback"', "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],

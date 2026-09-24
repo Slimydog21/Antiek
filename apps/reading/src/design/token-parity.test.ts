@@ -197,6 +197,7 @@ describe("state and z-index tokens", () => {
       ["--z-popover", zIndex.popover],
       ["--z-ad-overlay", zIndex.adOverlay],
       ["--z-toast", zIndex.toast],
+      ["--z-tooltip", zIndex.tooltip],
     ];
     for (const [name, value] of pairs) expect(Number(sheet.root.get(name)), name).toBe(value);
   });

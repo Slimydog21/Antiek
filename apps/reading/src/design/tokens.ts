@@ -234,19 +234,23 @@ export function aliasFor(m: Mode): SurfaceAliases {
 export const inkSoft = { day: L.text2, night: D.text2 } as const;
 export const inkMute = { day: L.text3, night: D.text3 } as const;
 
-/** Chunky offset shadows: ink-cast by day, sun-deep-cast by night. */
+/** Chunky offset shadows: ink-cast by day, sun-deep-cast by night (islands excepted). */
 export const shadow = {
   day: {
     z1: "3px 3px 0 0 #0F1419",
     z2: "5px 5px 0 0 #0F1419",
     z3: "8px 8px 0 0 #0F1419",
     lift: "12px 12px 0 0 #0F1419",
+    /** Floating islands (popover, modal, palette, toast). */
+    island: "5px 5px 0 0 #0F1419",
   },
   night: {
     z1: "3px 3px 0 0 #84722F",
     z2: "5px 5px 0 0 #84722F",
     z3: "8px 8px 0 0 #84722F",
     lift: "12px 12px 0 0 #84722F",
+    /** No yellow shadows at night: islands cast near-black on the sky. */
+    island: "5px 5px 0 0 #05070B",
   },
 } as const;
 

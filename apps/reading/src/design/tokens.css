@@ -119,6 +119,7 @@
   --z-popover:             120;
   --z-ad-overlay:          150;
   --z-toast:               200;
+  --z-tooltip:             250;
 
   /* Geometry */
   --radius-sm: 4px;
@@ -237,6 +238,9 @@
   --shadow-z2:   5px 5px 0 0 var(--fixed-ink);
   --shadow-z3:   8px 8px 0 0 var(--fixed-ink);
   --shadow-lift: 12px 12px 0 0 var(--fixed-ink);
+  /* Floating islands (popover, modal, palette, toast): the hard offset.
+     Cards and fields are flat; keycaps carry their own frame (lemon.css). */
+  --shadow-island: 5px 5px 0 0 var(--fixed-ink);
 }
 
 /* ── 2b. SEMANTIC, night. Keep byte-identical to the @media block. ── */
@@ -309,6 +313,8 @@
   --shadow-z2:   5px 5px 0 0 var(--sun-deep);
   --shadow-z3:   8px 8px 0 0 var(--sun-deep);
   --shadow-lift: 12px 12px 0 0 var(--sun-deep);
+  /* No yellow shadows at night: an island casts near-black on the sky. */
+  --shadow-island: 5px 5px 0 0 #05070B;
 }
 
 /* No-JS fallback: follow the OS when nothing set data-theme. */
@@ -382,6 +388,8 @@
     --shadow-z2:   5px 5px 0 0 var(--sun-deep);
     --shadow-z3:   8px 8px 0 0 var(--sun-deep);
     --shadow-lift: 12px 12px 0 0 var(--sun-deep);
+    /* No yellow shadows at night: an island casts near-black on the sky. */
+    --shadow-island: 5px 5px 0 0 #05070B;
   }
 }
 
