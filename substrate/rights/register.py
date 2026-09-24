@@ -55,12 +55,12 @@ class SourceKind(StrEnum):
     LICENSED_PUBLISHER (arXiv papers and public-domain books included).
     substrate.rights.ad_eligibility.ad_eligibility decides it from what IS
     persisted (the licence tier in documents.metadata, else body servability).
-    The serve guard calls it for every document; the payouts ledger calls it
-    only for arXiv papers, turning any other document away first
-    (``not_an_arxiv_paper``). tests/rights/test_ad_eligibility_agreement.py
-    checks every member of this enum against the predicate. For a non-arXiv
-    document that check reaches ``payout_ad_eligibility`` directly, a path no
-    production accrual takes (see ``ad_eligibility.ad_eligibility``).
+    The serve guard calls it for every document, and the reader-session
+    settlement (book_escrow.accrue_reading_session) and the per-author arXiv
+    ledger both ask it before their own gates.
+    tests/rights/test_ad_eligibility_agreement.py settles a paid fill on a
+    document of every member of this enum and checks the money accrues
+    exactly when serve time said ad-eligible.
     """
 
     LICENSED_PUBLISHER = "licensed_publisher"  # a book claimed via the §9.10 opt-in flow

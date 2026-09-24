@@ -36,8 +36,10 @@ place this rule lives (defensibility bar 5).
 
 That ONE rule now has ONE extension: a document with no licence tier carries
 no licence signal and is decided by whether its body is publicly servable.
-``substrate.books.serve_guard`` and ``substrate.payouts.ledger`` both call
-``ad_eligibility()`` — serve-time and payout-time cannot re-derive it apart.
+``substrate.books.serve_guard`` and the payout-side settlements
+(``substrate.payouts.ledger`` and ``substrate.marketplace_metrics.book_escrow``)
+all call ``ad_eligibility()`` — serve-time and payout-time cannot re-derive it
+apart.
 """
 
 from __future__ import annotations
@@ -105,17 +107,26 @@ def ad_eligibility(tier: RightsTier | None, *, servable: bool | None) -> AdEligi
     """THE ad-eligibility predicate.
 
     ``serve_guard.serve_full_text_guarded`` stamps
-    ``ServeResult.ad_eligible`` from it, and ``payouts.ledger.accrue_paper_read``
-    gates arXiv author accrual on it, so for an arXiv paper the reader cannot
-    mount an ad border on a document whose revenue the ledger then refuses
-    (or the reverse). The agreement is only that wide. The ledger turns any
-    non-arXiv document away (``not_an_arxiv_paper``) before it consults this
-    predicate, and book escrow (``book_escrow.accrue_reading_session``) does
-    not consult it at all. Neither gap moves money today:
-    ``accrue_reading_session`` is the only caller of ``accrue_paper_read`` and
-    has no production caller, because the impressions endpoint it served
-    returns 410. Whoever wires a settled-fill path to escrow must decide
-    whether escrow accrual follows this predicate.
+    ``ServeResult.ad_eligible`` from it (the reader mounts its ad border only
+    when it is True), and both payout-side settlements of a reader's ad fill
+    ask it FIRST, through ``payouts.ledger.payout_ad_eligibility``:
+    ``marketplace_metrics.book_escrow.accrue_reading_session`` (the rights
+    holder's escrow, for every document kind) and
+    ``payouts.ledger.accrue_paper_read`` (the per-author arXiv ledger it
+    feeds). A refusal carries this predicate's reason; the settlements' own
+    gates (arXiv scope, zero revenue, unknown holder, the §9.10 disbursement
+    lock at ``claimed``) apply only after it. So a settled fill accrues on a
+    document exactly when the reader could show it an ad border, for every
+    ``SourceKind`` (tests/rights/test_ad_eligibility_agreement.py).
+
+    Scope, stated so it is not over-read: ``accrue_reading_session`` has no
+    production caller today (the client-priced impressions endpoint returns
+    410). The live per-second frame path
+    (``ad_inventory.frame_attention_accrual.accrue_window``) splits a window's
+    settled value across every asset in frame by a different, deliberately
+    wider earn gate, ``ad_inventory.attribution.monetization_eligible``
+    (content_class only; see the "TWO DISTINCT EARN GATES" note there). It is
+    not routed through this predicate.
 
     - A licence tier decides on its own: eligible iff ``ads_allowed(tier)``
       (T1 only). servability is not consulted (a T1 paper is ad-eligible even

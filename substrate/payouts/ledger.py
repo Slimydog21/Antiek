@@ -250,12 +250,12 @@ def payout_ad_eligibility(
     """Payout-time ad-eligibility of ``document_id``: the SAME predicate over
     the SAME facts the serve guard stamps as ``ServeResult.ad_eligible``
     (licence tier from ``documents.metadata`` via ``licence_tier_of``, else
-    body servability). ``accrue_paper_read`` gates on it only after its arXiv
-    check, so for accrual the servability branch is reached only by an arXiv
-    paper without a licence signal; for any other document it answers what
-    the ledger WOULD decide, not what it does. None when the document does
-    not exist. ``metadata`` lets a caller that already parsed the row skip a
-    second read."""
+    body servability). Both payout-side settlements ask it before anything
+    else: ``accrue_paper_read`` (the per-author arXiv ledger) and
+    ``book_escrow.accrue_reading_session`` (the reader-session settlement
+    into the rights holder's escrow). None when the document does not exist.
+    ``metadata`` lets a caller that already parsed the row skip a second
+    read."""
     meta = metadata if metadata is not None else _load_metadata(con, document_id)
     if meta is None:
         return None
@@ -406,12 +406,14 @@ def accrue_paper_read(
     path's existing write transaction; the single-writer invariant is never
     violated by a second connection).
 
-    T1 GATE (rigor — the only accruable case): the gate is
+    T1 GATE (rigor — the only accruable case): the first gate is
     ``payout_ad_eligibility`` — the predicate shared with the serve guard —
     over metadata-derived licence tier (the stored ``rights_tier`` is NEVER
     trusted — SPR-02 anti-laundering) or, absent a licence signal, body
-    servability. A non-arXiv doc (no ``arxiv_id``), a T2/T3 paper, or a
-    zero-revenue event emits NOTHING.
+    servability; a refusal carries its reason. Only then does the ledger's
+    own scope apply: an eligible non-arXiv doc (no ``arxiv_id``) is
+    ``not_an_arxiv_paper`` (its revenue is the reader-session settlement's),
+    and a zero-revenue event emits NOTHING.
 
     Idempotent + append-only: rows are keyed by a deterministic id derived from
     the source ``ad_event_id`` + canonical inputs, so re-accruing the SAME
@@ -436,14 +438,12 @@ def accrue_paper_read(
     if meta is None:
         return _not_accruable(ad_event_id, document_id, None, "document_not_found")
 
-    arxiv_id = meta.get("arxiv_id")
-    if not isinstance(arxiv_id, str) or not arxiv_id:
-        # Non-arXiv document → the payouts ledger emits nothing (only T1 arXiv
-        # reads accrue here; book/publisher revenue is book_escrow's concern).
-        return _not_accruable(ad_event_id, document_id, None, "not_an_arxiv_paper")
+    raw_arxiv_id = meta.get("arxiv_id")
+    arxiv_id = raw_arxiv_id if isinstance(raw_arxiv_id, str) and raw_arxiv_id else None
 
-    # T1 GATE — consult the same predicate as the serve guard, over the same
-    # metadata derivation. Only T1 emits accruable author events.
+    # AD-ELIGIBILITY FIRST — the same predicate as the serve guard, over the
+    # same metadata derivation, so a refusal names the predicate's reason
+    # whatever the document is. The ledger's own scope applies after it.
     decision = payout_ad_eligibility(con, document_id, metadata=meta)
     if decision is None or not decision.eligible:
         return _not_accruable(
@@ -452,6 +452,14 @@ def accrue_paper_read(
             arxiv_id,
             decision.reason if decision is not None else "document_not_found",
         )
+
+    if arxiv_id is None:
+        # An ad-eligible document that is not an arXiv paper has no bylined
+        # authors for this ledger. Its revenue accrues through the reader-
+        # session settlement (book_escrow.accrue_reading_session), which asked
+        # the same predicate; this ledger emits nothing.
+        return _not_accruable(ad_event_id, document_id, None, "not_an_arxiv_paper")
+
     tier = decision.tier
     if tier is None:  # unreachable: licence_tier_of gives every arxiv_id row a tier
         raise RuntimeError(f"arXiv document {document_id!r} has no licence tier")
