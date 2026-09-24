@@ -20,24 +20,28 @@
 import { motion } from "./tokens";
 
 /**
- * PRESS + HOVER-LIFT — the tactile pair for a raised, fill-variant Lemon
- * surface: a −2px diagonal lift + shadow grow on hover, snapping into its
- * own shadow on :active so a tap reads as a physical press. This is
- * LemonButton's existing behaviour, pinned to one transition (the
- * `duration-base` transform) so hover and press share a single, coherent
- * timing rather than two competing `transition-duration` declarations.
- * Assumes a base `shadow-z1` on the element; lifts to `shadow-z3`.
+ * PRESS + HOVER-LIFT — the tactile pair for a raised surface that carries
+ * the diagonal hard shadow (`shadow-z1`, 3px 3px): hover lifts it half a
+ * pixel up-left and grows the shadow half a pixel; press sinks it half a
+ * pixel and shrinks the shadow by the same. The shadow's far corner never
+ * moves (design spec §4, PostHog's conserved press): transform AND
+ * box-shadow transition together on one duration and easing, so the sum
+ * of offset and shadow is constant on every frame. The old recipe
+ * transitioned transform only and jumped the shadow to 8px on the first
+ * hover frame (footprint +3 -> +8 -> +6 -> +2 px, measured in Chromium).
+ * Press runs on duration-fast (80ms), hover on duration-base (150ms).
  *
- * Kept as one string because hover and press both animate `transform`:
- * declaring the transition once (here) is correct; declaring it twice
- * (separate press/lift strings on the same element) lets the later
- * `transition-duration` silently win for both states.
+ * LemonButton no longer uses this: its keycap (a vertical frame, the
+ * same conservation) lives in components/lemon/lemon.css. This string
+ * serves the cards, cartridges and handles that keep the diagonal shadow.
+ * Assumes a base `shadow-z1 dark:shadow-z1-night` on the element.
  */
 export const press =
-  "transition-transform duration-base ease-standard " +
-  "hover:-translate-x-[2px] hover:-translate-y-[2px] " +
-  "hover:shadow-z3 dark:hover:shadow-z3-night " +
-  "active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none";
+  "transition-[transform,box-shadow] duration-base active:duration-fast ease-standard " +
+  "hover:-translate-x-[0.5px] hover:-translate-y-[0.5px] " +
+  "hover:shadow-[3.5px_3.5px_0_0_var(--fixed-ink)] dark:hover:shadow-[3.5px_3.5px_0_0_var(--sun-deep)] " +
+  "active:translate-x-[0.5px] active:translate-y-[0.5px] " +
+  "active:shadow-[2.5px_2.5px_0_0_var(--fixed-ink)] dark:active:shadow-[2.5px_2.5px_0_0_var(--sun-deep)]";
 
 /**
  * CARD-LIFT — the gentler upward nudge for a card whose hover is led by

@@ -442,7 +442,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
               href="/speak/y1"
             >
               <section
-                class="border border-rule rounded-hog bg-card text-1  transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none"
+                class="border border-rule rounded-hog bg-card text-1  transition-[transform,box-shadow] duration-base active:duration-fast ease-standard hover:-translate-x-[0.5px] hover:-translate-y-[0.5px] hover:shadow-[3.5px_3.5px_0_0_var(--fixed-ink)] dark:hover:shadow-[3.5px_3.5px_0_0_var(--sun-deep)] active:translate-x-[0.5px] active:translate-y-[0.5px] active:shadow-[2.5px_2.5px_0_0_var(--fixed-ink)] dark:active:shadow-[2.5px_2.5px_0_0_var(--sun-deep)]"
               >
                 <div
                   class="px-4 py-3"
@@ -476,7 +476,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
               href="/speak/y2"
             >
               <section
-                class="border border-rule rounded-hog bg-card text-1  transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none"
+                class="border border-rule rounded-hog bg-card text-1  transition-[transform,box-shadow] duration-base active:duration-fast ease-standard hover:-translate-x-[0.5px] hover:-translate-y-[0.5px] hover:shadow-[3.5px_3.5px_0_0_var(--fixed-ink)] dark:hover:shadow-[3.5px_3.5px_0_0_var(--sun-deep)] active:translate-x-[0.5px] active:translate-y-[0.5px] active:shadow-[2.5px_2.5px_0_0_var(--fixed-ink)] dark:active:shadow-[2.5px_2.5px_0_0_var(--sun-deep)]"
               >
                 <div
                   class="px-4 py-3"
