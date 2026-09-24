@@ -33,6 +33,7 @@ from interfaces.research.api.account_memory_identity import (
 )
 from interfaces.research.api.settings_budget import register_settings_budget_routes
 from interfaces.research.api.settings_models_admin import _load_registry
+from interfaces.research.api.settings_privacy import register_settings_privacy_routes
 from runtime.byok.store import list_credentials, load_credential
 from runtime.connectors import registry as tool_registry
 from runtime.connectors.registry import (
@@ -311,6 +312,35 @@ def test_apply_reowns_every_store_and_reseals_credentials(env: Path, caplog) -> 
         assert stranger["count"] == 0
 
 
+def test_a_disabled_privacy_surface_stays_disabled_for_the_operator_after_apply(
+    env: Path,
+) -> None:
+    """The migration moves telemetry preferences to the derived owner; the privacy
+    route must read them there, or every surface the operator turned off silently
+    turns back on after --apply (the read path used to hard-code __operator__)."""
+    _seed_legacy_state(env)  # seeds skill_invocation_frequency=False for LEGACY_OWNER
+    run_migration(OPERATOR, apply=True)
+
+    app = FastAPI()
+    register_settings_privacy_routes(app)
+
+    @app.middleware("http")
+    async def _stamp(request, call_next):  # noqa: ANN001, ANN202
+        request.state.auth_method = "antiek_session_cookie"
+        request.state.user_id = LEGACY_OWNER
+        request.state.user_email = request.headers.get("X-Test-Email")
+        return await call_next(request)
+
+    with TestClient(app) as client:
+        surfaces = {
+            row["surface_name"]: row
+            for row in client.get("/settings/privacy", headers={"X-Test-Email": OPERATOR}).json()[
+                "surfaces"
+            ]
+        }
+    assert surfaces["skill_invocation_frequency"]["enabled"] is False
+
+
 def test_apply_is_idempotent_noop_when_nothing_legacy_remains(env: Path) -> None:
     _seed_legacy_state(env)
     run_migration(OPERATOR, apply=True)
@@ -457,6 +487,24 @@ def test_refuses_a_legacy_row_bound_to_someone_elses_credential(env: Path) -> No
         run_migration(OPERATOR, apply=True)
 
     assert _tool_state(env) == before
+
+
+def test_refuses_when_a_legacy_credential_is_not_in_the_artifact_it_reads(
+    env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run without the service's BYOK env must not move rows it cannot re-seal."""
+    connect_tool(LEGACY_OWNER, "youtube", _TOOL_SECRET)
+    registry_before = (env / "settings" / "tool_connections.json").read_bytes()
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(env / "elsewhere" / "credentials.enc"))
+
+    for apply in (False, True):
+        with pytest.raises(MigrationRefused, match="not in the BYOK artifact"):
+            run_migration(OPERATOR, apply=apply)
+
+    assert (env / "settings" / "tool_connections.json").read_bytes() == registry_before
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(env / "byok" / "credentials.enc"))
+    run_migration(OPERATOR, apply=True)
+    resolve_tool_connection(TARGET, "youtube").close()
 
 
 def test_a_failed_reseal_leaves_tools_as_they_were(
