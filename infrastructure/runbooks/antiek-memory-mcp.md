@@ -60,12 +60,15 @@ of the following on the server before publishing a client configuration:
    in that environment; `pyproject.toml` does not put it in the explicit
    wheel package list.
 4. Prove the connector starts without schema writes and can read while the
-   live HTTP writer is active. The current launcher calls
-   `init_database_at_path`, whose failed read-only probe can enter a write
-   path. A separate DuckDB process may also fail to open the file while the
-   HTTP process owns a read-write handle. In a local DuckDB 1.4.4 two-process
-   probe on 2026-09-24, the read-only open failed with a conflicting file
-   lock while the writer held the graph file; this is not a production test.
+   live HTTP writer is active. The baseline launcher called
+   `init_database_at_path`, whose failed read-only probe could enter a write
+   path. PR #3436 removes that initializer and requires an existing graph
+   through a native read-only startup probe. That closes startup writes in
+   the proposed code, but a separate DuckDB process may still fail to open
+   the file while the HTTP process owns a read-write handle. In a local
+   DuckDB 1.4.4 two-process probe on 2026-09-24, the read-only open failed
+   with a conflicting file lock while the writer held the graph file; this
+   is not a production test.
    If either occurs, change the architecture (for example, a
    same-process authenticated adapter or a
    declared read-only snapshot with freshness controls) before registration.
