@@ -1,5 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 
+import { expectTheme, freezeMotion, type AxisTheme } from "./visual-axes.ts";
+
 // NOTE: this file is NOT in tsconfig's `include` (it runs in the
 // test-runner's own jest+babel context, not the app's tsc -b), and
 // `@storybook/test-runner` is installed at CI time via npx — not a
@@ -10,6 +12,7 @@ import AxeBuilder from "@axe-core/playwright";
 // which sidesteps the playwright / playwright-core dual-Page-type drift.
 type AxePage = ConstructorParameters<typeof AxeBuilder>[0]["page"];
 type TestRunnerConfig = {
+  preVisit?: (page: AxePage) => Promise<void> | void;
   postVisit?: (page: AxePage) => Promise<void> | void;
 };
 
@@ -37,12 +40,23 @@ type TestRunnerConfig = {
  * (test-runner gate + the a11y_audit.ts report) use the same rule set
  * (tags + disabled rules), kept in sync BY HAND — change one, change both.
  *
+ * Theme. One run audits one theme: `A11Y_THEME=dark` audits night, anything
+ * else audits day. `preVisit` emulates that colour scheme before the story
+ * renders; the preview's theme global defaults to "system", so the story
+ * renders under <html data-theme> of that theme, and `postVisit` checks the
+ * attribute before axe runs, so a night run that rendered day fails instead
+ * of passing. CI runs the hook once per theme (visualtest.yml).
+ *
+ * Motion. `preVisit` zeroes CSS animation and transition durations (the
+ * PostHog runner's rule), so axe never reads a colour mid-transition and
+ * entrance animations are already at rest. Unlike reduced motion, this keeps
+ * the full-motion design (GlassSurface keeps its glass).
+ *
  * Story selection: the CI step passes `--includeTags a11y-audit`, so the
  * runner only visits stories tagged `a11y-audit` (the shell chrome +
  * the Lemon primitives). The hook runs on whatever the runner visits;
  * the tag is the filter.
  */
-
 /**
  * The shared axe rule set + disabled-rule list. Kept identical to
  * scripts/a11y_audit.ts so the CI gate and the local report agree.
@@ -66,12 +80,21 @@ const AXE_DISABLED_RULES = [
   "empty-heading",
 ];
 
+const THEME: AxisTheme = process.env.A11Y_THEME === "dark" ? "dark" : "light";
+
 const BLOCKING_IMPACTS = new Set(["serious", "critical"]);
 
 const config: TestRunnerConfig = {
+  async preVisit(page) {
+    await page.emulateMedia({ colorScheme: THEME });
+    await freezeMotion(page);
+  },
   async postVisit(page) {
-    // The runner navigates the page to the story before postVisit; run
-    // axe against the live story DOM exactly as a11y_audit.ts does.
+    // The story has rendered by now, so the attribute is either there or
+    // wrong; 5 s keeps this message inside jest's 15 s test timeout.
+    await expectTheme(page, THEME, 5_000);
+    // The runner renders the story before postVisit; run axe against the
+    // live story DOM exactly as a11y_audit.ts does.
     const results = await new AxeBuilder({ page })
       .withTags(AXE_TAGS)
       .disableRules(AXE_DISABLED_RULES)
@@ -89,7 +112,7 @@ const config: TestRunnerConfig = {
       );
       throw new Error(
         `axe-core found ${blocking.length} serious/critical a11y ` +
-          `violation(s):\n${lines.join("\n")}`,
+          `violation(s) in the ${THEME} theme:\n${lines.join("\n")}`,
       );
     }
   },

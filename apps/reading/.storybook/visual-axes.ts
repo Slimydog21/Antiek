@@ -1,6 +1,7 @@
 /**
- * The axes story verdicts are rendered on, shared by the tools that render
- * stories to judge them (lostpixel.config.ts first).
+ * The axes every story verdict is rendered on, shared by the three tools that
+ * render stories to judge them: lost-pixel (lostpixel.config.ts) and the
+ * Storybook test-runner (test-runner.ts).
  *
  * Theme. The preview's `theme` global (preview.tsx) writes `data-theme` on the
  * preview <html>, the same attribute the app's boot script sets, so a story
@@ -9,8 +10,14 @@
  * colour scheme) and then checks `data-theme` before it judges anything: an
  * axis that silently fell back to day would be a gate that cannot see night.
  *
+ * Motion. `FREEZE_MOTION_CSS` zeroes CSS durations and delays so a frame is
+ * deterministic without swapping the design (PostHog's runner does the same).
+ * Reduced motion is a different design here (GlassSurface drops to its solid
+ * fallback), so the test-runner freezes motion instead.
+ * lost-pixel still forces reduced motion; see lostpixel.config.ts for that gap.
+ *
  * This file has no imports on purpose: it is loaded by esbuild (lost-pixel),
- * tsx and the Storybook test-runner's own transpiler.
+ * tsx and the test-runner's own transpiler.
  */
 
 export const AXIS_THEMES = ["light", "dark"] as const;
@@ -47,6 +54,18 @@ export function storyUrl(storybook: string, storyId: string, theme: AxisTheme): 
   return withThemeGlobal(`${base}/iframe.html?id=${storyId}&viewMode=story`, theme);
 }
 
+export const FREEZE_STYLE_ID = "visual-axes-freeze-motion";
+
+export const FREEZE_MOTION_CSS = [
+  "*, *::before, *::after {",
+  "  animation-duration: 0s !important;",
+  "  animation-delay: 0s !important;",
+  "  transition-duration: 0s !important;",
+  "  transition-delay: 0s !important;",
+  "  scroll-behavior: auto !important;",
+  "}",
+].join("\n");
+
 /** The structural slice of a Playwright page these helpers use. */
 export type AxisPage = {
   evaluate<R, A>(fn: (arg: A) => R | Promise<R>, arg: A): Promise<R>;
@@ -56,6 +75,20 @@ export type AxisPage = {
     options?: { timeout?: number },
   ): Promise<unknown>;
 };
+
+/** Zero CSS animation and transition timing on the page; safe to call twice. */
+export async function freezeMotion(page: AxisPage): Promise<void> {
+  await page.evaluate(
+    ({ id, css }) => {
+      if (document.getElementById(id)) return;
+      const style = document.createElement("style");
+      style.id = id;
+      style.textContent = css;
+      (document.head ?? document.documentElement).appendChild(style);
+    },
+    { id: FREEZE_STYLE_ID, css: FREEZE_MOTION_CSS },
+  );
+}
 
 /**
  * Wait until the preview has rendered the story in `theme`. Storybook's own

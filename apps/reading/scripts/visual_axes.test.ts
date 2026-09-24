@@ -5,10 +5,13 @@ import { config as lostpixel } from "../lostpixel.config";
 import preview from "../.storybook/preview";
 import {
   DARK_SHOT,
+  FREEZE_STYLE_ID,
   expectTheme,
+  freezeMotion,
   isDarkShot,
   storyUrl,
   withThemeGlobal,
+  type AxisPage,
 } from "../.storybook/visual-axes";
 
 /**
@@ -48,6 +51,7 @@ afterEach(() => {
   document.documentElement.removeAttribute("data-theme");
   document.documentElement.removeAttribute("data-theme-pref");
   document.body.className = "";
+  document.getElementById(FREEZE_STYLE_ID)?.remove();
 });
 
 describe("withThemeGlobal / storyUrl", () => {
@@ -89,6 +93,20 @@ describe("expectTheme", () => {
   it("lets Storybook's own error screen through, since it is the same in both themes", async () => {
     document.body.classList.add("sb-show-errordisplay");
     await expect(expectTheme(fakePage("http://h/").page, "dark")).resolves.toBe("storybook-error");
+  });
+});
+
+describe("freezeMotion", () => {
+  it("adds one style that zeroes animation and transition timing", async () => {
+    const { page } = fakePage("http://h/");
+    await freezeMotion(page as AxisPage);
+    await freezeMotion(page as AxisPage);
+    const styles = document.querySelectorAll(`#${FREEZE_STYLE_ID}`);
+    expect(styles).toHaveLength(1);
+    const css = styles[0].textContent ?? "";
+    for (const rule of ["animation-duration: 0s", "transition-duration: 0s", "animation-delay: 0s"]) {
+      expect(css).toContain(rule);
+    }
   });
 });
 
