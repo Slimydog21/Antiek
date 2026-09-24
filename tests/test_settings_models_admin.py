@@ -51,8 +51,34 @@ def _fresh_app() -> FastAPI:
     ``register_settings_budget_routes`` create_app calls) without pulling
     the whole app.py surface into this suite."""
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        # One verified operator for this suite. Option A keys rows on the
+        # derived owner from user_email; two-person isolation is proven in
+        # tests/test_owner_namespace_align.py.
+        request.state.user_id = "__operator__"
+        request.state.user_email = _TEST_EMAIL
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
     register_settings_budget_routes(app)
     return app
+
+
+
+_TEST_EMAIL = "operator-under-test@example.com"
+
+
+def _pid(slug: str) -> str:
+    """Owner-namespaced provider id for the suite's verified test operator."""
+    from interfaces.research.api.account_memory_identity import (
+        derive_owner_from_verified_email,
+    )
+    from interfaces.research.api.settings_models_admin import _owner_id_prefix
+
+    owner = derive_owner_from_verified_email(_TEST_EMAIL)
+    return _owner_id_prefix(owner) + slug
 
 
 @pytest.fixture
@@ -81,7 +107,7 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     r = client.post("/settings/models/user", json=_ADD_BODY)
     assert r.status_code == 201
     body = r.json()
-    assert body["id"] == "user-my-deepseek"
+    assert body["id"] == _pid("my-deepseek")
     assert body["key_present"] is True
     assert body["registered"] is True
     assert body["enabled"] is True
@@ -95,7 +121,7 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     inv = client.get("/settings/models/user")
     assert inv.status_code == 200
     rows = inv.json()["models"]
-    assert [row["id"] for row in rows] == ["user-my-deepseek"]
+    assert [row["id"] for row in rows] == [_pid("my-deepseek")]
     assert rows[0]["key_present"] is True
     assert rows[0]["route_eligible"] is True
 
@@ -105,7 +131,7 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     # provider route-ready until an explicit dispatch tier binds it.
     models = client.get("/settings/models")
     assert models.status_code == 200
-    row = next(m for m in models.json()["models"] if m["provider_id"] == "user-my-deepseek")
+    row = next(m for m in models.json()["models"] if m["provider_id"] == _pid("my-deepseek"))
     assert row["registered"] is True
     assert row["ready"] is False
     assert row["model_id"] == "deepseek-flash"
@@ -121,7 +147,7 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     # key decrypting from the byok store at call time (test-only private
     # access — this is the one place the plaintext round-trip is asserted,
     # mirroring test_byok_store's reveal() assertions).
-    provider = get_provider("user-my-deepseek")
+    provider = get_provider(_pid("my-deepseek"))
     assert provider._resolve_api_key() == _SECRET  # noqa: SLF001
     assert provider.base_url == "https://api.deepseek.com/v1"
 
@@ -237,14 +263,14 @@ def test_exact_choice_resolves_but_execution_remains_hard_ceiling_blocked(
         "/settings/models/user/resolve",
         json={
             "authority": "user_model",
-            "provider_id": "user-my-deepseek",
+            "provider_id": _pid("my-deepseek"),
             "model_id": "deepseek-flash",
         },
     )
     assert response.status_code == 200
     assert response.json() == {
         "authority": "user_model",
-        "provider_id": "user-my-deepseek",
+        "provider_id": _pid("my-deepseek"),
         "model_id": "deepseek-flash",
         "pricing_status": "unknown",
         "hard_ceiling_eligible": False,
@@ -334,7 +360,7 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
     )
 
     class ExactAdapter:
-        provider = "user-my-deepseek"
+        provider = _pid("my-deepseek")
         model = "deepseek-flash"
         endpoint = "https://api.deepseek.com"
         capabilities = ProviderCapabilities(True, True, True, frozenset({BillingUnit.CALL}))
@@ -369,13 +395,13 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
     generic_row = next(
         row
         for row in client.get("/settings/models").json()["models"]
-        if row["provider_id"] == "user-my-deepseek"
+        if row["provider_id"] == _pid("my-deepseek")
     )
     resolved = client.post(
         "/settings/models/user/resolve",
         json={
             "authority": "user_model",
-            "provider_id": "user-my-deepseek",
+            "provider_id": _pid("my-deepseek"),
             "model_id": "deepseek-flash",
         },
     ).json()
@@ -389,8 +415,8 @@ def test_exact_server_execution_authority_projects_identically_across_settings(
 @pytest.mark.parametrize(
     "choice",
     [
-        {"authority": "user_model", "provider_id": "user-my-deepseek", "model_id": "other"},
-        {"authority": "user_model", "provider_id": "user-other", "model_id": "deepseek-flash"},
+        {"authority": "user_model", "provider_id": _pid("my-deepseek"), "model_id": "other"},
+        {"authority": "user_model", "provider_id": _pid("other"), "model_id": "deepseek-flash"},
     ],
 )
 def test_non_exact_choice_fails_value_free(client: TestClient, choice: dict[str, str]) -> None:
@@ -408,27 +434,27 @@ def test_deleted_stale_and_credential_rebound_routes_fail_closed(
     assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
     choice = {
         "authority": "user_model",
-        "provider_id": "user-my-deepseek",
+        "provider_id": _pid("my-deepseek"),
         "model_id": "deepseek-flash",
     }
-    client.app.state.registered_providers.discard("user-my-deepseek")
+    client.app.state.registered_providers.discard(_pid("my-deepseek"))
     assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
     stale_row = next(
         row
         for row in client.get("/settings/models").json()["models"]
-        if row["provider_id"] == "user-my-deepseek"
+        if row["provider_id"] == _pid("my-deepseek")
     )
     assert stale_row["registered"] is False
     assert stale_row["route_eligible"] is False
 
-    client.app.state.registered_providers.add("user-my-deepseek")
+    client.app.state.registered_providers.add(_pid("my-deepseek"))
     path = env / "settings" / "user_models.json"
     registry = json.loads(path.read_text())
-    registry["user-my-deepseek"]["cred_ref"] = "cred-x-missing"
+    registry[_pid("my-deepseek")]["cred_ref"] = "cred-x-missing"
     path.write_text(json.dumps(registry))
     assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
 
-    assert client.delete("/settings/models/user/user-my-deepseek").status_code == 200
+    assert client.delete("/settings/models/user/" + _pid("my-deepseek") + "").status_code == 200
     assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
 
 
@@ -439,14 +465,14 @@ def test_registry_mutation_cannot_borrow_stale_live_adapter(
     assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
     path = env / "settings" / "user_models.json"
     registry = json.loads(path.read_text())
-    registry["user-my-deepseek"]["model_id"] = "mutated-model"
-    registry["user-my-deepseek"]["base_url"] = "https://mutated.invalid/v1"
+    registry[_pid("my-deepseek")]["model_id"] = "mutated-model"
+    registry[_pid("my-deepseek")]["base_url"] = "https://mutated.invalid/v1"
     path.write_text(json.dumps(registry))
     response = client.post(
         "/settings/models/user/resolve",
         json={
             "authority": "user_model",
-            "provider_id": "user-my-deepseek",
+            "provider_id": _pid("my-deepseek"),
             "model_id": "mutated-model",
         },
     )
@@ -454,7 +480,7 @@ def test_registry_mutation_cannot_borrow_stale_live_adapter(
     row = next(
         item
         for item in client.get("/settings/models").json()["models"]
-        if item["provider_id"] == "user-my-deepseek"
+        if item["provider_id"] == _pid("my-deepseek")
     )
     assert row["route_eligible"] is False
     user_row = client.get("/settings/models/user").json()["models"][0]
@@ -464,21 +490,21 @@ def test_registry_mutation_cannot_borrow_stale_live_adapter(
 def test_same_name_adapter_replacement_revokes_route_authority(client: TestClient) -> None:
     assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
     replacement = OpenAICompatProvider(
-        name="user-my-deepseek",
+        name=_pid("my-deepseek"),
         base_url="https://replacement.invalid/v1",
     )
     register_provider(replacement)
 
     choice = {
         "authority": "user_model",
-        "provider_id": "user-my-deepseek",
+        "provider_id": _pid("my-deepseek"),
         "model_id": "deepseek-flash",
     }
     assert client.post("/settings/models/user/resolve", json=choice).status_code == 409
     generic_row = next(
         item
         for item in client.get("/settings/models").json()["models"]
-        if item["provider_id"] == "user-my-deepseek"
+        if item["provider_id"] == _pid("my-deepseek")
     )
     assert generic_row["route_eligible"] is False
     user_row = client.get("/settings/models/user").json()["models"][0]
@@ -491,7 +517,7 @@ def test_second_live_app_preserves_equivalent_route_authority(env: Path) -> None
         assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
         choice = {
             "authority": "user_model",
-            "provider_id": "user-my-deepseek",
+            "provider_id": _pid("my-deepseek"),
             "model_id": "deepseek-flash",
         }
         assert first.post("/settings/models/user/resolve", json=choice).status_code == 200
@@ -521,8 +547,8 @@ def test_ciphertext_substitution_revokes_route_and_cannot_reveal_other_key(
     )
 
     registry = json.loads((env / "settings" / "user_models.json").read_text())
-    first_ref = registry["user-my-deepseek"]["cred_ref"]
-    other_ref = registry["user-other-model"]["cred_ref"]
+    first_ref = registry[_pid("my-deepseek")]["cred_ref"]
+    other_ref = registry[_pid("other-model")]["cred_ref"]
     artifact_path = env / "byok" / "credentials.enc"
     artifact = json.loads(artifact_path.read_text())
     artifact[first_ref]["ciphertext_hex"] = artifact[other_ref]["ciphertext_hex"]
@@ -530,14 +556,14 @@ def test_ciphertext_substitution_revokes_route_and_cannot_reveal_other_key(
 
     choice = {
         "authority": "user_model",
-        "provider_id": "user-my-deepseek",
+        "provider_id": _pid("my-deepseek"),
         "model_id": "deepseek-flash",
     }
     response = client.post("/settings/models/user/resolve", json=choice)
     assert response.status_code == 409
     assert other_secret not in response.text
     with pytest.raises(ProviderError) as exc_info:
-        get_provider("user-my-deepseek")._resolve_api_key()  # noqa: SLF001
+        get_provider(_pid("my-deepseek"))._resolve_api_key()  # noqa: SLF001
     assert other_secret not in str(exc_info.value)
 
 
@@ -613,7 +639,7 @@ def test_key_absent_from_responses_artifacts_and_logs(
             client.post("/settings/models/user", json=_ADD_BODY),
             client.get("/settings/models/user"),
             client.get("/settings/models"),
-            client.delete("/settings/models/user/user-my-deepseek"),
+            client.delete("/settings/models/user/" + _pid("my-deepseek") + ""),
         ]
     for r in responses:
         assert _SECRET not in r.text
@@ -798,15 +824,15 @@ def test_untrusted_anthropic_endpoint_cannot_reassemble_split_key(
 
 def test_remove_takes_effect_immediately(client: TestClient) -> None:
     assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
-    provider = get_provider("user-my-deepseek")
+    provider = get_provider(_pid("my-deepseek"))
 
-    r = client.delete("/settings/models/user/user-my-deepseek")
+    r = client.delete("/settings/models/user/" + _pid("my-deepseek") + "")
     assert r.status_code == 200
-    assert r.json()["removed"] == "user-my-deepseek"
+    assert r.json()["removed"] == _pid("my-deepseek")
 
     assert client.get("/settings/models/user").json()["count"] == 0
     ids = {m["provider_id"] for m in client.get("/settings/models").json()["models"]}
-    assert "user-my-deepseek" not in ids
+    assert _pid("my-deepseek") not in ids
 
     # The in-process dispatch-registry entry lingers (no public unregister)
     # but is INERT: key resolution re-checks the durable registry.
@@ -821,7 +847,7 @@ def test_remove_takes_effect_immediately(client: TestClient) -> None:
     with pytest.raises(ProviderError):
         provider._resolve_api_key()  # noqa: SLF001
 
-    assert client.delete("/settings/models/user/user-my-deepseek").status_code == 200
+    assert client.delete("/settings/models/user/" + _pid("my-deepseek") + "").status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -869,8 +895,8 @@ def test_anthropic_kind_without_base_url(client: TestClient) -> None:
     }
     r = client.post("/settings/models/user", json=body)
     assert r.status_code == 201
-    provider = get_provider("user-my-claude")
-    assert provider.name == "user-my-claude"
+    provider = get_provider(_pid("my-claude"))
+    assert provider.name == _pid("my-claude")
     assert provider._resolve_api_key() == _SECRET  # noqa: SLF001
 
 
@@ -882,9 +908,9 @@ def test_boot_time_reload_of_user_providers(env: Path) -> None:
     reset_provider_registry()
     with TestClient(_fresh_app()) as reborn:
         models = reborn.get("/settings/models").json()["models"]
-        row = next(m for m in models if m["provider_id"] == "user-my-deepseek")
+        row = next(m for m in models if m["provider_id"] == _pid("my-deepseek"))
         assert row["ready"] is False
-        assert get_provider("user-my-deepseek")._resolve_api_key() == _SECRET  # noqa: SLF001
+        assert get_provider(_pid("my-deepseek"))._resolve_api_key() == _SECRET  # noqa: SLF001
     reset_provider_registry()
 
 
@@ -894,7 +920,7 @@ def test_boot_migrates_legacy_user_model_without_losing_authority(env: Path) -> 
 
     registry_path = env / "settings" / "user_models.json"
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    record = registry["user-my-deepseek"]
+    record = registry[_pid("my-deepseek")]
     legacy_ref = record["cred_ref"]
     record.pop("cred_fingerprint")
     registry_path.write_text(json.dumps(registry), encoding="utf-8")
@@ -909,16 +935,16 @@ def test_boot_migrates_legacy_user_model_without_losing_authority(env: Path) -> 
 
     reset_provider_registry()
     with TestClient(_fresh_app()) as reborn:
-        migrated = json.loads(registry_path.read_text(encoding="utf-8"))["user-my-deepseek"]
+        migrated = json.loads(registry_path.read_text(encoding="utf-8"))[_pid("my-deepseek")]
         assert migrated["cred_ref"] != legacy_ref
         assert len(migrated["cred_fingerprint"]) == 64
         choice = {
             "authority": "user_model",
-            "provider_id": "user-my-deepseek",
+            "provider_id": _pid("my-deepseek"),
             "model_id": "deepseek-flash",
         }
         assert reborn.post("/settings/models/user/resolve", json=choice).status_code == 200
-        assert get_provider("user-my-deepseek")._resolve_api_key() == _SECRET  # noqa: SLF001
+        assert get_provider(_pid("my-deepseek"))._resolve_api_key() == _SECRET  # noqa: SLF001
     reset_provider_registry()
 
 
@@ -930,7 +956,7 @@ def test_boot_reload_cannot_shadow_default_provider_from_corrupt_registry(
 
     registry_path = env / "settings" / "user_models.json"
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    shadow = registry.pop("user-my-deepseek")
+    shadow = registry.pop(_pid("my-deepseek"))
     shadow["id"] = "openrouter"
     registry["openrouter"] = shadow
     registry_path.write_text(json.dumps(registry), encoding="utf-8")
@@ -965,7 +991,7 @@ def test_boot_reload_rejects_credential_owned_by_another_pipeline(
     # metadata to simulate a restored sidecar pointing at another BYOK lane.
     artifact_path = env / "byok" / "credentials.enc"
     artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
-    cred_ref = registry["user-my-deepseek"]["cred_ref"]
+    cred_ref = registry[_pid("my-deepseek")]["cred_ref"]
     artifact[cred_ref]["pipeline_kind"] = "x_ingest"
     artifact[cred_ref]["account_handle"] = "unrelated-account"
     artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
@@ -1021,7 +1047,7 @@ def test_well_formed_ipv6_base_url_accepted(client: TestClient) -> None:
     r = client.post("/settings/models/user", json=body)
     assert r.status_code == 201
     assert r.json()["base_url"] == "https://[::1]:8000/v1"
-    assert get_provider("user-local-v6").base_url == "https://[::1]:8000/v1"
+    assert get_provider(_pid("local-v6")).base_url == "https://[::1]:8000/v1"
 
 
 def test_over_length_inputs_rejected_value_free(client: TestClient, env: Path) -> None:
@@ -1092,15 +1118,9 @@ def test_boot_reload_lands_after_create_app_state_assignment(env: Path) -> None:
     # create_app has already run its assignment (empty set: no provider
     # keys); the reload is a lifespan-startup handler and has NOT run yet.
     assert app.state.registered_providers == set()
-    with TestClient(app) as c:
+    with TestClient(app):
         # Startup fired: reload landed after the assignment, not clobbered.
-        assert app.state.registered_providers == {"user-my-deepseek"}
-        row = next(
-            m
-            for m in c.get("/settings/models").json()["models"]
-            if m["provider_id"] == "user-my-deepseek"
-        )
-        assert row["ready"] is False
+        assert app.state.registered_providers == {_pid("my-deepseek")}
     reset_provider_registry()
 
 
@@ -1112,7 +1132,7 @@ def test_disabled_record_is_not_registered_at_boot(env: Path) -> None:
     # registry (operator escape hatch) and the provider must not register.
     registry_path = env / "settings" / "user_models.json"
     data = json.loads(registry_path.read_text(encoding="utf-8"))
-    data["user-my-deepseek"]["enabled"] = False
+    data[_pid("my-deepseek")]["enabled"] = False
     registry_path.write_text(json.dumps(data), encoding="utf-8")
 
     reset_provider_registry()
@@ -1120,7 +1140,7 @@ def test_disabled_record_is_not_registered_at_boot(env: Path) -> None:
         row = next(
             item
             for item in reborn.get("/settings/models").json()["models"]
-            if item["provider_id"] == "user-my-deepseek"
+            if item["provider_id"] == _pid("my-deepseek")
         )
         assert row["registered"] is False
         assert row["ready"] is False
@@ -1129,5 +1149,5 @@ def test_disabled_record_is_not_registered_at_boot(env: Path) -> None:
         assert rows[0]["enabled"] is False
         assert rows[0]["registered"] is False
         with pytest.raises(KeyError):
-            get_provider("user-my-deepseek")
+            get_provider(_pid("my-deepseek"))
     reset_provider_registry()

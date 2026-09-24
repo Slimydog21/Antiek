@@ -128,6 +128,11 @@ _ENV_HOME = "ANTIEK_HOME"
 _PIPELINE_KIND = "model_provider"
 _ID_PREFIX = "user-"
 _LEGACY_OWNER_USER_ID = "__operator__"
+
+# Auth methods that prove no human: a service token or bearer credential must
+# never be resolved to a person through the e-mail fallback, even if a future
+# auth path attaches an address to them.
+_MACHINE_AUTH_METHODS = frozenset({"bearer_token", "cloudflare_service_token"})
 _REGISTRY_LOCK = threading.RLock()
 _PRIVATE_FILE_MODE = 0o600
 
@@ -223,10 +228,44 @@ def _registered_name_belongs_to(name: str, owner_user_id: str) -> bool:
 
 
 def request_owner_user_id(request: Request) -> str:
-    value = getattr(request.state, "user_id", _LEGACY_OWNER_USER_ID)
-    if not isinstance(value, str) or not value or len(value) > 256:
+    """Stable opaque owner for this request (namespace Option A).
+
+    A real per-user id is used as-is (Sprint 22+ multi-user). The shared
+    ``__operator__`` sentinel cannot name a person, so it derives from the
+    verified session e-mail — the same function account memory, ingest,
+    BYOT, and tool search already use. Two allowlisted operators therefore
+    get two owners instead of one shared credential pool.
+
+    Fail-closed: sentinel without a verified e-mail, or a malformed id →
+    401. Never invents an owner. No implicit read-fallback that would let
+    any derived owner claim legacy ``__operator__`` rows (the migration in
+    ``tools/migrate_owner_namespace.py`` re-owns those explicitly).
+    """
+    from .account_memory_identity import (
+        OPERATOR_STORAGE_SENTINEL,
+        derive_owner_from_verified_email,
+    )
+
+    value = getattr(request.state, "user_id", None)
+    if (
+        isinstance(value, str)
+        and value
+        and len(value) <= 256
+        and value.casefold() != OPERATOR_STORAGE_SENTINEL.casefold()
+    ):
+        return value
+    if getattr(request.state, "auth_method", None) in _MACHINE_AUTH_METHODS:
+        # Defense in depth (the #3197 gate, narrowed): machine credentials
+        # never resolve to a person, even if a future auth path attaches an
+        # e-mail to them. Unreachable today — neither machine path sets
+        # user_email — so this changes no current behavior.
         raise HTTPException(status_code=401, detail="authenticated user identity required")
-    return value
+    derived = derive_owner_from_verified_email(
+        getattr(request.state, "user_email", None)
+    )
+    if not isinstance(derived, str) or not derived or len(derived) > 256:
+        raise HTTPException(status_code=401, detail="authenticated user identity required")
+    return derived
 
 
 def _registry_path() -> Path:
