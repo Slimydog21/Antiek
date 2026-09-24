@@ -18,6 +18,7 @@ from substrate.provenance.pointers import (
     collect_parent_investigations,
     collect_pointers,
     collect_syntheses,
+    evidence_payload_intact,
 )
 from substrate.schemas.events import ActionType
 
@@ -110,7 +111,7 @@ def _spawned_children(events_dir: str | None) -> dict[str, list[str]]:
             continue
         try:
             rows = trajectory_read(iid, events_dir=root).rows
-        except (OSError, ValueError):  # a corrupt snapshot names no parent it can be read for
+        except Exception:  # noqa: BLE001 - one unrelated unreadable log must not fail every export
             continue
         for row in rows:
             for parent in collect_parent_investigations(row):
@@ -157,8 +158,12 @@ def synthesis_from_events(
         own = current == investigation_id
         try:
             rows, complete, stored = trajectory_read(current, events_dir=events_dir)
-        except (OSError, ValueError):  # a corrupt snapshot; pyarrow's errors subclass these
+        except Exception:  # noqa: BLE001 - a dependency that cannot be read is unresolved, not a crash
             rows, complete, stored = [], False, True
+        if complete and not all(
+            evidence_payload_intact(row.get("action_type"), row.get("payload")) for row in rows
+        ):
+            complete = False
         if not complete:
             (unreadable if stored else absent).append(current)
         backward = spawned.get(current, [])

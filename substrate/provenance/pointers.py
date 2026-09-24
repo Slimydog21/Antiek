@@ -25,10 +25,13 @@ and walked, so re-encoding a pointer does not hide it.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from collections.abc import Callable
-from typing import Literal
+from typing import Any, Literal, get_args
+
+from pydantic import BaseModel, ValidationError
 
 PointerKind = Literal["chunk", "document", "edge", "source"]
 Pointer = tuple[PointerKind, str]
@@ -158,3 +161,63 @@ def collect_parent_investigations(value: object) -> list[str]:
 def collect_syntheses(value: object) -> list[str]:
     """Every synthesis id recorded anywhere in ``value``, in order, each once."""
     return [sid for _, sid in _collect(value, _synthesis_kind)]
+
+
+def is_evidence_key(key: object) -> bool:
+    """Whether ``key`` names evidence: a chunk, document, edge or source
+    pointer, or a synthesis (whose manifest pins its sources)."""
+    return pointer_kind(key) is not None or bool(
+        isinstance(key, str) and _SYNTHESIS_KEY.search(key)
+    )
+
+
+def _declared_keys(schema: object) -> set[str]:
+    keys: set[str] = set()
+    if isinstance(schema, dict):
+        for key, value in schema.items():
+            if key == "properties" and isinstance(value, dict):
+                keys.update(value)
+            keys |= _declared_keys(value)
+    elif isinstance(schema, list):
+        for item in schema:
+            keys |= _declared_keys(item)
+    return keys
+
+
+@functools.cache
+def _evidence_payload_models() -> dict[str, type[BaseModel]]:
+    """The typed payload models that declare an evidence key anywhere in their
+    schema, by action type. Read from the schema, so a model that gains an
+    evidence field is covered without a list here."""
+    from substrate.schemas.events import TypedPayload
+
+    models: dict[str, type[BaseModel]] = {}
+    for model in get_args(get_args(TypedPayload)[0]):
+        if any(is_evidence_key(k) for k in _declared_keys(model.model_json_schema())):
+            action = model.model_fields["action_type"].default
+            models[str(getattr(action, "value", action))] = model
+    return models
+
+
+def evidence_payload_intact(action_type: object, payload: Any) -> bool:
+    """Whether an event that records evidence still carries what its typed
+    schema requires.
+
+    An event whose model declares evidence (a retrieval's supporting chunk and
+    edge ids, a synthesis id, a document read) and whose payload is missing,
+    null, not an object, or lacks a required field records evidence nobody
+    can read any more. A key the schema does not declare is ignored: extras
+    lose nothing. Events that declare no evidence are not judged here; the
+    research runners write lineage events their typed models would reject."""
+    model = _evidence_payload_models().get(str(action_type))
+    if model is None:
+        return True
+    if not isinstance(payload, dict):
+        return False
+    declared = {k: v for k, v in payload.items() if k in model.model_fields}
+    declared["action_type"] = str(action_type)
+    try:
+        model.model_validate(declared)
+    except ValidationError:
+        return False
+    return True

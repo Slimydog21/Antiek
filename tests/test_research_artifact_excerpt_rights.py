@@ -694,6 +694,71 @@ def test_excerpt_withheld_when_a_sub_investigations_log_holds_no_usable_event(en
     _assert_withheld(env, inv)
 
 
+@pytest.mark.parametrize(("key", "payload"), [
+    ("null", None), ("empty", {}), ("partial", {"sub_question": "q"}),
+])
+def test_excerpt_withheld_when_a_childs_evidence_event_lost_its_required_fields(env, key, payload):
+    # A retrieval event whose envelope is intact but whose payload no longer
+    # carries what its schema requires records no evidence we can read.
+    inv, child = f"inv-hollow-{key}", f"inv-hollow-{key}-child"
+    _public_insight(inv)
+    _escalate(inv, child, env["events"])
+    _retrieval(child, env["events"], chunk_ids=["c-rs"])
+    _complete(inv, env["events"], f"Thesis. {PASSAGE}")
+    _assert_withheld(env, inv)
+    import json as _json
+    (Path(env["events"]) / f"{child}.jsonl").write_text(_json.dumps({
+        "event_id": "e-hollow", "investigation_id": child,
+        "action_type": "evidence.retrieve.delivered", "payload": payload,
+        "emitted_at": "2026-09-24T00:00:00Z"}) + "\n")
+    _assert_withheld(env, inv)
+
+
+def test_a_leaf_whose_lineage_events_carry_runner_extras_still_clears(env):
+    # The research runners write investigation.start_requested as
+    # {"sub_question": ...} and spawned_from with an extra sub_question, which
+    # their typed models reject. Those events carry no evidence, so they must
+    # not withhold a session whose leaf stood on public sources.
+    session, leaf = "sess-runner", "sess-runner-leaf"
+    _public_insight(session)
+    log_event(leaf, ActionType.INVESTIGATION_SPAWNED_FROM,
+              payload={"parent_investigation_id": session, "sub_question": "Sub?"},
+              events_dir=env["events"])
+    log_event(leaf, ActionType.INVESTIGATION_START_REQUESTED,
+              payload={"sub_question": "Sub?"}, events_dir=env["events"])
+    _retrieval(leaf, env["events"], chunk_ids=["c-pd"])
+    summary = "A session thesis its runner leaf grounded on the public pamphlet."
+    _complete(session, env["events"], summary)
+    body = _body(env, session)
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
+
+
+def test_an_unrelated_log_with_malformed_timestamps_does_not_break_a_healthy_export(env):
+    (Path(env["events"]) / "inv-unrelated.jsonl").write_text(
+        '{"event_id": "a", "action_type": "investigation.completed", "emitted_at": 1, "payload": {}}\n'
+        '{"event_id": "b", "action_type": "investigation.completed", "emitted_at": "x", "payload": {}}\n')
+    inv = "inv-healthy"
+    _public_insight(inv)
+    _retrieval(inv, env["events"], chunk_ids=["c-pd"])
+    summary = "A healthy thesis grounded on the public pamphlet."
+    _complete(inv, env["events"], summary)
+    body = _body(env, inv)
+    assert body.synthesis_withheld is False
+    assert body.synthesis_excerpt == summary
+
+
+def test_a_child_with_malformed_timestamps_withholds_without_raising(env):
+    inv, child = "inv-ts", "inv-ts-child"
+    _public_insight(inv)
+    _escalate(inv, child, env["events"])
+    _retrieval(child, env["events"], chunk_ids=["c-pd"])
+    with (Path(env["events"]) / f"{child}.jsonl").open("a") as f:
+        f.write('{"event_id": "t1", "action_type": "investigation.completed", "emitted_at": 7, "payload": {}}\n')
+    _complete(inv, env["events"], f"Thesis. {PUBLIC}")
+    _assert_withheld(env, inv)
+
+
 def test_an_undecodable_payload_in_its_own_log_withholds_without_raising(env):
     inv = "inv-own-payload"
     _public_insight(inv)

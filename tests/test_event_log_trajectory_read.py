@@ -117,3 +117,12 @@ def test_trajectory_rows_are_unchanged_for_a_readable_log(tmp_path):
     raw = [json.loads(line) for line in (tmp_path / "inv-same.jsonl").read_text().splitlines()]
     rows = trajectory("inv-same", events_dir=str(tmp_path))
     assert [r["event_id"] for r in rows] == [r["event_id"] for r in raw]
+
+
+def test_mixed_type_timestamps_do_not_raise_and_are_not_complete(tmp_path):
+    (tmp_path / "inv-ts.jsonl").write_text(
+        '{"event_id": "a", "action_type": "x.y", "emitted_at": 1, "payload": {}}\n'
+        '{"event_id": "b", "action_type": "x.y", "emitted_at": "2026-01-01T00:00:00Z", "payload": {}}\n')
+    rows = trajectory("inv-ts", events_dir=str(tmp_path))
+    assert [r["event_id"] for r in rows] == ["a", "b"]
+    assert trajectory_read("inv-ts", events_dir=str(tmp_path)).complete is False

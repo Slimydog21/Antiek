@@ -19,6 +19,7 @@ from substrate.provenance.pointers import (
     collect_parent_investigations,
     collect_pointers,
     collect_syntheses,
+    evidence_payload_intact,
     pointer_kind,
 )
 
@@ -122,3 +123,23 @@ def test_parent_investigations_are_found_by_key_shape():
         },
     }
     assert collect_parent_investigations(row) == ["inv-p1", "inv-p2"]
+
+
+@pytest.mark.parametrize(("action_type", "payload", "intact"), [
+    # A typed event that records evidence must carry what its schema requires.
+    ("evidence.retrieve.delivered", {"sub_question": "q", "answer": "a", "supporting_claims": []}, True),
+    ("evidence.retrieve.delivered", {}, False),
+    ("evidence.retrieve.delivered", None, False),
+    ("evidence.retrieve.delivered", {"sub_question": "q"}, False),
+    ("evidence.retrieve.delivered", "not an object", False),
+    # A key its schema does not declare is ignored, not a defect.
+    ("evidence.retrieve.delivered", {"sub_question": "q", "answer": "a", "writer_extra": 1}, True),
+    # Events that carry no evidence pointers are not judged here: the research
+    # runners write lineage events their typed models would reject.
+    ("investigation.start_requested", {"sub_question": "q"}, True),
+    ("investigation.spawned_from", {"parent_investigation_id": "p", "sub_question": "q"}, True),
+    ("graph.node_inserted", {}, True),
+    ("some.untyped_action", None, True),
+])
+def test_evidence_payload_intact(action_type, payload, intact):
+    assert evidence_payload_intact(action_type, payload) is intact

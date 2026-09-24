@@ -771,8 +771,9 @@ class TrajectoryRead(NamedTuple):
     ``stored`` is True when a snapshot or a tail exists for the id, even an
     empty or unreadable one. ``complete`` is True only when there is at least
     one stored event and every stored record is a usable event: an object with
-    a non-empty ``event_id`` and ``action_type`` whose payload is absent, null
-    or decodes to an object, and a sealed snapshot could be read (pyarrow). A
+    a non-empty ``event_id``, ``action_type`` and ``emitted_at`` whose payload
+    is absent, null or decodes to an object, and a sealed snapshot could be
+    read (pyarrow). A
     gate that clears on what a trajectory records needs both: a missing log
     may be research that never ran, while a stored log that does not read in
     full means what the investigation stood on is unknown.
@@ -810,11 +811,12 @@ def trajectory_read(
 
 def _usable_event(row: dict[str, Any]) -> bool:
     event_id, action_type = row.get("event_id"), row.get("action_type")
-    payload = row.get("payload")
+    payload, emitted_at = row.get("payload"), row.get("emitted_at")
     return (
         isinstance(event_id, str) and bool(event_id)
         and isinstance(action_type, str) and bool(action_type)
         and (payload is None or isinstance(payload, dict))
+        and ((isinstance(emitted_at, str) and bool(emitted_at)) or isinstance(emitted_at, datetime))
     )
 
 
@@ -872,7 +874,8 @@ def _read_trajectory(
         else:
             without_id.append(row)
     merged = [*by_id.values(), *without_id]
-    merged.sort(key=lambda r: (r.get("emitted_at") or "", r.get("event_id") or ""))
+    # str(): a record with a non-string timestamp must order, not raise.
+    merged.sort(key=lambda r: (str(r.get("emitted_at") or ""), str(r.get("event_id") or "")))
     return TrajectoryRead(merged, complete, stored)
 
 
