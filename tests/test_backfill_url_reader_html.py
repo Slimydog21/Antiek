@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 
+from interfaces.research.api.app import create_app
 from runtime.db_lock import connect_read, connect_write
 from substrate.books.html_sanitizer import SANITIZER_VERSION
 from substrate.constants import PERSONAL_READING_CONTENT_CLASS
@@ -157,3 +159,38 @@ def test_cli_requires_exact_id_and_digest(db_path: str) -> None:
         tool.main(["--db-path", db_path, "--document-id", "*"])
     with pytest.raises(SystemExit):
         tool.main(["--db-path", db_path, "--document-id", "target", "--apply"])
+
+
+def test_authenticated_reader_and_style_routes_after_apply(
+    db_path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digest = tool.run(db_path, "target")["raw_sha256"]
+    assert tool.run(db_path, "target", apply=True, expected_sha256=digest)["status"] == "written"
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", "synthetic-bearer")
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "owner@example.invalid")
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    with TestClient(app) as client:
+        headers = {"Authorization": "Bearer synthetic-bearer"}
+        reader = client.get("/sources/target/reader-html", headers=headers)
+        assert reader.status_code == 200
+        assert reader.json()["source_kind"] == "url_text_derived"
+        assert reader.json()["content_format"] == "html"
+        styled = client.get("/documents/target/render?style=academic-paper", headers=headers)
+        assert styled.status_code == 200, styled.text
+        assert "Antiek presentation reconstructed from retained text" in styled.text
+        assert "The original page layout was not recovered" in styled.text
+        assert "&lt;script&gt;" in styled.text
+        assert "<script" not in styled.text
+        assert "<img" not in styled.text
+
+        assert client.get("/documents/target/render").status_code == 401
+        assert client.get("/sources/target/reader-html").status_code == 401
+        assert client.get("/documents/target/render", headers={
+            "Authorization": "Bearer wrong-token",
+        }).status_code == 401
+
+        monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "owner@example.invalid,other@example.invalid")
+        denied = client.get("/documents/target/render", headers=headers)
+        assert denied.status_code == 403
+        assert denied.json()["detail"] == "rights_denied"
