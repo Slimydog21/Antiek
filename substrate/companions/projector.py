@@ -116,7 +116,7 @@ def _iso(value: Any) -> str:
     return str(value)
 
 
-def _trajectory_status(events_dir: str, investigation_id: str) -> str:
+def trajectory_status_line(events_dir: str, investigation_id: str) -> str:
     """One thread's honest status line from its trajectory: the terminal
     set's line, else 'working…' when started, else 'no events on record'."""
     try:
@@ -252,7 +252,7 @@ def project_document(
         if artifact:
             refs.append(artifact)
         eid = make_evidence_id("process", iid, refs)
-        status_line = _trajectory_status(resolved_events, iid)
+        status_line = trajectory_status_line(resolved_events, iid)
         try:
             rows_ev = trajectory(iid, events_dir=resolved_events)
             last_event = _iso(rows_ev[-1].get("emitted_at")) if rows_ev else ""
@@ -382,6 +382,24 @@ def rebuild_document(
     """TOTAL idempotent rebuild of one document's scope: one read pass, one
     bounded write phase, the companion rendered from the SAME read. Returns
     the companion HTML."""
+    html, _view = rebuild_document_full(
+        db_path,
+        owner_user_id=owner_user_id,
+        document_id=document_id,
+        events_dir=events_dir,
+    )
+    return html
+
+
+def rebuild_document_full(
+    db_path: str,
+    *,
+    owner_user_id: str,
+    document_id: str,
+    events_dir: str | None = None,
+) -> tuple[str, DocumentView]:
+    """The rebuild + the VIEW (SPR-02's export/API needs the stamp without a
+    second read — one pass, both products)."""
     rcon = connect_read(db_path)
     try:
         rows, view = project_document(
@@ -400,7 +418,7 @@ def rebuild_document(
             scope_id=document_id,
             rows=rows,
         )
-    return render_document_companion(view)
+    return render_document_companion(view), view
 
 
 def rebuild_project(
@@ -412,3 +430,82 @@ def rebuild_project(
         "project scope unavailable: no project aggregate exists until the "
         "workstation container lands (unit 3) — document scope ships first"
     )
+
+
+# ── SPR-02: the structured payload + the export ────────────────────────────
+
+
+def document_companion_payload(view: DocumentView) -> dict[str, Any]:
+    """The companion as STRUCTURED data (the rail + the agent API render
+    THIS, never raw generated HTML — the sanctioned-rendering discipline).
+    Rights flow through identically to the HTML: a withheld document's
+    claims carry text=None (metadata lines only) — the withheld text never
+    leaves the projector in ANY shape."""
+    return {
+        "document_id": view.document_id,
+        "exists": view.exists,
+        "title": view.title,
+        "servable": view.servable,
+        "rebuilt_at": view.rebuilt_at,
+        "claims": [
+            {
+                "evidence_id": c.evidence_id,
+                "kind": c.node_kind,
+                "node_ref": f"node:{c.node_id}",
+                "text": c.text if view.servable else None,
+            }
+            for c in view.claims
+        ],
+        "anchors": [
+            {
+                "evidence_id": a.evidence_id,
+                "anchor_ref": f"anchor:{a.anchor_id}",
+                "status": a.status,
+                "page_index_hint": a.page_index_hint,
+            }
+            for a in view.anchors
+        ],
+        "processes": [
+            {
+                "evidence_id": p.evidence_id,
+                "detail": p.detail,
+                "label": p.label,
+                "status_line": p.status_line,
+            }
+            for p in view.processes
+        ],
+    }
+
+
+def export_document_companion(
+    db_path: str,
+    *,
+    owner_user_id: str,
+    document_id: str,
+    events_dir: str | None = None,
+) -> tuple[str, Any, str]:
+    """Rebuild + render + EXPORT the per-document companion beside the
+    research artifacts (paths.py conventions: validated ids, bounded reads).
+    The honesty header rides the file's head: generated-never-authored, the
+    sources, the source-derived rebuild stamp. Returns (html, path, stamp).
+
+    NO artifact event here — rebuild triggers are SPR-03's wiring; the
+    export is a manual/API rebuild only."""
+    from substrate.research_artifact.paths import companion_path_for
+
+    html, view = rebuild_document_full(
+        db_path,
+        owner_user_id=owner_user_id,
+        document_id=document_id,
+        events_dir=events_dir,
+    )
+    header = (
+        "<!-- generated: never authored · sources: graph nodes, event log, "
+        "anchors, diligence, reading state · rebuilt_at: "
+        f"{view.rebuilt_at} · rebuilt on demand — edit the sources, never "
+        "this file -->\n"
+    )
+    out = companion_path_for(document_id)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(header + html, encoding="utf-8")
+    return header + html, out, view.rebuilt_at
