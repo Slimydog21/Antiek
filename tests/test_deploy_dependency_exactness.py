@@ -73,7 +73,7 @@ def test_bootstrap_uv_is_pinned_then_removed_after_exact_sync() -> None:
     bootstrap_args = _task_args(bootstrap_task, "ansible.builtin.pip")
     cleanup_args = _task_args(cleanup_task, "ansible.builtin.pip")
 
-    assert bootstrap_args["name"].startswith("uv==")
+    assert bootstrap_args["name"] == "uv==0.11.15"
     assert cleanup_args == {
         "name": "uv",
         "state": "absent",
