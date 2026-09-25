@@ -511,13 +511,16 @@ def test_bulk_tail_ignores_unrelated_oai_cursor_and_its_datestamp(tmp_path):
 
 
 def test_bulk_tail_retry_replays_window_after_partial_oai_page(tmp_path):
-    """A crash leaves the sync mark alone; retry replays from bulk max."""
+    """Replay a tail record still in memory after its OAI cursor advances."""
     clock = _FakeClock()
     sync_path = str(tmp_path / "sync.json")
     write_checkpoint(sync_path, SyncCheckpoint(last_successful_datestamp="2023-12-31"))
     snap = _write_snapshot(
         tmp_path / "snap.json",
-        [_bulk_record("bulk", update_date="2024-01-10")],
+        [
+            _bulk_record("bulk1", update_date="2024-01-09"),
+            _bulk_record("bulk2", update_date="2024-01-10"),
+        ],
     )
     seen_urls: list[str] = []
     fail_second_page = True
@@ -554,11 +557,17 @@ def test_bulk_tail_retry_replays_window_after_partial_oai_page(tmp_path):
             bulk_snapshot_path=snap,
             harvested_at=_AT,
             resume=True,
-            persist_batch_size=1,
+            persist_batch_size=2,
             lock_yield_seconds=0,
         )
     assert read_checkpoint(sync_path).last_successful_datestamp == "2023-12-31"
     assert json.loads((tmp_path / "harvest.json").read_text())["resumption_token"] == "TAIL-PAGE-2"
+    # The two bulk records filled a batch, but tail1 did not. The harvester
+    # already published its next-page token before the DB received tail1.
+    assert {row[0] for row in _rows(tmp_path)} == {
+        arxiv_doc_id("bulk1"),
+        arxiv_doc_id("bulk2"),
+    }
 
     result = run_bulk_sync(
         harvester=harvester,
@@ -567,14 +576,21 @@ def test_bulk_tail_retry_replays_window_after_partial_oai_page(tmp_path):
         bulk_snapshot_path=snap,
         harvested_at=_AT,
         resume=True,
-        persist_batch_size=1,
+        persist_batch_size=2,
         lock_yield_seconds=0,
     )
     assert sum("from=2024-01-10" in url for url in seen_urls) == 2
     assert result.new_datestamp == "2024-01-20"
-    assert result.census.total == 3
+    assert result.census.total == 4
     assert read_checkpoint(sync_path).last_successful_datestamp == "2024-01-20"
-    assert len(_rows(tmp_path)) == 3
+    rows = _rows(tmp_path)
+    assert len(rows) == 4
+    assert {row[0] for row in rows} == {
+        arxiv_doc_id("bulk1"),
+        arxiv_doc_id("bulk2"),
+        arxiv_doc_id("tail1"),
+        arxiv_doc_id("tail2"),
+    }
     assert not (tmp_path / "harvest.json").exists()
 
 
