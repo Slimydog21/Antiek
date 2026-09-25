@@ -4,7 +4,7 @@
 
 ## Failure the decision addresses
 
-The existing backup script verifies an EXPORT directory before creating its tar archive. That directory and its manifest are writable by the application identity. Counts and a partial catalog cannot detect a same-count row change, and DuckDB 1.5.4 EXPORT/IMPORT drops all four self-referential foreign keys in the current Antiek schema. Comma normalization makes the exported SQL importable but does not restore those constraints. A manifest packed into the same archive cannot independently testify to the source snapshot.
+The existing backup script verifies an EXPORT directory before creating its tar archive. That directory and its manifest are writable by the application identity. Counts and a partial catalog cannot detect a same-count row change, and the CI-locked DuckDB 1.5.3 EXPORT/IMPORT drops all four self-referential foreign keys in the current Antiek schema. Comma normalization makes the exported SQL importable but does not restore those constraints. A manifest packed into the same archive cannot independently testify to the source snapshot.
 
 ## Contract
 
@@ -25,4 +25,4 @@ The report covers the DuckDB graph. Packaged `research_events/` and `knowledge_s
 
 The current real-schema negative test deliberately refuses the four lost FKs. Keep that refusal until a corrected pinned DuckDB export or separately reviewed backup format preserves them and the full-schema restore test turns positive. Before production, also prove protected source identity and authenticated observation from the same transaction as EXPORT; target-Linux sandbox denial of host-file and network access plus CPU, memory, disk and time limits; immutable archive inode through verification, upload and R2 read-back; token/job/generation-bound protected guard evidence; and receipt projection compatibility. Backup-script integration belongs to #3244; worker installation belongs to #3247. The disaster-recovery runbook must use the verified route before claiming full recovery.
 
-The local component passes 92 relevant tests on DuckDB 1.5.4, including a normal GNU-tar success fixture, adversarial archive/report/content cases, and the real-schema refusal. This is **55/100 integration readiness**: component behavior and review evidence exist, while source authority, sandbox, guard binding, R2 proof, and the real-schema positive restore remain open. Production release evidence is **0/100**.
+The local component passes 92 relevant tests on the CI-locked DuckDB 1.5.3, including a normal GNU-tar success fixture, adversarial archive/report/content cases, and the real-schema refusal. The exact-head CI run must pass before that evidence can be called complete. This is **55/100 integration readiness**: component behavior and review evidence exist, while source authority, sandbox, guard binding, R2 proof, and the real-schema positive restore remain open. Production release evidence is **0/100**.
