@@ -155,18 +155,47 @@ def register_companion_routes(app: FastAPI) -> None:
                 },
             )
         # The HTML export lands beside the research artifacts with its
-        # honesty header (paths.py conventions).
-        html, _out_path, stamp = export_document_companion(
-            db, owner_user_id=owner, document_id=document_id
-        )
-        return HTMLResponse(
-            html,
-            headers={
-                "x-antiek-companion-generated": "true",
-                "x-antiek-document-id": document_id,
-                "x-antiek-rebuilt-at": stamp,
-            },
-        )
+        # honesty header (paths.py conventions). LAST-GOOD SERVING
+        # (SPR-03): a failed rebuild NEVER serves a half-written companion
+        # — the previous export is lawful to show, with the failure named
+        # in the header.
+        try:
+            html, _out_path, stamp = export_document_companion(
+                db, owner_user_id=owner, document_id=document_id
+            )
+            return HTMLResponse(
+                html,
+                headers={
+                    "x-antiek-companion-generated": "true",
+                    "x-antiek-document-id": document_id,
+                    "x-antiek-rebuilt-at": stamp,
+                },
+            )
+        except Exception as e:
+            from substrate.research_artifact.paths import (
+                companion_path_for,
+                read_bounded_nofollow,
+            )
+
+            last_good = companion_path_for(document_id)
+            if not last_good.exists():
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"companion_rebuild_failed: {type(e).__name__}",
+                ) from e
+            # The previous generation, served honestly as stale.
+            body = read_bounded_nofollow(last_good, limit=8 * 1024 * 1024).decode(
+                "utf-8"
+            )
+            return HTMLResponse(
+                body,
+                headers={
+                    "x-antiek-companion-generated": "true",
+                    "x-antiek-document-id": document_id,
+                    "x-antiek-rebuild-failed": type(e).__name__,
+                    "x-antiek-serving": "last-good",
+                },
+            )
 
     @app.get(
         "/documents/{document_id}/evidence",
