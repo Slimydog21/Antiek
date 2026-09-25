@@ -375,3 +375,39 @@ def test_no_window_geometry_in_any_persisted_row(api_env) -> None:
             assert "rect" not in payload
     finally:
         con.close()
+
+
+# ── Review hardening W1 (2026-09-25): the server's snapshot contract. A
+# tree may not claim one tab_id from two nodes, and the active tab must
+# exist — both are 422s, never persisted. ──────────────────────────────────
+
+
+def test_tab_tree_rejects_duplicate_tab_id_and_dangling_active(api_env) -> None:
+    client = _client()
+    ws_id = client.post("/workstations", json={"name": "Research"}).json()[
+        "workstation_id"
+    ]
+
+    dup = _snapshot(0)
+    second = dict(dup["tree"]["nodes"]["tab-1"])
+    dup["tree"]["nodes"]["tab-2"] = second  # SAME tab_id inside the node
+    dup["tree"]["root_order"] = ["tab-1", "tab-2"]
+    resp = client.put(
+        f"/workstations/{ws_id}/tab-tree",
+        json={"snapshot": dup, "expected_version": 0},
+    )
+    assert resp.status_code == 422
+    assert "invalid_snapshot" in resp.json()["detail"]
+    assert "tab_id" in resp.json()["detail"]
+
+    dangling = _snapshot(0)
+    dangling["active_tab_id"] = "tab-ghost"
+    resp2 = client.put(
+        f"/workstations/{ws_id}/tab-tree",
+        json={"snapshot": dangling, "expected_version": 0},
+    )
+    assert resp2.status_code == 422
+    assert "active_tab_id" in resp2.json()["detail"]
+
+    # Nothing persisted by either refusal.
+    assert client.get(f"/workstations/{ws_id}/tab-tree").json()["version"] == 0

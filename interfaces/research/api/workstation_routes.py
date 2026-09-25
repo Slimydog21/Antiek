@@ -167,10 +167,15 @@ def _validate_tree_snapshot(snapshot: dict[str, Any]) -> None:
         )
     nodes = tree["nodes"]
     history = tree["history"]
+    for key in nodes:
+        node = nodes[key]
+        if isinstance(node, dict) and node.get("tab_id") != key:
+            problems.append(f"node key {key} does not match its tab_id")
     all_nodes = [nodes[k] for k in nodes] + [
         history[k].get("node") for k in history if isinstance(history[k], dict)
     ]
     numbers: dict[int, str] = {}
+    tab_ids: set[str] = set()
     for n in all_nodes:
         if (
             not isinstance(n, dict)
@@ -180,6 +185,11 @@ def _validate_tree_snapshot(snapshot: dict[str, Any]) -> None:
         ):
             problems.append("a node is malformed")
             continue
+        node_tab_id = n["tab_id"]
+        if node_tab_id in tab_ids:
+            problems.append(f"tab_id {node_tab_id} is claimed by two nodes")
+        else:
+            tab_ids.add(node_tab_id)
         pn = n.get("public_number")
         if pn is not None:
             if not isinstance(pn, int) or pn < 1:
@@ -203,6 +213,12 @@ def _validate_tree_snapshot(snapshot: dict[str, Any]) -> None:
     if problems:
         raise HTTPException(
             status_code=422, detail="invalid_snapshot: " + "; ".join(problems)
+        )
+    active_tab_id = snapshot.get("active_tab_id")
+    if active_tab_id is not None and active_tab_id not in tab_ids:
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid_snapshot: active_tab_id {active_tab_id} names no node",
         )
 
 
