@@ -2,18 +2,25 @@
 
 The nightly archive contains ``source_manifest.json`` beside DuckDB's Parquet
 export. This check runs on the extracted archive before the recovery runbook
-removes the destination DB. It does not attest archive authenticity; the
-backup's upload/read-back digest and import verification serve that purpose.
+removes the destination DB. It proves compatibility and restorable internal
+consistency, not the origin of the downloaded archive.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
-from substrate.graph.schema import ARXIV_BULK_PROGRESS_COLUMNS
+import duckdb
+
+from substrate.graph.schema import (
+    ARXIV_BULK_PROGRESS_COLUMNS,
+    _v22_arxiv_progress_shape_is_valid,
+    load_arxiv_bulk_progress,
+)
 
 BUNDLE_CONTRACT_VERSION = 2
 _MANIFEST_LIMIT_BYTES = 8 * 1024 * 1024
@@ -34,6 +41,77 @@ def _manifest(root: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise BundleCompatibilityError("source manifest must be an object")
     return value
+
+
+def _verify_actual_export(root: Path, manifest: dict[str, Any], *, versioned: bool) -> None:
+    """IMPORT into a disposable DB and compare its catalog and data to source.
+
+    Checking a sidecar JSON alone would allow an intact-looking manifest to
+    authorize deletion of the destination before a broken export failed.
+    """
+    export_path = str((root / "duckdb").resolve()).replace("'", "''")
+    with tempfile.TemporaryDirectory(prefix="antiek-restore-preflight-") as scratch:
+        con = duckdb.connect(str(Path(scratch) / "candidate.duckdb"))
+        try:
+            try:
+                con.execute(f"IMPORT DATABASE '{export_path}'")
+            except duckdb.Error as exc:
+                raise BundleCompatibilityError("DuckDB export fails scratch IMPORT") from exc
+
+            tables = [
+                row[0]
+                for row in con.execute(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = 'main' AND table_type = 'BASE TABLE' "
+                    "ORDER BY table_name"
+                ).fetchall()
+            ]
+            expected = manifest["counts"]
+            if tables != sorted(expected):
+                raise BundleCompatibilityError("actual export table inventory differs")
+
+            def quoted(name: str) -> str:
+                return '"' + name.replace('"', '""') + '"'
+
+            counts: dict[str, int] = {}
+            for table in tables:
+                count_row = con.execute(f"SELECT COUNT(*) FROM {quoted(table)}").fetchone()
+                if count_row is None:
+                    raise BundleCompatibilityError("actual export count query returned no row")
+                counts[table] = int(count_row[0])
+            if counts != expected:
+                raise BundleCompatibilityError("actual export row counts differ")
+            catalog = {
+                "columns": con.execute(
+                    "SELECT table_name, column_name, ordinal_position, column_default, "
+                    "is_nullable, data_type FROM information_schema.columns "
+                    "WHERE table_schema = 'main' ORDER BY table_name, ordinal_position"
+                ).fetchall(),
+                "constraints": con.execute(
+                    "SELECT table_name, constraint_type, constraint_text, "
+                    "constraint_column_names, referenced_table, referenced_column_names "
+                    "FROM duckdb_constraints() WHERE schema_name = 'main' "
+                    "AND NOT (constraint_type = 'FOREIGN KEY' AND referenced_table = table_name) "
+                    "ORDER BY table_name, constraint_type, constraint_text, constraint_column_names"
+                ).fetchall(),
+                "indexes": con.execute(
+                    "SELECT index_name, table_name, is_unique, is_primary, expressions, sql "
+                    "FROM duckdb_indexes() WHERE schema_name = 'main' "
+                    "ORDER BY table_name, index_name"
+                ).fetchall(),
+            }
+            for name, actual in catalog.items():
+                if manifest.get(name) != json.loads(json.dumps(actual)):
+                    raise BundleCompatibilityError(f"actual export {name} differ")
+            if versioned:
+                if not _v22_arxiv_progress_shape_is_valid(con):
+                    raise BundleCompatibilityError("actual arXiv cursor schema is incompatible")
+                try:
+                    load_arxiv_bulk_progress(con)
+                except Exception as exc:
+                    raise BundleCompatibilityError("actual arXiv cursor row is invalid") from exc
+        finally:
+            con.close()
 
 
 def verify_restore_bundle(root: Path, *, allow_legacy: bool = False) -> str:
@@ -63,6 +141,7 @@ def verify_restore_bundle(root: Path, *, allow_legacy: bool = False) -> str:
             raise BundleCompatibilityError(
                 "unversioned legacy bundle requires --allow-legacy after review"
             )
+        _verify_actual_export(root, manifest, versioned=False)
         return "legacy-unversioned"
     if type(version) is not int or version != BUNDLE_CONTRACT_VERSION:
         raise BundleCompatibilityError(f"unsupported bundle contract version: {version!r}")
@@ -82,6 +161,7 @@ def verify_restore_bundle(root: Path, *, allow_legacy: bool = False) -> str:
     expected = [(index, name) for index, name in enumerate(ARXIV_BULK_PROGRESS_COLUMNS, 1)]
     if actual != expected:
         raise BundleCompatibilityError("arXiv progress column contract is incompatible")
+    _verify_actual_export(root, manifest, versioned=True)
     return f"v{BUNDLE_CONTRACT_VERSION}"
 
 

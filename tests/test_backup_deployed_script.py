@@ -292,7 +292,22 @@ def test_missing_arxiv_progress_table_never_certifies_v2_backup(tmp_path: Path) 
 
     result = _run_script(harness)
     assert result.returncode != 0
-    assert "arXiv progress table is missing" in result.stderr
+    assert "arXiv progress table is missing or invalid" in result.stderr
+    assert not harness.rclone_log.exists()
+    assert not harness.marker.exists()
+
+
+def test_wrong_shape_arxiv_progress_never_certifies_v2_backup(tmp_path: Path) -> None:
+    harness = _make_harness(tmp_path)
+    with connect_write(
+        str(harness.state_dir / "antiek.duckdb"), purpose="test_wrong_progress_shape"
+    ) as con:
+        con.execute("DROP TABLE arxiv_bulk_progress")
+        con.execute("CREATE TABLE arxiv_bulk_progress (stream_id VARCHAR PRIMARY KEY)")
+
+    result = _run_script(harness)
+    assert result.returncode != 0
+    assert "arXiv progress table is missing or invalid" in result.stderr
     assert not harness.rclone_log.exists()
     assert not harness.marker.exists()
 

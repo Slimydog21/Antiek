@@ -117,12 +117,39 @@ in which case pick one from before the corruption.
 
 ```bash
 ssh root@<new-vm-ip>
+set -euo pipefail
 cd /tmp
 tar -xzf antiek-restore.tar.gz
-# Creates /tmp/antiek-backup-<timestamp>/
-ls -la /tmp/antiek-backup.*/
-# Expected: duckdb/  research_events/  knowledge_skills/
+# Continue Steps 6 and 7 in this same shell. Refuse an ambiguous selection.
+mapfile -t restore_choices < <(find /tmp -maxdepth 1 -type d -name 'antiek-backup.*' -print)
+if [ "${#restore_choices[@]}" -ne 1 ]; then
+  echo "ABORT: expected exactly one extracted antiek-backup.* directory" >&2
+  exit 1
+fi
+export RESTORE_DIR="${restore_choices[0]}/"
+ls -la "${RESTORE_DIR}"
+# Expected: duckdb/  research_events/  knowledge_skills/  source_manifest.json
+
+# Set to 1 only when intentionally selecting an unversioned pre-cursor archive.
+# The gate imports into a disposable scratch DB and compares its catalog and
+# row counts with the manifest before any persistent restore mutation.
+export ANTIEK_RESTORE_ALLOW_LEGACY=0
+cd /opt/antiek
+if [ "${ANTIEK_RESTORE_ALLOW_LEGACY}" = "1" ]; then
+  sudo -u antiek /opt/antiek/.venv/bin/python3 -m tools.backup_bundle_contract \
+    "${RESTORE_DIR}" --allow-legacy
+else
+  sudo -u antiek /opt/antiek/.venv/bin/python3 -m tools.backup_bundle_contract \
+    "${RESTORE_DIR}"
+fi
 ```
+
+If the archive is intentionally older and unversioned, change the explicit
+`ANTIEK_RESTORE_ALLOW_LEGACY=0` line to `=1` **before running Step 5**. The
+script then passes `--allow-legacy` in both checks. A failed gate ends that
+shell under `set -e`; reconnect and rerun Step 5 with the chosen setting.
+Do not proceed to Step 6 after a refusal. Keep the same shell for Steps 5–7
+so `RESTORE_DIR` identifies the same bundle.
 
 ## Step 6 — Restore the event log + knowledge skills
 
@@ -130,7 +157,7 @@ These are file copies — straightforward rsync over the empty state
 directory:
 
 ```bash
-RESTORE_DIR=$(ls -d /tmp/antiek-backup.*/ | head -n 1)
+: "${RESTORE_DIR:?run Step 5 and its compatibility gate in this shell first}"
 
 # Restore the event log
 sudo -u antiek rsync -a "${RESTORE_DIR}research_events/" \
@@ -150,7 +177,7 @@ DATABASE`:
 ```bash
 set -euo pipefail
 
-RESTORE_DIR=$(ls -d /tmp/antiek-backup.*/ | head -n 1)
+: "${RESTORE_DIR:?run Step 5 and its compatibility gate in this shell first}"
 
 # GUARD (added 2026-09-21 after a read-only DR audit). Do NOT remove.
 # The archive's top-level directory is `antiek-backup.<mktemp suffix>` — a
@@ -167,16 +194,18 @@ if [ -z "${RESTORE_DIR:-}" ] || [ ! -d "${RESTORE_DIR}duckdb" ]; then
 fi
 echo "Restoring from: ${RESTORE_DIR}"
 
-# Check the extracted bundle against this checkout BEFORE deleting the DB.
-# Current bundles carry a versioned arXiv bulk cursor in DuckDB. An older
-# unversioned bundle needs an explicit compatibility choice; after restoring
-# one, do not run arXiv sync until its raw snapshot and legacy JSON state have
-# been reconciled. Unknown future versions and malformed cursor inventories
-# are refused.
+# Recheck the same archive immediately before deleting the DB. For an older
+# unversioned bundle, the explicit Step 5 choice must still be in this shell.
+# After a legacy restore, do not run arXiv sync until the raw snapshot and
+# legacy JSON state have been reconciled.
 cd /opt/antiek
-sudo -u antiek /opt/antiek/.venv/bin/python3 -m tools.backup_bundle_contract "${RESTORE_DIR}"
-# For an intentionally selected pre-cursor archive only, repeat the command
-# above with --allow-legacy after checking its date and expected data loss.
+if [ "${ANTIEK_RESTORE_ALLOW_LEGACY:-0}" = "1" ]; then
+  sudo -u antiek /opt/antiek/.venv/bin/python3 -m tools.backup_bundle_contract \
+    "${RESTORE_DIR}" --allow-legacy
+else
+  sudo -u antiek /opt/antiek/.venv/bin/python3 -m tools.backup_bundle_contract \
+    "${RESTORE_DIR}"
+fi
 
 # Ensure no stale DuckDB file exists (IMPORT requires a fresh DB).
 # The .wal is removed too: leaving an orphan WAL beside a deleted DB was

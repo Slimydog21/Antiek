@@ -254,6 +254,12 @@ import time
 
 import duckdb
 
+sys.path.insert(0, "{{ antiek_install_dir }}")
+from substrate.graph.schema import (
+    _v22_arxiv_progress_shape_is_valid,
+    load_arxiv_bulk_progress,
+)
+
 db_path = "${STATE_DIR}/antiek.duckdb"
 lock_path = db_path + ".write.lock"  # runtime/db_lock.py: _lock_path_for()
 timeout_s = float("${SNAP_TIMEOUT_S}")
@@ -298,12 +304,15 @@ try:
             "WHERE table_schema = 'main' AND table_type = 'BASE TABLE' "
             "ORDER BY table_name"
         ).fetchall()]
-        if "arxiv_bulk_progress" not in tables:
+        if "arxiv_bulk_progress" not in tables or not _v22_arxiv_progress_shape_is_valid(con):
             sys.stderr.write(
-                "ERROR: backup: arXiv progress table is missing; refusing a "
+                "ERROR: backup: arXiv progress table is missing or invalid; refusing a "
                 "v2 bundle that could not restore the ingestion cursor\n"
             )
             sys.exit(6)
+        # The catalog can be right while a populated cursor row is malformed.
+        # The nightly backup must not certify that state as resumable either.
+        load_arxiv_bulk_progress(con)
         def quoted(name):
             return '"' + name.replace('"', '""') + '"'
         counts = {
