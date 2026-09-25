@@ -232,7 +232,7 @@ export default function Speak() {
     );
   }
 
-  const arrived = voices.filter((v) => v.state === "shared" || v.state === "recording");
+  const contributedVoices = voices.filter((v) => v.hasContribution);
 
   return (
     // Landing-glass (SPR-03 M2): the Speak project page is a LANDING surface —
@@ -356,16 +356,16 @@ export default function Speak() {
             {/* 2 · Arriving voices */}
             <section className="mb-5">
               <h2 className="mb-2 font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
-                Voices ({arrived.length})
+                Contributed voices ({contributedVoices.length})
               </h2>
-              {voices.length === 0 ? (
+              {contributedVoices.length === 0 ? (
                 <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
-                  No voices yet. Share the link above — they'll appear here as
-                  people record.
+                  No memories have been shared yet. Voices will appear here
+                  after someone contributes.
                 </p>
               ) : (
                 <ul className="space-y-1.5">
-                  {voices.map((v) => (
+                  {contributedVoices.map((v) => (
                     <li
                       key={v.interviewId}
                       className="flex items-center justify-between gap-3 rounded border border-rule px-3 py-2 dark:border-charcoal-1"

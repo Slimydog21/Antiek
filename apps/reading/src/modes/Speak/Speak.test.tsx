@@ -108,8 +108,8 @@ describe("Speak project page", () => {
 
   it("renders arriving voices", async () => {
     api.listVoices.mockResolvedValue([
-      { interviewId: "iv1", who: "aunt@x.com", state: "shared", link: "L" },
-      { interviewId: "iv2", who: "Uncle Theo", state: "recording", link: "L2" },
+      { interviewId: "iv1", who: "aunt@x.com", state: "shared", hasContribution: true, link: "L" },
+      { interviewId: "iv2", who: "Uncle Theo", state: "recording", hasContribution: true, link: "L2" },
     ]);
     mount();
     // The voice appears in the standalone "Voices" list (and again in the
@@ -125,6 +125,30 @@ describe("Speak project page", () => {
     // appear EXACTLY twice — a single-surface regression (e.g. the console
     // dropping the label) would drop this to 1 and fail, where >0 would not.
     expect(screen.getAllByText("Shared")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Contributed voices (2)" })).toBeTruthy();
+  });
+
+  it("does not count invited-only interviews as contributed voices", async () => {
+    api.listVoices.mockResolvedValue([
+      { interviewId: "iv-invited", who: "waiting@example.com", state: "invited", hasContribution: false, link: "L" },
+    ]);
+    mount();
+    const heading = await screen.findByRole("heading", { name: "Contributed voices (0)" });
+    const section = heading.closest("section");
+    expect(section?.textContent).toMatch(/no memories have been shared yet/i);
+    expect(section?.textContent).not.toMatch(/waiting@example\.com/i);
+    expect(screen.queryByText(/added a memory/i)).toBeNull();
+  });
+
+  it("counts an informant contribution even while its interview remains in progress", async () => {
+    api.listVoices.mockResolvedValue([
+      { interviewId: "iv-answer", who: "aunt@example.com", state: "recording", hasContribution: true, link: "L" },
+    ]);
+    mount();
+    expect(await screen.findByRole("heading", { name: "Contributed voices (1)" })).toBeTruthy();
+    const section = screen.getByRole("heading", { name: "Contributed voices (1)" }).closest("section");
+    expect(section?.textContent).toMatch(/aunt@example\.com/);
+    expect(section?.textContent).toMatch(/recording…/i);
   });
 
   it("frames agreement as corroborated, never proven; shows disagreement", async () => {

@@ -258,11 +258,6 @@ export default function PublicLane({ feedLoading, feed, visitorMode = false }: P
                     {f.name}
                   </Link>
                 )}
-                <span className="shrink-0 font-mono text-xxs text-ink-mute dark:text-moonlight">
-                  {f.voiceCount === 0
-                    ? "no voices yet"
-                    : `${f.voiceCount} voice${f.voiceCount === 1 ? "" : "s"}`}
-                </span>
               </div>
 
               {/* M5 — lifecycle honesty. The feed lists public-INTENT projects;

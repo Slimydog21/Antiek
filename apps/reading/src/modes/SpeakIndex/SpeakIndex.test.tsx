@@ -86,8 +86,8 @@ describe("SpeakIndex — the warm door", () => {
 
     it("matches the yours-populated snapshot", async () => {
       listPeopleMock.mockResolvedValue([
-        { id: "y1", name: "Grandma Rosa", willBePublic: false, voiceCount: 0 },
-        { id: "y2", name: "Dad", willBePublic: true, voiceCount: 2 },
+        { id: "y1", name: "Grandma Rosa", willBePublic: false, contributedVoiceCount: 0 },
+        { id: "y2", name: "Dad", willBePublic: true, contributedVoiceCount: 2 },
       ]);
       const { container } = mount();
       expect(await screen.findByText("Grandma Rosa")).toBeTruthy();
@@ -105,8 +105,8 @@ describe("SpeakIndex — the warm door", () => {
   // ── SPR-04 M1 — private-lane gratitude / impact (no money) ──
   it("shows gratitude/impact on a populated private person, with no money word anywhere in the yours lane", async () => {
     listPeopleMock.mockResolvedValue([
-      { id: "y1", name: "Grandma Rosa", willBePublic: false, voiceCount: 0 },
-      { id: "y2", name: "Dad", willBePublic: false, voiceCount: 2 },
+      { id: "y1", name: "Grandma Rosa", willBePublic: false, contributedVoiceCount: 0 },
+      { id: "y2", name: "Dad", willBePublic: false, contributedVoiceCount: 2 },
     ]);
     mount();
     // A person who has had voices shared gets the warm impact line…
@@ -124,7 +124,7 @@ describe("SpeakIndex — the warm door", () => {
 
   it("stays honest (no false gratitude) for a private person with no voices yet", async () => {
     listPeopleMock.mockResolvedValue([
-      { id: "y1", name: "Grandma Rosa", willBePublic: false, voiceCount: 0 },
+      { id: "y1", name: "Grandma Rosa", willBePublic: false, contributedVoiceCount: 0 },
     ]);
     mount();
     expect(await screen.findByText("Grandma Rosa")).toBeTruthy();
@@ -140,7 +140,7 @@ describe("SpeakIndex — the warm door", () => {
     fireEvent.click(screen.getByRole("tab", { name: /public remembrances/i }));
     expect(await screen.findByText(/no public remembrances yet/i)).toBeTruthy();
     // Now a populated feed shows an interview-with / chime-in entry per item.
-    listPublicFeedMock.mockResolvedValue([{ id: "p1", name: "Grandma", voiceCount: 3 }]);
+    listPublicFeedMock.mockResolvedValue([{ id: "p1", name: "Grandma" }]);
     fireEvent.click(screen.getByRole("tab", { name: /people you're remembering/i }));
     fireEvent.click(screen.getByRole("tab", { name: /public remembrances/i }));
     expect(await screen.findByText("Grandma")).toBeTruthy();

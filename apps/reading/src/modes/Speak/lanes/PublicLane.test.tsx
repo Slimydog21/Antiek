@@ -70,8 +70,8 @@ beforeEach(() => {
 afterEach(cleanup);
 
 const FEED: FeedItem[] = [
-  { id: "p1", name: "Grandma Rosa", voiceCount: 3 },
-  { id: "p2", name: "Uncle Theo", voiceCount: 0 },
+  { id: "p1", name: "Grandma Rosa" },
+  { id: "p2", name: "Uncle Theo" },
 ];
 
 function mount(props: { feedLoading?: boolean; feed?: FeedItem[] } = {}) {
@@ -87,6 +87,12 @@ describe("PublicLane — searchable feed", () => {
     mount();
     expect(screen.getByText("Grandma Rosa")).toBeTruthy();
     expect(screen.getByText("Uncle Theo")).toBeTruthy();
+  });
+
+  it("does not claim participation from the public feed", () => {
+    mount({ feed: [{ id: "p9", name: "Aunt May" }] });
+    const cardText = screen.getByText("Aunt May").closest("li")?.textContent ?? "";
+    expect(cardText).not.toMatch(/no voices yet|\b\d+ voices?\b|added a memory/i);
   });
 
   it("filters by name and restores the full list when cleared (M1)", () => {
@@ -162,7 +168,7 @@ describe("PublicLane — the honest G7 locked state (M2)", () => {
 
 describe("PublicLane — the CTA opens the invite-token door (M3 / spine SPR-03)", () => {
   it("Add your memory mints an invite and navigates to /speak/invite/:token (never /speak/:id console)", async () => {
-    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1 }] });
+    mount({ feed: [{ id: "p9", name: "Aunt May" }] });
     const cta = screen.getByTestId("contribution-invite-cta-p9");
     expect(cta).toBeTruthy();
     fireEvent.click(cta);
@@ -180,14 +186,14 @@ describe("PublicLane — the CTA opens the invite-token door (M3 / spine SPR-03)
   });
 
   it("is honest that open contribution without an invite is not live (G7)", () => {
-    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1 }] });
+    mount({ feed: [{ id: "p9", name: "Aunt May" }] });
     expect(screen.getByText(PUBLIC_LANE_LABELS.ctaOperatorOnly)).toBeTruthy();
     expect(screen.getByText(GATE_PHRASES.publicEcosystem.whenGated)).toBeTruthy();
   });
 
   it("surfaces an honest error when invite mint fails (no silent dead end)", async () => {
     makeContributionInvitePathMock.mockRejectedValueOnce(new Error("boom"));
-    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1 }] });
+    mount({ feed: [{ id: "p9", name: "Aunt May" }] });
     fireEvent.click(screen.getByTestId("contribution-invite-cta-p9"));
     expect(await screen.findByText(PUBLIC_LANE_LABELS.ctaMintFailed)).toBeTruthy();
   });
@@ -195,7 +201,7 @@ describe("PublicLane — the CTA opens the invite-token door (M3 / spine SPR-03)
 
 describe("PublicLane — lifecycle & north-star honesty (M4 + M5)", () => {
   it("labels a feed item intended-public and NEVER claims it is published (M5)", () => {
-    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1 }] });
+    mount({ feed: [{ id: "p9", name: "Aunt May" }] });
     expect(screen.getByText(PUBLIC_LANE_LABELS.intendedPublic)).toBeTruthy();
     // Nothing in the lane claims a project is "published".
     expect(screen.queryByText(/\bpublished\b/i)).toBeNull();

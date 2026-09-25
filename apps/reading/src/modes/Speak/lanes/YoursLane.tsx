@@ -55,9 +55,9 @@ export default function YoursLane({ loading, people }: YoursLaneProps) {
                   {p.name}
                 </span>
                 <span className="shrink-0 font-mono text-xxs text-ink-mute dark:text-moonlight">
-                  {p.voiceCount === 0
+                  {p.contributedVoiceCount === 0
                     ? "no voices yet"
-                    : `${p.voiceCount} voice${p.voiceCount === 1 ? "" : "s"}`}
+                    : `${p.contributedVoiceCount} voice${p.contributedVoiceCount === 1 ? "" : "s"}`}
                 </span>
               </div>
               <p className="mt-0.5 font-serif text-xs text-ink-mute dark:text-moonlight">
@@ -68,14 +68,14 @@ export default function YoursLane({ loading, people }: YoursLaneProps) {
                 CONTRACT: split_applies == false here, so NO money/share/payout/
                 earnings language ever. Gratitude is purely emotional — that
                 their story is coming together as voices arrive. We have only
-                voiceCount in props (no per-person corroboration data is passed
+                contributedVoiceCount in props (no per-person corroboration data is passed
                 to this lane), so the impact is grounded in it: stay honest when
                 no one has shared yet, warm once a voice has.
               */}
-              {p.voiceCount > 0 ? (
+              {p.contributedVoiceCount > 0 ? (
                 <p className="mt-1 font-serif text-xs italic text-ink-soft dark:text-moonlight">
-                  {`Their story is coming together — ${p.voiceCount} ${
-                    p.voiceCount === 1 ? "voice has" : "voices have"
+                  {`Their story is coming together — ${p.contributedVoiceCount} ${
+                    p.contributedVoiceCount === 1 ? "voice has" : "voices have"
                   } added a memory.`}
                 </p>
               ) : null}

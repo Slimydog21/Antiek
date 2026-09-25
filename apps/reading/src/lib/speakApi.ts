@@ -24,7 +24,8 @@ export interface RememberedPerson {
   name: string;
   /** Plain words, not the enum: true when the story will be public. */
   willBePublic: boolean;
-  voiceCount: number;
+  /** Voices with substantive informant content, independent of interview status. */
+  contributedVoiceCount: number;
 }
 
 /** One arriving voice (an invitee's interview lifecycle row), humanized. */
@@ -41,6 +42,8 @@ export interface ArrivingVoice {
   /** The invitee's name/handle/email, or a gentle placeholder. */
   who: string;
   state: VoiceState;
+  /** True only when this interview has substantive informant content. */
+  hasContribution: boolean;
   /** The token-bearing invite link to share. */
   link: string;
 }
@@ -88,7 +91,6 @@ export interface EconomicsView {
 export interface FeedItem {
   id: string;
   name: string;
-  voiceCount: number;
 }
 
 const VOICE_STATE: Record<string, VoiceState> = {
@@ -103,12 +105,13 @@ export function toPerson(raw: Record<string, unknown>): RememberedPerson {
   const subject = typeof raw.subject_ref === "string" ? raw.subject_ref : null;
   const title = typeof raw.title === "string" ? raw.title : "";
   const publish = typeof raw.publish_intent === "string" ? raw.publish_intent : "";
-  const count = typeof raw.interview_count === "number" ? raw.interview_count : 0;
+  const contributedVoiceCount =
+    typeof raw.contributed_voice_count === "number" ? raw.contributed_voice_count : 0;
   return {
     id: String(raw.project_id ?? ""),
     name: subject ?? title,
     willBePublic: publish === "will_be_public",
-    voiceCount: count,
+    contributedVoiceCount,
   };
 }
 
@@ -149,6 +152,7 @@ export function toVoice(raw: Record<string, unknown>): ArrivingVoice {
     interviewId: String(raw.interview_id ?? ""),
     who: email ?? handle ?? "Someone you invited",
     state: VOICE_STATE[status] ?? "invited",
+    hasContribution: raw.has_contribution === true,
     link: typeof raw.link === "string" ? raw.link : "",
   };
 }
@@ -362,7 +366,6 @@ export async function listPublicFeed(): Promise<FeedItem[]> {
         : typeof r.title === "string"
         ? r.title
         : "",
-    voiceCount: typeof r.interview_count === "number" ? r.interview_count : 0,
   }));
 }
 
@@ -604,4 +607,3 @@ export async function repingInvitee(
     emailDetail: typeof r.email_detail === "string" ? r.email_detail : null,
   };
 }
-
