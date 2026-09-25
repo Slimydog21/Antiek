@@ -158,17 +158,44 @@
       tags: [code, systemd]
 
     # ── 2. Refresh dependencies ──────────────────────────────────────────
-    # `pip install -e` is fast when nothing changed (just re-reads
-    # pyproject.toml and the existing egg-info), so running it
-    # unconditionally is fine.
-    - name: refresh editable install + extras
+    # THE LOCK IS THE AUTHORITY, EXACTLY (the 2026-09-25 drift finding,
+    # amended per the glmf collision ruling): the live venv ran pillow
+    # 12.2.0 for months while uv.lock pinned 12.3.0 because `pip install
+    # -e` never reads the lock — a satisfied `>=` range leaves the installed
+    # version untouched. An EXACT `uv sync --frozen` both installs the
+    # lock's pins (upgrades included) and REMOVES extraneous packages
+    # (verified by dry-run: orphaned yt-dlp and the bootstrap uv itself are
+    # uninstalled), and it installs the project editable as part of the
+    # sync — no pip re-resolution anywhere.
+    - name: bootstrap the pinned lock reader into the service venv
       ansible.builtin.pip:
-        # docs: firecrawl-anydoc binding (Office/ODF/RTF/CSV ingest); pdf also
-        # carries pypdfium2 (DeepSeek-OCR-2 scanned-PDF rasterization);
-        # turbopuffer_shadow: SERVABLE hybrid SDK for /health hybrid_ready.
-        name: "{{ antiek_install_dir }}[pdf,urls,embedding,docs,turbopuffer_shadow]"
-        editable: true
+        # Pinned so export/sync behavior is reproducible across deploys;
+        # the exact sync removes it again after use (it is not in the lock).
+        name: uv==0.11.14
         virtualenv: "{{ antiek_install_dir }}/.venv"
+      become_user: "{{ antiek_user }}"
+      tags: [code]
+
+    - name: exact-sync the service venv from the gated SHA's lock
+      ansible.builtin.command:
+        # uv sync targets <project>/.venv — the service venv itself.
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/uv"
+          - sync
+          - --frozen
+          - --no-dev
+          - --no-default-groups
+          - --extra
+          - pdf
+          - --extra
+          - urls
+          - --extra
+          - embedding
+          - --extra
+          - docs
+          - --extra
+          - turbopuffer_shadow
+        chdir: "{{ antiek_install_dir }}"
       become_user: "{{ antiek_user }}"
       tags: [code]
 
