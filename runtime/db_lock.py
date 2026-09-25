@@ -256,6 +256,8 @@ _WRITE_LOG_PURPOSE = "_write_log_internal"
 _SAME_FILE_DIFFERENT_CONFIG = (
     "Can't open a connection to same database file with a different configuration"
 )
+_READ_MODE_RETRY_WINDOW_S = 0.25
+_READ_MODE_RETRY_INTERVAL_S = 0.01
 
 
 def _external_duckdb_lock_conflict(exc: Exception) -> bool:
@@ -1220,21 +1222,46 @@ def connect_read(
     same-config read-write handle whose direct SQL mutation surfaces are
     rejected (``_ReadOrientedConnection``). Other connection failures stay
     explicit rather than being retried with broader privileges.
+    If the RW fallback races with a new read-only opener, retry the mode
+    selection decision for 250 ms after the first exact same-file conflict.
+    This bounds retry decisions and sleeps; an individual synchronous
+    ``duckdb.connect`` call is not preempted by that deadline.
 
     Cite: #3121 LazyRW coexist; Ads fills #3157/#3158 (BinderException wedge).
     """
-    try:
-        return duckdb.connect(db_path, read_only=True)
-    except Exception as exc:
-        msg = str(exc)
-        lazy_ok = (
-            _SAME_FILE_DIFFERENT_CONFIG in msg
-            or "Unique file handle conflict" in msg
-            or "already attached" in msg
-        )
-        if not lazy_ok:
-            raise
-        return _ReadOrientedConnection(duckdb.connect(db_path, read_only=False))
+    retry_deadline: float | None = None
+    while True:
+        try:
+            return duckdb.connect(db_path, read_only=True)
+        except Exception as exc:
+            msg = str(exc)
+            lazy_ok = (
+                _SAME_FILE_DIFFERENT_CONFIG in msg
+                or "Unique file handle conflict" in msg
+                or "already attached" in msg
+            )
+            if not lazy_ok:
+                raise
+            try:
+                return _ReadOrientedConnection(
+                    duckdb.connect(db_path, read_only=False)
+                )
+            except Exception as fallback_exc:
+                # A reader can open after the RO attempt loses to a writer
+                # but before this RW fallback. Retry the original RO mode
+                # until the retry-decision deadline so that a short transition
+                # does not surface as a request failure. This deadline cannot
+                # interrupt an in-flight synchronous DuckDB connect. Keep the
+                # retry specific to DuckDB's same-file mode conflict;
+                # unrelated errors stay immediate.
+                if _SAME_FILE_DIFFERENT_CONFIG not in str(fallback_exc):
+                    raise
+                if retry_deadline is None:
+                    retry_deadline = time.monotonic() + _READ_MODE_RETRY_WINDOW_S
+                remaining = retry_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(_READ_MODE_RETRY_INTERVAL_S, remaining))
 
 
 @contextlib.contextmanager
