@@ -98,9 +98,11 @@ def _read_live_env_key(path: Path, expected_name: str) -> str:
     """Read one selected unquoted assignment from root-owned EnvironmentFile.
 
     Blank lines, full-line comments, and ordinary NAME=value assignments are
-    accepted. Values for unrelated names are ignored. The selected value must
-    be a single unquoted token; escapes, expansion, inline comments, and
-    systemd's other value forms are intentionally unsupported.
+    accepted; lines without '=' are ignored as systemd does. Values for
+    unrelated names are ignored. Physical continuations are rejected because
+    they could consume the selected assignment. The selected value must be a
+    single unquoted token; escapes, expansion, inline comments, and systemd's
+    other value forms are intentionally unsupported.
     """
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
@@ -138,10 +140,15 @@ def _read_live_env_key(path: Path, expected_name: str) -> str:
         raise ProbeInputError("live environment file has invalid formatting")
     found: list[str] = []
     for raw_line in contents.splitlines():
-        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+        if raw_line.rstrip().endswith("\\"):
+            raise ProbeInputError("live environment file line continuations are unsupported")
+        stripped = raw_line.lstrip()
+        if not stripped or stripped.startswith(("#", ";")):
             continue
         name, sep, value = raw_line.partition("=")
-        if not sep or not _ENV_NAME.fullmatch(name):
+        if not sep:
+            continue
+        if not _ENV_NAME.fullmatch(name):
             raise ProbeInputError("live environment file contains an unsupported assignment")
         if name != expected_name:
             continue
