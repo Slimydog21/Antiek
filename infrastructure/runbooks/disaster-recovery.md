@@ -167,6 +167,17 @@ if [ -z "${RESTORE_DIR:-}" ] || [ ! -d "${RESTORE_DIR}duckdb" ]; then
 fi
 echo "Restoring from: ${RESTORE_DIR}"
 
+# Check the extracted bundle against this checkout BEFORE deleting the DB.
+# Current bundles carry a versioned arXiv bulk cursor in DuckDB. An older
+# unversioned bundle needs an explicit compatibility choice; after restoring
+# one, do not run arXiv sync until its raw snapshot and legacy JSON state have
+# been reconciled. Unknown future versions and malformed cursor inventories
+# are refused.
+cd /opt/antiek
+sudo -u antiek /opt/antiek/.venv/bin/python3 -m tools.backup_bundle_contract "${RESTORE_DIR}"
+# For an intentionally selected pre-cursor archive only, repeat the command
+# above with --allow-legacy after checking its date and expected data loss.
+
 # Ensure no stale DuckDB file exists (IMPORT requires a fresh DB).
 # The .wal is removed too: leaving an orphan WAL beside a deleted DB was
 # tested on DuckDB 1.5.2 and imports cleanly, but removing it keeps the

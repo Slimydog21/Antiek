@@ -298,6 +298,12 @@ try:
             "WHERE table_schema = 'main' AND table_type = 'BASE TABLE' "
             "ORDER BY table_name"
         ).fetchall()]
+        if "arxiv_bulk_progress" not in tables:
+            sys.stderr.write(
+                "ERROR: backup: arXiv progress table is missing; refusing a "
+                "v2 bundle that could not restore the ingestion cursor\n"
+            )
+            sys.exit(6)
         def quoted(name):
             return '"' + name.replace('"', '""') + '"'
         counts = {
@@ -347,6 +353,9 @@ finally:
     os.close(fd)
 
 manifest = {
+    # V2 includes the DB-authoritative arXiv progress row in the same EXPORT
+    # transaction as its document rows. Restore checks this before IMPORT.
+    "bundle_contract_version": 2,
     "counts": counts,
     "columns": columns,
     "constraints": constraints,
