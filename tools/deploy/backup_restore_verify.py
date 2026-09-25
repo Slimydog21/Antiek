@@ -15,6 +15,7 @@ import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import duckdb
 
@@ -41,6 +42,7 @@ _SEQUENCE_SQL = re.compile(
 _PLAIN_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z_0-9]*\Z")
 _ADMISSION_ERRORS = (ArchiveAdmissionError, OSError)
 _IMPORT_ERRORS = (duckdb.Error, OSError, ValueError)
+_JsonObject = dict[str, Any]
 
 
 class RestoreRefused(ValueError):
@@ -83,7 +85,7 @@ class SnapshotObservation:
     catalog_scheme: str
     content_scheme: str
     duckdb_version: str
-    catalog_objects: tuple[dict, ...]
+    catalog_objects: tuple[_JsonObject, ...]
     tables: Mapping[str, TableObservation]
 
     def canonical_bytes(self) -> bytes:
@@ -104,8 +106,8 @@ class SnapshotObservation:
         if not isinstance(raw, bytes) or len(raw) > limits.source_report_bytes:
             raise RestoreRefused("SOURCE_REPORT_SIZE")
 
-        def unique_pairs(pairs):
-            result = {}
+        def unique_pairs(pairs: list[tuple[str, Any]]) -> _JsonObject:
+            result: _JsonObject = {}
             for key, value in pairs:
                 if key in result:
                     raise RestoreRefused("SOURCE_REPORT_FORMAT")
@@ -214,8 +216,8 @@ class RestoreReport:
         if not isinstance(raw, bytes) or len(raw) > limits.observation.report_bytes:
             raise RestoreRefused("REPORT_FORMAT")
 
-        def unique_pairs(pairs):
-            value = {}
+        def unique_pairs(pairs: list[tuple[str, Any]]) -> _JsonObject:
+            value: _JsonObject = {}
             for key, item in pairs:
                 if key in value:
                     raise ValueError()
@@ -290,7 +292,7 @@ def _bounded_text(value: object, limits: ObservationLimits) -> None:
         raise ValueError("definition")
 
 
-def _object_key(obj: dict) -> tuple:
+def _object_key(obj: _JsonObject) -> tuple[str, str, str, str, int]:
     return obj["kind"], obj["schema"], obj.get("table", ""), obj["name"], obj.get("ordinal", 0)
 
 
@@ -323,7 +325,7 @@ _FIELDS = {
 }
 
 
-def _valid_object(obj: dict, limits: ObservationLimits) -> bool:
+def _valid_object(obj: _JsonObject, limits: ObservationLimits) -> bool:
     kind = obj.get("kind")
     if type(kind) is not str or kind not in _FIELDS or set(obj) != _FIELDS[kind]:
         return False
@@ -380,7 +382,7 @@ def _valid_object(obj: dict, limits: ObservationLimits) -> bool:
     return True
 
 
-def _rows(connection: object, function: str, cap: int) -> list[dict]:
+def _rows(connection: duckdb.DuckDBPyConnection, function: str, cap: int) -> list[_JsonObject]:
     cursor = connection.execute(f"SELECT * FROM system.main.{function}()")
     names = [item[0] for item in cursor.description]
     rows = cursor.fetchmany(cap + 1)
@@ -394,7 +396,7 @@ def _identifier(value: str) -> str:
 
 
 def observe_snapshot(
-    connection: object, *, scratch_parent: Path, limits: ObservationLimits
+    connection: duckdb.DuckDBPyConnection, *, scratch_parent: Path, limits: ObservationLimits
 ) -> SnapshotObservation:
     """Inventory all supported persistent objects and hash every base table.
 
@@ -402,12 +404,13 @@ def observe_snapshot(
     or properties refuse observation; they never disappear from the report.
     """
     try:
-        if (
-            connection.execute("SELECT system.main.version()").fetchone()[0]
-            != f"v{_DUCKDB_VERSION}"
-        ):
+        version_row = connection.execute("SELECT system.main.version()").fetchone()
+        if version_row is None or version_row[0] != f"v{_DUCKDB_VERSION}":
             raise RestoreRefused("DUCKDB_VERSION")
-        catalog = connection.execute("SELECT system.main.current_database()").fetchone()[0]
+        catalog_row = connection.execute("SELECT system.main.current_database()").fetchone()
+        if catalog_row is None or type(catalog_row[0]) is not str:
+            raise RestoreRefused("CATALOG_UNSUPPORTED")
+        catalog: str = catalog_row[0]
         databases = [
             r
             for r in _rows(connection, "duckdb_databases", limits.catalog_objects)
@@ -417,7 +420,7 @@ def observe_snapshot(
             raise RestoreRefused("CATALOG_UNSUPPORTED")
         objects = []
 
-        def admitted(function: str) -> list[dict]:
+        def admitted(function: str) -> list[_JsonObject]:
             rows = _rows(connection, function, limits.catalog_objects)
             if any(r["database_name"] != catalog and not r.get("internal", False) for r in rows):
                 raise RestoreRefused("CATALOG_UNSUPPORTED")
@@ -551,9 +554,12 @@ def observe_snapshot(
         for schema, name in sorted(table_keys):
             key = f"{schema}.{name}"
             _bounded_name(key, limits)
-            count = connection.execute(
+            count_row = connection.execute(
                 f"SELECT count(*) FROM {_identifier(catalog)}.{_identifier(schema)}.{_identifier(name)}"
-            ).fetchone()[0]
+            ).fetchone()
+            if count_row is None or type(count_row[0]) is not int or count_row[0] < 0:
+                raise RestoreRefused("CATALOG_UNSUPPORTED")
+            count: int = count_row[0]
             digest = table_content_sha256(
                 connection,
                 name,
