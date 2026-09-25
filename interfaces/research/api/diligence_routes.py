@@ -186,17 +186,21 @@ def _ground_ref(con: Any, kind: str, object_ref: str) -> None:
         )
 
 
-def _ground_source_document(con: Any, source_document_id: str | None) -> None:
+def _ground_source_document(
+    con: Any, source_document_id: str | None, owner_user_id: str
+) -> None:
+    """The source document grounds to the CALLER (existence AND ownership)
+    — a flag may never steer the daemon at another owner's document."""
     if source_document_id is None:
         return
     hit = con.execute(
-        "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1",
-        [source_document_id],
+        "SELECT 1 FROM documents WHERE document_id = ? AND owner_user_id = ? LIMIT 1",
+        [source_document_id, owner_user_id],
     ).fetchone()
     if hit is None:
         raise HTTPException(
             status_code=422,
-            detail="diligence_source_ungrounded: no document with that id",
+            detail="diligence_source_ungrounded: no document of yours with that id",
         )
 
 
@@ -229,7 +233,7 @@ def register_diligence_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         with connect_write(db, purpose="diligence/flags/create") as con:
             _ground_ref(con, body.kind, object_ref)
-            _ground_source_document(con, body.source_document_id)
+            _ground_source_document(con, body.source_document_id, owner)
             row, created = DiligenceStore().create_flag(
                 con,
                 owner_user_id=owner,
