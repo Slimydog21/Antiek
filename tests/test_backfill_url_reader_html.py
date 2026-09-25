@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -115,6 +116,8 @@ def test_refusal_has_no_mutation(db_path: str, doc_id: str, reason: str) -> None
     before = _sidecars(db_path)
     report = tool.run(db_path, doc_id)
     assert report["reason"] == reason
+    assert report["raw_sha256"] is None
+    assert report["raw_length"] is None
     result = tool.run(db_path, doc_id, apply=True,
                       expected_sha256=report["raw_sha256"] or "0" * 64)
     assert result["reason"] == reason or (doc_id == "missing" and result["reason"] == "digest_changed")
@@ -141,6 +144,7 @@ def test_digest_race_and_input_output_bounds(db_path: str) -> None:
 
 def test_rights_drift_refuses_write(db_path: str) -> None:
     before = _sidecars(db_path)
+    approved_digest = tool.run(db_path, "target")["raw_sha256"]
     with connect_write(db_path, purpose="test/url-reader-backfill/rights") as con:
         con.execute(
             "UPDATE documents SET metadata = ? WHERE document_id = 'target'",
@@ -149,9 +153,48 @@ def test_rights_drift_refuses_write(db_path: str) -> None:
         )
     report = tool.run(db_path, "target")
     assert report["reason"] == "rights_refused"
+    assert report["raw_sha256"] is None
+    assert report["raw_length"] is None
     assert tool.run(db_path, "target", apply=True,
-                    expected_sha256=report["raw_sha256"])["reason"] == "rights_refused"
+                    expected_sha256=approved_digest)["reason"] == "rights_refused"
     assert _sidecars(db_path) == before
+
+
+def test_report_owner_transfer_keeps_metadata_and_body_on_one_snapshot(
+    db_path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_digest = tool.run(db_path, "target")["raw_sha256"]
+    original_row = tool._row
+    transferred = False
+    with duckdb.connect(db_path) as updater:
+        def transfer_after_preflight(con: Any, document_id: str) -> tuple[Any, ...] | None:
+            nonlocal transferred
+            row = original_row(con, document_id)
+            if not transferred:
+                updater.execute(
+                    "UPDATE documents SET owner_user_id = 'friend', "
+                    "raw_text = 'private body for friend' WHERE document_id = 'target'"
+                )
+                transferred = True
+            return row
+
+        with monkeypatch.context() as patch:
+            patch.setattr(tool, "_row", transfer_after_preflight)
+            report = tool.run(db_path, "target")
+        assert transferred
+        assert report["status"] == "eligible"
+        assert report["raw_sha256"] == original_digest
+        denied = tool.run(db_path, "target")
+        assert denied["reason"] == "not_single_operator_owned"
+        assert denied["raw_sha256"] is None
+
+
+def test_null_body_is_empty_not_rights_refused(db_path: str) -> None:
+    with connect_write(db_path, purpose="test/url-reader-backfill/null") as con:
+        con.execute("UPDATE documents SET raw_text = NULL WHERE document_id = 'target'")
+    report = tool.run(db_path, "target")
+    assert report["reason"] == "empty_raw_text"
+    assert report["raw_sha256"] is None
 
 
 def test_cli_requires_exact_id_and_digest(db_path: str) -> None:

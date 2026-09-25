@@ -24,7 +24,7 @@ from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from substrate.books.html_sanitizer import SANITIZER_VERSION  # noqa: E402
 from substrate.books.serve_guard import (  # noqa: E402
     LinkBackMissingError,
-    guard_candidate_full_text,
+    serve_full_text_guarded,
 )
 from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.reader_html.store import MAX_READER_HTML_CHARS, store_reader_html  # noqa: E402
@@ -40,8 +40,7 @@ _IMAGE_TAG = re.compile(r"<img(?:\s[^>]*)?\s*/?>", re.IGNORECASE)
 
 def _row(con: Any, document_id: str) -> tuple[Any, ...] | None:
     return cast(tuple[Any, ...] | None, con.execute(
-        """SELECT d.document_type, d.content_class, d.raw_text, d.owner_user_id,
-                  d.metadata,
+        """SELECT d.document_type, d.content_class, d.owner_user_id,
                   COALESCE(b.taken_down, FALSE), r.sanitizer_version, r.revision
            FROM documents d
            LEFT JOIN book_assets b ON b.document_id = d.document_id
@@ -61,7 +60,9 @@ def _project(raw_text: str) -> str | None:
     return rendered
 
 
-def _status(document_id: str, row: tuple[Any, ...] | None) -> dict[str, Any]:
+def _status(
+    con: Any, document_id: str, row: tuple[Any, ...] | None
+) -> tuple[dict[str, Any], str | None]:
     result: dict[str, Any] = {
         "document_id": document_id,
         "status": "skipped",
@@ -75,14 +76,11 @@ def _status(document_id: str, row: tuple[Any, ...] | None) -> dict[str, Any]:
         "sidecar_revision": None,
     }
     if row is None:
-        return result
-    doc_type, content_class, raw_text, owner, metadata, taken_down, version, revision = row
+        return result, None
+    doc_type, content_class, owner, taken_down, version, revision = row
     result.update(
         document_type=doc_type,
         content_class=content_class,
-        raw_length=len(raw_text) if raw_text is not None else 0,
-        raw_sha256=(hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
-                    if raw_text is not None else None),
         sidecar_present=version is not None,
         sidecar_version=version,
         sidecar_revision=revision,
@@ -97,23 +95,25 @@ def _status(document_id: str, row: tuple[Any, ...] | None) -> dict[str, Any]:
         result["reason"] = "wrong_content_class"
     elif taken_down:
         result["reason"] = "taken_down"
-    elif not raw_text or not raw_text.strip():
-        result["reason"] = "empty_raw_text"
-    elif _project(raw_text) is None:
-        result["reason"] = "oversized_text_or_html"
     else:
         try:
-            allowed = guard_candidate_full_text(
-                raw_text, content_class, metadata, owner=True, taken_down=bool(taken_down)
-            )
+            body = serve_full_text_guarded(con, document_id, owner=True).full_text
         except (T3BodyServeError, LinkBackMissingError):
-            allowed = None
-        if allowed is None:
             result["reason"] = "rights_refused"
+            return result, None
+        if body is None or not body.strip():
+            result["reason"] = "empty_raw_text"
         else:
-            result["status"] = "eligible"
-            result["reason"] = None
-    return result
+            result["raw_length"] = len(body)
+            result["raw_sha256"] = hashlib.sha256(body.encode("utf-8")).hexdigest()
+            rendered = _project(body)
+            if rendered is None:
+                result["reason"] = "oversized_text_or_html"
+            else:
+                result["status"] = "eligible"
+                result["reason"] = None
+                return result, rendered
+    return result, None
 
 
 def run(db_path: str, document_id: str, *, apply: bool = False,
@@ -124,7 +124,7 @@ def run(db_path: str, document_id: str, *, apply: bool = False,
             raise ValueError("--apply requires a full lowercase --expected-sha256 digest")
         with connect_write(db_path, purpose="tools/backfill_url_reader_html") as con, con.transaction():
             row = _row(con, document_id)
-            result = _status(document_id, row)
+            result, rendered = _status(con, document_id, row)
             if result["reason"] == "already_present":
                 return result
             if result["status"] != "eligible":
@@ -132,8 +132,6 @@ def run(db_path: str, document_id: str, *, apply: bool = False,
             if result["raw_sha256"] != expected_sha256:
                 result.update(status="skipped", reason="digest_changed")
                 return result
-            assert row is not None
-            rendered = _project(row[2])
             assert rendered is not None
             store_reader_html(
                 con, document_id=document_id, main_html=rendered,
@@ -145,7 +143,14 @@ def run(db_path: str, document_id: str, *, apply: bool = False,
             )
             return result
     with connect_read(db_path) as reader:
-        return _status(document_id, _row(reader, document_id))
+        # Keep the metadata preflight and guarded body read on one snapshot.
+        # Otherwise an ownership transfer between the two queries could pair
+        # the former owner's grant with the new owner's body.
+        reader.begin()
+        try:
+            return _status(reader, document_id, _row(reader, document_id))[0]
+        finally:
+            reader.rollback()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
