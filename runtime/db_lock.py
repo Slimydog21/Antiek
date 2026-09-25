@@ -259,7 +259,7 @@ _SAME_FILE_DIFFERENT_CONFIG = (
 
 
 def _external_duckdb_lock_conflict(exc: Exception) -> bool:
-    """DuckDB's transient file-lock error from a different process's reader."""
+    """DuckDB's transient file-lock error from another process's handle."""
     message = str(exc)
     return (
         isinstance(exc, duckdb.IOException)
@@ -971,9 +971,9 @@ def _connect_write_after_process_gate(
     except OSError:
         pass
 
-    # A DuckDB read-only handle in this or another process can briefly reject
-    # the RW open even after we own the sidecar flock. Keep writer admission
-    # serialized and retry only these known lock conflicts until the deadline.
+    # A local read-only handle or another process's DuckDB handle can briefly
+    # reject the RW open even after we own the sidecar flock. Keep admission
+    # serialized and retry only these known conflicts until the deadline.
     con = None
     open_error: Exception | None = None
     while True:
