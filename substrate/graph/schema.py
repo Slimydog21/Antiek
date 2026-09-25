@@ -39,8 +39,12 @@ Storage discipline: every write must go through
 from __future__ import annotations
 
 import contextlib
+import json
 import os
+import re
 import sys
+from datetime import date, datetime
+from typing import NoReturn
 
 # Kept even though nothing in THIS module references `duckdb.` directly.
 # tests/test_schema_init_fastpath.py patches `schema_mod.duckdb.connect`
@@ -404,6 +408,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "event_consumer_frontiers",
     "note_taker_configurations",
     "note_taker_windows",
+    "arxiv_bulk_progress",
 )
 
 
@@ -1429,6 +1434,68 @@ CREATE TABLE IF NOT EXISTS document_reader_html (
 """
 
 
+# The row lives in the same DuckDB export as its committed document writes.
+# It is the authority after a restore; a JSON progress mirror cannot advance
+# it. One stream key retains the last completed generation while the current
+# generation is in bulk or tail. The consumer verifies the byte boundary and
+# the complete snapshot digest before it resumes.
+ANTIEK_GRAPH_SCHEMA_V22_ARXIV_BULK_PROGRESS_SQL = """
+CREATE TABLE IF NOT EXISTS arxiv_bulk_progress (
+    stream_id                       VARCHAR PRIMARY KEY CHECK (stream_id = 'arxiv_bulk'),
+    cursor_schema_version           INTEGER NOT NULL CHECK (cursor_schema_version = 1),
+    parser_version                  INTEGER NOT NULL CHECK (parser_version = 1),
+    generation_id                   VARCHAR NOT NULL CHECK (length(generation_id) BETWEEN 1 AND 64),
+    source_sha256                   VARCHAR NOT NULL CHECK (regexp_full_match(source_sha256, '[0-9a-f]{64}')),
+    source_size_bytes               BIGINT NOT NULL CHECK (source_size_bytes >= 0),
+    source_format                   VARCHAR NOT NULL CHECK (source_format = 'jsonl'),
+    source_encoding                 VARCHAR NOT NULL CHECK (source_encoding = 'utf-8'),
+    source_path                     VARCHAR NOT NULL CHECK (length(source_path) BETWEEN 1 AND 4096),
+    mode                            VARCHAR NOT NULL CHECK (mode = 'bulk'),
+    from_date                       DATE,
+    until_date                      DATE,
+    metadata_prefix                 VARCHAR NOT NULL CHECK (length(metadata_prefix) BETWEEN 1 AND 128),
+    phase                           VARCHAR NOT NULL CHECK (phase IN ('bulk', 'tail', 'complete')),
+    next_byte_offset                BIGINT NOT NULL CHECK (next_byte_offset >= 0),
+    physical_line_count             BIGINT NOT NULL CHECK (physical_line_count >= 0),
+    selected_record_count           BIGINT NOT NULL CHECK (selected_record_count >= 0),
+    bulk_t1_events                  BIGINT NOT NULL CHECK (bulk_t1_events >= 0),
+    bulk_t2_events                  BIGINT NOT NULL CHECK (bulk_t2_events >= 0),
+    bulk_t3_events                  BIGINT NOT NULL CHECK (bulk_t3_events >= 0),
+    bulk_ambiguous_events           BIGINT NOT NULL CHECK (bulk_ambiguous_events >= 0),
+    bulk_deleted_events             BIGINT NOT NULL CHECK (bulk_deleted_events >= 0),
+    bulk_max_datestamp              DATE,
+    completed_high_water            DATE,
+    completed_generation_id         VARCHAR CHECK (
+        completed_generation_id IS NULL OR length(completed_generation_id) BETWEEN 1 AND 64
+    ),
+    completed_at                    TIMESTAMP,
+    completed_bulk_sha256           VARCHAR CHECK (
+        completed_bulk_sha256 IS NULL OR regexp_full_match(completed_bulk_sha256, '[0-9a-f]{64}')
+    ),
+    completed_tail_bound            DATE,
+    completed_census_json           VARCHAR CHECK (
+        completed_census_json IS NULL OR length(completed_census_json) BETWEEN 2 AND 4096
+    ),
+    updated_at                      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (from_date IS NULL OR until_date IS NULL OR from_date <= until_date),
+    CHECK (next_byte_offset <= source_size_bytes),
+    CHECK (
+        (completed_generation_id IS NULL AND completed_at IS NULL
+         AND completed_bulk_sha256 IS NULL AND completed_census_json IS NULL
+         AND completed_high_water IS NULL AND completed_tail_bound IS NULL)
+        OR (completed_generation_id IS NOT NULL AND completed_at IS NOT NULL
+            AND completed_bulk_sha256 IS NOT NULL AND completed_census_json IS NOT NULL)
+    ),
+    CHECK (
+        phase <> 'complete' OR (completed_generation_id IS NOT NULL
+            AND completed_bulk_sha256 IS NOT NULL
+            AND completed_generation_id = generation_id
+            AND completed_bulk_sha256 = source_sha256)
+    )
+);
+"""
+
+
 ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL = """
 CREATE TABLE IF NOT EXISTS event_consumer_events (
     consumer_name TEXT NOT NULL,
@@ -1767,6 +1834,167 @@ _V21_READER_HTML_KEY_CHECKS = {
 }
 
 
+_V22_ARXIV_PROGRESS_REQUIRED_SHAPE = {
+    "stream_id": ("VARCHAR", "NO", "PRI", None),
+    "cursor_schema_version": ("INTEGER", "NO", None, None),
+    "parser_version": ("INTEGER", "NO", None, None),
+    "generation_id": ("VARCHAR", "NO", None, None),
+    "source_sha256": ("VARCHAR", "NO", None, None),
+    "source_size_bytes": ("BIGINT", "NO", None, None),
+    "source_format": ("VARCHAR", "NO", None, None),
+    "source_encoding": ("VARCHAR", "NO", None, None),
+    "source_path": ("VARCHAR", "NO", None, None),
+    "mode": ("VARCHAR", "NO", None, None),
+    "from_date": ("DATE", "YES", None, None),
+    "until_date": ("DATE", "YES", None, None),
+    "metadata_prefix": ("VARCHAR", "NO", None, None),
+    "phase": ("VARCHAR", "NO", None, None),
+    "next_byte_offset": ("BIGINT", "NO", None, None),
+    "physical_line_count": ("BIGINT", "NO", None, None),
+    "selected_record_count": ("BIGINT", "NO", None, None),
+    "bulk_t1_events": ("BIGINT", "NO", None, None),
+    "bulk_t2_events": ("BIGINT", "NO", None, None),
+    "bulk_t3_events": ("BIGINT", "NO", None, None),
+    "bulk_ambiguous_events": ("BIGINT", "NO", None, None),
+    "bulk_deleted_events": ("BIGINT", "NO", None, None),
+    "bulk_max_datestamp": ("DATE", "YES", None, None),
+    "completed_high_water": ("DATE", "YES", None, None),
+    "completed_generation_id": ("VARCHAR", "YES", None, None),
+    "completed_at": ("TIMESTAMP", "YES", None, None),
+    "completed_bulk_sha256": ("VARCHAR", "YES", None, None),
+    "completed_tail_bound": ("DATE", "YES", None, None),
+    "completed_census_json": ("VARCHAR", "YES", None, None),
+    "updated_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+}
+ARXIV_BULK_PROGRESS_COLUMNS = tuple(_V22_ARXIV_PROGRESS_REQUIRED_SHAPE)
+
+
+def _v22_arxiv_progress_shape_is_valid(con: ReadConnection | LockedConnection) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in con.execute("DESCRIBE arxiv_bulk_progress").fetchall()
+    }
+    if described != _V22_ARXIV_PROGRESS_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='arxiv_bulk_progress'"
+    ).fetchall()
+    primary_keys = [
+        tuple(row[1]) for row in constraints if row[0] == "PRIMARY KEY"
+    ]
+    checks = [row[2] for row in constraints if row[0] == "CHECK"]
+    # A partial table with the correct column names but lost constraints is
+    # not a valid checkpoint authority. SQL DDL has one CHECK per guarded
+    # field plus four cross-field invariants.
+    return primary_keys == [("stream_id",)] and len(checks) == 27
+
+
+def decode_arxiv_bulk_progress_row(row: dict[str, object]) -> dict[str, object]:
+    """Reject incompatible or malformed persisted cursors before any resume."""
+    def invalid(reason: str) -> NoReturn:
+        raise SchemaCorruptionError(f"invalid arxiv bulk progress: {reason}")
+
+    if set(row) != set(ARXIV_BULK_PROGRESS_COLUMNS):
+        invalid("column set")
+    if row["stream_id"] != "arxiv_bulk":
+        invalid("stream")
+    if (
+        type(row["cursor_schema_version"]) is not int
+        or type(row["parser_version"]) is not int
+        or row["cursor_schema_version"] != 1
+        or row["parser_version"] != 1
+    ):
+        invalid("unknown cursor or parser version")
+    for key in ("generation_id", "source_path", "metadata_prefix"):
+        value = row[key]
+        bound = 4096 if key == "source_path" else 128 if key == "metadata_prefix" else 64
+        if not isinstance(value, str) or not 1 <= len(value) <= bound:
+            invalid(key)
+    sha = row["source_sha256"]
+    if not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{64}", sha) is None:
+        invalid("source digest")
+    if row["source_format"] != "jsonl" or row["source_encoding"] != "utf-8":
+        invalid("source format")
+    if row["mode"] != "bulk":
+        invalid("mode")
+    if row["phase"] not in {"bulk", "tail", "complete"}:
+        invalid("phase")
+    for key in (
+        "source_size_bytes", "next_byte_offset", "physical_line_count",
+        "selected_record_count", "bulk_t1_events", "bulk_t2_events",
+        "bulk_t3_events", "bulk_ambiguous_events", "bulk_deleted_events",
+    ):
+        value = row[key]
+        if type(value) is not int or value < 0:
+            invalid(key)
+    offset, source_size = row["next_byte_offset"], row["source_size_bytes"]
+    if not isinstance(offset, int) or not isinstance(source_size, int) or offset > source_size:
+        invalid("offset exceeds source size")
+    for key in (
+        "from_date", "until_date", "bulk_max_datestamp",
+        "completed_high_water", "completed_tail_bound",
+    ):
+        value = row[key]
+        if value is not None and type(value) is not date:
+            invalid(key)
+    start, end = row["from_date"], row["until_date"]
+    if isinstance(start, date) and isinstance(end, date) and start > end:
+        invalid("reversed window")
+    if type(row["updated_at"]) is not datetime:
+        invalid("updated timestamp")
+    completed = (
+        row["completed_generation_id"], row["completed_at"],
+        row["completed_bulk_sha256"], row["completed_census_json"],
+    )
+    if not (all(value is None for value in completed) or all(value is not None for value in completed)):
+        invalid("incomplete prior completion")
+    if completed[0] is None and (
+        row["completed_high_water"] is not None
+        or row["completed_tail_bound"] is not None
+    ):
+        invalid("orphaned completed high-water or tail bound")
+    if completed[0] is not None:
+        if not isinstance(completed[0], str) or not 1 <= len(completed[0]) <= 64:
+            invalid("completed generation")
+        if type(completed[1]) is not datetime:
+            invalid("completed timestamp")
+        if not isinstance(completed[2], str) or re.fullmatch(r"[0-9a-f]{64}", completed[2]) is None:
+            invalid("completed digest")
+        census = completed[3]
+        if not isinstance(census, str) or not 2 <= len(census) <= 4096:
+            invalid("completed event census")
+        try:
+            parsed = json.loads(census)
+        except (TypeError, ValueError) as exc:
+            raise SchemaCorruptionError("invalid arxiv bulk progress: completed event census JSON") from exc
+        if not isinstance(parsed, dict):
+            invalid("completed event census object")
+    if row["phase"] == "complete" and (
+        row["completed_generation_id"] != row["generation_id"]
+        or row["completed_bulk_sha256"] != row["source_sha256"]
+    ):
+        invalid("completed generation mismatch")
+    return row
+
+
+def load_arxiv_bulk_progress(
+    con: ReadConnection | LockedConnection,
+) -> dict[str, object] | None:
+    """Read the one DB-authoritative stream row, refusing schema drift."""
+    if not _v22_arxiv_progress_shape_is_valid(con):
+        raise SchemaCorruptionError("invalid V22 arxiv progress table")
+    columns = ", ".join(ARXIV_BULK_PROGRESS_COLUMNS)
+    rows = con.execute(f"SELECT {columns} FROM arxiv_bulk_progress").fetchall()
+    if not rows:
+        return None
+    if len(rows) != 1:
+        raise SchemaCorruptionError("invalid arxiv bulk progress row count")
+    return decode_arxiv_bulk_progress_row(
+        dict(zip(ARXIV_BULK_PROGRESS_COLUMNS, rows[0], strict=True))
+    )
+
+
 def _v21_reader_html_shape_is_valid(con: ReadConnection | LockedConnection) -> bool:
     # Read-only: this validator only DESCRIBEs/SELECTs (AST-checked — no
     # INSERT/UPDATE/DELETE/CREATE/DROP/ALTER), so it accepts a read handle
@@ -2098,6 +2326,20 @@ def _repair_empty_partial_v19_frontiers(con: LockedConnection) -> None:
     con.execute("DROP TABLE event_consumer_frontiers")
 
 
+def _repair_empty_partial_v22_arxiv_progress(con: LockedConnection) -> None:
+    exists = con.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
+        "AND table_name='arxiv_bulk_progress'"
+    ).fetchone()
+    if not exists or _v22_arxiv_progress_shape_is_valid(con):
+        return
+    if con.execute("SELECT COUNT(*) FROM arxiv_bulk_progress").fetchone()[0]:
+        raise SchemaCorruptionError(
+            "populated partial V22 arxiv progress requires explicit recovery"
+        )
+    con.execute("DROP TABLE arxiv_bulk_progress")
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -2194,6 +2436,8 @@ def init_database(con: LockedConnection) -> None:
     # trust contract, see the block comment above). Pure idempotent CREATE IF
     # NOT EXISTS; FK-references documents; runs last.
     con.execute(ANTIEK_GRAPH_SCHEMA_V21_READER_HTML_SQL)
+    _repair_empty_partial_v22_arxiv_progress(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V22_ARXIV_BULK_PROGRESS_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -2299,6 +2543,7 @@ def _schema_is_present(db_path: str) -> bool:
             and _v20_configuration_shape_is_valid(con)
             and _v20_note_taker_shape_is_valid(con)
             and _v21_reader_html_shape_is_valid(con)
+            and _v22_arxiv_progress_shape_is_valid(con)
         )
     except Exception:
         return False

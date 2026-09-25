@@ -99,6 +99,31 @@ def test_cold_probe_after_cache_clear_still_works(monkeypatch):
         assert _schema_is_present(p) is True
 
 
+def test_missing_arxiv_progress_table_forces_cold_migration():
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "graph.duckdb")
+        init_database_at_path(p)
+        with schema_mod.connect_write(p, purpose="test_drop_arxiv_progress") as con:
+            con.execute("DROP TABLE arxiv_bulk_progress")
+        schema_mod._INITIALIZED_PATHS.clear()
+        assert _schema_is_present(p) is False
+        init_database_at_path(p)
+        assert _schema_is_present(p) is True
+
+
+def test_wrong_arxiv_progress_shape_forces_cold_migration():
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "graph.duckdb")
+        init_database_at_path(p)
+        with schema_mod.connect_write(p, purpose="test_replace_arxiv_progress") as con:
+            con.execute("DROP TABLE arxiv_bulk_progress")
+            con.execute("CREATE TABLE arxiv_bulk_progress (stream_id VARCHAR PRIMARY KEY)")
+        schema_mod._INITIALIZED_PATHS.clear()
+        assert _schema_is_present(p) is False
+        init_database_at_path(p)
+        assert _schema_is_present(p) is True
+
+
 def test_partial_receipt_shape_forces_cold_repair():
     with tempfile.TemporaryDirectory() as d:
         p = os.path.join(d, "partial-receipts.duckdb")
