@@ -14,7 +14,7 @@ import struct
 import tempfile
 from decimal import Decimal
 from pathlib import Path
-from typing import BinaryIO
+from typing import Any, BinaryIO, Protocol, cast
 
 CONTENT_SCHEME = "antiek-row-multiset-sha256-v1"
 _DIGEST_SIZE = 32
@@ -32,6 +32,18 @@ _SCALAR_TYPES = {
     "BLOB",
 }
 _MAX_MERGE_FILES = 32
+
+
+class _Cursor(Protocol):
+    def fetchone(self) -> tuple[Any, ...] | None: ...
+
+    def fetchall(self) -> list[tuple[Any, ...]]: ...
+
+    def fetchmany(self, size: int) -> list[tuple[Any, ...]]: ...
+
+
+class _Connection(Protocol):
+    def execute(self, query: str, parameters: object = ...) -> _Cursor: ...
 
 
 def _field(tag: bytes, payload: bytes) -> bytes:
@@ -55,18 +67,21 @@ def _value(value: object, kind: str) -> bytes:
     if value is None:
         return _field(b"N", b"")
     if kind in {"TEXT", "VARCHAR"}:
-        return _field(b"S", value.encode("utf-8"))
+        return _field(b"S", cast(str, value).encode("utf-8"))
     if kind in {"INTEGER", "BIGINT"}:
         return _field(b"I", str(value).encode("ascii"))
     if kind in {"FLOAT", "DOUBLE"}:
-        number = float(value)
+        number = float(cast(Any, value))
         if math.isnan(number):
             return _field(b"F", b"nan")
         if math.isinf(number):
             return _field(b"F", b"+inf" if number > 0 else b"-inf")
         return _field(b"F", struct.pack(">f" if kind == "FLOAT" else ">d", number))
     if kind == "FLOAT[]":
-        return _field(b"L", b"".join(_field(b"E", _value(item, "FLOAT")) for item in value))
+        return _field(
+            b"L",
+            b"".join(_field(b"E", _value(item, "FLOAT")) for item in cast(Any, value)),
+        )
     if kind == "BOOLEAN":
         return _field(b"B", b"1" if value else b"0")
     if kind == "TIMESTAMP":
@@ -78,16 +93,16 @@ def _value(value: object, kind: str) -> bytes:
             raise ValueError("DATE must come from DuckDB VARCHAR projection")
         return _field(b"D", value.encode("ascii"))
     if kind == "BLOB":
-        return _field(b"X", bytes(value))
+        return _field(b"X", bytes(cast(Any, value)))
     match = _DECIMAL.fullmatch(kind)
     if match:
         scale = int(match.group(2))
-        decimal_value = Decimal(value)
+        decimal_value = Decimal(cast(Any, value))
         if not decimal_value.is_finite():
             raise ValueError("invalid DECIMAL value for declared scale")
         sign, digits, exponent = decimal_value.as_tuple()
         coefficient = int("".join(map(str, digits)))
-        places = exponent + scale
+        places = cast(int, exponent) + scale
         if places >= 0:
             coefficient *= 10**places
         else:
@@ -131,7 +146,7 @@ def _merge_runs(paths: list[Path], output: Path) -> None:
 
 
 def table_content_sha256(
-    connection: object,
+    connection: _Connection,
     table_name: str,
     *,
     catalog_name: str | None = None,
@@ -151,7 +166,9 @@ def table_content_sha256(
     if chunk_rows < 1:
         raise ValueError("chunk_rows must be positive")
     if catalog_name is None:
-        catalog_name = connection.execute("SELECT current_database()").fetchone()[0]
+        catalog_name = cast(
+            str, cast(Any, connection.execute("SELECT current_database()").fetchone())[0]
+        )
     _identifier(catalog_name)
     _identifier(schema_name)
     _identifier(table_name)
