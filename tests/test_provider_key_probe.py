@@ -147,7 +147,8 @@ def test_live_env_mode_selects_only_requested_key_and_labels_source(tmp_path, mo
     env_file = tmp_path / "secrets.env"
     env_file.write_text(
         f"# service secrets\n; generated comment\nlegacy note without equals\n"
-        f"OTHER_KEY=ignored\nDEEPSEEK_API_KEY={secret}\nZ_AI_API_KEY=also-ignored\n",
+        f"OTHER_KEY=ignored\nOTHER_QUOTED='same-line value'\n"
+        f"DEEPSEEK_API_KEY={secret}\nZ_AI_API_KEY=also-ignored\n",
         encoding="ascii",
     )
     env_file.chmod(0o600)
@@ -240,6 +241,26 @@ def test_live_env_rejects_continuation_before_selected_assignment(tmp_path, monk
     monkeypatch.setattr(probe, "_LIVE_ENV_FILE", env_file)
     _pretend_root_owned_0600(monkeypatch)
     monkeypatch.setattr(probe, "_probe", lambda *args: pytest.fail("continuation could capture selected key"))
+    out, err = io.StringIO(), io.StringIO()
+
+    code = probe.main(["deepseek", "--live-env"], stdout=out, stderr=err)
+
+    assert code == 2
+    assert secret not in out.getvalue() + err.getvalue()
+
+
+@pytest.mark.parametrize("quote", ["'", '"'])
+def test_live_env_rejects_multiline_unrelated_quote_before_selected_key(tmp_path, monkeypatch, quote):
+    secret = "must-not-be-selected-from-another-variable"
+    env_file = tmp_path / "secrets.env"
+    env_file.write_text(
+        f"OTHER={quote}first\nDEEPSEEK_API_KEY={secret}\nlast{quote}\n",
+        encoding="ascii",
+    )
+    env_file.chmod(0o600)
+    monkeypatch.setattr(probe, "_LIVE_ENV_FILE", env_file)
+    _pretend_root_owned_0600(monkeypatch)
+    monkeypatch.setattr(probe, "_probe", lambda *args: pytest.fail("multiline value could capture selected key"))
     out, err = io.StringIO(), io.StringIO()
 
     code = probe.main(["deepseek", "--live-env"], stdout=out, stderr=err)

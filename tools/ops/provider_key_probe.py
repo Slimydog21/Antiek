@@ -105,8 +105,9 @@ def _read_live_env_key(path: Path, expected_name: str) -> str:
 
     Blank lines, full-line comments, and ordinary NAME=value assignments are
     accepted; lines without '=' are ignored as systemd does. Values for
-    unrelated names are ignored. Physical continuations are rejected because
-    they could consume the selected assignment. The selected value must be a
+    unrelated names are ignored when their quotes close on the same physical
+    line. Open quotes and physical continuations are rejected because they
+    could consume the selected assignment. The selected value must be a
     single unquoted token; escapes, expansion, inline comments, and systemd's
     other value forms are intentionally unsupported.
     """
@@ -156,6 +157,8 @@ def _read_live_env_key(path: Path, expected_name: str) -> str:
             continue
         if not _ENV_NAME.fullmatch(name):
             raise ProbeInputError("live environment file contains an unsupported assignment")
+        if _has_open_quote(value):
+            raise ProbeInputError("live environment file multiline quoted values are unsupported")
         if name != expected_name:
             continue
         found.append(value)
@@ -167,6 +170,24 @@ def _read_live_env_key(path: Path, expected_name: str) -> str:
     if not value or not _KEY_VALUE.fullmatch(value):
         raise ProbeInputError(f"live {expected_name} must be one unquoted, simple token")
     return value
+
+
+def _has_open_quote(value: str) -> bool:
+    quote: str | None = None
+    escaped = False
+    for character in value:
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and quote == '"':
+            escaped = True
+            continue
+        if quote is None:
+            if character in ("'", '"'):
+                quote = character
+        elif character == quote:
+            quote = None
+    return quote is not None
 
 
 def _make_provider(name: str, key: str) -> OpenAICompatProvider:
