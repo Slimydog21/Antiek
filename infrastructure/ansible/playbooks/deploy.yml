@@ -164,13 +164,14 @@
     # -e` never reads the lock — a satisfied `>=` range leaves the installed
     # version untouched. An EXACT `uv sync --frozen` both installs the
     # lock's pins (upgrades included) and REMOVES extraneous packages
-    # (verified by dry-run: orphaned yt-dlp and the bootstrap uv itself are
-    # uninstalled), and it installs the project editable as part of the
-    # sync — no pip re-resolution anywhere.
+    # (verified by dry-run: orphaned yt-dlp is uninstalled), and it installs
+    # the project editable as part of the sync, with no pip re-resolution
+    # anywhere. The bootstrap helper is deliberately removed after sync:
+    # production proved that Linux preserves the uv package even though
+    # macOS self-removes it.
     - name: bootstrap the pinned lock reader into the service venv
       ansible.builtin.pip:
-        # Pinned so export/sync behavior is reproducible across deploys;
-        # the exact sync removes it again after use (it is not in the lock).
+        # Pinned so exact-sync behavior is reproducible across deploys.
         name: uv==0.11.15
         virtualenv: "{{ antiek_install_dir }}/.venv"
       become_user: "{{ antiek_user }}"
@@ -196,6 +197,17 @@
           - --extra
           - turbopuffer_shadow
         chdir: "{{ antiek_install_dir }}"
+      become_user: "{{ antiek_user }}"
+      tags: [code]
+
+    # A bootstrap helper is not part of the locked production closure. The
+    # 2026-09-25 receipt caught Linux retaining uv after its own sync, so
+    # removal is explicit. `state: absent` is a no-op when uv is absent.
+    - name: remove the bootstrap lock reader from the service venv
+      ansible.builtin.pip:
+        name: uv
+        state: absent
+        virtualenv: "{{ antiek_install_dir }}/.venv"
       become_user: "{{ antiek_user }}"
       tags: [code]
 
