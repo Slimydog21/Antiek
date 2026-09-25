@@ -145,16 +145,25 @@ def register_reading_state_routes(app: FastAPI) -> None:
         with connect_write(db, purpose="books/reading-state/put") as con:
             if not _document_exists(con, document_id):
                 raise HTTPException(status_code=404, detail="book_not_found")
+            store = ReadingStateStore()
+            anchor_ref = body.anchor_ref
             if body.anchor_ref is not None and not _anchor_belongs_to_document(
                 con, body.anchor_ref, owner, document_id
             ):
-                raise HTTPException(status_code=422, detail="anchor_ref_invalid")
-            row = ReadingStateStore().put(
+                current = store.get(
+                    con, owner_user_id=owner, document_id=document_id
+                )
+                if current is None or current.anchor_ref != body.anchor_ref:
+                    raise HTTPException(status_code=422, detail="anchor_ref_invalid")
+                # A deleted anchor may still be echoed by a reader holding
+                # the prior row. Keep its page turn and discard the dead ref.
+                anchor_ref = None
+            row = store.put(
                 con,
                 owner_user_id=owner,
                 document_id=document_id,
                 page_index=body.page_index,
-                anchor_ref=body.anchor_ref,
+                anchor_ref=anchor_ref,
                 prefs_json=serialize_prefs(body.prefs),
                 expected_revision=body.revision,
             )

@@ -135,6 +135,7 @@ def test_anchor_ref_must_be_an_owned_anchor_on_this_document(api_env) -> None:
 
     for invalid in (
         "A short book for the bus.",
+        "short book",
         "ahl-0000000000000000",
         other_document_anchor,
         owned_anchor,
@@ -145,6 +146,8 @@ def test_anchor_ref_must_be_an_owned_anchor_on_this_document(api_env) -> None:
             json={"page_index": 3, "anchor_ref": invalid, "revision": 0},
         )
         assert response.status_code == 422
+        if invalid == "short book":
+            assert response.json()["detail"] == "anchor_ref_invalid"
         assert client.get("/books/doc-bus/reading-state").status_code == 404
 
     accepted = client.put(
@@ -153,6 +156,48 @@ def test_anchor_ref_must_be_an_owned_anchor_on_this_document(api_env) -> None:
     )
     assert accepted.status_code == 200
     assert accepted.json()["anchor_ref"] is None
+
+
+def test_deleted_anchor_echo_keeps_next_page_turn_and_drops_ref(api_env) -> None:
+    db = api_env["db"]
+    _seed_book(db)
+    client = _client()
+    anchor_id = _pin(client)
+    first = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 3, "anchor_ref": anchor_id, "revision": 0},
+    )
+    assert first.status_code == 200
+    assert client.delete(f"/books/doc-bus/anchors/{anchor_id}").status_code == 204
+
+    changed_ref = client.put(
+        "/books/doc-bus/reading-state",
+        json={
+            "page_index": 4,
+            "anchor_ref": "ahl-0000000000000000",
+            "revision": 1,
+        },
+    )
+    assert changed_ref.status_code == 422
+    assert client.get("/books/doc-bus/reading-state").json()["page_index"] == 3
+
+    stale = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 4, "anchor_ref": anchor_id, "revision": 0},
+    )
+    assert stale.status_code == 409
+
+    moved = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 4, "anchor_ref": anchor_id, "revision": 1},
+    )
+    assert moved.status_code == 200
+    assert moved.json()["page_index"] == 4
+    assert moved.json()["anchor_ref"] is None
+    assert moved.json()["revision"] == 2
+    got = client.get("/books/doc-bus/reading-state").json()
+    assert got["page_index"] == 4
+    assert got["anchor_ref"] is None
 
 
 def test_second_owner_gets_no_row(api_env) -> None:
