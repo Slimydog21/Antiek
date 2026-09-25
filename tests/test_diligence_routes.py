@@ -496,3 +496,20 @@ def test_weekly_count_uses_the_terminal_event_time_not_updated_at(api_env) -> No
 
     summary = client.get("/diligence/queue").json()["summary"]
     assert summary["diligenced_this_week"] == 0
+
+
+@pytest.fixture(autouse=True)
+def _scrub_operator_auth_env(monkeypatch):
+    """Environment invariance (the F2 rule, extended to this chain): the
+    suite must pass on the operator's own Mac, where the login shell
+    exports the operator-auth env — otherwise the middleware answers 401
+    and CI-clean tests fail locally."""
+    for key in (
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_DEV_LOGIN_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_COOKIE_INSECURE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
