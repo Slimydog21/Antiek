@@ -176,6 +176,46 @@ def test_connect_read_does_not_retry_unrelated_fallback_error(
     assert calls == [True, False]
 
 
+def test_connect_read_stops_retrying_persistent_mode_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+    conflicts: list[duckdb.ConnectionException] = []
+    slept: list[float] = []
+    clock = 0.0
+
+    def monotonic() -> float:
+        return clock
+
+    def sleep(delay: float) -> None:
+        nonlocal clock
+        slept.append(delay)
+        clock += delay
+
+    def conflict(_path: str, *, read_only: bool = False) -> Never:
+        calls.append(read_only)
+        error = duckdb.ConnectionException(
+            f"Connection Error: {db_lock._SAME_FILE_DIFFERENT_CONFIG}"
+        )
+        conflicts.append(error)
+        raise error
+
+    monkeypatch.setattr(db_lock.time, "monotonic", monotonic)
+    monkeypatch.setattr(db_lock.time, "sleep", sleep)
+    monkeypatch.setattr(db_lock.duckdb, "connect", conflict)
+
+    with pytest.raises(duckdb.ConnectionException) as raised:
+        db_lock.connect_read("persistent-conflict.duckdb")
+
+    assert raised.value is conflicts[-1]
+    assert db_lock._SAME_FILE_DIFFERENT_CONFIG in str(raised.value)
+    assert len(calls) > 2
+    assert len(calls) <= 54
+    assert calls == [mode for _ in range(len(calls) // 2) for mode in (True, False)]
+    assert sum(slept) == pytest.approx(db_lock._READ_MODE_RETRY_WINDOW_S)
+    assert clock == pytest.approx(db_lock._READ_MODE_RETRY_WINDOW_S)
+
+
 def test_connect_write_waits_for_brief_ro_to_clear(tmp_path: Path) -> None:
     """RO holders briefly block DuckDB RW open; connect_write must retry."""
     import threading

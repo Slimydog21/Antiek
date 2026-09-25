@@ -1222,8 +1222,10 @@ def connect_read(
     same-config read-write handle whose direct SQL mutation surfaces are
     rejected (``_ReadOrientedConnection``). Other connection failures stay
     explicit rather than being retried with broader privileges.
-    If the RW fallback races with a new read-only opener, retry read-only mode
-    briefly on that exact same-file configuration conflict.
+    If the RW fallback races with a new read-only opener, retry the mode
+    selection decision for 250 ms after the first exact same-file conflict.
+    This bounds retry decisions and sleeps; an individual synchronous
+    ``duckdb.connect`` call is not preempted by that deadline.
 
     Cite: #3121 LazyRW coexist; Ads fills #3157/#3158 (BinderException wedge).
     """
@@ -1247,9 +1249,11 @@ def connect_read(
             except Exception as fallback_exc:
                 # A reader can open after the RO attempt loses to a writer
                 # but before this RW fallback. Retry the original RO mode
-                # briefly so that transition does not surface as a request
-                # failure. Keep the retry specific to DuckDB's documented
-                # same-file mode conflict; unrelated errors stay immediate.
+                # until the retry-decision deadline so that a short transition
+                # does not surface as a request failure. This deadline cannot
+                # interrupt an in-flight synchronous DuckDB connect. Keep the
+                # retry specific to DuckDB's same-file mode conflict;
+                # unrelated errors stay immediate.
                 if _SAME_FILE_DIFFERENT_CONFIG not in str(fallback_exc):
                     raise
                 if retry_deadline is None:
