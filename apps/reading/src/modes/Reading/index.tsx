@@ -76,6 +76,11 @@ export interface BookReaderProps {
   /** Window hosts inject the document identity directly; route mounts keep
    * resolving `/read/:documentId` exactly as before. */
   documentId?: string;
+  /** The reader window's origin context (reading-global SPR-02) — arrives
+   * as window payload (the host spreads it into props). Metadata only: the
+   * ONE consumer is the islands' dig-deeper prefill; ignoring it is lawful
+   * and changes nothing. */
+  origin?: { from: string; id: string } | null;
 }
 
 /** The decorations registry needs a ReadingContext; the highlight
@@ -87,7 +92,7 @@ const ANCHOR_STUB_CTX: ReadingContext = {
   substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
 };
 
-export default function BookReader({ documentId: documentIdProp }: BookReaderProps = {}) {
+export default function BookReader({ documentId: documentIdProp, origin = null }: BookReaderProps = {}) {
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
   const documentId = documentIdProp ?? routeDocumentId;
   const inWindow = useInWindow();
@@ -293,11 +298,12 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
           : null,
         pageIndexHint:
           anchors.find((a) => a.anchor_id === island.anchorId)?.page_index_hint ?? null,
+        origin,
       }),
     );
     const plan = collectAnchoredWidgets(augmentations, ANCHOR_STUB_CTX);
     return enactWidgetLayout(plan, islandLayoutMap);
-  }, [visibleIslands, anchors, islandLayoutMap]);
+  }, [visibleIslands, anchors, islandLayoutMap, origin]);
 
   const islandRenderCtx: RenderContext = useMemo(
     () => ({

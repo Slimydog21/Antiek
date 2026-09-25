@@ -57,6 +57,12 @@ export interface IslandWidgetSpec {
   /** The anchor's page hint — the position the card shows on a metadata-only
    *  anchor (page + never a quote). */
   readonly pageIndexHint: number | null;
+  /** The reader window's origin context (reading-global SPR-02) — metadata
+   *  for the dig-deeper prefill's ONE consumer; structural (never imported)
+   *  so this module keeps its react-plus-types-only import discipline.
+   *  research/evidence origins carry an INVESTIGATION id; write a
+   *  DELIVERABLE id (never a chase parent). */
+  readonly origin?: { readonly from: string; readonly id: string } | null;
 }
 
 /** Stable widget id for one island (one anchor ↔ at most one island). */
@@ -103,6 +109,7 @@ export function makeIslandAugmentation(spec: IslandWidgetSpec): ReadingAugmentat
             servable: spec.servable,
             passageQuote: spec.passageQuote,
             pageIndexHint: spec.pageIndexHint,
+            origin: spec.origin ?? null,
           });
         },
       };

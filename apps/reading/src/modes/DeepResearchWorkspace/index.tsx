@@ -23,7 +23,7 @@ import { useParams } from "react-router-dom";
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import LemonButton from "../../components/lemon/LemonButton";
-import { openWindow } from "../../components/windows/openWindow";
+import { openWindow, readerWindowId } from "../../components/windows/openWindow";
 import {
   approvePlan,
   createPlan,
@@ -431,15 +431,23 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
     });
     openWindow(
       "reader",
-      { documentId, evidenceSourceContext: true },
+      // Reading-global SPR-02: the write-only evidenceSourceContext flag is
+      // unified into the typed origin shape — the canvas's investigation is
+      // the calling context (the dig-deeper prefill's one consumer).
       {
-        id: `win:reader:${encodeURIComponent(documentId)}`,
+        documentId,
+        ...(canvasFor
+          ? { origin: { from: "evidence" as const, id: canvasFor } }
+          : {}),
+      },
+      {
+        id: readerWindowId(documentId),
         title: "Research source",
         replaceOldestAtLimit: true,
         ...(rect ? { rect } : {}),
       },
     );
-  }, []);
+  }, [canvasFor]);
 
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
