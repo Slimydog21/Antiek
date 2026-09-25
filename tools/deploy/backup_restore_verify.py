@@ -30,7 +30,7 @@ from tools.deploy.backup_content_digest import CONTENT_SCHEME, table_content_sha
 CATALOG_SCHEME = "antiek-duckdb-catalog-v1"
 OBSERVATION_SCHEME = "antiek-source-observation-v1"
 REPORT_SCHEME = "antiek-closed-archive-restore-v1"
-_DUCKDB_VERSION = "1.5.4"
+_DUCKDB_VERSION = "1.5.3"
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _ARCHIVE_ROOT = re.compile(r"antiek-backup\.[A-Za-z0-9]{8}\Z")
 _DATA_MEMBER = re.compile(r"[A-Za-z0-9_]+\.parquet\Z")
