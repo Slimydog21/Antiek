@@ -32,11 +32,13 @@ economics.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 from typing import Any, TypeVar
 
+import duckdb
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
@@ -443,9 +445,29 @@ async def get_project(project_id: str) -> ProjectResponse:
 
 
 @speak_router.get("/projects/{project_id}/economics")
-async def get_economics(project_id: str) -> dict:
-    with _translate(), _read("speak/api:economics") as con:
-        policy = economics_mode.policy_for_project(con, project_id)
+async def get_economics(project_id: str) -> dict[str, Any]:
+    def _sync() -> Any:
+        deadline = time.monotonic() + _WRITE_TIMEOUT_S
+        while True:
+            try:
+                with _translate(), _read("speak/api:economics") as con:
+                    return economics_mode.policy_for_project(con, project_id)
+            except duckdb.IOException as exc:
+                # Another process may open the DB for short writer slices.
+                # DuckDB refuses a concurrent read-only open;
+                # retry only that transient lock error, off the request loop.
+                message = str(exc)
+                if (
+                    "Could not set lock on file" not in message
+                    or "Conflicting lock is held" not in message
+                ):
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise HTTPException(status_code=503, detail="speak_writer_busy") from exc
+                time.sleep(min(0.1, remaining))
+
+    policy = await _off_loop(_sync)
     # The G2/G3 gate STATE, read-only (gate_status.py). The UI shows these
     # as "gated / not yet activated" — there is no flip/close affordance
     # here; closing a gate is an operator action, never a code path.
