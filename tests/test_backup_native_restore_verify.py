@@ -19,6 +19,8 @@ from tools.deploy.backup_restore_verify import (
     ObservationLimits,
     RestoreLimits,
     RestoreRefused,
+    RestoreReport,
+    SnapshotObservation,
     observe_snapshot,
 )
 
@@ -127,6 +129,10 @@ def test_closed_native_archive_proves_rows_catalog_and_file_and_cleans(tmp_path:
         )
         == report
     )
+    with pytest.raises(RestoreRefused, match="^REPORT_FORMAT$"):
+        RestoreReport.from_canonical_bytes(
+            report.canonical_bytes(), limits=RestoreLimits.production()
+        )
     assert list(scratch.iterdir()) == []
 
 
@@ -239,7 +245,7 @@ def test_malformed_native_database_refuses_and_cleans(tmp_path: Path) -> None:
     assert list(scratch.iterdir()) == []
 
 
-def test_native_report_rejects_forged_proof(tmp_path: Path) -> None:
+def test_native_report_rejects_inconsistent_proof(tmp_path: Path) -> None:
     archive, expected, _, _ = _closed_fixture(tmp_path)
     scratch = tmp_path / "scratch"
     scratch.mkdir()
@@ -252,12 +258,15 @@ def test_native_report_rejects_forged_proof(tmp_path: Path) -> None:
 
 
 def test_initialized_antiek_schema_survives_native_archive(tmp_path: Path) -> None:
+    from runtime.db_lock import flush_warm_writers
     from substrate.graph.schema import init_database_at_path
 
     database = tmp_path / "source.duckdb"
     init_database_at_path(str(database))
+    flush_warm_writers(str(database))
     source = duckdb.connect(str(database))
     try:
+        source.execute("INSERT INTO write_log(purpose) VALUES ('native_restore_fixture')")
         expected = observe_snapshot(
             source, scratch_parent=tmp_path, limits=ObservationLimits()
         ).canonical_bytes()
@@ -269,5 +278,38 @@ def test_initialized_antiek_schema_survives_native_archive(tmp_path: Path) -> No
     scratch.mkdir()
     report = _verify(archive, expected, scratch)
     assert len(report.restored_counts) == 54
+    observation = SnapshotObservation.from_canonical_bytes(expected, limits=ObservationLimits())
+    assert len(observation.catalog_objects) == 1248
+    assert (
+        sum(
+            object_["kind"] == "constraint"
+            and object_["type"] == "FOREIGN KEY"
+            and object_["table"] == object_["referenced_table"]
+            for object_ in observation.catalog_objects
+        )
+        == 4
+    )
     assert report.source_observation_sha256 == report.restored_observation_sha256
+    assert list(scratch.iterdir()) == []
+
+
+def test_reopened_nextval_without_logged_write_refuses_native_copy(tmp_path: Path) -> None:
+    database = tmp_path / "source.duckdb"
+    created = duckdb.connect(str(database))
+    created.execute("CREATE SEQUENCE s START 1")
+    created.close()
+    source = duckdb.connect(str(database))
+    try:
+        assert source.execute("SELECT nextval('s')").fetchone()[0] == 1
+        expected = observe_snapshot(
+            source, scratch_parent=tmp_path, limits=ObservationLimits()
+        ).canonical_bytes()
+        source.execute("CHECKPOINT")
+    finally:
+        source.close()
+    archive, _, _ = _archive_database(tmp_path, database)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    with pytest.raises(RestoreRefused, match="^CATALOG_MISMATCH$"):
+        _verify(archive, expected, scratch)
     assert list(scratch.iterdir()) == []
