@@ -30,7 +30,8 @@ from tools.deploy.backup_content_digest import CONTENT_SCHEME, table_content_sha
 CATALOG_SCHEME = "antiek-duckdb-catalog-v1"
 OBSERVATION_SCHEME = "antiek-source-observation-v1"
 REPORT_SCHEME = "antiek-closed-archive-restore-v1"
-_DUCKDB_VERSION = "1.5.3"
+_DUCKDB_VERSION = duckdb.__version__
+_SUPPORTED_DUCKDB_VERSIONS = frozenset({"1.5.3", "1.5.4"})
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _ARCHIVE_ROOT = re.compile(r"antiek-backup\.[A-Za-z0-9]{8}\Z")
 _DATA_MEMBER = re.compile(r"[A-Za-z0-9_]+\.parquet\Z")
@@ -133,6 +134,7 @@ class SnapshotObservation:
                 value["observation_scheme"] != OBSERVATION_SCHEME
                 or value["catalog_scheme"] != CATALOG_SCHEME
                 or value["content_scheme"] != CONTENT_SCHEME
+                or _DUCKDB_VERSION not in _SUPPORTED_DUCKDB_VERSIONS
                 or value["duckdb_version"] != _DUCKDB_VERSION
             ):
                 raise RestoreRefused("SOURCE_REPORT_SCHEME")
@@ -231,6 +233,7 @@ class RestoreReport:
             if (
                 value["report_scheme"] != REPORT_SCHEME
                 or value["content_scheme"] != CONTENT_SCHEME
+                or _DUCKDB_VERSION not in _SUPPORTED_DUCKDB_VERSIONS
                 or value["duckdb_version"] != _DUCKDB_VERSION
                 or any(
                     type(value[field]) is not str or not _SHA256.fullmatch(value[field])
@@ -405,7 +408,11 @@ def observe_snapshot(
     """
     try:
         version_row = connection.execute("SELECT system.main.version()").fetchone()
-        if version_row is None or version_row[0] != f"v{_DUCKDB_VERSION}":
+        if (
+            _DUCKDB_VERSION not in _SUPPORTED_DUCKDB_VERSIONS
+            or version_row is None
+            or version_row[0] != f"v{_DUCKDB_VERSION}"
+        ):
             raise RestoreRefused("DUCKDB_VERSION")
         catalog_row = connection.execute("SELECT system.main.current_database()").fetchone()
         if catalog_row is None or type(catalog_row[0]) is not str:
