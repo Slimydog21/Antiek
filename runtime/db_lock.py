@@ -432,6 +432,10 @@ class WriteLockTimeout(RuntimeError):
     """Raised when the flock could not be acquired within the timeout."""
 
 
+class ReadLockTimeout(RuntimeError):
+    """Raised when another process holds DuckDB's file lock past the read budget."""
+
+
 # Spec-facing alias. The spec names this WriteCoordinatorTimeout; the existing
 # WriteLockTimeout is the same condition. Keep both names so old call sites
 # keep working and new code can use the spec terminology.
@@ -1210,6 +1214,8 @@ ReadConnection: TypeAlias = (  # noqa: UP040 -- runtime supports Python 3.11
 
 def connect_read(
     db_path: str,
+    *,
+    external_lock_timeout_s: float = 0.0,
 ) -> ReadConnection:
     """Open the DB read-only. Use this instead of raw duckdb.connect(...,
     read_only=True) at read sites so every DB access funnels through one
@@ -1227,13 +1233,37 @@ def connect_read(
     This bounds retry decisions and sleeps; an individual synchronous
     ``duckdb.connect`` call is not preempted by that deadline.
 
+    An opt-in bounded retry covers another process's transient DuckDB file
+    lock. The default remains immediate so existing read callers retain their
+    latency contract; routes that opt in must dispatch this synchronous wait
+    off the event loop. Other connection errors are never retried.
+
     Cite: #3121 LazyRW coexist; Ads fills #3157/#3158 (BinderException wedge).
     """
+    if not math.isfinite(external_lock_timeout_s) or external_lock_timeout_s < 0:
+        raise ValueError("external_lock_timeout_s must be finite and nonnegative")
+
     retry_deadline: float | None = None
+    external_deadline: float | None = None
+
+    def wait_for_external_lock(exc: Exception) -> bool:
+        nonlocal external_deadline
+        if not _external_duckdb_lock_conflict(exc) or external_lock_timeout_s == 0:
+            return False
+        if external_deadline is None:
+            external_deadline = time.monotonic() + external_lock_timeout_s
+        remaining = external_deadline - time.monotonic()
+        if remaining <= 0:
+            raise ReadLockTimeout(f"Timed out opening read connection on {db_path}") from exc
+        time.sleep(min(0.05, remaining))
+        return True
+
     while True:
         try:
             return duckdb.connect(db_path, read_only=True)
         except Exception as exc:
+            if wait_for_external_lock(exc):
+                continue
             msg = str(exc)
             lazy_ok = (
                 _SAME_FILE_DIFFERENT_CONFIG in msg
@@ -1247,6 +1277,8 @@ def connect_read(
                     duckdb.connect(db_path, read_only=False)
                 )
             except Exception as fallback_exc:
+                if wait_for_external_lock(fallback_exc):
+                    continue
                 # A reader can open after the RO attempt loses to a writer
                 # but before this RW fallback. Retry the original RO mode
                 # until the retry-decision deadline so that a short transition

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Never
 
@@ -98,10 +99,56 @@ def test_connect_read_does_not_retry_unrelated_connection_error(
         calls.append(read_only)
         raise duckdb.ConnectionException("unrelated failure")
 
-    monkeypatch.setattr("runtime.db_lock.duckdb.connect", fail)
+    monkeypatch.setattr(duckdb, "connect", fail)
     with pytest.raises(duckdb.ConnectionException, match="unrelated failure"):
         db_lock.connect_read("missing.duckdb")
     assert calls == [True]
+
+
+def test_connect_read_external_writer_retry_is_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bool] = []
+
+    def locked(_path: str, *, read_only: bool = False) -> Never:
+        calls.append(read_only)
+        raise duckdb.IOException(
+            "Could not set lock on file: Conflicting lock is held in another process"
+        )
+
+    monkeypatch.setattr(duckdb, "connect", locked)
+    with pytest.raises(duckdb.IOException, match="Conflicting lock"):
+        db_lock.connect_read("held.duckdb")
+    assert calls == [True]
+
+
+def test_connect_read_external_writer_retry_expires_with_typed_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    clock = 0.0
+
+    def locked(_path: str, *, read_only: bool = False) -> Never:
+        nonlocal calls
+        calls += 1
+        raise duckdb.IOException(
+            "Could not set lock on file: Conflicting lock is held in another process"
+        )
+
+    def monotonic() -> float:
+        return clock
+
+    def sleep(delay: float) -> None:
+        nonlocal clock
+        clock += delay
+
+    monkeypatch.setattr(duckdb, "connect", locked)
+    monkeypatch.setattr(time, "monotonic", monotonic)
+    monkeypatch.setattr(time, "sleep", sleep)
+    with pytest.raises(db_lock.ReadLockTimeout):
+        db_lock.connect_read("held.duckdb", external_lock_timeout_s=0.12)
+    assert calls > 1
+    assert clock == pytest.approx(0.12)
 
 
 def test_connect_read_retries_mode_transition_from_rw_to_ro(
@@ -134,7 +181,7 @@ def test_connect_read_retries_mode_transition_from_rw_to_ro(
                 reader_holder.close()
         return connect(path, read_only=read_only)
 
-    monkeypatch.setattr(db_lock.duckdb, "connect", transition)
+    monkeypatch.setattr(duckdb, "connect", transition)
     try:
         with db_lock.connect_read(path) as reader:
             assert reader.execute("SELECT COUNT(*) FROM facts").fetchone() == (1,)
@@ -166,7 +213,7 @@ def test_connect_read_does_not_retry_unrelated_fallback_error(
                 raise
         raise duckdb.IOException("unrelated fallback failure")
 
-    monkeypatch.setattr(db_lock.duckdb, "connect", fail_fallback)
+    monkeypatch.setattr(duckdb, "connect", fail_fallback)
     try:
         with pytest.raises(duckdb.IOException, match="unrelated fallback failure"):
             db_lock.connect_read(path)
@@ -200,9 +247,9 @@ def test_connect_read_stops_retrying_persistent_mode_conflict(
         conflicts.append(error)
         raise error
 
-    monkeypatch.setattr(db_lock.time, "monotonic", monotonic)
-    monkeypatch.setattr(db_lock.time, "sleep", sleep)
-    monkeypatch.setattr(db_lock.duckdb, "connect", conflict)
+    monkeypatch.setattr(time, "monotonic", monotonic)
+    monkeypatch.setattr(time, "sleep", sleep)
+    monkeypatch.setattr(duckdb, "connect", conflict)
 
     with pytest.raises(duckdb.ConnectionException) as raised:
         db_lock.connect_read("persistent-conflict.duckdb")
