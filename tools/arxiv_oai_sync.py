@@ -1,62 +1,14 @@
-"""Drive the arXiv OAI-PMH harvest: daily incremental sync (M3) + the full
-backfill code path (M5), emitting a reproducible rights-tier census.
+"""Run arXiv metadata sync through the governed OAI harvester.
 
-This is the orchestrator on top of ``acquisition.arxiv.oai_pmh.OaiPmhHarvester``
-(which already owns paging, throttle routing, and the *mid-harvest* resumption
-cursor). What lives HERE — and nowhere else — is the SYNC high-water mark: the
-``last_successful_datestamp`` of the previous COMPLETED harvest. A daily
-incremental run resumes from that datestamp (``from=last_successful_datestamp``)
-so it pulls only what changed since the last good run; the backfill run drops
-the lower bound (``from=None``) to walk the whole corpus.
+The bulk path reads a verified plain JSONL snapshot and commits document rows
+with their physical byte cursor in the same DuckDB transaction. A restarted
+run resumes at the last committed line. Its OAI tail replays from the recorded
+bulk/prior high-water date, and the DB completion row is authoritative after
+backup restore. The JSON checkpoint is a mirror written after completion.
 
-Two checkpoints, two distinct jobs — do not conflate them:
-
-  * the harvester's ``HarvestState`` (arxiv_oai_harvest.json) is the WITHIN-run
-    resumption token; it is cleared the instant a harvest completes, so it only
-    ever protects a crash MID-harvest.
-  * this module's ``SyncCheckpoint`` (arxiv_oai_sync.json) is the ACROSS-run
-    high-water mark; it advances only on CLEAN completion, so the next day's run
-    knows where "yesterday" ended.
-
-Idempotence (M3 acceptance): the checkpoint advances to the max datestamp
-actually seen, and arxiv_id is the stable key, so re-ingesting an id UPDATES
-rather than duplicates downstream, and a second run with no new papers harvests
-an empty window, writes no new high-water mark beyond the (monotonic) datestamp,
-and exits clean.
-
-NO live network here. The LIVE backfill (M5) is an OPERATOR step run with a real
-``httpx.Client`` against export.arxiv.org — this module only builds and verifies
-the code path; ``tests/test_arxiv_oai_sync.py`` drives it through a mocked
-multi-page resumption sequence (``httpx.MockTransport``), never a socket.
-
-Usage:
-
-    # daily incremental: harvest from the last successful datestamp forward
-    python -m tools.arxiv_oai_sync incremental
-
-    # bulk-aware incremental (RECOMMENDED for nightly): stream the free bulk
-    # metadata snapshot for mass throughput, then OAI-PMH only for the tail
-    # newer than the snapshot's max datestamp (bypasses the structural
-    # ~22h OAI crawl that systemd kills at 6h)
-    python -m tools.arxiv_oai_sync incremental --bulk
-    python -m tools.arxiv_oai_sync incremental --bulk --bulk-snapshot /path/to/snapshot.json
-
-    # short-lived DuckDB write locks (prod default): batch + yield so uvicorn
-    # can serve / lease between flushes (incident 2026-09-18: one lock held 5.5h)
-    python -m tools.arxiv_oai_sync incremental --bulk \
-        --persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5
-
-    # full backfill code path (LIVE run is operator-only; this is the same path)
-    python -m tools.arxiv_oai_sync backfill --until 2024-12-31
-    python -m tools.arxiv_oai_sync backfill --bulk
-
-    # operator recovery after a wedged cursor / schema mismatch: clear BOTH
-    # checkpoint files, then run fresh (throttle/ban state untouched)
-    python -m tools.arxiv_oai_sync incremental --reset-state
-
-The census is emitted to stdout (human) and, with ``--census-json PATH``, as a
-machine-readable record stamping the exact reproducing query (metadataPrefix +
-from/until window + harvest timestamp), per the reproducibility bar.
+The legacy pure-OAI path retains its JSON checkpoint while no DB bulk cursor
+exists. Once a DB bulk cursor exists, pure-OAI and legacy reset are refused so
+two independent progress authorities cannot diverge.
 """
 
 from __future__ import annotations
@@ -70,8 +22,9 @@ import sys
 import time
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import cast
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
@@ -87,8 +40,7 @@ from acquisition.arxiv import ArxivBanned, ArxivThrottle, OaiPmhHarvester  # noq
 from acquisition.arxiv.bulk import (  # noqa: E402
     default_bulk_snapshot_path,
     ensure_bulk_snapshot,
-    iter_bulk_oai_records,
-    open_bulk_snapshot,
+    iter_bulk_oai_lines,
 )
 from acquisition.arxiv.oai_persist import (  # noqa: E402
     OaiPersistResult,
@@ -96,9 +48,19 @@ from acquisition.arxiv.oai_persist import (  # noqa: E402
 )
 from acquisition.arxiv.oai_pmh import default_harvest_state_path  # noqa: E402
 from acquisition.arxiv.oai_records import build_census  # noqa: E402
-from runtime.db_lock import connect_write  # noqa: E402
+from runtime.db_lock import LockedConnection, connect_write  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
+from substrate.graph.schema import load_arxiv_bulk_progress  # noqa: E402
 from substrate.schemas.documents import ArxivOaiRecord, RightsCensus  # noqa: E402
+from tools.arxiv_bulk_resume import (  # noqa: E402
+    assert_snapshot_unchanged,
+    commit_bulk_slice,
+    open_generation,
+    save_progress,
+    set_phase,
+    verify_snapshot,
+    whole_run_lock,
+)
 
 logger = logging.getLogger("tools.arxiv_oai_sync")
 
@@ -142,7 +104,7 @@ def resolve_lock_yield_seconds(cli_value: float | None = None) -> float:
     return _env_float("ANTIEK_ARXIV_LOCK_YIELD_SECONDS", DEFAULT_LOCK_YIELD_SECONDS)
 
 
-def _persist_one(con, record: ArxivOaiRecord, tally: dict) -> None:
+def _persist_one(con: LockedConnection, record: ArxivOaiRecord, tally: dict[str, int]) -> None:
     if record.deleted:
         tally["skipped_deleted"] += 1
     elif persist_oai_record(con, record):
@@ -154,7 +116,7 @@ def _persist_one(con, record: ArxivOaiRecord, tally: dict) -> None:
 def _flush_persist_batch(
     db_path: str,
     batch: list[ArxivOaiRecord],
-    tally: dict,
+    tally: dict[str, int],
     *,
     max_lock_s: float,
     yield_s: float,
@@ -186,7 +148,7 @@ def _flush_persist_batch(
 def _chunked_persist_tap(
     records: Iterator[ArxivOaiRecord],
     db_path: str,
-    tally: dict,
+    tally: dict[str, int],
     *,
     batch_size: int = DEFAULT_PERSIST_BATCH_SIZE,
     max_lock_s: float = DEFAULT_MAX_LOCK_SECONDS,
@@ -257,14 +219,14 @@ class SyncCheckpoint:
     last_successful_datestamp: str | None = None
     last_harvested_at: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, str | None]:
         return {
             "last_successful_datestamp": self.last_successful_datestamp,
             "last_harvested_at": self.last_harvested_at,
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> SyncCheckpoint:
+    def from_dict(cls, d: dict[str, str | None]) -> SyncCheckpoint:
         return cls(
             last_successful_datestamp=d.get("last_successful_datestamp"),
             last_harvested_at=d.get("last_harvested_at"),
@@ -328,7 +290,7 @@ def reset_state_files(
 
 
 def _track_high_water(
-    records: Iterator[ArxivOaiRecord], state: dict
+    records: Iterator[ArxivOaiRecord], state: dict[str, str | None]
 ) -> Iterator[ArxivOaiRecord]:
     """Pass records through unchanged while recording the max datestamp seen.
 
@@ -349,7 +311,7 @@ def _track_high_water(
 
 
 def _persist_tap(
-    records: Iterator[ArxivOaiRecord], con, tally: dict
+    records: Iterator[ArxivOaiRecord], con: LockedConnection, tally: dict[str, int]
 ) -> Iterator[ArxivOaiRecord]:
     """Pass records through unchanged while UPSERTing each LIVE one into the
     documents store on the passed (already write-locked) connection.
@@ -459,63 +421,67 @@ def run_sync(
     persist_tally = {"inserted": 0, "updated": 0, "skipped_deleted": 0}
 
     resolved_db = ensure_initialized(db_path or default_db_path())
+    with whole_run_lock(resolved_db):
+        with connect_write(resolved_db, purpose="arxiv_pure_oai_authority_check", keepalive_s=0) as con:
+            if load_arxiv_bulk_progress(con) is not None:
+                raise ValueError("pure OAI cannot run while DB-authoritative bulk progress is active")
 
-    batch_size = resolve_persist_batch_size(persist_batch_size)
-    max_lock_s = resolve_max_lock_seconds(max_lock_seconds)
-    yield_s = resolve_lock_yield_seconds(lock_yield_seconds)
+        batch_size = resolve_persist_batch_size(persist_batch_size)
+        max_lock_s = resolve_max_lock_seconds(max_lock_seconds)
+        yield_s = resolve_lock_yield_seconds(lock_yield_seconds)
 
-    # Chunked write locks: build_census drives the stream to completion while
-    # _chunked_persist_tap upserts in short sessions (batch_size / max_lock_s)
-    # and yields the lock between flushes. Checkpoint still writes ONLY after
-    # the stream ends cleanly — crash mid-harvest never advances high-water.
-    census = build_census(
-        _chunked_persist_tap(
-            _track_high_water(
-                harvester.harvest(
-                    from_date=from_date, until_date=until_date, resume=resume
+        # Chunked write locks: build_census drives the stream to completion while
+        # _chunked_persist_tap upserts in short sessions (batch_size / max_lock_s)
+        # and yields the lock between flushes. Checkpoint still writes ONLY after
+        # the stream ends cleanly — crash mid-harvest never advances high-water.
+        census = build_census(
+            _chunked_persist_tap(
+                _track_high_water(
+                    harvester.harvest(
+                        from_date=from_date, until_date=until_date, resume=resume
+                    ),
+                    high_water,
                 ),
-                high_water,
+                resolved_db,
+                persist_tally,
+                batch_size=batch_size,
+                max_lock_s=max_lock_s,
+                yield_s=yield_s,
             ),
-            resolved_db,
-            persist_tally,
-            batch_size=batch_size,
-            max_lock_s=max_lock_s,
-            yield_s=yield_s,
-        ),
-        metadata_prefix=metadata_prefix,
-        from_date=from_date,
-        until_date=until_date,
-        harvested_at=at,
-    )
+            metadata_prefix=metadata_prefix,
+            from_date=from_date,
+            until_date=until_date,
+            harvested_at=at,
+        )
 
-    seen = high_water["max_datestamp"]
-    prior = checkpoint.last_successful_datestamp
-    # Monotonic: never retreat the mark if this window's max is older than the
-    # prior high-water (a backfill of an older slice must not rewind "today").
-    advanced = seen is not None and (prior is None or seen > prior)
-    new_datestamp = seen if advanced else prior
+        seen = high_water["max_datestamp"]
+        prior = checkpoint.last_successful_datestamp
+        # Monotonic: never retreat the mark if this window's max is older than the
+        # prior high-water (a backfill of an older slice must not rewind "today").
+        advanced = seen is not None and (prior is None or seen > prior)
+        new_datestamp = seen if advanced else prior
 
-    write_checkpoint(
-        sync_state_path,
-        SyncCheckpoint(
-            last_successful_datestamp=new_datestamp,
-            last_harvested_at=at.isoformat(),
-        ),
-    )
+        write_checkpoint(
+            sync_state_path,
+            SyncCheckpoint(
+                last_successful_datestamp=new_datestamp,
+                last_harvested_at=at.isoformat(),
+            ),
+        )
 
-    return SyncResult(
-        census=census,
-        from_date=from_date,
-        until_date=until_date,
-        previous_datestamp=prior,
-        new_datestamp=new_datestamp,
-        advanced=advanced,
-        persist=OaiPersistResult(
-            inserted=persist_tally["inserted"],
-            updated=persist_tally["updated"],
-            skipped_deleted=persist_tally["skipped_deleted"],
-        ),
-    )
+        return SyncResult(
+            census=census,
+            from_date=from_date,
+            until_date=until_date,
+            previous_datestamp=prior,
+            new_datestamp=new_datestamp,
+            advanced=advanced,
+            persist=OaiPersistResult(
+                inserted=persist_tally["inserted"],
+                updated=persist_tally["updated"],
+                skipped_deleted=persist_tally["skipped_deleted"],
+            ),
+        )
 
 
 def run_bulk_sync(
@@ -533,146 +499,203 @@ def run_bulk_sync(
     persist_batch_size: int | None = None,
     max_lock_seconds: float | None = None,
     lock_yield_seconds: float | None = None,
+    replay_from_zero: bool = False,
 ) -> SyncResult:
-    """Bulk-dump-aware sync: stream the free metadata snapshot, then OAI tail.
+    """Resume a verified plain JSONL snapshot, then replay the OAI tail.
 
-    WHY: pure OAI ListRecords is structurally too slow under arXiv's 1-req/3s
-    rule. arXiv returns ~1000 records/page; at the governor's 3.5s spacing that
-    is ~50 min/page. A 26K-doc window is ~26 pages ≈ 21.7h — past the systemd
-    ``TimeoutStartSec=21600`` (6h). The nightly job is killed mid-crawl every
-    night and only advances via the mid-harvest cursor. The bulk snapshot is
-    one free JSON-Lines file (GCS / Kaggle); streaming it needs ZERO arXiv
-    OAI requests, so the mass of the corpus lands in minutes of local I/O.
+    The whole-run flock serializes timer/CLI callers. Each bounded DuckDB
+    transaction commits selected document rows with the next physical line
+    offset, cumulative event counts and bulk maximum date. On interruption,
+    the DB cursor resumes the suffix; a tail failure leaves phase ``tail`` and
+    replays its inclusive date window. Only complete success advances the DB
+    high-water and writes the observational JSON mirror.
 
-    Pipeline (same crash-safety invariants as :func:`run_sync`):
-
-      1. Stream every bulk record whose datestamp is on/after the prior
-         high-water mark (``mode=incremental``) or the whole snapshot
-         (``mode=backfill``), through the SAME ``_persist_tap`` +
-         ``_track_high_water`` + ``build_census`` pipeline.
-      2. If ``oai_tail`` (default True), issue ONE OAI ListRecords window
-         from ``max(bulk_max_datestamp, prior_high_water)`` forward so records
-         newer than the monthly/periodic bulk snapshot still land. The OAI
-         tail is small (days of submissions, not the whole corpus) and fits
-         comfortably inside the 6h budget.
-      3. The high-water mark advances ONLY after BOTH stages complete cleanly
-         — a crash mid-bulk or mid-OAI-tail never writes the across-run
-         checkpoint (the load-bearing
-         ``test_crash_mid_harvest_does_not_advance_high_water`` invariant).
-         A retry replays the bulk and its OAI tail from the computed date;
-         idempotent arxiv_id upserts cover already-persisted records.
-
-    ``bulk_snapshot_path`` must already exist (the CLI's ``ensure_bulk_snapshot``
-    / ``--bulk-snapshot`` resolves it before calling). NO network is opened to
-    arXiv hosts on the bulk half; the OAI tail reuses the harvester's governed
-    path. ``resume`` is retained for the caller shared with pure OAI; bulk
-    runs always replay their tail from the computed date because the saved
-    OAI token does not identify which window created it.
+    An absent DB cursor plus a legacy JSON high-water requires an explicit
+    ``replay_from_zero`` operator choice. Changed source bytes, window, parser
+    contract or tail mode during an incomplete generation fail closed.
     """
-    checkpoint = read_checkpoint(sync_state_path)
-    if mode == "incremental":
-        from_date = checkpoint.last_successful_datestamp
-    elif mode == "backfill":
-        from_date = None
-    else:
-        raise ValueError(
-            f"unknown sync mode {mode!r} (want 'incremental'/'backfill')"
-        )
-
-    at = harvested_at or datetime.now(UTC)
-    # A saved OAI token has no window identity. It may belong to a pure-OAI
-    # crawl from years before this snapshot; its datestamp must not seed the
-    # bulk result. The bulk and tail are both replayed on an interrupted run.
-    high_water: dict[str, str | None] = {"max_datestamp": None}
-    persist_tally = {"inserted": 0, "updated": 0, "skipped_deleted": 0}
-
-    resolved_db = ensure_initialized(db_path or default_db_path())
-
-    def _bulk_stream() -> Iterator[ArxivOaiRecord]:
-        with open_bulk_snapshot(bulk_snapshot_path) as fh:
-            yield from iter_bulk_oai_records(
-                fh, since=from_date, until=until_date
-            )
-
-    def _combined() -> Iterator[ArxivOaiRecord]:
-        # Stage 1: bulk snapshot (local I/O, no arXiv requests).
-        bulk_max: str | None = None
-        for record in _bulk_stream():
-            if record.datestamp and (
-                bulk_max is None or record.datestamp > bulk_max
-            ):
-                bulk_max = record.datestamp
-            yield record
-
-        if not oai_tail:
-            return
-
-        # Stage 2: OAI tail for records newer than the bulk snapshot.
-        # Lower bound is the max of (prior high-water, bulk max) so we never
-        # re-walk the bulk window over OAI, and never rewind past what the
-        # bulk half already covered. When the bulk stream was empty (or had
-        # no datestamps), fall back to the prior mark / None.
-        prior = checkpoint.last_successful_datestamp
-        candidates = [d for d in (prior, bulk_max) if d]
-        oai_from = max(candidates) if candidates else None
-        # If an until_date was set and the bulk already reached it, skip OAI.
-        if until_date is not None and oai_from is not None and oai_from >= until_date:
-            return
-        # A resumptionToken overrides from/until in OAI-PMH. Always start the
-        # bulk tail at this run's computed window, even when a prior pure-OAI
-        # harvest or interrupted tail left an opaque token behind. On retry,
-        # replaying from this date also recovers the maximum datestamp seen
-        # before a crash without trusting a token from another window.
-        yield from harvester.harvest(
-            from_date=oai_from, until_date=until_date, resume=False
-        )
-
+    if mode not in {"incremental", "backfill"}:
+        raise ValueError("unknown arXiv sync mode")
     batch_size = resolve_persist_batch_size(persist_batch_size)
     max_lock_s = resolve_max_lock_seconds(max_lock_seconds)
     yield_s = resolve_lock_yield_seconds(lock_yield_seconds)
+    if batch_size < 1 or max_lock_s < 0 or yield_s < 0:
+        raise ValueError("invalid arXiv batch or lock interval")
+    at = harvested_at or datetime.now(UTC)
+    resolved_db = ensure_initialized(db_path or default_db_path())
+    persist_tally = {"inserted": 0, "updated": 0, "skipped_deleted": 0}
 
-    # Chunked write locks across BOTH stages. Crash mid-bulk/mid-OAI still
-    # skips write_checkpoint — across-run mark never advances on a partial run.
-    census = build_census(
-        _chunked_persist_tap(
-            _track_high_water(_combined(), high_water),
-            resolved_db,
-            persist_tally,
-            batch_size=batch_size,
-            max_lock_s=max_lock_s,
-            yield_s=yield_s,
-        ),
-        metadata_prefix=metadata_prefix,
-        from_date=from_date,
-        until_date=until_date,
-        harvested_at=at,
-    )
+    with whole_run_lock(resolved_db):
+        source = verify_snapshot(bulk_snapshot_path)
+        progress = open_generation(
+            resolved_db, source, mode=mode, until_date=until_date,
+            metadata_prefix=metadata_prefix, sync_state_path=sync_state_path,
+            replay_from_zero=replay_from_zero, tail_enabled=oai_tail,
+            resume=resume,
+        )
+        from_date = cast(date | None, progress["from_date"])
+        prior = cast(date | None, progress["completed_high_water"])
+        from_text = from_date.isoformat() if from_date is not None else None
+        prior_text = prior.isoformat() if prior is not None else None
+        if progress["phase"] == "bulk":
+            with open(source.path, "rb") as fh:
+                opened = os.fstat(fh.fileno())
+                if (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns) != (
+                    source.device, source.inode, source.size, source.mtime_ns,
+                ):
+                    raise ValueError("bulk snapshot changed before scanning")
+                pending = []
+                selected = 0
+                committed_slices = 0
+                for line in iter_bulk_oai_lines(
+                    fh, start_offset=cast(int, progress["next_byte_offset"]),
+                    since=from_text, until=until_date,
+                ):
+                    if line.is_eof:
+                        break
+                    pending.append(line)
+                    selected += line.record is not None
+                    if selected < batch_size and len(pending) < max(1000, batch_size):
+                        continue
+                    while pending:
+                        assert_snapshot_unchanged(source)
+                        consumed, progress, delta = commit_bulk_slice(
+                            resolved_db, pending, progress, max_lock_s=max_lock_s,
+                        )
+                        for key, count in delta.items():
+                            persist_tally[key] += count
+                        committed_slices += 1
+                        if committed_slices % 25 == 0:
+                            logger.info(
+                                "arXiv bulk progress bytes=%d/%d lines=%d selected=%d",
+                                cast(int, progress["next_byte_offset"]), source.size,
+                                cast(int, progress["physical_line_count"]),
+                                cast(int, progress["selected_record_count"]),
+                            )
+                        del pending[:consumed]
+                        if yield_s > 0:
+                            time.sleep(yield_s)
+                    selected = 0
+                while pending:
+                    assert_snapshot_unchanged(source)
+                    consumed, progress, delta = commit_bulk_slice(
+                        resolved_db, pending, progress, max_lock_s=max_lock_s,
+                    )
+                    for key, count in delta.items():
+                        persist_tally[key] += count
+                    committed_slices += 1
+                    if committed_slices % 25 == 0:
+                        logger.info(
+                            "arXiv bulk progress bytes=%d/%d lines=%d selected=%d",
+                            cast(int, progress["next_byte_offset"]), source.size,
+                            cast(int, progress["physical_line_count"]),
+                            cast(int, progress["selected_record_count"]),
+                        )
+                    del pending[:consumed]
+                    if yield_s > 0:
+                        time.sleep(yield_s)
+            assert_snapshot_unchanged(source)
+            if verify_snapshot(source.path).sha256 != source.sha256:
+                raise ValueError("bulk snapshot digest changed during scanning")
+            if progress["next_byte_offset"] != source.size:
+                raise RuntimeError("bulk stream stopped before verified EOF")
+            logger.info(
+                "arXiv bulk reached verified EOF bytes=%d lines=%d selected=%d",
+                source.size, cast(int, progress["physical_line_count"]),
+                cast(int, progress["selected_record_count"]),
+            )
+            progress = set_phase(resolved_db, progress, "tail")
 
-    seen = high_water["max_datestamp"]
-    prior = checkpoint.last_successful_datestamp
-    advanced = seen is not None and (prior is None or seen > prior)
-    new_datestamp = seen if advanced else prior
-
-    write_checkpoint(
-        sync_state_path,
-        SyncCheckpoint(
-            last_successful_datestamp=new_datestamp,
-            last_harvested_at=at.isoformat(),
-        ),
-    )
+        # A failed OAI tail keeps phase=tail. Retry replays from the same
+        # inclusive date, regardless of an older saved OAI page token.
+        bulk_max = cast(date | None, progress["bulk_max_datestamp"])
+        bounds = [bound for bound in (prior, bulk_max) if bound is not None]
+        tail_bound = max(bounds) if bounds else None
+        tail_from = tail_bound.isoformat() if tail_bound is not None else None
+        high_water: dict[str, str | None] = {"max_datestamp": None}
+        tail_attempted = oai_tail and not (
+            until_date is not None and tail_from is not None and tail_from >= until_date
+        )
+        if tail_attempted:
+            tail_census = build_census(
+                _chunked_persist_tap(
+                    _track_high_water(
+                        harvester.harvest(
+                            from_date=tail_from, until_date=until_date, resume=False,
+                        ), high_water,
+                    ),
+                    resolved_db, persist_tally, batch_size=batch_size,
+                    max_lock_s=max_lock_s, yield_s=yield_s,
+                ),
+                metadata_prefix=metadata_prefix, from_date=tail_from,
+                until_date=until_date, harvested_at=at,
+            )
+        else:
+            tail_census = RightsCensus(
+                t1=0, t2=0, t3=0, total=0, ambiguous=0,
+                metadata_prefix=metadata_prefix, from_date=tail_from,
+                until_date=until_date, harvested_at=at,
+            )
+        census = RightsCensus(
+            t1=cast(int, progress["bulk_t1_events"]) + tail_census.t1,
+            t2=cast(int, progress["bulk_t2_events"]) + tail_census.t2,
+            t3=cast(int, progress["bulk_t3_events"]) + tail_census.t3,
+            total=(cast(int, progress["bulk_t1_events"]) + cast(int, progress["bulk_t2_events"])
+                   + cast(int, progress["bulk_t3_events"]) + tail_census.total),
+            ambiguous=cast(int, progress["bulk_ambiguous_events"]) + tail_census.ambiguous,
+            deleted=cast(int, progress["bulk_deleted_events"]) + tail_census.deleted,
+            metadata_prefix=metadata_prefix, from_date=from_text,
+            until_date=until_date, harvested_at=at,
+        )
+        candidates = [stamp for stamp in (prior_text, high_water["max_datestamp"],
+                      bulk_max.isoformat() if bulk_max is not None else None) if stamp]
+        new_datestamp = max(candidates) if candidates else None
+        advanced = new_datestamp is not None and (
+            prior_text is None or new_datestamp > prior_text
+        )
+        # Complete only after the entire tail succeeds and the source still
+        # hashes to the generation's digest. This is one DB transaction.
+        assert_snapshot_unchanged(source)
+        if verify_snapshot(source.path).sha256 != source.sha256:
+            raise ValueError("bulk snapshot digest changed before completion")
+        provenance = {
+            "kind": "event_counts", "generation_id": progress["generation_id"],
+            "source_sha256": source.sha256,
+            "tail_bound": tail_from if tail_attempted else None,
+            "t1": census.t1, "t2": census.t2, "t3": census.t3,
+            "ambiguous": census.ambiguous, "deleted": census.deleted,
+        }
+        completed = {
+            **progress, "phase": "complete",
+            "completed_high_water": (
+                datetime.fromisoformat(new_datestamp).date()
+                if new_datestamp is not None else None
+            ),
+            "completed_generation_id": progress["generation_id"],
+            "completed_at": at.replace(tzinfo=None),
+            "completed_bulk_sha256": source.sha256,
+            "completed_tail_bound": tail_bound if tail_attempted else None,
+            "completed_census_json": json.dumps(provenance, separators=(",", ":")),
+        }
+        with connect_write(
+            resolved_db, purpose="arxiv_bulk_complete", keepalive_s=0
+        ) as con, con.transaction():
+            save_progress(con, completed)
+        # JSON is an observational mirror. The DB row is the authority after a
+        # crash or restore, and any mismatch is reported on the next run.
+        write_checkpoint(
+            sync_state_path,
+            SyncCheckpoint(
+                last_successful_datestamp=new_datestamp,
+                last_harvested_at=at.isoformat(),
+            ),
+        )
 
     return SyncResult(
-        census=census,
-        from_date=from_date,
-        until_date=until_date,
-        previous_datestamp=prior,
-        new_datestamp=new_datestamp,
+        census=census, from_date=from_text, until_date=until_date,
+        previous_datestamp=prior_text, new_datestamp=new_datestamp,
         advanced=advanced,
-        persist=OaiPersistResult(
-            inserted=persist_tally["inserted"],
-            updated=persist_tally["updated"],
-            skipped_deleted=persist_tally["skipped_deleted"],
-        ),
+        persist=OaiPersistResult(**persist_tally),
     )
 
 
@@ -683,13 +706,13 @@ def _print_census(result: SyncResult) -> None:
     print(f"  metadataPrefix = {c.metadata_prefix}")
     print(f"  window         = {window}")
     print(f"  harvested_at   = {c.harvested_at.isoformat()}")
-    print(f"\n  total live papers: {c.total}  (+ {c.deleted} deleted tombstones)")
+    print(f"\n  live record events: {c.total}  (+ {c.deleted} deleted tombstone events)")
     print(f"  T1 redistributable : {c.t1:>8}  ({c.fraction(c.t1):.4f})")
     print(f"  T2 non-commercial  : {c.t2:>8}  ({c.fraction(c.t2):.4f})")
     print(f"  T3 default/unknown : {c.t3:>8}  ({c.fraction(c.t3):.4f})")
     print(f"     of which ambiguous (no declared license): {c.ambiguous}")
     p = result.persist
-    print(f"\n  persisted to documents store: {p.persisted} rows "
+    print(f"\n  persisted during this attempt: {p.persisted} rows "
           f"({p.inserted} new, {p.updated} updated; "
           f"{p.skipped_deleted} tombstones skipped)")
     if result.advanced:
@@ -700,7 +723,7 @@ def _print_census(result: SyncResult) -> None:
               f"({result.new_datestamp or '(none)'})")
 
 
-def census_to_dict(result: SyncResult) -> dict:
+def census_to_dict(result: SyncResult) -> dict[str, object]:
     """The machine-readable census record: the counts + the EXACT reproducing
     query. ``ambiguous`` is reported as its own number (never folded silently
     into T3) per the intellectual-honesty bar; percentages are recomputed by the
@@ -750,8 +773,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--bulk-snapshot",
-        help="path to a local arxiv-metadata-oai-snapshot.json (JSON-Lines, "
-             "optionally .gz / .tar.gz). When omitted with --bulk, downloads "
+        help="path to a local plain, seekable arxiv-metadata-oai-snapshot.json "
+             "(compressed wrappers cannot use byte-offset resume). When omitted, downloads "
              "the free GCS mirror to ~/.antiek/ (or ANTIEK_ARXIV_BULK_SNAPSHOT)",
     )
     p.add_argument(
@@ -762,6 +785,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--bulk-force-download", action="store_true",
         help="with --bulk: re-download the snapshot even if a local file exists",
+    )
+    p.add_argument(
+        "--bulk-replay-from-zero", action="store_true",
+        help="explicit operator full replay when legacy JSON high-water exists but DB progress is absent",
     )
     p.add_argument(
         "--until", dest="until_date",
@@ -781,9 +808,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--reset-state", action="store_true",
-        help="operator recovery: delete BOTH the mid-harvest cursor and the "
-             "sync high-water mark so the next run starts as a fresh backfill "
-             "(the throttle/ban state is deliberately untouched)",
+        help="legacy pure-OAI recovery: remove its JSON state files only when "
+             "the DB has no authoritative bulk progress row",
     )
     p.add_argument(
         "--census-json",
@@ -808,9 +834,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help=(
-            f"hard wall-clock cap holding DuckDB write.lock per session "
+            f"attempted wall-clock cap holding DuckDB write.lock per session "
             f"(default {DEFAULT_MAX_LOCK_SECONDS} or ANTIEK_ARXIV_MAX_LOCK_SECONDS). "
-            "0 disables the time cap (batch size still applies)."
+            "A single slow record can exceed it; 0 disables the attempt."
         ),
     )
     p.add_argument(
@@ -828,13 +854,27 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
+    if args.bulk_replay_from_zero and not args.bulk:
+        print("error: --bulk-replay-from-zero requires --bulk", file=sys.stderr)
+        return 2
 
     if args.reset_state:
         # Operator recovery: clear both checkpoint files BEFORE this run so the
         # same invocation then starts as a fresh backfill. Distinct from
         # --no-resume, which ignores only the mid-harvest cursor and keeps the
         # high-water mark.
-        removed = reset_state_files()
+        resolved_db = ensure_initialized(args.db_path or default_db_path())
+        with whole_run_lock(resolved_db):
+            with connect_write(
+                resolved_db, purpose="arxiv_reset_authority_check", keepalive_s=0
+            ) as con:
+                if load_arxiv_bulk_progress(con) is not None:
+                    print(
+                        "error: --reset-state cannot reset DB-authoritative bulk progress",
+                        file=sys.stderr,
+                    )
+                    return 2
+            removed = reset_state_files()
         for p in removed:
             print(f"reset: removed {p}")
         if not removed:
@@ -877,6 +917,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 persist_batch_size=args.persist_batch_size,
                 max_lock_seconds=args.max_lock_seconds,
                 lock_yield_seconds=args.lock_yield_seconds,
+                replay_from_zero=args.bulk_replay_from_zero,
             )
         else:
             result = run_sync(

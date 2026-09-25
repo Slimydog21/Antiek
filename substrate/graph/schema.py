@@ -39,6 +39,7 @@ Storage discipline: every write must go through
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -1450,7 +1451,8 @@ CREATE TABLE IF NOT EXISTS arxiv_bulk_progress (
     source_format                   VARCHAR NOT NULL CHECK (source_format = 'jsonl'),
     source_encoding                 VARCHAR NOT NULL CHECK (source_encoding = 'utf-8'),
     source_path                     VARCHAR NOT NULL CHECK (length(source_path) BETWEEN 1 AND 4096),
-    mode                            VARCHAR NOT NULL CHECK (mode = 'bulk'),
+    mode                            VARCHAR NOT NULL CHECK (mode IN ('incremental', 'backfill')),
+    tail_enabled                    BOOLEAN NOT NULL,
     from_date                       DATE,
     until_date                      DATE,
     metadata_prefix                 VARCHAR NOT NULL CHECK (length(metadata_prefix) BETWEEN 1 AND 128),
@@ -1479,6 +1481,7 @@ CREATE TABLE IF NOT EXISTS arxiv_bulk_progress (
     updated_at                      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CHECK (from_date IS NULL OR until_date IS NULL OR from_date <= until_date),
     CHECK (next_byte_offset <= source_size_bytes),
+    CHECK (phase = 'bulk' OR next_byte_offset = source_size_bytes),
     CHECK (
         (completed_generation_id IS NULL AND completed_at IS NULL
          AND completed_bulk_sha256 IS NULL AND completed_census_json IS NULL
@@ -1491,6 +1494,10 @@ CREATE TABLE IF NOT EXISTS arxiv_bulk_progress (
             AND completed_bulk_sha256 IS NOT NULL
             AND completed_generation_id = generation_id
             AND completed_bulk_sha256 = source_sha256)
+    ),
+    CHECK (
+        phase = 'complete' OR completed_generation_id IS NULL
+        OR completed_generation_id <> generation_id
     )
 );
 """
@@ -1845,6 +1852,7 @@ _V22_ARXIV_PROGRESS_REQUIRED_SHAPE = {
     "source_encoding": ("VARCHAR", "NO", None, None),
     "source_path": ("VARCHAR", "NO", None, None),
     "mode": ("VARCHAR", "NO", None, None),
+    "tail_enabled": ("BOOLEAN", "NO", None, None),
     "from_date": ("DATE", "YES", None, None),
     "until_date": ("DATE", "YES", None, None),
     "metadata_prefix": ("VARCHAR", "NO", None, None),
@@ -1867,6 +1875,8 @@ _V22_ARXIV_PROGRESS_REQUIRED_SHAPE = {
     "updated_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
 }
 ARXIV_BULK_PROGRESS_COLUMNS = tuple(_V22_ARXIV_PROGRESS_REQUIRED_SHAPE)
+# SHA-256 of the sorted CHECK expressions DuckDB emits for V22 DDL.
+_V22_CHECK_FINGERPRINT = "ec56dd131e9ff38c541b2ee2232bbbf0c4cd243f456c1d588f137933196bae67"
 
 
 def _v22_arxiv_progress_shape_is_valid(con: ReadConnection | LockedConnection) -> bool:
@@ -1878,16 +1888,19 @@ def _v22_arxiv_progress_shape_is_valid(con: ReadConnection | LockedConnection) -
         return False
     constraints = con.execute(
         "SELECT constraint_type, constraint_column_names, constraint_text "
-        "FROM duckdb_constraints() WHERE table_name='arxiv_bulk_progress'"
+        "FROM duckdb_constraints() WHERE schema_name='main' "
+        "AND table_name='arxiv_bulk_progress'"
     ).fetchall()
     primary_keys = [
         tuple(row[1]) for row in constraints if row[0] == "PRIMARY KEY"
     ]
     checks = [row[2] for row in constraints if row[0] == "CHECK"]
-    # A partial table with the correct column names but lost constraints is
-    # not a valid checkpoint authority. SQL DDL has one CHECK per guarded
-    # field plus four cross-field invariants.
-    return primary_keys == [("stream_id",)] and len(checks) == 27
+    # A table with the right columns and count of CHECKs can still have a
+    # weakened cursor guard. Fingerprint the canonical DuckDB expressions so
+    # semantic drift fails closed. An engine upgrade that rewrites their text
+    # needs an explicit migration review before this checkpoint is trusted.
+    fingerprint = hashlib.sha256("\n".join(sorted(checks)).encode()).hexdigest()
+    return primary_keys == [("stream_id",)] and fingerprint == _V22_CHECK_FINGERPRINT
 
 
 def decode_arxiv_bulk_progress_row(row: dict[str, object]) -> dict[str, object]:
@@ -1916,8 +1929,10 @@ def decode_arxiv_bulk_progress_row(row: dict[str, object]) -> dict[str, object]:
         invalid("source digest")
     if row["source_format"] != "jsonl" or row["source_encoding"] != "utf-8":
         invalid("source format")
-    if row["mode"] != "bulk":
+    if row["mode"] not in {"incremental", "backfill"}:
         invalid("mode")
+    if type(row["tail_enabled"]) is not bool:
+        invalid("tail enabled")
     if row["phase"] not in {"bulk", "tail", "complete"}:
         invalid("phase")
     for key in (
@@ -1931,6 +1946,8 @@ def decode_arxiv_bulk_progress_row(row: dict[str, object]) -> dict[str, object]:
     offset, source_size = row["next_byte_offset"], row["source_size_bytes"]
     if not isinstance(offset, int) or not isinstance(source_size, int) or offset > source_size:
         invalid("offset exceeds source size")
+    if row["phase"] in {"tail", "complete"} and offset != source_size:
+        invalid("tail or complete cursor must be at EOF")
     for key in (
         "from_date", "until_date", "bulk_max_datestamp",
         "completed_high_water", "completed_tail_bound",
@@ -1975,6 +1992,8 @@ def decode_arxiv_bulk_progress_row(row: dict[str, object]) -> dict[str, object]:
         or row["completed_bulk_sha256"] != row["source_sha256"]
     ):
         invalid("completed generation mismatch")
+    if row["phase"] != "complete" and row["completed_generation_id"] == row["generation_id"]:
+        invalid("in-progress generation reuses completed identity")
     return row
 
 

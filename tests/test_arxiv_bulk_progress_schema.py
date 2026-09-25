@@ -29,7 +29,8 @@ def _row(**changes):
         "source_format": "jsonl",
         "source_encoding": "utf-8",
         "source_path": "/snapshot/arxiv.jsonl",
-        "mode": "bulk",
+        "mode": "incremental",
+        "tail_enabled": True,
         "from_date": None,
         "until_date": None,
         "metadata_prefix": "arXiv",
@@ -103,6 +104,7 @@ def test_boundary_reader_refuses_malformed_census_json(db_path):
         _insert(
             con,
             phase="complete",
+            next_byte_offset=100,
             completed_generation_id="generation-1",
             completed_at=datetime(2025, 1, 2),
             completed_bulk_sha256="a" * 64,
@@ -131,6 +133,7 @@ def test_boundary_reader_refuses_malformed_census_json(db_path):
         {"from_date": date(2025, 1, 2), "until_date": date(2025, 1, 1)},
         {"completed_generation_id": "old"},
         {"phase": "complete"},
+        {"phase": "tail", "next_byte_offset": 99},
     ],
 )
 def test_malformed_progress_refused_by_database(db_path, bad):
@@ -151,7 +154,7 @@ def test_completed_generation_survives_new_bulk_generation(db_path):
         "completed_census_json": '{"kind":"event_counts"}',
     }
     with connect_write(db_path, purpose="test_arxiv_progress") as con:
-        _insert(con, phase="complete", **completed)
+        _insert(con, phase="complete", next_byte_offset=100, **completed)
         con.execute(
             "UPDATE arxiv_bulk_progress SET generation_id = 'generation-2', "
             "phase = 'bulk', source_sha256 = ?, next_byte_offset = 0, "
@@ -162,6 +165,20 @@ def test_completed_generation_survives_new_bulk_generation(db_path):
             "SELECT completed_generation_id, completed_high_water, phase "
             "FROM arxiv_bulk_progress"
         ).fetchone() == ("generation-1", date(2025, 1, 1), "bulk")
+
+
+def test_in_progress_generation_cannot_reuse_completed_identity(db_path):
+    completed = {
+        "completed_generation_id": "generation-1",
+        "completed_at": datetime(2025, 1, 2),
+        "completed_bulk_sha256": "a" * 64,
+        "completed_census_json": '{"kind":"event_counts"}',
+    }
+    with (
+        connect_write(db_path, purpose="test_arxiv_progress") as con,
+        pytest.raises(duckdb.ConstraintException),
+    ):
+        _insert(con, phase="bulk", **completed)
 
 
 def test_populated_wrong_shape_fails_closed(db_path):
