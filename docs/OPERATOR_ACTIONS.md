@@ -435,17 +435,26 @@ sidecar, export formats, interview transcript pipeline, etc.) — so
 this entry is now PARTIALLY DONE.
 
 Remaining:
-1. Verify all Sprint 17-21 substrate is on `main` (git log audit).
-2. Run `ansible-playbook deploy.yml` for the Hetzner VM.
-3. Verify `antiek.ai` + `api.antiek.ai` are serving the post-Sprint-21
-   binary.
+1. Map each required Sprint 17-21 capability to the commit that landed it
+   on `main`; record anything still absent. A branch or local checkout is
+   not evidence that the capability shipped.
+2. For any remaining change, use the Nudge-controlled main merge and deploy
+   train. Require the current head's GitHub checks, including the dependent
+   `pytest` rollup, and inspect the deploy job itself. A bare manual
+   `ansible-playbook deploy.yml` runs the shared check gate by default, but
+   produces no `deploy-backend` job receipt and is not OA-009 deploy proof.
+3. Record the merged SHA and a cache-busted `api.antiek.ai/health` response
+   whose **observed** `build_sha` equals it. Verify the frontend revision and
+   representative Sprint 17-21 journeys separately; a healthy API does not
+   prove that those features work.
 
 #### Once closed
 
-A `curl https://api.antiek.ai/health` returning the expected
-post-Sprint-21 shape + a `https://app.antiek.ai/marketplace` route
-returning 200 (or whatever the deployed app's URL structure is)
-constitutes proof. Mark OA-009 status: CLOSED.
+Close OA-009 only when the capability-to-commit audit has no unexplained
+gaps, the exact merged backend SHA has complete CI and an actual successful
+deploy job, public health observes that SHA, and the relevant frontend and
+feature journeys have their own evidence. An API health response and a
+marketplace HTTP 200 alone do not establish Phase 1 completion.
 
 #### Cross-references
 
