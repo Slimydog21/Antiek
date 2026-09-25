@@ -118,7 +118,19 @@ def _pretend_root_owned_0600(monkeypatch):
 
     def fstat(fd):
         actual = real_fstat(fd)
-        return SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=0, st_size=actual.st_size)
+        return SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=0,
+                               st_gid=actual.st_gid, st_size=actual.st_size)
+
+    monkeypatch.setattr(probe.os, "fstat", fstat)
+
+
+def _pretend_root_owned_mode(monkeypatch, mode, gid):
+    real_fstat = os.fstat
+
+    def fstat(fd):
+        actual = real_fstat(fd)
+        return SimpleNamespace(st_mode=stat.S_IFREG | mode, st_uid=0,
+                               st_gid=gid, st_size=actual.st_size)
 
     monkeypatch.setattr(probe.os, "fstat", fstat)
 
@@ -158,10 +170,43 @@ def test_live_env_mode_selects_only_requested_key_and_labels_source(tmp_path, mo
     assert secret not in out.getvalue() + err.getvalue()
 
 
+def test_live_env_accepts_deployed_root_antiek_0640_shape(tmp_path, monkeypatch):
+    env_file = tmp_path / "secrets.env"
+    env_file.write_text("DEEPSEEK_API_KEY=live-secret\n", encoding="ascii")
+    env_file.chmod(0o600)
+    monkeypatch.setattr(probe, "_LIVE_ENV_FILE", env_file)
+    antiek_gid = 421
+    _pretend_root_owned_mode(monkeypatch, 0o640, antiek_gid)
+    monkeypatch.setattr(probe.grp, "getgrnam", lambda name: SimpleNamespace(gr_gid=antiek_gid))
+
+    assert probe._read_live_env_key(env_file, "DEEPSEEK_API_KEY") == "live-secret"
+
+
+def test_live_env_rejects_wrong_group_for_0640_without_leaking_key(tmp_path, monkeypatch):
+    secret = "private-live-secret"
+    env_file = tmp_path / "secrets.env"
+    env_file.write_text(f"DEEPSEEK_API_KEY={secret}\n", encoding="ascii")
+    env_file.chmod(0o600)
+    monkeypatch.setattr(probe, "_LIVE_ENV_FILE", env_file)
+    _pretend_root_owned_mode(monkeypatch, 0o640, 999)
+    monkeypatch.setattr(probe.grp, "getgrnam", lambda name: SimpleNamespace(gr_gid=421))
+    monkeypatch.setattr(probe, "_probe", lambda *args: pytest.fail("must not probe wrong-group file"))
+    out, err = io.StringIO(), io.StringIO()
+
+    code = probe.main(["deepseek", "--live-env"], stdout=out, stderr=err)
+
+    assert code == 2
+    assert secret not in out.getvalue() + err.getvalue()
+
+
 @pytest.mark.parametrize("contents", [
     "DEEPSEEK_API_KEY=first\nDEEPSEEK_API_KEY=second\n",
     'DEEPSEEK_API_KEY="quoted-secret"\n',
     "DEEPSEEK_API_KEY=bad value\n",
+    " DEEPSEEK_API_KEY=trimmed-name\n",
+    "DEEPSEEK_API_KEY =spaced-name\n",
+    "DEEPSEEK_API_KEY= spaced-value\n",
+    "DEEPSEEK_API_KEY=spaced-value \n",
 ])
 def test_live_env_rejects_duplicates_and_complex_keys_without_leaks(tmp_path, monkeypatch, contents):
     secret = "quoted-secret"
@@ -197,3 +242,17 @@ def test_noncanonical_endpoint_override_main_output_hides_secret(tmp_path, monke
     code = probe.main(["deepseek", "--key-file", str(_key_file(tmp_path, secret))], stdout=out, stderr=err)
     assert code == 2
     assert secret not in out.getvalue() + err.getvalue()
+
+
+def test_probe_refuses_model_drift_from_dispatch_config(monkeypatch, tmp_path):
+    config = tmp_path / "config.yaml"
+    config.write_text("tiers:\n  fast:\n    provider: deepseek\n    model: deepseek-next\n", encoding="utf-8")
+    monkeypatch.setattr(probe, "_CONFIG_FILE", config)
+    requests = []
+    client = httpx.Client(transport=httpx.MockTransport(lambda request: requests.append(request)))
+
+    with pytest.raises(probe.ProbeInputError, match="does not exactly match config.yaml"):
+        probe._probe("deepseek", "candidate-secret", client=client)
+
+    assert requests == []
+    client.close()

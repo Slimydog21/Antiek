@@ -9,6 +9,7 @@ fully implement systemd EnvironmentFile syntax.
 from __future__ import annotations
 
 import argparse
+import grp
 import os
 import re
 import stat
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import TextIO
 
 import httpx
+import yaml
 
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
 
@@ -50,6 +52,7 @@ _TARGETS = {
 _KEY_VALUE = re.compile(r"^[A-Za-z0-9_+./=-]+$")
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _LIVE_ENV_FILE = Path("/etc/antiek/secrets.env")
+_CONFIG_FILE = Path(__file__).resolve().parents[2] / "substrate/dispatch/config.yaml"
 
 
 class ProbeInputError(ValueError):
@@ -108,8 +111,18 @@ def _read_live_env_key(path: Path, expected_name: str) -> str:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):
             raise ProbeInputError("live environment file must be a regular file")
-        if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
-            raise ProbeInputError("live environment file must be root-owned with mode 0600")
+        mode = stat.S_IMODE(info.st_mode)
+        if info.st_uid != 0:
+            raise ProbeInputError("live environment file must be root-owned")
+        if mode == 0o640:
+            try:
+                antiek_gid = grp.getgrnam("antiek").gr_gid
+            except KeyError:
+                raise ProbeInputError("required antiek group is unavailable") from None
+            if info.st_gid != antiek_gid:
+                raise ProbeInputError("mode-0640 live environment file must belong to group antiek")
+        elif mode != 0o600:
+            raise ProbeInputError("live environment file must have mode 0600 or root:antiek mode 0640")
         if info.st_size > 65536:
             raise ProbeInputError("live environment file is too large")
         with os.fdopen(fd, "r", encoding="ascii", newline="") as stream:
@@ -125,10 +138,9 @@ def _read_live_env_key(path: Path, expected_name: str) -> str:
         raise ProbeInputError("live environment file has invalid formatting")
     found: list[str] = []
     for raw_line in contents.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
             continue
-        name, sep, value = line.partition("=")
+        name, sep, value = raw_line.partition("=")
         if not sep or not _ENV_NAME.fullmatch(name):
             raise ProbeInputError("live environment file contains an unsupported assignment")
         if name != expected_name:
@@ -161,8 +173,33 @@ def _make_provider(name: str, key: str) -> OpenAICompatProvider:
     )
 
 
+def _verify_configured_model(name: str) -> None:
+    """Refuse probing if config.yaml no longer names this provider model."""
+    try:
+        config = yaml.safe_load(_CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        raise ProbeInputError("cannot read provider models from substrate/dispatch/config.yaml") from None
+
+    models: set[str] = set()
+
+    def collect(value) -> None:
+        if isinstance(value, dict):
+            if value.get("provider") == name and isinstance(value.get("model"), str):
+                models.add(value["model"])
+            for child in value.values():
+                collect(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect(child)
+
+    collect(config)
+    if models != {_TARGETS[name]["model"]}:
+        raise ProbeInputError(f"probe model for {name} does not exactly match config.yaml")
+
+
 def _probe(name: str, key: str, client=None) -> None:
     target = _TARGETS[name]
+    _verify_configured_model(name)
     provider = _make_provider(name, key)
     # Disable ambient proxy settings so they cannot redirect the Authorization
     # header to a host selected through the caller's environment.
