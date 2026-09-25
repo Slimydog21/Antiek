@@ -24,6 +24,7 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from interfaces.research.api.books import _reader_owner_id, _resolve_db_path
+from substrate.books.highlights.schema import highlights_table_exists
 from substrate.books.reading_state import (
     PREFS_V1_ALLOWLIST,
     ReadingStateRow,
@@ -36,7 +37,7 @@ class ReadingStateIn(BaseModel):
     page_index: int = Field(ge=0)
     """The optional unit-1 anchor id of the passage the operator last
     engaged — a REF, never the passage."""
-    anchor_ref: str | None = None
+    anchor_ref: str | None = Field(default=None, max_length=20)
     prefs: dict[str, Any] = Field(default_factory=dict)
     """Optimistic concurrency: the revision the client last saw (0 for a
     first write — the row does not exist yet)."""
@@ -56,6 +57,21 @@ def _document_exists(con: Any, document_id: str) -> bool:
     return (
         con.execute(
             "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1", [document_id]
+        ).fetchone()
+        is not None
+    )
+
+
+def _anchor_belongs_to_document(
+    con: Any, anchor_ref: str, owner: str, document_id: str
+) -> bool:
+    if not highlights_table_exists(con):
+        return False
+    return (
+        con.execute(
+            "SELECT 1 FROM anchored_highlights WHERE anchor_id = ? "
+            "AND owner_user_id = ? AND document_id = ? LIMIT 1",
+            [anchor_ref, owner, document_id],
         ).fetchone()
         is not None
     )
@@ -129,6 +145,10 @@ def register_reading_state_routes(app: FastAPI) -> None:
         with connect_write(db, purpose="books/reading-state/put") as con:
             if not _document_exists(con, document_id):
                 raise HTTPException(status_code=404, detail="book_not_found")
+            if body.anchor_ref is not None and not _anchor_belongs_to_document(
+                con, body.anchor_ref, owner, document_id
+            ):
+                raise HTTPException(status_code=422, detail="anchor_ref_invalid")
             row = ReadingStateStore().put(
                 con,
                 owner_user_id=owner,

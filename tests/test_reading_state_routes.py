@@ -55,6 +55,25 @@ def _seed_book(db: str, document_id: str = "doc-bus") -> None:
             content_class="public_domain",
             on_conflict="ignore",
         )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, "
+            "section_path, text, token_count) VALUES (?, ?, 0, 'Page 1', ?, 7)",
+            [f"chunk-{document_id}", document_id, "A short book for the bus."],
+        )
+
+
+def _pin(client: TestClient, document_id: str = "doc-bus") -> str:
+    response = client.post(
+        f"/books/{document_id}/anchors",
+        json={
+            "quote": "short book",
+            "prefix": "A ",
+            "suffix": " for the bus.",
+            "source": "pin",
+        },
+    )
+    assert response.status_code == 201
+    return str(response.json()["anchor_id"])
 
 
 # ── Proof 1: the round-trip, the owner boundary, the concurrency rules ─────
@@ -64,6 +83,7 @@ def test_put_get_round_trip_per_owner(api_env) -> None:
     db = api_env["db"]
     _seed_book(db)
     client = _client()
+    anchor_id = _pin(client)
 
     # No position recorded yet — an honest 404, never a fabricated page 0.
     missing = client.get("/books/doc-bus/reading-state")
@@ -73,12 +93,12 @@ def test_put_get_round_trip_per_owner(api_env) -> None:
     # First write (revision 0 = the row does not exist yet) creates it.
     created = client.put(
         "/books/doc-bus/reading-state",
-        json={"page_index": 3, "anchor_ref": "ahl-1", "prefs": {}, "revision": 0},
+        json={"page_index": 3, "anchor_ref": anchor_id, "prefs": {}, "revision": 0},
     )
     assert created.status_code == 200
     body = created.json()
     assert body["page_index"] == 3
-    assert body["anchor_ref"] == "ahl-1"
+    assert body["anchor_ref"] == anchor_id
     assert body["prefs"] == {}
     assert body["revision"] == 1
 
@@ -96,6 +116,43 @@ def test_put_get_round_trip_per_owner(api_env) -> None:
     assert moved.json()["revision"] == 2
     # anchor_ref defaults to null when omitted (refs, never content).
     assert moved.json()["anchor_ref"] is None
+
+
+def test_anchor_ref_must_be_an_owned_anchor_on_this_document(api_env) -> None:
+    db = api_env["db"]
+    _seed_book(db)
+    _seed_book(db, "doc-bus-2")
+    client = _client()
+    owned_anchor = _pin(client)
+    other_document_anchor = _pin(client, "doc-bus-2")
+
+    with connect_write(db, purpose="test/rekey-anchor-owner") as con:
+        con.execute(
+            "UPDATE anchored_highlights SET owner_user_id = 'someone-else' "
+            "WHERE anchor_id = ?",
+            [owned_anchor],
+        )
+
+    for invalid in (
+        "A short book for the bus.",
+        "ahl-0000000000000000",
+        other_document_anchor,
+        owned_anchor,
+        "x" * 21,
+    ):
+        response = client.put(
+            "/books/doc-bus/reading-state",
+            json={"page_index": 3, "anchor_ref": invalid, "revision": 0},
+        )
+        assert response.status_code == 422
+        assert client.get("/books/doc-bus/reading-state").status_code == 404
+
+    accepted = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 3, "anchor_ref": None, "revision": 0},
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["anchor_ref"] is None
 
 
 def test_second_owner_gets_no_row(api_env) -> None:
