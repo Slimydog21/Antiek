@@ -32,6 +32,7 @@ from tools.deploy.backup_archive_admission import (
 from tools.deploy.backup_content_digest import CONTENT_SCHEME
 from tools.deploy.backup_restore_verify import (
     _DUCKDB_VERSION,
+    _SUPPORTED_DUCKDB_VERSIONS,
     ObservationLimits,
     RestoreLimits,
     RestoreRefused,
@@ -108,6 +109,7 @@ class NativeRestoreReport:
                 value["report_scheme"] != NATIVE_REPORT_SCHEME
                 or value["archive_format"] != NATIVE_ARCHIVE_FORMAT
                 or value["content_scheme"] != CONTENT_SCHEME
+                or _DUCKDB_VERSION not in _SUPPORTED_DUCKDB_VERSIONS
                 or value["duckdb_version"] != _DUCKDB_VERSION
                 or type(value["native_member_path"]) is not str
                 or not _NATIVE_MEMBER.fullmatch(value["native_member_path"])
@@ -195,15 +197,12 @@ def _admitted_native(report: AdmissionReport, destination: Path) -> tuple[Path, 
     return destination / native_name, files[native_name]
 
 
-def _file_fingerprint(path: Path, byte_limit: int) -> tuple[int, int, int, str]:
-    try:
-        fd = os.open(path, _READ_FLAGS)
-    except OSError:
-        raise RestoreRefused("NATIVE_FILE_MISMATCH") from None
+def _file_fingerprint(fd: int, path: Path, byte_limit: int) -> tuple[int, int, int, str]:
     try:
         before = os.fstat(fd)
         if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= byte_limit:
             raise RestoreRefused("NATIVE_FILE_MISMATCH")
+        os.lseek(fd, 0, os.SEEK_SET)
         digest = hashlib.sha256()
         size = 0
         while chunk := os.read(fd, _READ_CHUNK):
@@ -212,20 +211,27 @@ def _file_fingerprint(path: Path, byte_limit: int) -> tuple[int, int, int, str]:
                 raise RestoreRefused("NATIVE_FILE_MISMATCH")
             digest.update(chunk)
         after = os.fstat(fd)
-        if (before.st_dev, before.st_ino, before.st_size) != (
-            after.st_dev,
-            after.st_ino,
-            after.st_size,
-        ) or size != before.st_size:
+        linked = os.stat(path, follow_symlinks=False)
+        if (
+            (before.st_dev, before.st_ino, before.st_size)
+            != (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+            )
+            or (before.st_dev, before.st_ino, before.st_size)
+            != (
+                linked.st_dev,
+                linked.st_ino,
+                linked.st_size,
+            )
+            or not stat.S_ISREG(linked.st_mode)
+            or size != before.st_size
+        ):
             raise RestoreRefused("NATIVE_FILE_MISMATCH")
         return before.st_dev, before.st_ino, size, digest.hexdigest()
     except OSError:
         raise RestoreRefused("NATIVE_FILE_MISMATCH") from None
-    finally:
-        try:
-            os.close(fd)
-        except OSError:
-            raise RestoreRefused("NATIVE_FILE_MISMATCH") from None
 
 
 def _observe_native(path: Path, *, scratch: Path, limits: ObservationLimits) -> SnapshotObservation:
@@ -270,19 +276,29 @@ def verify_closed_native_archive(
         except _ADMISSION_ERRORS:
             raise RestoreRefused("ARCHIVE_ADMISSION_FAILED") from None
         native_path, member = _admitted_native(admission, admitted)
-        before = _file_fingerprint(native_path, limits.archive.member_bytes)
-        if before[2:] != (member.size, member.sha256):
-            raise RestoreRefused("NATIVE_FILE_MISMATCH")
         try:
-            actual = _observe_native(native_path, scratch=scratch, limits=limits.observation)
-        finally:
-            after = _file_fingerprint(native_path, limits.archive.member_bytes)
+            native_fd = os.open(native_path, _READ_FLAGS)
+        except OSError:
+            raise RestoreRefused("NATIVE_FILE_MISMATCH") from None
+        try:
+            before = _file_fingerprint(native_fd, native_path, limits.archive.member_bytes)
+            if before[2:] != (member.size, member.sha256):
+                raise RestoreRefused("NATIVE_FILE_MISMATCH")
             try:
-                native_members = set(native_path.parent.iterdir())
+                actual = _observe_native(native_path, scratch=scratch, limits=limits.observation)
+            finally:
+                after = _file_fingerprint(native_fd, native_path, limits.archive.member_bytes)
+                try:
+                    native_members = set(native_path.parent.iterdir())
+                except OSError:
+                    raise RestoreRefused("NATIVE_FILE_MISMATCH") from None
+                if after != before or native_members != {native_path}:
+                    raise RestoreRefused("NATIVE_FILE_MISMATCH")
+        finally:
+            try:
+                os.close(native_fd)
             except OSError:
                 raise RestoreRefused("NATIVE_FILE_MISMATCH") from None
-            if after != before or native_members != {native_path}:
-                raise RestoreRefused("NATIVE_FILE_MISMATCH")
         if set(actual.tables) != set(expected.tables):
             raise RestoreRefused("TABLE_SET_MISMATCH")
         if actual.catalog_objects != expected.catalog_objects:
