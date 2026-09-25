@@ -6,6 +6,8 @@ Cite: runtime/db_lock.py WP-3; #3121 coexist; #3164/#3165 fill contention.
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -74,6 +76,58 @@ def test_keepalive_zero_closes_fully(tmp_path: Path, monkeypatch):
         con.execute("INSERT INTO t VALUES (1)")
     # keepalive=0 must open again (write_log may also connect to same path)
     assert len(opens) > n_after_first, opens
+
+
+def test_per_call_zero_consumes_warm_slot_and_releases_cross_process_lock(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    db = str(tmp_path / "override.duckdb")
+    with db_lock.connect_write(db, purpose="default", timeout_s=5) as con:
+        con.execute("CREATE TABLE t (id INTEGER)")
+    with db_lock.connect_write(db, purpose="yield", keepalive_s=0, timeout_s=5) as con:
+        con.execute("INSERT INTO t VALUES (1)")
+    assert db_lock.flush_warm_writers(db) == 0
+
+    # A different process must acquire both the sidecar flock and a DuckDB RW
+    # handle; checking only our in-process registry would miss either leak.
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import duckdb, fcntl, os, sys; "
+            "db = sys.argv[1]; "
+            "fd = os.open(db + '.write.lock', os.O_WRONLY); "
+            "fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB); "
+            "con = duckdb.connect(db); "
+            "assert con.execute('SELECT count(*) FROM t').fetchone()[0] == 1; "
+            "con.close(); os.close(fd)",
+            db,
+        ],
+        check=True,
+        timeout=5,
+    )
+    with db_lock.connect_write(db, purpose="default-again", timeout_s=5):
+        pass
+    assert db_lock.flush_warm_writers(db) == 1
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), "bad"])
+def test_invalid_keepalive_rejected_before_gate_or_warm_slot(
+    tmp_path: Path, monkeypatch, value
+):
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    db = str(tmp_path / "invalid.duckdb")
+    with pytest.raises((ValueError, OverflowError)):
+        db_lock.connect_write(db, keepalive_s=value, timeout_s=0)
+    assert not os.path.exists(db + ".write.lock")
+    with db_lock.connect_write(db, timeout_s=5) as con:
+        con.execute("CREATE TABLE t (id INTEGER)")
+    with pytest.raises((ValueError, OverflowError)):
+        db_lock.connect_write(db, keepalive_s=value, timeout_s=0)
+    assert db_lock.flush_warm_writers(db) == 1
 
 
 def test_open_transaction_does_not_park(tmp_path: Path, monkeypatch):
