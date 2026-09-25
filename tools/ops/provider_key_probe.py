@@ -1,8 +1,9 @@
 """Make one bounded, direct authenticated probe of a provider key candidate.
 
-This is an operator diagnostic. It does not inspect the running service's
-environment or BYOK store, and therefore cannot verify the key configured in
-the running service.
+The live EnvironmentFile mode checks the file's selected key directly, but
+does not prove what a running process loaded or what BYOK currently supplies.
+Complex or quoted selected values fail closed; this tool does not source or
+fully implement systemd EnvironmentFile syntax.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ import stat
 import sys
 from pathlib import Path
 from typing import TextIO
+
+import httpx
 
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
 
@@ -45,6 +48,8 @@ _TARGETS = {
     },
 }
 _KEY_VALUE = re.compile(r"^[A-Za-z0-9_+./=-]+$")
+_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_LIVE_ENV_FILE = Path("/etc/antiek/secrets.env")
 
 
 class ProbeInputError(ValueError):
@@ -62,7 +67,7 @@ def _read_candidate_key(path: Path, expected_name: str) -> str:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):
             raise ProbeInputError("key file must be a regular file")
-        if info.st_uid not in (0, os.getuid()) or info.st_mode & 0o077:
+        if info.st_uid not in (0, os.getuid()) or stat.S_IMODE(info.st_mode) != 0o600:
             raise ProbeInputError("key file must be owned by root or this user and have mode 0600")
         if info.st_size > 4096:
             raise ProbeInputError("key file is too large")
@@ -86,9 +91,65 @@ def _read_candidate_key(path: Path, expected_name: str) -> str:
     return value
 
 
+def _read_live_env_key(path: Path, expected_name: str) -> str:
+    """Read one selected unquoted assignment from root-owned EnvironmentFile.
+
+    Blank lines, full-line comments, and ordinary NAME=value assignments are
+    accepted. Values for unrelated names are ignored. The selected value must
+    be a single unquoted token; escapes, expansion, inline comments, and
+    systemd's other value forms are intentionally unsupported.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        raise ProbeInputError("cannot open live environment file") from None
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ProbeInputError("live environment file must be a regular file")
+        if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
+            raise ProbeInputError("live environment file must be root-owned with mode 0600")
+        if info.st_size > 65536:
+            raise ProbeInputError("live environment file is too large")
+        with os.fdopen(fd, "r", encoding="ascii", newline="") as stream:
+            fd = -1
+            contents = stream.read(65537)
+    except (OSError, UnicodeError):
+        raise ProbeInputError("live environment file is unreadable or not plain ASCII") from None
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+    if len(contents) > 65536 or "\r" in contents:
+        raise ProbeInputError("live environment file has invalid formatting")
+    found: list[str] = []
+    for raw_line in contents.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, sep, value = line.partition("=")
+        if not sep or not _ENV_NAME.fullmatch(name):
+            raise ProbeInputError("live environment file contains an unsupported assignment")
+        if name != expected_name:
+            continue
+        found.append(value)
+    if not found:
+        raise ProbeInputError(f"live environment file does not contain {expected_name}")
+    if len(found) != 1:
+        raise ProbeInputError(f"live environment file contains duplicate {expected_name} assignments")
+    value = found[0]
+    if not value or not _KEY_VALUE.fullmatch(value):
+        raise ProbeInputError(f"live {expected_name} must be one unquoted, simple token")
+    return value
+
+
 def _make_provider(name: str, key: str) -> OpenAICompatProvider:
     target = _TARGETS[name]
-    base_url = os.environ.get(target["url_env"], target["default_url"])
+    override = os.environ.get(target["url_env"])
+    if override is not None and override != target["default_url"]:
+        raise ProbeInputError(f"refusing noncanonical endpoint override for {name}")
+    base_url = target["default_url"]
     return OpenAICompatProvider(
         name=name,
         base_url=base_url,
@@ -103,9 +164,10 @@ def _make_provider(name: str, key: str) -> OpenAICompatProvider:
 def _probe(name: str, key: str, client=None) -> None:
     target = _TARGETS[name]
     provider = _make_provider(name, key)
-    if client is not None:
-        provider._client = client
-        provider._owns_client = False
+    # Disable ambient proxy settings so they cannot redirect the Authorization
+    # header to a host selected through the caller's environment.
+    provider._client = client if client is not None else httpx.Client(timeout=10.0, trust_env=False)
+    provider._owns_client = client is None
     try:
         # No router or fallback chain is involved. The prompt and response
         # allowance are deliberately tiny; response content is never printed.
@@ -122,22 +184,33 @@ def _probe(name: str, key: str, client=None) -> None:
 def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout, stderr: TextIO = sys.stderr) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("provider", choices=sorted(_TARGETS))
-    parser.add_argument("--key-file", required=True, type=Path,
-                        help="0600 file containing only the selected provider's KEY=value assignment")
+    key_source = parser.add_mutually_exclusive_group(required=True)
+    key_source.add_argument("--key-file", type=Path,
+                            help="0600 file containing only the selected provider's KEY=value assignment")
+    key_source.add_argument("--live-env", action="store_true",
+                            help="read the selected key from root-owned /etc/antiek/secrets.env")
     args = parser.parse_args(argv)
     key_name = _TARGETS[args.provider]["key_name"]
     try:
-        key = _read_candidate_key(args.key_file, key_name)
+        if args.live_env:
+            key = _read_live_env_key(_LIVE_ENV_FILE, key_name)
+            source_label = "the live EnvironmentFile key"
+        else:
+            key = _read_candidate_key(args.key_file, key_name)
+            source_label = "a candidate key read from the supplied file"
     except ProbeInputError as exc:
         print(f"Input error: {exc}", file=stderr)
         return 2
     try:
         _probe(args.provider, key)
+    except ProbeInputError as exc:
+        print(f"Configuration error: {exc}", file=stderr)
+        return 2
     except Exception:
         print(f"Probe failed for {args.provider}; upstream details were suppressed.", file=stderr)
         return 1
-    print(f"Probe succeeded for {args.provider} using a candidate key read from the supplied file.", file=stdout)
-    print("This does not verify the running service's environment or BYOK key.", file=stdout)
+    print(f"Probe succeeded for {args.provider} using {source_label}.", file=stdout)
+    print("This does not prove the running service loaded this value or verify BYOK state.", file=stdout)
     return 0
 
 
