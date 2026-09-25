@@ -347,3 +347,19 @@ def test_the_same_event_twice_triggers_one_rebuild(env) -> None:
     # And a later scan with nothing new rebuilds NOTHING.
     assert run_trigger_scan(env["db"], owner_user_id=OWNER, events_dir=env["events"]) == []
     assert len(_receipts(env["db"])) == 1
+
+
+@pytest.fixture(autouse=True)
+def _scrub_operator_auth_env(monkeypatch):
+    """Environment invariance (review F2): these suites must pass on the
+    operator's own Mac, where the login shell exports the operator-auth
+    env — otherwise the middleware answers 401 and CI-clean tests fail
+    locally. Scrub the credential env for every test in this module."""
+    for key in (
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_DEV_LOGIN_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_COOKIE_INSECURE",
+    ):
+        monkeypatch.delenv(key, raising=False)
