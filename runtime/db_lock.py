@@ -372,13 +372,20 @@ def _unregister_write_waiter(waiter: tuple[int, str] | None) -> None:
 
 def write_handoff_requested(db_path: str) -> bool:
     """Return whether any live writer is waiting; prune abandoned tokens."""
+    waiter_dir = _waiter_dir_for(db_path)
     try:
-        waiter_dir = _ensure_waiter_dir(db_path)
+        dir_fd = os.open(waiter_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except FileNotFoundError:
         return False
-    dir_fd = os.open(waiter_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     live_waiter = False
     try:
+        metadata = os.fstat(dir_fd)
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+        ):
+            raise OSError("write-waiter directory must be owner-only and non-symlinked")
         entries = list(os.scandir(dir_fd))
         for entry in entries:
             try:
