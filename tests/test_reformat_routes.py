@@ -255,3 +255,31 @@ def _scrub_operator_auth_env(monkeypatch):
         "ANTIEK_COOKIE_INSECURE",
     ):
         monkeypatch.delenv(key, raising=False)
+
+
+# ── Review hardening F4 (2026-09-25): load-bearing invariants must survive
+# `python -O`. A vanished generation record (FK-impossible, monkeypatched
+# here) surfaces as an honest explicit error, never a silently-skipped
+# check. ──────────────────────────────────────────────────────────────────
+
+
+def test_vanished_generation_record_is_an_explicit_error(api_env, monkeypatch) -> None:
+    from substrate.provenance.store import ProvenanceStore
+    from substrate.reformat.pipeline import reformat_document
+
+    _seed(api_env["db"])
+    result = reformat_document(
+        api_env["db"],
+        owner_user_id="__operator__",
+        source_document_id="doc-1",
+        prompt="the 20-minute version",
+        generate_fn=_fixture_generator,
+        events_dir=api_env["events"],
+    )
+    client = _client()
+    monkeypatch.setattr(
+        ProvenanceStore, "get_generation", lambda self, con, gid: None
+    )
+    resp = client.get(f"/documents/{result.derived_document_id}/provenance")
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "provenance_record_missing"
