@@ -439,3 +439,20 @@ def test_replace_survives_optimized_python_and_reports_stale(api_env, monkeypatc
     )
     assert stale.status_code == 409
     assert "workstation_stale_revision" in stale.json()["detail"]
+
+
+@pytest.fixture(autouse=True)
+def _scrub_operator_auth_env(monkeypatch):
+    """Environment invariance (the F2 rule, extended to this chain): the
+    suite must pass on the operator's own Mac, where the login shell
+    exports the operator-auth env — otherwise the middleware answers 401
+    and CI-clean tests fail locally."""
+    for key in (
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_DEV_LOGIN_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_COOKIE_INSECURE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
