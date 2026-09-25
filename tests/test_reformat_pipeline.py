@@ -461,3 +461,69 @@ def test_verbatim_detection_rate_pinned_on_the_acceptance_fixture(env) -> None:
     # Recall: all three truly-verbatim bites detected (the pinned floor).
     assert len(verbatim) / truly_verbatim >= 0.95
     assert result.reclassed_verbatim == 0
+
+
+# ── Review hardening (2026-09-25): block offsets must be exact for ANY
+# paragraph-separator run, and the derived document must carry the caller's
+# ownership (the generation's owner and the asset's owner cannot disagree). ──
+
+
+def test_source_block_spans_are_exact_across_long_newline_runs(env) -> None:
+    from runtime.db_lock import connect_write
+    from substrate.reformat.pipeline import _source_blocks
+
+    body = "Para one before the gap.\n\n\n\nPara two after the drift."
+    with connect_write(env["db"], purpose="test/seed-drift") as con:
+        insert_document(
+            con,
+            document_id="doc-drift",
+            source_tier=2,
+            document_type="book",
+            title="Drift",
+            raw_text=body,
+            content_class="public_domain",
+            on_conflict="ignore",
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, "
+            "section_path, text, token_count) VALUES (?, ?, ?, ?, ?, ?)",
+            ["c-1-doc-drift", "doc-drift", 0, "Page 1", body, len(body.split())],
+        )
+    con = connect_read(env["db"])
+    try:
+        blocks = _source_blocks(con, "doc-drift", body)
+    finally:
+        con.close()
+    assert [b.text for b in blocks] == [
+        "Para one before the gap.",
+        "Para two after the drift.",
+    ]
+    normalized = normalize_node_text(body)
+    for block in blocks:
+        sliced = normalized[block.start_scalar : block.end_scalar]
+        assert sliced == block.text, (
+            f"span {(block.start_scalar, block.end_scalar)} sliced {sliced!r}"
+        )
+
+
+def test_derived_document_carries_the_callers_ownership(env) -> None:
+    _seed_source(env["db"])
+    result = reformat_document(
+        env["db"],
+        owner_user_id="owner-x",
+        source_document_id="doc-1",
+        prompt=ACCEPTANCE_PROMPT,
+        generate_fn=_fixture_generator,
+        events_dir=env["events"],
+    )
+    con = connect_read(env["db"])
+    try:
+        doc_owner, gen_owner = con.execute(
+            "SELECT d.owner_user_id, g.owner_user_id FROM documents d "
+            "JOIN generation_records g ON g.derived_document_id = d.document_id "
+            "WHERE d.document_id = ?",
+            [result.derived_document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert (doc_owner, gen_owner) == ("owner-x", "owner-x")

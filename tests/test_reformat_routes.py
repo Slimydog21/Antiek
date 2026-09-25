@@ -185,3 +185,57 @@ def test_owner_boundary_and_gated_refusal(api_env, generator_override) -> None:
         client.get(f"/documents/{created['derived_document_id']}/provenance").status_code
         == 404
     )
+
+
+# ── Review hardening (2026-09-25): the reformat writer is owner-scoped. A
+# caller may only reformat a document they own — the same boundary every
+# sibling route enforces. ──────────────────────────────────────────────────
+
+
+def test_reformat_requires_the_source_owner(api_env, monkeypatch) -> None:
+    from runtime.db_lock import connect_write
+
+    with connect_write(api_env["db"], purpose="test/seed-other-owner") as con:
+        insert_document(
+            con,
+            document_id="doc-other-owner",
+            source_tier=2,
+            document_type="book",
+            title="Someone Else's Private Book",
+            raw_text=BODY,
+            content_class="personal_reading",
+            owner_user_id="owner-b",
+            on_conflict="ignore",
+        )
+        for i, (chunk_id, section, text) in enumerate(CHUNKS):
+            con.execute(
+                "INSERT INTO chunks (chunk_id, document_id, chunk_index, "
+                "section_path, text, token_count) VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    f"{chunk_id}-doc-other-owner",
+                    "doc-other-owner",
+                    i,
+                    section,
+                    text,
+                    len(text.split()),
+                ],
+            )
+    from interfaces.research.api import reformat_routes
+
+    monkeypatch.setattr(reformat_routes, "_reader_owner_id", lambda request: "owner-a")
+    client = TestClient(create_app(register_wrestling=False))
+    denied = client.post(
+        "/books/doc-other-owner/reformats",
+        json={"prompt": "the 20-minute version", "mode": "time_window"},
+    )
+    assert denied.status_code == 404
+    assert denied.json()["detail"] == "book_not_found"
+
+    monkeypatch.setattr(reformat_routes, "_generate_fn_override", _fixture_generator)
+    monkeypatch.setattr(reformat_routes, "_reader_owner_id", lambda request: "owner-b")
+    allowed = client.post(
+        "/books/doc-other-owner/reformats",
+        json={"prompt": "the 20-minute version", "mode": "time_window"},
+    )
+    assert allowed.status_code == 201
+    assert allowed.json()["bite_count"] > 0

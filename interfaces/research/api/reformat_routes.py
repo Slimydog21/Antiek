@@ -93,6 +93,21 @@ def register_reformat_routes(app: FastAPI) -> None:
     ) -> ReformatOut:
         owner = _reader_owner_id(request)
         db = _resolve_db_path()
+        # The writer is owner-scoped, exactly like its sibling routes: a
+        # caller may only reformat a document they own (never another
+        # owner's personal_reading body through the pipeline's owner path).
+        from runtime.db_lock import connect_read
+
+        con = connect_read(db)
+        try:
+            doc = con.execute(
+                "SELECT owner_user_id FROM documents WHERE document_id = ? LIMIT 1",
+                [document_id],
+            ).fetchone()
+        finally:
+            con.close()
+        if doc is None or str(doc[0]) != owner:
+            raise HTTPException(status_code=404, detail="book_not_found")
         # The test seam: the pipeline's generator is injectable (the SpawnFn
         # precedent) — a route-level override for tests, the dispatch path by
         # default.
