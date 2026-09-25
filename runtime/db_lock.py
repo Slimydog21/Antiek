@@ -1279,14 +1279,17 @@ def connect_read(
             except Exception as fallback_exc:
                 if wait_for_external_lock(fallback_exc):
                     continue
-                # A reader can open after the RO attempt loses to a writer
-                # but before this RW fallback. Retry the original RO mode
-                # until the retry-decision deadline so that a short transition
-                # does not surface as a request failure. This deadline cannot
-                # interrupt an in-flight synchronous DuckDB connect. Keep the
-                # retry specific to DuckDB's same-file mode conflict;
-                # unrelated errors stay immediate.
-                if _SAME_FILE_DIFFERENT_CONFIG not in str(fallback_exc):
+                # Another local handle can change modes between the RO open
+                # and RW fallback. Retry only the exact same-file and Binder
+                # transition errors for the short decision window; unrelated
+                # errors stay immediate. This cannot interrupt a synchronous
+                # DuckDB connect already in flight.
+                fallback_msg = str(fallback_exc)
+                if not (
+                    _SAME_FILE_DIFFERENT_CONFIG in fallback_msg
+                    or "Unique file handle conflict" in fallback_msg
+                    or "already attached" in fallback_msg
+                ):
                     raise
                 if retry_deadline is None:
                     retry_deadline = time.monotonic() + _READ_MODE_RETRY_WINDOW_S

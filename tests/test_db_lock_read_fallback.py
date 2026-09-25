@@ -193,6 +193,28 @@ def test_connect_read_retries_mode_transition_from_rw_to_ro(
     assert calls == [True, False, True]
 
 
+def test_connect_read_retries_binder_conflict_on_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two overlapping mode transitions can reject both initial open modes."""
+    path = _database(tmp_path)
+    connect = duckdb.connect
+    calls: list[bool] = []
+
+    def transition(_path: str, *, read_only: bool = False) -> duckdb.DuckDBPyConnection:
+        calls.append(read_only)
+        if len(calls) <= 2:
+            raise duckdb.BinderException(
+                'Unique file handle conflict: Cannot attach "fallback" - already attached'
+            )
+        return connect(_path, read_only=read_only)
+
+    monkeypatch.setattr(duckdb, "connect", transition)
+    with db_lock.connect_read(path) as reader:
+        assert reader.execute("SELECT value FROM facts").fetchall() == [(7,)]
+    assert calls == [True, False, True]
+
+
 def test_connect_read_does_not_retry_unrelated_fallback_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

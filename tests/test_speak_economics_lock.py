@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import select
 import subprocess
@@ -19,6 +20,8 @@ from starlette.requests import Request
 
 from interfaces.research.api import speak_routes
 from interfaces.research.api.app import create_app
+from runtime.db_lock import connect_write
+from substrate.speak import async_interview
 from substrate.speak.async_interview import resume as original_resume
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -192,6 +195,73 @@ def test_invite_landing_retries_its_second_read_open(
     finally:
         for proc in holder:
             _close_writer(proc)
+
+
+@pytest.mark.parametrize("expire", [False, True])
+def test_pushes_second_resume_never_fabricates_zero_pending_under_writer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, expire: bool
+) -> None:
+    db, _, interview_id, _ = _seed(tmp_path, monkeypatch)
+    turns = [{"role": "interviewer", "question_id": "q1", "text": "What happened?"}]
+    with connect_write(str(db), purpose="test:pending-question", keepalive_s=0) as con:
+        con.execute(
+            "UPDATE interviews SET transcript_turns = ? WHERE interview_id = ?",
+            [json.dumps(turns), interview_id],
+        )
+    baseline = asyncio.run(speak_routes.list_pushes())
+    assert baseline["private_repings"][0]["pending_question_count"] == 1
+
+    monkeypatch.setattr(speak_routes, "_WRITE_TIMEOUT_S", 0.1 if expire else 2.0)
+    ready = threading.Event()
+    holder: list[subprocess.Popen[str]] = []
+
+    def resume_after_writer_starts(
+        db_path: str, iid: str, *, external_lock_timeout_s: float = 0.0
+    ) -> object:
+        holder.append(_hold_writer(db))
+        ready.set()
+        return original_resume(
+            db_path, iid, external_lock_timeout_s=external_lock_timeout_s
+        )
+
+    monkeypatch.setattr(async_interview, "resume", resume_after_writer_starts)
+    try:
+        async def exercise() -> tuple[dict[str, Any] | None, bool]:
+            task = asyncio.create_task(speak_routes.list_pushes())
+            assert await asyncio.wait_for(asyncio.to_thread(ready.wait, 5), 6)
+            if expire:
+                with pytest.raises(HTTPException) as exc:
+                    await asyncio.wait_for(task, 5)
+                assert exc.value.status_code == 503
+                assert exc.value.detail == "speak_writer_busy"
+                return None, True
+            await asyncio.sleep(0.2)
+            loop_served_other_work = not task.done()
+            _release_writer(holder[0])
+            return await asyncio.wait_for(task, 5), loop_served_other_work
+
+        pushes, loop_served_other_work = asyncio.run(exercise())
+        assert loop_served_other_work
+        if not expire:
+            assert pushes is not None
+            assert pushes["private_repings"][0]["pending_question_count"] == 1
+    finally:
+        for proc in holder:
+            _close_writer(proc)
+
+
+def test_pushes_keeps_zero_fallback_for_unrelated_session_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, interview_id, _ = _seed(tmp_path, monkeypatch)
+
+    def bad_session(*_args: object, **_kwargs: object) -> None:
+        raise ValueError("malformed interview state")
+
+    monkeypatch.setattr(async_interview, "resume", bad_session)
+    pushes = asyncio.run(speak_routes.list_pushes())
+    row = next(r for r in pushes["private_repings"] if r["interview_id"] == interview_id)
+    assert row["pending_question_count"] == 0
 
 
 def test_economics_does_not_retry_other_duckdb_io_errors(
