@@ -1247,9 +1247,13 @@ def connect_read(
     external_deadline: float | None = None
 
     def wait_for_external_lock(exc: Exception) -> bool:
-        nonlocal external_deadline
+        nonlocal external_deadline, retry_deadline
         if not _external_duckdb_lock_conflict(exc) or external_lock_timeout_s == 0:
             return False
+        # An external writer can span a complete local-handle handoff.
+        # A later local mode conflict is a new transition, not a continuation
+        # of the 250 ms window that preceded this writer.
+        retry_deadline = None
         if external_deadline is None:
             external_deadline = time.monotonic() + external_lock_timeout_s
         remaining = external_deadline - time.monotonic()

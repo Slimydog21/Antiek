@@ -215,6 +215,43 @@ def test_connect_read_retries_binder_conflict_on_fallback(
     assert calls == [True, False, True]
 
 
+def test_external_writer_wait_does_not_consume_local_mode_retry_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A later local mode handoff gets its own window after an external writer."""
+    path = _database(tmp_path)
+    connect = duckdb.connect
+    calls: list[bool] = []
+    clock = 0.0
+
+    def monotonic() -> float:
+        return clock
+
+    def sleep(delay: float) -> None:
+        nonlocal clock
+        clock += delay
+
+    def transition(_path: str, *, read_only: bool = False) -> duckdb.DuckDBPyConnection:
+        calls.append(read_only)
+        index = len(calls)
+        if index in (1, 2, 11, 12):
+            raise duckdb.ConnectionException(db_lock._SAME_FILE_DIFFERENT_CONFIG)
+        if 3 <= index <= 10:
+            assert read_only
+            raise duckdb.IOException(
+                "Could not set lock on file: Conflicting lock is held in another process"
+            )
+        return connect(_path, read_only=read_only)
+
+    monkeypatch.setattr(time, "monotonic", monotonic)
+    monkeypatch.setattr(time, "sleep", sleep)
+    monkeypatch.setattr(duckdb, "connect", transition)
+    with db_lock.connect_read(path, external_lock_timeout_s=1.0) as reader:
+        assert reader.execute("SELECT value FROM facts").fetchall() == [(7,)]
+    assert calls == [True, False] + [True] * 8 + [True, False, True]
+    assert clock > db_lock._READ_MODE_RETRY_WINDOW_S
+
+
 def test_connect_read_does_not_retry_unrelated_fallback_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
