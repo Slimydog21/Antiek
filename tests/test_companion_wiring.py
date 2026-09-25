@@ -347,3 +347,51 @@ def test_the_same_event_twice_triggers_one_rebuild(env) -> None:
     # And a later scan with nothing new rebuilds NOTHING.
     assert run_trigger_scan(env["db"], owner_user_id=OWNER, events_dir=env["events"]) == []
     assert len(_receipts(env["db"])) == 1
+
+
+# ── Review hardening C1/C2 (2026-09-25): watcher state is OWNER-scoped.
+# A second owner's watcher must neither starve the first's rebuilds (the
+# global seen-trigger table) nor churn/lose its diligence watermark (the
+# global state key). ──────────────────────────────────────────────────────
+
+
+def test_seen_triggers_are_owner_scoped(env) -> None:
+    import time as _time
+
+    from runtime.db_lock import connect_write
+    from substrate.companions.evidence_index import (
+        init_evidence_index_schema,
+        mark_triggers_seen,
+        seen_trigger_ids,
+    )
+
+    with connect_write(env["db"], purpose="test/seen-triggers") as con:
+        init_evidence_index_schema(con)
+        mark_triggers_seen(con, "owner-a", ["evt-1"], _time.time().__str__())
+        assert seen_trigger_ids(con, owner_user_id="owner-a") == {"evt-1"}
+        assert seen_trigger_ids(con, owner_user_id="owner-b") == set()
+
+
+def test_diligence_watermark_is_owner_scoped_with_legacy_fallback(env) -> None:
+    import json as _json
+
+    from runtime.db_lock import connect_write
+    from substrate.companions.evidence_index import (
+        init_evidence_index_schema,
+        watcher_state_set,
+    )
+    from substrate.companions.watcher import _diligence_watermark_key, _prior_watermark
+
+    legacy = _json.dumps({"f1": "open"})
+    with connect_write(env["db"], purpose="test/watermark-scoping") as con:
+        init_evidence_index_schema(con)
+        watcher_state_set(con, "diligence_flag_statuses", legacy)
+        # No owner key yet → the legacy single-operator value serves.
+        assert _prior_watermark(con, "owner-a") == {"f1": "open"}
+        assert _prior_watermark(con, "owner-b") == {"f1": "open"}
+        # Once an owner's key exists it wins, and other owners are untouched.
+        watcher_state_set(
+            con, _diligence_watermark_key("owner-a"), _json.dumps({"f1": "closed"})
+        )
+        assert _prior_watermark(con, "owner-a") == {"f1": "closed"}
+        assert _prior_watermark(con, "owner-b") == {"f1": "open"}

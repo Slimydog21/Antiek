@@ -85,7 +85,31 @@ TRIGGER_ACTIONS = frozenset(
     }
 )
 
-_DILIGENCE_WATERMARK_KEY = "diligence_flag_statuses"
+#: The diligence watermark is OWNER-SCOPED (a second owner's watcher must
+#: neither read nor overwrite another owner's prior statuses). The un-suffixed
+#: legacy key is the single-operator-era value, read as a migration fallback.
+_LEGACY_DILIGENCE_WATERMARK_KEY = "diligence_flag_statuses"
+
+
+def _diligence_watermark_key(owner_user_id: str) -> str:
+    return f"diligence_flag_statuses:{owner_user_id}"
+
+
+def _prior_watermark(con: Any, owner_user_id: str) -> dict[str, str]:
+    """The owner's prior diligence statuses — the owner key first, the
+    legacy single-operator key as the one-time migration fallback."""
+    raw = watcher_state_get(con, _diligence_watermark_key(owner_user_id))
+    if raw is None:
+        raw = watcher_state_get(con, _LEGACY_DILIGENCE_WATERMARK_KEY)
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(k): str(v) for k, v in parsed.items()}
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,7 +136,7 @@ def scan_for_triggers(
     watermark_changed) — the caller writes the watermark ONLY when it
     changed (idle scans write nothing — the constant-checkpoint
     fragmentation lesson, app.py:7785-7790)."""
-    seen = seen_trigger_ids(con)
+    seen = seen_trigger_ids(con, owner_user_id=owner_user_id)
     triggers: list[Trigger] = []
     for iid in discover_investigations(events_dir):
         try:
@@ -142,15 +166,7 @@ def scan_for_triggers(
     # FIRST SIGHTING primes the watermark WITHOUT triggering — a transition
     # needs a prior state, and a fresh watcher must not rebuild the world.
     new_diligence: dict[str, str] = {}
-    prior_raw = watcher_state_get(con, _DILIGENCE_WATERMARK_KEY)
-    prior: dict[str, str] = {}
-    if prior_raw:
-        try:
-            parsed = json.loads(prior_raw)
-            if isinstance(parsed, dict):
-                prior = {str(k): str(v) for k, v in parsed.items()}
-        except json.JSONDecodeError:
-            prior = {}
+    prior: dict[str, str] = _prior_watermark(con, owner_user_id)
     if diligence_table_exists(con):
         for fid, status, doc_id in con.execute(
             "SELECT flag_id, status, source_document_id FROM diligence_queue "
@@ -247,7 +263,7 @@ def run_trigger_scan(
         # is written at all (idle scans never churn the DB file).
         if watermark_changed:
             with connect_write(db_path, purpose="companions/watcher-watermark") as con:
-                watcher_state_set(con, _DILIGENCE_WATERMARK_KEY, json.dumps(diligence_map))
+                watcher_state_set(con, _diligence_watermark_key(owner_user_id), json.dumps(diligence_map))
         return []
 
     # Coalesce: one rebuild per document scope, ALL its trigger ids.
@@ -333,8 +349,10 @@ def run_trigger_scan(
     with connect_write(db_path, purpose="companions/watcher-bookkeeping") as con:
         for receipt in receipts:
             record_receipt(con, receipt)
-        mark_triggers_seen(con, consumed_ids, datetime.now(UTC).isoformat())
-        watcher_state_set(con, _DILIGENCE_WATERMARK_KEY, json.dumps(diligence_map))
+        mark_triggers_seen(
+            con, owner_user_id, consumed_ids, datetime.now(UTC).isoformat()
+        )
+        watcher_state_set(con, _diligence_watermark_key(owner_user_id), json.dumps(diligence_map))
     return receipts
 
 
