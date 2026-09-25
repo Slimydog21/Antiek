@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import tarfile
 from pathlib import Path
@@ -242,6 +243,26 @@ def test_malformed_native_database_refuses_and_cleans(tmp_path: Path) -> None:
     with pytest.raises(RestoreRefused, match="^NATIVE_OPEN_OR_OBSERVATION_FAILED$") as raised:
         _verify(archive, expected, scratch)
     assert raised.value.__cause__ is None
+    assert list(scratch.iterdir()) == []
+
+
+def test_native_member_inode_swap_during_open_refuses(tmp_path: Path, monkeypatch) -> None:
+    from tools.deploy import backup_native_restore_verify as native_verify
+
+    archive, expected, _, _ = _closed_fixture(tmp_path)
+    original_open = native_verify._observe_native
+
+    def swap_then_open(path: Path, *, scratch: Path, limits: ObservationLimits):
+        replacement = path.with_name("replacement.duckdb")
+        shutil.copyfile(path, replacement)
+        os.replace(replacement, path)
+        return original_open(path, scratch=scratch, limits=limits)
+
+    monkeypatch.setattr(native_verify, "_observe_native", swap_then_open)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    with pytest.raises(RestoreRefused, match="^NATIVE_FILE_MISMATCH$"):
+        _verify(archive, expected, scratch)
     assert list(scratch.iterdir()) == []
 
 
