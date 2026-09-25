@@ -158,17 +158,60 @@
       tags: [code, systemd]
 
     # ── 2. Refresh dependencies ──────────────────────────────────────────
-    # `pip install -e` is fast when nothing changed (just re-reads
-    # pyproject.toml and the existing egg-info), so running it
-    # unconditionally is fine.
-    - name: refresh editable install + extras
+    # THE LOCK IS THE AUTHORITY (the 2026-09-25 drift finding): the live
+    # venv ran pillow 12.2.0 for months while uv.lock pinned 12.3.0 because
+    # `pip install -e` never reads the lock — a satisfied `>=` range leaves
+    # the installed version untouched. Production therefore installs the
+    # LOCK'S EXACT PINS first, then the editable package itself with
+    # --no-deps so pip cannot re-resolve around them.
+    - name: ensure uv (the lock's reader) exists in the service venv
       ansible.builtin.pip:
-        # docs: firecrawl-anydoc binding (Office/ODF/RTF/CSV ingest); pdf also
-        # carries pypdfium2 (DeepSeek-OCR-2 scanned-PDF rasterization);
-        # turbopuffer_shadow: SERVABLE hybrid SDK for /health hybrid_ready.
-        name: "{{ antiek_install_dir }}[pdf,urls,embedding,docs,turbopuffer_shadow]"
-        editable: true
+        name: uv
         virtualenv: "{{ antiek_install_dir }}/.venv"
+      become_user: "{{ antiek_user }}"
+      tags: [code]
+
+    - name: export the lock's exact pins for production
+      ansible.builtin.command:
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/uv"
+          - export
+          - --frozen
+          - --no-hashes
+          - --no-editable
+          - --extra
+          - pdf
+          - --extra
+          - urls
+          - --extra
+          - embedding
+          - --extra
+          - docs
+          - --extra
+          - turbopuffer_shadow
+          - --output-file
+          - "{{ antiek_install_dir }}/requirements-lock.txt"
+        chdir: "{{ antiek_install_dir }}"
+      become_user: "{{ antiek_user }}"
+      register: antiek_lock_export
+      changed_when: false
+      tags: [code]
+
+    - name: install the lock's exact pins
+      ansible.builtin.pip:
+        requirements: "{{ antiek_install_dir }}/requirements-lock.txt"
+        virtualenv: "{{ antiek_install_dir }}/.venv"
+      become_user: "{{ antiek_user }}"
+      tags: [code]
+
+    - name: refresh the editable install without re-resolving deps
+      ansible.builtin.command:
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/pip"
+          - install
+          - --no-deps
+          - --editable
+          - "{{ antiek_install_dir }}[pdf,urls,embedding,docs,turbopuffer_shadow]"
       become_user: "{{ antiek_user }}"
       tags: [code]
 
