@@ -559,12 +559,15 @@ def run_bulk_sync(
          — a crash mid-bulk or mid-OAI-tail never writes the across-run
          checkpoint (the load-bearing
          ``test_crash_mid_harvest_does_not_advance_high_water`` invariant).
-         The OAI mid-harvest cursor still covers an interrupted OAI tail.
+         A retry replays the bulk and its OAI tail from the computed date;
+         idempotent arxiv_id upserts cover already-persisted records.
 
     ``bulk_snapshot_path`` must already exist (the CLI's ``ensure_bulk_snapshot``
     / ``--bulk-snapshot`` resolves it before calling). NO network is opened to
     arXiv hosts on the bulk half; the OAI tail reuses the harvester's governed
-    path.
+    path. ``resume`` is retained for the caller shared with pure OAI; bulk
+    runs always replay their tail from the computed date because the saved
+    OAI token does not identify which window created it.
     """
     checkpoint = read_checkpoint(sync_state_path)
     if mode == "incremental":
@@ -577,10 +580,10 @@ def run_bulk_sync(
         )
 
     at = harvested_at or datetime.now(UTC)
-    # Seed from any interrupted OAI mid-harvest cursor (same as run_sync) so a
-    # post-crash resume of the OAI tail stays monotonic with what was consumed.
-    seed_max = harvester.persisted_max_datestamp() if resume else None
-    high_water: dict[str, str | None] = {"max_datestamp": seed_max}
+    # A saved OAI token has no window identity. It may belong to a pure-OAI
+    # crawl from years before this snapshot; its datestamp must not seed the
+    # bulk result. The bulk and tail are both replayed on an interrupted run.
+    high_water: dict[str, str | None] = {"max_datestamp": None}
     persist_tally = {"inserted": 0, "updated": 0, "skipped_deleted": 0}
 
     resolved_db = ensure_initialized(db_path or default_db_path())
@@ -615,8 +618,13 @@ def run_bulk_sync(
         # If an until_date was set and the bulk already reached it, skip OAI.
         if until_date is not None and oai_from is not None and oai_from >= until_date:
             return
+        # A resumptionToken overrides from/until in OAI-PMH. Always start the
+        # bulk tail at this run's computed window, even when a prior pure-OAI
+        # harvest or interrupted tail left an opaque token behind. On retry,
+        # replaying from this date also recovers the maximum datestamp seen
+        # before a crash without trusting a token from another window.
         yield from harvester.harvest(
-            from_date=oai_from, until_date=until_date, resume=resume
+            from_date=oai_from, until_date=until_date, resume=False
         )
 
     batch_size = resolve_persist_batch_size(persist_batch_size)

@@ -460,6 +460,124 @@ def test_bulk_then_oai_tail_merges_newer_records(tmp_path):
     }
 
 
+def test_bulk_tail_ignores_unrelated_oai_cursor_and_its_datestamp(tmp_path):
+    """An older pure-OAI token cannot replace the bulk tail's from window."""
+    clock = _FakeClock()
+    sync_path = str(tmp_path / "sync.json")
+    snap = _write_snapshot(
+        tmp_path / "snap.json",
+        [_bulk_record("bulk", update_date="2024-01-10")],
+    )
+    (tmp_path / "harvest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "resumption_token": "OLD-2005-CRAWL",
+                "last_datestamp": "2025-01-01",
+                "skip_count": 2005,
+            }
+        ),
+        encoding="utf-8",
+    )
+    seen_urls: list[str] = []
+
+    def oai_handler(req: httpx.Request) -> httpx.Response:
+        seen_urls.append(str(req.url))
+        return httpx.Response(
+            200,
+            content=_oai_page(_oai_record("tail", "2024-01-20", _CC_BY)).encode(),
+        )
+
+    result = run_bulk_sync(
+        harvester=_harvester(tmp_path, clock, oai_handler),
+        mode="backfill",
+        sync_state_path=sync_path,
+        bulk_snapshot_path=snap,
+        harvested_at=_AT,
+        resume=True,
+    )
+
+    assert len(seen_urls) == 1
+    assert "from=2024-01-10" in seen_urls[0]
+    assert "resumptionToken" not in seen_urls[0]
+    assert result.census.total == 2
+    assert result.new_datestamp == "2024-01-20"
+    assert read_checkpoint(sync_path).last_successful_datestamp == "2024-01-20"
+    assert {row[0] for row in _rows(tmp_path)} == {
+        arxiv_doc_id("bulk"),
+        arxiv_doc_id("tail"),
+    }
+    assert not (tmp_path / "harvest.json").exists()
+
+
+def test_bulk_tail_retry_replays_window_after_partial_oai_page(tmp_path):
+    """A crash leaves the sync mark alone; retry replays from bulk max."""
+    clock = _FakeClock()
+    sync_path = str(tmp_path / "sync.json")
+    write_checkpoint(sync_path, SyncCheckpoint(last_successful_datestamp="2023-12-31"))
+    snap = _write_snapshot(
+        tmp_path / "snap.json",
+        [_bulk_record("bulk", update_date="2024-01-10")],
+    )
+    seen_urls: list[str] = []
+    fail_second_page = True
+
+    class _Interrupted(RuntimeError):
+        pass
+
+    def oai_handler(req: httpx.Request) -> httpx.Response:
+        nonlocal fail_second_page
+        url = str(req.url)
+        seen_urls.append(url)
+        if "resumptionToken=TAIL-PAGE-2" in url:
+            if fail_second_page:
+                fail_second_page = False
+                raise _Interrupted("second page unavailable")
+            return httpx.Response(
+                200,
+                content=_oai_page(_oai_record("tail2", "2024-01-20", _CC_BY)).encode(),
+            )
+        assert "from=2024-01-10" in url
+        return httpx.Response(
+            200,
+            content=_oai_page(
+                _oai_record("tail1", "2024-01-15", _CC_BY), token="TAIL-PAGE-2"
+            ).encode(),
+        )
+
+    harvester = _harvester(tmp_path, clock, oai_handler)
+    with pytest.raises(_Interrupted):
+        run_bulk_sync(
+            harvester=harvester,
+            mode="incremental",
+            sync_state_path=sync_path,
+            bulk_snapshot_path=snap,
+            harvested_at=_AT,
+            resume=True,
+            persist_batch_size=1,
+            lock_yield_seconds=0,
+        )
+    assert read_checkpoint(sync_path).last_successful_datestamp == "2023-12-31"
+    assert json.loads((tmp_path / "harvest.json").read_text())["resumption_token"] == "TAIL-PAGE-2"
+
+    result = run_bulk_sync(
+        harvester=harvester,
+        mode="incremental",
+        sync_state_path=sync_path,
+        bulk_snapshot_path=snap,
+        harvested_at=_AT,
+        resume=True,
+        persist_batch_size=1,
+        lock_yield_seconds=0,
+    )
+    assert sum("from=2024-01-10" in url for url in seen_urls) == 2
+    assert result.new_datestamp == "2024-01-20"
+    assert result.census.total == 3
+    assert read_checkpoint(sync_path).last_successful_datestamp == "2024-01-20"
+    assert len(_rows(tmp_path)) == 3
+    assert not (tmp_path / "harvest.json").exists()
+
+
 def test_bulk_crash_mid_stream_does_not_advance_high_water(tmp_path):
     """A crash while streaming the bulk snapshot must NOT write the across-run
     high-water mark — same invariant as
