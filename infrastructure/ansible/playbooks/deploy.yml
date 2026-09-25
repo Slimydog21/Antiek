@@ -158,27 +158,33 @@
       tags: [code, systemd]
 
     # ── 2. Refresh dependencies ──────────────────────────────────────────
-    # THE LOCK IS THE AUTHORITY (the 2026-09-25 drift finding): the live
-    # venv ran pillow 12.2.0 for months while uv.lock pinned 12.3.0 because
-    # `pip install -e` never reads the lock — a satisfied `>=` range leaves
-    # the installed version untouched. Production therefore installs the
-    # LOCK'S EXACT PINS first, then the editable package itself with
-    # --no-deps so pip cannot re-resolve around them.
-    - name: ensure uv (the lock's reader) exists in the service venv
+    # THE LOCK IS THE AUTHORITY, EXACTLY (the 2026-09-25 drift finding,
+    # amended per the glmf collision ruling): the live venv ran pillow
+    # 12.2.0 for months while uv.lock pinned 12.3.0 because `pip install
+    # -e` never reads the lock — a satisfied `>=` range leaves the installed
+    # version untouched. An EXACT `uv sync --frozen` both installs the
+    # lock's pins (upgrades included) and REMOVES extraneous packages
+    # (verified by dry-run: orphaned yt-dlp and the bootstrap uv itself are
+    # uninstalled), and it installs the project editable as part of the
+    # sync — no pip re-resolution anywhere.
+    - name: bootstrap the pinned lock reader into the service venv
       ansible.builtin.pip:
-        name: uv
+        # Pinned so export/sync behavior is reproducible across deploys;
+        # the exact sync removes it again after use (it is not in the lock).
+        name: uv==0.11.14
         virtualenv: "{{ antiek_install_dir }}/.venv"
       become_user: "{{ antiek_user }}"
       tags: [code]
 
-    - name: export the lock's exact pins for production
+    - name: exact-sync the service venv from the gated SHA's lock
       ansible.builtin.command:
+        # uv sync targets <project>/.venv — the service venv itself.
         argv:
           - "{{ antiek_install_dir }}/.venv/bin/uv"
-          - export
+          - sync
           - --frozen
-          - --no-hashes
-          - --no-editable
+          - --no-dev
+          - --no-default-groups
           - --extra
           - pdf
           - --extra
@@ -189,29 +195,7 @@
           - docs
           - --extra
           - turbopuffer_shadow
-          - --output-file
-          - "{{ antiek_install_dir }}/requirements-lock.txt"
         chdir: "{{ antiek_install_dir }}"
-      become_user: "{{ antiek_user }}"
-      register: antiek_lock_export
-      changed_when: false
-      tags: [code]
-
-    - name: install the lock's exact pins
-      ansible.builtin.pip:
-        requirements: "{{ antiek_install_dir }}/requirements-lock.txt"
-        virtualenv: "{{ antiek_install_dir }}/.venv"
-      become_user: "{{ antiek_user }}"
-      tags: [code]
-
-    - name: refresh the editable install without re-resolving deps
-      ansible.builtin.command:
-        argv:
-          - "{{ antiek_install_dir }}/.venv/bin/pip"
-          - install
-          - --no-deps
-          - --editable
-          - "{{ antiek_install_dir }}[pdf,urls,embedding,docs,turbopuffer_shadow]"
       become_user: "{{ antiek_user }}"
       tags: [code]
 
