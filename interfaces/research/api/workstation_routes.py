@@ -322,7 +322,12 @@ def register_workstation_routes(app: FastAPI) -> None:
                 tabs=tab_rows,
                 expected_revision=body.revision,
             )
-            assert row is not None  # the checks above landed it
+            if row is None:  # stale-or-missing despite the pre-check — the
+                # invariant survives `python -O`; never a silent no-op write
+                raise HTTPException(
+                    status_code=409,
+                    detail="workstation_stale_revision: the set moved — re-read and retry",
+                )
             tabs = con.execute(
                 "SELECT tab_id, workstation_id, position, surface_kind, "
                 "surface_payload_json, created_at, updated_at FROM workstation_tabs "

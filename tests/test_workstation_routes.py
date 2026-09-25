@@ -411,3 +411,31 @@ def test_tab_tree_rejects_duplicate_tab_id_and_dangling_active(api_env) -> None:
 
     # Nothing persisted by either refusal.
     assert client.get(f"/workstations/{ws_id}/tab-tree").json()["version"] == 0
+
+
+# ── Review hardening W2 (2026-09-25): the replace invariant must survive
+# `python -O`. A store returning None (stale-or-missing despite the route's
+# in-transaction pre-check, monkeypatched here) is an honest 409, never a
+# silently-skipped check. ─────────────────────────────────────────────────
+
+
+def test_replace_survives_optimized_python_and_reports_stale(api_env, monkeypatch) -> None:
+    from substrate.workstations.store import WorkstationStore
+
+    client = _client()
+    created = client.post("/workstations", json={"name": "Research"}).json()
+    ws_id, revision = created["workstation_id"], created["revision"]
+    monkeypatch.setattr(
+        WorkstationStore, "replace_workstation", lambda self, con, **kwargs: None
+    )
+    stale = client.put(
+        f"/workstations/{ws_id}",
+        json={
+            "name": "Renamed",
+            "color_token": "sun",
+            "tabs": [],
+            "revision": revision,
+        },
+    )
+    assert stale.status_code == 409
+    assert "workstation_stale_revision" in stale.json()["detail"]
