@@ -171,7 +171,7 @@
       ansible.builtin.pip:
         # Pinned so export/sync behavior is reproducible across deploys;
         # the exact sync removes it again after use (it is not in the lock).
-        name: uv==0.11.14
+        name: uv==0.11.15
         virtualenv: "{{ antiek_install_dir }}/.venv"
       become_user: "{{ antiek_user }}"
       tags: [code]
