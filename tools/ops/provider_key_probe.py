@@ -1,0 +1,145 @@
+"""Make one bounded, direct authenticated probe of a provider key candidate.
+
+This is an operator diagnostic. It does not inspect the running service's
+environment or BYOK store, and therefore cannot verify the key configured in
+the running service.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import stat
+import sys
+from pathlib import Path
+from typing import TextIO
+
+from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
+
+
+_TARGETS = {
+    "zai": {
+        "key_name": "Z_AI_API_KEY",
+        "default_url": "https://api.z.ai/api/paas/v4",
+        "url_env": "ANTIEK_ZAI_BASE_URL",
+        "model": "glm-5.2",
+        "path": "/chat/completions",
+        "extra_body": {"thinking": {"type": "disabled"}},
+    },
+    "deepseek": {
+        "key_name": "DEEPSEEK_API_KEY",
+        "default_url": "https://api.deepseek.com",
+        "url_env": "ANTIEK_DEEPSEEK_BASE_URL",
+        "model": "deepseek-v4-pro",
+        "path": "/v1/chat/completions",
+        "extra_body": None,
+    },
+    "xiaomi": {
+        "key_name": "XIAOMI_API_KEY",
+        "default_url": "https://api.mimo.xiaomi.com/v1",
+        "url_env": "ANTIEK_XIAOMI_BASE_URL",
+        "model": "mimo-v2.5-pro",
+        "path": "/chat/completions",
+        "extra_body": None,
+    },
+}
+_KEY_VALUE = re.compile(r"^[A-Za-z0-9_+./=-]+$")
+
+
+class ProbeInputError(ValueError):
+    """A safe-to-display input error that never embeds file contents."""
+
+
+def _read_candidate_key(path: Path, expected_name: str) -> str:
+    """Read one exact KEY=value assignment without sourcing shell syntax."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        raise ProbeInputError("cannot open key file") from None
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ProbeInputError("key file must be a regular file")
+        if info.st_uid not in (0, os.getuid()) or info.st_mode & 0o077:
+            raise ProbeInputError("key file must be owned by root or this user and have mode 0600")
+        if info.st_size > 4096:
+            raise ProbeInputError("key file is too large")
+        with os.fdopen(fd, "r", encoding="ascii", newline="") as stream:
+            fd = -1
+            contents = stream.read(4097)
+    except (OSError, UnicodeError):
+        raise ProbeInputError("key file is unreadable or not plain ASCII") from None
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+    if len(contents) > 4096 or "\r" in contents:
+        raise ProbeInputError("key file has invalid formatting")
+    lines = contents.splitlines()
+    if len(lines) != 1:
+        raise ProbeInputError("key file must contain exactly one KEY=value line")
+    name, sep, value = lines[0].partition("=")
+    if not sep or name != expected_name or not value or not _KEY_VALUE.fullmatch(value):
+        raise ProbeInputError(f"key file must contain one valid {expected_name}=value assignment")
+    return value
+
+
+def _make_provider(name: str, key: str) -> OpenAICompatProvider:
+    target = _TARGETS[name]
+    base_url = os.environ.get(target["url_env"], target["default_url"])
+    return OpenAICompatProvider(
+        name=name,
+        base_url=base_url,
+        api_key=key,
+        chat_completions_path=target["path"],
+        extra_body=target["extra_body"],
+        expose_error_body=False,
+        timeout_s=10.0,
+    )
+
+
+def _probe(name: str, key: str, client=None) -> None:
+    target = _TARGETS[name]
+    provider = _make_provider(name, key)
+    if client is not None:
+        provider._client = client
+        provider._owns_client = False
+    try:
+        # No router or fallback chain is involved. The prompt and response
+        # allowance are deliberately tiny; response content is never printed.
+        provider.call(
+            model=target["model"],
+            prompt="Reply with OK.",
+            max_tokens=8,
+            temperature=0,
+        )
+    finally:
+        provider.close()
+
+
+def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout, stderr: TextIO = sys.stderr) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("provider", choices=sorted(_TARGETS))
+    parser.add_argument("--key-file", required=True, type=Path,
+                        help="0600 file containing only the selected provider's KEY=value assignment")
+    args = parser.parse_args(argv)
+    key_name = _TARGETS[args.provider]["key_name"]
+    try:
+        key = _read_candidate_key(args.key_file, key_name)
+    except ProbeInputError as exc:
+        print(f"Input error: {exc}", file=stderr)
+        return 2
+    try:
+        _probe(args.provider, key)
+    except Exception:
+        print(f"Probe failed for {args.provider}; upstream details were suppressed.", file=stderr)
+        return 1
+    print(f"Probe succeeded for {args.provider} using a candidate key read from the supplied file.", file=stdout)
+    print("This does not verify the running service's environment or BYOK key.", file=stdout)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
