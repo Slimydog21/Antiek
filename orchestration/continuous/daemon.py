@@ -106,7 +106,13 @@ class FlagSource(Protocol):
         ...
 
     def mark_spawned(
-        self, *, owner_user_id: str, flag_id: str, investigation_id: str
+        self, *, owner_user_id: str, flag_id: str, investigation_id: str,
+        receipt_json: str | None = None,
+    ) -> None:
+        ...
+
+    def record_skip(
+        self, *, owner_user_id: str, flag_id: str, receipt_json: str
     ) -> None:
         ...
 
@@ -137,7 +143,8 @@ class DbFlagSource:
             con.close()
 
     def mark_spawned(
-        self, *, owner_user_id: str, flag_id: str, investigation_id: str
+        self, *, owner_user_id: str, flag_id: str, investigation_id: str,
+        receipt_json: str | None = None,
     ) -> None:
         from runtime.db_lock import connect_write
         from substrate.diligence.store import DiligenceStore
@@ -150,6 +157,23 @@ class DbFlagSource:
                 owner_user_id=owner_user_id,
                 flag_id=flag_id,
                 spawned_investigation_id=investigation_id,
+                receipt_json=receipt_json,
+            )
+
+    def record_skip(
+        self, *, owner_user_id: str, flag_id: str, receipt_json: str
+    ) -> None:
+        from runtime.db_lock import connect_write
+        from substrate.diligence.store import DiligenceStore
+
+        with connect_write(
+            self._db_path, purpose="diligence/daemon-record-skip"
+        ) as con:
+            DiligenceStore().record_skip(
+                con,
+                owner_user_id=owner_user_id,
+                flag_id=flag_id,
+                receipt_json=receipt_json,
             )
 
 
@@ -418,11 +442,29 @@ def run_one_iteration(
         inflight_questions = set()
 
     # (1) OWNER FLAGS, oldest first.
+    def _skip_receipt(claim: Any, reason: str, detail: str) -> None:
+        """The daemon's bookkeeping (SPR-03): the honest skip reason on the
+        flag row, in the source's OWN bounded write scope."""
+        assert flag_source is not None  # the loop below only runs with one
+        flag_source.record_skip(
+            owner_user_id=claim.flag.owner_user_id,
+            flag_id=claim.flag.flag_id,
+            receipt_json=json.dumps(
+                {
+                    "kind": "skipped",
+                    "reason": reason,
+                    "detail": detail,
+                    "iteration": state.iterations_run,
+                }
+            ),
+        )
+
     for claim in flags:
         if spawn_slots <= 0:
             skipped["iteration_spawn_cap"] = skipped.get("iteration_spawn_cap", 0) + 1
             break
         state.spawns_attempted += 1
+
         question = claim.question
         if question is None or not question.strip():
             # The flagged node vanished between flag and spawn — honest
@@ -430,13 +472,20 @@ def run_one_iteration(
             skipped["flag_ungrounded_at_spawn"] = (
                 skipped.get("flag_ungrounded_at_spawn", 0) + 1
             )
+            _skip_receipt(claim, "ungrounded", "the flagged note is gone")
             continue
         if daemon_inflight >= config.max_concurrent_daemon_investigations:
             skipped["concurrency_cap"] = skipped.get("concurrency_cap", 0) + 1
+            _skip_receipt(
+                claim,
+                "concurrency",
+                f"the loop is at capacity ({config.max_concurrent_daemon_investigations} in flight)",
+            )
             break
         question_key = normalize_gap_description(question)
         if question_key in inflight_questions:
             skipped["in_flight_question"] = skipped.get("in_flight_question", 0) + 1
+            _skip_receipt(claim, "in_flight", "this question is already running")
             continue
 
         try:
@@ -445,6 +494,7 @@ def run_one_iteration(
             halted_by_budget = True
             reason = e.args[0] if e.args else "budget_exceeded"
             skipped[reason] = skipped.get(reason, 0) + 1
+            _skip_receipt(claim, "budget", str(reason))
             break
 
         tid = topic_id_for(question)
@@ -457,6 +507,7 @@ def run_one_iteration(
                 skipped.get("topic_depth_exceeded", 0) + 1
             )
             budget.record_actual(-config.expected_cost_per_spawn_usd, now=now)
+            _skip_receipt(claim, "topic_depth", "this topic reached its depth cap")
             continue
 
         # A flag spawns as a CHILD of its source investigation when present
@@ -475,12 +526,27 @@ def run_one_iteration(
             budget.record_actual(-config.expected_cost_per_spawn_usd, now=now)
             continue
 
-        # The write-back — status → spawned + the investigation id — in the
-        # source's OWN bounded write scope (never held across the spawn).
+        # The write-back — status → spawned + the investigation id + the
+        # SPAWN RECEIPT (SPR-03: the reserve amount + the caps checked) — in
+        # the source's OWN bounded write scope (never held across the spawn).
         flag_source.mark_spawned(  # type: ignore[union-attr]
             owner_user_id=claim.flag.owner_user_id,
             flag_id=claim.flag.flag_id,
             investigation_id=new_iid,
+            receipt_json=json.dumps(
+                {
+                    "kind": "spawned",
+                    "reserve_usd": config.expected_cost_per_spawn_usd,
+                    "caps_checked": [
+                        "per_spawn_reserve",
+                        "daily",
+                        "iteration",
+                        "concurrency",
+                        "topic_depth",
+                    ],
+                    "iteration": state.iterations_run,
+                }
+            ),
         )
         state.spawns_succeeded += 1
         flags_spawned += 1

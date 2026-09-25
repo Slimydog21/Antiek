@@ -67,6 +67,12 @@ CREATE TABLE IF NOT EXISTS diligence_queue (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- SPR-03 (the loop closed): the receipt column — WHY the row is where it
+-- is (the spawn iteration's reserve + caps checked, or the honest skip
+-- reason). Additive; idempotent via IF NOT EXISTS; JSON text, refs only.
+ALTER TABLE diligence_queue
+  ADD COLUMN IF NOT EXISTS receipt_json VARCHAR;
+
 CREATE INDEX IF NOT EXISTS idx_diligence_queue_owner
   ON diligence_queue(owner_user_id, status, created_at);
 """

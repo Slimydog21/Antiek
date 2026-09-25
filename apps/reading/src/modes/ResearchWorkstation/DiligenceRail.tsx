@@ -25,7 +25,7 @@ import {
   getQueue,
   notifyDiligenceChanged,
 } from "../../api/diligence";
-import type { DiligenceFlag } from "../../api/diligence";
+import type { DiligenceFlag, DiligenceQueueSummary } from "../../api/diligence";
 import { ApiError } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { kindLabel } from "../../shared/flagCopy";
@@ -33,7 +33,7 @@ import { LemonTag } from "../../components/lemon/LemonTag";
 
 type LoadState =
   | { kind: "loading" }
-  | { kind: "ready"; flags: DiligenceFlag[] }
+  | { kind: "ready"; flags: DiligenceFlag[]; summary: DiligenceQueueSummary | null }
   | { kind: "error"; reason: string | null };
 
 export default function DiligenceRail() {
@@ -42,7 +42,7 @@ export default function DiligenceRail() {
   const load = useCallback(async () => {
     try {
       const resp = await getQueue();
-      setState({ kind: "ready", flags: resp.flags });
+      setState({ kind: "ready", flags: resp.flags, summary: resp.summary });
     } catch (e) {
       setState({ kind: "error", reason: e instanceof ApiError ? e.body || null : null });
     }
@@ -72,6 +72,22 @@ export default function DiligenceRail() {
           flags the loop will pick up
         </span>
       </header>
+
+      {/* SPR-03: the calm summary line — the numbers come from the budget
+          sidecar + the event-log projection, never new counters. */}
+      {state.kind === "ready" && state.summary && (
+        <p
+          className="mb-3 font-mono text-xs text-shadow-1 dark:text-moonlight"
+          data-diligence-summary
+        >
+          {state.summary.diligenced_this_week}{" "}
+          {state.summary.diligenced_this_week === 1
+            ? "flag diligenced"
+            : "flags diligenced"}{" "}
+          this week · ${state.summary.spent_usd.toFixed(2)} of $
+          {state.summary.cap_usd.toFixed(2)} daily cap
+        </p>
+      )}
 
       {state.kind === "loading" && (
         <p className="text-sm italic text-shadow-1 dark:text-moonlight" role="status">
@@ -117,48 +133,76 @@ function FlagRow({ flag }: { flag: DiligenceFlag }) {
   return (
     <li
       data-diligence-row={flag.status}
-      className="flex items-baseline gap-2 text-xs text-shadow-1 dark:text-moonlight"
+      className="text-xs text-shadow-1 dark:text-moonlight"
     >
-      <LemonTag colour={flag.status === "dismissed" ? "muted" : "sun"} className="text-xxs">
-        {kindLabel(flag.kind)}
-      </LemonTag>
-      {flag.note ? (
-        <span className="min-w-0 truncate font-serif text-ink dark:text-bright" title={flag.note}>
-          {flag.note}
-        </span>
-      ) : (
-        <span className="font-mono italic">flagged for the loop</span>
-      )}
-      <span className="ml-auto flex shrink-0 items-center gap-2 font-mono" data-diligence-row-status>
-        {flag.status === "queued" && (
-          <>
-            <span>queued — the loop will pick it up</span>
-            <button
-              type="button"
-              onClick={() => void dismiss()}
-              disabled={busy}
-              className="underline decoration-dotted underline-offset-2 hover:text-ink disabled:opacity-50 dark:hover:text-bright"
-              title="Dismiss this flag (the object itself is untouched)"
-            >
-              {busy ? "dismissing…" : "dismiss"}
-            </button>
-          </>
+      <div className="flex items-baseline gap-2">
+        <LemonTag colour={flag.status === "dismissed" ? "muted" : "sun"} className="text-xxs">
+          {kindLabel(flag.kind)}
+        </LemonTag>
+        {flag.note ? (
+          <span className="min-w-0 truncate font-serif text-ink dark:text-bright" title={flag.note}>
+            {flag.note}
+          </span>
+        ) : (
+          <span className="font-mono italic">flagged for the loop</span>
         )}
-        {flag.status === "spawned" &&
-          (flag.spawned_investigation_id ? (
-            <Link
-              to={`/inv/${encodeURIComponent(flag.spawned_investigation_id)}`}
-              className="text-sun-deep underline-offset-2 hover:underline dark:text-sun"
-              data-diligence-spawned-link
-            >
-              being diligenced →
-            </Link>
-          ) : (
-            <span>being diligenced</span>
-          ))}
-        {flag.status === "done" && <span>diligenced</span>}
-        {flag.status === "dismissed" && <span>dismissed</span>}
-      </span>
+        <span className="ml-auto flex shrink-0 items-center gap-2 font-mono" data-diligence-row-status>
+          {flag.status === "queued" && (
+            <>
+              <span>queued — the loop will pick it up</span>
+              <button
+                type="button"
+                onClick={() => void dismiss()}
+                disabled={busy}
+                className="underline decoration-dotted underline-offset-2 hover:text-ink disabled:opacity-50 dark:hover:text-bright"
+                title="Dismiss this flag (the object itself is untouched)"
+              >
+                {busy ? "dismissing…" : "dismiss"}
+              </button>
+            </>
+          )}
+          {flag.status === "spawned" &&
+            (flag.spawned_investigation_id ? (
+              <Link
+                to={`/inv/${encodeURIComponent(flag.spawned_investigation_id)}`}
+                className="text-sun-deep underline-offset-2 hover:underline dark:text-sun"
+                data-diligence-spawned-link
+              >
+                being diligenced →
+              </Link>
+            ) : (
+              <span>being diligenced</span>
+            ))}
+          {flag.status === "done" && (
+            <span>
+              diligenced
+              {flag.outcome === "stopped"
+                ? " — ended stopped"
+                : flag.outcome === "failed"
+                  ? " — failed"
+                  : ""}
+            </span>
+          )}
+          {flag.status === "dismissed" && <span>dismissed</span>}
+        </span>
+      </div>
+      {/* SPR-03: what the daemon did and why — the row's receipt. */}
+      {flag.status === "spawned" && flag.receipt?.kind === "spawned" && (
+        <span
+          className="block font-mono text-xxs text-shadow-2 dark:text-moonlight"
+          data-diligence-receipt
+        >
+          reserved ${flag.receipt.reserve_usd?.toFixed(2)} · caps checked
+        </span>
+      )}
+      {flag.status === "queued" && flag.receipt?.kind === "skipped" && (
+        <span
+          className="block font-mono text-xxs text-shadow-2 dark:text-moonlight"
+          data-diligence-receipt
+        >
+          waiting — {flag.receipt.detail ?? flag.receipt.reason}
+        </span>
+      )}
     </li>
   );
 }

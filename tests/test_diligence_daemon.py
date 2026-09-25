@@ -515,3 +515,98 @@ def test_flagged_concept_flows_through_the_real_emit_path_and_surfaces_with_the_
     child = next(i for i in listing["investigations"] if i["investigation_id"] == child_id)
     assert child["spawned_by_daemon"] is True
     assert child["question"] == "dark matter"
+
+
+# ── SPR-03 proof 2: receipts on real store rows after a real iteration ────
+
+
+def test_spawn_and_skip_receipts_land_on_the_store_rows(isolated_env):
+    """A spawned flag carries the reserve receipt (amount + caps checked); a
+    cap-skipped flag carries the honest skip reason — asserted from the real
+    store rows after a real iteration (the sidecar fabricated so exactly ONE
+    spawn fits under the daily cap)."""
+    home = Path(isolated_env["home"]) / "budgets"
+    home.mkdir(parents=True)
+    stamp = datetime.now(UTC).strftime("%Y-%m-%d")
+    # $4.25 spent: the first $0.50 reserve fits ($4.75 ≤ $5.00), the second
+    # would exceed ($5.25 > $5.00).
+    (home / f"daemon_{stamp}.json").write_text(
+        json.dumps(
+            {"date_stamp": stamp, "spent_usd": 4.25, "spawn_count": 8, "cap_usd": 5.0}
+        )
+    )
+    db = isolated_env["db"]
+    first_id = _seed_flag(db, kind="concept", object_ref="first flag")
+    second_id = _seed_flag(db, kind="concept", object_ref="second flag")
+    spawn, calls = _recording_spawn()
+
+    result = run_one_iteration(
+        state=DaemonState(),
+        config=DaemonConfig(events_dir=isolated_env["events_dir"]),
+        budget=DaemonBudget(daily_cap_usd=5.0),
+        spawn_fn=spawn,
+        flag_source=DbFlagSource(db),
+    )
+
+    assert len(calls) == 1
+    assert result.flags_spawned == 1
+    assert result.halted_by_budget is True
+
+    first = _read_flag(db, first_id)
+    assert first is not None and first.status == "spawned"
+    spawn_receipt = json.loads(first.receipt_json or "")
+    assert spawn_receipt["kind"] == "spawned"
+    assert spawn_receipt["reserve_usd"] == 0.50
+    assert spawn_receipt["caps_checked"] == [
+        "per_spawn_reserve",
+        "daily",
+        "iteration",
+        "concurrency",
+        "topic_depth",
+    ]
+    assert spawn_receipt["iteration"] == 1
+
+    second = _read_flag(db, second_id)
+    assert second is not None and second.status == "queued"  # never spawned
+    skip_receipt = json.loads(second.receipt_json or "")
+    assert skip_receipt["kind"] == "skipped"
+    assert skip_receipt["reason"] == "budget"
+    assert "daily cap exceeded" in skip_receipt["detail"]
+
+
+# ── SPR-03 proof 5: the operator who never flags sees ZERO change ─────────
+
+
+def test_never_flags_parity_suggestions_identical_and_daemon_idle(isolated_env):
+    """Kill switch off + no flags: the iteration is byte-equivalent to
+    today's no-op, and the suggestions surface reads identically before and
+    after (no flag phase runs, nothing is written, nothing is spawned)."""
+    from orchestration.continuous.suggestions import build_suggestions
+
+    ed = isolated_env["events_dir"]
+    for iid in ("inv-a", "inv-b"):
+        _write_evidence_gap(ed, investigation_id=iid, gap="a recurring evidentiary gap")
+
+    before = build_suggestions(events_dir=ed)
+    result = run_one_iteration(
+        state=DaemonState(),
+        config=DaemonConfig(events_dir=ed),
+        budget=DaemonBudget(daily_cap_usd=5.0),
+        spawn_fn=no_op_spawn,
+        flag_source=None,  # the shipped default: the flag phase never runs
+    )
+    after = build_suggestions(events_dir=ed)
+
+    assert result.flags_queued == 0
+    assert result.flags_spawned == 0
+    assert result.spawns_succeeded == 0  # no_op_spawn — the daemon is idle
+    # Parity on the STABLE fields — the score float is time-dependent
+    # (recency decay reads the clock per call); what must not drift is the
+    # set, the order, and the content.
+    def _stable(suggestions):
+        return [
+            (s.key, s.question, s.seen_in_research_count, s.source_investigation_id)
+            for s in suggestions
+        ]
+
+    assert _stable(before) == _stable(after)

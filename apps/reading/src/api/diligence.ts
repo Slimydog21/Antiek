@@ -11,6 +11,18 @@ import { API_BASE, ApiError, apiFetch } from "../lib/api";
 export type DiligenceKind = "concept" | "open_question" | "insight";
 export type DiligenceStatus = "queued" | "spawned" | "dismissed" | "done";
 
+/** The daemon's bookkeeping (SPR-03): WHY the row is where it is. */
+export interface DiligenceReceipt {
+  kind: "spawned" | "skipped";
+  /** kind=spawned: the reserve amount + the caps the iteration checked. */
+  reserve_usd?: number;
+  caps_checked?: string[];
+  /** kind=skipped: the honest skip reason + human detail. */
+  reason?: string;
+  detail?: string;
+  iteration?: number;
+}
+
 export interface DiligenceFlag {
   flag_id: string;
   kind: DiligenceKind;
@@ -18,10 +30,23 @@ export interface DiligenceFlag {
   note: string | null;
   source_investigation_id: string | null;
   source_document_id: string | null;
+  /** The PROJECTED status — a spawned flag whose investigation is terminal
+   *  reads done (the lazy event-log projection, SPR-03). */
   status: DiligenceStatus;
+  /** The honest outcome of a done flag: completed | failed | stopped. */
+  outcome: string | null;
   spawned_investigation_id: string | null;
+  receipt: DiligenceReceipt | null;
   created_at: string;
   updated_at: string;
+}
+
+/** The calm summary line's numbers (sidecar + event log, never new
+ *  counters). Null when the server predates SPR-03. */
+export interface DiligenceQueueSummary {
+  diligenced_this_week: number;
+  spent_usd: number;
+  cap_usd: number;
 }
 
 export interface CreateFlagBody {
@@ -56,16 +81,34 @@ export async function createFlag(
   return { flag: (await resp.json()) as DiligenceFlag, created: resp.status === 201 };
 }
 
-export async function getQueue(): Promise<{ flags: DiligenceFlag[]; count: number }> {
+export async function getQueue(): Promise<{
+  flags: DiligenceFlag[];
+  count: number;
+  summary: DiligenceQueueSummary | null;
+}> {
   const resp = await apiFetch(`${API_BASE}/diligence/queue`);
   await throwIfNotOk(resp, "GET /diligence/queue");
-  const raw = (await resp.json()) as { flags?: unknown; count?: unknown };
+  const raw = (await resp.json()) as {
+    flags?: unknown;
+    count?: unknown;
+    summary?: unknown;
+  };
   // Boundary validation: a malformed body is an honest error state, never
   // a crash rendering a non-row.
   if (!Array.isArray(raw.flags)) {
     throw new ApiError("GET /diligence/queue: malformed response body", 0, JSON.stringify(raw));
   }
-  return { flags: raw.flags as DiligenceFlag[], count: raw.flags.length };
+  const s = raw.summary as Partial<DiligenceQueueSummary> | null | undefined;
+  const summary =
+    s && typeof s.diligenced_this_week === "number" &&
+    typeof s.spent_usd === "number" && typeof s.cap_usd === "number"
+      ? {
+          diligenced_this_week: s.diligenced_this_week,
+          spent_usd: s.spent_usd,
+          cap_usd: s.cap_usd,
+        }
+      : null;
+  return { flags: raw.flags as DiligenceFlag[], count: raw.flags.length, summary };
 }
 
 export async function dismissFlag(flagId: string): Promise<DiligenceFlag> {
