@@ -117,6 +117,7 @@ class Gate:
     owner: str | None     # from the **Owner:** line, if present
     blocks: str | None    # from the **Blocks:** / quick-status, if present
     closure_record: str | None  # docs/decisions/... path, if present
+    standing_duty: bool = False  # closed now, but must stay enforced later.
     impacts: tuple[GateImpact, ...] = ()
 
     @property
@@ -127,6 +128,16 @@ class Gate:
     def is_provisional(self) -> bool:
         """True when the raw status flags a provisional / re-openable closure."""
         return "provision" in self.status_raw.lower()
+
+    @property
+    def requires_standing_operator_duty(self) -> bool:
+        """True for a non-blocking gate whose discipline must never be relaxed.
+
+        G11 is the first example: it is enforced today, but every future
+        training/RL export must re-run the constraint. ``is_closed`` remains the
+        correct "does this gate block activation now?" predicate; this property
+        is the explicit "may its discipline be retired?" predicate."""
+        return self.standing_duty
 
     def blocks_products(self) -> tuple[Product, ...]:
         return tuple(i.product for i in self.impacts)
@@ -311,6 +322,8 @@ def parse_gate_ledger(markdown: str, source_path: str = "(in-memory)") -> GateLe
             )
         status_raw = status_m.group(1).strip()
         status = _classify_status(status_raw)
+        status_low = status_raw.lower()
+        standing_duty = "standing" in status_low or "never relax" in status_low
 
         owner_m = _OWNER_RE.search(body)
         owner = owner_m.group(1).strip() if owner_m else None
@@ -330,6 +343,7 @@ def parse_gate_ledger(markdown: str, source_path: str = "(in-memory)") -> GateLe
                 title=title,
                 status=status,
                 status_raw=status_raw,
+                standing_duty=standing_duty,
                 owner=owner,
                 blocks=blocks,
                 closure_record=closure_record,
