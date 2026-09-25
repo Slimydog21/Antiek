@@ -10,7 +10,7 @@ full protocol surface per master-spec §13.8:
 * resources/read  → prompt-injection envelope (§13.8.3)
 * tools/call search_personal  → real substrate query path
 * tools/call cite_source  → resolves chunk metadata
-* tools/call record_attribution  → records attribution event
+* tools/call record_attribution  → refuses unverified attribution
 
 No new deps; uses subprocess + json.
 """
@@ -41,7 +41,7 @@ def _rpc(method: str, params: dict | None = None, rpc_id: int = 1) -> str:
     })
 
 
-def _read_line(proc: subprocess.Popen, timeout: float = 10.0) -> dict:
+def _read_line(proc: subprocess.Popen, timeout: float = 20.0) -> dict:
     """Read one JSON line from the server's stdout with a timeout."""
     import select
     ready, _, _ = select.select([proc.stdout], [], [], timeout)
@@ -63,6 +63,23 @@ def _send_and_recv(
     proc.stdin.write((_rpc(method, params, rpc_id) + "\n").encode())
     proc.stdin.flush()
     return _read_line(proc)
+
+
+def _run_once(db_path: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["ANTIEK_DUCKDB_PATH"] = str(db_path)
+    env["ANTIEK_MEMORY_OWNER"] = "testuser"
+    env["ANTIEK_HOME"] = str(tmp_path / "home")
+    return subprocess.run(
+        [sys.executable, "-m", "tools.antiek_memory"],
+        input=_rpc("initialize") + "\n",
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+        cwd=str(Path(__file__).resolve().parents[2]),
+        check=False,
+    )
 
 
 # ── fixture setup ────────────────────────────────────────────────────
@@ -129,6 +146,117 @@ def memory_db(tmp_path: Path) -> Path:
                 json.dumps({"text": "Private note content for testing."}),
             ],
         )
+        con.execute(
+            "INSERT INTO notebooks (notebook_id, title, owner_user_id, content_class) "
+            "VALUES ('nb-own', 'Own notebook', 'testuser', 'user_owned')"
+        )
+        con.execute(
+            "INSERT INTO notebook_blocks "
+            "(block_id, notebook_id, block_index, block_type, content_json) "
+            "VALUES ('block-own', 'nb-own', 0, 'note', ?)",
+            [json.dumps({"text": "Own note content"})],
+        )
+        con.execute(
+            "INSERT INTO notebooks (notebook_id, title, owner_user_id, content_class) "
+            "VALUES ('nb-public', 'Released Notebook', 'other-user', 'user_public_contribution')"
+        )
+        con.execute(
+            "INSERT INTO notebook_blocks "
+            "(block_id, notebook_id, block_index, block_type, content_json) "
+            "VALUES ('block-public', 'nb-public', 0, 'note', ?)",
+            [json.dumps({"text": "Released note body"})],
+        )
+        con.execute(
+            "INSERT INTO documents "
+            "(document_id, title, author, source_tier, document_type, owner_user_id, content_class) "
+            "VALUES ('doc-public', 'Public Paper', 'Public Author', 1, 'article', "
+            "'__operator__', 'public_domain')"
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, text) "
+            "VALUES ('chunk-public', 'doc-public', 0, 'Public quantum content')"
+        )
+        con.execute(
+            "INSERT INTO documents "
+            "(document_id, title, author, source_tier, document_type, owner_user_id, content_class) "
+            "VALUES ('doc-unrelated', 'Unrelated Public Paper', 'Other Author', 1, 'article', "
+            "'__operator__', 'public_domain')"
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, text) "
+            "VALUES ('chunk-unrelated', 'doc-unrelated', 0, 'Garden content')"
+        )
+        con.execute(
+            "INSERT INTO documents "
+            "(document_id, title, author, source_tier, document_type, owner_user_id, content_class) "
+            "VALUES ('doc-private-pd', 'Private Public Domain Library', 'Hidden Author', "
+            "1, 'book', 'other-user', 'public_domain')"
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, text) "
+            "VALUES ('chunk-private-pd', 'doc-private-pd', 0, 'Quantum private library body')"
+        )
+        con.execute(
+            "INSERT INTO ip_holders (ip_holder_id, display_name, status) "
+            "VALUES ('holder-1', 'Inactive Publisher', 'pre_onboarded')"
+        )
+        con.execute(
+            "INSERT INTO documents "
+            "(document_id, title, source_tier, document_type, owner_user_id, "
+            "content_class, ip_holder_id) VALUES "
+            "('doc-unlicensed', 'Unlicensed Edition', 1, 'book', '__operator__', "
+            "'opt_in_licensed', 'holder-1')"
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, text) "
+            "VALUES ('chunk-unlicensed', 'doc-unlicensed', 0, 'Quantum unlicensed body')"
+        )
+        con.execute(
+            "INSERT INTO documents "
+            "(document_id, title, source_tier, document_type, owner_user_id, content_class) "
+            "VALUES ('doc-revoked', 'Revoked Edition', 1, 'book', '__operator__', 'public_domain')"
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, text) "
+            "VALUES ('chunk-revoked', 'doc-revoked', 0, 'Quantum revoked body')"
+        )
+        con.execute(
+            "INSERT INTO book_assets (document_id, taken_down) VALUES ('doc-revoked', TRUE)"
+        )
+        arxiv_cases = (
+            (
+                "doc-arxiv-nc", "chunk-arxiv-nc", "NC Paper", "Quasar NC body",
+                {"source": "arxiv_oai_pmh", "arxiv_id": "2401.10001",
+                 "license_uri": "http://creativecommons.org/licenses/by-nc/4.0/",
+                 "rights_tier": "T1"},
+            ),
+            (
+                "doc-arxiv-no-link", "chunk-arxiv-no-link", "No Link Paper",
+                "Quasar missing link body",
+                {"source": "arxiv_oai_pmh",
+                 "license_uri": "http://creativecommons.org/licenses/by/4.0/",
+                 "rights_tier": "T1"},
+            ),
+            (
+                "doc-arxiv-t1", "chunk-arxiv-t1", "Allowed Paper", "Quasar allowed body",
+                {"source": "arxiv_oai_pmh", "arxiv_id": "2401.10003",
+                 "license_uri": "http://creativecommons.org/licenses/by/4.0/",
+                 "rights_tier": "T1"},
+            ),
+        )
+        for document_id, chunk_id, title, body, metadata in arxiv_cases:
+            con.execute(
+                "INSERT INTO documents "
+                "(document_id, title, source_tier, document_type, owner_user_id, "
+                "content_class, metadata) VALUES (?, ?, 1, 'article', '__operator__', "
+                "'source_declared_open', ?)",
+                [document_id, title, json.dumps(metadata)],
+            )
+            con.execute(
+                "INSERT INTO chunks (chunk_id, document_id, chunk_index, text) "
+                "VALUES (?, ?, 0, ?)",
+                [chunk_id, document_id, body],
+            )
     finally:
         con.close()
     return db_path
@@ -178,6 +306,58 @@ class TestInitializeHandshake:
         assert "tools" in result["capabilities"]
         assert "resources" in result["capabilities"]
         assert result["serverInfo"]["name"] == "antiek-memory"
+
+    def test_preinitialized_graph_starts_read_only(self, memory_db, tmp_path):
+        before = memory_db.stat().st_mtime_ns
+        completed = _run_once(memory_db, tmp_path)
+
+        assert completed.returncode == 0
+        assert json.loads(completed.stdout)["result"]["serverInfo"]["name"] == "antiek-memory"
+        assert memory_db.stat().st_mtime_ns == before
+
+    def test_absent_graph_exits_without_creating_file(self, tmp_path):
+        missing = tmp_path / "missing" / "graph.duckdb"
+        completed = _run_once(missing, tmp_path)
+
+        assert completed.returncode != 0
+        assert completed.stdout == ""
+        assert "requires a readable, preinitialized graph" in completed.stderr
+        assert not missing.parent.exists()
+
+    def test_incomplete_graph_exits_without_schema_write(self, tmp_path):
+        incomplete = tmp_path / "incomplete.duckdb"
+        con = duckdb.connect(str(incomplete))
+        try:
+            con.execute("CREATE TABLE documents (document_id TEXT)")
+        finally:
+            con.close()
+
+        completed = _run_once(incomplete, tmp_path)
+
+        assert completed.returncode != 0
+        assert completed.stdout == ""
+        assert "requires a readable, preinitialized graph" in completed.stderr
+        con = duckdb.connect(str(incomplete), read_only=True)
+        try:
+            tables = con.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'main' ORDER BY table_name"
+            ).fetchall()
+        finally:
+            con.close()
+        assert tables == [("documents",)]
+
+    def test_unreadable_graph_exits_without_replacing_file(self, tmp_path):
+        invalid = tmp_path / "corrupt.duckdb"
+        original = b"not a DuckDB database"
+        invalid.write_bytes(original)
+
+        completed = _run_once(invalid, tmp_path)
+
+        assert completed.returncode != 0
+        assert completed.stdout == ""
+        assert "requires a readable, preinitialized graph" in completed.stderr
+        assert invalid.read_bytes() == original
 
 
 class TestToolsList:
@@ -271,14 +451,14 @@ class TestResourcesRead:
         resp = _send_and_recv(
             server_proc,
             "resources/read",
-            {"uri": "antiek://private/notes/__operator__/block-1"},
+            {"uri": "antiek://private/notes/testuser/block-own"},
             rpc_id=4,
         )
         assert "result" in resp
         contents = resp["result"]["contents"]
         assert len(contents) == 1
         content = contents[0]
-        assert content["uri"] == "antiek://private/notes/__operator__/block-1"
+        assert content["uri"] == "antiek://private/notes/testuser/block-own"
         assert content["mimeType"] == "application/json"
 
         # Parse the JSON text to check the envelope
@@ -293,12 +473,58 @@ class TestResourcesRead:
         resp = _send_and_recv(
             server_proc,
             "resources/read",
-            {"uri": "antiek://private/notes/__operator__/block-1"},
+            {"uri": "antiek://private/notes/testuser/block-own"},
             rpc_id=4,
         )
         body = json.loads(resp["result"]["contents"][0]["text"])
-        assert body["user_id"] == "__operator__"
-        assert body["title"] == "Test Notebook"
+        assert body["user_id"] == "testuser"
+        assert body["title"] == "Own notebook"
+
+    @pytest.mark.parametrize("uri", [
+        "antiek://private/notes/__operator__/block-1",
+        "antiek://private/notes/testuser/block-1",
+        "antiek://private/notes/testuser/block-own/extra",
+        "antiek://private/notes/testuser/%62lock-own",
+        "antiek://private/notes/testuser/block-own?owner=__operator__",
+        "antiek://private/notes/testuser/../block-1",
+        "antiek://books/arbitrary-isbn/chunk-1",
+        "antiek://books/arbitrary-isbn/chunk-public",
+        "antiek://books/arbitrary-isbn/chunk-private-pd",
+        "antiek://books/arbitrary-isbn/chunk-revoked",
+    ])
+    def test_wrong_owner_and_hostile_uris_return_no_private_data(self, server_proc, uri):
+        resp = _send_and_recv(server_proc, "resources/read", {"uri": uri}, rpc_id=4)
+        assert resp["error"]["code"] == -32602
+        wire = json.dumps(resp)
+        for secret in (
+            "Private note content", "Test Notebook", "Test Paper", "Alice",
+            "Public Paper", "Private Public Domain Library", "Revoked Edition",
+        ):
+            assert secret not in wire
+
+    def test_private_note_client_claim_for_another_owner_is_refused(self, server_proc):
+        resp = _send_and_recv(
+            server_proc, "resources/read",
+            {"uri": "antiek://private/notes/testuser/block-own",
+             "auth_context": {"user_id": "__operator__"}}, rpc_id=4,
+        )
+        assert resp["error"]["code"] == -32602
+        assert "Own note content" not in json.dumps(resp)
+
+    def test_public_note_requires_current_public_class_and_note_type(self, server_proc):
+        allowed = _send_and_recv(
+            server_proc, "resources/read", {"uri": "antiek://public/notes/block-public"}, rpc_id=4,
+        )
+        assert "Released note body" in allowed["result"]["contents"][0]["text"]
+        for uri in (
+            "antiek://public/notes/block-1",
+            "antiek://public/notes/block-own",
+            "antiek://public/notes/block-public/extra",
+        ):
+            denied = _send_and_recv(server_proc, "resources/read", {"uri": uri}, rpc_id=5)
+            assert denied["error"]["code"] == -32602
+            assert "Private note content" not in json.dumps(denied)
+            assert "Own note content" not in json.dumps(denied)
 
     def test_private_note_nonexistent_returns_error(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
@@ -374,7 +600,7 @@ class TestToolsCallSearchPersonal:
 
 
 class TestToolsCallSearchPublic:
-    """tools/call search_public — wraps results in prompt-injection envelope."""
+    """tools/call search_public returns only matching, proven public rows."""
 
     def test_search_public_wraps_in_envelope(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
@@ -383,16 +609,46 @@ class TestToolsCallSearchPublic:
             "tools/call",
             {
                 "name": "search_public",
-                "arguments": {"query": "test", "top_k": 10},
+                "arguments": {"query": "quantum", "top_k": 10},
             },
             rpc_id=5,
         )
         assert resp["result"]["isError"] is False
         body = json.loads(resp["result"]["content"][0]["text"])
-        assert len(body["chunks"]) >= 1
+        assert [chunk["chunk_id"] for chunk in body["chunks"]] == ["chunk-public"]
         # §13.8: public results must be wrapped in prompt-injection envelope
         for chunk in body["chunks"]:
             assert '<antiek:content trusted="false">' in chunk["text"]
+
+    def test_search_public_nonmatching_query_and_private_body_do_not_leak(self, server_proc):
+        resp = _send_and_recv(server_proc, "tools/call", {
+            "name": "search_public", "arguments": {"query": "first chunk", "top_k": 10},
+        }, rpc_id=5)
+        body = json.loads(resp["result"]["content"][0]["text"])
+        assert body["chunks"] == []
+        assert "Test Paper" not in json.dumps(resp)
+        assert "Alice" not in json.dumps(resp)
+
+    def test_search_public_excludes_private_rights_and_revoked_rows(self, server_proc):
+        resp = _send_and_recv(server_proc, "tools/call", {
+            "name": "search_public", "arguments": {"query": "quantum", "top_k": 50},
+        }, rpc_id=5)
+        body = json.loads(resp["result"]["content"][0]["text"])
+        assert [chunk["chunk_id"] for chunk in body["chunks"]] == ["chunk-public"]
+        wire = json.dumps(resp)
+        for secret in ("Private Public Domain Library", "Hidden Author", "Unlicensed Edition", "Revoked Edition"):
+            assert secret not in wire
+
+    def test_search_public_rechecks_immutable_arxiv_rights(self, server_proc):
+        resp = _send_and_recv(server_proc, "tools/call", {
+            "name": "search_public", "arguments": {"query": "quasar", "top_k": 50},
+        }, rpc_id=5)
+        assert resp["result"]["isError"] is False
+        body = json.loads(resp["result"]["content"][0]["text"])
+        assert [chunk["chunk_id"] for chunk in body["chunks"]] == ["chunk-arxiv-t1"]
+        wire = json.dumps(resp)
+        for secret in ("Quasar NC body", "NC Paper", "Quasar missing link body", "No Link Paper"):
+            assert secret not in wire
 
 
 class TestToolsCallCiteSource:
@@ -405,17 +661,69 @@ class TestToolsCallCiteSource:
             "tools/call",
             {
                 "name": "cite_source",
-                "arguments": {"id": "chunk-1", "id_type": "chunk"},
+                "arguments": {"id": "chunk-public", "id_type": "chunk"},
             },
             rpc_id=5,
         )
         assert resp["result"]["isError"] is False
         citation = json.loads(resp["result"]["content"][0]["text"])
-        assert citation["chunk_id"] == "chunk-1"
-        assert citation["document_id"] == "doc-1"
-        assert citation["title"] == "Test Paper"
+        assert citation["chunk_id"] == "chunk-public"
+        assert citation["document_id"] == "doc-public"
+        assert citation["title"] == "Public Paper"
         assert citation["source_tier"] == 1
-        assert citation["author"] == "Alice"
+        assert citation["author"] == "Public Author"
+
+    def test_cite_source_refuses_foreign_private_metadata(self, server_proc):
+        resp = _send_and_recv(server_proc, "tools/call", {
+            "name": "cite_source", "arguments": {"id": "chunk-1", "id_type": "chunk"},
+        }, rpc_id=5)
+        assert resp["result"]["isError"] is True
+        wire = json.dumps(resp)
+        for secret in ("Test Paper", "Alice", "doc-1", "first chunk"):
+            assert secret not in wire
+
+    @pytest.mark.parametrize("chunk_id", [
+        "chunk-private-pd", "chunk-unlicensed", "chunk-revoked",
+    ])
+    def test_cite_source_refuses_unpublished_or_revoked_metadata(self, server_proc, chunk_id):
+        resp = _send_and_recv(server_proc, "tools/call", {
+            "name": "cite_source", "arguments": {"id": chunk_id, "id_type": "chunk"},
+        }, rpc_id=5)
+        assert resp["result"]["isError"] is True
+        wire = json.dumps(resp)
+        for secret in ("Private Public Domain Library", "Hidden Author", "Unlicensed Edition", "Revoked Edition"):
+            assert secret not in wire
+
+    def test_cite_source_preserves_own_private_metadata(self, server_proc, memory_db):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        con = duckdb.connect(str(memory_db), read_only=False)
+        try:
+            con.execute(
+                "INSERT INTO documents "
+                "(document_id, title, author, source_tier, document_type, owner_user_id, content_class) "
+                "VALUES ('doc-own', 'Own Document', 'Own Author', 1, 'article', 'testuser', 'user_owned')"
+            )
+            con.execute(
+                "INSERT INTO chunks (chunk_id, document_id, chunk_index, text) "
+                "VALUES ('chunk-own', 'doc-own', 0, 'Private own body')"
+            )
+        finally:
+            con.close()
+        resp = _send_and_recv(server_proc, "tools/call", {
+            "name": "cite_source", "arguments": {"id": "chunk-own", "id_type": "chunk"},
+        }, rpc_id=5)
+        assert resp["result"]["isError"] is False
+        citation = json.loads(resp["result"]["content"][0]["text"])
+        assert citation["title"] == "Own Document"
+
+    def test_cite_source_returns_public_bibliography_without_body(self, server_proc):
+        resp = _send_and_recv(server_proc, "tools/call", {
+            "name": "cite_source", "arguments": {"id": "chunk-arxiv-nc", "id_type": "chunk"},
+        }, rpc_id=5)
+        assert resp["result"]["isError"] is False
+        citation = json.loads(resp["result"]["content"][0]["text"])
+        assert citation["title"] == "NC Paper"
+        assert "Quasar NC body" not in json.dumps(resp)
 
     def test_cite_source_nonexistent_returns_error(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
@@ -432,9 +740,10 @@ class TestToolsCallCiteSource:
 
 
 class TestToolsCallRecordAttribution:
-    """tools/call record_attribution — records attribution event without escrow."""
+    """Unverified client attribution never enters the payout audit."""
 
-    def test_record_attribution_records_event(self, server_proc, memory_db):
+    @pytest.mark.parametrize("chunk_id", ["chunk-1", "chunk-public"])
+    def test_record_attribution_refuses_unverified_event(self, server_proc, memory_db, chunk_id):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
         resp = _send_and_recv(
             server_proc,
@@ -442,19 +751,15 @@ class TestToolsCallRecordAttribution:
             {
                 "name": "record_attribution",
                 "arguments": {
-                    "chunk_id": "chunk-1",
+                    "chunk_id": chunk_id,
                     "investigation_id": "inv-1",
                     "session_dwell_seconds": 42.5,
                 },
             },
             rpc_id=5,
         )
-        assert resp["result"]["isError"] is False
-        result = json.loads(resp["result"]["content"][0]["text"])
-        assert result["status"] == "recorded"
-        assert result["chunk_id"] == "chunk-1"
-        assert result["investigation_id"] == "inv-1"
-        assert "audit_id" in result
+        assert resp["result"]["isError"] is True
+        assert chunk_id not in json.dumps(resp)
 
         # Verify the attribution was actually recorded in the DB
         import duckdb as _duckdb
@@ -462,9 +767,9 @@ class TestToolsCallRecordAttribution:
         try:
             row = con.execute(
                 "SELECT * FROM attribution_audit WHERE page_id = ?",
-                ["chunk-1"],
+                [chunk_id],
             ).fetchone()
-            assert row is not None, "attribution_audit row not found"
+            assert row is None
         finally:
             con.close()
 
