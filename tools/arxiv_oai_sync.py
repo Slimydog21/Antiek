@@ -22,7 +22,7 @@ import sys
 import time
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -290,7 +290,8 @@ def reset_state_files(
 
 
 def _track_high_water(
-    records: Iterator[ArxivOaiRecord], state: dict[str, str | None]
+    records: Iterator[ArxivOaiRecord], state: dict[str, str | None],
+    *, max_date: date | None = None,
 ) -> Iterator[ArxivOaiRecord]:
     """Pass records through unchanged while recording the max datestamp seen.
 
@@ -302,11 +303,15 @@ def _track_high_water(
     denominator.
     """
     for record in records:
-        if record.datestamp and (
+        try:
+            stamp = date.fromisoformat(record.datestamp) if record.datestamp else None
+        except ValueError:
+            stamp = None
+        if stamp is not None and (max_date is None or stamp <= max_date) and (
             state["max_datestamp"] is None
-            or record.datestamp > state["max_datestamp"]
+            or stamp.isoformat() > state["max_datestamp"]
         ):
-            state["max_datestamp"] = record.datestamp
+            state["max_datestamp"] = stamp.isoformat()
         yield record
 
 
@@ -402,26 +407,20 @@ def run_sync(
     via the harvester's own resume cursor, and ``arxiv_id`` keys keep the
     re-cover idempotent (the re-covered rows UPDATE, they don't duplicate).
     """
-    checkpoint = read_checkpoint(sync_state_path)
-    if mode == "incremental":
-        from_date = checkpoint.last_successful_datestamp
-    elif mode == "backfill":
-        from_date = None
-    else:
+    if mode not in {"incremental", "backfill"}:
         raise ValueError(f"unknown sync mode {mode!r} (want 'incremental'/'backfill')")
-
-    at = harvested_at or datetime.now(UTC)
-    # Seed the high-water tracker from any INTERRUPTED harvest's persisted max
-    # datestamp. On a post-crash resume the harvester re-streams only the
-    # remaining (often older) pages, so without this seed the mark could be set
-    # below the max already consumed pre-crash. A clean prior run cleared the
-    # cursor, so this is None then and the seed is a no-op.
-    seed_max = harvester.persisted_max_datestamp() if resume else None
-    high_water = {"max_datestamp": seed_max}
-    persist_tally = {"inserted": 0, "updated": 0, "skipped_deleted": 0}
 
     resolved_db = ensure_initialized(db_path or default_db_path())
     with whole_run_lock(resolved_db):
+        checkpoint = read_checkpoint(sync_state_path)
+        from_date = checkpoint.last_successful_datestamp if mode == "incremental" else None
+        at = harvested_at or datetime.now(UTC)
+        # An interrupted harvest can leave a persisted maximum above the
+        # remaining pages. Read this seed under the run lock too: a previous
+        # caller may have completed and cleared its cursor while we waited.
+        seed_max = harvester.persisted_max_datestamp() if resume else None
+        high_water = {"max_datestamp": seed_max}
+        persist_tally = {"inserted": 0, "updated": 0, "skipped_deleted": 0}
         with connect_write(resolved_db, purpose="arxiv_pure_oai_authority_check", keepalive_s=0) as con:
             if load_arxiv_bulk_progress(con) is not None:
                 raise ValueError("pure OAI cannot run while DB-authoritative bulk progress is active")
@@ -523,6 +522,7 @@ def run_bulk_sync(
         raise ValueError("invalid arXiv batch or lock interval")
     at = harvested_at or datetime.now(UTC)
     resolved_db = ensure_initialized(db_path or default_db_path())
+    max_high_water_date = at.date() + timedelta(days=1)
     persist_tally = {"inserted": 0, "updated": 0, "skipped_deleted": 0}
 
     with whole_run_lock(resolved_db):
@@ -561,6 +561,7 @@ def run_bulk_sync(
                         assert_snapshot_unchanged(source)
                         consumed, progress, delta = commit_bulk_slice(
                             resolved_db, pending, progress, max_lock_s=max_lock_s,
+                            max_high_water_date=max_high_water_date,
                         )
                         for key, count in delta.items():
                             persist_tally[key] += count
@@ -580,6 +581,7 @@ def run_bulk_sync(
                     assert_snapshot_unchanged(source)
                     consumed, progress, delta = commit_bulk_slice(
                         resolved_db, pending, progress, max_lock_s=max_lock_s,
+                        max_high_water_date=max_high_water_date,
                     )
                     for key, count in delta.items():
                         persist_tally[key] += count
@@ -613,6 +615,8 @@ def run_bulk_sync(
         tail_bound = max(bounds) if bounds else None
         tail_from = tail_bound.isoformat() if tail_bound is not None else None
         high_water: dict[str, str | None] = {"max_datestamp": None}
+        # Tail harvest may begin on a later UTC day after a long snapshot pass.
+        tail_max_high_water_date = datetime.now(UTC).date() + timedelta(days=1)
         tail_attempted = oai_tail and not (
             until_date is not None and tail_from is not None and tail_from > until_date
         )
@@ -622,7 +626,7 @@ def run_bulk_sync(
                     _track_high_water(
                         harvester.harvest(
                             from_date=tail_from, until_date=until_date, resume=False,
-                        ), high_water,
+                        ), high_water, max_date=tail_max_high_water_date,
                     ),
                     resolved_db, persist_tally, batch_size=batch_size,
                     max_lock_s=max_lock_s, yield_s=yield_s,
@@ -672,7 +676,7 @@ def run_bulk_sync(
                 if new_datestamp is not None else None
             ),
             "completed_generation_id": progress["generation_id"],
-            "completed_at": at.replace(tzinfo=None),
+            "completed_at": datetime.now(UTC).replace(tzinfo=None),
             "completed_bulk_sha256": source.sha256,
             "completed_tail_bound": tail_bound if tail_attempted else None,
             "completed_census_json": json.dumps(provenance, separators=(",", ":")),
@@ -902,19 +906,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if progress is not None and progress["phase"] in {"bulk", "tail"}
                     else None
                 )
-                if bound_path is not None and bound_path == Path(snapshot).resolve():
-                    if args.bulk_force_download:
-                        print(
-                            "error: cannot replace snapshot bound to incomplete DB cursor",
-                            file=sys.stderr,
-                        )
-                        return 1
-                    if not Path(snapshot).is_file() or Path(snapshot).stat().st_size == 0:
-                        print(
-                            "error: snapshot bound to incomplete DB cursor is missing or empty",
-                            file=sys.stderr,
-                        )
-                        return 1
+                if bound_path is not None and args.bulk_force_download:
+                    print(
+                        "error: cannot replace snapshot while an incomplete DB cursor is active",
+                        file=sys.stderr,
+                    )
+                    return 1
+                if (
+                    bound_path is not None
+                    and bound_path == Path(snapshot).resolve()
+                    and (not Path(snapshot).is_file() or Path(snapshot).stat().st_size == 0)
+                ):
+                    print(
+                        "error: snapshot bound to incomplete DB cursor is missing or empty",
+                        file=sys.stderr,
+                    )
+                    return 1
                 try:
                     snapshot = ensure_bulk_snapshot(
                         snapshot_path=snapshot,

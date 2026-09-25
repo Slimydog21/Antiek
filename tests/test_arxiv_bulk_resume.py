@@ -7,12 +7,16 @@ import os
 import shutil
 import subprocess
 import sys
+from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from runtime.db_lock import connect_read
 from substrate.graph.schema import load_arxiv_bulk_progress
+from substrate.schemas.documents import ArxivOaiRecord
 from tools.arxiv_bulk_resume import whole_run_lock
 from tools.arxiv_oai_sync import (
     SyncCheckpoint,
@@ -213,6 +217,42 @@ def test_cli_force_download_refuses_to_replace_incomplete_bound_snapshot(tmp_pat
     assert _progress(tmp_path)["next_byte_offset"] == before_cursor["next_byte_offset"]
 
 
+def test_cli_force_download_refuses_rehomed_incomplete_snapshot(tmp_path, monkeypatch):
+    snapshot = tmp_path / "snap.json"
+    snapshot.write_text(
+        json.dumps(_record("a", "2024-01-01")) + "\n"
+        + json.dumps(_record("b", "2024-01-02")) + "\n"
+    )
+    import tools.arxiv_oai_sync as sync
+
+    real = sync.commit_bulk_slice
+
+    def die_after_commit(*args, **kwargs):
+        real(*args, **kwargs)
+        raise RuntimeError("interrupted")
+
+    monkeypatch.setattr(sync, "commit_bulk_slice", die_after_commit)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        _run(tmp_path, snapshot)
+    monkeypatch.setattr(sync, "commit_bulk_slice", real)
+    rehomed = tmp_path / "rehomed.json"
+    shutil.copy2(snapshot, rehomed)
+    snapshot.unlink()
+    before_bytes = rehomed.read_bytes()
+    before_cursor = _progress(tmp_path)
+
+    def forbidden_download(**_kwargs):
+        raise AssertionError("forced download must be rejected before acquisition")
+
+    monkeypatch.setattr(sync, "ensure_bulk_snapshot", forbidden_download)
+    assert sync.main([
+        "backfill", "--bulk", "--bulk-force-download", "--bulk-snapshot", str(rehomed),
+        "--db-path", str(tmp_path / "graph.duckdb"),
+    ]) == 1
+    assert rehomed.read_bytes() == before_bytes
+    assert _progress(tmp_path)["next_byte_offset"] == before_cursor["next_byte_offset"]
+
+
 def test_restored_db_overrules_newer_json_mirror(tmp_path):
     snapshot = tmp_path / "snap.json"
     snapshot.write_text(json.dumps(_record("a", "2024-01-01")) + "\n")
@@ -230,6 +270,7 @@ def test_restored_db_overrules_newer_json_mirror(tmp_path):
 
 def test_whole_run_lock_is_stable_and_rejects_another_process(tmp_path):
     db_path = str(tmp_path / "graph.duckdb")
+    Path(db_path).touch()
     script = (
         "import sys,time\nfrom tools.arxiv_bulk_resume import whole_run_lock\n"
         "with whole_run_lock(sys.argv[1]):\n print('held',flush=True)\n time.sleep(20)\n"
@@ -252,6 +293,64 @@ def test_whole_run_lock_is_stable_and_rejects_another_process(tmp_path):
         child.wait(timeout=5)
     with whole_run_lock(db_path):
         assert Path(db_path + ".arxiv_bulk_run.lock").exists()
+
+
+def test_root_cannot_strand_nonroot_database_run_lock(tmp_path, monkeypatch):
+    import tools.arxiv_bulk_resume as resume
+
+    db_path = tmp_path / "graph.duckdb"
+    db_path.touch()
+    actual_stat = resume.os.stat
+
+    def different_db_owner(path, *args, **kwargs):
+        if str(path) == str(db_path):
+            return SimpleNamespace(st_uid=12345)
+        return actual_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(resume.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(resume.os, "stat", different_db_owner)
+    with (
+        pytest.raises(PermissionError, match="run arXiv sync as the DuckDB owner"),
+        whole_run_lock(str(db_path)),
+    ):
+        pass
+    assert not Path(str(db_path) + ".arxiv_bulk_run.lock").exists()
+
+
+def test_pure_oai_reads_checkpoint_and_resume_seed_after_run_lock(tmp_path, monkeypatch):
+    import tools.arxiv_oai_sync as sync
+
+    sync_path = str(tmp_path / "sync.json")
+    write_checkpoint(sync_path, SyncCheckpoint(last_successful_datestamp="2024-01-01"))
+
+    class EmptyOai:
+        seed = "2024-02-01"
+        seen_from = None
+
+        def persisted_max_datestamp(self):
+            return self.seed
+
+        def harvest(self, **kwargs):
+            self.seen_from = kwargs["from_date"]
+            return iter(())
+
+    harvester = EmptyOai()
+
+    @contextmanager
+    def predecessor_finishes_before_lock(_db_path):
+        write_checkpoint(sync_path, SyncCheckpoint(last_successful_datestamp="2024-03-01"))
+        harvester.seed = None
+        yield
+
+    monkeypatch.setattr(sync, "whole_run_lock", predecessor_finishes_before_lock)
+    result = run_sync(
+        harvester=harvester, mode="incremental", sync_state_path=sync_path,
+        db_path=str(tmp_path / "graph.duckdb"), resume=True,
+    )
+    assert harvester.seen_from == "2024-03-01"
+    assert result.previous_datestamp == "2024-03-01"
+    assert result.new_datestamp == "2024-03-01"
+    assert read_checkpoint(sync_path).last_successful_datestamp == "2024-03-01"
 
 
 def test_sigterm_after_committed_slice_resumes_in_new_process(tmp_path):
@@ -367,6 +466,46 @@ def test_legacy_invalid_datestamp_keeps_record_but_not_high_water(tmp_path):
     assert progress["bulk_t1_events"] == 2
     with connect_read(str(tmp_path / "graph.duckdb")) as con:
         assert con.execute("SELECT count(*) FROM documents WHERE document_id LIKE 'doc-arxiv-%'").fetchone()[0] == 2
+
+
+def test_future_bulk_and_tail_dates_do_not_poison_next_generation(tmp_path):
+    snapshot = tmp_path / "snap.json"
+    snapshot.write_text(
+        json.dumps(_record("future", "9999-12-31")) + "\n"
+        + json.dumps(_record("valid", "2024-01-02")) + "\n"
+    )
+
+    class FutureTail:
+        def harvest(self, **_kwargs):
+            yield ArxivOaiRecord(
+                arxiv_id="2401.00001", datestamp="9999-12-30", deleted=False,
+                title="Future tail", categories=("cs.AI",),
+                license_uri="http://creativecommons.org/licenses/by/4.0/",
+            )
+
+    result = run_bulk_sync(
+        harvester=FutureTail(), mode="backfill", oai_tail=True,
+        sync_state_path=str(tmp_path / "sync.json"), bulk_snapshot_path=str(snapshot),
+        db_path=str(tmp_path / "graph.duckdb"), lock_yield_seconds=0,
+        harvested_at=datetime(2024, 1, 3, tzinfo=UTC),
+    )
+    assert result.census.total == 3
+    assert result.new_datestamp == "2024-01-02"
+    completed = _progress(tmp_path)
+    assert completed is not None
+    assert completed["bulk_max_datestamp"].isoformat() == "2024-01-02"
+    assert completed["completed_high_water"].isoformat() == "2024-01-02"
+    assert completed["completed_at"] > datetime(2024, 1, 3)
+
+    snapshot.write_text(json.dumps(_record("new", "2024-01-04")) + "\n")
+    next_run = run_bulk_sync(
+        harvester=_NoTail(), mode="incremental", oai_tail=False,
+        sync_state_path=str(tmp_path / "sync.json"), bulk_snapshot_path=str(snapshot),
+        db_path=str(tmp_path / "graph.duckdb"), lock_yield_seconds=0,
+        harvested_at=datetime(2024, 1, 5, tzinfo=UTC),
+    )
+    assert next_run.from_date == "2024-01-02"
+    assert next_run.new_datestamp == "2024-01-04"
 
 
 @pytest.mark.parametrize("count", [200, 201])

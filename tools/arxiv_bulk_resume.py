@@ -112,6 +112,12 @@ def assert_physical_boundary(source: SnapshotIdentity, offset: int, line_count: 
 @contextlib.contextmanager
 def whole_run_lock(db_path: str) -> Iterator[None]:
     """Serialize timer, CLI and reset callers without holding DuckDB's flock."""
+    # A root CLI invocation must not create a persistent root-owned lock beside
+    # an antiek-owned DB: the service user could never acquire it afterward.
+    if os.geteuid() == 0 and os.stat(db_path).st_uid != 0:
+        raise PermissionError(
+            "run arXiv sync as the DuckDB owner; root would strand its run lock"
+        )
     lock_path = str(Path(db_path).resolve()) + ".arxiv_bulk_run.lock"
     descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
     try:
@@ -252,7 +258,7 @@ def open_generation(
 
 def commit_bulk_slice(
     db_path: str, lines: Sequence[BulkOaiLine], progress: dict[str, object],
-    *, max_lock_s: float,
+    *, max_lock_s: float, max_high_water_date: date,
 ) -> tuple[int, dict[str, object], dict[str, int]]:
     """Commit a bounded prefix of physical lines and its cursor together."""
     if not lines:
@@ -274,7 +280,9 @@ def commit_bulk_slice(
                     except ValueError:
                         stamp = None  # accepted legacy record; unusable high-water
                     prior_max = _as_date(next_progress["bulk_max_datestamp"])
-                    if stamp is not None and (prior_max is None or stamp > prior_max):
+                    if stamp is not None and stamp <= max_high_water_date and (
+                        prior_max is None or stamp > prior_max
+                    ):
                         next_progress["bulk_max_datestamp"] = stamp
                     if record.deleted:
                         next_progress["bulk_deleted_events"] = _as_int(next_progress["bulk_deleted_events"]) + 1
