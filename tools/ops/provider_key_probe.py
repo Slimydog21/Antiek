@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import grp
+import importlib
 import os
 import re
 import stat
@@ -20,8 +21,13 @@ from typing import TextIO
 import httpx
 import yaml
 
-from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
+OpenAICompatProvider = importlib.import_module(
+    "substrate.dispatch.providers.openai_compat",
+).OpenAICompatProvider
 
 _TARGETS = {
     "zai": {
