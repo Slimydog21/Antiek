@@ -240,7 +240,7 @@ export default function DocumentsIndex() {
                           current === r.document_id ? null : r.document_id,
                         );
                       }}
-                      className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors whitespace-nowrap ${
+                      className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors whitespace-nowrap scroll-mb-20 sm:scroll-mb-0 ${
                         previewId === r.document_id
                           ? "bg-ink text-white"
                           : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4"
