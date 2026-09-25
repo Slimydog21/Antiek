@@ -766,10 +766,9 @@ def iter_bulk_oai_lines(
             return
         line_number += 1
         end_offset = snapshot.tell()
-        try:
-            decoded = raw_line.decode("utf-8")
-        except UnicodeDecodeError:
-            decoded = ""
+        # Match strict text-mode UTF-8 decoding: a corrupt byte sequence must
+        # stop the scan before this line can advance a durable cursor.
+        decoded = raw_line.decode("utf-8")
         yield BulkOaiLine(
             record=_parse_bulk_oai_line(
                 decoded, since=since, until=until, category=category

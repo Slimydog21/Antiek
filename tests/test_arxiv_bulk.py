@@ -184,25 +184,22 @@ def test_bulk_skips_malformed_lines_without_aborting():
 
 def test_bulk_oai_binary_lines_match_text_parser_and_track_physical_offsets():
     """Raw-line events preserve parser parity and count UTF-8/CRLF bytes."""
-    first = json.dumps(_RECORDS[0], ensure_ascii=False).encode("utf-8")
+    first_record = {**_RECORDS[0], "title": "A Café Δ Bulk Paper"}
+    first = json.dumps(first_record, ensure_ascii=False).encode("utf-8")
     filtered = json.dumps(
         {**_RECORDS[1], "update_date": "2024-01-04"}, ensure_ascii=False
     ).encode("utf-8")
-    invalid = b"\xffnot utf8\r\n"
     malformed = b"{ definitely not json\r\n"
-    body = first + b"\r\n" + filtered + b"\r\n" + invalid + malformed
+    body = first + b"\r\n" + filtered + b"\r\n" + malformed
 
     expected = list(
         bulk.iter_bulk_oai_records(
-            io.StringIO(body.decode("utf-8", errors="replace")),
+            io.StringIO(body.decode("utf-8")),
             since="2024-01-03",
             until="2024-01-03",
             category="cs.LG",
         )
     )
-    # The existing text API sees the deliberately invalid UTF-8 line as a
-    # replacement character and skips it as malformed JSON, as does the byte
-    # API's explicit decode-failure skip.
     lines = list(
         bulk.iter_bulk_oai_lines(
             io.BytesIO(body),
@@ -217,11 +214,19 @@ def test_bulk_oai_binary_lines_match_text_parser_and_track_physical_offsets():
     assert [line.end_offset for line in physical_lines] == [
         len(first) + 2,
         len(first) + 2 + len(filtered) + 2,
-        len(first) + 2 + len(filtered) + 2 + len(invalid),
         len(body),
     ]
-    assert [line.record is None for line in physical_lines] == [False, True, True, True]
-    assert eof.is_eof and eof.end_offset == len(body) and eof.line_number == 4
+    assert [line.record is None for line in physical_lines] == [False, True, True]
+    assert len(first.decode("utf-8")) < len(first)
+    assert eof.is_eof and eof.end_offset == len(body) and eof.line_number == 3
+
+
+def test_bulk_oai_binary_iterator_fails_closed_on_invalid_utf8():
+    valid = json.dumps(_RECORDS[0]).encode("utf-8") + b"\n"
+    events = bulk.iter_bulk_oai_lines(io.BytesIO(valid + b"\xffnot utf8\n"))
+    assert next(events).record is not None
+    with pytest.raises(UnicodeDecodeError):
+        next(events)
 
 
 def test_bulk_oai_binary_iterator_resumes_at_line_boundary_and_accepts_eof():
