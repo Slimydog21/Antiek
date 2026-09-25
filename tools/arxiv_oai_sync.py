@@ -614,7 +614,7 @@ def run_bulk_sync(
         tail_from = tail_bound.isoformat() if tail_bound is not None else None
         high_water: dict[str, str | None] = {"max_datestamp": None}
         tail_attempted = oai_tail and not (
-            until_date is not None and tail_from is not None and tail_from >= until_date
+            until_date is not None and tail_from is not None and tail_from > until_date
         )
         if tail_attempted:
             tail_census = build_census(
@@ -887,22 +887,42 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     try:
         if args.bulk:
-            # Resolve the snapshot (local path or free GCS download) BEFORE
-            # opening the write lock / starting the harvest. A download
-            # failure here leaves the high-water mark untouched.
+            # A forced download can replace the path bound to an incomplete
+            # DB cursor. Inspect that row and acquire the source under the
+            # same whole-run flock used by ingestion before any replacement.
             snapshot = args.bulk_snapshot or default_bulk_snapshot_path()
-            try:
-                snapshot = ensure_bulk_snapshot(
-                    snapshot_path=snapshot,
-                    force=args.bulk_force_download,
+            resolved_db = ensure_initialized(args.db_path or default_db_path())
+            with whole_run_lock(resolved_db):
+                with connect_write(
+                    resolved_db, purpose="arxiv_bulk_snapshot_admission", keepalive_s=0
+                ) as con:
+                    progress = load_arxiv_bulk_progress(con)
+                bound_path = (
+                    Path(cast(str, progress["source_path"]))
+                    if progress is not None and progress["phase"] in {"bulk", "tail"}
+                    else None
                 )
-            except FileNotFoundError as exc:
-                print(
-                    f"error: bulk snapshot unavailable ({exc}); "
-                    "pass --bulk-snapshot PATH or drop --bulk to use pure OAI",
-                    file=sys.stderr,
-                )
-                return 1
+                if bound_path is not None and bound_path == Path(snapshot).resolve():
+                    if args.bulk_force_download:
+                        print(
+                            "error: cannot replace snapshot bound to incomplete DB cursor",
+                            file=sys.stderr,
+                        )
+                        return 1
+                    if not Path(snapshot).is_file() or Path(snapshot).stat().st_size == 0:
+                        print(
+                            "error: snapshot bound to incomplete DB cursor is missing or empty",
+                            file=sys.stderr,
+                        )
+                        return 1
+                try:
+                    snapshot = ensure_bulk_snapshot(
+                        snapshot_path=snapshot,
+                        force=args.bulk_force_download,
+                    )
+                except FileNotFoundError as exc:
+                    print(f"error: bulk snapshot unavailable ({exc})", file=sys.stderr)
+                    return 1
             print(f"bulk: streaming snapshot {snapshot}")
             result = run_bulk_sync(
                 harvester=harvester,

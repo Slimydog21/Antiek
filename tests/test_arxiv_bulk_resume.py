@@ -179,6 +179,40 @@ def test_identical_snapshot_at_new_path_resumes_same_generation(tmp_path, monkey
     assert done["completed_generation_id"] == partial["generation_id"]
 
 
+def test_cli_force_download_refuses_to_replace_incomplete_bound_snapshot(tmp_path, monkeypatch):
+    snapshot = tmp_path / "snap.json"
+    snapshot.write_text(
+        json.dumps(_record("a", "2024-01-01")) + "\n"
+        + json.dumps(_record("b", "2024-01-02")) + "\n"
+    )
+    import tools.arxiv_oai_sync as sync
+
+    real = sync.commit_bulk_slice
+
+    def die_after_commit(*args, **kwargs):
+        real(*args, **kwargs)
+        raise RuntimeError("interrupted")
+
+    monkeypatch.setattr(sync, "commit_bulk_slice", die_after_commit)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        _run(tmp_path, snapshot)
+    monkeypatch.setattr(sync, "commit_bulk_slice", real)
+    before_bytes = snapshot.read_bytes()
+    before_cursor = _progress(tmp_path)
+    assert before_cursor is not None and before_cursor["phase"] == "bulk"
+
+    def forbidden_download(**_kwargs):
+        raise AssertionError("forced download must be rejected before acquisition")
+
+    monkeypatch.setattr(sync, "ensure_bulk_snapshot", forbidden_download)
+    assert sync.main([
+        "backfill", "--bulk", "--bulk-force-download", "--bulk-snapshot", str(snapshot),
+        "--db-path", str(tmp_path / "graph.duckdb"),
+    ]) == 1
+    assert snapshot.read_bytes() == before_bytes
+    assert _progress(tmp_path)["next_byte_offset"] == before_cursor["next_byte_offset"]
+
+
 def test_restored_db_overrules_newer_json_mirror(tmp_path):
     snapshot = tmp_path / "snap.json"
     snapshot.write_text(json.dumps(_record("a", "2024-01-01")) + "\n")

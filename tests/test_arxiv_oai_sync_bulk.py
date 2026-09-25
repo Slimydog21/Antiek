@@ -492,6 +492,42 @@ def test_bulk_then_oai_tail_merges_newer_records(tmp_path):
     }
 
 
+def test_same_day_oai_tail_is_not_skipped_by_inclusive_until(tmp_path):
+    """A paper arriving after the snapshot can share its max calendar date."""
+    clock = _FakeClock()
+    sync_path = str(tmp_path / "sync.json")
+    snap = _write_snapshot(
+        tmp_path / "snap.json",
+        [_bulk_record("bulk", update_date="2024-01-10")],
+    )
+    seen_urls: list[str] = []
+
+    def same_day_oai(req: httpx.Request) -> httpx.Response:
+        seen_urls.append(str(req.url))
+        return httpx.Response(
+            200,
+            content=_oai_page(_oai_record("late", "2024-01-10", _CC_BY)).encode(),
+        )
+
+    result = run_bulk_sync(
+        harvester=_harvester(tmp_path, clock, same_day_oai),
+        mode="backfill", sync_state_path=sync_path,
+        bulk_snapshot_path=snap, until_date="2024-01-10",
+        harvested_at=_AT,
+    )
+    assert len(seen_urls) == 1
+    assert "from=2024-01-10" in seen_urls[0]
+    assert "until=2024-01-10" in seen_urls[0]
+    assert result.census.total == 2
+    assert {row[0] for row in _rows(tmp_path)} == {
+        arxiv_doc_id("bulk"), arxiv_doc_id("late"),
+    }
+    with duckdb.connect(_db_path(tmp_path), read_only=True) as con:
+        assert con.execute(
+            "SELECT completed_tail_bound FROM arxiv_bulk_progress"
+        ).fetchone()[0].isoformat() == "2024-01-10"
+
+
 def test_bulk_tail_ignores_unrelated_oai_cursor_and_its_datestamp(tmp_path):
     """An older pure-OAI token cannot replace the bulk tail's from window."""
     clock = _FakeClock()
