@@ -8,6 +8,7 @@ import {
 } from "../../lib/api";
 import type { DistilledNode } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
+import FlagForDiligence from "../../shared/FlagForDiligence";
 import Thinking from "../../shared/Thinking";
 import ArtifactOutlineShelf from "./ArtifactOutlineShelf";
 
@@ -144,7 +145,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
         <Section heading="Open questions">
           <ul className="space-y-2.5">
             {questions.map((q) => (
-              <QuestionRow key={q.node_id} node={q} onChase={onChase} />
+              <QuestionRow key={q.node_id} node={q} investigationId={investigationId} onChase={onChase} />
             ))}
           </ul>
         </Section>
@@ -265,7 +266,7 @@ function InsightRow({
   );
 }
 
-function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: DistilledNode) => void }) {
+function QuestionRow({ node, investigationId, onChase }: { node: DistilledNode; investigationId: string; onChase?: (q: DistilledNode) => void }) {
   return (
     <li className="flex items-start gap-2.5">
       <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-aurora" aria-hidden="true" />
@@ -284,6 +285,7 @@ function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: Dis
               chase this
             </button>
           )}
+          <FlagForDiligence node={node} sourceInvestigationId={investigationId} />
         </div>
       </div>
     </li>

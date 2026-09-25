@@ -36,6 +36,7 @@ import {
 } from "../../../shared/researchState";
 import type { ResearchState } from "../../../shared/researchState";
 import DigDeeper from "./DigDeeper";
+import FlagForDiligence from "../../../shared/FlagForDiligence";
 import { hideIsland } from "./hiddenIslands";
 import { useIslandThread } from "./useIslandThread";
 import type { IslandStatus } from "./islandModel";
@@ -239,6 +240,8 @@ export default function ThreadIsland({
                           {" "}· refined ×{insight.refinement_count}
                         </span>
                       ) : null}
+                      {" "}
+                      <FlagForDiligence node={insight} sourceInvestigationId={investigationId} />
                     </li>
                   ))}
                 </ul>
@@ -267,6 +270,8 @@ export default function ThreadIsland({
                       >
                         dig →
                       </button>
+                      {" "}
+                      <FlagForDiligence node={q} sourceInvestigationId={investigationId} />
                     </li>
                   ))}
                 </ul>
