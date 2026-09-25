@@ -40,6 +40,13 @@ def test_arxiv_oai_sync_service_pins_state_and_runs_incremental_cli():
         "--persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5 "
         "--census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json"
     ) in service
+    exec_start = next(
+        line for line in service.splitlines() if line.startswith("ExecStart=")
+    )
+    assert exec_start.startswith(
+        "ExecStart=/usr/bin/env ANTIEK_WRITE_KEEPALIVE_S=0 "
+        "{{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync "
+    )
     assert (
         "python -m tools.source_census --source arxiv --db-path "
         "{{ antiek_state_dir }}/antiek.duckdb --out "

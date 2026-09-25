@@ -55,6 +55,7 @@ import atexit
 import contextlib
 import errno
 import fcntl
+import math
 import os
 import secrets
 import stat
@@ -99,6 +100,16 @@ def _write_keepalive_s() -> float:
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return 0.0
     return max(0.0, _env_float("ANTIEK_WRITE_KEEPALIVE_S", 20.0))
+
+
+def _resolve_keepalive_s(keepalive_s: float | None) -> float:
+    """Resolve a call's idle lease before acquiring any writer resources."""
+    if keepalive_s is None:
+        return _write_keepalive_s()
+    value = float(keepalive_s)
+    if not math.isfinite(value):
+        raise ValueError("keepalive_s must be finite")
+    return max(0.0, value)
 
 
 @dataclass
@@ -544,9 +555,7 @@ class LockedConnection:
         self._in_explicit_transaction = False
         self._txn_statement_failed = False
         self._from_warm = from_warm
-        self._keepalive_s = (
-            _write_keepalive_s() if keepalive_s is None else max(0.0, float(keepalive_s))
-        )
+        self._keepalive_s = _resolve_keepalive_s(keepalive_s)
         # Warm reuse already counted in _active_writers; do not double-register.
         if self._db_path and not from_warm:
             _register_local_writer(self._db_path)
@@ -752,6 +761,7 @@ def connect_write(
     poll_interval_s: float = 0.25,
     purpose: str = "",
     close_log_max_wait_s: float = 0.25,
+    keepalive_s: float | None = None,
 ) -> LockedConnection:
     """Acquire an exclusive flock on the sidecar lock file, then open DuckDB
     for write. Returns a LockedConnection that releases the lock on close().
@@ -762,10 +772,13 @@ def connect_write(
 
     `purpose` is a short tag (e.g. "ingest", "extract", "supersession-review")
     stamped into the sidecar lock file so a stuck writer is identifiable.
+    `keepalive_s=0` fully releases the DuckDB handle and flock on close even
+    when the process default parks warm writers.
     """
     from runtime.test_store_guard import assert_write_path_not_real_store
 
     assert_write_path_not_real_store(db_path)
+    resolved_keepalive_s = _resolve_keepalive_s(keepalive_s)
 
     # Block on the in-process gate with a deadline rather than sleep-polling
     # it. The gate is a threading.Lock, so a waiter can be woken the moment
@@ -791,6 +804,7 @@ def connect_write(
             poll_interval_s=poll_interval_s,
             purpose=purpose,
             close_log_max_wait_s=close_log_max_wait_s,
+            keepalive_s=resolved_keepalive_s,
         )
     except BaseException:
         _PROCESS_WRITE_GATE.release()
@@ -804,7 +818,9 @@ def _connect_write_after_process_gate(
     poll_interval_s: float = 0.25,
     purpose: str = "",
     close_log_max_wait_s: float = 0.25,
+    keepalive_s: float | None = None,
 ) -> LockedConnection:
+    resolved_keepalive_s = _resolve_keepalive_s(keepalive_s)
     # Fast path: reuse parked in-process writer (skips ~6.8s duckdb.connect).
     warm = _take_warm_slot(db_path)
     if warm is not None:
@@ -826,6 +842,7 @@ def _connect_write_after_process_gate(
             acquired_at=time.monotonic(),
             close_log_max_wait_s=close_log_max_wait_s,
             from_warm=True,
+            keepalive_s=resolved_keepalive_s,
         )
 
     lock_path = _lock_path_for(db_path)
@@ -927,6 +944,7 @@ def _connect_write_after_process_gate(
         purpose=purpose or "-",
         acquired_at=time.monotonic(),
         close_log_max_wait_s=close_log_max_wait_s,
+        keepalive_s=resolved_keepalive_s,
     )
 
 

@@ -170,7 +170,9 @@ def _flush_persist_batch(
     idx = 0
     n = len(batch)
     while idx < n:
-        with connect_write(db_path, purpose="acquisition/arxiv_oai_sync") as con:
+        with connect_write(
+            db_path, purpose="acquisition/arxiv_oai_sync", keepalive_s=0
+        ) as con:
             t0 = time.monotonic()
             while idx < n:
                 _persist_one(con, batch[idx], tally)
