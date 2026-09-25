@@ -79,6 +79,24 @@ _SELECT = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class QueuedClaim:
+    """One queued flag with its spawn question RESOLVED substrate-side:
+    a concept flag's question is its normalized key; a node flag's is the
+    node's canonical label (None when the node has vanished — the daemon
+    skips it with an honest receipt, never a fabricated question). The
+    daemon is substrate-internal, so claims span owners; the OWNER BOUNDARY
+    is an API concern, and the flag's owner stays on the row for the
+    write-back."""
+
+    flag: DiligenceFlagRow
+    question: str | None
+
+
+def _to_claim(r: Any) -> QueuedClaim:
+    return QueuedClaim(flag=_to_row(r), question=None if r[11] is None else str(r[11]))
+
+
 def _mint_flag_id() -> str:
     return f"dfl-{secrets.token_hex(8)}"
 
@@ -100,9 +118,15 @@ class DiligenceStore:
         """Insert the flag, or return the EXISTING row for the same
         (owner, kind, object_ref) — idempotent by construction. Returns
         (row, created). A dismissed row is REVIVED to queued (with the new
-        note when one is given); an active row is returned untouched."""
+        note when one is given); an active row is returned untouched.
+
+        The concept key's canonical form is the STORE's job (boundary
+        discipline): a concept ref normalizes HERE, so every writer — the
+        API, a test, a future importer — converges on one row."""
         if kind not in FLAG_KINDS:
             raise ValueError(f"unknown diligence flag kind: {kind}")
+        if kind == "concept":
+            object_ref = normalize_concept_key(object_ref)
         init_diligence_schema(con)
         existing = self._find(con, owner_user_id=owner_user_id, kind=kind, object_ref=object_ref)
         if existing is not None:
@@ -171,6 +195,30 @@ class DiligenceStore:
         ).fetchall()
         return [_to_row(r) for r in rows]
 
+    def list_queued_claims(self, con: SqlExecutor) -> list[QueuedClaim]:
+        """The daemon's claim query (autonomous-diligence SPR-02): every
+        queued flag, OLDEST FIRST, with the spawn question resolved
+        substrate-side (concept key, or the node's canonical label via a
+        LEFT JOIN — a vanished node yields a NULL question and the daemon
+        skips it honestly). Already-spawned/dismissed flags are excluded by
+        the status filter — the first dedupe path is the query itself."""
+        if not diligence_table_exists(con):
+            return []
+        rows = con.execute(
+            "SELECT q.flag_id, q.owner_user_id, q.kind, q.object_ref, q.note, "
+            "q.source_investigation_id, q.source_document_id, q.status, "
+            "q.spawned_investigation_id, q.created_at, q.updated_at, "
+            "CASE WHEN q.kind = 'concept' THEN q.object_ref "
+            "ELSE n.canonical_label END "
+            "FROM diligence_queue q "
+            "LEFT JOIN nodes n ON n.node_id = q.object_ref AND n.node_type = "
+            "CASE q.kind WHEN 'open_question' THEN 'question' "
+            "WHEN 'insight' THEN 'insight' END "
+            "WHERE q.status = 'queued' "
+            "ORDER BY q.created_at ASC, q.flag_id ASC",
+        ).fetchall()
+        return [_to_claim(r) for r in rows]
+
     def dismiss(
         self, con: LockedConnection, *, owner_user_id: str, flag_id: str
     ) -> DiligenceFlagRow | None:
@@ -223,5 +271,6 @@ __all__ = [
     "DiligenceStore",
     "FLAG_KINDS",
     "FLAG_STATUSES",
+    "QueuedClaim",
     "normalize_concept_key",
 ]
