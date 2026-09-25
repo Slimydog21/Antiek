@@ -67,6 +67,18 @@ class ProvenanceOut(BaseModel):
     bites: list[ProvenanceBiteOut]
 
 
+class PassageOut(BaseModel):
+    """The gate-served core snippet (SPR-03's pull-a-snippet): the passage
+    text when the owner lane serves it, else METADATA ONLY — a withheld
+    source's probe carries position, never body (the §9.0 rule)."""
+    servable: bool
+    text: str | None
+    page_index_hint: int | None
+    chunk_id: str
+    start_scalar: int
+    end_scalar: int
+
+
 def register_reformat_routes(app: FastAPI) -> None:
     """Mount the reformat routes. One call from create_app."""
 
@@ -199,6 +211,75 @@ def register_reformat_routes(app: FastAPI) -> None:
                 "created_at": record.created_at,
             },
             bites=out_bites,
+        )
+
+
+    @app.get(
+        "/books/{document_id}/passage",
+        response_model=PassageOut,
+        tags=["books", "reformat"],
+    )
+    def get_passage(
+        document_id: str,
+        request: Request,
+        chunk_id: str,
+        start_scalar: int,
+        end_scalar: int,
+    ) -> PassageOut:
+        """The pull-a-snippet probe (SPR-03): the core document's passage,
+        GATE-SERVED (the owner lane — the probe surface is owner-scoped);
+        a withheld source's probe carries position, NEVER body."""
+        from runtime.db_lock import connect_read
+        from substrate.books.serve_guard import serve_full_text_guarded
+
+        owner = _reader_owner_id(request)
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            doc = con.execute(
+                "SELECT owner_user_id FROM documents WHERE document_id = ? LIMIT 1",
+                [document_id],
+            ).fetchone()
+            if doc is None or str(doc[0]) != owner:
+                raise HTTPException(status_code=404, detail="book_not_found")
+            chunk = con.execute(
+                "SELECT section_path FROM chunks WHERE chunk_id = ? "
+                "AND document_id = ? LIMIT 1",
+                [chunk_id, document_id],
+            ).fetchone()
+            if chunk is None:
+                raise HTTPException(status_code=404, detail="passage_not_found")
+            served = serve_full_text_guarded(con, document_id, owner=True)
+            hint = page_index_from_section_path(
+                None if chunk[0] is None else str(chunk[0])
+            )
+            text: str | None = None
+            if served.full_text is not None:
+                from substrate.feedback.domain import normalize_node_text
+
+                normalized = normalize_node_text(served.full_text)
+                # The span resolves chunk-relative through the anchor-map —
+                # the SAME normalized scalar space the anchors use.
+                from substrate.books.highlights.anchor_map import build_anchor_map
+
+                anchor_map = build_anchor_map(
+                    con, document_id=document_id, served_text=normalized
+                )
+                for chunk_map in anchor_map.chunks:
+                    if chunk_map.chunk_id == chunk_id:
+                        text = normalized[
+                            chunk_map.body_start + start_scalar : chunk_map.body_start + end_scalar
+                        ]
+                        break
+        finally:
+            con.close()
+        return PassageOut(
+            servable=served.full_text is not None,
+            text=text,
+            page_index_hint=hint,
+            chunk_id=chunk_id,
+            start_scalar=start_scalar,
+            end_scalar=end_scalar,
         )
 
 

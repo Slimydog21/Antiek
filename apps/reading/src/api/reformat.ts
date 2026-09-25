@@ -130,6 +130,39 @@ export async function postFork(
   return resp.json();
 }
 
+/** The pull-a-snippet probe (SPR-03): the core document's passage,
+ *  gate-served — a withheld source's probe returns metadata only (text
+ *  null), never body. */
+export interface PassageSnippet {
+  servable: boolean;
+  text: string | null;
+  page_index_hint: number | null;
+  chunk_id: string;
+  start_scalar: number;
+  end_scalar: number;
+}
+
+export async function getPassageSnippet(
+  documentId: string,
+  span: { node_id: string; start_scalar: number; end_scalar: number },
+): Promise<PassageSnippet> {
+  const params = new URLSearchParams({
+    chunk_id: span.node_id,
+    start_scalar: String(span.start_scalar),
+    end_scalar: String(span.end_scalar),
+  });
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/passage?${params}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /books/{id}/passage failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return (await resp.json()) as PassageSnippet;
+}
 /** "Merge later" — the unit-5 merge shape (fork-merge route family).
  *  Same honest-degradation rule: 404 on a stack without it. */
 export async function postForkMerge(
