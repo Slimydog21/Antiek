@@ -38,6 +38,22 @@ const work = {
 };
 
 describe("parse honesty", () => {
+  it("accepts a personal_readable row as owner-only, not full-text servable (A-01)", () => {
+    const personal = {
+      ...work,
+      document_id: "doc-upload-24e63b6fb9eea860",
+      servability: "personal_readable",
+      servable_full_text: false,
+    };
+    const s = parseBookSummary(personal);
+    expect(s.servability).toBe("personal_readable");
+    expect(s.servable_full_text).toBe(false);
+    // Owner-readable is never publicly servable: the contradiction check holds.
+    expect(() => parseBookSummary({ ...personal, servable_full_text: true })).toThrow(
+      "servable_full_text contradicts servability",
+    );
+  });
+
   it("accepts metadata-only summary", () => {
     const s = parseBookSummary(work);
     expect(s.document_id).toBe("doc-1");
