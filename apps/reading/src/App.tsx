@@ -14,8 +14,6 @@ import Coordination from "./modes/Coordination";
 import CostConsent from "./modes/Coordination/CostConsent";
 import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
-import DocumentsIndex from "./modes/DocumentsIndex";
-import Federation from "./modes/Federation";
 import Home from "./modes/Home/Home";
 import Library from "./modes/Library";
 // Link Monster is lazy-loaded: its p5 furnace-stage chunk must not
@@ -31,16 +29,13 @@ import Multimedia from "./modes/Multimedia";
 import Notebook from "./modes/Notebook";
 import AutoNotebook from "./modes/Notebook/AutoNotebook";
 import NotebooksIndex from "./modes/NotebooksIndex";
-import OperatorDashboard from "./modes/OperatorDashboard";
 import Outcomes from "./modes/Outcomes";
 import OutcomesIndex from "./modes/OutcomesIndex";
-import PayoutsAudit from "./modes/PayoutsAudit";
 import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
 import BookReader from "./modes/Reading";
 import MetaReading from "./modes/Reading/MetaReading";
 import PersonalSpace from "./modes/Reading/PersonalSpace";
-import Replay from "./modes/Replay";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
 import MyResearch from "./modes/ResearchWorkstation/MyResearch";
@@ -52,7 +47,6 @@ import SpeakConsole from "./modes/Speak";
 import SpeakIndex from "./modes/SpeakIndex";
 import SpeakInvite from "./modes/SpeakInvite";
 import SpeakPublicBrowse from "./modes/SpeakPublicBrowse";
-import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
 import Explain from "./modes/Explain";
 import ObjectiveCard from "./modes/ObjectiveCard";
@@ -64,6 +58,28 @@ import WrestleApp from "./modes/WrestleApp";
 // part of the first paint. Keeping it out of App's entry chunk preserves the
 // WP-12.2 700 KB gz budget as the routed surface set grows.
 const AccountMemory = lazy(() => import("./modes/AccountMemory"));
+// The documents listing is a secondary surface reached from navigation, and its
+// row preview pulls in the style wheel; lazy-loading it keeps both out of the
+// entry chunk, which sits within about 1 KB of the 700 KB gz ceiling.
+const DocumentsIndex = lazy(() => import("./modes/DocumentsIndex"));
+// These secondary routes are not part of the first paint. Loading them on
+// visit keeps their tables and replay view out of the entry bundle.
+const Federation = lazy(() => import("./modes/Federation"));
+const OperatorDashboard = lazy(() => import("./modes/OperatorDashboard"));
+const PayoutsAudit = lazy(() => import("./modes/PayoutsAudit"));
+const Replay = lazy(() => import("./modes/Replay"));
+const Stats = lazy(() => import("./modes/Stats"));
+
+function RouteLoading({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans"
+    >
+      {label}
+    </div>
+  );
+}
 
 /**
  * Top-level route registry.
@@ -168,7 +184,20 @@ function AuthenticatedRoutes() {
         <Route path="/notebook/auto/:investigationId" element={<AutoNotebook />} />
         <Route path="/notebook/auto" element={<AutoNotebook />} />
         <Route path="/notebook/:notebookId" element={<Notebook />} />
-        <Route path="/documents" element={<DocumentsIndex />} />
+        <Route
+          path="/documents"
+          element={
+            <Suspense
+              fallback={
+                <div className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
+                  Loading documents…
+                </div>
+              }
+            >
+              <DocumentsIndex />
+            </Suspense>
+          }
+        />
         <Route path="/library" element={<Library />} />
         {/* SPR-09 M2 — the paginated browse view over the new /library catalog
             endpoint (Unit A). ADDITIVE: a static segment declared before any
@@ -192,7 +221,14 @@ function AuthenticatedRoutes() {
         <Route path="/meta-readings" element={<PersonalSpace metaDocsOnly />} />
         <Route path="/read/:documentId" element={<BookReader />} />
         <Route path="/billing" element={<Billing />} />
-        <Route path="/stats" element={<Stats />} />
+        <Route
+          path="/stats"
+          element={
+            <Suspense fallback={<RouteLoading label="Loading statistics…" />}>
+              <Stats />
+            </Suspense>
+          }
+        />
         <Route path="/map" element={<Map />} />
         <Route path="/multimedia" element={<Multimedia />} />
         <Route path="/backtest/:synthesisId" element={<Backtest />} />
@@ -217,7 +253,16 @@ function AuthenticatedRoutes() {
         <Route path="/privacy" element={<PrivacyDashboard />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/operator" element={<OperatorDashboard />} />
+        <Route
+          path="/operator"
+          element={
+            <Suspense
+              fallback={<RouteLoading label="Loading operator dashboard…" />}
+            >
+              <OperatorDashboard />
+            </Suspense>
+          }
+        />
         {/* antiek-unified SPR-05 — read-only coordination surface (gate ledger
             + 45-sprint roadmap). Slots into the SPR-04 shared/operator bucket
             when the four-workflow NavRail lands; reachable directly meanwhile. */}
@@ -237,7 +282,14 @@ function AuthenticatedRoutes() {
         <Route path="/signals" element={<Signals />} />
         <Route path="/outcomes" element={<OutcomesIndex />} />
         <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
-        <Route path="/replay/:investigationId" element={<Replay />} />
+        <Route
+          path="/replay/:investigationId"
+          element={
+            <Suspense fallback={<RouteLoading label="Loading replay…" />}>
+              <Replay />
+            </Suspense>
+          }
+        />
         {/* Speak SPR-08 ONE DOOR: the duplicate Interview surface is folded
             into Speak. There is exactly one door to interview-as-acquisition —
             /speak. The old /interviews index redirects to /speak (the warm
@@ -260,7 +312,14 @@ function AuthenticatedRoutes() {
         <Route path="/loop-3" element={<Loop3 />} />
         <Route path="/skill-rules" element={<SkillRules />} />
         <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />
-        <Route path="/federation" element={<Federation />} />
+        <Route
+          path="/federation"
+          element={
+            <Suspense fallback={<RouteLoading label="Loading federation…" />}>
+              <Federation />
+            </Suspense>
+          }
+        />
         <Route path="/cross-graph/citations" element={<CrossGraphCitations />} />
         {/* SPR-05 — the one multi-research monitor. Folds the three split
             "manage your researches" surfaces (the docked sidebar tree, the
@@ -272,7 +331,14 @@ function AuthenticatedRoutes() {
             cost, replay) preserved in MyResearch. */}
         <Route path="/my-research" element={<MyResearch />} />
         <Route path="/investigations" element={<Navigate to="/my-research" replace />} />
-        <Route path="/payouts" element={<PayoutsAudit />} />
+        <Route
+          path="/payouts"
+          element={
+            <Suspense fallback={<RouteLoading label="Loading payouts…" />}>
+              <PayoutsAudit />
+            </Suspense>
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>

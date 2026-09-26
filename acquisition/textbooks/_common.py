@@ -187,7 +187,10 @@ class ThrottledClient:
             if resp.status_code == 429 or resp.status_code >= 500:
                 if self._persistent is not None and resp.status_code in (429, 503):
                     self._persistent.note_response(
-                        self._source, resp.status_code, dict(resp.headers)
+                        self._source,
+                        resp.status_code,
+                        dict(resp.headers),
+                        url=str(resp.url),
                     )
                 last_exc = SourceError(f"{url} returned {resp.status_code}")
                 self._backoff(attempt, reason=f"HTTP {resp.status_code}")

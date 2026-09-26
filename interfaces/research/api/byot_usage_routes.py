@@ -31,7 +31,9 @@ from runtime.byok.store import load_credential
 from substrate.byot_usage.balance.base import BalanceSnapshot
 from substrate.byot_usage.balance.deepseek import fetch_deepseek_balance
 from substrate.byot_usage.balance.kimi import fetch_kimi_balance
+from substrate.byot_usage.balance.mimo import fetch_mimo_balance
 from substrate.byot_usage.balance.spend_history import fetch_spend_history_balance
+from substrate.byot_usage.balance.zhipu_glm import fetch_zhipu_glm_balance
 from substrate.byot_usage.ledger import ByotUsageLedger, KeyUsageRow
 
 __all__ = [
@@ -152,9 +154,14 @@ def _fetch_balance(
     everything else falls back to the spend-history adapter (client-side
     meter).  Monkeypatch in tests to avoid live net.
     """
+    # Every catalog id NOT listed here (openai, anthropic, xai, custom) reads
+    # Antiek's own spend meter, which the response labels ``spend_history`` so
+    # the chip never presents a meter as provider credit.
     native_adapters: dict[str, Any] = {
         "deepseek": fetch_deepseek_balance,
         "kimi": fetch_kimi_balance,
+        "zhipu_glm": fetch_zhipu_glm_balance,
+        "mimo": fetch_mimo_balance,
     }
     adapter_fn = native_adapters.get(catalog_id)
     if adapter_fn is not None:

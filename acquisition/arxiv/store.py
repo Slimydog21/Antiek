@@ -65,6 +65,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from middleware.ip_holder_resolver import resolve_and_apply
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import update_document_gate_columns
@@ -165,16 +166,18 @@ def _record_fetch_audit(
 
 
 def _read_doc_row(con: LockedConnection, document_id: str) -> dict[str, Any] | None:
-    """Return ``{license_uri, content_class, metadata}`` for the row, or None
-    when the row is absent. Raises ``ValueError`` on malformed metadata JSON —
-    we never blind-overwrite a row whose rights metadata we cannot safely read."""
+    """Return ``{license_uri, content_class, metadata, source_uri, author}`` for
+    the row, or None when the row is absent. Raises ``ValueError`` on malformed
+    metadata JSON — we never blind-overwrite a row whose rights metadata we
+    cannot safely read."""
     row = con.execute(
-        "SELECT content_class, metadata FROM documents WHERE document_id = ? LIMIT 1",
+        "SELECT content_class, metadata, source_uri, author FROM documents "
+        "WHERE document_id = ? LIMIT 1",
         [document_id],
     ).fetchone()
     if row is None:
         return None
-    content_class, raw_meta = row
+    content_class, raw_meta, source_uri, author = row
     if raw_meta is None:
         metadata: dict[str, Any] = {}
     elif isinstance(raw_meta, dict):
@@ -193,6 +196,8 @@ def _read_doc_row(con: LockedConnection, document_id: str) -> dict[str, Any] | N
         "content_class": content_class,
         "license_uri": metadata.get("license_uri"),
         "metadata": metadata,
+        "source_uri": source_uri,
+        "author": author,
     }
 
 
@@ -367,6 +372,17 @@ def store_pdf_for_arxiv_row(
         con.execute(
             "UPDATE documents SET metadata = ? WHERE document_id = ?",
             [json.dumps(metadata), document_id],
+        )
+
+        # SPR-08 T1 — resolve ``ip_holder_id`` for a row that the OAI harvest may
+        # have persisted before the resolver was wired. Same locked connection,
+        # same transaction; ``ip_holder_id`` is unindexed so the plain UPDATE is
+        # safe alongside the chunks written below. No match leaves NULL.
+        resolve_and_apply(
+            con,
+            document_id=document_id,
+            source_uri=row["source_uri"],
+            author=row["author"],
         )
 
         # Index the body for search (M3) on the SAME locked connection, so the

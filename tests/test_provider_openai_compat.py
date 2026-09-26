@@ -196,6 +196,137 @@ def test_openai_compat_normalize_handles_missing_usage():
 # ---------------------------------------------------------------------------
 
 
+_BODY_READ_ERROR = {
+    "error": {
+        "message": "failed to read request body",
+        "param": None,
+        "type": "server_error",
+    }
+}
+
+
+def test_openai_compat_body_read_error_names_provider_and_endpoint():
+    """Upstream/proxy envelope must not surface as a bare server_error.
+
+    The adapter called a specific provider URL. The raised error keeps that
+    provider, that endpoint, and the upstream message.
+    """
+    endpoint = "https://api.x.ai/v1/chat/completions"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert str(req.url) == endpoint
+        return httpx.Response(500, json=_BODY_READ_ERROR)
+
+    provider = OpenAICompatProvider(
+        name="xai",
+        base_url="https://api.x.ai/v1",
+        api_key="test-key",
+        chat_completions_path="/chat/completions",
+        client=_make_client(handler),
+    )
+    with pytest.raises(ProviderError) as ei:
+        provider.call(model="grok-4.3", prompt="hello", max_tokens=16, temperature=0.0)
+    err = ei.value
+    text = str(err)
+    assert err.provider == "xai"
+    assert err.endpoint == endpoint
+    assert err.upstream_type == "server_error"
+    assert err.retryable is True
+    assert text != "server_error"
+    assert "failed to read request body" in text
+    assert endpoint in text
+    assert "xai" in text
+    assert "test-key" not in text
+
+
+def test_openai_compat_body_read_error_kept_when_body_is_not_exposed():
+    """Untrusted endpoints still get the classified message, not the raw body."""
+    endpoint = "https://api.x.ai/v1/chat/completions"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json=_BODY_READ_ERROR)
+
+    provider = OpenAICompatProvider(
+        name="xai",
+        base_url="https://api.x.ai/v1",
+        api_key="test-key",
+        chat_completions_path="/chat/completions",
+        expose_error_body=False,
+        client=_make_client(handler),
+    )
+    with pytest.raises(ProviderError) as ei:
+        provider.call(model="grok-4.3", prompt="hello", max_tokens=16, temperature=0.0)
+    text = str(ei.value)
+    assert ei.value.endpoint == endpoint
+    assert "failed to read request body" in text
+    assert endpoint in text
+    assert text != "server_error"
+    assert "test-key" not in text
+    assert '"error"' not in text
+
+
+def test_openai_compat_body_read_error_redacts_credential_reflection():
+    """A hostile upstream cannot reflect the bearer key through error fields."""
+    endpoint = "https://api.x.ai/v1/chat/completions"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            500,
+            json={
+                "error": {
+                    "message": "rejected test-key",
+                    "param": "test-key",
+                    "type": "server_error",
+                }
+            },
+        )
+
+    provider = OpenAICompatProvider(
+        name="xai",
+        base_url="https://api.x.ai/v1",
+        api_key="test-key",
+        chat_completions_path="/chat/completions",
+        client=_make_client(handler),
+    )
+    with pytest.raises(ProviderError) as ei:
+        provider.call(model="grok-4.3", prompt="hello", max_tokens=16, temperature=0.0)
+
+    text = str(ei.value)
+    assert "test-key" not in text
+    assert "upstream error" in text
+    assert endpoint in text
+
+
+def test_openai_compat_body_read_error_bounds_hostile_fields():
+    """Bounded typed fields cannot become an oversized log line."""
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            500,
+            json={
+                "error": {
+                    "message": "x" * 2_000,
+                    "param": "y" * 2_000,
+                    "type": "server_error",
+                }
+            },
+        )
+
+    provider = OpenAICompatProvider(
+        name="xai",
+        base_url="https://api.x.ai/v1",
+        api_key="test-key",
+        chat_completions_path="/chat/completions",
+        client=_make_client(handler),
+    )
+    with pytest.raises(ProviderError) as ei:
+        provider.call(model="grok-4.3", prompt="hello", max_tokens=16, temperature=0.0)
+
+    text = str(ei.value)
+    assert len(text) < 700
+    assert "x" * 401 not in text
+    assert "y" * 121 not in text
+
+
 @pytest.mark.parametrize("status,retryable", [
     (401, False),
     (400, False),

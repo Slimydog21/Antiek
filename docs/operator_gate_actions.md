@@ -714,3 +714,17 @@ A per-title renewal-records check result recorded in
 in-copyright titles stay non-servable; the standing `corpus_audit`
 `servable_without_basis` check fails go-live on any servable title lacking a real
 basis.
+
+---
+
+## G13 — Auth diagnostic matrix
+
+**Status:** ✅ CLOSED 2026-06-02
+**Owner:** Operator / agent
+**Blocks:** Nothing; this was a login-failure triage gap.
+
+The diagnostic source of truth is
+`docs/diagnostics/auth-failure-mode-matrix.md`. It separates Layer A transport
+failures from Layer B allowlist silence, so a browser `Failed to fetch` must not
+be diagnosed as an allowlist miss when the API request itself returned
+`200 {"sent":true}`.

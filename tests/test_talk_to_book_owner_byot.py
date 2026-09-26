@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -92,6 +93,14 @@ def _authority_fixture(monkeypatch: pytest.MonkeyPatch):
         owner_user_id="owner-a",
     )
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        request.state.user_id = "owner-a"
+        request.state.user_email = "operator-under-test@example.com"
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
     fingerprint = models_admin._record_fingerprint(record)
     app.state.user_model_registration_fingerprints = {record.id: fingerprint}
     provider = _Provider(record.id, fingerprint)
@@ -328,3 +337,59 @@ def test_provably_unsent_boundary_releases_prepared_reservation(
     assert operation is not None and operation.state == "cancelled"
     assert ledger.key_usage(record.id, "owner-a").held_cents == 0  # type: ignore[union-attr]
     assert provider.calls == []
+
+
+def test_operator_lineup_never_reroutes_an_owner_paid_call(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """Audit wave 4, finding 1 (#3400).
+
+    The operator's AI Role Lineup assigns the ``thought_partner`` action to the
+    house provider. An owner-paid rung must still execute on the owner's key:
+    the payer decides the provider. Before the fix the seam called ``dispatch``
+    with no override, the router consulted the lineup (precedence 2), swapped
+    the exact tier's primary for ``house``, the house adapter answered and was
+    paid, and the post-call identity guard turned the owner's reservation into
+    ``unknown`` for a call that never touched the owner's key.
+    """
+    from substrate.dispatch import lineup_override
+
+    app, record, _, provider, house = _authority_fixture(monkeypatch)
+    lineup = tmp_path / "lineup.json"
+    lineup.write_text(json.dumps({
+        "owners": {"__operator__": {
+            "general": {},
+            "advanced": {"thought_partner": {"provider_id": "house", "model_id": "house-model"}},
+        }},
+    }), encoding="utf-8")
+    monkeypatch.setenv("ANTIEK_LINEUP_PATH", str(lineup))
+    lineup_override._registry_cache.clear()
+    # Control: the registry really resolves this role to the house provider, so a
+    # pass below is the seam declining the lineup, not the lineup being absent.
+    resolved = lineup_override.effective_override_for_dispatch_role("thought_partner")
+    assert resolved is not None and resolved.provider_id == "house"
+
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    result, authority = dispatch_talk_to_book_byot(
+        app=app,
+        request_owner_user_id="owner-a",
+        resource_owner_user_id="owner-a",
+        document_id="doc-a",
+        choice=models_admin.UserModelChoice(
+            authority="user_model", provider_id=record.id, model_id=record.model_id,
+        ),
+        prompt="private book prompt",
+        investigation_id="read-doc-a",
+        logical_operation_id="turn-lineup",
+        config=_config(),
+        usage_ledger=ledger,
+    )
+
+    assert house.calls == [], "the house provider was called and paid on an owner-paid dispatch"
+    assert len(provider.calls) == 1
+    assert (result.provider, result.model) == (record.id, record.model_id)
+    assert authority.payer_policy.value == "byot_only"
+    operation = ledger.operation("owner-a", "turn-lineup")
+    assert operation is not None and operation.state == "settled"
+    assert operation.provider_id == record.id
+

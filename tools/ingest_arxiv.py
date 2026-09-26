@@ -53,6 +53,12 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from runtime.ssl_bootstrap import bootstrap as _ssl_bootstrap  # noqa: E402
+
+# A python.org interpreter ships no CA bundle (arxiv-missing-ssl-env); point at
+# certifi unless SSL_CERT_FILE is already set (systemd / ca-certificates win).
+_ssl_bootstrap()
+
 from acquisition.arxiv import (  # noqa: E402
     ArxivBanned,
     ArxivPaper,
@@ -81,7 +87,9 @@ def _note_http_status(throttle: ArxivThrottle, exc: httpx.HTTPStatusError) -> bo
     sentinel — without it, the next invocation has no ban knowledge and
     re-hits the banned endpoint. Returns True iff the status was a 429."""
     status = exc.response.status_code
-    throttle.note_response(status, headers=exc.response.headers)
+    throttle.note_response(
+        status, headers=exc.response.headers, url=str(exc.request.url)
+    )
     return status == 429
 
 
