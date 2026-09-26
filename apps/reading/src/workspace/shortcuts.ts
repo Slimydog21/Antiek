@@ -42,6 +42,10 @@ import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
 import { companionVisible } from "./companionVisibility";
+import { WRITE_OUTLINE_PANEL_ID, useWriteOutline, writeOutlineVisible } from "./writeOutlineStore";
+import { mothershipForPath } from "./mothershipForPath";
+import type { Mothership } from "./tabTree";
+import { tabTreeHandle } from "./tabTreeHandle";
 import { readCustomHotkeys } from "./persistence";
 import { emitProductActivate, normalizeBinding } from "../components/hotkeys/bindings";
 import {
@@ -278,19 +282,45 @@ function focusPane(side: "left" | "right") {
 }
 
 /**
- * Companion agent-tab cycling (C4). Acts ONLY when the companion pane is
- * visible (inset preset: always; docked preset: the "Companion" panel is
- * open) — an honest no-op otherwise, never a dead key in a surface without
- * the pane. The store's cycle wraps across ALL tabs, so visual overflow
- * (the ⋯ menu) is never a hopping boundary.
+ * Right-pane tab cycling (prefix ,/. — one muscle memory). In writing mode
+ * with the outline pane visible it cycles the outline's block tabs (C5);
+ * everywhere else it cycles the companion's agent tabs (C4), only when the
+ * companion is visible — an honest no-op otherwise, never a dead key in a
+ * surface without the pane. The stores' cycles wrap across ALL tabs, so
+ * visual overflow is never a hopping boundary.
  */
 function cycleCompanionTab(direction: 1 | -1) {
+  if (mothershipForPath(window.location.pathname) === "writing") {
+    const ws = useWorkspace.getState();
+    if (writeOutlineVisible(ws.layoutPreset, Boolean(ws.panels[WRITE_OUTLINE_PANEL_ID]))) {
+      useWriteOutline.getState().cycle(direction);
+      return;
+    }
+  }
   if (!companionVisible()) return;
   // The store ships with the lazy pane; when the pane is visible it is
   // already loaded, so this resolves from the module cache.
   void import("./companionStore").then(({ useCompanion }) =>
     useCompanion.getState().cycleAgentTab(direction),
   );
+}
+
+/**
+ * Document tab-tree keys (D6). They act on the CURRENT route's mothership
+ * tree, and only once that tree has loaded — an honest no-op before then
+ * (never a dead key in a surface whose tree is not up). The store's own
+ * no-op cases (a root has no parent, a leaf has no children, no siblings)
+ * stay silent by the model's semantics.
+ */
+type TabTreeStore = NonNullable<(typeof tabTreeHandle)["store"]>;
+
+function tabTreeKey(run: (store: TabTreeStore, mothership: Mothership) => void) {
+  const mothership = mothershipForPath(window.location.pathname);
+  const store = tabTreeHandle.store;
+  if (!store) return;
+  const s = store.getState();
+  if (!s.loaded[mothership] || !s.trees[mothership]) return;
+  run(store, mothership);
 }
 
 /** Runs an action. Returning false means "not mine after all": the key is
@@ -336,6 +366,13 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     "pane.focusRight": () => focusPane("right"),
     "pane.fullscreen": () => useWorkspace.getState().toggleFullscreenPane(),
     "layout.togglePreset": () => useWorkspace.getState().toggleLayoutPreset(),
+    "tab.nextSibling": () => tabTreeKey((t, m) => t.getState().cycleSibling(m, 1)),
+    "tab.prevSibling": () => tabTreeKey((t, m) => t.getState().cycleSibling(m, -1)),
+    "tab.parent": () => tabTreeKey((t, m) => t.getState().goToParent(m)),
+    "tab.visitChild": () => tabTreeKey((t, m) => t.getState().visitChildOfActive(m)),
+    "tab.close": () => tabTreeKey((t, m) => t.getState().closeActiveTab(m, "lift_children")),
+    "tab.prune": () => tabTreeKey((t, m) => t.getState().closeActiveTab(m, "prune")),
+    "tab.treeToggle": () => tabTreeHandle.store?.getState().toggleTreePanel(),
     "companion.nextTab": () => cycleCompanionTab(1),
     "companion.prevTab": () => cycleCompanionTab(-1),
   };

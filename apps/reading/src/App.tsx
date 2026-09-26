@@ -53,13 +53,17 @@ import TrustCenter from "./modes/TrustCenter";
 import Explain from "./modes/Explain";
 import ObjectiveCard from "./modes/ObjectiveCard";
 import Signals from "./modes/Signals";
-import WriteHome from "./modes/Write/WriteHome";
 import WrestleApp from "./modes/WrestleApp";
 
 // Account Memory is lazy-loaded: it is an owner-private secondary panel, not
 // part of the first paint. Keeping it out of App's entry chunk preserves the
 // WP-12.2 700 KB gz budget as the routed surface set grows.
 const AccountMemory = lazy(() => import("./modes/AccountMemory"));
+
+// The Write door loads lazily: it carries the writing tab tree and the
+// outline wiring (cockpit C5), which would otherwise ride the entry chunk
+// (hard gzip budget, npm run build:check).
+const WriteHome = lazy(() => import("./modes/Write/WriteHome"));
 // The documents listing is a secondary surface reached from navigation, and its
 // row preview pulls in the style wheel; lazy-loading it keeps both out of the
 // entry chunk, which sits within about 1 KB of the 700 KB gz ceiling.
@@ -83,6 +87,10 @@ function operatorRoute(label: string, page: JSX.Element): JSX.Element {
     </Suspense>
   );
 }
+
+// The same styled lazy-route veil for the Write door (the helper is generic;
+// only its first callers were operator pages).
+const writeRoute = operatorRoute("Write", <WriteHome />);
 
 /**
  * Top-level route registry.
@@ -169,8 +177,8 @@ function AuthenticatedRoutes() {
             CreationStudio "select or create a deliverable" dead-end. The studio
             stays reachable at /create (a demoted power surface, off the door),
             its capability untouched; the door is /write (write.defaultRoute). */}
-        <Route path="/write" element={<WriteHome />} />
-        <Route path="/write/:deliverableId" element={<WriteHome />} />
+        <Route path="/write" element={writeRoute} />
+        <Route path="/write/:deliverableId" element={writeRoute} />
         <Route path="/create" element={<CreationStudio />} />
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
         <Route path="/brainstorm" element={<BrainstormStation />} />

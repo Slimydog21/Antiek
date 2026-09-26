@@ -2,15 +2,17 @@
  * crossPane.ts — the C4→C5 seam: an agent in the companion (right pane)
  * opens a document in the LEFT pane.
  *
- * THE CONTRACT IS THE EVENT SHAPE, not the handler. For cockpit PR 2 the
- * handler bridges to today's behavior: open/focus the reader window via
- * openWindow with the stable per-document id (`win:reader:<documentId>` —
- * re-opening focuses, never duplicates, per windowsStore). PR 3 (the left
- * tab strip over tabTree) REPLACES the handler through
- * setOpenDocumentHandler; every caller — this pane, future agent kinds —
- * is untouched.
+ * THE CONTRACT IS THE EVENT SHAPE, not the handler. As of cockpit PR 3 (D6)
+ * the handler spawns a LEFT CHILD TAB under the current mothership's tab
+ * tree (kind "reader", a "reference" branch origin) — the document opens in
+ * the left document space via the strip's canonical-route navigation, never
+ * as a window. PR 2's bridge (open/focus the reader window) is superseded;
+ * any later handler (a dock lane, a split) swaps in through
+ * setOpenDocumentHandler. Every caller speaks `openDocumentInLeftPane` and
+ * never changes.
  */
-import { openWindow } from "../components/windows/openWindow";
+import { childTabId, mothershipForPath, rootTabId } from "./documentSpace";
+import { useTabTrees } from "./tabTreeStore";
 
 export interface OpenDocumentOrigin {
   /** Where the request was born (e.g. "companion"). Metadata only. */
@@ -24,27 +26,47 @@ export interface OpenDocumentRequest {
   origin: OpenDocumentOrigin;
 }
 
-/** The PR-2 bridge: today's behavior. One reader window per document. */
-function bridgeToReaderWindow(req: OpenDocumentRequest): void {
-  openWindow(
-    "reader",
-    { documentId: req.documentId },
-    { id: `win:reader:${encodeURIComponent(req.documentId)}` },
-  );
+/** The D6 handler: a left child tab under the spawning (active) tab — or a
+ *  root tab when nothing is active. Re-opening the same document under the
+ *  same parent ACTIVATES the existing tab (stable ids, never duplicates). */
+function spawnDocumentTab(req: OpenDocumentRequest): void {
+  const mothership = mothershipForPath(window.location.pathname);
+  const store = useTabTrees.getState();
+  void store.ensureMothership(mothership).then(() => {
+    const s = useTabTrees.getState();
+    const tree = s.trees[mothership];
+    if (!tree) return;
+    const parentId = tree.active_tab_id;
+    const id = parentId
+      ? childTabId(parentId, "reader", req.documentId)
+      : rootTabId({ kind: "reader", ref: req.documentId, title: req.documentId });
+    if (tree.nodes[id]) {
+      s.activateTab(mothership, id);
+      return;
+    }
+    s.spawnTab(mothership, parentId, {
+      tab_id: id,
+      origin: { document_id: req.documentId, kind: "reference" },
+      kind: "reader",
+      ref: req.documentId,
+      mothership,
+      activate: true,
+    });
+  });
 }
 
-let handler: (req: OpenDocumentRequest) => void = bridgeToReaderWindow;
+let handler: (req: OpenDocumentRequest) => void = spawnDocumentTab;
 
-/** PR 3's seam: swap the handler (null restores the bridge). Callers never
- *  change — they speak `openDocumentInLeftPane`, not windows or tab trees. */
+/** The seam for any later handler (null restores the D6 default). Callers
+ *  never change — they speak `openDocumentInLeftPane`, not trees or windows. */
 export function setOpenDocumentHandler(
   next: ((req: OpenDocumentRequest) => void) | null,
 ): void {
-  handler = next ?? bridgeToReaderWindow;
+  handler = next ?? spawnDocumentTab;
 }
 
 /** Open (focus) a document in the left pane. An empty identity is an honest
- *  no-op: no id, no window, never a guessed target. */
+ *  no-op: no id, no tab, never a guessed target. */
 export function openDocumentInLeftPane(
   documentId: string,
   origin: OpenDocumentOrigin,

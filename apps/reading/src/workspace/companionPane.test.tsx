@@ -81,6 +81,8 @@ import { useWorkspace } from "./WorkspaceStore";
 import { useWindows } from "./windowsStore";
 import { installShortcuts } from "./shortcuts";
 import { openDocumentInLeftPane, setOpenDocumentHandler } from "./crossPane";
+import { mothershipForPath } from "./documentSpace";
+import { useTabTrees } from "./tabTreeStore";
 import { pinPlatform, press, unpinPlatform } from "./keymapTestKit";
 
 const { tierRef } = vi.hoisted(() => ({ tierRef: { current: "xl" as string } }));
@@ -119,6 +121,7 @@ afterEach(() => {
   ws().setLayoutPreset("docked");
   comp().reset();
   useWindows.getState().reset();
+  useTabTrees.getState().resetTabTrees();
   setOpenDocumentHandler(null);
   unpinPlatform();
   document.body.innerHTML = "";
@@ -302,7 +305,10 @@ describe("the tab strip", () => {
 // ─── the key rows ────────────────────────────────────────────────────────
 
 describe("the companion tab keys (prefix n/p + chord twins)", () => {
-  it("prefix n/p cycle the companion's tabs (wrap) when the pane is visible", async () => {
+  it("prefix ,/. cycle the companion's tabs (wrap) when the pane is visible", async () => {
+    // D6 retarget (PR 3): the corpus reserved n/p for the document tab tree,
+    // so companion cycling moved to the adjacent free ,/. pair — recorded
+    // here because this test pinned n/p in PR 2.
     openThreadTab("inv-live");
     openThreadTab("inv-done");
     mountInsetLayout();
@@ -310,23 +316,23 @@ describe("the companion tab keys (prefix n/p + chord twins)", () => {
     // Cycling loads the store on demand (it ships with the lazy pane), so the
     // change lands a microtask after the key.
     key(document.body, "ctrl+b");
-    key(document.body, "n");
+    key(document.body, ",");
     await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
     key(document.body, "ctrl+b");
-    key(document.body, "n");
+    key(document.body, ",");
     await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-done"));
     key(document.body, "ctrl+b");
-    key(document.body, "p");
+    key(document.body, ".");
     await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
   });
 
-  it("the chord twins ctrl+alt+] / ctrl+alt+[ cycle too", async () => {
+  it("the chord twins ctrl+alt+, / ctrl+alt+. cycle too", async () => {
     openThreadTab("inv-live");
     openThreadTab("inv-done");
     mountInsetLayout();
-    key(document.body, "ctrl+alt+]");
+    key(document.body, "ctrl+alt+,");
     await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
-    key(document.body, "ctrl+alt+[");
+    key(document.body, "ctrl+alt+.");
     await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-done"));
   });
 
@@ -348,7 +354,7 @@ describe("the companion tab keys (prefix n/p + chord twins)", () => {
     const input = document.createElement("input");
     document.body.appendChild(input);
     input.focus();
-    for (const k of ["n", "p"]) {
+    for (const k of [",", "."]) {
       key(input, "ctrl+b");
       expect(prefixState.isArmed(), `prefix must not arm in text (for ${k})`).toBe(false);
       const e = key(input, k);
@@ -361,14 +367,24 @@ describe("the companion tab keys (prefix n/p + chord twins)", () => {
 // ─── the cross-pane seam (C4→C5) ─────────────────────────────────────────
 
 describe("openDocumentInLeftPane — the seam PR 3 re-handles", () => {
-  it("the bridge opens/focuses the reader window with the stable per-document id", async () => {
+  it("the D6 handler spawns a left child tab — no reader window, callers unchanged", async () => {
+    // PR 3 (D6): the seam now spawns a document tab in the current
+    // mothership's tab tree instead of opening a reader window. The event
+    // shape and the affordance are unchanged.
+    useTabTrees.getState().resetTabTrees();
     openThreadTab("inv-live", "doc-9");
     mountPane();
     const btn = await screen.findByText("Open source document →");
     fireEvent.click(btn);
-    const win = useWindows.getState().windows["win:reader:doc-9"];
-    expect(win).toBeTruthy();
-    expect(useWindows.getState().focusedId).toBe("win:reader:doc-9");
+    // The handler ensures the tree, then spawns — flush the microtasks.
+    await act(async () => {});
+    await act(async () => {});
+    const m = mothershipForPath(window.location.pathname);
+    const tree = useTabTrees.getState().trees[m];
+    const tab = tree ? Object.values(tree.nodes).find((n) => n.kind === "reader" && n.ref === "doc-9") : undefined;
+    expect(tab).toBeTruthy();
+    expect(tab!.branch_origin?.kind).toBe("reference");
+    expect(useWindows.getState().windows["win:reader:doc-9"]).toBeUndefined();
   });
 
   it("the contract is the event shape: a swapped handler receives it verbatim", () => {

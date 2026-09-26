@@ -87,11 +87,13 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   // SPR-04: now the workflow-scoped content-first tree at shell/.
   ProjectTree: lazy(() => import("../shell/ProjectTree")),
 
-  // Cockpit C4 — the companion (AI agents as tabs). EAGER: PanelLayout
-  // statically imports it for the omarchy-inset right pane (it is core
-  // cockpit chrome, mounted whenever the inset preset is active), so the
-  // registry matches reality rather than pretending to split it.
+  // Cockpit C4 — the companion (AI agents as tabs). Lazy, like the inset
+  // right pane's copy (RightPaneForMode): it loads on first show.
   Companion: lazy(() => import("./CompanionPane")),
+
+  // Cockpit C5 — the Write outline (block tabs + source DnD). Lazy for the
+  // same reason as the companion.
+  WriteOutline: lazy(() => import("./WriteOutlinePane")),
 
   // S10 — Stats is also rendered as a route → eager.
   Stats,

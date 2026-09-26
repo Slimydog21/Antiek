@@ -89,7 +89,8 @@ export type PanelKind =
   | "Lightbox"
   | "BrainstormWatchList"
   | "BrainstormThoughtPartner"
-  | "Companion";
+  | "Companion"
+  | "WriteOutline";
 
 export type PanelDescriptor = {
   /** Stable id. e.g. "InvestigationSidebar:default", "Chat:inv-abc:42". */

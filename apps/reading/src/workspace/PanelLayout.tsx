@@ -3,24 +3,20 @@ import type { ReactNode } from "react";
 
 import { toast } from "../components/lemon/LemonToast";
 import { radius } from "../design/tokens";
+import RightPaneForMode from "./RightPaneForMode";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { useWorkspace } from "./WorkspaceStore";
 import { isTextEditing } from "./shortcuts";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useViewportTier } from "./useViewportTier";
 
-// The companion pane (agent tabs, the thought-partner client) loads on first
-// show, not with the entry chunk: most sessions open without it, and the
-// entry chunk has a hard gzip budget (npm run build:check).
-const CompanionPane = lazy(() => import("./CompanionPane"));
-
-function CompanionPaneLoading() {
-  return (
-    <div role="status" aria-live="polite" className="flex-1 min-h-0 px-3 py-2 text-xs text-ink-mute dark:text-moonlight">
-      Loading agents…
-    </div>
-  );
-}
+// The document tab strip (D6) and the tab-tree model it renders load on
+// first show, not with the entry chunk, which has a hard gzip budget (npm
+// run build:check). The right pane's heavy halves load lazily inside
+// RightPaneForMode.
+const DocumentTabStrip = lazy(() =>
+  import("./DocumentTabStrip").then((m) => ({ default: m.DocumentTabStrip })),
+);
 
 /**
  * PanelLayout — the orchestrator.
@@ -165,9 +161,14 @@ export function PanelLayout({ mainSlot }: Props) {
 
   // The centre column is IDENTICAL in both presets — one JSX value, so the
   // docked DOM is byte-identical to before the preset existed and the inset
-  // preset cannot drift from it.
+  // preset cannot drift from it. The document tab strip (D6) mounts here
+  // once, so the inset left pane and the docked main surface share it
+  // (router-guarded: it renders nothing without a Router context).
   const centreColumn = (
     <div className="flex-1 min-w-0 flex flex-col">
+      <Suspense fallback={null}>
+        <DocumentTabStrip />
+      </Suspense>
       <main className="flex-1 min-w-0 relative overflow-hidden">
         {/* Underlying mainSlot — the route content */}
         <div className="absolute inset-0 overflow-auto">{mainSlot}</div>
@@ -272,9 +273,7 @@ export function PanelLayout({ mainSlot }: Props) {
             style={{ width: rightPaneWidth, borderRadius: radius.lg }}
             onFocusCapture={() => setFocusedPane("right")}
           >
-            <Suspense fallback={<CompanionPaneLoading />}>
-              <CompanionPane />
-            </Suspense>
+            <RightPaneForMode />
             {dockRightIds.length > 0 && (
               <aside
                 className="flex flex-col shrink-0 min-w-0 max-h-[50%] border-t border-hairline"
