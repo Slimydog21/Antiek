@@ -564,7 +564,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           <ResearchPanel
             key={r.investigation_id}
             research={r}
-            costUsd={session.cost?.per_research[r.investigation_id] ?? 0}
+            costUsd={session.cost?.per_research[r.investigation_id] ?? null}
             busy={busy || steering === r.investigation_id}
             onSteer={steer(r.investigation_id)}
           />

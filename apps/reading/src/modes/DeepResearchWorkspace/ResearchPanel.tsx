@@ -21,7 +21,8 @@ import { researchRunStateStyle } from "../../shared/researchState";
 
 export interface ResearchPanelProps {
   research: ResearchStatus;
-  costUsd: number;
+  /** Null until the backend reports this research's cost: never shown as $0. */
+  costUsd: number | null;
   onSteer: (kind: SteerKind, payload?: Record<string, unknown>) => void;
   busy?: boolean;
 }
@@ -50,7 +51,13 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
       </header>
 
       <div className="flex items-center justify-between text-xs text-shadow-1 dark:text-moonlight">
-        <span className="font-mono">${costUsd.toFixed(4)}</span>
+        {costUsd === null ? (
+          // Same words as CostMeter's unknown state: a number the session has
+          // not reported is awaited, not zero (F-11).
+          <span className="uppercase tracking-[0.14em]">cost · awaiting</span>
+        ) : (
+          <span className="font-mono">${costUsd.toFixed(4)}</span>
+        )}
         <span className="truncate font-mono opacity-60">{research.investigation_id.slice(-12)}</span>
       </div>
 
