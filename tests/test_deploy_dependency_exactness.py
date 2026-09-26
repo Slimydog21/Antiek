@@ -81,6 +81,37 @@ def test_bootstrap_uv_is_pinned_then_removed_after_exact_sync() -> None:
     }
 
 
+def test_deploy_records_a_lock_check_before_the_exact_sync() -> None:
+    tasks = _code_tasks()
+    bootstrap_task = next(
+        task
+        for task in tasks
+        if task.get("name")
+        == "bootstrap the pinned lock reader into the service venv"
+    )
+    lock_check = next(
+        task
+        for task in tasks
+        if task.get("name") == "record the deploy-time lock-check receipt"
+    )
+    sync = next(
+        task
+        for task in tasks
+        if task.get("name")
+        == "exact-sync the service venv from the gated SHA's lock"
+    )
+
+    assert tasks.index(bootstrap_task) < tasks.index(lock_check) < tasks.index(sync)
+    args = _task_args(lock_check, "ansible.builtin.command")
+    assert args["argv"] == [
+        "{{ antiek_install_dir }}/.venv/bin/uv",
+        "lock",
+        "--check",
+    ]
+    assert args["chdir"] == "{{ antiek_install_dir }}"
+    assert lock_check["changed_when"] is False
+
+
 def test_deploy_does_not_claim_uv_self_removal() -> None:
     text = _DEPLOY.read_text(encoding="utf-8")
     assert "the exact sync removes it again" not in text
