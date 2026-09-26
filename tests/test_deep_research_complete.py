@@ -162,3 +162,14 @@ def test_full_trajectory_passes(tmp_path):
 def test_assert_raises_deep_research_incomplete_error():
     with pytest.raises(DeepResearchIncompleteError, match="inv-assert"):
         assert_deep_research_complete("inv-assert")
+
+def test_terminal_phase_warrant_fails_loudly_when_optimized(monkeypatch):
+    """The completion checker's phase list is its warrant. Under `python -O` an
+    `assert` would vanish and the checker could over-report 'complete' with a
+    truncated phase list. The guard is an explicit raise so it survives
+    optimization (same class as the thread provenance warrant)."""
+    import orchestration.invariants.deep_research_complete as mod
+
+    monkeypatch.setattr(mod, "DEEP_RESEARCH_TERMINAL_PHASES", (6, 7, 8))
+    with pytest.raises(RuntimeError, match="missing terminal phases"):
+        mod.check_deep_research_complete("inv-phase-warrant")
