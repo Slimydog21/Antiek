@@ -294,18 +294,28 @@
           an incomplete release.
       tags: [code]
 
-    - name: assert the published frontend entrypoint exists
+    - name: stat the frozen frontend entrypoint and root
       ansible.builtin.stat:
         path: "{{ antiek_release_dir }}/frontend-dist/index.html"
       register: release_frontend_index
       tags: [frontend]
 
-    - name: assert frontend index is present and traversable
+    - name: stat the frozen frontend root
+      ansible.builtin.stat:
+        path: "{{ antiek_release_dir }}/frontend-dist"
+      register: release_frontend_root
+      tags: [frontend]
+
+    - name: assert the frozen frontend is readable and traversable
       ansible.builtin.assert:
         that:
           - release_frontend_index.stat.exists
-          - release_frontend_index.stat.mode is match('^7')
-        fail_msg: The candidate frontend is missing or not world-traversable.
+          - release_frontend_index.stat.readable
+          - release_frontend_index.stat.mode == '0444'
+          - release_frontend_root.stat.exists
+          - release_frontend_root.stat.readable
+          - release_frontend_root.stat.mode == '0555'
+        fail_msg: The frozen frontend is missing, unreadable, or has an unsafe post-freeze mode.
       tags: [frontend]
 
     # ── Edge configuration ─────────────────────────────────────────────
