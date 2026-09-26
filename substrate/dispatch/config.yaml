@@ -147,15 +147,19 @@ tiers:
     # Sprint 13 — voice note ingestion. Whisper-grade audio→text.
     # Routes through OpenAI's whisper-1 directly (no good Hermes
     # transcription path today). $0.006/minute of audio is the
-    # canonical pricing; substrate.dispatch.whisper.WhisperProvider
-    # implements the actual call.
+    # canonical pricing; acquisition.voice.client.WhisperTranscriber
+    # makes the actual call (a direct httpx POST to /audio/transcriptions,
+    # not through the dispatch router).
     provider: openai
     model: whisper-1
     pricing:
-      # Whisper is per-minute, not per-token. The cost helper in
-      # ``processing.transcription`` computes USD from audio duration
-      # and reports it via ``dispatch.call`` events as if it were
-      # output tokens (1 minute = 1000 "output_tokens" placeholder).
+      # Whisper is per-minute, not per-token. NOTHING computes or records
+      # a per-call Whisper cost today: WhisperTranscriber emits no
+      # ``dispatch.call`` event and reads no pricing. These values are
+      # static config, read only where this file's tiers are read whole
+      # (the ops-objective dispatch card, settings-budget tier pricing).
+      # The 6.0 encodes the per-minute price under a placeholder
+      # convention (1 minute = 1000 "output_tokens") no caller applies.
       input_per_mtok: 0.0
       output_per_mtok: 6.0  # 1 mtok placeholder ≈ 1000 minutes
       cached_input_per_mtok: 0.0
