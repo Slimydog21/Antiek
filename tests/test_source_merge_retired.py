@@ -219,6 +219,19 @@ def test_retired_route_answers_410_and_touches_nothing(api_env, route, variant):
     assert arts_after == before[2], "the artifacts directory changed"
 
 
+def test_the_open_watcher_sees_the_reads_it_guards_against(api_env):  # noqa: F811
+    # Positive control, so "opened == []" above cannot pass vacuously: the
+    # confined reader opens the draft by a bare name relative to a directory
+    # descriptor, and a plain read opens the secret by its absolute path.
+    packet, _ = _source_merge_ready_packet(TestClient(create_app(register_wrestling=False)))
+    draft = Path(packet["draft_merge_path"])
+    secret = _secret_file(api_env)
+    with _watching_opens(draft.name, SECRET_NAME) as opened:
+        artifact_paths.read_reviewed_draft_merge(str(draft))
+        secret.read_text()
+    assert [os.path.basename(hit) for hit in opened] == [draft.name, SECRET_NAME], opened
+
+
 @pytest.mark.parametrize("route", ROUTES)
 def test_retired_route_declares_no_request_body(route):
     # FastAPI reads and validates a body only for a declared body parameter;
