@@ -8,6 +8,9 @@
  *    first non-archived project from GET /projects), and a 404 on
  *    GET /projects keeps the in-memory adapter with `tabsPersistence:
  *    "session"`;
+ *  - the app's boot flag (tabTreeHandle.bindOnLoad) makes the first tree
+ *    load bind, so production reaches the server without a direct call;
+ *  - a node's title comes from the tabTitles cache, at spawn and in every PUT;
  *  - tab state never reaches localStorage or sessionStorage.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +25,8 @@ import {
   type TabTreeAdapter,
   type TabTreeSnapshot,
 } from "./tabTree";
+import { tabTreeHandle } from "./tabTreeHandle";
+import { resetTabTitles, setTabTitle } from "./tabTitles";
 import { firstOpenProject, useTabTrees } from "./tabTreeStore";
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
@@ -74,7 +79,9 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  tabTreeHandle.bindOnLoad = false;
   tabs().resetTabTrees();
+  resetTabTitles();
 });
 
 describe("the store adopts the server's answer (A2a item 4)", () => {
@@ -257,6 +264,30 @@ describe("binding to the active project (A2a item 6)", () => {
     await expect(firstOpenProject()).rejects.toBeInstanceOf(ApiError);
   });
 
+  it("the boot flag binds on the first load: GET /projects, then the project's tab row", async () => {
+    tabTreeHandle.bindOnLoad = true;
+    respond(200, { projects: [project("p1")] });
+    respond(200, emptyWire(2));
+    await tabs().ensureMothership("reading");
+    expect(apiFetchMock.mock.calls[0][0]).toMatch(/\/projects$/);
+    expect(apiFetchMock.mock.calls[1][0]).toMatch(/\/projects\/p1\/tabs\/reading$/);
+    expect(tabs().tabsPersistence).toBe("server");
+    expect(tabs().projectId).toBe("p1");
+    expect(tabs().trees.reading!.version).toBe(2);
+  });
+
+  it("the boot flag with GET /projects answering 404 loads from the in-memory adapter: session", async () => {
+    tabTreeHandle.bindOnLoad = true;
+    respond(404, { detail: "Not Found" });
+    await tabs().ensureMothership("reading");
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(apiFetchMock.mock.calls[0][0]).toMatch(/\/projects$/);
+    expect(tabs().tabsPersistence).toBe("session");
+    expect(tabs().projectId).toBeNull();
+    expect(tabs().loaded.reading).toBe(true);
+    expect(tabs().trees.reading!.version).toBe(0);
+  });
+
   it("server-bound tabs never touch localStorage or sessionStorage", async () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");
     const getItem = vi.spyOn(Storage.prototype, "getItem");
@@ -268,5 +299,41 @@ describe("binding to the active project (A2a item 6)", () => {
     await flush();
     expect(setItem).not.toHaveBeenCalled();
     expect(getItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("a node's title comes from the tab title source (A2a item 1)", () => {
+  it("a spawn with no explicit title takes the known title from the tabTitles cache", async () => {
+    setTabTitle("reader", "doc-1", "Load tables");
+    await tabs().ensureMothership("reading");
+    const r = tabs().spawnTab("reading", null, { tab_id: "t-1", kind: "reader", ref: "doc-1", mothership: "reading" });
+    expect(r.ok).toBe(true);
+    expect(tabs().trees.reading!.nodes["t-1"].title).toBe("Load tables");
+  });
+
+  it("every PUT reads titles from the cache, so a title learned after the spawn reaches the server", async () => {
+    await tabs().bindActiveProject(async () => "fld-7");
+    respond(200, emptyWire(0));
+    await tabs().ensureMothership("reading");
+
+    const t1 = {
+      tab_id: "t-1", parent_tab_id: null, side: "left", kind: "reader", ref: "doc-1", title: "",
+      mothership: "reading", public_number: 1, hier_number: "1", child_order: [],
+    };
+    respond(200, { ...emptyWire(1), tree: { nodes: { "t-1": t1 }, root_order: ["t-1"] }, active: { left: null, right: null }, next_child_index: { root: 2 } });
+    tabs().spawnTab("reading", null, { tab_id: "t-1", kind: "reader", ref: "doc-1", mothership: "reading" });
+    await flush();
+    expect(tabs().trees.reading!.nodes["t-1"].title).toBe("");
+
+    setTabTitle("reader", "doc-1", "Load tables");
+    const t2 = { ...t1, tab_id: "t-2", ref: "doc-2", public_number: 2, hier_number: "2" };
+    respond(200, { ...emptyWire(2), tree: { nodes: { "t-1": t1, "t-2": t2 }, root_order: ["t-1", "t-2"] }, active: { left: null, right: null }, next_child_index: { root: 3 } });
+    tabs().spawnTab("reading", null, { tab_id: "t-2", kind: "reader", ref: "doc-2", mothership: "reading" });
+    await flush();
+
+    const puts = apiFetchMock.mock.calls.filter(([, init]) => init?.method === "PUT");
+    expect(puts).toHaveLength(2);
+    const body = JSON.parse(puts[1][1].body as string);
+    expect(body.tree.nodes["t-1"].title).toBe("Load tables");
   });
 });

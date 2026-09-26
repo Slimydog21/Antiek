@@ -166,6 +166,12 @@ export function retiredFromHistory(tree: TabTree): RetiredEntry[] {
 // Whole trees
 // ---------------------------------------------------------------------------
 
+// A14: the model keeps one focused tab, so focusing a right tab sends
+// active.left = null and fromWire adopts that null: the left pane's active
+// tab is lost once the save lands. Unreachable today (this client spawns no
+// right tabs; only a server-sent right node can be focused). When agent tabs
+// move into the tree, keep a separate active-left in the model, as
+// active_right is kept, instead of deriving it from the focused tab.
 function activeToWire(tree: TabTree): ActiveBySide {
   const focused = tree.active_tab_id !== null && Object.hasOwn(tree.nodes, tree.active_tab_id) ? tree.nodes[tree.active_tab_id] : null;
   return {
