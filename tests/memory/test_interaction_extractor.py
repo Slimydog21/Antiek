@@ -1,12 +1,11 @@
-"""SPR-11 T7: memory written back from a completed thought-partner turn.
+"""Interaction extraction and the Thought Partner memory boundary.
 
 The substrate half (a-c) runs the extractor and the reconciler against a real
 graph: one stable fact is exactly one ADD, its restatement is a NOOP that
 writes nothing, and a contradiction is a SUPERSEDE that keeps the original row
 reachable with ``include_invalidated=True``. The interface half (d, flag) goes
-through the real ``/thought-partner`` route: an extractor that raises leaves
-the HTTP response byte-identical, the flag off writes nothing, and the flag on
-writes one provenance-stamped row from a signed session.
+through the real ``/thought-partner`` route. Raw prompts never authorize a
+durable write, and legacy unconfirmed extracts never enter provider context.
 """
 
 from __future__ import annotations
@@ -28,8 +27,9 @@ from substrate.dispatch import (
     reset_provider_registry,
 )
 from substrate.graph.schema import init_database_at_path
-from substrate.memory import list_memory
+from substrate.memory import list_memory, write_memory_item
 from substrate.memory.interaction_extractor import (
+    EXTRACTOR_VERSION,
     INTERACTION_MEMORY_FLAG,
     OWNER_SUBJECT,
     extract_memory_candidates,
@@ -69,7 +69,11 @@ def test_stable_fact_produces_exactly_one_add(memory_con: LockedConnection) -> N
     assert [decision.action for decision in decisions] == ["ADD"]
     rows = list_memory(memory_con, "owner-a")
     assert len(rows) == 1
-    assert (rows[0].subject, rows[0].predicate, rows[0].object) == (OWNER_SUBJECT, "prefers", "vim for editing")
+    assert (rows[0].subject, rows[0].predicate, rows[0].object) == (
+        OWNER_SUBJECT,
+        "prefers",
+        "vim for editing",
+    )
     assert rows[0].provenance["source"] == "thought_partner"
     assert rows[0].provenance["investigation_id"] == "inv-42"
     assert rows[0].provenance["excerpt"] == "I prefer vim for editing"
@@ -98,12 +102,16 @@ def test_contradicting_restatement_supersedes_and_keeps_the_original(
     _turn(memory_con, "I prefer vim for editing.", at=_T0)
     original = list_memory(memory_con, "owner-a")[0]
 
-    _, decisions = _turn(memory_con, "Actually I prefer emacs for editing.", at=_T0 + timedelta(days=1))
+    _, decisions = _turn(
+        memory_con, "Actually I prefer emacs for editing.", at=_T0 + timedelta(days=1)
+    )
 
     assert [decision.action for decision in decisions] == ["SUPERSEDE"]
     current = list_memory(memory_con, "owner-a")
     assert [item.object for item in current] == ["emacs for editing"]
-    history = {item.edge_id: item for item in list_memory(memory_con, "owner-a", include_invalidated=True)}
+    history = {
+        item.edge_id: item for item in list_memory(memory_con, "owner-a", include_invalidated=True)
+    }
     assert set(history) == {original.edge_id, current[0].edge_id}
     retained = history[original.edge_id]
     assert retained.object == "vim for editing"
@@ -199,7 +207,9 @@ def app_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     app_module = importlib.import_module("interfaces.research.api.app")
 
     monkeypatch.setattr(
-        app_module, "_retrieve_thought_partner_context", lambda *a, **k: ([], "duckdb — brute_force_kind", None)
+        app_module,
+        "_retrieve_thought_partner_context",
+        lambda *a, **k: ([], "duckdb — brute_force_kind", None),
     )
     app = app_module.create_app(register_wrestling=False, register_providers=False, cors_origins=[])
     return TestClient(app), db_path
@@ -210,7 +220,10 @@ def _post(client: TestClient, *, owner: str = "owner-a") -> Any:
     response = client.post(
         "/thought-partner",
         cookies={"ANTIEK_SESSION": mint_session_cookie(user_id=owner, email=_EMAIL)},
-        json={"prompt": "I prefer vim for editing. What should I read next?", "investigation_id": "inv-7"},
+        json={
+            "prompt": "I prefer vim for editing. What should I read next?",
+            "investigation_id": "inv-7",
+        },
     )
     assert response.status_code == 200, response.text
     return response
@@ -221,26 +234,18 @@ def _owner_rows(db_path: str, owner: str = "owner-a"):
         return list_memory(con, owner, include_invalidated=True)
 
 
-def test_extractor_that_raises_leaves_the_http_response_unchanged(
-    app_client, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+def test_untyped_writeback_does_not_change_response_or_store(
+    app_client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, db_path = app_client
     baseline = _post(client).json()
 
     monkeypatch.setenv(INTERACTION_MEMORY_FLAG, "1")
 
-    def _boom(**kwargs: object) -> object:
-        raise RuntimeError("extractor exploded on: " + str(kwargs.get("prompt")))
-
-    monkeypatch.setattr(
-        "interfaces.research.api.account_memory_context.extract_memory_candidates", _boom
-    )
     response = _post(client)
 
     assert response.json() == baseline
     assert _owner_rows(db_path) == []
-    assert "account-memory write-back skipped" in caplog.text
-    assert "vim for editing" not in caplog.text
 
 
 def test_flag_off_writes_nothing(app_client, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -252,18 +257,99 @@ def test_flag_off_writes_nothing(app_client, monkeypatch: pytest.MonkeyPatch) ->
     assert _owner_rows(db_path) == []
 
 
-def test_flag_on_writes_one_row_from_a_signed_turn(app_client, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_quoted_source_not_promoted_to_owner_fact(
+    app_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, db_path = app_client
+    monkeypatch.setenv(INTERACTION_MEMORY_FLAG, "1")
+    register_provider(_CannedProvider())
+    response = client.post(
+        "/thought-partner",
+        cookies={"ANTIEK_SESSION": mint_session_cookie(user_id="owner-a", email=_EMAIL)},
+        json={
+            "prompt": "Please summarize this quoted source:\nI work at ExampleCo.",
+            "investigation_id": "inv-7",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert _owner_rows(db_path) == []
+
+
+def test_signed_raw_turn_cannot_write_memory_even_with_flag_on(
+    app_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
     client, db_path = app_client
     monkeypatch.setenv(INTERACTION_MEMORY_FLAG, "1")
 
     _post(client)
-    _post(client)  # the restatement is a NOOP
+    _post(client)
+    assert _owner_rows(db_path) == []
 
-    rows = _owner_rows(db_path)
-    assert len(rows) == 1
-    assert (rows[0].subject, rows[0].predicate, rows[0].object) == (OWNER_SUBJECT, "prefers", "vim for editing")
-    assert rows[0].provenance["source"] == "thought_partner"
-    assert rows[0].provenance["investigation_id"] == "inv-7"
-    # Shared operator identity is not a distinct owner: nothing is written for it.
     _post(client, owner="__operator__")
     assert _owner_rows(db_path, "__operator__") == []
+
+
+def test_legacy_unconfirmed_extract_is_quarantined_from_provider_context(
+    app_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, db_path = app_client
+    monkeypatch.setenv(INTERACTION_MEMORY_FLAG, "1")
+    with connect_write(db_path, purpose="seed-legacy-unconfirmed-memory") as con:
+        _turn(con, "I work at ExampleCo.", at=_T0)
+    assert len(_owner_rows(db_path)) == 1
+
+    provider = _CannedProvider()
+    register_provider(provider)
+    response = client.post(
+        "/thought-partner",
+        cookies={"ANTIEK_SESSION": mint_session_cookie(user_id="owner-a", email=_EMAIL)},
+        json={"prompt": "What should I read next?", "investigation_id": "inv-7"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert len(provider.calls) == 1
+    assert "ExampleCo" not in provider.calls[0]["prompt"]
+    assert len(_owner_rows(db_path)) == 1
+
+
+def test_legacy_extracts_cannot_crowd_out_valid_recall(app_client) -> None:
+    client, db_path = app_client
+    with connect_write(db_path, purpose="seed-recall-crowd-out") as con:
+        write_memory_item(
+            con,
+            owner_user_id="owner-a",
+            subject="owner",
+            predicate="prefers",
+            object="manual-entry-coffee",
+            provenance={"source": "account_memory_test", "event_id": "manual-1"},
+            valid_from=_T0,
+        )
+        for index in range(8):
+            write_memory_item(
+                con,
+                owner_user_id="owner-a",
+                subject="owner",
+                predicate=f"legacy_{index}",
+                object=f"unconfirmed-{index}",
+                provenance={
+                    "source": "thought_partner",
+                    "extractor": EXTRACTOR_VERSION,
+                    "event_id": f"legacy-{index}",
+                },
+                valid_from=_T0 + timedelta(days=index + 1),
+            )
+    assert len(_owner_rows(db_path)) == 9
+
+    provider = _CannedProvider()
+    register_provider(provider)
+    response = client.post(
+        "/thought-partner",
+        cookies={"ANTIEK_SESSION": mint_session_cookie(user_id="owner-a", email=_EMAIL)},
+        json={"prompt": "What should I read next?"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert len(provider.calls) == 1
+    assert "manual-entry-coffee" in provider.calls[0]["prompt"]
+    assert "unconfirmed-" not in provider.calls[0]["prompt"]
+    assert len(_owner_rows(db_path)) == 9
