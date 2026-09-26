@@ -56,7 +56,7 @@
     #
     # Strategy:
     #   1. If the path is a known API prefix → reverse_proxy uvicorn.
-    #   2. Else → serve from /var/www/antiek-app with SPA fallback.
+#   2. Else → serve from {{ frontend_dist_dir }} with SPA fallback.
     #
     # The API prefix list comes from every `@app.X("/foo")` decorator
     # in interfaces/research/api/*.py (47 top-level prefixes). A route
