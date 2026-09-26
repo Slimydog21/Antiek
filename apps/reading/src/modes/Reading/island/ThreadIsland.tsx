@@ -50,6 +50,11 @@ export interface ThreadIslandProps {
   /** The anchor's page hint (position the card shows on a metadata-only
    *  anchor, where a quote would be a leak). */
   pageIndexHint: number | null;
+  /** The reader window's origin context (reading-global SPR-02) — payload
+   *  metadata whose ONE consumer is the dig-deeper prefill. Only
+   *  investigation-bearing origins (research / evidence) can prefill a
+   *  chase parent; a write origin's id is a deliverable, never a parent. */
+  origin?: { from: string; id: string } | null;
 }
 
 /** The status-glyph vocabulary: dot class + accessible label per island
@@ -99,6 +104,7 @@ export default function ThreadIsland({
   servable,
   passageQuote,
   pageIndexHint,
+  origin = null,
 }: ThreadIslandProps) {
   const [expanded, setExpanded] = useState(false);
   // The SPR-04 chase composer, opened inside the card: null = closed; a
@@ -311,6 +317,11 @@ export default function ThreadIsland({
       {dig ? (
         <DigDeeper
           parentInvestigationId={investigationId}
+          originChaseParent={
+            origin && (origin.from === "research" || origin.from === "evidence")
+              ? origin.id
+              : null
+          }
           spawnContext={spawnContext}
           initialQuestion={dig.initialQuestion}
           reservedChildId={dig.reservedChildId}

@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from runtime.db_lock import LockedConnection
-from substrate.books.highlights.schema import init_highlights_schema
+from substrate.books.highlights.schema import SqlExecutor, init_highlights_schema
 from substrate.books.highlights.store import (
     AnchorRow,
     HighlightsStore,
@@ -252,8 +252,10 @@ def resolve_pin(
     return PinResolution(anchor=anchor, page_index_hint=hint)
 
 
-def document_servable(con: LockedConnection, document_id: str) -> bool:
-    """Rights truth from the server's own rows — never the client's say-so."""
+def document_servable(con: SqlExecutor, document_id: str) -> bool:
+    """Rights truth from the server's own rows — never the client's say-so.
+    Read-only: any connection that can execute a SELECT (write side and read
+    side alike, the SqlExecutor protocol) satisfies it."""
     row = con.execute(
         "SELECT content_class FROM documents WHERE document_id = ? LIMIT 1",
         [document_id],
