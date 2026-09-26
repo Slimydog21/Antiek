@@ -539,7 +539,13 @@ def check_safety_valve(con: Any, results: list[SessionResult]) -> SafetyValve:
         (h for h in ip_holders.list_all(con) if h.escrow_balance_usd > 0),
         None,
     )
-    assert holder is not None, "expected at least one holder with escrow to test the gate"
+    if holder is None:
+        # Survives `python -O`: a vacuous safety-valve pass is a lying-green
+        # defect. Refuse to report a gate result without the required fixture.
+        raise RuntimeError(
+            "expected at least one holder with escrow to test the gate; "
+            "refusing to report a vacuous safety-valve result"
+        )
     # Independent block: a pre_onboarded holder cannot be paid even if the gate
     # were open — claim() is the only unlock and we never call it.
     holder_status_blocks = holder.status != "claimed"
