@@ -18,7 +18,7 @@
  */
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
@@ -453,6 +453,28 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
       setSteering(null);
     }
   };
+
+  // A session the backend says does not exist (a stale bookmark, a deleted
+  // session): the hook has stopped polling, so say so plainly and offer the
+  // way back instead of an endless "reconnecting…" (A-14).
+  if (session.missing) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-8" role="status">
+        <p className="text-sm font-serif text-ink dark:text-bright">
+          {"That research session isn't available."}
+        </p>
+        <p className="text-xs text-shadow-1 dark:text-moonlight">
+          It may have been moved or removed.
+        </p>
+        <Link
+          to="/deep-research"
+          className="text-xs text-ink underline underline-offset-2 dark:text-bright"
+        >
+          Start a new deep research
+        </Link>
+      </div>
+    );
+  }
 
   // Connecting: arrived on a session (e.g. a fresh launch from the Research
   // entry) before the first status poll has resolved. Show an honest

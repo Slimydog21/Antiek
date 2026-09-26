@@ -12,6 +12,13 @@
  * (`sessionStreamUrl`) is a future EventSource upgrade; the monitor does not
  * depend on it. Snapshots are whole-state (not appended deltas), so there is
  * nothing to dedup.
+ *
+ * Failures (FFX SPR-04, A-14): a session the backend says does not exist
+ * (describeFailure kind "not_found") is terminal: `missing` is set and the
+ * loop stops after that one request, because re-polling a 404 cannot make the
+ * session appear. Any other failure keeps the reconnect behaviour, backing off
+ * (interval, 2x, 4x … capped) across consecutive failures, and `error` carries
+ * describeFailure's plain title, never the raw request line.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -24,6 +31,7 @@ import {
   type SessionCost,
 } from "../../api/research";
 import type { ResearchSourcePolicy } from "../../lib/api";
+import { describeFailure } from "../../shared/failure";
 
 export interface SessionView {
   researches: ResearchStatus[];
@@ -34,9 +42,14 @@ export interface SessionView {
   loading: boolean;
   sourcePolicy: ResearchSourcePolicy[];
   sourcePolicyExecution: "metadata_only" | "runner_consumed" | null;
-  /** Transient poll error; the hook keeps retrying (reconnect). */
+  /** Plain-language title of the last poll failure; never a status or path. */
   error: string | null;
+  /** The backend reported the session does not exist; polling has stopped. */
+  missing: boolean;
 }
+
+/** Longest wait between reconnect attempts after consecutive failures. */
+const MAX_BACKOFF_MS = 30_000;
 
 const EMPTY: SessionView = {
   researches: [],
@@ -48,6 +61,7 @@ const EMPTY: SessionView = {
   sourcePolicy: [],
   sourcePolicyExecution: null,
   error: null,
+  missing: false,
 };
 
 export function useResearchSession(
@@ -65,12 +79,14 @@ export function useResearchSession(
     let cancelled = false;
     const interval = opts.intervalMs ?? 1500;
     let terminalEvidencePolls = 0;
+    let consecutiveFailures = 0;
     setView({ ...EMPTY, loading: true });
 
     const poll = async () => {
       try {
         const s = await getSession(sessionId);
         if (cancelled) return;
+        consecutiveFailures = 0;
         const allTerminal =
           (s.all_terminal ?? s.researches.every((r) => TERMINAL_STATES.has(r.state))) &&
           s.researches.length > 0;
@@ -84,6 +100,7 @@ export function useResearchSession(
           sourcePolicy: s.source_policy ?? [],
           sourcePolicyExecution: s.source_policy_execution ?? null,
           error: null,
+          missing: false,
         });
         // Keep polling until every research is terminal; then stop (the
         // monitor shows the final state, no wasted requests).
@@ -103,9 +120,19 @@ export function useResearchSession(
         }
       } catch (e) {
         if (cancelled) return;
-        // Transient failure → surface it but keep retrying (reconnect).
-        setView((v) => ({ ...v, loading: false, error: errMessage(e) }));
-        timerRef.current = window.setTimeout(poll, interval);
+        const failure = describeFailure(e, { what: "reach this research session" });
+        if (failure.kind === "not_found") {
+          // Terminal: no timer is scheduled, so this was the last request.
+          setView((v) => ({ ...v, loading: false, error: failure.title, missing: true }));
+          return;
+        }
+        // Transient failure → surface it but keep retrying (reconnect), with backoff.
+        consecutiveFailures += 1;
+        setView((v) => ({ ...v, loading: false, error: failure.title, missing: false }));
+        timerRef.current = window.setTimeout(
+          poll,
+          Math.min(MAX_BACKOFF_MS, interval * 2 ** (consecutiveFailures - 1)),
+        );
       }
     };
     void poll();
@@ -118,8 +145,4 @@ export function useResearchSession(
   }, [sessionId, opts.intervalMs]);
 
   return view;
-}
-
-function errMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }
