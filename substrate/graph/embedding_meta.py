@@ -7,6 +7,7 @@ the query model is incompatible with stored metadata.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from processing.embedding import (
@@ -48,25 +49,33 @@ def record_chunk_embedding_meta(
     )
 
 
-def assert_embedding_compatible(con: Any, provider: Any) -> None:
+def assert_embedding_compatible(
+    con: Any,
+    provider: Any,
+    *,
+    candidate_sql: str | None = None,
+    candidate_params: Sequence[Any] = (),
+) -> None:
     """Fail search if persisted chunk embeddings use a different provider.
 
-    Legacy databases remain readable: if the metadata table is absent or empty,
-    this check is a no-op. Once metadata exists, any mismatched fingerprint is
-    treated as unsafe because vector-space equality cannot be inferred from
-    equal dimensions alone.
+    Search passes its pre-ranking candidate selection. Direct callers retain
+    the historical global check. An absent metadata table remains readable;
+    other SQL errors must surface.
     """
     provider_name, model_name, dimension, fingerprint = _identity(provider)
+    sql = "SELECT m.provider, m.model_name, m.dimension, m.fingerprint FROM embeddings_meta m"
+    params = list(candidate_params)
+    if candidate_sql is not None:
+        sql += f" JOIN ({candidate_sql}) eligible ON eligible.chunk_id = m.chunk_id"
+    sql += " WHERE (m.fingerprint IS DISTINCT FROM ? OR m.dimension IS DISTINCT FROM ?) LIMIT 1"
+    params.extend([fingerprint, dimension])
     try:
-        row = con.execute(
-            "SELECT provider, model_name, dimension, fingerprint "
-            "FROM embeddings_meta "
-            "WHERE fingerprint != ? OR dimension != ? "
-            "LIMIT 1",
-            [fingerprint, dimension],
-        ).fetchone()
+        row = con.execute(sql, params).fetchone()
     except Exception as exc:
-        if exc.__class__.__name__ in {"CatalogException", "BinderException"}:
+        if (exc.__class__.__name__ == "CatalogException"
+                and str(exc).startswith(
+                    "Catalog Error: Table with name embeddings_meta does not exist!"
+                )):
             return
         raise
     if row is None:
