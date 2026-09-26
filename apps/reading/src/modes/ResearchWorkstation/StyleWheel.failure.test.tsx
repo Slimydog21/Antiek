@@ -30,6 +30,12 @@ function html(version: string) {
   });
 }
 
+/** The `what` passed to describeFailure is plain words, so the title is
+ *  "Couldn't <what>." and not the "That didn't work." fallback (#3538). */
+function expectPlainTitle(text: string) {
+  expect(text).toMatch(/^Couldn't [a-z][a-z ']*\./i);
+}
+
 function expectHonest(text: string) {
   expect(text).not.toMatch(/\b[45]\d\d\b/);
   expect(text).not.toMatch(/\/[a-z-]+/);
@@ -79,6 +85,7 @@ describe("StyleWheel version download — honest failure", () => {
     await applyAndDownload();
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
     expect(alert.textContent).toContain("Couldn't download this version.");
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
@@ -94,5 +101,6 @@ describe("StyleWheel version download — honest failure", () => {
     await applyAndDownload();
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
   });
 });

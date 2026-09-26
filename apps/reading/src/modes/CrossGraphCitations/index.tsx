@@ -116,11 +116,11 @@ export default function CrossGraphCitations() {
             referenced user.
           </p>
           <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-            For federation citations:{" "}
+            For federation citations, allow-list the partner substrate on the{" "}
             <Link to="/federation" className="underline hover:text-ink dark:text-bright">
-              /federation
+              Federation
             </Link>{" "}
-            must allow-list the partner substrate first.
+            page first.
           </p>
         </header>
       }

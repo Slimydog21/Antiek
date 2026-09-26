@@ -40,6 +40,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** The `what` passed to describeFailure is plain words, so the title is
+ *  "Couldn't <what>." and not the "That didn't work." fallback (#3538). */
+function expectPlainTitle(text: string) {
+  expect(text).toMatch(/^Couldn't [a-z][a-z ']*\./i);
+}
+
 function expectHonest(text: string) {
   expect(text).not.toMatch(/\b[45]\d\d\b/);
   expect(text).not.toMatch(/\/[a-z-]+/);
@@ -69,6 +75,7 @@ describe("PrivacyDashboard — honest failure", () => {
     render(<PrivacyDashboard />);
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
     expect(alert.textContent).toContain("Couldn't load your privacy settings.");
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText(/substrate-wide daily ε total/)).toBeTruthy();
@@ -83,6 +90,20 @@ describe("PrivacyDashboard — honest failure", () => {
     render(<PrivacyDashboard />);
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
+  });
+
+  it("when /trust-center and /settings/privacy both 503, the status describes it (written after the fix)", async () => {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) =>
+      String(input).endsWith("/trust-center/deletion-requests")
+        ? json({ requests: [] })
+        : json({ detail: "x" }, 503),
+    );
+    render(<PrivacyDashboard />);
+    const alert = await screen.findByRole("alert");
+    expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
+    expect(alert.textContent).toContain("Antiek is busy or restarting.");
   });
 
   it("a failed toggle save shows plain copy, not the settings API status", async () => {
@@ -99,6 +120,7 @@ describe("PrivacyDashboard — honest failure", () => {
     await userEvent.click(toggle);
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
     expect(alert.textContent).toContain("Couldn't save that privacy setting.");
   });
 });

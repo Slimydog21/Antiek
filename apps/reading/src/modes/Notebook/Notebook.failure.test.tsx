@@ -57,6 +57,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** The `what` passed to describeFailure is plain words, so the title is
+ *  "Couldn't <what>." and not the "That didn't work." fallback (#3538). */
+function expectPlainTitle(text: string) {
+  expect(text).toMatch(/^Couldn't [a-z][a-z ']*\./i);
+}
+
 function expectHonest(text: string) {
   expect(text).not.toMatch(/\b[45]\d\d\b/);
   expect(text).not.toMatch(/\/[a-z-]+/);
@@ -83,6 +89,7 @@ describe("Notebook — honest failure", () => {
     renderAt("nb-1");
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
     expect(alert.textContent).toContain("Couldn't open this notebook.");
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("blk-a")).toBeTruthy();
@@ -95,6 +102,7 @@ describe("Notebook — honest failure", () => {
     renderAt("nb-1");
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
   });
 
   it("a 404 for a nonexistent id shows no path, no status, and no Try again", async () => {
@@ -102,6 +110,7 @@ describe("Notebook — honest failure", () => {
     renderAt("does-not-exist");
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 
@@ -115,6 +124,7 @@ describe("Notebook — honest failure", () => {
     await userEvent.click(screen.getByRole("button", { name: "stub add block" }));
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
     expect(alert.textContent).toContain("Couldn't add the block.");
     // The notebook is still there: no whole-page replacement.
     expect(screen.getByText("blk-a")).toBeTruthy();

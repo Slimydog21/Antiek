@@ -21,6 +21,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** The `what` passed to describeFailure is plain words, so the title is
+ *  "Couldn't <what>." and not the "That didn't work." fallback (#3538). */
+function expectPlainTitle(text: string) {
+  expect(text).toMatch(/^Couldn't [a-z][a-z ']*\./i);
+}
+
 function expectHonest(text: string) {
   expect(text).not.toMatch(/\b[45]\d\d\b/);
   expect(text).not.toMatch(/\/[a-z-]+/);
@@ -68,6 +74,7 @@ describe("CrossGraphCitations — honest failure", () => {
     await fillAndSubmit();
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
     expect(alert.textContent).toContain("Couldn't record the citation.");
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
@@ -76,12 +83,15 @@ describe("CrossGraphCitations — honest failure", () => {
     expect(await screen.findByText("Recently recorded")).toBeTruthy();
   });
 
-  it("a network TypeError never shows 'Failed to fetch'", async () => {
+  it("a network TypeError never shows 'Failed to fetch', and the page shows no path anywhere", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     renderPage();
     await fillAndSubmit();
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
+    // The header's federation link read "/federation" (M7 crawl); written after the fix.
+    expectHonest(document.body.textContent ?? "");
   });
 
   it("a 422 whose detail is a snake_case code is not echoed", async () => {
@@ -92,6 +102,7 @@ describe("CrossGraphCitations — honest failure", () => {
     await fillAndSubmit();
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
     expect(alert.textContent).not.toContain("referenced_note_not_public");
   });
 });

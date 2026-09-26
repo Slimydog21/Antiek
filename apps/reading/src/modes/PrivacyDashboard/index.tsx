@@ -100,13 +100,19 @@ export default function PrivacyDashboard() {
       const [tc, dr, privacyResp] = await Promise.all([
         apiFetch("/trust-center"),
         apiFetch("/trust-center/deletion-requests").catch(() => null),
-        fetchPrivacySettings(),
+        // Settled, not thrown: when both reads fail, the /trust-center status
+        // (an ApiError) describes the failure, not api/privacy.ts's plain Error.
+        fetchPrivacySettings().then(
+          (value) => ({ value }),
+          (reason: unknown) => ({ reason }),
+        ),
       ]);
       if (!tc.ok) {
         throw new ApiError(`GET /trust-center failed: HTTP ${tc.status}`, tc.status, await tc.text());
       }
+      if (!("value" in privacyResp)) throw privacyResp.reason;
       setData(await tc.json());
-      setPrivacy(privacyResp.surfaces);
+      setPrivacy(privacyResp.value.surfaces);
 
       if (dr?.ok) {
         const drData = await dr.json();

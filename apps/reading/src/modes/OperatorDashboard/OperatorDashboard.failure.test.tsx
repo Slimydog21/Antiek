@@ -46,6 +46,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** The `what` passed to describeFailure is plain words, so the title is
+ *  "Couldn't <what>." and not the "That didn't work." fallback (#3538). */
+function expectPlainTitle(text: string) {
+  expect(text).toMatch(/^Couldn't [a-z][a-z ']*\./i);
+}
+
 function expectHonest(text: string) {
   expect(text).not.toMatch(/\b[45]\d\d\b/);
   expect(text).not.toMatch(/\/[a-z-]+/);
@@ -110,6 +116,7 @@ describe("OperatorDashboard — three-state reads", () => {
     renderPage();
     const alert = await screen.findByRole("alert");
     expectHonest(alert.textContent ?? "");
+    expectPlainTitle(alert.textContent ?? "");
     expect(alert.textContent).toContain("Couldn't load publishers.");
     const snap = await snapshotSection();
     await within(snap).findByText("7");
