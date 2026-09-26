@@ -3,7 +3,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { LemonModal } from "../lemon/LemonModal";
 import { readCustomHotkeys } from "../../workspace/persistence";
 import { formatBinding } from "./bindings";
-import { NOTES, TASK_OF, TASK_TITLES, comboParts } from "./keymapView";
+import { NOTES, PENDING, TASK_OF, TASK_TITLES, comboParts } from "./keymapView";
 import {
   ACTIONS,
   KEYMAP,
@@ -186,7 +186,12 @@ export default function KeySheet({ onClose, platform = currentPlatform() }: KeyS
               </thead>
               <tbody>
                 {g.entries.map((e) => (
-                  <tr key={e.action} data-keymap-action={e.action}>
+                  <tr
+                    key={e.action}
+                    data-keymap-action={e.action}
+                    data-keymap-pending={PENDING.has(e.action) ? "true" : undefined}
+                    className={PENDING.has(e.action) ? "antiek-keysheet__row--pending" : undefined}
+                  >
                     <th scope="row" className="antiek-keysheet__label">
                       {e.meta.label}
                       {NOTES[e.action] && <span className="antiek-keysheet__note">{NOTES[e.action]}</span>}

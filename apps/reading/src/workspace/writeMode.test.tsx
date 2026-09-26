@@ -296,22 +296,44 @@ describe("drag a source document onto a block tab", () => {
 // ─── keys: outline block cycling + the untouched sidecar ────────────────
 
 describe("the keys in writing mode", () => {
-  it("prefix ,/. cycle the outline's block tabs (the right-pane muscle memory)", async () => {
+  it("with the right pane focused, prefix n/p and ctrl+alt+]/[ cycle the outline's block tabs", async () => {
     mountCockpit("/write/d-1");
     await screen.findAllByText("alpha claim");
     expect(outline().activeBlockId).toBe("b-1");
+    const section = tabs().trees.writing!.active_tab_id;
+    act(() => ws().setFocusedPane("right"));
     key(document.body, "ctrl+b");
-    key(document.body, ",");
+    key(document.body, "n");
     expect(outline().activeBlockId).toBe("b-2");
-    key(document.body, "ctrl+b");
-    key(document.body, ",");
+    key(document.body, "ctrl+alt+]");
     expect(outline().activeBlockId).toBe("b-3");
     key(document.body, "ctrl+b");
-    key(document.body, ","); // wraps
+    key(document.body, "n"); // wraps
     expect(outline().activeBlockId).toBe("b-1");
-    key(document.body, "ctrl+b");
-    key(document.body, ".");
+    key(document.body, "ctrl+alt+[");
     expect(outline().activeBlockId).toBe("b-3");
+    key(document.body, "ctrl+b");
+    key(document.body, "p");
+    expect(outline().activeBlockId).toBe("b-2");
+    // The left (body + section) tabs never moved.
+    expect(tabs().trees.writing!.active_tab_id).toBe(section);
+  });
+
+  it("with the left pane focused, the same keys walk the body and section tabs instead", async () => {
+    mountCockpit("/write/d-1");
+    await screen.findAllByText("alpha claim");
+    const s1 = childTabId("root:document:/write/d-1", "document", "section:s-1");
+    const s2 = childTabId("root:document:/write/d-1", "document", "section:s-2");
+    act(() => {
+      tabs().activateTab("writing", s1);
+      ws().setFocusedPane("left");
+    });
+    key(document.body, "ctrl+b");
+    key(document.body, "n");
+    expect(tabs().trees.writing!.active_tab_id).toBe(s2);
+    key(document.body, "ctrl+alt+[");
+    expect(tabs().trees.writing!.active_tab_id).toBe(s1);
+    expect(outline().activeBlockId).toBe("b-1");
   });
 
   it("the AI sidecar binding is untouched and works on a write route", async () => {
@@ -339,5 +361,72 @@ describe("the keys in writing mode", () => {
     key(document.body, "ctrl+b");
     key(document.body, "u");
     expect(tabs().trees.writing!.active_tab_id).toBe("root:document:/write/d-1");
+  });
+});
+
+// ─── stage 3: section tabs, the drop guard, the copy (defects 5, 11) ──────
+
+describe("section tabs scope in place (defect 5)", () => {
+  it("an active section tab is labelled by its heading and shows no 'opens as window' bridge", async () => {
+    const { container } = mountCockpit("/write/d-1");
+    await screen.findAllByText("alpha claim");
+    const cid = childTabId("root:document:/write/d-1", "document", "section:s-2");
+    act(() => {
+      tabs().activateTab("writing", cid);
+    });
+    const strip = container.querySelector<HTMLElement>("[data-document-strip]")!;
+    await waitFor(() => {
+      const selected = strip.querySelector<HTMLElement>("[role='tab'][aria-selected='true']")!;
+      expect(selected.textContent).toContain("Body section");
+    });
+    expect(strip.querySelector("[data-tab-bridge]")).toBeNull();
+    expect(strip.textContent).not.toMatch(/opens as window/i);
+    expect(strip.textContent).not.toMatch(/section:/);
+    // The sibling section is named by its heading too.
+    expect(within(strip).getAllByText("Intro section").length).toBeGreaterThan(0);
+  });
+});
+
+describe("a drop that is not a source document is refused honestly (defect 11)", () => {
+  function dropRaw(blockId: string, raw: string) {
+    const tab = document.querySelector<HTMLElement>(`[data-block-tab="${blockId}"]`)!;
+    fireEvent.drop(tab, {
+      dataTransfer: { getData: (t: string) => (t === SOURCE_DOCUMENT_MIME ? raw : "") },
+    });
+  }
+
+  it.each([
+    ["malformed JSON", "{not json"],
+    ["JSON that is not an object", "42"],
+    ["an object with no document id", JSON.stringify({ document_title: "Orphan" })],
+    ["a blank document id", JSON.stringify({ document_id: "  ", document_title: null })],
+  ])("%s: nothing is assigned, nothing throws, and the pane says why", async (_label, raw) => {
+    mountCockpit("/write/d-1");
+    await screen.findAllByText("alpha claim");
+    expect(() => dropRaw("b-2", raw)).not.toThrow();
+    expect(sources().records["d-1"]?.["b-2"] ?? []).toHaveLength(0);
+    const refusal = await screen.findByRole("status", { name: /drop refused/i });
+    expect(refusal.textContent).toMatch(/wasn.t a source document/i);
+    expect(refusal.textContent).toMatch(/nothing was assigned/i);
+  });
+
+  it("a good drop after a refusal clears it and assigns", async () => {
+    mountCockpit("/write/d-1");
+    await screen.findAllByText("alpha claim");
+    dropRaw("b-2", "{not json");
+    await screen.findByRole("status", { name: /drop refused/i });
+    dropRaw("b-2", JSON.stringify({ document_id: "doc-ok", document_title: "Good Book" }));
+    expect(sources().records["d-1"]["b-2"]).toHaveLength(1);
+    expect(screen.queryByRole("status", { name: /drop refused/i })).toBeNull();
+  });
+});
+
+describe("the outline pane's copy names no internal file (defect 11)", () => {
+  it("the empty-sources line reads as product copy", async () => {
+    mountCockpit("/write/d-1");
+    await screen.findAllByText("alpha claim");
+    const text = document.querySelector("[data-no-sources]")!.textContent ?? "";
+    expect(text).not.toMatch(/\.tsx?\b|TODO|blockSources/);
+    expect(document.querySelector("[data-write-outline]")!.textContent).not.toMatch(/\.tsx?\b|TODO/);
   });
 });

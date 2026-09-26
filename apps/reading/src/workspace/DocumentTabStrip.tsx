@@ -39,13 +39,14 @@ import {
   routeForTab,
   tabShowsPath,
 } from "./documentSpace";
+import { sectionIdFromRef } from "./sectionRef";
 import { SiblingStrip } from "./SiblingStrip";
 import { TabPathHeader } from "./TabPathHeader";
 import { TabTreePanel } from "./TabTreePanel";
 import { labelForTab, type TabLabel } from "./tabLabels";
 import { DOCUMENT_PANEL_ID, domIdFor } from "./tabStripParts";
 import { requestTabTitle, titleKey, useTabTitles, type TitleEntry } from "./tabTitles";
-import { pathTo, type Mothership, type TabTree } from "./tabTree";
+import { pathTo, type Mothership, type TabNode, type TabTree } from "./tabTree";
 import { useTabTrees } from "./tabTreeStore";
 
 export { labelForTab };
@@ -181,6 +182,10 @@ function DocumentTabStripInner() {
   );
 }
 
+function isSectionTab(tab: TabNode): boolean {
+  return tab.kind === "document" && sectionIdFromRef(tab.ref) !== null;
+}
+
 function siblingsOf(tree: TabTree | null | undefined): readonly string[] {
   const active = tree?.active_tab_id ? tree.nodes[tree.active_tab_id] : null;
   if (!tree || !active) return tree ? tree.root_order : [];
@@ -249,7 +254,10 @@ export function DocumentTabStripView({
   const siblings = siblingsOf(tree);
   const parent = active?.parent_tab_id ? tree.nodes[active.parent_tab_id] : null;
   const children = active ? active.child_order.filter((c) => Object.hasOwn(tree.nodes, c)) : [];
-  const bridge = active !== null && routeForTab(active) === null;
+  // A kind with no route of its own opens as a window. A Write section is
+  // the exception: it scopes the piece's view in place (WriteHome reads the
+  // active tab), so it is a view of this page, never a window.
+  const bridge = active !== null && routeForTab(active) === null && !isSectionTab(active);
 
   return (
     <div className="relative shrink-0" data-document-strip>

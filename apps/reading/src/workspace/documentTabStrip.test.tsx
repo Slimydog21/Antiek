@@ -335,7 +335,7 @@ describe("the tab-tree keys", () => {
     expect(tabs().trees[m]!.active_tab_id).toBe("c2");
   });
 
-  it("prefix n/p cycle SIBLINGS (the corpus's canonical tab keys, retargeted from PR 2)", async () => {
+  it("prefix n/p cycle SIBLINGS when the left pane has the keys (the default with no pane focused)", async () => {
     const { m } = await seedTree();
     act(() => tabs().activateTab(m, "c1"));
     key(document.body, "ctrl+b");
@@ -353,7 +353,7 @@ describe("the tab-tree keys", () => {
     expect(tabs().trees[m]!.active_tab_id).toBe("c2");
   });
 
-  it("prefix c closes with lift_children (children keep their numbers); the toast's Undo restores", async () => {
+  it("prefix c closes nothing (it is 'new tab', held for the picker); lift-only close stays in the store", async () => {
     const { m } = await seedTree();
     act(() => {
       tabs().spawnTab(m, "c1", { tab_id: "c1-1", kind: "reader", ref: "doc-a1", mothership: m, activate: false });
@@ -361,13 +361,17 @@ describe("the tab-tree keys", () => {
     });
     key(document.body, "ctrl+b");
     key(document.body, "c");
+    expect(tabs().trees[m]!.nodes["c1"]).toBeTruthy();
+    expect(tabs().heldClose).toBeNull();
+    // "Close only this" (lift_children) has no key now; the store keeps it
+    // for §2a's close choice, and its Undo is the toast's.
+    act(() => tabs().closeActiveTab(m, "lift_children"));
     let tree = tabs().trees[m]!;
     expect(tree.nodes["c1"]).toBeUndefined();
     // The child LIFTED into c1's place under the root, keeping its hier
     // number (addresses are never renumbered on lift).
     expect(tree.nodes["c1-1"].hier_number).toBe("1.1.1");
     expect(tree.nodes["root:reader:doc-9"].child_order).toContain("c1-1");
-    // The close is held for its undo window, and the undo is the toast's.
     expect(tabs().heldClose?.token.tab_id).toBe("c1");
     act(() => {
       tabs().undoClose(tabs().heldClose!.token.close_id);
@@ -378,7 +382,7 @@ describe("the tab-tree keys", () => {
     expect(tabs().heldClose).toBeNull();
   });
 
-  it("prefix shift+x prunes the whole subtree (soft close, numbers kept in history)", async () => {
+  it("prefix shift+x (close) takes the tab and its whole subtree (soft close, numbers kept in history)", async () => {
     const { m } = await seedTree();
     act(() => {
       tabs().spawnTab(m, "c1", { tab_id: "c1-1", kind: "reader", ref: "doc-a1", mothership: m, activate: false });

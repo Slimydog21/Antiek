@@ -189,22 +189,22 @@ describe("the omarchy-inset preset (C2)", () => {
 });
 
 describe("the preset key (layout.togglePreset) and its persistence", () => {
-  it("prefix+i switches docked ⇄ omarchy-inset and the choice survives a reload", () => {
+  it("prefix+shift+i switches docked ⇄ omarchy-inset and the choice survives a reload", () => {
     key(document.body, "ctrl+b");
-    key(document.body, "i");
+    key(document.body, "shift+i");
     expect(ws().layoutPreset).toBe("omarchy-inset");
     // The reload proof: a fresh read from persistence (what a new page load
     // seeds the store with) returns the operator's choice.
     expect(readLayoutPreset()).toBe("omarchy-inset");
     key(document.body, "ctrl+b");
-    key(document.body, "i");
+    key(document.body, "shift+i");
     expect(ws().layoutPreset).toBe("docked");
     expect(readLayoutPreset()).toBe("docked");
   });
 
-  it("the chord twin ctrl+alt+i also switches, from a default focus", () => {
+  it("the preset has no chord: ctrl+alt+i is the attention inbox's (reserved) and switches nothing", () => {
     key(document.body, "ctrl+alt+i");
-    expect(ws().layoutPreset).toBe("omarchy-inset");
+    expect(ws().layoutPreset).toBe("docked");
   });
 
   it("switching presets clears the pane states (nothing hidden on the far side)", () => {
@@ -213,7 +213,7 @@ describe("the preset key (layout.togglePreset) and its persistence", () => {
     ws().setFocusedPane("left");
     ws().setFullscreenPane("left");
     key(document.body, "ctrl+b");
-    key(document.body, "i");
+    key(document.body, "shift+i");
     expect(ws().layoutPreset).toBe("docked");
     expect(ws().fullscreenPane).toBeNull();
     expect(ws().focusedPane).toBeNull();

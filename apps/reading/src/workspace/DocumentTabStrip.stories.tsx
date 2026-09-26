@@ -1,6 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
-import { StoryStrip, depthFixture, emptyFixture, siblingsFixture } from "./documentTabStories";
+import {
+  StoryStrip,
+  depthFixture,
+  emptyFixture,
+  siblingsFixture,
+  writeSectionFixture,
+} from "./documentTabStories";
 
 /**
  * DocumentTabStrip — the cockpit's left document tabs (DESIGN-MODEL §2a):
@@ -63,3 +69,8 @@ export const ErrorDay: Story = { args: { fixture: depthFixture(1), status: "erro
 export const ErrorNight: Story = { args: { fixture: depthFixture(1), status: "error" }, globals: night };
 export const EmptyPanelDay: Story = { args: { fixture: emptyFixture(), panelOpen: true }, globals: day };
 export const EmptyPanelNight: Story = { args: { fixture: emptyFixture(), panelOpen: true }, globals: night };
+
+/** Writing: a section tab is active. It is labelled by its heading and
+ *  scopes the piece in place, so there is no "opens as window" note. */
+export const WriteSectionDay: Story = { args: { fixture: writeSectionFixture() }, globals: day };
+export const WriteSectionNight: Story = { args: { fixture: writeSectionFixture() }, globals: night };

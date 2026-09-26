@@ -18,8 +18,9 @@ The app has one keymap, one table and one dispatcher, and it answers to three ki
    editor or a dialog, because `ctrl+b` means "back one character" in macOS text fields. MS-01
    binds `prefix+g` (the switcher), `prefix+?` (the key sheet) and `prefix+b` (the sidebar,
    today the project tree). DESIGN-MODEL §2 and §2a assign the rest of the prefix keys (tabs
-   1–9, n/p, c, w, m, u, o, t, f, r, a, i, shift+x, shift+n) to MS-03 and MS-04. `keymap.ts`
-   reserves them so that no row takes one for another meaning first.
+   1–9, n/p, c, w, m, u, o, t, f, r, a, i, shift+i, shift+x, shift+n) to MS-03 and MS-04.
+   `keymap.ts` reserves them so that no row takes one for another meaning first. The cockpit
+   keys below took some of them on 2026-09-26.
 2. **Direct chords in the `ctrl+alt` family.** They are matched on `KeyboardEvent.code`, the
    physical key, never on the character the OS composed. Every prefix action also has a
    one-step key: `ctrl+alt+b` for the sidebar, ⌘K for the switcher, and the lone `?` for the
@@ -62,14 +63,74 @@ also has a `ctrl+alt` chord, and why the ⌘ combos keep working.
 - **AltGr.** On Windows and Linux layouts that type characters with ctrl+alt (AltGr), a real
   AltGr press reports the `AltGraph` modifier and is never taken as a chord. Whether a *left*
   ctrl+alt on such a layout also reports `AltGraph` in every browser was not measured.
-- **Collisions to settle when the keys land.** herdr's avoid list names `ctrl+alt+u` (Konsole),
-  `ctrl+alt+a` (KDE attention) and `ctrl+alt+t` (the terminal launcher on Ubuntu and Fedora).
-  DESIGN-MODEL already moved the tree panel to `ctrl+alt+y`; the owning sprint must settle `u`
-  and `a`. On Linux the Write editor's own `Mod-Alt-1..6` headings share keys with the planned
+- **Desktop collisions, settled (DESIGN-MODEL §2, 2026-09-24).** herdr's avoid list names
+  `ctrl+alt+u` (Konsole), `ctrl+alt+a` (KDE attention) and `ctrl+alt+t` (the terminal launcher on
+  Ubuntu and Fedora). `ctrl+alt+u` collides only inside Konsole's own window, so it never reaches
+  a browser, and it stays. `ctrl+alt+a` is a KDE Plasma global grab; it stays too, because the
+  operator's machines (macOS, Omarchy/Hyprland) do not grab it and `prefix+a` always works. The
+  tree panel moved to `ctrl+alt+y` because `ctrl+alt+t` launches a terminal on the operator's
+  own platform. A direct chord is a convenience; the prefix is the guarantee. On Linux the Write editor's own `Mod-Alt-1..6` headings share keys with the planned
   `ctrl+alt+1..9` tab chords. The dispatcher leaves any key the editor handled first alone,
   so the editor wins inside it.
 - **A cross-origin iframe** (the arXiv embed) never passes its keys to the page, so no key
   reaches the keymap while focus is inside one. Focus leaving the window disarms the prefix.
+
+## Cockpit keys (lane A, 2026-09-26)
+
+**Decided by:** lane A, resolving the cockpit PRs (#3441, #3442, #3443, #3444) against
+DESIGN-MODEL §2 and the operator's Omarchy prompt ("two tall rectangles next to each other";
+"keys at a project level and a document level, like tabs"). **Implemented by:** stage 3 of the
+cockpit rescue, branch `design/cockpit-a1-d6c5-rescue-20260926`.
+
+Those PRs took four keys that DESIGN-MODEL §2 had already given to other actions. `i` went to
+the layout preset, though it is reserved for the attention inbox. `c` became close, though it is
+reserved for new tab, and it came with a destructive direct chord, `ctrl+alt+c`, that fires even
+inside text. `n`/`p` went to the right pane only. Then a fourth pair, prefix `,`/`.` with
+`ctrl+alt+,`/`.`, appeared when the document tree took `n`/`p` back. The table after this
+decision:
+
+| Action | After the prefix | Direct |
+|---|---|---|
+| Next / previous tab **in the focused pane** | `n` / `p` | `ctrl+alt+]` / `ctrl+alt+[` |
+| New tab (picker) | `c` | `ctrl+alt+c` |
+| Close tab (and its branches) | `shift+x` | none |
+| Attention inbox | `i` | `ctrl+alt+i` |
+| Layout: cockpit inset ⇄ docked | `shift+i` | none |
+| Pane fullscreen (toggle) | `f` | `ctrl+alt+f` |
+| Pane focus left / right | `h` / `l` | `ctrl+alt+h` / `ctrl+alt+l` |
+
+- **`n`/`p` follow focus.** herdr's tabs belong to their pane, so the keys cycle the tabs of the
+  pane that has focus. On the left that is the document tabs (the active tab's siblings). On
+  the right it is the agent tabs, or the outline's block tabs in writing. With neither pane
+  focused they act on the left, where the core material lives. In the docked preset a focused
+  right-dock panel counts as the right pane. The rule is in one place, `shortcuts.ts`
+  `tabKeySide`.
+- **The `,`/`.` pair is removed.** It existed only because `n`/`p` could not reach both panes.
+  With focus deciding, one pair covers both, and a second pair would be a key the D2 table never
+  contemplated.
+- **`c` and `i` are held for their surfaces.** The new-tab picker and the attention inbox have
+  not shipped. Their keys are table rows whose handlers do nothing and return "not mine", so the
+  dispatcher never swallows `ctrl+alt+c` or `ctrl+alt+i` from the page. The key sheet shows both
+  rows marked "Not built yet" (`keymapView.ts` `PENDING`), so the operator can see what the key
+  is for instead of meeting a dead key.
+- **Close is `prefix+shift+x` alone.** Destructive acts stay behind the prefix, so no direct
+  chord closes a tab. The key performs §2a's default outcome: the tab and everything branched
+  from it (prune), held locally for 10 s behind the toast's Undo. §2a's second outcome, "close
+  only this" (children lift), stays in the tree model and store for the close-choice affordance,
+  but no key reaches it yet.
+- **The layout preset moves to `prefix+shift+i`, with no chord.** The cockpit is the default, so
+  the toggle is rarely needed.
+- **`f` stays pane fullscreen and `h`/`l` stay pane focus.** Both match Omarchy. The operator's
+  example keys `cmd+←/→` and `cmd+F` belong to the browser (history and find).
+
+**Who pays.** A docked-preset user who reached the preset by `prefix+i` or `ctrl+alt+i` now
+presses `prefix+shift+i`. Anyone who used `prefix+c` to close now uses `prefix+shift+x`, which
+removes the whole branch rather than lifting its children, with the same 10 s Undo. Companion
+cycling on `,`/`.` becomes: focus the right pane (`prefix+l`), then `n`/`p`.
+
+**Reconsider if** focus-following `n`/`p` surprises the operator in practice, for example a
+stale focus ring sending the keys to the wrong pane. The fallback is DESIGN-MODEL's original
+split: `n`/`p` for the left, a second pair for the right.
 
 ## Reconsider if
 

@@ -305,34 +305,36 @@ describe("the tab strip", () => {
 // ─── the key rows ────────────────────────────────────────────────────────
 
 describe("the companion tab keys (prefix n/p + chord twins)", () => {
-  it("prefix ,/. cycle the companion's tabs (wrap) when the pane is visible", async () => {
-    // D6 retarget (PR 3): the corpus reserved n/p for the document tab tree,
-    // so companion cycling moved to the adjacent free ,/. pair — recorded
-    // here because this test pinned n/p in PR 2.
+  it("with the right pane focused, prefix n/p cycle the companion's tabs (wrap)", async () => {
+    // Lane-A cockpit decision: n/p act on the FOCUSED pane's tabs, so the
+    // right pane's agent tabs take them while it has focus (the ,/. pair
+    // PR 3 moved them to is gone).
     openThreadTab("inv-live");
     openThreadTab("inv-done");
     mountInsetLayout();
     await screen.findAllByText("What breaks on retry?");
+    act(() => ws().setFocusedPane("right"));
     // Cycling loads the store on demand (it ships with the lazy pane), so the
     // change lands a microtask after the key.
     key(document.body, "ctrl+b");
-    key(document.body, ",");
+    key(document.body, "n");
     await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
     key(document.body, "ctrl+b");
-    key(document.body, ",");
+    key(document.body, "n");
     await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-done"));
     key(document.body, "ctrl+b");
-    key(document.body, ".");
+    key(document.body, "p");
     await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
   });
 
-  it("the chord twins ctrl+alt+, / ctrl+alt+. cycle too", async () => {
+  it("the chord twins ctrl+alt+] / ctrl+alt+[ cycle too, with the right pane focused", async () => {
     openThreadTab("inv-live");
     openThreadTab("inv-done");
     mountInsetLayout();
-    key(document.body, "ctrl+alt+,");
+    act(() => ws().setFocusedPane("right"));
+    key(document.body, "ctrl+alt+]");
     await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
-    key(document.body, "ctrl+alt+.");
+    key(document.body, "ctrl+alt+[");
     await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-done"));
   });
 
@@ -354,7 +356,7 @@ describe("the companion tab keys (prefix n/p + chord twins)", () => {
     const input = document.createElement("input");
     document.body.appendChild(input);
     input.focus();
-    for (const k of [",", "."]) {
+    for (const k of ["n", "p"]) {
       key(input, "ctrl+b");
       expect(prefixState.isArmed(), `prefix must not arm in text (for ${k})`).toBe(false);
       const e = key(input, k);

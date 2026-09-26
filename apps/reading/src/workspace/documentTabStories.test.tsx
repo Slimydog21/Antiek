@@ -85,6 +85,17 @@ describe("DocumentTabStrip stories", () => {
     expect(rows[1].getAttribute("aria-setsize")).toBe("174");
   });
 
+  it("a Write section tab is named by its heading and never 'opens as window'", () => {
+    for (const name of ["WriteSectionDay", "WriteSectionNight"] as const) {
+      mount(name);
+      const strip = document.querySelector<HTMLElement>("[data-document-strip]")!;
+      expect(strip.querySelector("[role='tab'][aria-selected='true']")!.textContent, name).toContain("What Lack measured");
+      expect(strip.querySelector("[data-tab-bridge]"), name).toBeNull();
+      expect(strip.textContent, name).not.toMatch(/opens as window|section:/);
+      cleanup();
+    }
+  });
+
   it("loading, error and empty render the shared primitives", () => {
     mount("LoadingDay");
     expect(document.querySelector("[data-document-strip] [role='status']")!.textContent).toMatch(/Opening your tabs/);

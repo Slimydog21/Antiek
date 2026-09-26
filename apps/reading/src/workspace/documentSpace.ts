@@ -5,8 +5,8 @@
  *   - mothershipForPath: which tree the current route files under.
  *   - rootRefForPath: the surface the current route IS, as a root-tab ref.
  *   - routeForTab: the canonical URL a tab ACTIVATES to (null = the kind has
- *     no canonical route — the strip renders the honest "opens as window"
- *     bridge, never a guessed embedding).
+ *     no canonical route: the strip renders the honest "opens as window"
+ *     bridge, never a guessed embedding; a Write section scopes in place).
  *   - adoptTabForRoute: what the route → tree sync does on a route change.
  *     An open tab that already shows the route is ADOPTED before any root is
  *     seeded, so a child tab stays a child (forensic defect 2).

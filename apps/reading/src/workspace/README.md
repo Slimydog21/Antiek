@@ -70,7 +70,7 @@ keymap rows like every other key: prefix h/l (+ `ctrl+alt` twins) move pane
 focus with a ring (`ring-focus`; in `docked` they cycle dock areas via
 `cycleFocus`); prefix f fullscreens the focused pane (Esc — element-scoped
 on the layout root, never a global binding — or the same key restores);
-prefix i toggles the preset.
+prefix shift+i toggles the preset (no chord; `i` is the attention inbox's).
 
 ## The companion (C4, 2026-09-24)
 
@@ -83,8 +83,8 @@ islands and diligence slot in later as new entries. Shipped kinds:
 research-thread (the shared `researchState` vocabulary over
 `useInvestigationList`) and dialogue (the one-shot
 `components/ai/thoughtPartnerOnce.ts` wire — never a chat). Keys: prefix
-n/p (+ `ctrl+alt+]/[` twins) cycle agent tabs, only while the pane is
-visible. The cross-pane seam is `crossPane.ts`: `openDocumentInLeftPane`'s
+n/p (+ `ctrl+alt+]/[` twins) cycle agent tabs while the right pane has
+focus (see "Keys" below), only while the pane is visible. The cross-pane seam is `crossPane.ts`: `openDocumentInLeftPane`'s
 EVENT SHAPE is the contract; since PR 3 (D6) the handler spawns a left child
 tab in the current mothership's tab tree — callers never change.
 
@@ -123,9 +123,16 @@ Stage 2 of the cockpit rescue (2026-09-26) rebuilt the strip to DESIGN-MODEL
   lapses. Loading/error/empty use the shared state primitives, and a failed
   tree load offers "Try again" (`retryLoad`).
 
-Keys: prefix `n`/`p` siblings, `u` parent, `o` last-visited child, `c`
-close-with-lift, `shift+x` prune, `t` the tree panel, with `ctrl+alt` twins
-where one was lawfully reserved (forensic defect 10 reconciles this table).
+Keys (the lane-A cockpit decision, stage 3, recorded in
+`docs/decisions/mothership-keys-herdr-prefix.md`): prefix `n`/`p` and
+`ctrl+alt+]`/`[` cycle the FOCUSED pane's tabs — the document siblings on
+the left, the agent tabs (block tabs when writing) on the right, the left
+when neither pane is focused (`shortcuts.ts` `tabKeySide`). `u` parent, `o`
+last-visited child, `t` the tree panel, each with a `ctrl+alt` twin.
+`shift+x` closes the tab and its branches (§2a's default), prefix only.
+`c` / `ctrl+alt+c` (new tab) and `i` / `ctrl+alt+i` (attention inbox) are
+held for surfaces not yet built: their handlers return "not mine" and the
+key sheet marks them "Not built yet" (`keymapView.ts` `PENDING`).
 Persistence is ONLY through a `TabTreeAdapter` (§1.6: never web storage) —
 the in-memory adapter makes trees session-scoped until lane B's HTTP adapter
 lands (`setTabTreeAdapter` is the seam).
@@ -143,8 +150,11 @@ Assignments land in `blockSources.ts` — the honest session-scoped bridge
 `setBlockSourcesBackend` seam is the write-through contract, never a
 pretend-write). The left tree holds the full body as tab 1 with one child
 tab per section (`writeTreeSync.ts`); WriteHome scopes its view to the
-active tab. Agents stay on the AI sidecar (mod+/), untouched; prefix ,/.
-cycles whichever right pane is on screen.
+active tab. Agents stay on the AI sidecar (mod+/), untouched; with the
+right pane focused, prefix n/p cycles its block tabs. A section tab scopes
+the piece in place, so the strip names it by its heading and never says
+"opens as window". A drop that is not a source document is refused in words
+(`parseSourceDragPayload`) and assigns nothing.
 
 ## Full spec
 

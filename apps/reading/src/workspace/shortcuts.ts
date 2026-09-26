@@ -282,14 +282,27 @@ function focusPane(side: "left" | "right") {
 }
 
 /**
- * Right-pane tab cycling (prefix ,/. — one muscle memory). In writing mode
- * with the outline pane visible it cycles the outline's block tabs (C5);
- * everywhere else it cycles the companion's agent tabs (C4), only when the
- * companion is visible — an honest no-op otherwise, never a dead key in a
- * surface without the pane. The stores' cycles wrap across ALL tabs, so
- * visual overflow is never a hopping boundary.
+ * Which pane the tab keys act on (the lane-A cockpit decision): the FOCUSED
+ * pane, as herdr's tabs belong to their pane; the left when neither is.
+ *   inset   the pane shown alone by fullscreen, else the pane with the focus
+ *           ring (PanelLayout sets it as focus enters a pane).
+ *   docked  "right" while a right-dock panel has focus (the companion, the
+ *           outline), otherwise "left".
  */
-function cycleCompanionTab(direction: 1 | -1) {
+function tabKeySide(): "left" | "right" {
+  const ws = useWorkspace.getState();
+  if (ws.layoutPreset === "omarchy-inset") return ws.fullscreenPane ?? ws.focusedPane ?? "left";
+  return ws.focusedPanelId !== null && ws.dockRightIds.includes(ws.focusedPanelId) ? "right" : "left";
+}
+
+/**
+ * Right-pane tab cycling. In writing mode with the outline pane visible it
+ * cycles the outline's block tabs (C5); everywhere else the companion's
+ * agent tabs (C4), only while the companion is visible: an honest no-op
+ * otherwise. The stores' cycles wrap across ALL tabs, so visual overflow is
+ * never a boundary.
+ */
+function cycleRightPaneTab(direction: 1 | -1) {
   if (mothershipForPath(window.location.pathname, window.location.search) === "writing") {
     const ws = useWorkspace.getState();
     if (writeOutlineVisible(ws.layoutPreset, Boolean(ws.panels[WRITE_OUTLINE_PANEL_ID]))) {
@@ -326,6 +339,16 @@ function tabTreeKey(run: (store: TabTreeStore, mothership: Mothership) => void) 
 /** Runs an action. Returning false means "not mine after all": the key is
  *  left to the browser and nothing is prevented. */
 export type KeyHandler = (e: KeyboardEvent) => boolean | void;
+
+/** n/p and ctrl+alt+]/[: the focused pane's next or previous tab. */
+function cycleTab(direction: 1 | -1) {
+  if (tabKeySide() === "right") cycleRightPaneTab(direction);
+  else tabTreeKey((t, m) => t.getState().cycleSibling(m, direction));
+}
+
+/** A key held for a surface that has not shipped (keymapView PENDING): it
+ *  does nothing and says "not mine", so the page keeps the key. */
+const notBuiltYet: KeyHandler = () => false;
 
 /**
  * One handler per keymap action. keymap.test.ts fails if a table row names
@@ -366,15 +389,17 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     "pane.focusRight": () => focusPane("right"),
     "pane.fullscreen": () => useWorkspace.getState().toggleFullscreenPane(),
     "layout.togglePreset": () => useWorkspace.getState().toggleLayoutPreset(),
-    "tab.nextSibling": () => tabTreeKey((t, m) => t.getState().cycleSibling(m, 1)),
-    "tab.prevSibling": () => tabTreeKey((t, m) => t.getState().cycleSibling(m, -1)),
+    "tab.next": () => cycleTab(1),
+    "tab.prev": () => cycleTab(-1),
+    "tab.new": notBuiltYet,
     "tab.parent": () => tabTreeKey((t, m) => t.getState().goToParent(m)),
     "tab.visitChild": () => tabTreeKey((t, m) => t.getState().visitChildOfActive(m)),
-    "tab.close": () => tabTreeKey((t, m) => t.getState().closeActiveTab(m, "lift_children")),
-    "tab.prune": () => tabTreeKey((t, m) => t.getState().closeActiveTab(m, "prune")),
+    // Close is §2a's default outcome: the tab and its branches (prune), held
+    // 10 s behind the toast's Undo. "Close only this" (lift_children) stays
+    // in the model for the close-choice affordance; it has no key.
+    "tab.close": () => tabTreeKey((t, m) => t.getState().closeActiveTab(m, "prune")),
     "tab.treeToggle": () => tabTreeHandle.store?.getState().toggleTreePanel(),
-    "companion.nextTab": () => cycleCompanionTab(1),
-    "companion.prevTab": () => cycleCompanionTab(-1),
+    "inbox.toggle": notBuiltYet,
   };
 }
 

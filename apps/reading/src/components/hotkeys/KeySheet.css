@@ -136,6 +136,13 @@
   color: var(--text-3);
 }
 
+/* A key held for a surface that has not shipped: the keys read quieter, so
+   the row says "reserved" before its note is read. The label keeps full
+   contrast; only the keycaps step back. */
+.antiek-keysheet__row--pending .antiek-keysheet__forms {
+  opacity: 0.55;
+}
+
 .antiek-keysheet__forms {
   padding: 7px 8px 7px 0;
   vertical-align: top;

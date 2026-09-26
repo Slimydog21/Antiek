@@ -97,23 +97,21 @@ describe("the filter (herdr keybind-help semantics)", () => {
     render(<KeySheet onClose={() => {}} platform="mac" />);
     const input = sheet().querySelector<HTMLInputElement>('input[aria-label="Filter shortcuts"]')!;
     fireEvent.change(input, { target: { value: "ctrl+alt" } });
-    // Every ctrl+alt chord row: the sidebar's plus the C3 pane/preset twins,
-    // the D6 tab-tree twins, and the C4 companion twins (retargeted to
-    // ctrl+alt+, / ctrl+alt+. when the tree took the bracket pair).
+    // Every ctrl+alt chord row: the sidebar's plus the C3 pane twins, the
+    // tab twins and the inbox's. The preset (prefix+shift+i) and close
+    // (prefix+shift+x) have no chord, so a ctrl+alt filter leaves them out.
     expect(Array.from(sheet().querySelectorAll("[data-keymap-action]")).map((e) => e.getAttribute("data-keymap-action"))).toEqual([
       "projecttree.toggle",
       "pane.focusLeft",
       "pane.focusRight",
       "pane.fullscreen",
-      "layout.togglePreset",
-      "companion.nextTab",
-      "companion.prevTab",
-      "tab.nextSibling",
-      "tab.prevSibling",
+      "tab.next",
+      "tab.prev",
+      "tab.new",
       "tab.parent",
       "tab.visitChild",
-      "tab.close",
       "tab.treeToggle",
+      "inbox.toggle",
     ]);
     fireEvent.change(input, { target: { value: "zzz-nothing" } });
     expect(sheet().textContent).toContain("No shortcut matches");

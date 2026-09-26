@@ -6,8 +6,17 @@
 import { useMemo, useState } from "react";
 
 import { DocumentTabStripView, labelsFor, type StripStatus } from "./DocumentTabStrip";
+import { sectionRefOf } from "./sectionRef";
 import { titleKey, type TitleEntry } from "./tabTitles";
-import { emptyTabTree, setActive, spawnChild, visitChild, type SpawnInput, type TabTree } from "./tabTree";
+import {
+  emptyTabTree,
+  setActive,
+  spawnChild,
+  visitChild,
+  type Mothership,
+  type SpawnInput,
+  type TabTree,
+} from "./tabTree";
 
 type Titles = Record<string, TitleEntry>;
 
@@ -36,13 +45,13 @@ export interface Fixture {
   titles: Titles;
 }
 
-function builder() {
-  let tree = emptyTabTree("reading");
+function builder(mothership: Mothership = "reading") {
+  let tree = emptyTabTree(mothership);
   const titles: Titles = {};
   let n = 0;
   function add(parent: string | null, input: Omit<SpawnInput, "tab_id" | "mothership">, title?: string | null): string {
     const id = `t${n++}`;
-    const r = spawnChild(tree, parent, { ...input, tab_id: id, mothership: "reading", activate: false });
+    const r = spawnChild(tree, parent, { ...input, tab_id: id, mothership, activate: false });
     if (!r.ok) throw new Error(r.error.message);
     tree = r.tree;
     if (title !== undefined) titles[titleKey(input.kind, input.ref)] = { state: "known", title };
@@ -101,6 +110,20 @@ export function siblingsFixture(count: number): Fixture {
     if (i === 87) pick = id;
   }
   b.activate(pick);
+  return b.done();
+}
+
+/**
+ * The writing mothership as WriteHome seeds it: the piece's full body as tab
+ * 1 and one tab per section, with a section tab active. A section scopes the
+ * piece in place, so the strip shows its heading and no "opens as window".
+ */
+export function writeSectionFixture(): Fixture {
+  const b = builder("writing");
+  const body = b.add(null, { kind: "document", ref: "/write/memo" }, "Why the finches matter");
+  const headings = ["The question", "What Lack measured", "Against the Malthus reading", "Open ends"];
+  const sections = headings.map((h, i) => b.add(body, { kind: "document", ref: sectionRefOf(`s-${i}`) }, h));
+  b.activate(sections[1]);
   return b.done();
 }
 

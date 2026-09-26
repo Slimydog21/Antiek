@@ -69,7 +69,7 @@ describe("the guard fails when the table is wrong (negative controls)", () => {
 
   it("fails on a table action with no handler", () => {
     const problems = validateKeymap(
-      [...KEYMAP, row({ action: "tab.next" as ActionId, chord: "mod+." })],
+      [...KEYMAP, row({ action: "tab.nonexistent" as ActionId, chord: "mod+." })],
       handlerIds,
     );
     expect(problems).toContainEqual(expect.objectContaining({ kind: "missing-handler", row: "probe" }));
@@ -162,22 +162,19 @@ describe("every SPR-08 binding moved into the table (M4 migration list)", () => 
   });
 });
 
-describe("the cockpit pane rows (C3), companion rows (C4), and tab-tree rows (D6): bound, twinned, and out of RESERVED_FOR_LATER", () => {
+describe("the cockpit pane rows (C3) and tab rows (D6, lane-A cockpit decision): bound, twinned, and out of RESERVED_FOR_LATER", () => {
   it.each([
     ["prefix-pane-left", "pane.focusLeft", "h", "ctrl+alt+h"],
     ["prefix-pane-right", "pane.focusRight", "l", "ctrl+alt+l"],
     ["prefix-pane-full", "pane.fullscreen", "f", "ctrl+alt+f"],
-    ["prefix-layout-preset", "layout.togglePreset", "i", "ctrl+alt+i"],
-    // D6: the corpus reserved n/p + ctrl+alt+]/[ for TABS — the document
-    // tree takes them; companion cycling moved to the free ,/. pair.
-    ["prefix-agent-next", "companion.nextTab", ",", "ctrl+alt+,"],
-    ["prefix-agent-prev", "companion.prevTab", ".", "ctrl+alt+."],
-    ["prefix-tab-next", "tab.nextSibling", "n", "ctrl+alt+]"],
-    ["prefix-tab-prev", "tab.prevSibling", "p", "ctrl+alt+["],
+    // n/p + ctrl+alt+]/[ act on the FOCUSED pane's tabs (one pair, no ,/.).
+    ["prefix-tab-next", "tab.next", "n", "ctrl+alt+]"],
+    ["prefix-tab-prev", "tab.prev", "p", "ctrl+alt+["],
+    ["prefix-tab-new", "tab.new", "c", "ctrl+alt+c"],
     ["prefix-tab-parent", "tab.parent", "u", "ctrl+alt+u"],
     ["prefix-tab-child", "tab.visitChild", "o", "ctrl+alt+o"],
-    ["prefix-tab-close", "tab.close", "c", "ctrl+alt+c"],
     ["prefix-tab-tree", "tab.treeToggle", "t", "ctrl+alt+y"],
+    ["prefix-inbox", "inbox.toggle", "i", "ctrl+alt+i"],
   ])("%s binds %s as prefix+%s with the %s twin", (id, action, prefixKey, chord) => {
     const prefixRow = KEYMAP.find((r) => r.id === id);
     expect(prefixRow?.action).toBe(action);
@@ -190,12 +187,19 @@ describe("the cockpit pane rows (C3), companion rows (C4), and tab-tree rows (D6
     expect(chordRow?.origin).toBe("D2");
   });
 
-  it("tab.prune is prefix+shift+x with NO chord twin (none was lawfully reserved)", () => {
-    const row = KEYMAP.find((r) => r.id === "prefix-tab-prune");
-    expect(row?.action).toBe("tab.prune");
+  it("tab.close is prefix+shift+x with NO chord twin (destructive acts stay behind the prefix)", () => {
+    const row = KEYMAP.find((r) => r.id === "prefix-tab-close");
+    expect(row?.action).toBe("tab.close");
     expect(row?.prefixKey).toBe("shift+x");
     expect(row?.scope).toBe("outside-text");
-    expect(KEYMAP.some((r) => r.action === "tab.prune" && r.chord)).toBe(false);
+    expect(KEYMAP.some((r) => r.action === "tab.close" && r.chord)).toBe(false);
+  });
+
+  it("layout.togglePreset is prefix+shift+i with NO chord twin (i is the inbox's)", () => {
+    const rows = KEYMAP.filter((r) => r.action === "layout.togglePreset");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].prefixKey).toBe("shift+i");
+    expect(rows[0].chord).toBeUndefined();
   });
 
   it("no reserved row is left behind for the keys the cockpit rows took", () => {

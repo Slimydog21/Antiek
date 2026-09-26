@@ -12,8 +12,10 @@
  * and its source documents: the node-trace it was born from (when
  * node-backed) plus the sources the operator ASSIGNED by dropping them here
  * (repository search hits, left reader tabs). Assignment lands in
- * blockSources.ts — the honest session-scoped bridge until the write-through
- * endpoint lands (labelled as such, never a pretend-write).
+ * blockSources.ts, the honest session-scoped bridge until the write-through
+ * endpoint lands (the copy says "session state", never a pretend-write).
+ * A drop whose payload is not a source document is refused in words, and
+ * nothing is assigned (parseSourceDragPayload).
  */
 import { useEffect, useState } from "react";
 import { matchPath, useLocation } from "react-router-dom";
@@ -38,6 +40,27 @@ export interface SourceDocumentDragPayload {
   document_title: string | null;
 }
 
+/**
+ * Read a drop's payload, or null when it is not a source document. The
+ * payload crosses a drag boundary any page or extension can write to, so it
+ * is parsed, never trusted: malformed JSON, a non-object, and a missing or
+ * blank document id are refused. A title that is not a string reads as none.
+ */
+export function parseSourceDragPayload(raw: string): SourceDocumentDragPayload | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const id = typeof record.document_id === "string" ? record.document_id.trim() : "";
+  if (!id) return null;
+  const title = typeof record.document_title === "string" ? record.document_title.trim() || null : null;
+  return { document_id: id, document_title: title };
+}
+
 interface SectionBlocks {
   section: SectionResponse;
   blocks: OutlineBlockView[];
@@ -57,6 +80,8 @@ export default function WriteOutlinePane() {
   // piece still loading, and a failure offers a retry.
   const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
+  // The last drop that was not a source document, said once in words.
+  const [refusedDrop, setRefusedDrop] = useState(false);
   const activeBlockId = useWriteOutline((s) => s.activeBlockId);
   const setActiveBlock = useWriteOutline((s) => s.setActiveBlock);
   const setBlocks = useWriteOutline((s) => s.setBlocks);
@@ -161,7 +186,12 @@ export default function WriteOutlinePane() {
                 const raw = e.dataTransfer.getData(SOURCE_DOCUMENT_MIME);
                 if (!raw) return;
                 e.preventDefault();
-                const payload = JSON.parse(raw) as SourceDocumentDragPayload;
+                const payload = parseSourceDragPayload(raw);
+                if (!payload) {
+                  setRefusedDrop(true);
+                  return;
+                }
+                setRefusedDrop(false);
                 assign(deliverableId, block.outline_block_id, payload);
                 setActiveBlock(block.outline_block_id);
               }}
@@ -183,6 +213,7 @@ export default function WriteOutlinePane() {
         })}
       </div>
       ) : null}
+      {refusedDrop ? <DropRefusedNote onDismiss={() => setRefusedDrop(false)} /> : null}
 
       <div className="min-h-0 flex-1 overflow-auto">
         {status === "loading" ? null : status === "failed" ? (
@@ -220,12 +251,37 @@ export default function WriteOutlinePane() {
   );
 }
 
+/** The honest refusal a drop that is not a source document gets. */
+export function DropRefusedNote({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div
+      role="status"
+      aria-label="Drop refused"
+      data-drop-refused
+      className="flex shrink-0 items-start gap-2 border-b border-hairline px-3 py-2 text-xs text-ink-soft dark:text-moonlight"
+    >
+      <p className="flex-1">
+        That drop wasn&apos;t a source document, so nothing was assigned. Drag a repository hit
+        or a document tab from the left onto a block&apos;s tab.
+      </p>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="shrink-0 px-0.5 text-shadow-1 hover:text-ink dark:text-moonlight dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 function provenanceLabel(b: OutlineBlockView): string {
   if (b.is_user_originated || b.provenance_kind !== "graph_node") return "yours";
   return b.block_kind === "open_question" ? "question" : b.block_kind;
 }
 
-function BlockCard({
+export function BlockCard({
   section,
   block,
   assigned,
@@ -255,9 +311,9 @@ function BlockCard({
         </p>
         {assigned.length === 0 ? (
           <p className="mt-1 text-xs text-ink-soft dark:text-moonlight" data-no-sources>
-            None assigned yet — drag a repository hit or a left document tab onto
-            this block's tab. Assignments are session state until the write-through
-            endpoint lands (blockSources.ts TODO).
+            None assigned yet. Drag a repository hit or a document tab from the left
+            onto this block&apos;s tab. Assignments are session state for now: they
+            aren&apos;t saved with the piece yet.
           </p>
         ) : (
           <ul className="mt-1 flex flex-col gap-0.5" data-assigned-sources>

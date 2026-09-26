@@ -80,16 +80,15 @@ export const ACTIONS = {
   "pane.focusLeft": { label: "Pane: focus the left pane" },
   "pane.focusRight": { label: "Pane: focus the right pane" },
   "pane.fullscreen": { label: "Pane: fullscreen the focused pane (toggle)" },
-  "layout.togglePreset": { label: "Layout: docked ⇄ inset preset" },
-  "tab.nextSibling": { label: "Tab: next sibling tab" },
-  "tab.prevSibling": { label: "Tab: previous sibling tab" },
+  "layout.togglePreset": { label: "Layout: cockpit inset ⇄ docked" },
+  "tab.next": { label: "Tab: next tab in the focused pane" },
+  "tab.prev": { label: "Tab: previous tab in the focused pane" },
+  "tab.new": { label: "Tab: new tab (picker)" },
   "tab.parent": { label: "Tab: up to the parent tab" },
   "tab.visitChild": { label: "Tab: down to the last-visited child tab" },
-  "tab.close": { label: "Tab: close the active tab (children lift)" },
-  "tab.prune": { label: "Tab: prune the active subtree" },
+  "tab.close": { label: "Tab: close the active tab and its branches" },
   "tab.treeToggle": { label: "Tab: toggle the tab tree panel" },
-  "companion.nextTab": { label: "Companion: next agent tab" },
-  "companion.prevTab": { label: "Companion: previous agent tab" },
+  "inbox.toggle": { label: "Attention inbox" },
   "door.research": { label: "Research", productId: "research", route: "/" },
   "door.read": { label: "Read", productId: "read", route: "/library" },
   "door.write": { label: "Write", productId: "write", route: "/write" },
@@ -159,59 +158,59 @@ export const KEYMAP: readonly KeymapRow[] = [
   { id: "chord-sidebar", action: "projecttree.toggle", chord: "ctrl+alt+b", scope: "anywhere", origin: "D2", decision: D },
 
   // ── D2 cockpit pane keys (C3, 2026-09-24): prefix twin + chord twin ────
-  // h/l are herdr's pane-focus keys; f is fullscreen; i is the inset preset.
-  // The keys used here were moved OUT of RESERVED_FOR_LATER (prefix f, i;
-  // chords ctrl+alt+f, ctrl+alt+i — h and l were never reserved). Never
-  // Cmd+Left/Right/F: the browser owns those.
+  // h/l are herdr's pane-focus keys; f is fullscreen (Omarchy's gesture).
+  // Never Cmd+Left/Right/F: the browser owns those (history, find).
   { id: "prefix-pane-left", action: "pane.focusLeft", prefixKey: "h", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-pane-left", action: "pane.focusLeft", chord: "ctrl+alt+h", scope: "anywhere", origin: "D2", decision: D },
   { id: "prefix-pane-right", action: "pane.focusRight", prefixKey: "l", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-pane-right", action: "pane.focusRight", chord: "ctrl+alt+l", scope: "anywhere", origin: "D2", decision: D },
   { id: "prefix-pane-full", action: "pane.fullscreen", prefixKey: "f", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-pane-full", action: "pane.fullscreen", chord: "ctrl+alt+f", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-layout-preset", action: "layout.togglePreset", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-layout-preset", action: "layout.togglePreset", chord: "ctrl+alt+i", scope: "anywhere", origin: "D2", decision: D },
+  // The cockpit is the default, so the preset toggle is rarely needed: it
+  // sits behind prefix+shift+i with no chord, and i stays the inbox's.
+  { id: "prefix-layout-preset", action: "layout.togglePreset", prefixKey: "shift+i", scope: "outside-text", origin: "D2", decision: D },
 
-  // ── D2 companion agent-tab keys (C4) — RETARGETED in PR 3 (D6) ─────────
-  // The D2 table reserved prefix n/p and ctrl+alt+]/[ for TABS — and the
-  // document tab tree (below) is the canonical tab surface, so PR 3 gives
-  // those keys to tree sibling cycling. Companion cycling moves to the
-  // adjacent free punctuation pair: prefix , / . with ctrl+alt+, / . twins
-  // (never reserved, free on both platforms).
-  { id: "prefix-agent-next", action: "companion.nextTab", prefixKey: ",", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-agent-next", action: "companion.nextTab", chord: "ctrl+alt+,", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-agent-prev", action: "companion.prevTab", prefixKey: ".", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-agent-prev", action: "companion.prevTab", chord: "ctrl+alt+.", scope: "anywhere", origin: "D2", decision: D },
-
-  // ── D2 document tab-tree keys (D6): the corpus's canonical tab keys ────
-  // n/p + ctrl+alt+]/[ were reserved FOR tabs from the start; the tree is
-  // their intended surface. u/o/c/t/shift+x and the four chords move OUT of
-  // RESERVED_FOR_LATER. ctrl+alt+u collides with Konsole's global on KDE —
-  // recorded in the key-sheet NOTES; the prefix twin works everywhere.
-  // tab.prune is prefix-only: no lawfully reserved chord twin exists and
-  // inventing an unreserved one mints a key the D2 table never contemplated.
-  { id: "prefix-tab-next", action: "tab.nextSibling", prefixKey: "n", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-tab-next", action: "tab.nextSibling", chord: "ctrl+alt+]", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-tab-prev", action: "tab.prevSibling", prefixKey: "p", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-tab-prev", action: "tab.prevSibling", chord: "ctrl+alt+[", scope: "anywhere", origin: "D2", decision: D },
+  // ── D2 tab keys (lane-A cockpit decision, 2026-09-26) ─────────────────
+  // n/p + ctrl+alt+]/[ are herdr's next/previous tab, and herdr's tabs
+  // belong to their pane: they cycle the FOCUSED pane's tabs (left: the
+  // document tabs' siblings; right: the agent tabs, or the outline's block
+  // tabs in writing). With neither pane focused they act on the left, where
+  // the core material lives. One muscle memory, so no second pair exists.
+  { id: "prefix-tab-next", action: "tab.next", prefixKey: "n", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-next", action: "tab.next", chord: "ctrl+alt+]", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-tab-prev", action: "tab.prev", prefixKey: "p", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-prev", action: "tab.prev", chord: "ctrl+alt+[", scope: "anywhere", origin: "D2", decision: D },
+  // c is "new tab" (the picker). Until the picker ships the key is held for
+  // it and does nothing; the key sheet says so (keymapView PENDING).
+  { id: "prefix-tab-new", action: "tab.new", prefixKey: "c", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-tab-new", action: "tab.new", chord: "ctrl+alt+c", scope: "anywhere", origin: "D2", decision: D },
+  // Branch-tree keys (DESIGN-MODEL §2a). ctrl+alt+u collides with Konsole
+  // only inside Konsole's own window, so it never reaches a browser.
   { id: "prefix-tab-parent", action: "tab.parent", prefixKey: "u", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-tab-parent", action: "tab.parent", chord: "ctrl+alt+u", scope: "anywhere", origin: "D2", decision: D },
   { id: "prefix-tab-child", action: "tab.visitChild", prefixKey: "o", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-tab-child", action: "tab.visitChild", chord: "ctrl+alt+o", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-tab-close", action: "tab.close", prefixKey: "c", scope: "outside-text", origin: "D2", decision: D },
-  { id: "chord-tab-close", action: "tab.close", chord: "ctrl+alt+c", scope: "anywhere", origin: "D2", decision: D },
-  { id: "prefix-tab-prune", action: "tab.prune", prefixKey: "shift+x", scope: "outside-text", origin: "D2", decision: D },
   { id: "prefix-tab-tree", action: "tab.treeToggle", prefixKey: "t", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-tab-tree", action: "tab.treeToggle", chord: "ctrl+alt+y", scope: "anywhere", origin: "D2", decision: D },
+  // Close is destructive, so it stays behind the prefix with no chord. It
+  // closes the tab and its branches (§2a's default), held 10 s behind the
+  // toast's Undo.
+  { id: "prefix-tab-close", action: "tab.close", prefixKey: "shift+x", scope: "outside-text", origin: "D2", decision: D },
+
+  // ── D2 attention inbox (D4): held for the inbox, a no-op until it ships ─
+  { id: "prefix-inbox", action: "inbox.toggle", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-inbox", action: "inbox.toggle", chord: "ctrl+alt+i", scope: "anywhere", origin: "D2", decision: D },
 ];
 
 /**
  * Keys the D2 table (DESIGN-MODEL §2, §2a) gives to MS-03/MS-04 surfaces that
- * do not exist yet: tabs, workstations, motherships, the branch tree, the
- * inbox. No row may take one of them for another meaning; the sprint that
- * builds the surface moves the key into KEYMAP and deletes it here.
- * Known OS collisions the owning sprint must settle: ctrl+alt+u (Konsole),
- * ctrl+alt+a (KDE attention), from herdr's avoid list.
+ * do not exist yet: numbered tabs, workstations, motherships, the companion
+ * rail, islands. No row may take one of them for another meaning; the
+ * sprint that builds the surface moves the key into KEYMAP and deletes it
+ * here. (The new-tab picker and the attention inbox are rows already, whose
+ * handlers do nothing yet, so the key sheet can say so; keymapView PENDING.)
+ * ctrl+alt+a is a KDE Plasma global grab; DESIGN-MODEL §2 keeps it, because
+ * prefix+a always works and the operator's platforms do not grab it.
  */
 export const RESERVED_FOR_LATER = {
   prefixKeys: [
@@ -337,6 +336,9 @@ const CODE_KEYS: Record<string, string> = {
   Semicolon: ";",
   Comma: ",",
   Period: ".",
+  Minus: "-",
+  Equal: "=",
+  Quote: "'",
 };
 
 /** The unshifted key printed on the physical key `code` (US layout), or "". */

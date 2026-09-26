@@ -3,9 +3,10 @@
  *
  * The pane owns its DATA (the deliverable's blocks, fetched per section);
  * this store holds only the tab interaction state — which block tab is
- * active and the flat order the prefix ,/. keys cycle through — so the
- * companion-cycling keys get one muscle memory ("right-pane tab cycling")
- * across the companion (research/reading) and the outline (writing).
+ * active and the flat order the tab keys (prefix n/p, ctrl+alt+]/[, with the
+ * right pane focused) cycle through — one muscle memory ("the focused
+ * pane's tabs") across the companion (research/reading) and the outline
+ * (writing).
  * Visibility mirrors the companion's rule: the keys act only when the pane
  * is on screen.
  */
