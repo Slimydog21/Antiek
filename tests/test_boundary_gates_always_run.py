@@ -16,8 +16,8 @@ were SKIPPED on 27. Of 12 sampled active PRs whose `pytest` check was red,
 roughly one CI run in five, so a red gate was far likelier to mean "a shard was
 cancelled" than "an invariant broke".
 
-The job is ``if: always()``, so asserting LAST keeps the verdict identical while
-letting the gates actually run.
+The job is ``if: !cancelled()`` (formerly ``always()``), so asserting LAST keeps
+the verdict identical while letting the gates actually run.
 """
 
 from __future__ import annotations
@@ -85,16 +85,24 @@ def test_every_boundary_gate_runs_before_the_shard_assertion() -> None:
 
 
 def test_the_job_still_runs_when_the_suite_is_cancelled() -> None:
-    """``if: always()`` is what makes asserting-last safe.
+    """The job condition must keep assert-last safe.
 
-    Without it a cancelled suite would skip the whole job, so moving the
-    assertion to the end would hide a failure instead of surfacing it.
+    Historically ``if: always()``. After the exact-SHA concurrency change
+    (``group: ci-${{ github.sha }}``, ``cancel-in-progress: false``) the job
+    uses ``if: ${{ !cancelled() }}``: a superseded head's run is cancelled
+    whole and must NOT keep grinding, while an ordinary cancelled shard
+    still runs the job so the suite-result assertion can fire last.
+
+    Accept either form. Reject anything that would skip the job when a
+    shard is cancelled (blank, ``success()``, ``!failure()``, …).
     """
     job = _pytest_job()
     cond = str(job.get("if") or "")
-    assert "always()" in cond, (
-        f"the pytest job lost `if: always()` (got {cond!r}); asserting the "
-        f"suite result last is only safe while the job runs unconditionally"
+    ok = ("always()" in cond) or ("!cancelled()" in cond) or ("not cancelled()" in cond)
+    assert ok, (
+        f"the pytest job lost its cancel-safe condition (got {cond!r}); "
+        f"asserting the suite result last is only safe while the job runs "
+        f"when a shard is cancelled (expected `always()` or `!cancelled()`)"
     )
 
 

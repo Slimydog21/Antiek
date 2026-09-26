@@ -408,14 +408,15 @@ def assert_single_canonical_entity(thread: Thread) -> None:
     """
     canonical = thread.canonical_entity_id
     for hop in thread.hops:
-        assert hop.entity_id == canonical, (
-            f"thread holds a copy: canonical node_id={canonical!r} but the "
-            f"{hop.workflow!r} hop references {hop.entity_id!r} — a different id "
-            f"means that workflow holds a fork, not the one node. This is the "
-            f"provenance bug the SPR-03 no-copy seam guard "
-            f"(tests/test_seam_no_copy.py::_assert_no_copy) forbids, composed at "
-            f"the thread level."
-        )
+        if hop.entity_id != canonical:
+            raise AssertionError(
+                f"thread holds a copy: canonical node_id={canonical!r} but the "
+                f"{hop.workflow!r} hop references {hop.entity_id!r} — a different id "
+                f"means that workflow holds a fork, not the one node. This is the "
+                f"provenance bug the SPR-03 no-copy seam guard "
+                f"(tests/test_seam_no_copy.py::_assert_no_copy) forbids, composed at "
+                f"the thread level."
+            )
 
 
 __all__ = [
