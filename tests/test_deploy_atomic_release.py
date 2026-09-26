@@ -84,7 +84,7 @@ def test_build_validation_precedes_the_single_public_cutover() -> None:
     names = _names(_walk(tasks))
     build = names.index("build and validate the exact-SHA release")
     receipt = names.index("require a valid release receipt before publication")
-    frontend = names.index("assert frontend index is present and traversable")
+    frontend = names.index("assert the frozen frontend is readable and traversable")
     candidate_caddy = names.index("render the candidate Caddyfile for post-cutover activation")
     validate_caddy = names.index("validate the candidate Caddyfile without changing live routing")
     cutover = names.index("make the one public API/SPA cutover")
@@ -108,6 +108,18 @@ def test_api_and_frontend_cutover_share_one_release_chain() -> None:
     reload = names.index("synchronously reload Caddy onto the candidate routes")
     start = names.index("start antiek into the candidate release")
     assert cutover < activate < reload < start
+
+
+def test_frozen_frontend_modes_are_safe_for_public_serving() -> None:
+    tasks = _walk(_load()[1]["tasks"])
+    named = {task.get("name", ""): task for task in tasks}
+    stat = named["stat the frozen frontend entrypoint and root"]["ansible.builtin.stat"]
+    root_stat = named["stat the frozen frontend root"]["ansible.builtin.stat"]
+    assertions = named["assert the frozen frontend is readable and traversable"]["ansible.builtin.assert"]["that"]
+    assert stat["path"] == "{{ antiek_release_dir }}/frontend-dist/index.html"
+    assert root_stat["path"] == "{{ antiek_release_dir }}/frontend-dist"
+    assert "release_frontend_index.stat.mode == '0444'" in assertions
+    assert "release_frontend_root.stat.mode == '0555'" in assertions
 
 
 def test_database_snapshot_precedes_candidate_schema_migration() -> None:
