@@ -20,7 +20,7 @@ from html import escape as _esc
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .projector import AnchorRead, ClaimRead, DocumentView, ProcessRead
+    from .projector import AnchorRead, BiteRead, ClaimRead, DocumentView, ProcessRead
 
 #: The honest project-scope shell — rendered for callers that want the
 #: SHELL; the projector's rebuild_project RAISES instead (never a fake
@@ -60,6 +60,9 @@ def render_document_companion(view: DocumentView) -> str:
         process_items = "".join(_process_li(p) for p in view.processes) or (
             '<li class="empty">No process on record yet.</li>'
         )
+        # The unit-8 bite ledger — a DERIVED document's companion section
+        # (calm: ordinal + class + traced, never the bite's text here).
+        bite_items = "".join(_bite_li(b) for b in view.bites)
         withheld = (
             '<p class="empty">This document’s text is withheld — only its metadata is shown.</p>'
             if not view.servable
@@ -70,6 +73,11 @@ def render_document_companion(view: DocumentView) -> str:
             f"<section><h2>Where this document stands</h2><ul>{claim_items}</ul></section>\n"
             f"<section><h2>Anchored passages</h2><ul>{anchor_items}</ul></section>\n"
             f"<section><h2>Process</h2><ul>{process_items}</ul></section>"
+            + (
+                f"<section><h2>The generated bites</h2><ul>{bite_items}</ul></section>"
+                if view.bites
+                else ""
+            )
         )
     return (
         '<!doctype html>\n<html lang="en">\n<head><meta charset="utf-8">'
@@ -102,6 +110,20 @@ def _anchor_li(anchor: AnchorRead) -> str:
     return (
         f'<li data-evidence-id="{_esc(anchor.evidence_id)}">'
         f"A passage on {where} — {_esc(anchor.status)}</li>"
+    )
+
+
+def _bite_li(bite: BiteRead) -> str:
+    label = {
+        "author_verbatim": "author's words ✓",
+        "llm_compressed": "compressed",
+        "llm_expanded": "expanded",
+        "research_supplemented": "research-added",
+    }.get(bite.contribution_class, bite.contribution_class)
+    traced = "traced to the core" if bite.traced else "no direct source — honestly generated"
+    return (
+        f'<li data-evidence-id="{_esc(bite.evidence_id)}">'
+        f"Bite {bite.ordinal + 1} — {_esc(label)} · {traced}</li>"
     )
 
 

@@ -36,6 +36,7 @@ import {
 } from "../../../shared/researchState";
 import type { ResearchState } from "../../../shared/researchState";
 import DigDeeper from "./DigDeeper";
+import ReformatFlow from "./ReformatFlow";
 import FlagForDiligence from "../../../shared/FlagForDiligence";
 import { hideIsland } from "./hiddenIslands";
 import { useIslandThread } from "./useIslandThread";
@@ -99,7 +100,7 @@ function familyState(status: string | null): ResearchState {
 
 export default function ThreadIsland({
   anchorId,
-  documentId: _documentId,
+  documentId,
   investigationId,
   servable,
   passageQuote,
@@ -115,12 +116,16 @@ export default function ThreadIsland({
     initialQuestion: string;
     reservedChildId: string | null;
   } | null>(null);
+  // The reformat prompt (reformat-provenance SPR-02) — the right-pane agent
+  // engagement, inside the card.
+  const [reformatting, setReformatting] = useState(false);
   const thread = useIslandThread(investigationId);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const collapse = useCallback(() => {
     setExpanded(false);
     setDig(null);
+    setReformatting(false);
   }, []);
 
   // Esc (element-scoped — the card's own key, never a global binding) and
@@ -331,6 +336,17 @@ export default function ThreadIsland({
         />
       ) : null}
 
+      {/* The reformat flow (reformat-provenance SPR-02): the prompt, the
+          generation thread, the ask-to-open — all inside the card. */}
+      {reformatting ? (
+        <ReformatFlow
+          documentId={documentId}
+          anchorId={anchorId}
+          passageQuote={servable ? passageQuote : null}
+          onClose={() => setReformatting(false)}
+        />
+      ) : null}
+
       {/* 5 — the actions. */}
       <div className="flex items-center gap-2 border-t border-hairline pt-2">
         <Link
@@ -357,6 +373,16 @@ export default function ThreadIsland({
           className="text-sun-deep underline-offset-2 hover:underline disabled:text-shadow-1 disabled:dark:text-moonlight disabled:italic disabled:cursor-not-allowed"
         >
           Dig deeper
+        </button>
+        <button
+          type="button"
+          data-island-reformat
+          disabled={thread.status === "gone"}
+          onClick={() => setReformatting((open) => !open)}
+          title="Reformat this book by prompt — a generated derived document with bite-level provenance"
+          className="text-sun-deep underline-offset-2 hover:underline disabled:text-shadow-1 disabled:dark:text-moonlight disabled:italic disabled:cursor-not-allowed"
+        >
+          Reformat this
         </button>
         <button
           type="button"

@@ -127,8 +127,9 @@ export function isWindowEligible(kind: string): kind is WindowEligibleKind {
 export interface ReaderOrigin {
   /** research/evidence: `id` is the INVESTIGATION the operator came from
    *  (chase-parent–able). write: `id` is the DELIVERABLE (never an
-   *  investigation — it never parents a chase). */
-  from: "research" | "write" | "evidence";
+   *  investigation — it never parents a chase). reformat (SPR-02): `id` is
+   *  the GENERATION thread — an engagement, never a chase parent. */
+  from: "research" | "write" | "evidence" | "reformat";
   id: string;
 }
 

@@ -1970,6 +1970,15 @@ def create_app(
     # owner-scoped evidence reads, project scope honestly unavailable.
     from .companion_routes import register_companion_routes
     register_companion_routes(app)
+    # Reformat-provenance SPR-02 — the reformat generation call + the
+    # provenance read the review surface renders.
+    from .reformat_routes import register_reformat_routes
+    register_reformat_routes(app)
+    # Workstation-tabs SPR-01 — the container's persistence + the corpus
+    # tabTree adapter's server side (the reconciliation note: container
+    # stands, chrome is the corpus's).
+    from .workstation_routes import register_workstation_routes
+    register_workstation_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
