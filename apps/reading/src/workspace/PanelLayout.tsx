@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { toast } from "../components/lemon/LemonToast";
 import { radius } from "../design/tokens";
+import CompanionPane from "./CompanionPane";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { useWorkspace } from "./WorkspaceStore";
 import { isTextEditing } from "./shortcuts";
@@ -200,16 +201,20 @@ export function PanelLayout({ mainSlot }: Props) {
   // ── C2: the Omarchy inset preset ────────────────────────────────────────
   // The SAME slot structure inside an inset frame: an outer gap where the
   // scene background shows, and two tall rounded rectangles — the primary
-  // material (left dock + main slot) on the left, the companion (right
-  // dock) on the right. Presentation only: dockSide()/collapse behavior,
-  // the {mainSlot} contract and every consumer are unchanged, and an empty
-  // right dock still collapses (no pane renders). NavRail is a sibling of
-  // this component in AppShell — the frame never wraps it.
+  // material (left dock + main slot) on the left, the COMPANION (C4) on the
+  // right. Presentation only: dockSide()/collapse behavior, the {mainSlot}
+  // contract and every consumer are unchanged. The right pane IS the
+  // companion (D3): always present (its empty state offers "+ new agent");
+  // any right-dock panels stack beneath it, collapsing as today. NavRail is
+  // a sibling of this component in AppShell — the frame never wraps it.
   if (layoutPreset === "omarchy-inset") {
     const leftDockWidth = dockSide("left", dockLeftIds.length);
-    const rightDockWidth = dockSide("right", dockRightIds.length);
+    // The companion pane measures as at least one content unit (it always
+    // has content: the strip + the new-agent affordance), so the tier/lg
+    // collapse rules in dockSide still govern its width.
+    const rightPaneWidth = dockSide("right", Math.max(1, dockRightIds.length));
     const showLeftPane = fullscreenPane !== "right";
-    const showRightPane = rightDockWidth > 0 && fullscreenPane !== "left";
+    const showRightPane = rightPaneWidth > 0 && fullscreenPane !== "left";
     const paneShell = (side: "left" | "right"): string =>
       "flex flex-col min-w-0 min-h-0 overflow-hidden border border-hairline " +
       "bg-ice-1 dark:bg-charcoal-1" +
@@ -252,14 +257,20 @@ export function PanelLayout({ mainSlot }: Props) {
             tabIndex={-1}
             aria-label="Companion pane"
             className={`shrink-0 ${paneShell("right")}`}
-            style={{ width: rightDockWidth, borderRadius: radius.lg }}
+            style={{ width: rightPaneWidth, borderRadius: radius.lg }}
             onFocusCapture={() => setFocusedPane("right")}
           >
-            <aside className="flex flex-col min-w-0 flex-1 min-h-0" aria-label="Right dock">
-              {dockRightIds.map((id) => (
-                <PanelLayoutPanel key={id} id={id} />
-              ))}
-            </aside>
+            <CompanionPane />
+            {dockRightIds.length > 0 && (
+              <aside
+                className="flex flex-col shrink-0 min-w-0 max-h-[50%] border-t border-hairline"
+                aria-label="Right dock"
+              >
+                {dockRightIds.map((id) => (
+                  <PanelLayoutPanel key={id} id={id} />
+                ))}
+              </aside>
+            )}
           </div>
         )}
       </div>

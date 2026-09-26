@@ -41,6 +41,7 @@ import { useEffect, useRef } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
+import { companionVisible, useCompanion } from "./companionStore";
 import { readCustomHotkeys } from "./persistence";
 import { emitProductActivate, normalizeBinding } from "../components/hotkeys/bindings";
 import {
@@ -276,6 +277,18 @@ function focusPane(side: "left" | "right") {
   el.focus();
 }
 
+/**
+ * Companion agent-tab cycling (C4). Acts ONLY when the companion pane is
+ * visible (inset preset: always; docked preset: the "Companion" panel is
+ * open) — an honest no-op otherwise, never a dead key in a surface without
+ * the pane. The store's cycle wraps across ALL tabs, so visual overflow
+ * (the ⋯ menu) is never a hopping boundary.
+ */
+function cycleCompanionTab(direction: 1 | -1) {
+  if (!companionVisible()) return;
+  useCompanion.getState().cycleAgentTab(direction);
+}
+
 /** Runs an action. Returning false means "not mine after all": the key is
  *  left to the browser and nothing is prevented. */
 export type KeyHandler = (e: KeyboardEvent) => boolean | void;
@@ -319,6 +332,8 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     "pane.focusRight": () => focusPane("right"),
     "pane.fullscreen": () => useWorkspace.getState().toggleFullscreenPane(),
     "layout.togglePreset": () => useWorkspace.getState().toggleLayoutPreset(),
+    "companion.nextTab": () => cycleCompanionTab(1),
+    "companion.prevTab": () => cycleCompanionTab(-1),
   };
 }
 

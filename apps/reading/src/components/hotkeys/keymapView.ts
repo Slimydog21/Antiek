@@ -25,6 +25,8 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "pane.focusRight": "panels",
   "pane.fullscreen": "panels",
   "layout.togglePreset": "panels",
+  "companion.nextTab": "panels",
+  "companion.prevTab": "panels",
   "door.research": "go",
   "door.read": "go",
   "door.write": "go",
@@ -40,6 +42,7 @@ export const NOTES: Partial<Record<ActionId, string>> = {
   "panel.closeFloating": "Only while a floating panel has focus; otherwise the browser closes the tab.",
   "pane.fullscreen": "Esc or the same key restores both panes.",
   "layout.togglePreset": "The inset preset shows two tall panes over the scene; docked stays the default.",
+  "companion.nextTab": "Cycles the companion's agent tabs (wraps); a no-op where the pane is not visible.",
 };
 
 export const TASK_TITLES: Record<KeymapTask, string> = {

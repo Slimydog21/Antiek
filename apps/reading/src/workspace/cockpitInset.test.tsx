@@ -153,12 +153,20 @@ describe("the omarchy-inset preset (C2)", () => {
     expect(getByTestId("rail")).toBeTruthy();
   });
 
-  it("an empty right dock still collapses: one pane, full inset width", () => {
+  it("the right pane IS the companion (C4): always present, even with no right-dock panels", () => {
+    // C4 supersedes PR-1's "empty right dock collapses": the pane's identity
+    // is the companion (D3), so it renders with its honest empty state. Dock
+    // collapse behavior survives at the PANEL level — no right-dock aside
+    // renders without right-dock panels.
     ws().open("Notes", {}, { mode: "docked-left", id: "p:left", title: "Left" });
     ws().setLayoutPreset("omarchy-inset");
     const { container } = mountLayout();
     expect(container.querySelector('[data-pane="left"]')).toBeTruthy();
-    expect(container.querySelector('[data-pane="right"]')).toBeNull();
+    const right = container.querySelector<HTMLElement>('[data-pane="right"]')!;
+    expect(right).toBeTruthy();
+    expect(right.querySelector("[data-companion-pane]")).toBeTruthy();
+    expect(right.querySelector("[data-companion-empty]")).toBeTruthy();
+    expect(right.querySelector('[aria-label="Right dock"]')).toBeNull();
   });
 
   it("tier sm still early-returns the bare main slot (no hooks after the return)", () => {
@@ -249,10 +257,16 @@ describe("the pane-focus keys (C3)", () => {
     expect(ws().focusedPanelId).toBe("p:a");
   });
 
-  it("focus onto a collapsed pane is an honest no-op (nowhere for focus to go)", () => {
-    ws().open("Notes", {}, { mode: "docked-left", id: "p:left", title: "Left" });
+  it("focus onto a pane hidden by fullscreen is an honest no-op (nowhere for focus to go)", () => {
+    // With C4 the companion pane is always present in the inset preset, so
+    // the "collapsed pane" no-op case of PR-1 is now the fullscreen-hidden
+    // case: the left pane is fullscreen, the right is hidden, focus stays.
+    openTwoDocks();
     ws().setLayoutPreset("omarchy-inset");
     mountLayout();
+    act(() => {
+      ws().setFullscreenPane("left");
+    });
     key(document.body, "ctrl+b");
     key(document.body, "l");
     expect(ws().focusedPane).toBeNull();

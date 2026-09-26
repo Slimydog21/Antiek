@@ -81,6 +81,8 @@ export const ACTIONS = {
   "pane.focusRight": { label: "Pane: focus the right pane" },
   "pane.fullscreen": { label: "Pane: fullscreen the focused pane (toggle)" },
   "layout.togglePreset": { label: "Layout: docked ⇄ inset preset" },
+  "companion.nextTab": { label: "Companion: next agent tab" },
+  "companion.prevTab": { label: "Companion: previous agent tab" },
   "door.research": { label: "Research", productId: "research", route: "/" },
   "door.read": { label: "Read", productId: "read", route: "/library" },
   "door.write": { label: "Write", productId: "write", route: "/write" },
@@ -162,6 +164,16 @@ export const KEYMAP: readonly KeymapRow[] = [
   { id: "chord-pane-full", action: "pane.fullscreen", chord: "ctrl+alt+f", scope: "anywhere", origin: "D2", decision: D },
   { id: "prefix-layout-preset", action: "layout.togglePreset", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },
   { id: "chord-layout-preset", action: "layout.togglePreset", chord: "ctrl+alt+i", scope: "anywhere", origin: "D2", decision: D },
+
+  // ── D2 companion agent-tab keys (C4): herdr's n/p tab cycling ──────────
+  // Moved OUT of RESERVED_FOR_LATER (prefix n, p; chords ctrl+alt+], [) —
+  // tab keys were reserved for exactly this. n = next, p = previous (herdr);
+  // the bracket chords are the one-step twins. They act on the companion
+  // pane only when it is visible (an honest no-op otherwise).
+  { id: "prefix-agent-next", action: "companion.nextTab", prefixKey: "n", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-agent-next", action: "companion.nextTab", chord: "ctrl+alt+]", scope: "anywhere", origin: "D2", decision: D },
+  { id: "prefix-agent-prev", action: "companion.prevTab", prefixKey: "p", scope: "outside-text", origin: "D2", decision: D },
+  { id: "chord-agent-prev", action: "companion.prevTab", chord: "ctrl+alt+[", scope: "anywhere", origin: "D2", decision: D },
 ];
 
 /**
@@ -175,13 +187,13 @@ export const KEYMAP: readonly KeymapRow[] = [
 export const RESERVED_FOR_LATER = {
   prefixKeys: [
     "1", "2", "3", "4", "5", "6", "7", "8", "9",
-    "n", "p", "c", "shift+x", "w", "shift+n", "m", "shift+m",
+    "c", "shift+x", "w", "shift+n", "m", "shift+m",
     "u", "o", "t", "r", "a",
   ],
   chords: [
     "ctrl+alt+1", "ctrl+alt+2", "ctrl+alt+3", "ctrl+alt+4", "ctrl+alt+5",
     "ctrl+alt+6", "ctrl+alt+7", "ctrl+alt+8", "ctrl+alt+9",
-    "ctrl+alt+]", "ctrl+alt+[", "ctrl+alt+c", "ctrl+alt+w",
+    "ctrl+alt+c", "ctrl+alt+w",
     "ctrl+alt+shift+]", "ctrl+alt+shift+[", "ctrl+alt+m", "ctrl+alt+u",
     "ctrl+alt+o", "ctrl+alt+y", "ctrl+alt+r", "ctrl+alt+a",
   ],
