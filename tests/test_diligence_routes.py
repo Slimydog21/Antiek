@@ -443,3 +443,56 @@ def test_flag_cannot_reference_another_owners_document(api_env, monkeypatch) -> 
         ),
     )
     assert allowed.status_code == 201
+
+
+# ── Review hardening D2 (2026-09-25): "diligenced this week" counts by the
+# TERMINAL EVENT's time — the lazy projection's own truth — never by
+# updated_at, which any later write (a receipt rewrite) refreshes. ────────
+
+
+def test_weekly_count_uses_the_terminal_event_time_not_updated_at(api_env) -> None:
+    import json as _json
+    from datetime import UTC as _UTC
+    from datetime import datetime as _datetime
+    from datetime import timedelta as _timedelta
+    from pathlib import Path as _Path
+
+    db = api_env["db"]
+    _seed_graph(db)
+    client = _client()
+    created = client.post(
+        "/diligence/flags", json={"kind": "concept", "object_ref": "old-done"}
+    )
+    _force_spawned(db, created.json()["flag_id"], "inv-week-old")
+    # The terminal event landed 8 days ago…
+    old = _datetime.now(_UTC) - _timedelta(days=8)
+    rows = [
+        {
+            "event_id": "evt-week-old-start",
+            "investigation_id": "inv-week-old",
+            "action_type": "investigation.start_requested",
+            "policy_id": "continuous_daemon",
+            "emitted_at": old.isoformat(),
+            "payload": {"action_type": "investigation.start_requested", "question": "q"},
+        },
+        {
+            "event_id": "evt-week-old-terminal",
+            "investigation_id": "inv-week-old",
+            "action_type": "investigation.completed",
+            "policy_id": "continuous_daemon",
+            "emitted_at": old.isoformat(),
+            "payload": {"action_type": "investigation.completed"},
+        },
+    ]
+    path = _Path(api_env["events"]) / f"{ 'inv-week-old' }.jsonl"
+    path.write_text("".join(_json.dumps(r) + "\n" for r in rows))
+    # …but a later bookkeeping write refreshed updated_at to NOW.
+    with connect_write(db, purpose="test/refresh-updated-at") as con:
+        con.execute(
+            "UPDATE diligence_queue SET updated_at = ? "
+            "WHERE spawned_investigation_id = 'inv-week-old'",
+            [_datetime.now(_UTC).isoformat()],
+        )
+
+    summary = client.get("/diligence/queue").json()["summary"]
+    assert summary["diligenced_this_week"] == 0
