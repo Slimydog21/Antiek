@@ -10,17 +10,18 @@ Investigation-spawn is parameterized as a ``SpawnFn`` callable so the
 daemon's mechanics can be tested without the orchestrator HTTP path
 attached. The default ``no_op_spawn`` returns ``None`` (no spawn).
 
-Autonomous-diligence SPR-02 (the activation): when
-``ANTIEK_DAEMON_SPAWN_ENABLED`` is truthy, ``main()`` wires the REAL spawn
-path — ``make_emit_spawn_fn`` EMITS ``investigation.start_requested``
-through the event broadcaster (the exact mechanism orchestrator chase mode
-uses, orchestration/loop_one/orchestrator.py:2355-2375) with the daemon
-policy id, arriving at the ONE start handler every spawn crosses — plus a
-``DbFlagSource`` draining the owner-flag queue FIRST (a flag is an explicit
-human request; it always outranks a scored gap). When the env is UNSET (the
-shipped default), ``run_forever`` receives ``no_op_spawn`` and NO flag
-source — byte-equivalent to the pre-activation behavior; enabling is an
-explicit operator act, never this program's.
+Autonomous-diligence SPR-02 built the spawn path: ``make_emit_spawn_fn``
+emits ``investigation.start_requested`` through an event broadcaster, and a
+``DbFlagSource`` drains the owner-flag queue first (a flag outranks a scored
+gap). ``run_one_iteration`` still drives both in tests.
+
+``main()`` refuses ``ANTIEK_DAEMON_SPAWN_ENABLED`` (LB-10):
+- In the daemon's own process that broadcaster has no investigation handler,
+  so a spawn would never run.
+- Diligence has no per-flag consent yet (D4).
+
+With the env UNSET, the shipped default, ``run_forever`` receives
+``no_op_spawn`` and no flag source.
 
 Single-iteration design:
   ``run_one_iteration(...)`` runs the full scan + score + spawn cycle
@@ -81,9 +82,13 @@ class DaemonConfig:
 
 
 #: The kill switch (autonomous-diligence SPR-02): UNSET = OFF, the shipped
-#: default. Truthy ("1", "true", "yes", "on") wires the real spawn path in
-#: ``main()``. This program NEVER sets it — enabling is the operator's act.
+#: default. Truthy ("1", "true", "yes", "on") is refused by ``main()`` until
+#: spawns route through the API with per-flag consent (LB-10). This program
+#: NEVER sets it.
 ENV_DAEMON_SPAWN_ENABLED = "ANTIEK_DAEMON_SPAWN_ENABLED"
+
+#: sysexits EX_CONFIG: the switch is on, but spawning cannot run as configured.
+EX_CONFIG = 78
 
 
 def spawn_enabled(env: dict[str, str] | Any) -> bool:
@@ -689,30 +694,34 @@ def main() -> None:
     """Module CLI: ``python -m orchestration.continuous``. Reads
     config from env and runs forever.
 
-    THE PROD-SAFETY GATE (autonomous-diligence SPR-02): with
-    ``ANTIEK_DAEMON_SPAWN_ENABLED`` unset (the shipped default), the loop
-    receives ``no_op_spawn`` and NO flag source — byte-equivalent to the
-    pre-activation daemon (it scores and stops). When the operator sets the
-    env truthy — an explicit act, never this program's — the loop receives
-    the real emit spawn_fn (the broadcaster path) and the diligence-queue
-    flag source."""
+    THE PROD-SAFETY GATE: with ``ANTIEK_DAEMON_SPAWN_ENABLED`` unset (the
+    shipped default), the loop receives ``no_op_spawn`` and NO flag source,
+    so it scores and stops.
+
+    With the switch on, the daemon refuses to start (EX_CONFIG). Two reasons:
+    - Its spawn path emits on an EventBroadcaster created in this process,
+      and the investigation handler lives in the API process. Every spawn
+      would log a start that nobody runs, yet take a reserve and a
+      concurrency slot.
+    - Diligence has no per-flag consent yet (D4, THREAD-CONTRACT §1.13).
+
+    Spawning returns only with the API-routed, consented path."""
+    if spawn_enabled(os.environ):
+        print(
+            f"{ENV_DAEMON_SPAWN_ENABLED} is set, but daemon spawning is refused: its spawns "
+            "would emit on a bus with no investigation handler in this process, and diligence "
+            "has no per-flag consent yet (D4; THREAD-CONTRACT §1.13). Unset it; spawning "
+            "returns with the API-routed, consented launch path.",
+            file=sys.stderr,
+        )
+        raise SystemExit(EX_CONFIG)
     config = DaemonConfig(
         sleep_seconds=float(os.environ.get("ANTIEK_DAEMON_SLEEP_SECONDS", "60")),
         expected_cost_per_spawn_usd=float(
             os.environ.get("ANTIEK_DAEMON_EXPECTED_COST_USD", "0.50")
         ),
     )
-    spawn_fn: SpawnFn = no_op_spawn
-    flag_source: FlagSource | None = None
-    if spawn_enabled(os.environ):
-        # Deferred imports: the API/broadcast layer only loads when the
-        # operator enabled spawning — the shipped default never pays it.
-        from interfaces.research.api.broadcast import EventBroadcaster
-        from substrate.graph import default_db_path, ensure_initialized
-
-        spawn_fn = make_emit_spawn_fn(EventBroadcaster())
-        flag_source = DbFlagSource(ensure_initialized(default_db_path()))
-    run_forever(config=config, spawn_fn=spawn_fn, flag_source=flag_source)
+    run_forever(config=config, spawn_fn=no_op_spawn, flag_source=None)
 
 
 if __name__ == "__main__":
