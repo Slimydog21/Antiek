@@ -136,11 +136,16 @@ def _source_blocks(con: Any, document_id: str, served_text: str) -> list[SourceB
     index = 0
     for chunk in anchor_map.chunks:
         chunk_text = body[chunk.body_start : chunk.body_end]
-        cursor = 0
-        for raw in _WS_PARAGRAPHS.split(chunk_text):
-            start = cursor
-            end = cursor + len(raw)
-            cursor = end + 2
+        # Split on paragraph separators of ANY length (a run of \n{2,}),
+        # advancing by the separator's ACTUAL span so later blocks' scalars
+        # never drift — a citation must slice exactly the text it names.
+        parts: list[tuple[int, str]] = []
+        last = 0
+        for separator in _WS_PARAGRAPHS.finditer(chunk_text):
+            parts.append((last, chunk_text[last : separator.start()]))
+            last = separator.end()
+        parts.append((last, chunk_text[last:]))
+        for start, raw in parts:
             stripped = raw.strip()
             if not stripped or stripped.startswith("## "):
                 continue
@@ -356,6 +361,7 @@ def reformat_document(
             title=f"{source_title or 'A document'} — reformatted",
             raw_text="\n\n".join(derived_paragraphs),
             content_class=source_content_class,
+            owner_user_id=owner_user_id,
             metadata={
                 "derived_from_document_id": source_document_id,
                 "generation_id": generation_id,
