@@ -56,6 +56,9 @@ def test_a_failed_write_whose_cleanup_also_fails_leaks_nothing(artifacts, monkey
             paths.atomic_write_nofollow(artifacts / "b.html", b"x")
         # The write failure is what surfaces, not the cleanup's.
         assert err.value.errno == 28
+        # The failed removal is recorded on it, so the stray temp is traceable.
+        assert any("removing the temp file also failed" in n and "Errno 13" in n
+                   for n in getattr(err.value, "__notes__", []))
     assert _open_fds() == before
 
 
@@ -117,6 +120,10 @@ def test_a_failed_close_after_a_failed_write_keeps_the_write_error(artifacts, mo
             paths.atomic_write_nofollow(artifacts / "d.html", b"x")
         # The write failure is what surfaces, not the close's.
         assert err.value.errno == 28
+        # The close's failure is not lost: it rides on the write error as a
+        # note, so a traceback shows both without inverting their causality.
+        assert any("closing the temp file also failed" in n and "Errno 5" in n
+                   for n in getattr(err.value, "__notes__", []))
     assert _open_fds() == before
     assert list(artifacts.iterdir()) == []
 

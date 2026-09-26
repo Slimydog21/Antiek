@@ -112,7 +112,9 @@ def atomic_write_nofollow(path: Path, data: bytes) -> None:
     The parent directory's descriptor is closed on every path out, and no
     cleanup step replaces the error that caused it: closing and removing the
     temp after a failure are best effort, the original failure is what
-    raises. A temp that fails to close is removed and never published."""
+    raises, and a cleanup failure rides on it as a note (not as its cause:
+    the cleanup did not cause the failure). A temp that fails to close is
+    removed and never published."""
     parent_fd, name = _open_parent_dir(path, create=True)
     try:
         temp_name = f".{name}.{secrets.token_hex(12)}.tmp"
@@ -125,17 +127,23 @@ def atomic_write_nofollow(path: Path, data: bytes) -> None:
                     written = os.write(fd, view)
                     view = view[written:]
                 os.fsync(fd)
-            except BaseException:
-                with suppress(OSError):
+            except BaseException as failure:
+                try:
                     os.close(fd)
+                except OSError as close_error:
+                    failure.add_note(f"closing the temp file also failed: {type(close_error).__name__}: {close_error}")
                 raise
             # Closed outside the handler: its own error is the failure then.
             os.close(fd)
             os.replace(temp_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
             os.fsync(parent_fd)
-        except BaseException:
-            with suppress(OSError):
+        except BaseException as failure:
+            try:
                 os.unlink(temp_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass  # never created, or already published by the replace
+            except OSError as unlink_error:
+                failure.add_note(f"removing the temp file also failed: {type(unlink_error).__name__}: {unlink_error}")
             raise
     finally:
         os.close(parent_fd)
