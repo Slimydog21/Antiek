@@ -234,6 +234,10 @@ def reformat_document(
         raise ReformatError(f"unknown reformat mode: {mode}")
     params = dict(params or {})
     generate = generate_fn or _dispatch_generate
+    # Minted EARLY: the generation's dispatch events carry the thread id
+    # (reformat:{generation_id}) — the engagement that stays in the pane.
+    generation_id = mint_generation_id()
+    params.setdefault("thread_id", f"reformat:{generation_id}")
 
     # 1. The gated read — the ONLY way source text enters the pipeline.
     rcon = connect_read(db_path)
@@ -264,7 +268,6 @@ def reformat_document(
 
     # 3. Verify + class honestly, then write in ONE bounded atomic scope.
     by_index = {b.index: b for b in blocks}
-    generation_id = mint_generation_id()
     derived_document_id = f"drv-{generation_id[4:]}"
 
     out_bites: list[BiteRow] = []
