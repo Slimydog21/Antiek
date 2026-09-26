@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import LemonCard from "../../components/lemon/LemonCard";
 import { useInWindow } from "../../components/windows/windowHostContext";
-import { apiFetch } from "../../lib/api";
+import { ApiError, apiFetch } from "../../lib/api";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 
 /**
  * Substrate stats summary UI (master-spec §13.7 audit).
@@ -18,6 +19,23 @@ interface StatsResponse {
   counts: Record<string, number>;
   warnings: string[];
 }
+
+/** The backend's shape for a skipped table (`get_substrate_stats`: `table {table!r} not present`). */
+const MISSING_TABLE = /^table '([^']+)' not present$/;
+
+/** Tables the backend reported as absent. They were skipped, not counted, so they have no number. */
+function missingTables(warnings: readonly string[]): ReadonlySet<string> {
+  const missing = new Set<string>();
+  for (const w of warnings) {
+    const m = MISSING_TABLE.exec(w.trim());
+    if (m) missing.add(m[1]);
+  }
+  return missing;
+}
+
+/** Caption shown under a dash: a bare dash would be its own kind of lie. */
+const NOT_PRESENT_CAPTION = "not present in this substrate";
+const NOT_REPORTED_CAPTION = "not reported";
 
 const TABLE_GROUPS: { title: string; tables: string[] }[] = [
   {
@@ -54,7 +72,7 @@ export default function Stats() {
   const inWindow = useInWindow();
   const [data, setData] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DescribedFailure | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -62,11 +80,11 @@ export default function Stats() {
     try {
       const resp = await apiFetch("/stats");
       if (!resp.ok) {
-        throw new Error(`GET /stats: HTTP ${resp.status}`);
+        throw new ApiError("GET /stats", resp.status, await resp.text());
       }
       setData(await resp.json());
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeFailure(e, { what: "load substrate stats" }));
     } finally {
       setLoading(false);
     }
@@ -75,6 +93,8 @@ export default function Stats() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  const missing = missingTables(data?.warnings ?? []);
 
   return (
     <div className="flex flex-col h-full">
@@ -105,7 +125,8 @@ export default function Stats() {
 
           {error && (
             <ErrorBanner>
-              {error}
+              <p className="font-medium">{error.title}</p>
+              <p>{error.detail}</p>
             </ErrorBanner>
           )}
 
@@ -135,21 +156,35 @@ export default function Stats() {
                 title={group.title}
               >
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 pt-2">
-                  {group.tables.map((t) => (
-                    <LemonCard
-                      key={t}
-                      elevation="z1"
-                      colour="glacial"
-                      className="px-3 py-2 text-center"
-                    >
-                      <p className="text-2xl font-serif text-ink dark:text-bright">
-                        {(data.counts[t] ?? 0).toLocaleString()}
-                      </p>
-                      <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
-                        {t.replace(/_/g, " ")}
-                      </p>
-                    </LemonCard>
-                  ))}
+                  {group.tables.map((t) => {
+                    const count = data.counts[t];
+                    const known = typeof count === "number";
+                    const caption = known
+                      ? null
+                      : missing.has(t)
+                        ? NOT_PRESENT_CAPTION
+                        : NOT_REPORTED_CAPTION;
+                    return (
+                      <LemonCard
+                        key={t}
+                        elevation="z1"
+                        colour="glacial"
+                        className="px-3 py-2 text-center"
+                      >
+                        <p className="text-2xl font-serif text-ink dark:text-bright">
+                          {known ? count.toLocaleString() : "—"}
+                        </p>
+                        <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
+                          {t.replace(/_/g, " ")}
+                        </p>
+                        {caption && (
+                          <p className="text-xxs text-shadow-1 dark:text-moonlight italic">
+                            {caption}
+                          </p>
+                        )}
+                      </LemonCard>
+                    );
+                  })}
                 </div>
               </LemonCard>
             ))}
