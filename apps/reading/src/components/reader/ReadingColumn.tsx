@@ -36,6 +36,18 @@ import { forwardRef } from "react";
  * max-width sits well inside that reserved working region at every viewport.
  */
 
+/** One painted highlight range (page-relative [start, end)), from
+ *  anchorRanges.rangesForPage. `treatment` is the closed vocabulary the
+ *  highlight-anchor augmentation declares; the classes below are the ONLY
+ *  mapping from it to tokens (sun wash + underline; dashed when drifted). */
+export interface AnchorMark {
+  anchorId: string;
+  start: number;
+  end: number;
+  treatment: "active" | "drifted";
+  title: string;
+}
+
 export interface ReadingColumnProps {
   /** The document/asset id — stamped as `data-akb-asset-id` so the SPR-07
    *  sampler attributes in-frame seconds to this asset.
@@ -55,6 +67,10 @@ export interface ReadingColumnProps {
   /** OPTIONAL resolved chunk id for the page in frame. Omit when no real chunk
    *  id is available — never pass a synthetic one (no fabricated coverage). */
   chunkId?: string | null;
+  /** OPTIONAL anchored highlights to paint into the page (anchor-first
+   *  SPR-02). Inline marks — part of the text flow, so they repaginate with
+   *  it. Omit for no marks (every existing caller is unchanged). */
+  marks?: AnchorMark[];
 }
 
 /**
@@ -62,12 +78,72 @@ export interface ReadingColumnProps {
  * headings, blank-line-separated runs become paragraphs. Deliberately light —
  * the served body is already cleaned text, not rich markup.
  */
-function renderBlocks(text: string) {
+/** The ONLY treatment→classes mapping (the closed vocabulary, tokens only):
+ *  active = a sun wash + 2px underline at reduced emphasis — part of the
+ *  text, no card/border/shadow/motion; drifted = the same mark dashed at
+ *  lower opacity, with the honest "moved" affordance on the title. */
+const MARK_CLASSES: Record<AnchorMark["treatment"], string> = {
+  active: "bg-sun/20 underline decoration-2 decoration-sun/60 underline-offset-2",
+  drifted:
+    "bg-sun/10 underline decoration-2 decoration-dashed decoration-sun/50 underline-offset-2 opacity-70",
+};
+
+/** Split one block's text at mark boundaries and wrap marked segments.
+ *  Marks are page-relative; the block carries its own offset in the page.
+ *  A mark spanning a block boundary paints each block's part — visually
+ *  continuous across paragraphs, honest at every split. */
+function renderMarkedText(text: string, blockOffset: number, marks: AnchorMark[]) {
+  // Each mark clipped to this block, in block-relative offsets.
+  const clipped = marks
+    .map((m) => ({
+      m,
+      start: Math.max(0, m.start - blockOffset),
+      end: Math.min(text.length, m.end - blockOffset),
+    }))
+    .filter((c) => c.end > c.start && c.end > 0 && c.start < text.length);
+  const boundaries = new Set<number>([0, text.length]);
+  for (const c of clipped) {
+    boundaries.add(c.start);
+    boundaries.add(c.end);
+  }
+  const cuts = [...boundaries].sort((a, b) => a - b);
+  const out: React.ReactNode[] = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const start = cuts[i];
+    const end = cuts[i + 1];
+    if (end <= start) continue;
+    const segment = text.slice(start, end);
+    const hit = clipped.find((c) => c.start <= start && c.end >= end);
+    if (hit) {
+      out.push(
+        <span
+          key={`${hit.m.anchorId}-${start}`}
+          data-anchor-id={hit.m.anchorId}
+          data-anchor-treatment={hit.m.treatment}
+          className={MARK_CLASSES[hit.m.treatment]}
+          title={hit.m.title}
+        >
+          {segment}
+        </span>,
+      );
+    } else {
+      out.push(<span key={`plain-${start}`}>{segment}</span>);
+    }
+  }
+  return out;
+}
+
+function renderBlocks(text: string, marks: AnchorMark[]) {
   const blocks = text
     .split(/\n{2,}/)
     .map((b) => b.trim())
     .filter(Boolean);
+  // Each block's offset in the page text (blocks are trimmed on both ends,
+  // so the offset walks past the trimmed edges).
+  let cursor = 0;
   return blocks.map((block, i) => {
+    const offset = text.indexOf(block, cursor);
+    cursor = offset + block.length;
     const heading = block.match(/^(#{1,3})\s+(.*)$/);
     if (heading) {
       return (
@@ -81,7 +157,7 @@ function renderBlocks(text: string) {
     }
     return (
       <p key={i} className="mb-3 whitespace-pre-wrap">
-        {block}
+        {marks.length > 0 ? renderMarkedText(block, offset, marks) : block}
       </p>
     );
   });
@@ -94,7 +170,7 @@ function renderBlocks(text: string) {
  * for the reader's old inline body, with the attribution markers added.
  */
 export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
-  function ReadingColumn({ assetId, text, chunkId, contentFormat = "text" }, ref) {
+  function ReadingColumn({ assetId, text, chunkId, contentFormat = "text", marks = [] }, ref) {
     return (
       <article
         ref={ref}
@@ -112,7 +188,7 @@ export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
         {text.trim() ? (
           contentFormat === "html" ? (
             <div data-antiek-html-body dangerouslySetInnerHTML={{ __html: text }} />
-          ) : renderBlocks(text)
+          ) : renderBlocks(text, marks)
         ) : (
           <p className="text-shadow-1 dark:text-moonlight italic">
             This book has no readable pages.
