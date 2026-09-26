@@ -2539,10 +2539,15 @@ def register_book_routes(app: FastAPI) -> None:
     async def reconcile_model_operation(
         operation_id: str, request: Request,
     ) -> ModelOperationStatus:
-        from substrate.byot_usage.ledger import OperationConflict
+        from substrate.byot_usage.ledger import OperationConflict, SettlementEvidenceError
         owner, ledger, _ = _operation_context(request, operation_id)
         try:
             ledger.reconcile_operation(owner, operation_id)
+        except SettlementEvidenceError:
+            raise HTTPException(
+                status_code=409,
+                detail="model_operation_settlement_evidence_missing",
+            ) from None
         except OperationConflict:
             raise HTTPException(status_code=404, detail="model_operation_not_found") from None
         return _model_operation_status(request, operation_id)
