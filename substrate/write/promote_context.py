@@ -23,9 +23,10 @@ enforce it identically to every other Write path.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Literal
 
 try:
@@ -87,6 +88,24 @@ class InvestigationPromoteResult:
     synthesis_id: str | None = None
     synthesis_status: str | None = None
     synthesis_recommendation: str | None = None
+    idempotent_replay: bool = False
+
+
+class PromotionIdempotencyConflict(RuntimeError):
+    """The same owner/idempotency key was reused with a different request."""
+
+
+_PROMOTION_IDEMPOTENCY_DDL = """
+CREATE TABLE IF NOT EXISTS deliverable_promotion_idempotency (
+    owner_user_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL CHECK (length(idempotency_key) BETWEEN 1 AND 200),
+    request_digest TEXT NOT NULL CHECK (length(request_digest) = 64),
+    deliverable_id TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (owner_user_id, idempotency_key)
+)
+"""
 
 
 # Outline block_kind for a synthesis-pinned graph node. The writing outline is
@@ -106,6 +125,52 @@ _NODE_TYPE_TO_BLOCK_KIND: dict[str, str] = {
 
 def _block_kind_for_node_type(node_type: str | None) -> str:
     return _NODE_TYPE_TO_BLOCK_KIND.get(node_type or "", "insight")
+
+
+def _investigation_owner(investigation_id: str) -> str | None:
+    """Return the first start event's explicit owner, if it recorded one.
+
+    Investigations do not have a graph table. Newer start events carry the
+    requester in ``owner_user_id``; older/operator-generated events may not.
+    A missing owner remains permissive for legacy data, but an explicit owner
+    is authoritative and must match the promotion requester.
+    """
+    from substrate.event_log import trajectory
+
+    for event in trajectory(investigation_id):
+        if event.get("action_type") != "investigation.start_requested":
+            continue
+        owner = (event.get("payload") or {}).get("owner_user_id")
+        if isinstance(owner, str) and owner:
+            return owner
+    return None
+
+
+def _replay_stored_promotion(
+    con: LockedConnection,
+    *,
+    owner_user_id: str,
+    idempotency_key: str,
+    request_digest: str,
+) -> InvestigationPromoteResult | None:
+    row = con.execute(
+        "SELECT request_digest, result_json "
+        "FROM deliverable_promotion_idempotency "
+        "WHERE owner_user_id=? AND idempotency_key=?",
+        [owner_user_id, idempotency_key],
+    ).fetchone()
+    if row is None:
+        return None
+    if row[0] != request_digest:
+        raise PromotionIdempotencyConflict(
+            "idempotency key was already used with a different promotion body"
+        )
+    try:
+        result = InvestigationPromoteResult(**json.loads(row[1]))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("stored promotion receipt is invalid") from exc
+    result.idempotent_replay = True
+    return result
 
 
 def promote_to_outline(
@@ -155,6 +220,8 @@ def promote_investigation_to_deliverable(
     deliverable_kind: str,
     owner_user_id: str,
     title: str | None = None,
+    idempotency_key: str | None = None,
+    request_digest: str | None = None,
 ) -> InvestigationPromoteResult | None:
     """Promote a completed investigation's synthesis into a seed deliverable
     (specs/write WV-SPR-01 M2) — the compounding flywheel's missing writing
@@ -179,6 +246,25 @@ def promote_investigation_to_deliverable(
     and writes (deliverable/section/blocks) share one lock so the promotion
     is atomic.
     """
+    source_owner = _investigation_owner(investigation_id)
+    if source_owner is not None and source_owner != owner_user_id:
+        # Use the caller's existing missing-synthesis shape: never reveal that
+        # another owner has a depositable investigation.
+        return None
+
+    if (idempotency_key is None) != (request_digest is None):
+        raise ValueError("idempotency key and request digest must be supplied together")
+    if idempotency_key is not None and request_digest is not None:
+        con.execute(_PROMOTION_IDEMPOTENCY_DDL)
+        replayed = _replay_stored_promotion(
+            con,
+            owner_user_id=owner_user_id,
+            idempotency_key=idempotency_key,
+            request_digest=request_digest,
+        )
+        if replayed is not None:
+            return replayed
+
     # 1. Find the investigation's most-recent DEPOSITABLE synthesis.
     #    - DEPOSITABLE = the research run finished: status != 'draft'. A draft
     #      is in-flight / unevaluated, not a completed conclusion, so it is not
@@ -268,7 +354,7 @@ def promote_investigation_to_deliverable(
         )
         block_ids.append(obid)
 
-    return InvestigationPromoteResult(
+    result = InvestigationPromoteResult(
         deliverable_id=did,
         section_id=sid,
         block_ids=block_ids,
@@ -280,3 +366,17 @@ def promote_investigation_to_deliverable(
         synthesis_status=synthesis_status,
         synthesis_recommendation=recommendation,
     )
+    if idempotency_key is not None and request_digest is not None:
+        con.execute(
+            "INSERT INTO deliverable_promotion_idempotency "
+            "(owner_user_id, idempotency_key, request_digest, deliverable_id, result_json) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                owner_user_id,
+                idempotency_key,
+                request_digest,
+                result.deliverable_id,
+                json.dumps(asdict(result), separators=(",", ":"), sort_keys=True),
+            ],
+        )
+    return result
