@@ -2593,17 +2593,17 @@ def create_app(
 
     @app.get("/.well-known/mcp-tools.json", tags=["mcp"])
     async def mcp_well_known_manifest() -> dict[str, Any]:
-        """Antiek Memory MCP server tool manifest (§13.8 rug-pull
-        defense). Clients fetch this from
-        ``https://api.antiek.ai/.well-known/mcp-tools.json`` and
-        verify each tool's description hash matches the hash in
-        tools/list responses. Drift treated as fatal session-
-        termination per Invariant Labs disclosure precedent.
-        """
-        from tools.antiek_memory.server import CANONICAL_TOOLS
-        from tools.antiek_memory.signing import render_well_known_manifest
+        """Serve the committed pin so clients detect live description drift.
 
-        return render_well_known_manifest(CANONICAL_TOOLS)
+        A changed tools/list description mismatches the reviewed pin instead
+        of causing the endpoint to publish a new hash.
+        """
+        from tools.antiek_memory.signing import load_pinned_manifest
+
+        try:
+            return load_pinned_manifest()
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=503, detail="MCP tool manifest unavailable") from exc
 
     @app.get("/trajectory/{investigation_id}")
     async def get_trajectory(

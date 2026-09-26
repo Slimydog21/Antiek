@@ -10,7 +10,7 @@ full protocol surface per master-spec §13.8:
 * resources/read  → prompt-injection envelope (§13.8.3)
 * tools/call search_personal  → real substrate query path
 * tools/call cite_source  → resolves chunk metadata
-* tools/call record_attribution  → records attribution event
+* tools/call record_attribution  → records replayable attribution audit
 
 No new deps; uses subprocess + json.
 """
@@ -26,6 +26,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from processing.embedding.embed import HashEmbedding
+from substrate.ad_inventory import attribution_audit
 from substrate.graph.schema import init_database_at_path
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -75,7 +77,8 @@ def memory_db(tmp_path: Path) -> Path:
     Inserts:
     - One document (doc-1)
     - Two chunks (chunk-1, chunk-2)
-    - One notebook (nb-1, owner='testuser')
+    - Notebook nb-1 (owner='__operator__') and nb-2 (owner='testuser', the
+      owner the server process is launched for)
     - One notebook_block (block-1, type='note')
     """
     db_path = tmp_path / "graph.duckdb"
@@ -110,6 +113,29 @@ def memory_db(tmp_path: Path) -> Path:
             """,
             ["chunk-2", "doc-1", 1, "The second chunk with more content.", 7],
         )
+        embed = HashEmbedding()
+        public_search_cases = (
+            ("doc-pd", "public_domain", "chunk-pd",
+             "Photosynthesis converts light into chemical energy in chloroplasts."),
+            ("doc-pd2", "public_domain", "chunk-pd2",
+             "Mitochondria generate ATP through cellular respiration."),
+            ("doc-r", "restricted_pending_opt_in", "chunk-r",
+             "RESTRICTED BODY photosynthesis in a gated book."),
+            ("doc-pr", "personal_reading", "chunk-pr",
+             "PERSONAL BODY photosynthesis in a fetched essay."),
+        )
+        for document_id, content_class, chunk_id, text in public_search_cases:
+            con.execute(
+                "INSERT INTO documents (document_id, title, source_tier, "
+                "document_type, owner_user_id, content_class) "
+                "VALUES (?, ?, 1, 'article', '__operator__', ?)",
+                [document_id, f"Title {document_id}", content_class],
+            )
+            con.execute(
+                "INSERT INTO chunks (chunk_id, document_id, chunk_index, text, "
+                "embedding, token_count) VALUES (?, ?, 0, ?, ?, 8)",
+                [chunk_id, document_id, text, embed.encode(text)],
+            )
         con.execute(
             """
             INSERT INTO notebooks
@@ -129,6 +155,20 @@ def memory_db(tmp_path: Path) -> Path:
                 json.dumps({"text": "Private note content for testing."}),
             ],
         )
+        con.execute(
+            "INSERT INTO notebooks (notebook_id, title, owner_user_id, content_class) "
+            "VALUES (?, ?, ?, ?)",
+            ["nb-2", "Testuser Notebook", "testuser", "user_owned"],
+        )
+        con.execute(
+            "INSERT INTO notebook_blocks "
+            "(block_id, notebook_id, block_index, block_type, ref_id, content_json) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                "block-2", "nb-2", 0, "note", "note-2",
+                json.dumps({"text": "Testuser private note."}),
+            ],
+        )
     finally:
         con.close()
     return db_path
@@ -142,6 +182,8 @@ def server_proc(memory_db: Path, tmp_path: Path):
     # The owner this server process is launched for (the stdio transport's
     # only source of a verified identity).
     env["ANTIEK_MEMORY_OWNER"] = "testuser"
+    # Deterministic embeddings in the subprocess; use the fixture's provider.
+    env["ANTIEK_EMBEDDING_PROVIDER"] = "hash"
     # Also set ANTIEK_HOME to avoid touching the real home
     env["ANTIEK_HOME"] = str(tmp_path / "home")
 
@@ -271,14 +313,14 @@ class TestResourcesRead:
         resp = _send_and_recv(
             server_proc,
             "resources/read",
-            {"uri": "antiek://private/notes/__operator__/block-1"},
+            {"uri": "antiek://private/notes/testuser/block-2"},
             rpc_id=4,
         )
         assert "result" in resp
         contents = resp["result"]["contents"]
         assert len(contents) == 1
         content = contents[0]
-        assert content["uri"] == "antiek://private/notes/__operator__/block-1"
+        assert content["uri"] == "antiek://private/notes/testuser/block-2"
         assert content["mimeType"] == "application/json"
 
         # Parse the JSON text to check the envelope
@@ -293,12 +335,30 @@ class TestResourcesRead:
         resp = _send_and_recv(
             server_proc,
             "resources/read",
-            {"uri": "antiek://private/notes/__operator__/block-1"},
+            {"uri": "antiek://private/notes/testuser/block-2"},
             rpc_id=4,
         )
         body = json.loads(resp["result"]["contents"][0]["text"])
-        assert body["user_id"] == "__operator__"
-        assert body["title"] == "Test Notebook"
+        assert body["user_id"] == "testuser"
+        assert body["title"] == "Testuser Notebook"
+
+    def test_another_owners_private_note_is_not_served(self, server_proc):
+        # The process is launched for ``testuser``; naming another owner in the
+        # URI, or claiming to be them, reads as "not found" and leaks nothing.
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        for rpc_id, params in enumerate(
+            (
+                {"uri": "antiek://private/notes/__operator__/block-1"},
+                {
+                    "uri": "antiek://private/notes/__operator__/block-1",
+                    "auth_context": {"user_id": "__operator__"},
+                },
+            ),
+            start=4,
+        ):
+            resp = _send_and_recv(server_proc, "resources/read", params, rpc_id=rpc_id)
+            assert "error" in resp
+            assert "Private note content" not in json.dumps(resp)
 
     def test_private_note_nonexistent_returns_error(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
@@ -319,6 +379,37 @@ class TestResourcesRead:
             rpc_id=4,
         )
         assert "error" in resp
+
+
+class TestResourcesReadBooks:
+    """§9.0: antiek://books returns a licensing-required error, never a gated body."""
+
+    def test_restricted_body_returns_licensing_error(self, server_proc):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        resp = _send_and_recv(
+            server_proc,
+            "resources/read",
+            {"uri": "antiek://books/doc-r/chunk-r"},
+            rpc_id=4,
+        )
+        assert resp["error"]["code"] == -32001
+        assert resp["error"]["data"]["servability"] == "restricted"
+        assert "RESTRICTED BODY" not in json.dumps(resp)
+
+    def test_public_domain_body_is_enveloped(self, server_proc):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        resp = _send_and_recv(
+            server_proc,
+            "resources/read",
+            {"uri": "antiek://books/doc-pd/chunk-pd"},
+            rpc_id=4,
+        )
+        body = json.loads(resp["result"]["contents"][0]["text"])
+        assert body["text"] == (
+            '<antiek:content trusted="false">'
+            "Photosynthesis converts light into chemical energy in chloroplasts."
+            "</antiek:content>"
+        )
 
 
 class TestToolsCallSearchPersonal:
@@ -374,25 +465,48 @@ class TestToolsCallSearchPersonal:
 
 
 class TestToolsCallSearchPublic:
-    """tools/call search_public — wraps results in prompt-injection envelope."""
+    """tools/call search_public returns public bodies through the rights gate."""
 
-    def test_search_public_wraps_in_envelope(self, server_proc):
+    def test_search_public_serves_public_chunk_and_withholds_gated_bodies(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
         resp = _send_and_recv(
             server_proc,
             "tools/call",
             {
                 "name": "search_public",
-                "arguments": {"query": "test", "top_k": 10},
+                "arguments": {"query": "photosynthesis", "top_k": 10},
             },
             rpc_id=5,
         )
         assert resp["result"]["isError"] is False
-        body = json.loads(resp["result"]["content"][0]["text"])
-        assert len(body["chunks"]) >= 1
-        # §13.8: public results must be wrapped in prompt-injection envelope
+        raw = resp["result"]["content"][0]["text"]
+        body = json.loads(raw)
+        chunk_ids = {chunk["chunk_id"] for chunk in body["chunks"]}
+        assert "chunk-pd" in chunk_ids
+        assert "chunk-pd2" not in chunk_ids
+        assert "chunk-r" not in chunk_ids
+        assert "chunk-pr" not in chunk_ids
         for chunk in body["chunks"]:
-            assert '<antiek:content trusted="false">' in chunk["text"]
+            assert chunk["text"].startswith('<antiek:content trusted="false">')
+        assert "RESTRICTED BODY" not in raw
+        assert "PERSONAL BODY" not in raw
+
+    def test_search_public_query_matching_nothing_is_empty(self, server_proc):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        resp = _send_and_recv(
+            server_proc,
+            "tools/call",
+            {
+                "name": "search_public",
+                "arguments": {"query": "zzz-no-such-term", "top_k": 10},
+            },
+            rpc_id=5,
+        )
+
+        assert resp["result"]["isError"] is False
+        body = json.loads(resp["result"]["content"][0]["text"])
+        assert body["chunks"] == []
+        assert body["no_match"] is True
 
 
 class TestToolsCallCiteSource:
@@ -416,6 +530,23 @@ class TestToolsCallCiteSource:
         assert citation["title"] == "Test Paper"
         assert citation["source_tier"] == 1
         assert citation["author"] == "Alice"
+        assert "ip_holder_id" in citation
+
+    def test_cite_source_resolves_document_id(self, server_proc):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        resp = _send_and_recv(
+            server_proc,
+            "tools/call",
+            {
+                "name": "cite_source",
+                "arguments": {"id": "doc-1", "id_type": "document"},
+            },
+            rpc_id=5,
+        )
+        assert resp["result"]["isError"] is False
+        citation = json.loads(resp["result"]["content"][0]["text"])
+        assert citation["document_id"] == "doc-1"
+        assert citation["chunk_id"] is None
 
     def test_cite_source_nonexistent_returns_error(self, server_proc):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
@@ -432,9 +563,46 @@ class TestToolsCallCiteSource:
 
 
 class TestToolsCallRecordAttribution:
-    """tools/call record_attribution — records attribution event without escrow."""
+    """tools/call record_attribution records a replayable audit row."""
 
-    def test_record_attribution_records_event(self, server_proc, memory_db):
+    def test_record_attribution_records_replayable_row(self, server_proc, memory_db):
+        _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
+        params = {
+            "name": "record_attribution",
+            "arguments": {
+                "chunk_id": "chunk-pd",
+                "investigation_id": "inv-1",
+                "session_dwell_seconds": 42.5,
+            },
+        }
+        resp = _send_and_recv(server_proc, "tools/call", params, rpc_id=5)
+        assert resp["result"]["isError"] is False
+        result = json.loads(resp["result"]["content"][0]["text"])
+        assert result["status"] == "recorded"
+        assert result["chunk_id"] == "chunk-pd"
+        assert result["document_id"] == "doc-pd"
+        assert result["investigation_id"] == "inv-1"
+        assert result["impression_set_ref"] == "mcp:testuser:inv-1"
+        assert "audit_id" in result
+
+        retry = _send_and_recv(server_proc, "tools/call", params, rpc_id=6)
+        assert retry["result"]["isError"] is False
+        retry_result = json.loads(retry["result"]["content"][0]["text"])
+        assert retry_result["audit_id"] == result["audit_id"]
+
+        import duckdb as _duckdb
+        con = _duckdb.connect(str(memory_db), read_only=True)
+        try:
+            assert attribution_audit.replay(con, result["audit_id"]).identical is True
+            count = con.execute(
+                "SELECT count(*) FROM attribution_audit WHERE impression_set_ref = ?",
+                ["mcp:testuser:inv-1"],
+            ).fetchone()[0]
+            assert count == 1
+        finally:
+            con.close()
+
+    def test_record_attribution_unknown_chunk_rejected(self, server_proc, memory_db):
         _send_and_recv(server_proc, "initialize", {}, rpc_id=1)
         resp = _send_and_recv(
             server_proc,
@@ -442,29 +610,17 @@ class TestToolsCallRecordAttribution:
             {
                 "name": "record_attribution",
                 "arguments": {
-                    "chunk_id": "chunk-1",
+                    "chunk_id": "chunk-DOES-NOT-EXIST",
                     "investigation_id": "inv-1",
-                    "session_dwell_seconds": 42.5,
                 },
             },
             rpc_id=5,
         )
-        assert resp["result"]["isError"] is False
-        result = json.loads(resp["result"]["content"][0]["text"])
-        assert result["status"] == "recorded"
-        assert result["chunk_id"] == "chunk-1"
-        assert result["investigation_id"] == "inv-1"
-        assert "audit_id" in result
-
-        # Verify the attribution was actually recorded in the DB
+        assert resp["result"]["isError"] is True
         import duckdb as _duckdb
         con = _duckdb.connect(str(memory_db), read_only=True)
         try:
-            row = con.execute(
-                "SELECT * FROM attribution_audit WHERE page_id = ?",
-                ["chunk-1"],
-            ).fetchone()
-            assert row is not None, "attribution_audit row not found"
+            assert con.execute("SELECT count(*) FROM attribution_audit").fetchone()[0] == 0
         finally:
             con.close()
 

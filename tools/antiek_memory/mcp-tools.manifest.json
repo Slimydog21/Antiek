@@ -1,0 +1,22 @@
+{
+  "server": "antiek-memory",
+  "tools": [
+    {
+      "description_sha256": "e20642dbd56d15d2d98f5d5fbfce94102207c16268a5035c25f58ed1824701f6",
+      "name": "search_personal"
+    },
+    {
+      "description_sha256": "45ce97db8320f53036cdcdd0d84cb1f03f2553032ff3f38363a9f4b79e32e0aa",
+      "name": "search_public"
+    },
+    {
+      "description_sha256": "79f6335176260bcaff8c03536d329c86ffcee3bfa39713b8095d9e2c61516470",
+      "name": "cite_source"
+    },
+    {
+      "description_sha256": "cb4f2376d38fae059f68cf140ffbb926d237b4920138054a02daf696f77b9290",
+      "name": "record_attribution"
+    }
+  ],
+  "version": "1.0"
+}
