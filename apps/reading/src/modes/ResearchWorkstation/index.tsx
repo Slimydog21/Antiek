@@ -17,6 +17,7 @@ import NotesPanel from "./NotesPanel";
 import PasteIngest from "./PasteIngest";
 import StartResearch from "./StartResearch";
 import SuggestedResearch from "./SuggestedResearch";
+import DiligenceRail from "./DiligenceRail";
 import ThinkingStream from "./ThinkingStream";
 import CapacitySoftWarnBanner from "../../components/CapacitySoftWarnBanner";
 
@@ -267,8 +268,10 @@ function CenterContent({
             answer as threads worth chasing. Read-only to render; chasing one
             reuses SPR-04's chase gesture (onChaseQuestion → the one
             ChaseThread panel), so it launches through the same capped path —
-            no second launch mechanism, no auto-spawn. */}
+            no second launch mechanism, no auto-spawn. The diligence queue
+            rail rides beside it (autonomous-diligence SPR-01). */}
         <div className="border-t border-rule dark:border-charcoal-1">
+          <DiligenceRail />
           <SuggestedResearch
             variant="beside"
             onChase={(c) => onChaseQuestion({ text: c.text })}

@@ -1948,6 +1948,20 @@ def create_app(
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
     register_book_routes(app)
+    # Anchor-first SPR-03 — anchored highlights: owner-scoped pin/list/delete
+    # + the chunk anchor-map (ids/offsets/hashes only, gated like the body).
+    from .book_anchor_routes import register_book_anchor_routes
+    register_book_anchor_routes(app)
+    # Reading-global SPR-01 — the reading-state bus: one position per
+    # owner+document across every reader mount (refs/numbers only, 409 on
+    # stale revision, the empty v1 prefs allowlist).
+    from .reading_state_routes import register_reading_state_routes
+    register_reading_state_routes(app)
+    # Autonomous-diligence SPR-01 — the flag queue: owner-scoped idempotent
+    # flags with write-time ref grounding (refs only — never the object's
+    # text), the queue read, and dismiss.
+    from .diligence_routes import register_diligence_routes
+    register_diligence_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
