@@ -19,7 +19,7 @@ describe("describeFailure", () => {
     expect(f.title).toBe("Couldn't load your research.");
     expect(f.kind).toBe("unavailable");
     expect(f.retryable).toBe(true);
-    expect(f.status).toBe(503);
+    expect(f.diagnostics?.status).toBe(503);
   });
 
   it("has a plain title when the caller names no action", () => {
@@ -34,18 +34,23 @@ describe("describeFailure", () => {
     [413, "too_large", false],
     [422, "invalid", false],
     [429, "rate_limited", true],
+    [451, "legal", false],
     [500, "server", true],
+    [501, "server", false],
     [502, "server", true],
+    [505, "server", false],
+    [507, "server", false],
+    [511, "network_auth", false],
     [503, "unavailable", true],
     [504, "timeout", true],
   ] as const)("maps HTTP %i to %s (retryable %s)", (status, kind, retryable) => {
     const f = describeFailure(new ApiError(`GET /x failed: HTTP ${status}`, status, "raw"), { what: "open this" });
     expect(f.kind).toBe(kind);
     expect(f.retryable).toBe(retryable);
-    expect(f.status).toBe(status);
+    expect(f.diagnostics?.status).toBe(status);
   });
 
-  it("never shows a status, method, path, code or body, for any status 400-599", () => {
+  it("never shows a status, method, path, code or body, for status 0 and every status 100-599", () => {
     const bodies = [
       "<html><body><h1>502 Bad Gateway</h1></body></html>",
       '{"detail":"reading_state_stale_revision"}',
@@ -53,7 +58,7 @@ describe("describeFailure", () => {
       "source_merge_requires_two_members",
       "",
     ];
-    for (let status = 400; status < 600; status++) {
+    for (const status of [0, ...Array.from({ length: 500 }, (_, i) => i + 100)]) {
       for (const body of bodies) {
         const f = describeFailure(new ApiError(`POST /books/1/ask failed: HTTP ${status}`, status, body), {
           what: "ask the book",
@@ -74,7 +79,7 @@ describe("describeFailure", () => {
     const f = describeFailure(new ApiError("POST /research/plans failed: HTTP 503", 503, body), {
       what: "plan the research",
     });
-    expect(f.serverCode).toBe("provider_unconfigured");
+    expect(f.diagnostics?.serverCode).toBe("provider_unconfigured");
     expect(f.detail).toBe("No model provider is configured. Set a provider key and restart.");
     expect(f.retryable).toBe(false);
   });
@@ -96,5 +101,41 @@ describe("describeFailure", () => {
     expect(f.kind).toBe("unknown");
     expect(f.title).toBe("Couldn't save your notes.");
     expect(f.detail).not.toContain("boom");
+  });
+
+  it("passes a recognized `unknown` DRW envelope through, with the envelope's retryable", () => {
+    const body = JSON.stringify({ detail: { code: "unknown", message: "whatever", retryable: false } });
+    const f = describeFailure(new ApiError("POST /research/plans failed: HTTP 500", 500, body));
+    expect(f.diagnostics?.serverCode).toBe("unknown");
+    expect(f.detail).toBe("Something unexpected went wrong. Try again.");
+    expect(f.retryable).toBe(false);
+  });
+
+  it("shows the contract headline, never the server's own message, even a hostile one", () => {
+    const body = JSON.stringify({
+      detail: { code: "provider_upstream_error", message: "GET /x HTTP 500 internal_problem <html>", retryable: true },
+    });
+    const f = describeFailure(new ApiError("POST /research/plans failed: HTTP 502", 502, body), { what: "plan the research" });
+    expect(f.detail).toBe("The model provider returned an error. Retry, or check your key's quota.");
+    expect(`${f.title} ${f.detail}`).not.toMatch(LEAK);
+  });
+
+  it("never echoes any non-request value", () => {
+    for (const thrown of [new Error("secret GET /x HTTP 500"), null, undefined, { secret: "leak" }, 42]) {
+      const f = describeFailure(thrown, { what: "load this" });
+      expect(f.kind).toBe("unknown");
+      expect(`${f.title} ${f.detail}`).not.toMatch(/secret|leak|42|HTTP/);
+    }
+  });
+
+  it("calls a non-error status unknown and drops an impossible status from diagnostics", () => {
+    expect(describeFailure(new ApiError("x", 304, "")).kind).toBe("unknown");
+    expect(describeFailure(new ApiError("x", Number.NaN, "")).diagnostics?.status).toBeUndefined();
+  });
+
+  it("falls back to the plain title when `what` carries error text", () => {
+    for (const what of ["GET /investigations failed: HTTP 503", "reading_state_stale_revision", "<b>x</b>"]) {
+      expect(describeFailure(new ApiError("x", 500, ""), { what }).title).toBe("That didn't work.");
+    }
   });
 });
