@@ -1,10 +1,16 @@
+import { Suspense, lazy } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
 import LemonButton from "../lemon/LemonButton";
 import { toast } from "../lemon/LemonToast";
 import { useAuth } from "../../lib/auth";
+import { rootRefForPath } from "../../workspace/routeRef";
 import "./topbar.css";
+
+// A record crumb is named like its tab (title via tabTitles + labelForTab),
+// which loads with the tab-tree chunk, never the entry chunk.
+const RecordCrumb = lazy(() => import("../../workspace/RecordCrumb"));
 
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
@@ -23,7 +29,7 @@ import "./topbar.css";
  * S4 ships the default-derived crumbs only; per-route overrides come
  * online as S5+ mode ports happen.
  */
-export type Crumb = { label: string; to?: string; id?: boolean };
+export type Crumb = { label: string; to?: string; id?: boolean; record?: boolean };
 
 /** Generate breadcrumbs from the current pathname. */
 function defaultBreadcrumbsFor(pathname: string): Crumb[] {
@@ -41,10 +47,18 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
     inv: "Investigation",
   };
 
+  // A record route's last segment names a record (an investigation, a
+  // book, a piece): it is named like the record's tab, never by its slug
+  // ("inv-finches" read as "Inv finches"). RecordCrumb renders it.
+  const record = rootRefForPath(pathname) !== null;
   const crumbs: Crumb[] = [];
   let acc = "";
-  for (const seg of segments) {
+  for (const [i, seg] of segments.entries()) {
     acc += "/" + seg;
+    if (record && i === segments.length - 1) {
+      crumbs.push({ label: seg, to: acc, record: true });
+      continue;
+    }
     // A route word reads as a sentence-case label ("my-research" → "My
     // research"); a segment carrying digits is a record id and stays
     // verbatim, set as data.
@@ -56,7 +70,7 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
 }
 
 export function Topbar() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const { state, signOut } = useAuth();
   const crumbs = defaultBreadcrumbsFor(pathname);
@@ -80,7 +94,13 @@ export function Topbar() {
                   ›
                 </span>
               )}
-              {c.to && i < crumbs.length - 1 ? (
+              {c.record ? (
+                // While its chunk loads the crumb holds its place, quietly;
+                // never the slug.
+                <Suspense fallback={<span className="text-3" aria-hidden="true">…</span>}>
+                  <RecordCrumb pathname={pathname} search={search} />
+                </Suspense>
+              ) : c.to && i < crumbs.length - 1 ? (
                 <Link to={c.to} className={`hover:text-1 hover:underline ${c.id ? "font-mono text-xs" : ""}`}>
                   {c.label}
                 </Link>

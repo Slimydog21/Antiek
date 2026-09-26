@@ -48,6 +48,8 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
 /** A caveat the sheet shows under an action's label. */
 export const NOTES: Partial<Record<ActionId, string>> = {
   "panel.closeFloating": "Only while a floating panel has focus; otherwise the browser closes the tab.",
+  "pane.focusLeft": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the left one on.",
+  "pane.focusRight": "On a narrow screen (768–1023 px) one pane shows at a time; this brings the right one on.",
   "pane.fullscreen": "Esc or the same key restores both panes.",
   "layout.togglePreset": "The cockpit's two tall panes are the default; docked puts the panels back at the edges.",
   "tab.next":

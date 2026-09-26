@@ -271,7 +271,8 @@ describe("F-18 — fullscreen never blanks the cockpit or traps a dock", () => {
     expect(ws().focusedPane).toBe("right");
     tierRef.current = "md";
     rerender(tree());
-    expect(visiblePanes()).toEqual(["left", "right"]);
+    // md shows one pane at a time (lane A B3-3): the focused one.
+    expect(visiblePanes()).toEqual(["right"]);
     key(document.body, "ctrl+b");
     key(document.body, "f");
     expect(ws().fullscreenPane).toBe("right");
@@ -380,7 +381,7 @@ describe("H6 — the panes are named regions with a visible focus ring", () => {
     ws().setLayoutPreset("omarchy-inset");
     const { getByRole } = render(tree());
     const left = getByRole("region", { name: "Primary pane" });
-    const right = getByRole("region", { name: "Companion pane" });
+    const right = getByRole("region", { name: "Agents pane" });
     expect(left.getAttribute("data-pane")).toBe("left");
     expect(right.getAttribute("data-pane")).toBe("right");
     key(document.body, "ctrl+b");
@@ -396,8 +397,8 @@ describe("H6 — the panes are named regions with a visible focus ring", () => {
   });
 });
 
-describe("H7 — the inset keeps both panes at lg and md", () => {
-  it.each(["xl", "lg", "md"] as const)("%s: two panes on screen", (tier) => {
+describe("H7 — the inset keeps both panes at lg; md shows one at a time, both mounted", () => {
+  it.each(["xl", "lg"] as const)("%s: two panes on screen", (tier) => {
     openTwo();
     ws().setLayoutPreset("omarchy-inset");
     tierRef.current = tier;
@@ -405,13 +406,17 @@ describe("H7 — the inset keeps both panes at lg and md", () => {
     expect(visiblePanes()).toEqual(["left", "right"]);
   });
 
-  it("md narrows the right pane rather than dropping it", () => {
+  // Superseded by lane A B3-3 (a 280 px right pane at md was cramped and,
+  // on the operator's screen, out of reach): md shows the focused pane full
+  // width and keeps the other mounted, one key away. The switching itself
+  // is cockpitB3.render.test.tsx.
+  it("md: the left pane on screen, the right mounted behind it", () => {
     openTwo();
     ws().setLayoutPreset("omarchy-inset");
     tierRef.current = "md";
     render(tree());
-    const w = parseInt(pane("right")!.style.width, 10);
-    expect(w).toBeGreaterThan(0);
-    expect(w).toBeLessThan(320);
+    expect(visiblePanes()).toEqual(["left"]);
+    expect(pane("right")).toBeTruthy();
+    expect(pane("right")!.childElementCount).toBeGreaterThan(0);
   });
 });

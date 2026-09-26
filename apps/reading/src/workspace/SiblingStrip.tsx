@@ -7,10 +7,13 @@
  * Home/End) move a single roving tab stop, Enter or Space opens the tab —
  * opening can navigate, so an arrow key never does. Every tab controls the
  * one document panel (the route content), which the strip labels with the
- * selected tab. A long row scrolls sideways, keeping the active tab in view.
+ * selected tab. A long row scrolls sideways, keeping the active tab in view;
+ * edge fades mark the sides it continues on and a `+n` chip counts the tabs
+ * scrolled out of view, opening the tree panel where every tab is (B3-8).
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
+import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
 import type { TabLabel } from "./tabLabels";
 import { DOCUMENT_PANEL_ID, KindGlyph, NumberedLabel, domIdFor } from "./tabStripParts";
 import type { TabTree } from "./tabTree";
@@ -22,6 +25,7 @@ export function SiblingStrip({
   label,
   labelOf,
   onActivate,
+  onShowAll,
 }: {
   tree: TabTree;
   siblings: readonly string[];
@@ -30,10 +34,17 @@ export function SiblingStrip({
   label: string;
   labelOf: (tabId: string) => TabLabel;
   onActivate: (tabId: string) => void;
+  /** The hidden-count chip's action: show every tab (the tree panel). */
+  onShowAll?: () => void;
 }) {
   const [roving, setRoving] = useState<string | null>(null);
   const stop = roving !== null && siblings.includes(roving) ? roving : activeId;
   const els = useRef(new Map<string, HTMLButtonElement>());
+  const scroller = useRef<HTMLDivElement>(null);
+  // Re-measured when the tab set changes and when titles land (they size
+  // the tabs).
+  const overflow = useStripOverflow(scroller, [siblings, labelOf]);
+  const hidden = overflow.hiddenBefore + overflow.hiddenAfter;
 
   // A new selection takes the tab stop and scrolls into view.
   useEffect(() => {
@@ -59,13 +70,17 @@ export function SiblingStrip({
   }
 
   return (
+    <>
+    <div className="relative flex min-w-0" data-sibling-viewport>
     <div
+      ref={scroller}
       role="tablist"
       aria-label={label}
       aria-orientation="horizontal"
       data-sibling-strip
       onKeyDown={onKeyDown}
-      className="flex items-stretch gap-px min-w-0 overflow-x-auto [scrollbar-width:thin]"
+      onWheel={scrollStripOnWheel}
+      className="flex items-stretch gap-px min-w-0 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {siblings.map((id) => {
         const tab = tree.nodes[id];
@@ -114,5 +129,20 @@ export function SiblingStrip({
         );
       })}
     </div>
+    <EdgeFades overflow={overflow} />
+    </div>
+    {hidden > 0 ? (
+      <button
+        type="button"
+        data-hidden-tabs-chip
+        onClick={onShowAll}
+        aria-label={`${hidden} tabs out of view: show all tabs (prefix t)`}
+        title={`${hidden} more here (prefix t shows every tab)`}
+        className="shrink-0 ml-1 my-1 flex items-center rounded px-1.5 font-mono text-xxs tabular-nums text-ink-soft dark:text-moonlight border border-hairline hover:bg-ice-2 dark:hover:bg-charcoal-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+      >
+        +{hidden}
+      </button>
+    ) : null}
+    </>
   );
 }

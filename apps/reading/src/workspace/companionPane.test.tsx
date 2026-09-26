@@ -14,7 +14,7 @@
  * apiFetch (investigation list + the one-shot thought-partner wire).
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 beforeAll(() => {
@@ -273,7 +273,7 @@ describe("the tab strip", () => {
     expect(document.querySelector("[data-companion-empty]")).toBeTruthy();
   });
 
-  it("past five tabs the rest collapse into a ⋯ menu; the menu activates them", async () => {
+  it("every agent stays on the one scrolling strip; the ⋯ menu lists them all and activates them", async () => {
     for (const id of ["inv-live", "inv-done", "inv-fail", "inv-stop"]) openThreadTab(id);
     for (let i = 0; i < 3; i++) {
       act(() => {
@@ -282,11 +282,20 @@ describe("the tab strip", () => {
     }
     mountPane();
     // The strip renders from the store synchronously — no summary wait needed.
-    expect(document.querySelectorAll("[data-agent-tab]")).toHaveLength(5);
-    const overflow = document.querySelector("[data-companion-overflow]")!;
-    expect(overflow).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("2 more agents"));
-    fireEvent.click(screen.getByText("extra 1"));
+    // Lane A B3-1: no visible-five cut; the strip scrolls at the pane width.
+    expect(document.querySelectorAll("[data-agent-tab]")).toHaveLength(7);
+    // The menu shows while the strip overflows (jsdom lays nothing out, so
+    // the scroller's geometry is set by hand).
+    const list = screen.getByRole("tablist", { name: "Agents" });
+    Object.defineProperty(list, "clientWidth", { configurable: true, value: 300 });
+    Object.defineProperty(list, "scrollWidth", { configurable: true, value: 900 });
+    act(() => {
+      fireEvent.scroll(list);
+    });
+    fireEvent.click(document.querySelector<HTMLElement>("[data-agent-overflow]")!);
+    const menu = screen.getByRole("menu", { name: "All agents" });
+    expect(menu.querySelectorAll("[role='menuitem']")).toHaveLength(7);
+    fireEvent.click(within(menu).getByText("extra 1"));
     expect(comp().activeTabId).toBe("agent:thread:inv-x1");
   });
 

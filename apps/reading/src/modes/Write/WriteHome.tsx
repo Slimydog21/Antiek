@@ -29,8 +29,12 @@ import {
 import { useBranchTo } from "../../workspace/useBranchTo";
 import { useTabTrees } from "../../workspace/tabTreeStore";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { ESC_OVERLAY_PROPS } from "../../workspace/escapeOverlay";
 import { WRITE_OUTLINE_PANEL_ID } from "../../workspace/writeOutlineStore";
 import { sectionScopeFor, useWriteTreeSync } from "../../workspace/writeTreeSync";
+
+/** The block repository's id (the Blocks toggle controls it). */
+const BLOCK_REPOSITORY_ID = "write-block-repository";
 
 /**
  * Write Home — the Write door (Product Depth SPR-07 M1).
@@ -65,6 +69,20 @@ export default function WriteHome() {
   // The piece-view surface: the outline loop, or the imported research canvas
   // (M1 — the SPR-03 Canvas of the linked investigation's blocks).
   const [pieceView, setPieceView] = useState<"outline" | "canvas">("outline");
+  // The block repository as a drawer, below the pane width where its column
+  // fits (write-lg). A transient overlay: Esc closes it (one Esc, one
+  // handler: it claims the key, so a pane fullscreen waits for the next).
+  const [blocksOpen, setBlocksOpen] = useState(false);
+  useEffect(() => {
+    if (!blocksOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setBlocksOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [blocksOpen]);
 
   // The active tap-to-add handler, registered by the Outline (binds the tap to
   // the active section). A ref so re-registers don't re-render the repository.
@@ -96,13 +114,18 @@ export default function WriteHome() {
   // tab per section (1.1, 1.2, …) — and surface the outline pane in the
   // docked preset (in the inset preset the right pane IS the outline).
   useWriteTreeSync(detail);
+  // Keyed on the preset too: a piece opened in the inset and then toggled
+  // to docked gets its outline panel (B3-2: it had none). The inset never
+  // renders that panel (its right pane is the outline), so the outline is
+  // exactly one in either preset.
+  const layoutPreset = useWorkspace((s) => s.layoutPreset);
   useEffect(() => {
-    if (!deliverableId) return;
+    if (!deliverableId || layoutPreset !== "docked") return;
     const ws = useWorkspace.getState();
-    if (ws.layoutPreset === "docked" && !ws.panels[WRITE_OUTLINE_PANEL_ID]) {
+    if (!ws.panels[WRITE_OUTLINE_PANEL_ID]) {
       ws.open("WriteOutline", {}, { mode: "docked-right", id: WRITE_OUTLINE_PANEL_ID, title: "Outline" });
     }
-  }, [deliverableId]);
+  }, [deliverableId, layoutPreset]);
 
   // The cockpit's writing tree scopes the piece view: a section tab (1.n)
   // shows that section alone (the same Outline, one section — forensic
@@ -326,9 +349,12 @@ export default function WriteHome() {
   // erode contrast. Transparency here would risk the body text M3 protects;
   // the honest choice is solid, exactly like the /inv/:id research IDE.
   return (
-    <GlassSurface variant="solid" className="flex h-full min-h-0">
+    <GlassSurface variant="solid" className="container-write relative flex h-full min-h-0">
       <main className="flex min-w-0 flex-1 flex-col px-6 py-5">
-        <header className="mb-4 flex items-baseline justify-between gap-3">
+        {/* The header answers to the PANE (container-write), not the
+            viewport: stacked until the piece is write-md wide, so the title
+            is never crushed beside its actions (B3-6: 0 px at 1024 and 390). */}
+        <header className="mb-4 flex flex-col gap-2 write-md:flex-row write-md:items-baseline write-md:justify-between write-md:gap-3">
           <div className="min-w-0">
             <button
               type="button"
@@ -356,8 +382,11 @@ export default function WriteHome() {
               </p>
             )}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            <div className="flex items-center gap-3">
+          <div
+            data-piece-actions
+            className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 write-md:shrink-0 write-md:flex-col write-md:flex-nowrap write-md:items-end write-md:gap-2"
+          >
+            <div className="flex flex-wrap items-center gap-3">
               {/* M1: toggle to the imported SPR-03 Canvas of the linked research. */}
               {detail?.investigation_root_id && (
                 <button
@@ -374,6 +403,18 @@ export default function WriteHome() {
                 className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
               >
                 {onRamp === "context" ? "hide brainstorm" : "brainstorm a section"}
+              </button>
+              {/* Below write-lg the repository column does not fit beside the
+                  piece; it opens as a drawer over the piece instead. */}
+              <button
+                type="button"
+                data-blocks-toggle
+                aria-expanded={blocksOpen}
+                aria-controls={BLOCK_REPOSITORY_ID}
+                onClick={() => setBlocksOpen((o) => !o)}
+                className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight write-lg:hidden"
+              >
+                {blocksOpen ? "hide blocks" : "blocks"}
               </button>
             </div>
             {detail ? (
@@ -421,7 +462,22 @@ export default function WriteHome() {
         )}
       </main>
 
-      <aside className="hidden w-80 shrink-0 flex-col border-l border-rule bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-2 lg:flex">
+      {/* The block repository: a column once the PANE is write-lg wide
+          (never a viewport breakpoint: a 1024 px viewport gives the inset's
+          left pane ~668 px), a drawer over the piece below it. */}
+      <aside
+        id={BLOCK_REPOSITORY_ID}
+        data-block-repository-aside
+        data-open={blocksOpen ? "true" : "false"}
+        aria-label="Block repository"
+        {...(blocksOpen ? ESC_OVERLAY_PROPS : {})}
+        className={
+          "w-80 max-w-full shrink-0 flex-col border-l border-rule bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-2 write-lg:static write-lg:flex write-lg:shadow-none " +
+          (blocksOpen
+            ? "absolute inset-y-0 right-0 z-20 flex shadow-z2 dark:shadow-z2-night"
+            : "hidden")
+        }
+      >
         <BlockRepository onAdd={(hit) => addHandler.current(hit)} />
       </aside>
     </GlassSurface>

@@ -58,11 +58,31 @@ Contract: `src/design/FEEL_CONTRACT.md` + `elevation.ts`. ResearchWorkstation ID
 - `docked` (default) — the docks as above.
 - `omarchy-inset` — the same slot structure inside an inset frame: an outer
   gap where the scene background shows, two tall rounded rectangles
-  (`radius.lg`, `border-hairline`, named regions "Primary pane" and
-  "Companion pane") — primary material (left dock + main slot) left,
-  companion (right dock beneath it) right. The companion pane is on screen
-  at every tier from md up: at md it narrows to 280 px instead of vanishing,
-  and the lg dock-collapse rule is the docked preset's alone.
+  (`radius.lg`, `border-hairline`, named regions "Primary pane" and, for
+  what it holds, "Agents pane" or, in writing, "Outline pane") — primary
+  material (left dock + main slot) left, the companion or the outline
+  (right dock beneath it) right. The docked preset's mounts of those two
+  (the "Companion" and "WriteOutline" right-dock panels) never render in
+  the inset's right dock: the pane IS them (stage B3-2, the outline drawn
+  twice after a preset round trip). From lg up both panes are on screen;
+  at md (768–1023 px) ONE pane shows at a time, full width — the focused
+  one, else the left — with the other hidden but mounted
+  (`data-pane-offstage`) and one key away: prefix h/l (+ `ctrl+alt`
+  twins) bring it on, and a two-segment switcher in the pane header
+  ("Documents | Agents", or "Outline") says which is visible and switches
+  by pointer (stage B3-3). The lg dock-collapse rule is the docked
+  preset's alone.
+
+Both tab strips scroll sideways at the pane's width and say what is out
+of view (`stripOverflow.tsx`, stage B3): edge fades on the sides the tabs
+continue on; on the document strip a `+n` chip counts the tabs scrolled
+out of view and opens the tree panel; on the agent strip a ⋯ menu lists
+every agent (a search box past eight) and "+ new agent" sits outside the
+scroller. The pane's content never scrolls sideways. The document strip's
+tab row is one fixed height (28 px + hairline) with or without tabs, and
+carries its own surface (`bg-ice-1`), so the docked preset's scene never
+shows through it. Hierarchical numbers compress past four levels to the
+root, the last two and a depth badge (`1…4.2 d6`), unique along any path.
 
 Both presets and every fullscreen state render ONE element tree (sweep v2
 F-17): the inset's pane shells are `display: contents` wrappers in the

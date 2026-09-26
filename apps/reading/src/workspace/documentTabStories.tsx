@@ -138,10 +138,13 @@ export function StoryStrip({
   fixture,
   status = "ready",
   panelOpen = false,
+  width = 760,
 }: {
   fixture: Fixture;
   status?: StripStatus;
   panelOpen?: boolean;
+  /** The pane's width in px (the strip lives in a cockpit pane). */
+  width?: number;
 }) {
   const [tree, setTree] = useState(fixture.tree);
   const [open, setOpen] = useState(panelOpen);
@@ -149,7 +152,10 @@ export function StoryStrip({
   const labelOf = useMemo(() => labelsFor(tree, fixture.titles), [tree, fixture.titles]);
   return (
     <div className="min-h-[520px] p-4" style={{ background: "var(--bg-page)" }}>
-      <div className="flex h-[480px] max-w-[760px] flex-col overflow-visible rounded-lg border border-hairline bg-ice-0 dark:bg-charcoal-2">
+      <div
+        className="flex h-[480px] flex-col overflow-visible rounded-lg border border-hairline bg-ice-0 dark:bg-charcoal-2"
+        style={{ maxWidth: width }}
+      >
         <DocumentTabStripView
           status={status}
           errorDetail={status === "error" ? "GET /projects/default/tabs/reading: HTTP 503" : null}

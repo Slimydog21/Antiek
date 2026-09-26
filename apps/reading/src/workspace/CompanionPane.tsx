@@ -13,11 +13,14 @@
  * registry (companionRegistry.tsx) as data — islands (unit 2) and diligence
  * (unit 7) slot in later without restructuring.
  *
- * The strip shows up to COMPANION_MAX_VISIBLE_TABS tabs in activation
- * order; the rest collapse into a ⋯ menu. Overflow is visual only — the
- * prefix n/p keys cycle ALL tabs (companionStore.cycleAgentTab wraps).
+ * Every agent is a tab on ONE strip, in activation order. At the pane's
+ * width the strip scrolls sideways (the pane's content never does): edge
+ * fades mark the sides it continues on, and an overflow menu lists every
+ * agent, with a search box past AGENT_MENU_SEARCH_AFTER of them. "+ new
+ * agent" sits outside the scroller, so it is always reachable (B3-1). The
+ * prefix n/p keys and the arrow keys reach ALL tabs (cycleAgentTab wraps).
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EmptyState } from "../components/states";
 import { useInvestigationList } from "../hooks/useInvestigationList";
@@ -25,11 +28,11 @@ import type { InvestigationSummary } from "../lib/api";
 import { AGENT_TAB_KINDS } from "./companionRegistry";
 import { useCompanion } from "./companionStore";
 import type { AgentTabDescriptor } from "./companionStore";
+import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
 
-/** Tabs on the strip before the ⋯ menu takes the rest. Five keeps every tab
- *  legible at the pane's 320px width (title + glyph + close); more is what
- *  the menu is for. */
-const COMPANION_MAX_VISIBLE_TABS = 5;
+/** Past this many agents the overflow menu gets a search box: scanning a
+ *  longer list is not navigation (DESIGN-MODEL §1, the switcher's rule). */
+const AGENT_MENU_SEARCH_AFTER = 8;
 
 /** Agent rows offered by "+ new agent": working first, then newest — a
  *  handful, calm, never the whole history. */
@@ -48,52 +51,76 @@ export default function CompanionPane() {
       : undefined;
 
   const active = tabs.find((t) => t.id === activeTabId) ?? null;
-  const visible = tabs.slice(0, COMPANION_MAX_VISIBLE_TABS);
-  const overflowed = tabs.slice(COMPANION_MAX_VISIBLE_TABS);
+  const scroller = useRef<HTMLDivElement>(null);
+  const tabKey = useMemo(() => tabs.map((t) => t.id).join("\u0000"), [tabs]);
+  // Re-measured when the tab set changes and when questions land (they
+  // title, and so size, the thread tabs).
+  const overflow = useStripOverflow(scroller, [tabKey, investigations]);
+  const overflowing = overflow.start || overflow.end;
+
+  // The active agent scrolls into view (a key, the menu, a new agent).
+  useEffect(() => {
+    if (!activeTabId) return;
+    // The whole tab, its close button included (the tab button alone left
+    // the × under the end fade).
+    document
+      .getElementById(agentTabDomId(activeTabId))
+      ?.closest("[data-agent-tab]")
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [activeTabId]);
 
   return (
     <section
       aria-label="Companion"
       data-companion-pane
-      className="flex flex-col h-full min-h-0 min-w-0"
+      className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden"
     >
-      <div className="flex items-center gap-1 shrink-0 border-b border-hairline px-1.5 py-1">
-        <div
-          role="tablist"
-          aria-label="Agents"
-          aria-orientation="horizontal"
-          onKeyDown={(e) => {
-            // The ARIA tabs pattern, automatic activation: an agent surface
-            // swaps in place, so the arrow keys open as they move.
-            if (e.ctrlKey || e.metaKey || e.altKey || visible.length === 0) return;
-            const i = Math.max(0, visible.findIndex((t) => t.id === activeTabId));
-            let next: number | null = null;
-            if (e.key === "ArrowRight") next = (i + 1) % visible.length;
-            else if (e.key === "ArrowLeft") next = (i - 1 + visible.length) % visible.length;
-            else if (e.key === "Home") next = 0;
-            else if (e.key === "End") next = visible.length - 1;
-            if (next === null) return;
-            e.preventDefault();
-            const id = visible[next].id;
-            activateAgentTab(id);
-            document.getElementById(agentTabDomId(id))?.focus();
-          }}
-          className="flex items-center gap-1 min-w-0"
-        >
-          {visible.map((tab) => (
+      <div
+        data-agent-strip-row
+        className="flex items-center gap-1 shrink-0 min-w-0 border-b border-hairline px-1.5 py-1"
+      >
+        <div className="relative flex-1 min-w-0">
+          <div
+            ref={scroller}
+            role="tablist"
+            aria-label="Agents"
+            aria-orientation="horizontal"
+            onWheel={scrollStripOnWheel}
+            onKeyDown={(e) => {
+              // The ARIA tabs pattern, automatic activation: an agent surface
+              // swaps in place, so the arrow keys open as they move.
+              if (e.ctrlKey || e.metaKey || e.altKey || tabs.length === 0) return;
+              const i = Math.max(0, tabs.findIndex((t) => t.id === activeTabId));
+              let next: number | null = null;
+              if (e.key === "ArrowRight") next = (i + 1) % tabs.length;
+              else if (e.key === "ArrowLeft") next = (i - 1 + tabs.length) % tabs.length;
+              else if (e.key === "Home") next = 0;
+              else if (e.key === "End") next = tabs.length - 1;
+              if (next === null) return;
+              e.preventDefault();
+              const id = tabs[next].id;
+              activateAgentTab(id);
+              document.getElementById(agentTabDomId(id))?.focus();
+            }}
+            className="flex items-center gap-1 min-w-0 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {tabs.map((tab) => (
             <AgentTab
               key={tab.id}
               tab={tab}
               summary={summaryOf(tab)}
               active={tab.id === activeTabId}
               onActivate={() => activateAgentTab(tab.id)}
-              onClose={() => closeAgentTabWithUndo(tab, summaryOf(tab))}
-            />
-          ))}
+                onClose={() => closeAgentTabWithUndo(tab, summaryOf(tab))}
+              />
+            ))}
+          </div>
+          <EdgeFades overflow={overflow} />
         </div>
-        {overflowed.length > 0 ? (
+        {overflowing ? (
           <OverflowMenu
-            tabs={overflowed}
+            tabs={tabs}
+            hidden={overflow.hiddenBefore + overflow.hiddenAfter}
             activeTabId={activeTabId}
             summaryOf={summaryOf}
             onActivate={activateAgentTab}
@@ -103,7 +130,7 @@ export default function CompanionPane() {
       </div>
 
       <div
-        className="flex-1 min-h-0 overflow-auto"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
         id={COMPANION_PANEL_DOM_ID}
         {...(active ? { role: "tabpanel", "aria-labelledby": agentTabDomId(active.id) } : {})}
       >
@@ -176,7 +203,7 @@ function AgentTab({
     <span
       role="none"
       data-agent-tab={tab.id}
-      className={`group flex items-center max-w-[140px] rounded text-xs ${
+      className={`group flex shrink-0 items-center max-w-[140px] rounded text-xs ${
         active ? "bg-shadow-2 text-bright" : "text-ink-soft dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1"
       }`}
     >
@@ -223,56 +250,121 @@ function AgentTab({
 
 function OverflowMenu({
   tabs,
+  hidden,
   activeTabId,
   summaryOf,
   onActivate,
 }: {
   tabs: AgentTabDescriptor[];
+  /** Agents scrolled out of view on the strip (the trigger's count). */
+  hidden: number;
   activeTabId: string | null;
   summaryOf: (tab: AgentTabDescriptor) => InvestigationSummary | undefined;
   onActivate: (id: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searchable = tabs.length > AGENT_MENU_SEARCH_AFTER;
+
+  useEffect(() => {
+    if (!open) return;
+    (searchable ? searchRef.current : ref.current?.querySelector<HTMLElement>("[role='menuitem']"))?.focus();
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    // The menu's own Esc (a transient overlay: one Esc, one handler).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, searchable]);
+
+  const titleOf = (tab: AgentTabDescriptor) =>
+    tab.kind === "research-thread" ? (summaryOf(tab)?.question ?? tab.title) : tab.title;
+  const q = query.trim().toLowerCase();
+  const shown = q ? tabs.filter((t) => titleOf(t).toLowerCase().includes(q)) : tabs;
+
   return (
-    <details className="relative" data-companion-overflow>
-      <summary
-        className="list-none cursor-pointer text-xs text-shadow-1 dark:text-moonlight px-1.5 py-0.5 rounded hover:bg-ice-2 dark:hover:bg-charcoal-1"
-        aria-label={`${tabs.length} more agents`}
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        ref={triggerRef}
+        type="button"
+        data-agent-overflow
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`All agents (${tabs.length}${hidden > 0 ? `, ${hidden} out of view` : ""})`}
+        title="All agents"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-0.5 text-xs text-shadow-1 dark:text-moonlight px-1.5 py-0.5 rounded hover:bg-ice-2 dark:hover:bg-charcoal-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
       >
-        ⋯
-      </summary>
-      <div
-        role="menu"
-        data-esc-overlay=""
-        className="absolute right-0 top-full mt-1 z-10 min-w-[180px] rounded border border-hairline bg-ice-0 dark:bg-charcoal-2 shadow-z2 py-1"
-      >
-        {tabs.map((tab) => {
-          const meta = AGENT_TAB_KINDS[tab.kind];
-          const glyph = meta.glyph(tab, summaryOf(tab));
-          const title =
-            tab.kind === "research-thread"
-              ? (summaryOf(tab)?.question ?? tab.title)
-              : tab.title;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="menuitem"
-              onClick={onActivate.bind(null, tab.id)}
-              className="w-full flex items-center gap-1.5 px-2 py-1 text-xs text-left text-ink dark:text-bright hover:bg-ice-2 dark:hover:bg-charcoal-1"
-            >
-              <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${glyph.className}`} />
-              <span className="truncate">{title}</span>
-              {tab.id === activeTabId ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="sr-only">(active)</span>
-                </>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-    </details>
+        <span aria-hidden="true">⋯</span>
+        {hidden > 0 ? <span className="font-mono text-xxs tabular-nums">{hidden}</span> : null}
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          aria-label="All agents"
+          data-esc-overlay=""
+          className="absolute right-0 top-full mt-1 z-10 w-[min(16rem,calc(100vw-2rem))] rounded border border-hairline bg-ice-0 dark:bg-charcoal-2 shadow-z2 dark:shadow-z2-night py-1"
+        >
+          {searchable ? (
+            <div className="px-1.5 pb-1">
+              <input
+                ref={searchRef}
+                type="search"
+                aria-label="Find an agent"
+                placeholder="Find an agent"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full rounded border border-hairline bg-transparent px-2 py-1 text-xs text-ink dark:text-bright placeholder:text-shadow-1 outline-none focus-visible:ring-2 focus-visible:ring-sun"
+              />
+            </div>
+          ) : null}
+          <div className="max-h-[50vh] overflow-y-auto">
+            {shown.map((tab) => {
+              const meta = AGENT_TAB_KINDS[tab.kind];
+              const glyph = meta.glyph(tab, summaryOf(tab));
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onActivate(tab.id);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                  className="w-full flex items-center gap-1.5 px-2 py-1 text-xs text-left text-ink dark:text-bright hover:bg-ice-2 dark:hover:bg-charcoal-1 focus-visible:bg-ice-2 dark:focus-visible:bg-charcoal-1 focus-visible:outline-none"
+                >
+                  <span aria-hidden="true" className={`inline-block w-2 h-2 rounded-full shrink-0 ${glyph.className}`} />
+                  <span className="truncate">{titleOf(tab)}</span>
+                  {tab.id === activeTabId ? (
+                    <>
+                      <span aria-hidden="true" className="ml-auto text-shadow-1">·</span>
+                      <span className="sr-only">(active)</span>
+                    </>
+                  ) : null}
+                </button>
+              );
+            })}
+            {shown.length === 0 ? (
+              <p className="px-2 py-1 text-xxs text-shadow-1 dark:text-moonlight">No agent matches.</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -301,7 +393,7 @@ function NewAgentButton({
   const offered = [...working, ...rest].slice(0, NEW_AGENT_WORKING_FIRST);
 
   return (
-    <div className="relative ml-auto" ref={ref}>
+    <div className="relative shrink-0" ref={ref}>
       <button
         type="button"
         aria-label="New agent"

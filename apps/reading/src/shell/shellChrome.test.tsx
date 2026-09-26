@@ -106,10 +106,12 @@ describe("the header names the page in words", () => {
   });
 
   it("keeps a data id as data: verbatim, in the mono face", () => {
-    at("/inv/7f3a9c21-44", <Topbar />);
+    // A record route (/inv, /read, /write) is named like its tab instead:
+    // components/navigation/topbarCrumbs.test.tsx (lane A B3-9).
+    at("/runs/7f3a9c21-44", <Topbar />);
     const id = screen.getByText("7f3a9c21-44");
     expect(id.className).toContain("font-mono");
-    expect(screen.getByText("Investigation").className).not.toContain("font-mono");
+    expect(screen.getByText("Runs").className).not.toContain("font-mono");
   });
 
   it("draws the account as a lettermark, never an emoji", () => {

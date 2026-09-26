@@ -156,7 +156,8 @@ describe("the omarchy-inset preset (C2)", () => {
     const left = container.querySelector<HTMLElement>('[data-pane="left"]')!;
     const right = container.querySelector<HTMLElement>('[data-pane="right"]')!;
     expect(left.getAttribute("aria-label")).toBe("Primary pane");
-    expect(right.getAttribute("aria-label")).toBe("Companion pane");
+    // Named for what it holds (lane A B3-7): the agents outside writing.
+    expect(right.getAttribute("aria-label")).toBe("Agents pane");
     // Rounded, hairline-bordered shells from tokens.
     expect(left.style.borderRadius).toBe("10px");
     expect(right.style.borderRadius).toBe("10px");

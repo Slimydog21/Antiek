@@ -36,13 +36,22 @@ export function KindGlyph({ tab, className = "" }: { tab: Pick<TabNode, "kind" |
   }
 }
 
-/** A hierarchical number short enough to sit beside a label: past three
- *  levels it keeps the root and the last two (`1…4.2` for 1.1.1.1.4.2). The
+/** Segments a number keeps whole; a deeper one compresses. */
+export const HIER_WHOLE_MAX = 4;
+
+/** A hierarchical number short enough to sit beside a label. Up to four
+ *  levels it is whole (`1.4.3.2`). Deeper, it keeps the root segment and the
+ *  last two and says the depth with the tree panel's badge vocabulary:
+ *  `1…4.2 d6` for 1.1.1.1.4.2. The root and the last two alone collide
+ *  along a path (1.1.1.1 and 1.1.1.1.1 were both `1…1.1`, B3-4); two tabs on
+ *  one path never share a depth, so with it the compressed form is unique
+ *  along any path, and among siblings the last segment already differs. The
  *  full number stays the accessible text and the tooltip; the switcher
  *  takes the full number. */
 export function compactHier(hier: string): string {
   const segs = hier.split(".");
-  return segs.length <= 3 ? hier : `${segs[0]}…${segs.slice(-2).join(".")}`;
+  if (segs.length <= HIER_WHOLE_MAX) return hier;
+  return `${segs[0]}…${segs.slice(-2).join(".")}\u2009d${segs.length}`;
 }
 
 /** "1.3.2  Lyell, Principles" — the number is the address, the label the

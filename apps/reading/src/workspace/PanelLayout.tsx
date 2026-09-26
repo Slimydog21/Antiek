@@ -1,12 +1,17 @@
-import { Suspense, lazy, useCallback, useEffect, useRef } from "react";
+import { Suspense, lazy, useCallback, useContext, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
+import { flushSync } from "react-dom";
 
-import { useInRouterContext } from "react-router-dom";
+import { UNSAFE_LocationContext, useInRouterContext } from "react-router-dom";
+
+import { ariaKeyshortcutsFor } from "../components/hotkeys/bindings";
 
 import { toast } from "../components/lemon/LemonToast";
 import { LoadingState } from "../components/states";
 import { radius } from "../design/tokens";
 import RightPaneForMode from "./RightPaneForMode";
+import { COMPANION_PANEL_ID } from "./companionVisibility";
+import { mothershipForPath } from "./mothershipForPath";
 import { DOCUMENT_PANEL_ID } from "./documentPanel";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { useWorkspace } from "./WorkspaceStore";
@@ -14,6 +19,7 @@ import { escOverlayOpen } from "./escapeOverlay";
 import { isTextEditing } from "./shortcuts";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useViewportTier } from "./useViewportTier";
+import { WRITE_OUTLINE_PANEL_ID } from "./writeOutlineStore";
 
 // The document tab strip (D6) and the tab-tree model it renders load on
 // first show, not with the entry chunk, which has a hard gzip budget (npm
@@ -28,7 +34,7 @@ const DocumentTabStrip = lazy(() =>
  *  strip's loading state. */
 function DocumentStripFallback() {
   return (
-    <div data-document-strip className="shrink-0 border-b border-hairline">
+    <div data-document-strip className="shrink-0 border-b border-hairline bg-ice-1 dark:bg-charcoal-1">
       <LoadingState variant="inline" shape="strip" rows={3} label="Opening your tabs" />
     </div>
   );
@@ -70,11 +76,62 @@ const DOCK_WIDTH = 320;
 const INSET_GAP = 12;
 
 /**
- * The inset's right pane at tier md (768–1023 px, e.g. an Omarchy half
- * screen on a 1920 px display): it narrows instead of vanishing, so the
- * cockpit keeps its two panes wherever a dock would not fit.
+ * The docked preset's mounts of what the inset's right pane IS: the
+ * companion and the Write outline open as right-dock panels there. In the
+ * inset the pane itself renders them (RightPaneForMode), so the dock inside
+ * it skips these two; rendering both drew the outline twice after a preset
+ * round trip (B3-2).
  */
-const RIGHT_PANE_MD_WIDTH = 280;
+const PANE_CONTENT_PANEL_IDS: ReadonlySet<string> = new Set([COMPANION_PANEL_ID, WRITE_OUTLINE_PANEL_ID]);
+
+/**
+ * The two-segment pane switcher (tier md, inset): one pane is on screen at a
+ * time, and this says which, in the visible pane's header. Each segment is
+ * the pointer twin of its key (prefix h / prefix l, ctrl+alt h / l).
+ */
+function PaneSwitcher({
+  shown,
+  rightName,
+  onShow,
+}: {
+  shown: "left" | "right";
+  rightName: string;
+  onShow: (side: "left" | "right") => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center border-b border-hairline px-1.5 py-1">
+      <div
+        data-pane-switcher
+        role="group"
+        aria-label="Visible pane"
+        className="inline-flex items-center gap-0.5 rounded-md border border-hairline bg-ice-2 dark:bg-charcoal-2 p-0.5"
+      >
+        {(["left", "right"] as const).map((side) => {
+          const on = shown === side;
+          const name = side === "left" ? "Documents" : rightName;
+          return (
+            <button
+              key={side}
+              type="button"
+              data-pane-switch={side}
+              aria-pressed={on}
+              aria-keyshortcuts={ariaKeyshortcutsFor(side === "left" ? "pane.focusLeft" : "pane.focusRight")}
+              title={`${name} (prefix ${side === "left" ? "h" : "l"})`}
+              onClick={() => onShow(side)}
+              className={`rounded px-2 py-0.5 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun ${
+                on
+                  ? "bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright font-medium shadow-z1 dark:shadow-z1-night"
+                  : "text-ink-soft dark:text-moonlight hover:text-ink dark:hover:text-bright"
+              }`}
+            >
+              {name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function PanelLayout({ mainSlot }: Props) {
   const dockLeftIds = useWorkspace((s) => s.dockLeftIds);
@@ -92,6 +149,11 @@ export function PanelLayout({ mainSlot }: Props) {
   // The strip renders nothing without a router, so neither does its fallback.
   const inRouter = useInRouterContext();
   const tier = useViewportTier();
+  // What the right pane holds follows the route's mothership (the outline in
+  // writing, the agents elsewhere), so its name does too. Read through the
+  // router's location context: PanelLayout also renders without a router.
+  const location = useContext(UNSAFE_LocationContext)?.location;
+  const writing = location ? mothershipForPath(location.pathname, location.search) === "writing" : false;
 
   // S11 (the docked preset) — at tier "lg" the two side docks can't both be
   // visible; if both have panels we collapse the right one (operator can
@@ -267,27 +329,49 @@ export function PanelLayout({ mainSlot }: Props) {
   //
   // C2, the Omarchy inset: an outer gap where the scene background shows,
   // and two tall rounded rectangles — the primary material (left dock +
-  // main slot) on the left, the COMPANION (C4) on the right. The right pane
-  // IS the companion (D3): always present at every tier from md up (at md
-  // it narrows rather than vanishing); right-dock panels stack beneath it.
+  // main slot) on the left, the COMPANION (C4) or, in writing, the OUTLINE
+  // (C5) on the right. The right pane is always mounted at every tier from
+  // md up (at md one pane shows at a time, below); right-dock panels stack
+  // beneath it.
   // NavRail is a sibling of this component in AppShell — the frame never
   // wraps it.
-  const leftHidden = inset && fullscreenPane === "right";
-  const rightHidden = inset && fullscreenPane === "left";
-  const rightFull = inset && fullscreenPane === "right";
+  //
+  // Tier md (768–1023 px, an Omarchy half screen): two panes do not fit, so
+  // the inset shows ONE at a time, full width — the focused one, else the
+  // left — and the other is one key away (prefix h / l, or the switcher in
+  // the pane header). The other pane is hidden, never unmounted, like
+  // fullscreen.
+  const onePane = inset && tier === "md";
+  const shownAlone: "left" | "right" | null = inset
+    ? (fullscreenPane ?? (onePane ? (focusedPane ?? "left") : null))
+    : null;
+  const leftHidden = shownAlone === "right";
+  const rightHidden = shownAlone === "left";
+  const rightFull = shownAlone === "right";
+  // Hidden by the md rule (not by fullscreen): the pane keys may bring it on.
+  const offstage = (hidden: boolean) => (onePane && !fullscreenPane && hidden ? { "data-pane-offstage": "" } : {});
+  const rightName = writing ? "Outline" : "Agents";
+  const showPane = (side: "left" | "right") => {
+    // Commit the swap first: a hidden pane cannot take focus.
+    flushSync(() => setFocusedPane(side));
+    document.querySelector<HTMLElement>(`[data-pane="${side}"]`)?.focus();
+  };
+  const switcher = onePane && !fullscreenPane ? (
+    <PaneSwitcher shown={shownAlone ?? "left"} rightName={rightName} onShow={showPane} />
+  ) : null;
+  const rightDockPanelIds = inset ? dockRightIds.filter((id) => !PANE_CONTENT_PANEL_IDS.has(id)) : dockRightIds;
   const leftDockWidth = inset
     ? dockLeftIds.length === 0 || tier === "md"
       ? 0
       : DOCK_WIDTH
     : dockSide("left", dockLeftIds.length);
   const rightDockWidth = dockSide("right", dockRightIds.length);
-  const rightPaneWidth = tier === "md" ? RIGHT_PANE_MD_WIDTH : DOCK_WIDTH;
   const paneShell = (side: "left" | "right"): string =>
     "flex flex-col min-w-0 min-h-0 overflow-hidden border border-hairline " +
     "bg-ice-1 dark:bg-charcoal-1" +
     (focusedPane === side ? " ring-2 ring-inset ring-focus" : "");
   const leftDockHidden = inset && leftDockWidth === 0;
-  const rightDockHidden = inset && dockRightIds.length === 0;
+  const rightDockHidden = inset && rightDockPanelIds.length === 0;
 
   return (
     <div
@@ -307,10 +391,12 @@ export function PanelLayout({ mainSlot }: Props) {
               onFocusCapture: () => setFocusedPane("left"),
             }
           : {})}
+        {...offstage(leftHidden)}
         hidden={leftHidden || undefined}
         className={inset ? (leftHidden ? "hidden" : `flex-1 ${paneShell("left")}`) : "contents"}
       >
-        <div className={inset ? "relative h-full w-full flex overflow-hidden" : "contents"}>
+        {switcher}
+        <div className={inset ? "relative flex-1 min-h-0 w-full flex overflow-hidden" : "contents"}>
           {/* LEFT DOCK */}
           <aside
             hidden={leftDockHidden || undefined}
@@ -339,16 +425,19 @@ export function PanelLayout({ mainSlot }: Props) {
           ? {
               "data-pane": "right",
               role: "region",
-              "aria-label": "Companion pane",
+              // Named for what it holds (B3-7): the outline in writing, the
+              // agents in research and reading.
+              "aria-label": writing ? "Outline pane" : "Agents pane",
               tabIndex: -1,
               // Right-pane fullscreen is fullscreen: the companion takes the
               // whole cockpit, never its column beside an empty scene.
               style: rightFull
                 ? { borderRadius: radius.lg }
-                : { width: rightPaneWidth, borderRadius: radius.lg },
+                : { width: DOCK_WIDTH, borderRadius: radius.lg },
               onFocusCapture: () => setFocusedPane("right"),
             }
           : {})}
+        {...offstage(rightHidden)}
         hidden={rightHidden || undefined}
         className={
           inset
@@ -358,6 +447,7 @@ export function PanelLayout({ mainSlot }: Props) {
             : "contents"
         }
       >
+        {inset ? switcher : null}
         {inset ? <RightPaneForMode /> : null}
         {/* RIGHT DOCK */}
         <aside
@@ -372,7 +462,7 @@ export function PanelLayout({ mainSlot }: Props) {
           style={inset ? undefined : { width: rightDockWidth }}
           aria-label="Right dock"
         >
-          {dockRightIds.map((id) => (
+          {rightDockPanelIds.map((id) => (
             <PanelLayoutPanel key={id} id={id} />
           ))}
         </aside>

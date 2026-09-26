@@ -300,5 +300,18 @@ export default {
       addVariant("reader-md", "@container reader (min-width: 768px)");
       addVariant("reader-lg", "@container reader (min-width: 1024px)");
     }),
+    // The same discipline for Write (lane A stage B3): the open piece is an
+    // inline-size container named `write`. `write-md:` (640 px) is where the
+    // piece header fits on one row (title beside its actions); `write-lg:`
+    // (880 px) is where the 320 px block repository column fits beside a
+    // piece of at least 560 px. Below it the repository opens as a drawer.
+    // Guarded by src/design/containerVariants.test.ts.
+    plugin(({ addUtilities, addVariant }) => {
+      addUtilities({
+        ".container-write": { "container-type": "inline-size", "container-name": "write" },
+      });
+      addVariant("write-md", "@container write (min-width: 640px)");
+      addVariant("write-lg", "@container write (min-width: 880px)");
+    }),
   ],
 };

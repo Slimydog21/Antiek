@@ -51,8 +51,8 @@ export function kindNoun(tab: Pick<TabNode, "kind" | "ref">): string {
 }
 
 export function labelForTab(
-  tab: TabNode,
-  parent: TabNode | null | undefined,
+  tab: Pick<TabNode, "kind" | "ref" | "branch_origin">,
+  parent: Pick<TabNode, "kind" | "ref"> | null | undefined,
   entry: TitleEntry | undefined,
 ): TabLabel {
   const pending = entry?.state === "loading";

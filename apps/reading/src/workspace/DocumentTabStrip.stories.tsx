@@ -86,3 +86,11 @@ export const EmptyPanelNight: Story = { args: { fixture: emptyFixture(), panelOp
  *  scopes the piece in place, so there is no "opens as window" note. */
 export const WriteSectionDay: Story = { args: { fixture: writeSectionFixture() }, globals: day };
 export const WriteSectionNight: Story = { args: { fixture: writeSectionFixture() }, globals: night };
+
+// Lane A B3: the strip at a narrow pane (edge fades and the +n hidden-count
+// chip over 174 siblings), and the empty strip, which is exactly as tall as
+// a strip with tabs (no jump when the first tab opens).
+export const NarrowPaneSiblingsDay: Story = { args: { fixture: siblingsFixture(174), width: 420 }, globals: day };
+export const NarrowPaneSiblingsNight: Story = { args: { fixture: siblingsFixture(174), width: 420 }, globals: night };
+export const EmptyStripDay: Story = { args: { fixture: emptyFixture() }, globals: day };
+export const EmptyStripNight: Story = { args: { fixture: emptyFixture() }, globals: night };

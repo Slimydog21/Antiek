@@ -42,3 +42,18 @@ describe("the reader container variants", () => {
     expect(css).toMatch(/@container reader \(min-width: 1024px\) \{ \.reader-lg\\:flex \{ display: flex/);
   });
 });
+
+// Lane A stage B3, defect 6: Write answers to its pane's width the same way.
+describe("the write container variants", () => {
+  it("container-write declares an inline-size container named write", async () => {
+    const css = await compile('<div class="container-write"></div>');
+    expect(css).toMatch(/\.container-write \{[^}]*container-type: inline-size/);
+    expect(css).toMatch(/\.container-write \{[^}]*container-name: write/);
+  });
+
+  it("write-md: and write-lg: compile to container queries at 640 and 880 px", async () => {
+    const css = await compile('<header class="flex-col write-md:flex-row"></header><aside class="hidden write-lg:flex"></aside>');
+    expect(css).toMatch(/@container write \(min-width: 640px\) \{ \.write-md\\:flex-row \{ flex-direction: row/);
+    expect(css).toMatch(/@container write \(min-width: 880px\) \{ \.write-lg\\:flex \{ display: flex/);
+  });
+});

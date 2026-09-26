@@ -201,6 +201,11 @@ function siblingsOf(tree: TabTree | null | undefined): readonly string[] {
 
 export type StripStatus = "loading" | "error" | "ready";
 
+/** The strip's own surface: in the docked preset nothing opaque sits behind
+ *  it, so without it the scene showed through the tabs (B3-10). The inset
+ *  pane shell is the same colour, so the strip reads as one with the pane. */
+const STRIP_SURFACE = "bg-ice-1 dark:bg-charcoal-1";
+
 export interface DocumentTabStripViewProps {
   status: StripStatus;
   errorDetail?: string | null;
@@ -265,7 +270,7 @@ export function DocumentTabStripView({
   if (status === "loading" || !tree) {
     if (status === "error") {
       return (
-        <div data-document-strip className="shrink-0 border-b border-hairline p-1.5">
+        <div data-document-strip className={`shrink-0 border-b border-hairline p-1.5 ${STRIP_SURFACE}`}>
           <ErrorState
             variant="inline"
             title="Couldn't open your tabs"
@@ -277,7 +282,7 @@ export function DocumentTabStripView({
       );
     }
     return (
-      <div data-document-strip className="shrink-0 border-b border-hairline">
+      <div data-document-strip className={`shrink-0 border-b border-hairline ${STRIP_SURFACE}`}>
         <LoadingState variant="inline" shape="strip" rows={3} label="Opening your tabs" />
       </div>
     );
@@ -294,12 +299,15 @@ export function DocumentTabStripView({
   const bridge = active !== null && routeForTab(active) === null && !isSectionTab(active);
 
   return (
-    <div ref={rootRef} className="relative shrink-0" data-document-strip>
+    <div ref={rootRef} className={`relative shrink-0 ${STRIP_SURFACE}`} data-document-strip>
       {path.length > 1 ? (
         <TabPathHeader tree={tree} path={path} labelOf={labelOf} onActivate={onActivate} />
       ) : null}
 
-      <div className="flex items-stretch min-w-0 border-b border-hairline">
+      {/* One fixed height with or without tabs (B3-5): 28 px of tabs plus
+          the hairline, the loading skeleton's height too, so neither the
+          first tab nor the last close moves the page. */}
+      <div data-strip-row className="flex items-stretch min-w-0 box-content h-7 border-b border-hairline">
         <button
           ref={toggleRef}
           type="button"
@@ -321,6 +329,9 @@ export function DocumentTabStripView({
             label={parent ? `Tabs under ${parent.hier_number}` : "Top-level tabs"}
             labelOf={labelOf}
             onActivate={onActivate}
+            onShowAll={() => {
+              if (!treePanelOpen) onToggleTree();
+            }}
           />
         ) : (
           <span className="flex items-center px-1 text-xs text-shadow-1 dark:text-moonlight">
