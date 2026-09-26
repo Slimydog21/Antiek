@@ -100,6 +100,12 @@
         header Accept *text/html*
         not path /auth/* /health /openapi.json /ops/*
     }
+    # Named matcher: static files that actually exist on disk.
+    # MUST be site-level — Caddy rejects matcher definitions inside `route`.
+    @static_exists file {
+        root {{ frontend_dist_dir }}
+    }
+
 
     route {
         # 1. Browser top-level navigation → SPA, except the auth control plane.
@@ -145,9 +151,6 @@
         #    fonts, /favicon.svg, /mark-*.png) → serve them as-is.
         #    `file` is the matcher, so a miss falls through rather than
         #    being papered over by an index.html fallback.
-        @static_exists file {
-            root * {{ frontend_dist_dir }}
-        }
         handle @static_exists {
             root * {{ frontend_dist_dir }}
             file_server
