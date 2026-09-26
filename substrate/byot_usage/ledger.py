@@ -416,7 +416,11 @@ class ByotUsageLedger:
         finally:
             con.close()
         row = self.operation(owner_user_id, operation_id)
-        assert row is not None
+        if row is None:  # the committed write above guarantees it — refuse
+            # loudly under `python -O` rather than returning a phantom None
+            raise RuntimeError(
+                f"byot operation {operation_id} vanished after its committed write"
+            )
         return row
 
     def mark_operation_sent(self, owner_user_id: str, operation_id: str) -> None:
