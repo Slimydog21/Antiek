@@ -2,7 +2,7 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
 _TEMPLATES = _REPO / "infrastructure" / "ansible" / "templates"
-_DEPLOY = _REPO / "infrastructure" / "ansible" / "playbooks" / "deploy.yml"
+_DEPLOY = _REPO / "infrastructure" / "ansible" / "playbooks" / "deploy_atomic.yml"
 
 
 def test_arxiv_oai_sync_service_pins_state_and_runs_incremental_cli():
@@ -40,6 +40,13 @@ def test_arxiv_oai_sync_service_pins_state_and_runs_incremental_cli():
         "--persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5 "
         "--census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json"
     ) in service
+    exec_start = next(
+        line for line in service.splitlines() if line.startswith("ExecStart=")
+    )
+    assert exec_start.startswith(
+        "ExecStart=/usr/bin/env ANTIEK_WRITE_KEEPALIVE_S=0 "
+        "{{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync "
+    )
     assert (
         "python -m tools.source_census --source arxiv --db-path "
         "{{ antiek_state_dir }}/antiek.duckdb --out "
@@ -79,12 +86,9 @@ def test_deploy_renders_and_enables_arxiv_oai_sync_timer():
     assert "src: ../templates/antiek-arxiv-oai-sync.timer.j2" in deploy
     assert "dest: /etc/systemd/system/antiek-arxiv-oai-sync.timer" in deploy
     # The deploy pauses this timer for exclusive schema migration, then resumes
-    # it only after antiek.service is active. A pre-migration start is a race:
-    # the scheduled job can win the DuckDB writer lock and strand the deploy.
-    assert "pause DB-writing background jobs before schema migration" in deploy
-    assert "resume DB-writing background jobs after substrate is live" in deploy
-    assert deploy.index("pause DB-writing background jobs before schema migration") < deploy.index(
-        "resume DB-writing background jobs after substrate is live"
+    # it only after antiek.service is active on the immutable release.
+    assert "pause every release-path consumer before cutover" in deploy
+    assert "resume background consumers after candidate is active" in deploy
+    assert deploy.index("pause every release-path consumer before cutover") < deploy.index(
+        "resume background consumers after candidate is active"
     )
-    assert "antiek_arxiv_oai_sync_unit.changed" in deploy
-    assert "antiek_arxiv_oai_sync_timer.changed" in deploy
