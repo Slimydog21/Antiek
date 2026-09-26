@@ -153,5 +153,6 @@ def register_book(
         )
 
     asset = get_book_asset(con, document_id)
-    assert asset is not None  # just wrote it
+    if asset is None:
+        raise RuntimeError(f"book asset {document_id} vanished after its write")
     return asset
