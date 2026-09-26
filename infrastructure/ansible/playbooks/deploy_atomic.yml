@@ -1,0 +1,941 @@
+---
+# Antiek atomic release deploy.
+#
+# Phase A builds the frontend on the control node.  Phase B builds an
+# immutable, exact-SHA backend/frontend release while the old release keeps
+# serving, then migrates the shared DuckDB during the required database
+# quiescence, makes one public-path cutover, and verifies the public runtime.
+# Failure after cutover restores the previous release pointer.  Database
+# rollback is explicitly bounded by the pre-migration snapshot; this playbook
+# does not pretend that code rollback reverses committed schema changes.
+
+- name: Antiek frontend — build locally
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [frontend, build]
+
+  tasks:
+    - name: build apps/reading (vite production bundle)
+      ansible.builtin.command:
+        cmd: npm run build
+        chdir: "{{ playbook_dir }}/../../../apps/reading"
+      changed_when: true
+
+    - name: confirm dist artifact exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../../apps/reading/dist/index.html"
+      register: dist_stat
+
+    - name: fail if dist/index.html missing
+      ansible.builtin.fail:
+        msg: Vite build did not produce apps/reading/dist/index.html.
+      when: not dist_stat.stat.exists
+
+- name: Antiek substrate — build, cut over, and verify exact release
+  hosts: antiek_prod
+  become: true
+  gather_facts: false
+
+  vars:
+    antiek_public_dir: "{{ antiek_install_dir }}"
+    antiek_release_root: "/opt/antiek-releases"
+    antiek_release_dir: "{{ antiek_release_root }}/{{ antiek_target_sha }}"
+    antiek_release_receipt: "{{ antiek_release_dir }}/.release-receipt"
+    antiek_previous_sha: ""
+    antiek_release_min_free_gb: 12
+    antiek_release_retention_count: 4
+
+  pre_tasks:
+    - name: require an exact 40-hex release identity
+      ansible.builtin.assert:
+        that:
+          - antiek_target_sha is defined
+          - antiek_target_sha | length == 40
+          - antiek_target_sha is match('^[0-9a-f]{40}$')
+        fail_msg: Refusing a non-exact release identity.
+      tags: [deploy, gate]
+
+    - name: require every main-required check green for the target SHA
+      ansible.builtin.command:
+        cmd: >-
+          bash {{ playbook_dir }}/../../../tools/deploy/require_green.sh
+          {{ antiek_repo_url }} {{ antiek_target_sha }}
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      when: not (antiek_force_deploy | default(false) | bool)
+      tags: [deploy, gate]
+
+    - name: warn that the required-check gate is deliberately bypassed
+      ansible.builtin.debug:
+        msg: Emergency override is deploying {{ antiek_target_sha }} without green checks.
+      when: antiek_force_deploy | default(false) | bool
+      tags: [deploy, gate]
+
+    - name: prepare the release root
+      ansible.builtin.file:
+        path: "{{ antiek_release_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      tags: [code]
+
+    - name: require the control-node frontend source to be at the gated SHA
+      ansible.builtin.command:
+        cmd: git -C {{ playbook_dir }}/../../.. rev-parse HEAD
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: frontend_source_head
+      tags: [frontend, gate]
+
+    - name: assert the frontend build source is exact
+      ansible.builtin.assert:
+        that:
+          - frontend_source_head.stdout | trim == antiek_target_sha
+        fail_msg: The frontend source HEAD differs from the gated release SHA.
+      tags: [frontend, gate]
+
+    - name: require a clean frontend source tree
+      ansible.builtin.command:
+        cmd: git -C {{ playbook_dir }}/../../.. status --porcelain -- apps/reading
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: frontend_source_status
+      tags: [frontend, gate]
+
+    - name: assert no uncommitted frontend source changes
+      ansible.builtin.assert:
+        that:
+          - frontend_source_status.stdout | trim | length == 0
+        fail_msg: Refusing to ship uncommitted frontend changes in an exact-SHA release.
+      tags: [frontend, gate]
+
+    - name: set the runtime SHA from the exact release identity
+      ansible.builtin.set_fact:
+        antiek_build_sha: "{{ antiek_target_sha }}"
+      tags: [code, systemd]
+
+    - name: require headroom for candidate, snapshot, and retained releases
+      ansible.builtin.shell: |
+        set -euo pipefail
+        available_kb=$(df -Pk "{{ antiek_release_root }}" | awk 'NR == 2 {print $4}')
+        required_kb={{ (antiek_release_min_free_gb | int) * 1024 * 1024 }}
+        if [ "$available_kb" -lt "$required_kb" ]; then
+          echo "Only $available_kb kB free; require $required_kb kB before release build" >&2
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: false
+      tags: [code]
+
+  tasks:
+    # A receipt is written only after every candidate artifact and dependency
+    # check succeeds.  If it is absent, the exact-name directory is an
+    # unfinished candidate and is safe to replace.
+    - name: read the candidate release receipt
+      ansible.builtin.stat:
+        path: "{{ antiek_release_receipt }}"
+      register: candidate_receipt
+      tags: [code]
+
+    - name: build and validate the exact-SHA release
+      when: not candidate_receipt.stat.exists
+      block:
+        - name: remove an interrupted unpublished candidate
+          ansible.builtin.file:
+            path: "{{ antiek_release_dir }}"
+            state: absent
+          tags: [code]
+
+        - name: check out the gated SHA at its final release path
+          ansible.builtin.git:
+            repo: "{{ antiek_repo_url }}"
+            dest: "{{ antiek_release_dir }}"
+            version: "{{ antiek_target_sha }}"
+            force: true
+          tags: [code]
+
+        - name: confirm the checked-out release is clean and exact
+          ansible.builtin.command:
+            argv:
+              - git
+              - diff
+              - --quiet
+            chdir: "{{ antiek_release_dir }}"
+          changed_when: false
+          tags: [code]
+
+        - name: create the release virtual environment
+          ansible.builtin.command:
+            cmd: python{{ python_version }} -m venv .venv
+            chdir: "{{ antiek_release_dir }}"
+            creates: "{{ antiek_release_dir }}/.venv/bin/python"
+          tags: [code]
+
+        # Keep the established exact dependency contract unchanged.  uv is a
+        # build tool and is removed before this release can receive a receipt.
+        - name: bootstrap the pinned lock reader into the service venv
+          ansible.builtin.pip:
+            name: uv==0.11.15
+            virtualenv: "{{ antiek_release_dir }}/.venv"
+          tags: [code]
+
+        - name: record the deploy-time lock-check receipt
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_release_dir }}/.venv/bin/uv"
+              - lock
+              - --check
+            chdir: "{{ antiek_release_dir }}"
+          changed_when: false
+          tags: [code]
+
+        - name: exact-sync the service venv from the gated SHA's lock
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_release_dir }}/.venv/bin/uv"
+              - sync
+              - --frozen
+              - --no-dev
+              - --no-default-groups
+              - --extra
+              - pdf
+              - --extra
+              - urls
+              - --extra
+              - embedding
+              - --extra
+              - docs
+              - --extra
+              - turbopuffer_shadow
+            chdir: "{{ antiek_release_dir }}"
+          tags: [code]
+
+        - name: remove the bootstrap lock reader from the service venv
+          ansible.builtin.pip:
+            name: uv
+            state: absent
+            virtualenv: "{{ antiek_release_dir }}/.venv"
+          tags: [code]
+
+        - name: verify the locked closure has no bootstrap uv
+          ansible.builtin.command:
+            cmd: >-
+              {{ antiek_release_dir }}/.venv/bin/python -c
+              'import importlib.util; raise SystemExit(1 if importlib.util.find_spec("uv") else 0)'
+          changed_when: false
+          tags: [code]
+
+        - name: publish the frontend into the immutable release
+          ansible.posix.synchronize:
+            src: "{{ playbook_dir }}/../../../apps/reading/dist/"
+            dest: "{{ antiek_release_dir }}/frontend-dist/"
+            delete: true
+            recursive: true
+            rsync_opts:
+              - "--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r"
+          become: true
+          become_user: root
+          tags: [frontend]
+
+        - name: assert the release frontend entrypoint exists
+          ansible.builtin.stat:
+            path: "{{ antiek_release_dir }}/frontend-dist/index.html"
+          register: built_frontend_index
+          tags: [frontend]
+
+        - name: refuse a release without a public frontend entrypoint
+          ansible.builtin.assert:
+            that:
+              - built_frontend_index.stat.exists
+              - built_frontend_index.stat.mode == '0644'
+          tags: [frontend]
+
+        - name: record the dependency and artifact release receipt
+          ansible.builtin.copy:
+            dest: "{{ antiek_release_receipt }}"
+            content: |
+              source_sha={{ antiek_target_sha }}
+              lock_check=pass
+              exact_sync=pass
+              bootstrap_uv_removed=pass
+              frontend_index_present=pass
+            owner: root
+            group: root
+            mode: "0644"
+          tags: [code]
+
+        - name: freeze release permissions after all writes
+          ansible.builtin.command:
+            argv:
+              - chmod
+              - -R
+              - a-w
+              - "{{ antiek_release_dir }}"
+          tags: [code]
+
+    - name: require a valid release receipt before publication
+      ansible.builtin.stat:
+        path: "{{ antiek_release_receipt }}"
+      register: release_receipt
+      tags: [code]
+
+    - name: assert the candidate release is complete
+      ansible.builtin.assert:
+        that:
+          - release_receipt.stat.exists
+        fail_msg: >-
+          {{ antiek_release_dir }} has no release receipt; refusing to publish
+          an incomplete release.
+      tags: [code]
+
+    - name: stat the frozen frontend entrypoint and root
+      ansible.builtin.stat:
+        path: "{{ antiek_release_dir }}/frontend-dist/index.html"
+      register: release_frontend_index
+      tags: [frontend]
+
+    - name: stat the frozen frontend root
+      ansible.builtin.stat:
+        path: "{{ antiek_release_dir }}/frontend-dist"
+      register: release_frontend_root
+      tags: [frontend]
+
+    - name: assert the frozen frontend is readable and traversable
+      ansible.builtin.assert:
+        that:
+          - release_frontend_index.stat.exists
+          - release_frontend_index.stat.readable
+          - release_frontend_index.stat.mode == '0444'
+          - release_frontend_root.stat.exists
+          - release_frontend_root.stat.readable
+          - release_frontend_root.stat.mode == '0555'
+        fail_msg: The frozen frontend is missing, unreadable, or has an unsafe post-freeze mode.
+      tags: [frontend]
+
+    # ── Edge configuration ─────────────────────────────────────────────
+    # Render tunnel and reverse-proxy configuration from the same gated
+    # checkout; otherwise a Caddy/tunnel-only commit would silently leave the
+    # live edge stale while the API and SPA advanced.
+    - name: read existing tunnel ID from VM
+      ansible.builtin.shell: |
+        set -o pipefail
+        ls /etc/cloudflared/ | grep -E '^[0-9a-f-]+\.json$' | sed 's/\.json$//'
+      args:
+        executable: /bin/bash
+      register: tunnel_id_lookup
+      changed_when: false
+      failed_when: false
+      tags: [cloudflared]
+
+    - name: set cloudflared tunnel ID fact
+      ansible.builtin.set_fact:
+        cloudflared_tunnel_id: >-
+          {{ (tunnel_id_lookup.stdout | default('') | trim)
+             or (cloudflared_tunnel_id | default('')) }}
+      tags: [cloudflared]
+
+    - name: assert the resolved tunnel ID is a UUID before rendering
+      ansible.builtin.assert:
+        that:
+          - cloudflared_tunnel_id | default('') | length > 0
+          - cloudflared_tunnel_id is match('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+        fail_msg: Refusing to render an invalid Cloudflare tunnel identity.
+      tags: [cloudflared]
+
+    - name: render cloudflared config
+      ansible.builtin.template:
+        src: ../templates/cloudflared-config.yml.j2
+        dest: /etc/cloudflared/config.yml
+        owner: root
+        group: root
+        mode: "0644"
+      register: cloudflared_config
+      tags: [cloudflared]
+
+    - name: restart cloudflared if config changed
+      ansible.builtin.systemd:
+        name: cloudflared
+        state: restarted
+      when: cloudflared_config.changed
+      tags: [cloudflared]
+
+    - name: render the candidate Caddyfile for post-cutover activation
+      ansible.builtin.template:
+        src: ../templates/Caddyfile.j2
+        dest: "/etc/caddy/Caddyfile.candidate-{{ antiek_target_sha }}"
+        owner: root
+        group: caddy
+        mode: "0644"
+      register: candidate_caddyfile
+      tags: [caddy]
+
+    - name: validate the candidate Caddyfile without changing live routing
+      ansible.builtin.command:
+        cmd: >-
+          caddy validate --config
+          /etc/caddy/Caddyfile.candidate-{{ antiek_target_sha }}
+          --adapter caddyfile
+      changed_when: false
+      tags: [caddy]
+
+    - name: render antiek.service
+      ansible.builtin.template:
+        src: ../templates/antiek.service.j2
+        dest: /etc/systemd/system/antiek.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_unit
+      tags: [systemd]
+
+    - name: render background and probe units
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - src: ../templates/antiek-continuous-research.service.j2
+          dest: /etc/systemd/system/antiek-continuous-research.service
+        - src: ../templates/antiek-arxiv-oai-sync.service.j2
+          dest: /etc/systemd/system/antiek-arxiv-oai-sync.service
+        - src: ../templates/antiek-arxiv-oai-sync.timer.j2
+          dest: /etc/systemd/system/antiek-arxiv-oai-sync.timer
+        - src: ../templates/antiek-health-probe.service.j2
+          dest: /etc/systemd/system/antiek-health-probe.service
+        - src: ../templates/antiek-health-probe.timer.j2
+          dest: /etc/systemd/system/antiek-health-probe.timer
+        - src: ../templates/antiek-backup.service.j2
+          dest: /etc/systemd/system/antiek-backup.service
+        - src: ../templates/antiek-backup.timer.j2
+          dest: /etc/systemd/system/antiek-backup.timer
+        - src: ../templates/antiek-backup-freshness.service.j2
+          dest: /etc/systemd/system/antiek-backup-freshness.service
+        - src: ../templates/antiek-backup-freshness.timer.j2
+          dest: /etc/systemd/system/antiek-backup-freshness.timer
+      register: auxiliary_units
+      tags: [systemd]
+
+    - name: render scripts consumed through the stable release path
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      loop:
+        - src: ../templates/antiek-health-probe.sh.j2
+          dest: /usr/local/bin/antiek-health-probe
+        - src: ../templates/backup.sh.j2
+          dest: /usr/local/bin/antiek-backup
+        - src: ../templates/antiek-backup-freshness-probe.sh.j2
+          dest: /usr/local/bin/antiek-backup-freshness-probe
+      tags: [systemd]
+
+    - name: verify all rendered systemd units
+      ansible.builtin.command:
+        argv:
+          - systemd-analyze
+          - verify
+          - /etc/systemd/system/antiek.service
+          - /etc/systemd/system/antiek-continuous-research.service
+          - /etc/systemd/system/antiek-arxiv-oai-sync.service
+          - /etc/systemd/system/antiek-arxiv-oai-sync.timer
+          - /etc/systemd/system/antiek-health-probe.service
+          - /etc/systemd/system/antiek-health-probe.timer
+          - /etc/systemd/system/antiek-backup.service
+          - /etc/systemd/system/antiek-backup.timer
+          - /etc/systemd/system/antiek-backup-freshness.service
+          - /etc/systemd/system/antiek-backup-freshness.timer
+      changed_when: false
+      tags: [systemd]
+
+    - name: quiesce, migrate, cut over, and verify
+      block:
+        - name: record the current release identity
+          ansible.builtin.shell: |
+            set -euo pipefail
+            if [ -L "{{ antiek_public_dir }}" ]; then
+              basename "$(readlink "{{ antiek_public_dir }}")"
+            elif [ -d "{{ antiek_public_dir }}" ]; then
+              git -C "{{ antiek_public_dir }}" rev-parse HEAD
+            else
+              echo ""
+            fi
+          args:
+            executable: /bin/bash
+          changed_when: false
+          register: current_release_lookup
+          tags: [code]
+
+        - name: set the rollback release identity
+          ansible.builtin.set_fact:
+            antiek_previous_sha: "{{ current_release_lookup.stdout | trim }}"
+          tags: [code]
+
+        - name: pause every release-path consumer before cutover
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - antiek-continuous-research.service
+            - antiek-arxiv-oai-sync.timer
+            - antiek-arxiv-oai-sync.service
+            - antiek-backup.timer
+            - antiek-backup.service
+            - antiek-health-probe.service
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.service
+            - antiek-backup-freshness.timer
+          tags: [code]
+
+        - name: stop antiek before schema migrate
+          ansible.builtin.systemd:
+            name: antiek.service
+            state: stopped
+          tags: [code]
+
+        - name: wait for the DuckDB write lock to release
+          ansible.builtin.shell: |
+            set -e
+            LOCK="{{ antiek_state_dir }}/antiek.duckdb.write.lock"
+            for i in $(seq 1 30); do
+              if ! lsof "$LOCK" >/dev/null 2>&1; then
+                echo "lock_free after ${i}s"
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "lock still held after 30s" >&2
+            exit 1
+          args:
+            executable: /bin/bash
+          changed_when: false
+          tags: [code]
+
+        - name: checkpoint the quiesced previous database before snapshot
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_public_dir }}/.venv/bin/python"
+              - -c
+              - >-
+                import duckdb;
+                duckdb.connect("{{ antiek_state_dir }}/antiek.duckdb").execute("CHECKPOINT")
+          become: true
+          become_user: "{{ antiek_user }}"
+          changed_when: false
+          tags: [code]
+
+        - name: snapshot the quiesced DuckDB before migration
+          ansible.builtin.copy:
+            src: "{{ antiek_state_dir }}/antiek.duckdb"
+            dest: "{{ antiek_state_dir }}/antiek.duckdb.pre-atomic-{{ antiek_target_sha }}"
+            remote_src: true
+            owner: "{{ antiek_user }}"
+            group: "{{ antiek_group }}"
+            mode: "0644"
+          register: duckdb_snapshot
+          tags: [code]
+
+        - name: initialize graph schema in the candidate release
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_release_dir }}/.venv/bin/python"
+              - -m
+              - substrate.graph.schema
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_release_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
+          become: true
+          become_user: "{{ antiek_user }}"
+          changed_when: false
+          tags: [code]
+
+        - name: verify candidate release against the migrated graph
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_release_dir }}/.venv/bin/python"
+              - "{{ item }}"
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_release_dir }}"
+          environment:
+            ANTIEK_WRITE_KEEPALIVE_S: "0"
+          become: true
+          become_user: "{{ antiek_user }}"
+          loop:
+            - tools/verify_write_event_outbox_schema.py
+            - tools/verify_event_consumer_schema.py
+            - tools/verify_note_taker_schema.py
+          changed_when: false
+          tags: [code]
+
+        - name: make the one public API/SPA cutover
+          ansible.builtin.shell: |
+            set -euo pipefail
+            PUBLIC="{{ antiek_public_dir }}"
+            ROOT="{{ antiek_release_root }}"
+            TARGET="{{ antiek_release_dir }}"
+            if [ -L "$PUBLIC" ]; then
+              LINK="$PUBLIC.next.$$"
+              ln -s "$TARGET" "$LINK"
+              mv -Tf "$LINK" "$PUBLIC"
+            elif [ -d "$PUBLIC" ]; then
+              OLD="$ROOT/{{ antiek_previous_sha }}"
+              if [ -e "$OLD" ]; then
+                echo "refusing to overwrite legacy release $OLD" >&2
+                exit 1
+              fi
+              mv "$PUBLIC" "$OLD"
+              ln -s "$TARGET" "$PUBLIC"
+            else
+              ln -s "$TARGET" "$PUBLIC"
+            fi
+          args:
+            executable: /bin/bash
+          changed_when: true
+          register: release_cutover
+          tags: [code]
+
+        - name: atomically activate the validated Caddyfile on the release chain
+          ansible.builtin.shell: |
+            set -euo pipefail
+            LIVE="/etc/caddy/Caddyfile"
+            CANDIDATE="/etc/caddy/Caddyfile.candidate-{{ antiek_target_sha }}"
+            BACKUP="/etc/caddy/Caddyfile.pre-atomic-{{ antiek_target_sha }}"
+            if cmp -s "$LIVE" "$CANDIDATE"; then
+              rm -f "$CANDIDATE"
+              exit 0
+            fi
+            if [ ! -e "$BACKUP" ]; then
+              cp -a "$LIVE" "$BACKUP"
+            fi
+            mv -Tf "$CANDIDATE" "$LIVE"
+            echo changed
+          args:
+            executable: /bin/bash
+          changed_when: caddyfile_activation.stdout == "changed"
+          register: caddyfile_activation
+          tags: [caddy]
+
+        - name: synchronously reload Caddy onto the candidate routes
+          ansible.builtin.command:
+            cmd: caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+            chdir: /etc/caddy
+          when: caddyfile_activation.changed
+          changed_when: true
+          tags: [caddy]
+
+        - name: stamp the exact runtime SHA into the release drop-in
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/antiek.service.d/build-sha.conf
+            content: |
+              [Service]
+              Environment=ANTIEK_BUILD_SHA={{ antiek_target_sha }}
+            owner: root
+            group: root
+            mode: "0644"
+          register: build_sha_dropin
+          tags: [systemd]
+
+        - name: keep the legacy EnvironmentFile SHA aligned
+          ansible.builtin.lineinfile:
+            path: "{{ antiek_secrets_file }}"
+            regexp: "^ANTIEK_BUILD_SHA="
+            line: "ANTIEK_BUILD_SHA={{ antiek_target_sha }}"
+            create: false
+          tags: [systemd]
+
+        - name: daemon reload after release unit changes
+          ansible.builtin.systemd:
+            daemon_reload: true
+          tags: [systemd]
+
+        - name: assert the public path resolves to the candidate
+          ansible.builtin.command:
+            cmd: readlink -f {{ antiek_public_dir }}
+          register: resolved_public
+          changed_when: false
+          tags: [code]
+
+        - name: assert resolution before startup
+          ansible.builtin.assert:
+            that:
+              - resolved_public.stdout | trim == antiek_release_dir
+            fail_msg: Public path did not resolve to the validated candidate.
+          tags: [code]
+
+        - name: start antiek into the candidate release
+          ansible.builtin.systemd:
+            name: antiek.service
+            state: started
+          tags: [code]
+
+        - name: wait for systemd active
+          ansible.builtin.command:
+            cmd: systemctl is-active antiek.service
+          register: systemd_status
+          retries: 6
+          delay: 5
+          until: systemd_status.stdout == "active"
+          changed_when: false
+          tags: [verify]
+
+        - name: resume background consumers after candidate is active
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          loop:
+            - antiek-continuous-research.service
+            - antiek-arxiv-oai-sync.timer
+            - antiek-backup.timer
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.timer
+          tags: [code]
+
+        - name: GET public health from the candidate
+          ansible.builtin.uri:
+            url: "https://{{ api_domain }}/health"
+            return_content: true
+            status_code: 200
+          register: candidate_health
+          retries: 12
+          delay: 5
+          until:
+            - candidate_health.status == 200
+            - candidate_health.json.status == 'ok'
+            - candidate_health.json.build_sha == antiek_target_sha
+            - candidate_health.json.registered_providers | length > 0
+          delegate_to: localhost
+          become: false
+          tags: [verify]
+
+        - name: run blocking public parity on the candidate
+          ansible.builtin.command:
+            cmd: >-
+              python3 {{ playbook_dir }}/../../../tools/prod_parity/check.py
+              --url https://{{ api_domain }}
+              --expected-sha {{ antiek_target_sha }}
+          delegate_to: localhost
+          become: false
+          changed_when: false
+          tags: [verify]
+
+      rescue:
+        - name: report that candidate verification failed
+          ansible.builtin.debug:
+            msg: Candidate release failed verification; restoring {{ antiek_previous_sha }}.
+          tags: [rollback]
+
+        - name: re-quiesce candidate consumers before rollback
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - antiek-continuous-research.service
+            - antiek-arxiv-oai-sync.timer
+            - antiek-arxiv-oai-sync.service
+            - antiek-backup.timer
+            - antiek-backup.service
+            - antiek-health-probe.service
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.service
+            - antiek-backup-freshness.timer
+          failed_when: false
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: stop a failing candidate before rollback
+          ansible.builtin.systemd:
+            name: antiek.service
+            state: stopped
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: restore an interrupted first legacy public-directory move
+          ansible.builtin.shell: |
+            set -euo pipefail
+            PUBLIC="{{ antiek_public_dir }}"
+            MOVED="{{ antiek_release_root }}/{{ antiek_previous_sha }}"
+            if [ -e "$PUBLIC" ] || [ -L "$PUBLIC" ] || [ ! -d "$MOVED" ]; then
+              exit 0
+            fi
+            actual=$(git -C "$MOVED" rev-parse HEAD)
+            if [ "$actual" != "{{ antiek_previous_sha }}" ]; then
+              echo "Refusing recovery: moved release is $actual, expected {{ antiek_previous_sha }}" >&2
+              exit 1
+            fi
+            mv "$MOVED" "$PUBLIC"
+          args:
+            executable: /bin/bash
+          changed_when: true
+          tags: [rollback]
+
+        - name: restore the previous release pointer
+          ansible.builtin.shell: |
+            set -euo pipefail
+            if [ {{ antiek_previous_sha | length }} -eq 0 ]; then
+              echo "No previous release exists; automatic rollback is impossible" >&2
+              exit 1
+            fi
+            PUBLIC="{{ antiek_public_dir }}"
+            if [ -L "$PUBLIC" ]; then
+              LINK="$PUBLIC.rollback.$$"
+              ln -s "{{ antiek_release_root }}/{{ antiek_previous_sha }}" "$LINK"
+              mv -Tf "$LINK" "$PUBLIC"
+            elif [ -d "$PUBLIC" ]; then
+              actual=$(git -C "$PUBLIC" rev-parse HEAD)
+              if [ "$actual" != "{{ antiek_previous_sha }}" ]; then
+                echo "Refusing rollback: public directory is $actual, expected {{ antiek_previous_sha }}" >&2
+                exit 1
+              fi
+            else
+              echo "No public release path exists for rollback" >&2
+              exit 1
+            fi
+          args:
+            executable: /bin/bash
+          changed_when: true
+          tags: [rollback]
+
+        - name: bind the rollback Caddyfile identity after pointer rollback
+          ansible.builtin.set_fact:
+            antiek_rollback_caddy_backup: "/etc/caddy/Caddyfile.pre-atomic-{{ antiek_target_sha }}"
+          tags: [rollback]
+
+        - name: detect candidate Caddy route changes to undo
+          ansible.builtin.stat:
+            path: "{{ antiek_rollback_caddy_backup }}"
+          register: rollback_caddy_backup
+          tags: [rollback]
+
+        - name: restore the previous Caddyfile after pointer rollback
+          ansible.builtin.copy:
+            src: "{{ antiek_rollback_caddy_backup }}"
+            dest: /etc/caddy/Caddyfile
+            remote_src: true
+            owner: root
+            group: caddy
+            mode: "0644"
+          when: rollback_caddy_backup.stat.exists
+          register: rollback_caddyfile
+          tags: [rollback]
+
+        - name: reload the previous Caddy routes
+          ansible.builtin.command:
+            cmd: caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+            chdir: /etc/caddy
+          when: rollback_caddyfile.changed
+          changed_when: true
+          tags: [rollback]
+
+        - name: remove the unactivated candidate Caddyfile
+          ansible.builtin.file:
+            path: "/etc/caddy/Caddyfile.candidate-{{ antiek_target_sha }}"
+            state: absent
+          tags: [rollback]
+
+        - name: restore rollback runtime SHA drop-in
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/antiek.service.d/build-sha.conf
+            content: |
+              [Service]
+              Environment=ANTIEK_BUILD_SHA={{ antiek_previous_sha }}
+            owner: root
+            group: root
+            mode: "0644"
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: restore rollback EnvironmentFile SHA
+          ansible.builtin.lineinfile:
+            path: "{{ antiek_secrets_file }}"
+            regexp: "^ANTIEK_BUILD_SHA="
+            line: "ANTIEK_BUILD_SHA={{ antiek_previous_sha }}"
+            create: false
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: daemon reload before rollback restart
+          ansible.builtin.systemd:
+            daemon_reload: true
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: restart the previous release
+          ansible.builtin.systemd:
+            name: antiek.service
+            state: started
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: resume consumers on the previous release
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          loop:
+            - antiek-continuous-research.service
+            - antiek-arxiv-oai-sync.timer
+            - antiek-backup.timer
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.timer
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: verify public health after rollback
+          ansible.builtin.uri:
+            url: "https://{{ api_domain }}/health"
+            return_content: true
+            status_code: 200
+          register: rollback_health
+          retries: 12
+          delay: 5
+          until:
+            - rollback_health.status == 200
+            - rollback_health.json.status == 'ok'
+            - rollback_health.json.build_sha == antiek_previous_sha
+            - rollback_health.json.registered_providers | length > 0
+          delegate_to: localhost
+          become: false
+          when: antiek_previous_sha | length > 0
+          tags: [rollback]
+
+        - name: fail the deploy after a verified rollback
+          ansible.builtin.fail:
+            msg: >-
+              Candidate {{ antiek_target_sha }} failed verification. Production was
+              restored to {{ antiek_previous_sha }}; the DuckDB snapshot is
+              {{ antiek_state_dir }}/antiek.duckdb.pre-atomic-{{ antiek_target_sha }}.
+              Code rollback does not reverse database writes.
+          tags: [rollback]
+
+    - name: prune only unreferenced complete releases beyond retention
+      ansible.builtin.shell: |
+        set -euo pipefail
+        current=$(readlink -f "{{ antiek_public_dir }}")
+        previous="{{ antiek_release_root }}/{{ antiek_previous_sha }}"
+        count=0
+        while IFS= read -r release; do
+          count=$((count + 1))
+          if [ "$release" = "$current" ] || [ "$release" = "$previous" ]; then
+            continue
+          fi
+          if [ "$count" -gt "{{ antiek_release_retention_count }}" ]; then
+            rm -rf --one-file-system "$release"
+          fi
+        done < <(find "{{ antiek_release_root }}" -mindepth 1 -maxdepth 1 -type d           -regextype posix-extended -regex '.*/[0-9a-f]{40}' -printf '%T@ %p\n'           | sort -nr | cut -d' ' -f2-)
+      args:
+        executable: /bin/bash
+      changed_when: true
+      tags: [code]

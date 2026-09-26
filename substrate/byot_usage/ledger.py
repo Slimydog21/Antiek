@@ -23,6 +23,7 @@ __all__ = [
     "KeyUsageRow",
     "OperationConflict",
     "OperationRow",
+    "SettlementEvidenceError",
 ]
 
 _SCHEMA_VERSION: Final = 3
@@ -68,6 +69,10 @@ class KeyUsageRow:
 
 class OperationConflict(RuntimeError):
     """An operation id is already in use or cannot safely be retried."""
+
+
+class SettlementEvidenceError(RuntimeError):
+    """A settlement-pending operation lacks its persisted result evidence."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -416,7 +421,11 @@ class ByotUsageLedger:
         finally:
             con.close()
         row = self.operation(owner_user_id, operation_id)
-        assert row is not None
+        if row is None:  # the committed write above guarantees it — refuse
+            # loudly under `python -O` rather than returning a phantom None
+            raise RuntimeError(
+                f"byot operation {operation_id} vanished after its committed write"
+            )
         return row
 
     def mark_operation_sent(self, owner_user_id: str, operation_id: str) -> None:
@@ -524,12 +533,18 @@ class ByotUsageLedger:
         if row is None:
             raise OperationConflict("operation not found")
         if row.state == "settlement_pending":
-            assert row.actual_cents is not None and row.evidence_sha256 is not None
+            if row.actual_cents is None or row.evidence_sha256 is None:
+                raise SettlementEvidenceError(
+                    f"byot operation {operation_id} lacks settlement evidence"
+                )
             self.settle_operation(
                 owner_user_id, operation_id, row.actual_cents, row.evidence_sha256,
             )
             settled = self.operation(owner_user_id, operation_id)
-            assert settled is not None
+            if settled is None:
+                raise RuntimeError(
+                    f"byot operation {operation_id} vanished after settlement"
+                )
             return settled
         return row
 
