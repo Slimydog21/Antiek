@@ -1,0 +1,469 @@
+{
+ "status": "PROPOSAL pending rev 9 §1.4c co-sign; Astra's expectations unchanged, lane-A DOM selections and refusals added 2026-09-27",
+ "projection_version": "html-text/v1",
+ "normalization": "NFC of final assembled projection",
+ "dom_path_root": "DocumentFragment parsed from html; indexes count all childNodes including text",
+ "dom_offsets": "UTF-16 code units",
+ "projection_offsets": "Unicode scalars; half-open",
+ "oracle": "Projection strings and offsets authored independently; hashes mechanically derived from literal expectations, not projector output",
+ "open_cases": [
+  "hidden subtree policy",
+  "malformed HTML/tree-repair parity",
+  "DOM paths and selections for remaining cases"
+ ],
+ "cases": [
+  {
+   "id": "inline-spans",
+   "html": "alpha <em>beta</em> <a href=\"/x\">gamma</a>",
+   "projection": "alpha beta gamma",
+   "selections": [
+    {
+     "desc": "cross into emphasis",
+     "start_path": [
+      0
+     ],
+     "start_offset": 0,
+     "end_path": [
+      1,
+      0
+     ],
+     "end_offset": 4,
+     "start": 0,
+     "end": 10,
+     "quote": "alpha beta",
+     "selection_sha256": "1a989ea86150171c687b0727f218eedbb94c4665a7da9b0add1bf5de607f2bf1"
+    },
+    {
+     "desc": "emphasis through link",
+     "start_path": [
+      1,
+      0
+     ],
+     "start_offset": 0,
+     "end_path": [
+      3,
+      0
+     ],
+     "end_offset": 5,
+     "start": 6,
+     "end": 16,
+     "quote": "beta gamma",
+     "selection_sha256": "77c87a2a0999472ebec208d3b34774235850e78c637906bc550beaa524733770"
+    }
+   ],
+   "projection_sha256": "64989ccbf3efa9c84e2afe7cee9bc5828bf0fcb91e44f8c1e591638a2c2e90e3"
+  },
+  {
+   "id": "entities-nbsp",
+   "html": "<p>A &amp; B&nbsp;C</p>",
+   "projection": "A & B C",
+   "selections": [
+    {
+     "desc": "decoded entity and NBSP",
+     "start_path": [
+      0,
+      0
+     ],
+     "start_offset": 2,
+     "end_path": [
+      0,
+      0
+     ],
+     "end_offset": 7,
+     "start": 2,
+     "end": 7,
+     "quote": "& B C",
+     "selection_sha256": "74c4eb37c6d0b94d25e5733874a94ed711097fea0c9a94c14af32d46910ec3f2"
+    }
+   ],
+   "projection_sha256": "1fc0f90c84bace6df2e0ab6206cbfcea8aa35b11aef10ef0bc331acfd598fa24"
+  },
+  {
+   "id": "nested-list",
+   "html": "<ul><li>one</li><li>two<ul><li>three</li></ul></li></ul>",
+   "projection": "one\ntwo\nthree",
+   "selections": [
+    {
+     "desc": "across a nested list boundary",
+     "start_path": [
+      0,
+      1,
+      0
+     ],
+     "start_offset": 1,
+     "end_path": [
+      0,
+      1,
+      1,
+      0,
+      0
+     ],
+     "end_offset": 2,
+     "start": 5,
+     "end": 10,
+     "quote": "wo\nth",
+     "selection_sha256": "628da306489604aea3dc8d012373d0f6c78d30325a15c61498848b88a7b60089",
+     "authored_by": "lane-A"
+    }
+   ],
+   "projection_sha256": "058053d87c818d699cde0f00d670bca0e1c6ad857caa9758ea6a556d7c64fcee"
+  },
+  {
+   "id": "line-break",
+   "html": "<p>one<br>two</p>",
+   "projection": "one\ntwo",
+   "selections": [
+    {
+     "desc": "across a <br>",
+     "start_path": [
+      0,
+      0
+     ],
+     "start_offset": 2,
+     "end_path": [
+      0,
+      2
+     ],
+     "end_offset": 1,
+     "start": 2,
+     "end": 5,
+     "quote": "e\nt",
+     "selection_sha256": "1f88e3085d22ed5b38caf588df765dd8b4583756c7cd0e25ce6670e435c090bf",
+     "authored_by": "lane-A"
+    }
+   ],
+   "projection_sha256": "21066d108d5319ecb5a1fc4454f42ef22fc5f1c7df49c31d90294950e0ea8b2c"
+  },
+  {
+   "id": "pre-whitespace",
+   "html": "<pre> a\n\n b </pre>",
+   "projection": " a\n\n b ",
+   "selections": [
+    {
+     "desc": "source whitespace kept inside pre",
+     "start_path": [
+      0,
+      0
+     ],
+     "start_offset": 4,
+     "end_path": [
+      0,
+      0
+     ],
+     "end_offset": 6,
+     "start": 4,
+     "end": 6,
+     "quote": " b",
+     "selection_sha256": "cb6f0a6c7a3223ecb5693627eb3a534fcd5be2103408f78aa19b9c6a079aa810",
+     "authored_by": "lane-A"
+    }
+   ],
+   "projection_sha256": "92650e82719ffbae778f7a4d7194af824d1e01fb24e98869395ef6f8637963d0"
+  },
+  {
+   "id": "indentation",
+   "html": "<section>\n  <p>one</p>\n <p>two</p>\n</section>",
+   "projection": "one\ntwo",
+   "selections": [
+    {
+     "desc": "whole first paragraph",
+     "start_path": [
+      0,
+      1,
+      0
+     ],
+     "start_offset": 0,
+     "end_path": [
+      0,
+      1,
+      0
+     ],
+     "end_offset": 3,
+     "start": 0,
+     "end": 3,
+     "quote": "one",
+     "selection_sha256": "7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed",
+     "authored_by": "lane-A"
+    },
+    {
+     "desc": "across paragraphs, over dropped indentation",
+     "start_path": [
+      0,
+      1,
+      0
+     ],
+     "start_offset": 2,
+     "end_path": [
+      0,
+      3,
+      0
+     ],
+     "end_offset": 1,
+     "start": 2,
+     "end": 5,
+     "quote": "e\nt",
+     "selection_sha256": "1f88e3085d22ed5b38caf588df765dd8b4583756c7cd0e25ce6670e435c090bf",
+     "authored_by": "lane-A"
+    },
+    {
+     "desc": "start inside dropped whitespace snaps forward past the separator",
+     "start_path": [
+      0,
+      2
+     ],
+     "start_offset": 1,
+     "end_path": [
+      0,
+      3,
+      0
+     ],
+     "end_offset": 3,
+     "start": 4,
+     "end": 7,
+     "quote": "two",
+     "selection_sha256": "3fc4ccfe745870e2c0d99f71f30ff0656c8dedd41cc1d7d3d376b0dbe685e2f3",
+     "authored_by": "lane-A"
+    }
+   ],
+   "projection_sha256": "21066d108d5319ecb5a1fc4454f42ef22fc5f1c7df49c31d90294950e0ea8b2c"
+  },
+  {
+   "id": "cross-node-nfc",
+   "html": "<p>e<em>&#x301;</em>x</p>",
+   "projection": "éx",
+   "selections": [
+    {
+     "desc": "whole cross-node normalization group",
+     "start_path": [
+      0,
+      0
+     ],
+     "start_offset": 0,
+     "end_path": [
+      0,
+      1,
+      0
+     ],
+     "end_offset": 1,
+     "start": 0,
+     "end": 1,
+     "quote": "é",
+     "selection_sha256": "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c"
+    },
+    {
+     "desc": "end splits the cross-node normalization group (e without its combining mark)",
+     "start_path": [
+      0,
+      0
+     ],
+     "start_offset": 0,
+     "end_path": [
+      0,
+      0
+     ],
+     "end_offset": 1,
+     "refuse": "splits_normalization_group",
+     "authored_by": "lane-A"
+    }
+   ],
+   "refusals": [
+    {
+     "desc": "endpoint inside cross-node normalization group",
+     "start_path": [
+      0,
+      0
+     ],
+     "start_offset": 0,
+     "end_path": [
+      0,
+      0
+     ],
+     "end_offset": 1,
+     "reason": "normalization_boundary"
+    }
+   ],
+   "projection_sha256": "75ffd91e9de1dcdd5f349e17f877dd3ea559667e1bdbf4c8f3560ca0b81a0b02"
+  },
+  {
+   "id": "astral-scalars",
+   "html": "<p>A😀B</p>",
+   "projection": "A😀B",
+   "selections": [
+    {
+     "desc": "UTF16 endpoints become scalar offsets",
+     "start_path": [
+      0,
+      0
+     ],
+     "start_offset": 1,
+     "end_path": [
+      0,
+      0
+     ],
+     "end_offset": 3,
+     "start": 1,
+     "end": 2,
+     "quote": "😀",
+     "selection_sha256": "f0443a342c5ef54783a111b51ba56c938e474c32324d90c3a60c9c8e3a37e2d9"
+    },
+    {
+     "desc": "end falls between the two UTF-16 units of the emoji",
+     "start_path": [
+      0,
+      0
+     ],
+     "start_offset": 1,
+     "end_path": [
+      0,
+      0
+     ],
+     "end_offset": 2,
+     "refuse": "splits_surrogate_pair",
+     "authored_by": "lane-A"
+    }
+   ],
+   "projection_sha256": "aacfb6637bd0df2238641c5b15898d1a61df3157b1d0b4099f590fc0b0b6fbbd"
+  },
+  {
+   "id": "empty-block",
+   "html": "<p>one</p><p></p><p>two</p>",
+   "projection": "one\ntwo",
+   "selections": [
+    {
+     "desc": "across an empty block",
+     "start_path": [
+      0,
+      0
+     ],
+     "start_offset": 1,
+     "end_path": [
+      2,
+      0
+     ],
+     "end_offset": 2,
+     "start": 1,
+     "end": 6,
+     "quote": "ne\ntw",
+     "selection_sha256": "48c0166998446a7d37e969442408f4fd29c4ab7de91bf83ad34e00b1a64942f8",
+     "authored_by": "lane-A"
+    }
+   ],
+   "projection_sha256": "21066d108d5319ecb5a1fc4454f42ef22fc5f1c7df49c31d90294950e0ea8b2c"
+  },
+  {
+   "id": "table",
+   "html": "<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>",
+   "projection": "A\nB\nC\nD",
+   "selections": [
+    {
+     "desc": "across table cells and rows",
+     "start_path": [
+      0,
+      0,
+      0,
+      1,
+      0
+     ],
+     "start_offset": 0,
+     "end_path": [
+      0,
+      0,
+      1,
+      0,
+      0
+     ],
+     "end_offset": 1,
+     "start": 2,
+     "end": 5,
+     "quote": "B\nC",
+     "selection_sha256": "d54c29bbb8045c8449057df345ca63e310a3d151e09b975595a5b7841a92915e",
+     "authored_by": "lane-A"
+    }
+   ],
+   "projection_sha256": "babbfc637186b9ba22c6eda008b9537048032a6bbdfb4187535b4cceeb45c1cb"
+  },
+  {
+   "id": "inline-whitespace",
+   "html": "<p>one <em> two </em> three</p>",
+   "projection": "one two three",
+   "selections": [
+    {
+     "desc": "a word inside a collapsed inline run",
+     "start_path": [
+      0,
+      1,
+      0
+     ],
+     "start_offset": 1,
+     "end_path": [
+      0,
+      1,
+      0
+     ],
+     "end_offset": 4,
+     "start": 4,
+     "end": 7,
+     "quote": "two",
+     "selection_sha256": "3fc4ccfe745870e2c0d99f71f30ff0656c8dedd41cc1d7d3d376b0dbe685e2f3",
+     "authored_by": "lane-A"
+    }
+   ],
+   "projection_sha256": "6899ee404683a14e8c2a03149860df25d67d34d9cd4dae7350cbe91e4b3976be"
+  },
+  {
+   "id": "non-content-subtrees",
+   "html": "<p>A<style>.x{}</style><script>x()</script><template>T</template>B</p>",
+   "projection": "AB",
+   "selections": [
+    {
+     "desc": "across excluded subtrees",
+     "start_path": [
+      0,
+      0
+     ],
+     "start_offset": 0,
+     "end_path": [
+      0,
+      4
+     ],
+     "end_offset": 1,
+     "start": 0,
+     "end": 2,
+     "quote": "AB",
+     "selection_sha256": "38164fbd17603d73f696b8b4d72664d735bb6a7c88577687fd2ae33fd6964153",
+     "authored_by": "lane-A"
+    }
+   ],
+   "projection_sha256": "38164fbd17603d73f696b8b4d72664d735bb6a7c88577687fd2ae33fd6964153"
+  },
+  {
+   "id": "hidden-attribute",
+   "html": "<p>A<span hidden>X</span>B</p>",
+   "projection": null,
+   "pending": "astra: expectation (lane A proposes the projector excludes [hidden] subtrees, matching the browser's UA stylesheet; the sanitizer should also strip them)",
+   "selections": [],
+   "authored_by": "lane-A (input only)"
+  },
+  {
+   "id": "implicit-tbody",
+   "html": "<table><tr><td>A</td></tr></table>",
+   "projection": null,
+   "pending": "astra: expectation and a statement that the Python parser inserts tbody as the HTML5 algorithm does (the browser's DOM path to the text is [0,0,0,0,0])",
+   "selections": [],
+   "authored_by": "lane-A (input only)"
+  }
+ ],
+ "dom_endpoint_rules": {
+  "authored_by": "lane-A",
+  "dropped_whitespace": "An endpoint inside whitespace the projection drops snaps: a start moves forward past any generated separator to the next content scalar; an end moves backward before any generated separator.",
+  "refusals": {
+   "splits_normalization_group": "An endpoint strictly inside a group that final NFC composes into one scalar is refused; the UI asks for the selection again. It is never moved silently.",
+   "splits_surrogate_pair": "An endpoint between the two UTF-16 units of one scalar is refused, the same way."
+  },
+  "inverse_map": "A projected scalar that final NFC composed from several DOM text ranges maps back to all of them for painting."
+ },
+ "owners": {
+  "projection, projection_sha256, normalization rules": "Astra (backend), authored independently of any projector",
+  "DOM paths, DOM offsets, selections marked authored_by lane-A, dom_endpoint_rules": "lane A (Antiek Nudge v2)"
+ }
+}
