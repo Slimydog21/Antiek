@@ -17,6 +17,11 @@ What's here:
   nodes, optionally tier-filtered.
 - ``search_nodes_by_label(con, query)`` — companion ILIKE search for
   node labels (the Researchmaxx ``node_matches`` array).
+- ``search_personal_chunks(con, query, *, owner_user_id, top_k)`` — the
+  owner-scoped lexical sibling of ``search()``. Ranks ONE owner's chunks
+  against the query with no embedding dependency, for the MCP
+  ``search_personal`` tool, which reads corpora whose embeddings are often
+  NULL and which must never see another owner's rows.
 
 Deferred from the Researchmaxx version:
 
@@ -38,6 +43,7 @@ from typing import Any, Protocol
 from substrate.graph import retrieval_gate as _retrieval_gate
 from substrate.graph.embedding_meta import assert_embedding_compatible
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+from substrate.memory._text import lexical_tokens
 
 # Back-compat re-exports (tests / attribution import these from search).
 PRIVILEGED_POLICY_TAGS = _retrieval_gate.PRIVILEGED_POLICY_TAGS
@@ -423,6 +429,161 @@ def search_nodes_by_label(
         {"node_id": r[0], "node_type": r[1], "label": r[2]}
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Owner-scoped personal chunk search (SPR-11 Task 2)
+# ---------------------------------------------------------------------------
+
+# How many owner chunks the lexical prefilter may materialise before ranking.
+# The prefilter is already selective (a chunk must contain at least one query
+# token to be a candidate), so this is a backstop against a one-token query
+# that matches an entire personal corpus — not the primary narrowing.
+PERSONAL_SEARCH_CANDIDATE_CAP = 500
+
+# Upper bound on the number of distinct query tokens folded into the SQL
+# prefilter. Bounds the generated OR-chain; extra tokens still participate in
+# the Python rank, they just do not each add a clause.
+_PERSONAL_SEARCH_MAX_PREFILTER_TOKENS = 32
+
+
+def search_personal_chunks(
+    con: Any,
+    query: str,
+    *,
+    owner_user_id: str,
+    top_k: int = 5,
+    policy_tag: str = "private_research",
+    candidate_cap: int = PERSONAL_SEARCH_CANDIDATE_CAP,
+) -> list[dict[str, Any]]:
+    """Rank one owner's chunks against *query*. Companion to ``search()``.
+
+    ``search()`` is the vector path: it requires an ``EmbeddingModel`` and skips
+    every chunk whose ``embedding`` is NULL. The MCP ``search_personal`` tool
+    runs in a stdio subprocess over whatever the owner has ingested, where
+    embeddings are populated lazily (``tools/reembed_chunks.py``,
+    ``interfaces/research/api/books.py``) and are frequently absent. Ranking
+    those chunks by cosine would silently return nothing; ranking them by
+    ``chunk_index`` — what the handler did before SPR-11 Task 2 — returns the
+    front of a document and calls it a search result. So this is the lexical
+    sibling of ``search()``, in the same module and with the same §9.0 gate,
+    exactly as ``search_nodes_by_label`` is its ILIKE sibling for node labels.
+
+    **Owner scoping is the point.** Every candidate must satisfy
+    ``documents.owner_user_id = owner_user_id``; there is no default and no
+    sentinel fallback. A blank owner raises rather than widening the scan,
+    because the caller that cannot name an owner must fail closed, and a
+    ValueError is much harder to mistake for "this owner has no chunks" than
+    an empty list would be.
+
+    ``policy_tag`` defaults to ``"private_research"`` — unlike the two public
+    serve surfaces in this module, whose default is deliberately the
+    non-privileged value. That is safe *here and only here* because the rows
+    are already restricted to the caller's own documents by the owner
+    predicate above, so the privileged branch of
+    ``retrieval_gate.non_privileged_chunk_sql_clause`` can only ever admit the
+    owner's own ``personal_reading`` content to the owner. The gate SQL is
+    still composed from the canonical helper rather than hand-rolled.
+
+    Ranking is deterministic and total, so the same query over the same corpus
+    always returns the same list:
+
+      1. ``overlap`` — distinct query tokens present in the chunk, desc.
+      2. ``hits`` — total occurrences of query tokens in the chunk, desc.
+         Separates two chunks that mention the same terms once from once-each
+         versus repeatedly.
+      3. chunk token count, asc — a term in a short chunk is a denser match
+         than the same term buried in a long one.
+      4. ``chunk_id``, asc — the total-order tie-break.
+
+    ``candidate_cap`` bounds what reaches Python. Past that many lexical
+    matches the ranked set is drawn from the first ``candidate_cap`` rows in
+    ``(chunk_index, chunk_id)`` order rather than from every match — a stated
+    truncation, not a silent one, and the same bounded-candidate shape SPR-11
+    Task 5 pushes into ``list_memory``. Raise it at the call site if a corpus
+    outgrows it.
+
+    Returns a list of at most ``top_k`` dicts carrying ``chunk_id``, ``text``,
+    ``title``, ``source_tier``, ``owner_user_id``, ``document_id``,
+    ``chunk_index`` and the integer ``overlap``/``hits`` the rank used.
+    """
+    if not isinstance(owner_user_id, str) or not owner_user_id.strip():
+        raise ValueError("owner_user_id must be a non-empty string")
+    if top_k < 1:
+        raise ValueError(f"top_k must be >= 1, got {top_k}")
+    if candidate_cap < 1:
+        raise ValueError(f"candidate_cap must be >= 1, got {candidate_cap}")
+
+    owner = owner_user_id.strip()
+    query_tokens = tuple(dict.fromkeys(lexical_tokens(query or "")))
+    if not query_tokens:
+        # A query with no word characters matches nothing. An honest empty
+        # beats falling back to document order, which is the defect this
+        # function exists to remove.
+        return []
+
+    # ``lexical_tokens`` yields only word characters and apostrophes (its regex
+    # is ``[^\W_]+``), so no token can carry a LIKE wildcard: ``%`` and ``_``
+    # are both excluded by construction. No escaping is needed, and every token
+    # is still passed as a bind parameter rather than interpolated.
+    prefilter_tokens = query_tokens[:_PERSONAL_SEARCH_MAX_PREFILTER_TOKENS]
+    like_sql = " OR ".join("c.text ILIKE ?" for _ in prefilter_tokens)
+
+    gate_sql, gate_params = _retrieval_gate.non_privileged_chunk_sql_clause(
+        table_alias="d",
+        policy_tag=policy_tag,
+        owner_user_id=owner,
+    )
+    rows = con.execute(
+        f"""
+        SELECT c.chunk_id, c.text, d.title, d.source_tier, d.owner_user_id,
+               c.document_id, c.chunk_index
+        FROM chunks c
+        JOIN documents d ON c.document_id = d.document_id
+        WHERE d.owner_user_id = ?
+          AND ({like_sql}){gate_sql}
+        ORDER BY c.chunk_index, c.chunk_id
+        LIMIT ?
+        """,
+        [
+            owner,
+            *[f"%{token}%" for token in prefilter_tokens],
+            *gate_params,
+            int(candidate_cap),
+        ],
+    ).fetchall()
+
+    query_token_set = frozenset(query_tokens)
+    scored: list[tuple[int, int, int, str, dict[str, Any]]] = []
+    for chunk_id, text, title, tier, row_owner, doc_id, chunk_index in rows:
+        chunk_tokens = lexical_tokens(text or "")
+        matched = [token for token in chunk_tokens if token in query_token_set]
+        overlap = len(frozenset(matched))
+        if not overlap:
+            # An ILIKE substring hit that is not a whole-token hit ("cat" in
+            # "catalogue"). Kept out of the result rather than ranked last:
+            # it is not a match under the tokenizer the rank is defined in.
+            continue
+        scored.append((
+            -overlap,
+            -len(matched),
+            len(chunk_tokens),
+            chunk_id,
+            {
+                "chunk_id": chunk_id,
+                "text": text,
+                "title": title,
+                "source_tier": tier,
+                "owner_user_id": row_owner,
+                "document_id": doc_id,
+                "chunk_index": chunk_index,
+                "overlap": overlap,
+                "hits": len(matched),
+            },
+        ))
+
+    scored.sort(key=lambda entry: entry[:4])
+    return [entry[4] for entry in scored[:top_k]]
 
 
 def open_read(db_path: str) -> Any:

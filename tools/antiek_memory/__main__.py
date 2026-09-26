@@ -21,8 +21,14 @@ from interfaces.research.api.account_memory_identity import FORBIDDEN_OWNERS
 from runtime.db_lock import connect_read, connect_write
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
-from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding, search
+from substrate.graph.search import (
+    EmbeddingModel,
+    SentenceTransformerEmbedding,
+    search,
+    search_personal_chunks,
+)
 
+from .auth import resolve_owner_from_auth_context
 from .server import (
     CANONICAL_TOOLS,
     AntiekMemoryServer,
@@ -93,67 +99,64 @@ def _make_handlers(
 
     # ── search_personal ───────────────────────────────────────────
     def search_personal(args: dict[str, Any], *, auth_context: object = None) -> ToolResult:
-        """Ranked retrieval over the caller's OWN documents.
+        """Rank the CALLING account's chunks against the caller's query.
 
-        The owner comes from the transport's ``auth_context`` (see
-        ``AntiekMemoryServer``), never from ``args``. Scope is the set of
-        documents whose ``owner_user_id`` is that owner, expressed through
-        ``search()``'s existing ``document_ids`` bound so the §9.0 gate and the
-        ranking stay the one reviewed implementation; ``private_research`` is
-        the owner reading their own library, which is what "personal" means.
+        Two things this must never do again, both of which it did before
+        SPR-11 Task 2. It must not name the owner itself: the owner comes from
+        the transport's ``auth_context`` (stamped by ``AntiekMemoryServer``
+        from its launch-time ``bound_owner`` binding, never read from
+        ``arguments``) and from nowhere else, so a caller can no longer be
+        served a pseudo-account's rows. And it must not order by
+        ``chunks.chunk_index``, which read the ``query`` argument, ignored it
+        in the SQL, echoed it back in the response, and returned the front of
+        a document as though it were a search result.
+
+        Retrieval runs through ``search_personal_chunks`` — the owner-scoped
+        lexical ranker — rather than the vector ``search()``, because
+        embeddings populate lazily and ``search()`` silently skips every chunk
+        whose embedding is NULL, which is most of a personal corpus. Both
+        compose the same canonical §9.0 gate; this one can rank unembedded
+        rows.
+
+        With no resolvable owner this returns an ``is_error`` ToolResult and
+        zero chunks. There is deliberately no fallback identity: an honest
+        error is strictly better than confidently serving the wrong account,
+        and a caller that cannot be identified has no personal graph here.
         """
         query = args["query"]
         top_k = args.get("top_k", 5)
-        owner = _authenticated_owner(auth_context)
-        if owner is None:
-            return _error_result(
-                "search_personal requires an authenticated per-user owner in "
-                "auth_context.user_id",
-                query=query,
+
+        owner_user_id = resolve_owner_from_auth_context(auth_context)
+        if owner_user_id is None:
+            return ToolResult(
+                content=[{
+                    "type": "text",
+                    "text": json.dumps({
+                        "chunks": [],
+                        "query": query,
+                        "error": (
+                            "search_personal requires an authenticated per-user "
+                            "owner in auth_context.user_id"
+                        ),
+                    }),
+                }],
+                is_error=True,
             )
+
         con = connect_read(db_path)
         try:
-            owned = [
-                str(row[0])
-                for row in con.execute(
-                    "SELECT document_id FROM documents WHERE owner_user_id = ? "
-                    "ORDER BY document_id",
-                    [owner],
-                ).fetchall()
-            ]
-            hits: list[dict[str, Any]] = []
-            if owned:
-                hits = search(
-                    con,
-                    query,
-                    model=_model(),
-                    top_k=top_k,
-                    document_ids=owned,
-                    policy_tag="private_research",
-                    owner_user_id=owner,
-                )["results"]
-            # search() truncates chunk_text for prompt budgets; this surface
-            # has always returned the whole chunk, so read it back by id.
-            full_text: dict[str, str] = {}
-            if hits:
-                placeholders = ",".join("?" for _ in hits)
-                full_text = {
-                    str(row[0]): str(row[1])
-                    for row in con.execute(
-                        f"SELECT chunk_id, text FROM chunks WHERE chunk_id IN ({placeholders})",
-                        [hit["chunk_id"] for hit in hits],
-                    ).fetchall()
-                }
+            hits = search_personal_chunks(
+                con, query, owner_user_id=owner_user_id, top_k=top_k,
+            )
         finally:
             con.close()
         chunks = [
             {
                 "chunk_id": hit["chunk_id"],
-                "text": full_text.get(hit["chunk_id"], hit["chunk_text"]),
-                "title": hit["document_title"],
+                "text": hit["text"],
+                "title": hit["title"],
                 "source_tier": hit["source_tier"],
-                "owner_user_id": owner,
-                "similarity": hit["similarity"],
+                "owner_user_id": hit["owner_user_id"],
             }
             for hit in hits
         ]
