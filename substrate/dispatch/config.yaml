@@ -240,6 +240,13 @@ role_tiers:
   # knowledge_extractor / thought_partner / creative_writer / autocomplete.
   # Tier=pro (conversational question generation, precedent-matched).
   interviewer: pro
+  # LB-4a (2026-09-26): substrate/reformat/pipeline.py dispatches
+  # role="reformat" to rewrite a document by prompt, and had NO entry, so
+  # POST /books/{id}/reformats answered 500 on every real call (the router's
+  # KeyError). Tier=pro, matching creative_writer, the other long-form prose
+  # role. tests/test_dispatch.py now scans every literal dispatch role in the
+  # codebase, so the next unregistered role fails CI instead of production.
+  reformat: pro
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are
