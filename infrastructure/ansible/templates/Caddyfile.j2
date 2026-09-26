@@ -68,7 +68,7 @@
     # if any registered route prefix is absent here. Keep this list
     # ONE-LINE — Caddy's tokenizer for `path` matcher arguments doesn't
     # honor backslash line continuation.
-    @api_routes path /account/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /api/* /artifacts/* /attribution* /auth/* /backtest* /billing* /blocks/* /book-acquisition* /books* /campaigns* /chunks* /claims/* /complete /compose-context /coordination* /corpus* /creator-payouts* /cross-graph/* /deliverables* /docs/* /documents* /events/* /export* /federation* /feedback/* /health /ingest/* /internal/* /interview-projects* /interviews* /investigations* /krea* /library* /links/* /loop-3/* /meta-readings* /multimedia* /notebooks* /openapi.json /ops/* /outcomes* /payouts* /publishers* /quality-gate* /reading/* /research/* /sections* /settings* /skill-rules* /sources* /speak/* /speech* /stats* /styles /styles/* /supersession* /syntheses/* /thought-partner /thread/* /trajectory /trajectory/* /trust-center* /twins* /voice-notes* /voice/* /watch-for-later* /.well-known/* /write/* /ws/*
+    @api_routes path /account/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /api/* /artifacts/* /attribution* /auth/* /backtest* /billing* /blocks/* /book-acquisition* /books* /campaigns* /chunks* /claims/* /complete /compose-context /coordination* /corpus* /creator-payouts* /cross-graph/* /deliverables* /diligence* /docs* /documents* /events/* /export* /federation* /feedback/* /health /ingest/* /internal/* /interview-projects* /interviews* /investigations* /krea* /library* /links/* /loop-3/* /meta-readings* /multimedia* /notebooks* /openapi.json /ops/* /outcomes* /payouts* /publishers* /quality-gate* /reading/* /research/* /sections* /settings* /skill-rules* /sources* /speak/* /speech* /stats* /styles /styles/* /supersession* /syntheses/* /thought-partner /thread/* /trajectory /trajectory/* /trust-center* /twins* /voice-notes* /voice/* /watch-for-later* /.well-known/* /write/* /ws/*
 
 
     # ~14 paths overlap between backend API + frontend React Router
@@ -141,13 +141,38 @@
             header_up X-Forwarded-Proto {scheme}
         }
 
-        # 3. Everything else (asset fetches, fonts, /favicon.ico) →
-        #    static files. try_files only kicks in if the file
-        #    doesn't exist on disk; the browser-nav rule above
-        #    covers SPA-route fallback for top-level loads.
-        root * {{ frontend_dist_dir }}
-        try_files {path} /index.html
-        file_server
+        # 3. Static files that actually exist on disk (hashed bundles,
+        #    fonts, /favicon.svg, /mark-*.png) → serve them as-is.
+        #    `file` is the matcher, so a miss falls through rather than
+        #    being papered over by an index.html fallback.
+        @static_exists file {
+            root * {{ frontend_dist_dir }}
+        }
+        handle @static_exists {
+            root * {{ frontend_dist_dir }}
+            file_server
+        }
+
+        # 4. Everything else → JSON 404.
+        #
+        #    THE SPA-200 DEFECT (verified live 2026-09-26, then fixed here):
+        #    `curl https://api.antiek.ai/v1/does-not-exist-xyz` and
+        #    `curl https://api.antiek.ai/docs` both returned HTTP 200 with
+        #    the SPA's index.html. Unknown API routes were indistinguishable
+        #    from success. Root cause was this catch-all: try_files
+        #    {path} /index.html rewrote every miss to the SPA shell and
+        #    file_server answered 200. Only /api/* and /health reached
+        #    uvicorn (via: 1.1 Caddy), so a typo in a client base path
+        #    looked healthy.
+        #
+        #    Now: a request that is not a browser navigation (step 1), not a
+        #    registered API route (step 2), and not an existing static file
+        #    (step 3) gets an explicit JSON 404. Browser navigations still
+        #    reach step 1 and get the SPA shell for client-side routing.
+        handle {
+            header Content-Type "application/json"
+            respond `{"error":{"message":"no such endpoint","path":"{http.request.uri.path}"}}` 404
+        }
     }
 
     # ── Cache-control headers for static assets ───────────────────────
@@ -187,11 +212,25 @@
         }
     }
 
-    # Security headers. Not exhaustive — add full CSP once the SPA's
-    # CSP surface is stable.
+    # Security headers. Verified live 2026-09-26 before this change:
+    #   Strict-Transport-Security absent, Content-Security-Policy absent,
+    #   Referrer-Policy absent on this host, Permissions-Policy absent.
+    #   Matrix was api=0/www=0 for HSTS and CSP; the two hosts disagreed
+    #   about which headers exist at all.
+    #
+    # CSP is scoped to the clickjacking axis only (frame-ancestors). A full
+    # resource CSP is deliberately NOT set here until the SPA's CSP surface
+    # is proven stable in a browser pass — a wrong CSP breaks the app
+    # silently for users, which is worse than the gap it closes. The
+    # X-Frame-Options above and frame-ancestors here are the same policy
+    # stated twice on purpose: XFO for legacy UAs, CSP for modern ones.
     header {
         -Server
         X-Content-Type-Options "nosniff"
         X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "frame-ancestors 'self'"
     }
 }
