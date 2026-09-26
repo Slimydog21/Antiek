@@ -85,16 +85,19 @@ def test_every_boundary_gate_runs_before_the_shard_assertion() -> None:
 
 
 def test_the_job_still_runs_when_the_suite_is_cancelled() -> None:
-    """``if: always()`` is what makes asserting-last safe.
+    """The job-level ``if:`` must keep the rollup running when the suite is cancelled.
 
-    Without it a cancelled suite would skip the whole job, so moving the
-    assertion to the end would hide a failure instead of surfacing it.
+    Both ``always()`` and ``!cancelled()`` satisfy that: a cancelled
+    ``needs.pytest-suite`` leaves the workflow uncancelled, so the job still
+    runs and the end-of-job assertion still surfaces the suite verdict.
+    ``success()`` (the default) would skip the job and hide the failure.
     """
     job = _pytest_job()
     cond = str(job.get("if") or "")
-    assert "always()" in cond, (
-        f"the pytest job lost `if: always()` (got {cond!r}); asserting the "
-        f"suite result last is only safe while the job runs unconditionally"
+    assert "always()" in cond or "cancelled()" in cond, (
+        f"the pytest job lost its unconditional `if:` (got {cond!r}); asserting "
+        f"the suite result last is only safe while the job runs when the suite "
+        f"is cancelled"
     )
 
 
