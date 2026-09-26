@@ -40,7 +40,7 @@
   "src/modes/SpeakInvite/index.tsx:40\tpublish-intent\tpublish_intent",
   "src/modes/SpeakInvite/index.tsx:41\tpublish-intent\tpublish_intent",
   "src/modes/Stats/index.tsx:25\tn-chunks\t[\"investigations\", \"documents\", \"chunks\", \"nodes\", \"edges\"]",
-  "src/modes/Write/BlockRepository.tsx:136\tblock-id\tblock_id",
+  "src/modes/Write/BlockRepository.tsx:137\tblock-id\tblock_id",
   "src/modes/Write/ContextWindow/ContextWindow.tsx:53\tblock-id\tblock_id",
   "src/modes/Write/ContextWindow/contextWindowState.ts:50\tn-claims\t[\"insight\", \"open_question\", \"claim\"]",
   "src/modes/Write/Outline.tsx:308\tblock-id\tblock_id",

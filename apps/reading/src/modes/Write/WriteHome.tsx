@@ -26,6 +26,10 @@ import {
   getTraceTarget,
   type RepositoryHit,
 } from "./writeApi";
+import { useTabTrees } from "../../workspace/tabTreeStore";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { WRITE_OUTLINE_PANEL_ID } from "../../workspace/writeOutlineStore";
+import { sectionIdFromRef, useWriteTreeSync } from "../../workspace/writeTreeSync";
 
 /**
  * Write Home — the Write door (Product Depth SPR-07 M1).
@@ -85,6 +89,27 @@ export default function WriteHome() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // C5: seed the writing document tree — the full body as tab 1, one child
+  // tab per section (1.1, 1.2, …) — and surface the outline pane in the
+  // docked preset (in the inset preset the right pane IS the outline).
+  useWriteTreeSync(detail);
+  useEffect(() => {
+    if (!deliverableId) return;
+    const ws = useWorkspace.getState();
+    if (ws.layoutPreset === "docked" && !ws.panels[WRITE_OUTLINE_PANEL_ID]) {
+      ws.open("WriteOutline", {}, { mode: "docked-right", id: WRITE_OUTLINE_PANEL_ID, title: "Outline" });
+    }
+  }, [deliverableId]);
+
+  // The cockpit's writing tree scopes the piece view: a section tab (1.n)
+  // renders that section alone (the same Outline, one section — forensic
+  // per-section editing preserved); the body tab renders the full outline.
+  const activeWritingTab = useTabTrees((s) => {
+    const t = s.trees.writing;
+    return t?.active_tab_id ? t.nodes[t.active_tab_id] : null;
+  });
+  const scopedSectionId = activeWritingTab ? sectionIdFromRef(activeWritingTab.ref) : null;
 
   useEffect(() => {
     if (deliverableId) return; // only list pieces on the home (no piece) view
@@ -371,7 +396,11 @@ export default function WriteHome() {
           ) : (
             <Outline
               deliverableId={detail.deliverable_id}
-              sections={detail.sections}
+              sections={
+                scopedSectionId
+                  ? detail.sections.filter((sec) => sec.section_id === scopedSectionId)
+                  : detail.sections
+              }
               onChanged={refresh}
               registerAddHandler={registerAddHandler}
               investigationId={detail.investigation_root_id}

@@ -106,6 +106,22 @@ lawfully reserved. Persistence is ONLY through a `TabTreeAdapter` (§1.6:
 never web storage) — the in-memory adapter makes trees session-scoped until
 lane B's HTTP adapter lands (`setTabTreeAdapter` is the seam).
 
+## Write mode (C5, 2026-09-24)
+
+In writing mode the right pane switches from the companion to the outline
+(`RightPaneForMode.tsx` — one component contract on the route's mothership;
+the docked preset surfaces it as the "WriteOutline" right-dock panel,
+auto-opened on piece routes). `WriteOutlinePane.tsx` renders one tab per
+outline block, each a drop target for source documents (repository hits and
+reader tabs carry `application/x-antiek-source-document` payloads).
+Assignments land in `blockSources.ts` — the honest session-scoped bridge
+(write_routes has no block-source mutation today; the
+`setBlockSourcesBackend` seam is the write-through contract, never a
+pretend-write). The left tree holds the full body as tab 1 with one child
+tab per section (`writeTreeSync.ts`); WriteHome scopes its view to the
+active tab. Agents stay on the AI sidecar (mod+/), untouched; prefix ,/.
+cycles whichever right pane is on screen.
+
 ## Full spec
 
 `docs/ui_redesign_posthog/sprint_03_panel_layout.html`

@@ -148,6 +148,18 @@ function DocumentTabStripInner() {
                 type="button"
                 onClick={() => openTab(tab)}
                 data-tab-id={tabId}
+                draggable={tab.kind === "reader"}
+                onDragStart={
+                  tab.kind === "reader"
+                    ? (e) => {
+                        e.dataTransfer.setData(
+                          "application/x-antiek-source-document",
+                          JSON.stringify({ document_id: tab.ref, document_title: null }),
+                        );
+                        e.dataTransfer.effectAllowed = "copy";
+                      }
+                    : undefined
+                }
                 aria-current={isActive ? "page" : undefined}
                 className={`flex items-center gap-1 min-w-0 rounded px-1.5 py-0.5 ${
                   isActive
