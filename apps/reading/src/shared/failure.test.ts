@@ -134,8 +134,27 @@ describe("describeFailure", () => {
   });
 
   it("falls back to the plain title when `what` carries error text", () => {
-    for (const what of ["GET /investigations failed: HTTP 503", "reading_state_stale_revision", "<b>x</b>"]) {
+    for (const what of [
+      "GET /investigations failed: HTTP 503",
+      "reading_state_stale_revision",
+      "<b>x</b>",
+      "/books/1/ask",
+      "fetch /api/x",
+      "get /x",
+      "POST/x",
+      "https://internal/api/v1",
+      "resolve REVISION_CONFLICT",
+      '"detail": "x"',
+      "C:\\tmp\\x",
+      "load 503",
+    ]) {
       expect(describeFailure(new ApiError("x", 500, ""), { what }).title).toBe("That didn't work.");
     }
+  });
+
+  it("keeps an honest phrase with an apostrophe", () => {
+    expect(describeFailure(new ApiError("x", 500, ""), { what: "load the author's notes" }).title).toBe(
+      "Couldn't load the author's notes.",
+    );
   });
 });

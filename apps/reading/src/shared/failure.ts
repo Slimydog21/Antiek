@@ -70,8 +70,16 @@ const DETAIL: Record<FailureKind, string> = {
 /** Statuses where an identical retry can succeed. Every other status is not retryable. */
 const RETRYABLE_STATUS: ReadonlySet<number> = new Set([0, 408, 409, 429, 500, 502, 503, 504]);
 
-/** Text a title must never carry: a status, a method with a path, "HTTP", a snake_case code, markup or JSON. */
-const HOSTILE = /\b[1-5]\d\d\b|\bHTTP\b|\b(GET|POST|PUT|PATCH|DELETE)\s+\/|[a-z]+_[a-z_]+|[<>{}]|Traceback/;
+/**
+ * What a caller-supplied `what` may not contain. It is a filter, not a proof:
+ * a phrase with a slash or backslash (paths, methods with paths, URLs), an
+ * underscore (codes of any case), markup, braces, a double quote or backtick
+ * (JSON and code fragments), "http", "Traceback", or a bare number from 100
+ * to 599 falls back to the plain title. An apostrophe is allowed. The price is
+ * that an honest phrase like "load 500 items" also falls back, so keep `what`
+ * to plain words.
+ */
+const UNSAFE_WHAT = /[/\\_<>{}"`]|https?|traceback|\b[1-5]\d\d\b/i;
 
 function kindForStatus(status: number): FailureKind {
   if (status === 0) return "malformed";
@@ -91,13 +99,13 @@ function kindForStatus(status: number): FailureKind {
 }
 
 /**
- * `what` is a caller-authored imperative phrase ("load your research"), never
- * text derived from the error. If it carries anything a title must not, the
- * generic title is used instead, so the guarantee holds at this boundary.
+ * `what` must be a caller-authored imperative phrase in plain words ("load
+ * your research"), never text derived from the error. As a best-effort
+ * backstop, a `what` matching UNSAFE_WHAT falls back to "That didn't work."
  */
 function titleFor(what: string | undefined): string {
   const action = what?.trim().replace(/[.!]+$/, "");
-  if (!action || HOSTILE.test(action)) return "That didn't work.";
+  if (!action || UNSAFE_WHAT.test(action)) return "That didn't work.";
   return `Couldn't ${action}.`;
 }
 
