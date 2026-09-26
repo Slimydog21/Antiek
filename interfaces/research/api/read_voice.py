@@ -39,7 +39,13 @@ async def _read_bounded_audio(request: Request) -> bytes:
     upload or a lying header stops being read at the cap instead of being
     buffered whole (the epub import's bound in books.py does the same)."""
     declared = request.headers.get("content-length")
-    if declared is not None and declared.isdigit() and int(declared) > MAX_TRANSCRIBE_BYTES:
+    try:
+        declared_bytes = int(declared) if declared is not None else None
+    except ValueError:
+        # Unparseable (e.g. "²", which str.isdigit() accepts and int()
+        # rejects): ignore it; the streamed count below decides.
+        declared_bytes = None
+    if declared_bytes is not None and declared_bytes > MAX_TRANSCRIBE_BYTES:
         raise HTTPException(status_code=413, detail="too_large")
     chunks: list[bytes] = []
     received = 0

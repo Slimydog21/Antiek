@@ -240,8 +240,16 @@ async def test_transcribe_over_cap_is_413_before_provider(api_env, monkeypatch):
     assert probe.calls == 0
 
 
-async def test_transcribe_chunked_over_cap_stops_reading_and_is_413(api_env, monkeypatch):
-    """No Content-Length (chunked upload): the stream bound is the authority,
+@pytest.mark.parametrize(
+    "declared",
+    [None, "10", b"\xb2"],
+    ids=["chunked", "lying_small_length", "unparseable_length"],
+)
+async def test_transcribe_chunked_over_cap_stops_reading_and_is_413(
+    api_env, monkeypatch, declared
+):
+    """No usable Content-Length (a chunked upload, a header that under-states
+    the body, or one that does not parse): the stream bound is the authority,
     and the route stops pulling the body once it passes 25 MiB instead of
     buffering the whole upload first."""
     probe = _ProviderProbe()
@@ -254,11 +262,12 @@ async def test_transcribe_chunked_over_cap_stops_reading_and_is_413(api_env, mon
             pulled += 1
             yield b"\0" * _MIB
 
+    headers: dict[str, str | bytes] = {"content-type": "audio/webm"}
+    if declared is not None:
+        headers["content-length"] = declared
     app = create_app(register_wrestling=False)
     async with _client(app) as client:
-        response = await client.post(
-            "/voice/transcribe", content=_body(), headers={"content-type": "audio/webm"}
-        )
+        response = await client.post("/voice/transcribe", content=_body(), headers=headers)
     assert response.status_code == 413
     assert response.json() == {"detail": "too_large"}
     assert probe.calls == 0
@@ -305,6 +314,22 @@ async def test_transcribe_exactly_at_cap_reaches_provider(api_env, monkeypatch):
     assert response.status_code == 200
     assert probe.calls == 1
     assert probe.audio_lengths == [_MAX_TRANSCRIBE_BYTES]
+
+
+async def test_transcribe_unparseable_content_length_is_not_a_500(api_env, monkeypatch):
+    """``"²".isdigit()`` is True but ``int("²")`` raises. A header the route
+    cannot parse is ignored (the streamed count decides), never a crash."""
+    probe = _ProviderProbe()
+    _stub_whisper(monkeypatch, probe)
+    app = create_app(register_wrestling=False)
+    async with _client(app) as client:
+        response = await client.post(
+            "/voice/transcribe",
+            content=b"\x1aE\xdf\xa3fake-webm",
+            headers={"content-type": "audio/webm", "content-length": b"\xb2"},
+        )
+    assert response.status_code == 200
+    assert probe.calls == 1
 
 
 async def test_transcribe_empty_body_is_still_400(api_env, monkeypatch):
