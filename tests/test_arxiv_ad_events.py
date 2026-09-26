@@ -98,15 +98,19 @@ def test_t1_read_accrues_to_author_ledger(con):
 
 
 def test_t2_read_emits_nothing_into_payouts_ledger(con):
-    """A CC-BY-NC (T2) read records escrow-side as usual but emits NOTHING into
-    the payouts ledger (T1-only gate, re-derived from the license)."""
+    """A CC-BY-NC (T2) read is refused by the shared ad-eligibility predicate
+    (T1-only, re-derived from the license) and emits NOTHING into the payouts
+    ledger or escrow."""
     _seed_paper(con, "p2", arxiv_id="2401.20002", license_uri=_CC_BY_NC,
                 authors=_authors(0, 1))
-    accrue_reading_session(
+    result = accrue_reading_session(
         con, document_id="p2",
         impressions=_impressions("sess2", "p2", revenue_cents=500),
         session_id="sess2",
     )
+    assert result.accruable is False
+    assert result.reason == "not_ad_eligible:tier_not_ad_eligible:T2"
+    assert result.accrued_to_escrow_cents == 0
     assert reconcile(con, arxiv_id="2401.20002")["total_cents"] == 0
     assert con.execute(
         "SELECT COUNT(*) FROM paper_author_accruals"

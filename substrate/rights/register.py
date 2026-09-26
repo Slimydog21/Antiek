@@ -49,6 +49,18 @@ class SourceKind(StrEnum):
     from any escrow/payout pool. Encoding that as a source-kind tag at the
     registration chokepoint makes the exclusion structural, not a downstream
     filter a future payout query could forget.
+
+    Ad-eligibility is NOT keyed on SourceKind: the kind is not persisted, and
+    substrate.books.ingest.register_book tags every Read-workflow book
+    LICENSED_PUBLISHER (arXiv papers and public-domain books included).
+    substrate.rights.ad_eligibility.ad_eligibility decides it from what IS
+    persisted (the licence tier in documents.metadata, else body servability).
+    The serve guard calls it for every document, and the reader-session
+    settlement (book_escrow.accrue_reading_session) and the per-author arXiv
+    ledger both ask it before their own gates.
+    tests/rights/test_ad_eligibility_agreement.py settles a paid fill on a
+    document of every member of this enum and checks the money accrues
+    exactly when serve time said ad-eligible.
     """
 
     LICENSED_PUBLISHER = "licensed_publisher"  # a book claimed via the §9.10 opt-in flow
