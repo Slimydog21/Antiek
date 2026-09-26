@@ -7,7 +7,8 @@
 # Spawning is OFF and refused (LB-10): with ANTIEK_DAEMON_SPAWN_ENABLED set
 # the daemon exits 78 (EX_CONFIG) and RestartPreventExitStatus below keeps
 # it down, because its spawn path has no investigation handler in this
-# process and diligence has no per-flag consent yet (D4). Spawning returns
+# process and diligence has no per-flag consent yet (mothership spec decision D4,
+# ~/Antiek/specs/antiek-mothership/DECISIONS.md). Spawning returns
 # with an API-routed, consented launch, submitted through the substrate API
 # so the single-writer invariant holds.
 #

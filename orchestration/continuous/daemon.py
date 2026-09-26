@@ -18,7 +18,8 @@ gap). ``run_one_iteration`` still drives both in tests.
 ``main()`` refuses ``ANTIEK_DAEMON_SPAWN_ENABLED`` (LB-10):
 - In the daemon's own process that broadcaster has no investigation handler,
   so a spawn would never run.
-- Diligence has no per-flag consent yet (D4).
+- Diligence has no per-flag consent yet (decision D4 of the mothership spec,
+  ~/Antiek/specs/antiek-mothership/DECISIONS.md; not this repo's docs/decisions).
 
 With the env UNSET, the shipped default, ``run_forever`` receives
 ``no_op_spawn`` and no flag source.
@@ -698,7 +699,7 @@ def refuse_spawn_switch(env: dict[str, str] | Any) -> None:
         print(
             f"{ENV_DAEMON_SPAWN_ENABLED} is set, but daemon spawning is refused: its spawns "
             "would emit on a bus with no investigation handler in this process, and diligence "
-            "has no per-flag consent yet (D4; THREAD-CONTRACT §1.13). Unset it; spawning "
+            "has no per-flag consent yet. Unset it; spawning "
             "returns with the API-routed, consented launch path.",
             file=sys.stderr,
         )
@@ -718,7 +719,8 @@ def main() -> None:
       and the investigation handler lives in the API process. Every spawn
       would log a start that nobody runs, yet take a reserve and a
       concurrency slot.
-    - Diligence has no per-flag consent yet (D4, THREAD-CONTRACT §1.13).
+    - Diligence has no per-flag consent yet (~/Antiek/specs/antiek-mothership:
+      DECISIONS.md D4 and THREAD-CONTRACT.md §1.13).
 
     Spawning returns only with the API-routed, consented path."""
     refuse_spawn_switch(os.environ)

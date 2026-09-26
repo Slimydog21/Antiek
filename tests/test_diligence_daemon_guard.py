@@ -4,8 +4,9 @@ With ANTIEK_DAEMON_SPAWN_ENABLED set, main() used to wire make_emit_spawn_fn
 over a fresh EventBroadcaster in the daemon's own process, and the investigation
 handler lives in the API process. So each "spawn" logged a start_requested
 nobody ran, while its $0.50 reserve and its concurrency slot were still taken.
-It also launched a flag with no per-flag consent, against D4
-(specs/antiek-mothership/DECISIONS.md) and THREAD-CONTRACT §1.13. Until spawns
+It also launched a flag with no per-flag consent, against decision D4 of the
+mothership spec (~/Antiek/specs/antiek-mothership/DECISIONS.md) and its
+THREAD-CONTRACT.md §1.13. Until spawns
 route through the API with consent, turning the switch on is refused with
 EX_CONFIG, before anything is wired.
 
