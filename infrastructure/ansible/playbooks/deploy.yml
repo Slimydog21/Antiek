@@ -177,6 +177,20 @@
       become_user: "{{ antiek_user }}"
       tags: [code]
 
+    # Fail at the deployment boundary if the gated checkout's manifest and
+    # lock have diverged. This receipt precedes the locked production sync
+    # and makes exact sync's frozen precondition explicit in the deploy log.
+    - name: record the deploy-time lock-check receipt
+      ansible.builtin.command:
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/uv"
+          - lock
+          - --check
+        chdir: "{{ antiek_install_dir }}"
+      changed_when: false
+      become_user: "{{ antiek_user }}"
+      tags: [code]
+
     - name: exact-sync the service venv from the gated SHA's lock
       ansible.builtin.command:
         # uv sync targets <project>/.venv — the service venv itself.
