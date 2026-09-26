@@ -227,4 +227,6 @@ def test_retired_route_declares_no_request_body(route):
         f"/research/artifacts/source-merge/{route}"
     ]["post"]
     assert "requestBody" not in operation, operation
-    assert "410" in operation["responses"], operation["responses"]
+    assert operation.get("deprecated") is True, operation
+    assert list(operation["responses"]) == ["410"], operation["responses"]
+    assert "T6" in operation["responses"]["410"]["description"], operation["responses"]

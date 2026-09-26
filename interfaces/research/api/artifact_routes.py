@@ -138,6 +138,9 @@ def _raise_source_merge_refusal(detail: str, *, status_code: int = 409) -> None:
     raise HTTPException(status_code=status_code, detail=detail)
 
 
+_SOURCE_MERGE_RETIRED_DESCRIPTION = "Retired: under T6 a merge never writes the source document"
+
+
 def _source_merge_retired() -> JSONResponse:
     """The whole answer of a retired source-merge route, given before anything
     is opened, locked, read or written."""
@@ -295,7 +298,12 @@ async def post_compose_artifacts(body: ComposeIn) -> ComposeOut:
 # committed on prod.
 
 
-@artifact_router.post("/artifacts/source-merge/preview", status_code=410)
+@artifact_router.post(
+    "/artifacts/source-merge/preview",
+    status_code=410,
+    deprecated=True,
+    response_description=_SOURCE_MERGE_RETIRED_DESCRIPTION,
+)
 async def post_source_merge_preview() -> JSONResponse:
     """Retired: always 410.
 
@@ -308,7 +316,12 @@ async def post_source_merge_preview() -> JSONResponse:
     return _source_merge_retired()
 
 
-@artifact_router.post("/artifacts/source-merge/apply", status_code=410)
+@artifact_router.post(
+    "/artifacts/source-merge/apply",
+    status_code=410,
+    deprecated=True,
+    response_description=_SOURCE_MERGE_RETIRED_DESCRIPTION,
+)
 async def post_source_merge_apply() -> JSONResponse:
     """Retired: always 410.
 
@@ -320,7 +333,12 @@ async def post_source_merge_apply() -> JSONResponse:
     return _source_merge_retired()
 
 
-@artifact_router.post("/artifacts/source-merge/commit", status_code=410)
+@artifact_router.post(
+    "/artifacts/source-merge/commit",
+    status_code=410,
+    deprecated=True,
+    response_description=_SOURCE_MERGE_RETIRED_DESCRIPTION,
+)
 async def post_source_merge_commit() -> JSONResponse:
     """Retired: always 410.
 
