@@ -19,7 +19,7 @@ import json
 import os
 import sys
 import tarfile
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
@@ -42,6 +42,9 @@ from acquisition.arxiv.bulk import (  # noqa: E402
 )
 from acquisition.arxiv.oai_pmh import OaiPmhHarvester  # noqa: E402
 from acquisition.arxiv.throttle import ArxivThrottle  # noqa: E402
+from runtime.db_lock import connect_write  # noqa: E402
+from substrate.graph import ensure_initialized  # noqa: E402
+from tools.arxiv_bulk_resume import save_progress, verify_snapshot  # noqa: E402
 from tools.arxiv_oai_sync import (  # noqa: E402
     SyncCheckpoint,
     read_checkpoint,
@@ -73,6 +76,34 @@ def _tmp_documents_db(tmp_path, monkeypatch):
 
 def _db_path(tmp_path) -> str:
     return str(tmp_path / "graph.duckdb")
+
+
+def _seed_completed_progress(tmp_path, snapshot: str, high_water: str) -> None:
+    """A prior completed DB generation, rather than a JSON-only high-water."""
+    source = verify_snapshot(snapshot)
+    path = ensure_initialized(_db_path(tmp_path))
+    row = {
+        "stream_id": "arxiv_bulk", "cursor_schema_version": 1,
+        "parser_version": 1, "generation_id": "prior-generation",
+        "source_sha256": source.sha256, "source_size_bytes": source.size,
+        "source_format": "jsonl", "source_encoding": "utf-8",
+        "source_path": source.path, "mode": "incremental", "tail_enabled": True,
+        "from_date": None, "until_date": None, "metadata_prefix": "arXiv",
+        "phase": "complete", "next_byte_offset": source.size,
+        "physical_line_count": 0, "selected_record_count": 0,
+        "bulk_t1_events": 0, "bulk_t2_events": 0, "bulk_t3_events": 0,
+        "bulk_ambiguous_events": 0, "bulk_deleted_events": 0,
+        "bulk_max_datestamp": None,
+        "completed_high_water": date.fromisoformat(high_water),
+        "completed_generation_id": "prior-generation", "completed_at": _AT.replace(tzinfo=None),
+        "completed_bulk_sha256": source.sha256, "completed_tail_bound": None,
+        "completed_census_json": '{"kind":"event_counts"}',
+    }
+    with (
+        connect_write(path, purpose="test_seed_arxiv_progress", keepalive_s=0) as con,
+        con.transaction(),
+    ):
+        save_progress(con, row)
 
 
 def _rows(tmp_path) -> list[tuple]:
@@ -391,6 +422,7 @@ def test_bulk_incremental_filters_by_prior_high_water(tmp_path):
             _bulk_record("new", update_date="2024-01-05"),
         ],
     )
+    _seed_completed_progress(tmp_path, snap, "2024-01-02")
 
     def empty_oai(req: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=_oai_page().encode())
@@ -460,6 +492,184 @@ def test_bulk_then_oai_tail_merges_newer_records(tmp_path):
     }
 
 
+def test_same_day_oai_tail_is_not_skipped_by_inclusive_until(tmp_path):
+    """A paper arriving after the snapshot can share its max calendar date."""
+    clock = _FakeClock()
+    sync_path = str(tmp_path / "sync.json")
+    snap = _write_snapshot(
+        tmp_path / "snap.json",
+        [_bulk_record("bulk", update_date="2024-01-10")],
+    )
+    seen_urls: list[str] = []
+
+    def same_day_oai(req: httpx.Request) -> httpx.Response:
+        seen_urls.append(str(req.url))
+        return httpx.Response(
+            200,
+            content=_oai_page(_oai_record("late", "2024-01-10", _CC_BY)).encode(),
+        )
+
+    result = run_bulk_sync(
+        harvester=_harvester(tmp_path, clock, same_day_oai),
+        mode="backfill", sync_state_path=sync_path,
+        bulk_snapshot_path=snap, until_date="2024-01-10",
+        harvested_at=_AT,
+    )
+    assert len(seen_urls) == 1
+    assert "from=2024-01-10" in seen_urls[0]
+    assert "until=2024-01-10" in seen_urls[0]
+    assert result.census.total == 2
+    assert {row[0] for row in _rows(tmp_path)} == {
+        arxiv_doc_id("bulk"), arxiv_doc_id("late"),
+    }
+    with duckdb.connect(_db_path(tmp_path), read_only=True) as con:
+        assert con.execute(
+            "SELECT completed_tail_bound FROM arxiv_bulk_progress"
+        ).fetchone()[0].isoformat() == "2024-01-10"
+
+
+def test_bulk_tail_ignores_unrelated_oai_cursor_and_its_datestamp(tmp_path):
+    """An older pure-OAI token cannot replace the bulk tail's from window."""
+    clock = _FakeClock()
+    sync_path = str(tmp_path / "sync.json")
+    snap = _write_snapshot(
+        tmp_path / "snap.json",
+        [_bulk_record("bulk", update_date="2024-01-10")],
+    )
+    (tmp_path / "harvest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "resumption_token": "OLD-2005-CRAWL",
+                "last_datestamp": "2025-01-01",
+                "skip_count": 2005,
+            }
+        ),
+        encoding="utf-8",
+    )
+    seen_urls: list[str] = []
+
+    def oai_handler(req: httpx.Request) -> httpx.Response:
+        seen_urls.append(str(req.url))
+        return httpx.Response(
+            200,
+            content=_oai_page(_oai_record("tail", "2024-01-20", _CC_BY)).encode(),
+        )
+
+    result = run_bulk_sync(
+        harvester=_harvester(tmp_path, clock, oai_handler),
+        mode="backfill",
+        sync_state_path=sync_path,
+        bulk_snapshot_path=snap,
+        harvested_at=_AT,
+        resume=True,
+    )
+
+    assert len(seen_urls) == 1
+    assert "from=2024-01-10" in seen_urls[0]
+    assert "resumptionToken" not in seen_urls[0]
+    assert result.census.total == 2
+    assert result.new_datestamp == "2024-01-20"
+    assert read_checkpoint(sync_path).last_successful_datestamp == "2024-01-20"
+    assert {row[0] for row in _rows(tmp_path)} == {
+        arxiv_doc_id("bulk"),
+        arxiv_doc_id("tail"),
+    }
+    assert not (tmp_path / "harvest.json").exists()
+
+
+def test_bulk_tail_retry_replays_window_after_partial_oai_page(tmp_path):
+    """Replay a tail record still in memory after its OAI cursor advances."""
+    clock = _FakeClock()
+    sync_path = str(tmp_path / "sync.json")
+    write_checkpoint(sync_path, SyncCheckpoint(last_successful_datestamp="2023-12-31"))
+    snap = _write_snapshot(
+        tmp_path / "snap.json",
+        [
+            _bulk_record("bulk1", update_date="2024-01-09"),
+            _bulk_record("bulk2", update_date="2024-01-10"),
+        ],
+    )
+    _seed_completed_progress(tmp_path, snap, "2023-12-31")
+    seen_urls: list[str] = []
+    fail_second_page = True
+
+    class _Interrupted(RuntimeError):
+        pass
+
+    def oai_handler(req: httpx.Request) -> httpx.Response:
+        nonlocal fail_second_page
+        url = str(req.url)
+        seen_urls.append(url)
+        if "resumptionToken=TAIL-PAGE-2" in url:
+            if fail_second_page:
+                fail_second_page = False
+                raise _Interrupted("second page unavailable")
+            return httpx.Response(
+                200,
+                content=_oai_page(_oai_record("tail4", "2024-01-20", _CC_BY)).encode(),
+            )
+        assert "from=2024-01-10" in url
+        return httpx.Response(
+            200,
+            content=_oai_page(
+                _oai_record("tail1", "2024-01-15", _CC_BY),
+                _oai_record("tail2", "2024-01-16", _CC_BY),
+                _oai_record("tail3", "2024-01-17", _CC_BY),
+                token="TAIL-PAGE-2",
+            ).encode(),
+        )
+
+    harvester = _harvester(tmp_path, clock, oai_handler)
+    with pytest.raises(_Interrupted):
+        run_bulk_sync(
+            harvester=harvester,
+            mode="incremental",
+            sync_state_path=sync_path,
+            bulk_snapshot_path=snap,
+            harvested_at=_AT,
+            resume=True,
+            persist_batch_size=2,
+            lock_yield_seconds=0,
+        )
+    assert read_checkpoint(sync_path).last_successful_datestamp == "2023-12-31"
+    assert json.loads((tmp_path / "harvest.json").read_text())["resumption_token"] == "TAIL-PAGE-2"
+    # Tail 1 and 2 committed as a batch. Tail 3 remained in memory after the
+    # harvester published its page-2 token, so retry must replay the window.
+    assert {row[0] for row in _rows(tmp_path)} == {
+        arxiv_doc_id("bulk1"),
+        arxiv_doc_id("bulk2"),
+        arxiv_doc_id("tail1"),
+        arxiv_doc_id("tail2"),
+    }
+
+    result = run_bulk_sync(
+        harvester=harvester,
+        mode="incremental",
+        sync_state_path=sync_path,
+        bulk_snapshot_path=snap,
+        harvested_at=_AT,
+        resume=True,
+        persist_batch_size=2,
+        lock_yield_seconds=0,
+    )
+    assert sum("from=2024-01-10" in url for url in seen_urls) == 2
+    assert result.new_datestamp == "2024-01-20"
+    assert result.census.total == 6
+    assert read_checkpoint(sync_path).last_successful_datestamp == "2024-01-20"
+    rows = _rows(tmp_path)
+    assert len(rows) == 6
+    assert {row[0] for row in rows} == {
+        arxiv_doc_id("bulk1"),
+        arxiv_doc_id("bulk2"),
+        arxiv_doc_id("tail1"),
+        arxiv_doc_id("tail2"),
+        arxiv_doc_id("tail3"),
+        arxiv_doc_id("tail4"),
+    }
+    assert not (tmp_path / "harvest.json").exists()
+
+
 def test_bulk_crash_mid_stream_does_not_advance_high_water(tmp_path):
     """A crash while streaming the bulk snapshot must NOT write the across-run
     high-water mark — same invariant as
@@ -478,6 +688,7 @@ def test_bulk_crash_mid_stream_does_not_advance_high_water(tmp_path):
             _bulk_record("b", update_date="2024-03-10"),
         ],
     )
+    _seed_completed_progress(tmp_path, snap, "2023-12-31")
 
     class _Boom(RuntimeError):
         pass
@@ -487,12 +698,10 @@ def test_bulk_crash_mid_stream_does_not_advance_high_water(tmp_path):
 
     h = _harvester(tmp_path, clock, boom_oai)
 
-    # Monkeypatch open_bulk_snapshot's consumer by replacing iter at call site
-    # via a sabotaged snapshot file that raises mid-read through a custom path.
-    # Simpler: inject a crashing stream by patching iter_bulk_oai_records.
+    # Inject a failure after the first physical-line event.
     import tools.arxiv_oai_sync as sync_mod
 
-    real_iter = sync_mod.iter_bulk_oai_records
+    real_iter = sync_mod.iter_bulk_oai_lines
 
     def crashing_iter(fh, **kwargs):
         for n, rec in enumerate(real_iter(fh, **kwargs), start=1):
@@ -500,8 +709,8 @@ def test_bulk_crash_mid_stream_does_not_advance_high_water(tmp_path):
             if n >= 1:
                 raise _Boom("disk died mid-bulk")
 
-    original = sync_mod.iter_bulk_oai_records
-    sync_mod.iter_bulk_oai_records = crashing_iter  # type: ignore[assignment]
+    original = sync_mod.iter_bulk_oai_lines
+    sync_mod.iter_bulk_oai_lines = crashing_iter  # type: ignore[assignment]
     try:
         with pytest.raises(_Boom):
             run_bulk_sync(
@@ -513,7 +722,7 @@ def test_bulk_crash_mid_stream_does_not_advance_high_water(tmp_path):
                 oai_tail=True,
             )
     finally:
-        sync_mod.iter_bulk_oai_records = original
+        sync_mod.iter_bulk_oai_lines = original
 
     # Across-run mark untouched.
     assert read_checkpoint(sync_path).last_successful_datestamp == "2023-12-31"
@@ -531,6 +740,7 @@ def test_bulk_crash_mid_oai_tail_does_not_advance_high_water(tmp_path):
         tmp_path / "snap.json",
         [_bulk_record("bulk", update_date="2024-01-05")],
     )
+    _seed_completed_progress(tmp_path, snap, "2023-12-31")
 
     class _Boom(RuntimeError):
         pass
@@ -607,6 +817,7 @@ def test_bulk_high_water_is_monotonic_across_older_snapshot(tmp_path):
         tmp_path / "snap.json",
         [_bulk_record("old", update_date="2024-01-03")],
     )
+    _seed_completed_progress(tmp_path, snap, "2024-06-01")
 
     def empty_oai(req: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=_oai_page().encode())
