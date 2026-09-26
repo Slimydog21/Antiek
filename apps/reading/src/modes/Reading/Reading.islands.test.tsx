@@ -418,6 +418,11 @@ describe("the servability boundary", () => {
     route({ anchors: [islandAnchor()], investigations: [summary()] });
     await renderReader();
     await screen.findByText("The ope");
+    // Island glyph mounts after the passage text; await it before clicking
+    // so the click cannot race a null querySelector (CI flake).
+    await waitFor(() =>
+      expect(document.querySelector('[data-island-id="a-island"]')).toBeTruthy(),
+    );
     fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
     const quote = document.querySelector("[data-island-quote]")!;
     expect(quote).toBeTruthy();

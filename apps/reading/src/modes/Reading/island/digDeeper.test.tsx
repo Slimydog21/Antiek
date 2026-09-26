@@ -307,6 +307,11 @@ function projection(status: string) {
 
 async function expandIsland() {
   await screen.findByText("The ope");
+  // The island glyph mounts on a later tick than the passage text.
+  // Await it so the click can never see a null element (CI race).
+  await waitFor(() =>
+    expect(document.querySelector('[data-island-id="a-island"]')).toBeTruthy(),
+  );
   fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
   await screen.findByText("Open research →");
   // The dig-deeper control renders after the expand. Await it so callers
