@@ -47,6 +47,12 @@
     antiek_release_retention_count: 4
 
   pre_tasks:
+    # The gate is tagged `always`, and only `always`. Every --tags selection
+    # runs it, and no --skip-tags of a working tag (gate, deploy, frontend,
+    # code) can drop it while the release still runs; the one override is
+    # antiek_force_deploy. --start-at-task and `--skip-tags always` do skip
+    # it, so the release itself refuses unless this run recorded the cleared
+    # ref: the build block and the live phase each start with a guard.
     - name: require an exact 40-hex release identity
       ansible.builtin.assert:
         that:
@@ -54,7 +60,7 @@
           - antiek_target_sha | length == 40
           - antiek_target_sha is match('^[0-9a-f]{40}$')
         fail_msg: Refusing a non-exact release identity.
-      tags: [deploy, gate]
+      tags: [always]
 
     - name: require every main-required check green for the target SHA
       ansible.builtin.command:
@@ -64,14 +70,27 @@
       delegate_to: localhost
       become: false
       changed_when: false
+      register: required_checks_gate
       when: not (antiek_force_deploy | default(false) | bool)
-      tags: [deploy, gate]
+      tags: [always]
 
     - name: warn that the required-check gate is deliberately bypassed
       ansible.builtin.debug:
         msg: Emergency override is deploying {{ antiek_target_sha }} without green checks.
       when: antiek_force_deploy | default(false) | bool
-      tags: [deploy, gate]
+      tags: [always]
+
+    - name: record the gate-cleared release identity
+      ansible.builtin.set_fact:
+        antiek_gate_cleared_ref: "{{ antiek_target_sha }}"
+      # A full SHA or nothing: the force override skips require_green.sh
+      # (which validates the SHA), so an empty or malformed target leaves
+      # the ref undefined and both release guards refuse.
+      when: >-
+        (antiek_target_sha is match('^[0-9a-f]{40}$'))
+        and ((antiek_force_deploy | default(false) | bool)
+             or (required_checks_gate.rc | default(1)) == 0)
+      tags: [always]
 
     - name: prepare the release root
       ansible.builtin.file:
@@ -146,6 +165,18 @@
     - name: build and validate the exact-SHA release
       when: not candidate_receipt.stat.exists
       block:
+        - name: require the gate to have cleared this exact SHA before building it
+          ansible.builtin.assert:
+            that:
+              - antiek_gate_cleared_ref is defined
+              - antiek_gate_cleared_ref == antiek_target_sha
+            fail_msg: >-
+              The required-checks gate did not run or did not clear
+              {{ antiek_target_sha | default('(no target)') }} in this run (a tag
+              selection or --start-at-task skipped it); refusing to build it. Run the
+              whole play, or pass antiek_force_deploy=true deliberately.
+          tags: [code]
+
         - name: remove an interrupted unpublished candidate
           ansible.builtin.file:
             path: "{{ antiek_release_dir }}"
@@ -456,6 +487,20 @@
           - /etc/systemd/system/antiek-backup-freshness.timer
       changed_when: false
       tags: [systemd]
+
+    # A candidate with a receipt skips the build block and its guard, so the
+    # live phase checks again before anything is stopped, migrated or cut over.
+    - name: require the gate to have cleared this exact SHA before the release goes live
+      ansible.builtin.assert:
+        that:
+          - antiek_gate_cleared_ref is defined
+          - antiek_gate_cleared_ref == antiek_target_sha
+        fail_msg: >-
+          The required-checks gate did not run or did not clear
+          {{ antiek_target_sha | default('(no target)') }} in this run (a tag
+          selection or --start-at-task skipped it); refusing to publish it. Run the
+          whole play, or pass antiek_force_deploy=true deliberately.
+      tags: [code]
 
     - name: quiesce, migrate, cut over, and verify
       block:
