@@ -55,6 +55,7 @@ import { lastSeenAt } from "../../workspace/seen";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
 import SuggestedResearch from "./SuggestedResearch";
+import DiligenceRail from "./DiligenceRail";
 
 // ── Status → plain language: now the SHARED registry (herdr transfer P0-1).
 // shared/researchState.ts owns the vocabulary (working / needs attention /
@@ -253,6 +254,10 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
             onLaunchSeveral={() => navigate("/")}
           />
         )}
+
+        {/* Autonomous-diligence SPR-01: the flag queue rail — the owner's
+            flags with honest status, beside the suggestions lane. */}
+        <DiligenceRail />
 
         {/* SPR-09: the compounding flywheel, surfaced. A calm "what to chase
             next" lane sourced from the §7 daemon's existing scored gaps — an

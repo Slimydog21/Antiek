@@ -13,7 +13,7 @@ import type {
  *
  * WHY SESSION STATE, NOT A SUBSTRATE EVENT (operator decision): the running
  * conversation is EPHEMERAL reader view-state — the same class as the reading
- * position (`usePosition`'s `antiek.read.pos.${documentId}`). It is the floating
+ * position (`usePosition`'s owner-qualified `positionStorageKey`). It is the floating
  * bookmark's pivot: it follows the reader across page navigation so a thread
  * survives turning pages, but it is NOT substrate truth. So it rides
  * sessionStorage (the usePosition precedent), NOT a new typed event. The
