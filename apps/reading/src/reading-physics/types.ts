@@ -164,6 +164,32 @@ export interface AnchoredWidgetComponents {
     readonly reservedChildId?: string | null;
   }) => ReactNode;
   /**
+   * Island SPR-02 — the research-thread island (collapsed mark + pinned
+   * overlay card, ONE component, two render states). The SURFACE owns the
+   * card (its view state, its thread projection via useIslandThread, its
+   * dismiss behaviour); the augmentation supplies only the closed, bounded
+   * island identity. `passageQuote` is the anchor's quote ONLY when the
+   * anchor is servable — it is null on a metadata-only anchor, so the card
+   * structurally CANNOT paint a withheld passage (the §9.0 boundary lives in
+   * this shape, like SiteSeeHoverCard's no-body rule). ADDITIVE + OPTIONAL:
+   * a pass without it yields nothing for the island (graceful no-op).
+   */
+  readonly ThreadIsland?: (props: {
+    /** The unit-1 anchor the island hangs from. */
+    readonly anchorId: string;
+    readonly documentId: string;
+    /** The research thread the island holds. */
+    readonly investigationId: string;
+    /** §9.0 verdict from the anchor row (never recomputed). */
+    readonly servable: boolean;
+    /** The passage quote — present ONLY for a servable anchor; null on a
+     *  metadata-only anchor (the card then shows position, never a quote). */
+    readonly passageQuote: string | null;
+    /** The anchor's page hint — the position the card shows on a
+     *  metadata-only anchor. */
+    readonly pageIndexHint: number | null;
+  }) => ReactNode;
+  /**
    * SPR-06 — SiteSee's citation hover card. The SURFACE owns the card chrome
    * (the popover, its styling, its dismiss behaviour); the augmentation supplies
    * only the substrate-derived, §9.0-GATED metadata to show. The props are a
