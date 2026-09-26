@@ -9,6 +9,7 @@ import {
   type SourceKind,
 } from "../../lib/api";
 import {
+  fileStem,
   SOURCE_UPLOAD_EXTENSIONS,
   SOURCE_UPLOAD_MAX_LABEL,
   SourceUploadError,
@@ -108,6 +109,8 @@ export default function Sources() {
   const [status, setStatus] = useState<Status>("idle");
   const [rows, setRows] = useState<IngestRow[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  /** Pre-filled from the file name; sent as the document title (A-04). */
+  const [uploadTitle, setUploadTitle] = useState("");
   const [attested, setAttested] = useState(false);
   /** Bartz attestation → content_class. personal_reading stays the default
    * (owner-only); user_owned is for content Faisal authored so BookReader
@@ -140,12 +143,14 @@ export default function Sources() {
     setUploadResult(null);
     setUploadState("idle");
     setUploadFile(null);
+    setUploadTitle("");
     setAttested(false);
     setUploadAttestation("personal_reading");
     if (!file) return;
     const validationError = validateSourceUpload(file);
     setUploadError(validationError ? uploadErrorCopy[validationError] : null);
     setUploadFile(validationError ? null : file);
+    if (!validationError) setUploadTitle(fileStem(file.name));
   }
 
   async function handleUpload(e: React.FormEvent) {
@@ -156,7 +161,12 @@ export default function Sources() {
     setUploadState("uploading");
     setUploadError(null);
     try {
-      const result = await uploadSource(uploadFile, uploadAttestation, controller.signal);
+      const result = await uploadSource(
+        uploadFile,
+        uploadAttestation,
+        controller.signal,
+        uploadTitle,
+      );
       if (controller.signal.aborted) {
         setUploadError(uploadErrorCopy.cancelled);
         setUploadState("idle");
@@ -284,6 +294,23 @@ export default function Sources() {
                 <p className="mt-3 text-sm text-ink dark:text-bright" role="status">
                   Ready: <span className="break-all font-mono">{uploadFile.name}</span> · {uploadFile.size < 1024 * 1024 ? `${Math.max(1, Math.ceil(uploadFile.size / 1024))} KiB` : `${(uploadFile.size / (1024 * 1024)).toFixed(1)} MiB`}
                 </p>
+              )}
+
+              {uploadFile && (
+                <div className="mt-4">
+                  <label htmlFor="upload-title" className="block text-xs font-medium text-ink dark:text-bright mb-1.5">
+                    Title
+                  </label>
+                  <input
+                    id="upload-title"
+                    type="text"
+                    value={uploadTitle}
+                    onChange={(event) => setUploadTitle(event.target.value)}
+                    disabled={uploadState === "uploading"}
+                    placeholder={fileStem(uploadFile.name)}
+                    className="w-full px-3 py-1.5 border border-rule dark:border-charcoal-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-sun disabled:opacity-60"
+                  />
+                </div>
               )}
 
               <fieldset className="mt-5 space-y-3" disabled={uploadState === "uploading"}>

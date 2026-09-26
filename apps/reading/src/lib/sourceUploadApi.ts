@@ -53,11 +53,24 @@ function codeForStatus(status: number): SourceUploadErrorCode {
   return "unavailable";
 }
 
-/** Upload a file without reflecting its name, content, or server detail into errors. */
+/** The file name without its last extension ("notes.v2.md" -> "notes.v2").
+ * Falls back to the whole name when stripping would leave nothing. */
+export function fileStem(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
+/** Upload a file without reflecting its name, content, or server detail into errors.
+ *
+ * `title` goes out as the multipart `title` field, which
+ * interfaces/research/api/upload_routes.py accepts (`Form(None)`) and stores on
+ * the document for every upload kind. A blank title sends the file stem, so an
+ * upload is never named by its hex id (A-04 client half). */
 export async function uploadSource(
   file: File,
   acquisitionAttestation: AcquisitionAttestation,
   signal?: AbortSignal,
+  title?: string,
 ): Promise<SourceUploadResponse> {
   const validationError = validateSourceUpload(file);
   if (validationError) throw new SourceUploadError(validationError);
@@ -65,6 +78,7 @@ export async function uploadSource(
   const form = new FormData();
   form.append("file", file);
   form.append("acquisition_attestation", acquisitionAttestation);
+  form.append("title", title?.trim() || fileStem(file.name));
 
   try {
     const response = await apiFetch(`${API_BASE}/sources/upload`, {
