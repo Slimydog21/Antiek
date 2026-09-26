@@ -8,7 +8,7 @@
 #         │
 #         ▼ cloudflared tunnel (encrypted)
 #   127.0.0.1:443  ─ Caddy ─┬─ /<api-prefix>/* → 127.0.0.1:8001 (uvicorn)
-#                           └─ everything else  → /var/www/antiek-app
+#                           └─ everything else  → {{ frontend_dist_dir }}
 #                                                 (reading-app SPA)
 #
 # Why traffic goes through Caddy (not direct to uvicorn):
