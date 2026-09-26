@@ -85,6 +85,8 @@ class ResearchArtifactStore:
         owner_user_id: str,
         path: Path,
         data: bytes,
+        *,
+        only_if_absent: bool = False,
     ) -> None:
         """Commit ownership intent, publish immutable bytes, then CAS ready."""
         import hashlib
@@ -101,6 +103,8 @@ class ResearchArtifactStore:
             ).fetchone()
             if existing is not None and str(existing[0]) != owner_user_id:
                 raise PermissionError("artifact is owned by another user")
+            if existing is not None and only_if_absent:
+                raise FileExistsError("artifact already has a ledger record")
             ctx.execute(
                 "INSERT INTO research_artifacts "
                 "(artifact_id, investigation_id, owner_user_id, source_path, source_hash, state) "
@@ -195,6 +199,18 @@ class ResearchArtifactStore:
                 "SELECT 1 FROM research_artifacts WHERE artifact_id=? "
                 "AND owner_user_id=? AND state='pending'",
                 [artifact_id, owner_user_id],
+            ).fetchone()
+            return row is not None
+        finally:
+            con.close()
+
+    def has_ledger_record(self, artifact_id: str) -> bool:
+        """A legacy file may be adopted only when no ledger identity exists."""
+        self._ensure_schema()
+        con = connect_read(self._db_path)
+        try:
+            row = con.execute(
+                "SELECT 1 FROM research_artifacts WHERE artifact_id=?", [artifact_id]
             ).fetchone()
             return row is not None
         finally:

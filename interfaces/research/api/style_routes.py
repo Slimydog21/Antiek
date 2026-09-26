@@ -258,6 +258,8 @@ async def render_artifact(
     record = artifact_store.get(artifact_id)
     stored_bytes: bytes | None = None
     if record is None:
+        if artifact_store.has_ledger_record(artifact_id):
+            raise HTTPException(status_code=404, detail="artifact not found")
         # Explicit compatibility policy: pre-ledger files belong only to the
         # local operator. Authenticated users must never inherit legacy data.
         if user_id != "__operator__":
@@ -284,9 +286,13 @@ async def render_artifact(
             managed_path = artifact_source_path_for(
                 artifact_id, hashlib.sha256(stored_bytes).hexdigest()
             )
-            artifact_store.save_source(
-                artifact_id, artifact_id, user_id, managed_path, stored_bytes
-            )
+            try:
+                artifact_store.save_source(
+                    artifact_id, artifact_id, user_id, managed_path, stored_bytes,
+                    only_if_absent=True,
+                )
+            except (FileExistsError, PermissionError) as err:
+                raise HTTPException(status_code=404, detail="artifact not found") from err
             record = artifact_store.get(artifact_id)
             stored_bytes = None
     if record is None or record.owner_user_id != user_id:

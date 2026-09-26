@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,11 @@ from runtime.db_lock import connect_write
 from services.html_projection.context import RenderContext
 from services.html_projection.renderer import render
 from substrate.graph import ensure_initialized
-from substrate.research_artifact.paths import artifact_source_path_for, artifact_version_path_for
+from substrate.research_artifact.paths import (
+    artifact_path_for,
+    artifact_source_path_for,
+    artifact_version_path_for,
+)
 from substrate.research_artifact.store import ArtifactSourceChanged, ResearchArtifactStore
 
 
@@ -233,6 +238,58 @@ def test_owner_pending_and_invalid_source_refuse_without_writes(api_env) -> None
     with connect_write(api_env["db"], purpose="test/check-no-version") as con:
         assert con.execute("SELECT COUNT(*) FROM research_artifact_versions").fetchone()[0] == 0
         assert con.execute("SELECT latest_version, selected_style FROM research_artifacts").fetchone() == (0, None)
+
+
+def test_pending_export_cannot_adopt_surviving_legacy_file(api_env, monkeypatch) -> None:
+    import substrate.research_artifact.store as store_module
+
+    store = ResearchArtifactStore(api_env["db"])
+    source_a = _rendered_source("Old source in surviving legacy file")
+    legacy = artifact_path_for("source-test")
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_bytes(source_a)
+    _save(store, "Old source in surviving legacy file")
+
+    source_b = _rendered_source("New source still publishing")
+    source_b_hash = _sha(source_b)
+    with monkeypatch.context() as fault:
+        fault.setattr(
+            store_module, "atomic_write_nofollow",
+            lambda *args, **kwargs: (_ for _ in ()).throw(OSError("publish paused")),
+        )
+        with pytest.raises(OSError, match="publish paused"):
+            store.save_source(
+                "source-test", "investigation-source-binding", "__operator__",
+                artifact_source_path_for("source-test", source_b_hash), source_b,
+            )
+
+    client = _client()
+    applied = client.post("/artifacts/source-test/render")
+    assert applied.status_code == 409
+    assert applied.json() == {"detail": "artifact_source_changed"}
+    assert client.get("/artifacts/source-test/render").status_code == 404
+    with pytest.raises(FileExistsError):
+        store.save_source(
+            "source-test", "investigation-source-binding", "__operator__",
+            artifact_source_path_for("source-test", _sha(source_a)), source_a,
+            only_if_absent=True,
+        )
+    import substrate.multi_user.auth as auth
+
+    original_claims = auth.operator_claims
+    monkeypatch.setattr(
+        auth, "operator_claims", lambda: replace(original_claims(), user_id="another-owner"),
+    )
+    assert client.post("/artifacts/source-test/render").status_code == 404
+    assert client.get("/artifacts/source-test/render").status_code == 404
+    assert legacy.read_bytes() == source_a
+    with connect_write(api_env["db"], purpose="test/pending-legacy-unchanged") as con:
+        assert con.execute(
+            "SELECT state, source_hash, latest_version, selected_style "
+            "FROM research_artifacts WHERE artifact_id='source-test'"
+        ).fetchone() == ("pending", source_b_hash, 0, None)
+        assert con.execute("SELECT COUNT(*) FROM research_artifact_versions").fetchone()[0] == 0
+    assert not artifact_version_path_for("source-test", 1).exists()
 
 
 def test_corrupt_saved_body_is_refused_without_rebinding(api_env) -> None:
