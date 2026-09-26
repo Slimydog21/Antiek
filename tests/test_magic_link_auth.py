@@ -110,6 +110,10 @@ def _client(monkeypatch):
     monkeypatch.setenv("ANTIEK_AUTH_SECRET", _SECRET)
     monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _OPERATOR)
     monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
+    # These flow tests assert the same-origin redirect contract. A developer
+    # or agent shell commonly exports a Vite frontend origin; dedicated
+    # cross-origin tests set their public base explicitly after _client().
+    monkeypatch.delenv("ANTIEK_FRONTEND_BASE_URL", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
     # Existing magic-link contract tests model a device that has already
@@ -587,8 +591,8 @@ def test_cross_origin_callback_redirects_to_frontend(monkeypatch):
     """When ANTIEK_FRONTEND_BASE_URL is set, the callback redirect
     is absolute to the frontend host so the browser lands on Pages
     with the cookie set (cross-origin deployment)."""
-    monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", "https://antiek.ai")
     client = _client(monkeypatch)
+    monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", "https://antiek.ai")
     tok = mint_magic_link_token(_OPERATOR)
     r = client.get(f"/auth/callback?token={tok}&next=/notebooks", follow_redirects=False)
     assert r.status_code == 302

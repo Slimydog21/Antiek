@@ -28,6 +28,17 @@ from substrate.graph import retrieval_substrate as _rs
 _VSS_LOADABLE = _rs._vss_loadable_probe()
 
 
+@pytest.fixture(autouse=True)
+def _no_turbopuffer_credentials(monkeypatch):
+    """Pin the benchmark's credential-free contract at the test boundary.
+
+    An operator shell with TURBOPUFFER_API_KEY exported must not turn these
+    deterministic offline benchmarks into live vendor measurements.
+    """
+    monkeypatch.delenv("TURBOPUFFER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTIEK_TURBOPUFFER_SERVABLE", raising=False)
+
+
 # ---------------------------------------------------------------------------
 # Known-answer recall arithmetic (non-vacuity)
 # ---------------------------------------------------------------------------
@@ -143,7 +154,7 @@ def test_operator_fixture_loads_with_provenance():
 
 def test_run_benchmark_emits_artifact():
     out = Path(tempfile.mkdtemp(prefix="antiek-spr05-art-")) / "spike.json"
-    artifact = rb.run_benchmark(
+    rb.run_benchmark(
         ["vss", "brute_force", "turbopuffer", "ducklake"],
         out_path=out,
         latency_repeats=3,
