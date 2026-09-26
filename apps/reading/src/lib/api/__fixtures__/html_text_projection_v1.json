@@ -1,14 +1,14 @@
 {
- "status": "PROPOSAL pending rev 9 §1.4c co-sign; Astra's expectations (including hidden-attribute AB and implicit-tbody A) unchanged; lane-A DOM selections, refusals and input semantics added 2026-09-27",
+ "status": "PROPOSAL pending rev 9 §1.4c co-sign; semantics accepted by Astra 2026-09-27; Astra-authored expectations unchanged",
  "projection_version": "html-text/v1",
  "normalization": "NFC of final assembled projection",
- "dom_path_root": "DocumentFragment parsed from html; indexes count all childNodes including text",
+ "dom_path_root": "childNodes of an HTML-namespace div whose innerHTML is set to the served string; indexes count all childNodes including text",
  "dom_offsets": "UTF-16 code units",
  "projection_offsets": "Unicode scalars; half-open",
  "oracle": "Projection strings and offsets authored independently; hashes mechanically derived from literal expectations, not projector output",
  "open_cases": [
-  "HTML5 canonicalization and hidden-subtree stripping in the sanitizer: implementation, ownership, version bump, security allowlists, idempotency and a Python/browser differential gate (not current behaviour)",
-  "legacy_projection for hidden-attribute and implicit-tbody (Astra)"
+  "HTML5 canonicalization and hidden-subtree stripping in the sanitizer: a separate backend change (version bump, allowlists, idempotency, security suite); owner unclaimed; not a co-sign blocker",
+  "the Python/browser differential gate (malformed trees, mounting context, sampled production strings): an execution gate"
  ],
  "cases": [
   {
@@ -493,8 +493,8 @@
    "raw_input": "<p>A<span hidden>X</span>B</p>",
    "served_html_target": "<p>AB</p>",
    "served_html_legacy_v1_4_0": "<p>A<span>X</span>B</p>",
-   "legacy_projection": null,
-   "legacy_pending": "astra: the projection of the legacy served string (lane A reads it as the visible text the reader shows, since v1.4.0 dropped the hidden attribute)"
+   "legacy_projection": "AXB",
+   "legacy_projection_sha256": "6b62d79b7863f0ed7992c76f1979cb46d37f29afec26913e8f5b40c692367ad9"
   },
   {
    "id": "implicit-tbody",
@@ -557,8 +557,8 @@
    "raw_input": "<table><tr><td>A</td></tr></table>",
    "served_html_target": "<table><tbody><tr><td>A</td></tr></tbody></table>",
    "served_html_legacy_v1_4_0": "<table><tr><td>A</td></tr></table>",
-   "legacy_projection": null,
-   "legacy_pending": "astra: expected to equal the target projection, because an HTML5 parse inserts tbody in both"
+   "legacy_projection": "A",
+   "legacy_projection_sha256": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
   }
  ],
  "dom_endpoint_rules": {
@@ -583,5 +583,13 @@
   "served_html_target": "Sanitizer cases only: the canonical served output under the TARGET sanitizer (HTML5 parse/serialize, hidden subtrees stripped). Not current behaviour; it needs a sanitizer version bump and its gates.",
   "served_html_legacy_v1_4_0": "Sanitizer cases only: what the CURRENT sanitizer (v1.4.0, main b41f4ec9b, sanitize_book_html) actually serves, per Astra's probe. Legacy rows keep these bytes; nothing is relabelled or rewritten on read.",
   "dom_paths": "Selections address the DocumentFragment parsed from their `dom_source` (default `html`). Reader integration addresses the served string."
+ },
+ "fragment_parse": {
+  "authored_by": "lane-A, per Astra's 2026-09-27 requirement",
+  "context_element": "div (HTML namespace)",
+  "scripting": true,
+  "browser": "the reader mounts the served string with div.innerHTML (React dangerouslySetInnerHTML): the HTML fragment parsing algorithm with context div; scripting is enabled in a browser running the app",
+  "python": "an HTML5-conformant fragment parse with the same context and flag, for example html5lib.parseFragment(served, container=\"div\", scripting=True); never stdlib HTMLParser",
+  "gate": "a Python/browser differential over this fixture plus malformed-tree and mounting-context cases and a sample of served production strings is an execution gate"
  }
 }
