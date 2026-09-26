@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import asdict as dataclass_asdict
 
 import pytest
 from fastapi.testclient import TestClient
@@ -423,6 +424,50 @@ def test_route_idempotency_conflict_detects_changed_body(client):
     assert first.status_code == 201, first.text
     assert conflict.status_code == 409
     assert conflict.json()["detail"]["error"] == "idempotency_conflict"
+
+
+def test_failed_idempotency_receipt_rolls_back_the_whole_promotion(monkeypatch):
+    _seed_synthesis()
+    _seed_start_event(owner_user_id="user-a")
+    calls = 0
+
+    def _fail_first_asdict(result):
+        nonlocal calls
+        if calls == 0:
+            calls += 1
+            raise RuntimeError("receipt serialization failed")
+        return dataclass_asdict(result)
+
+    monkeypatch.setattr("substrate.write.promote_context.asdict", _fail_first_asdict)
+
+    def _promote():
+        with connect_write(default_db_path(), purpose="test/promote") as con:
+            return promote_investigation_to_deliverable(
+                con,
+                "inv-1",
+                deliverable_kind="research_memo",
+                owner_user_id="user-a",
+                idempotency_key="promo-atomic",
+                request_digest="0" * 64,
+            )
+
+    with pytest.raises(RuntimeError, match="receipt serialization failed"):
+        _promote()
+    con = _read()
+    try:
+        count = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
+    finally:
+        con.close()
+    assert count == 0
+
+    result = _promote()
+    assert result is not None and result.idempotent_replay is False
+    con = _read()
+    try:
+        count = con.execute("SELECT COUNT(*) FROM deliverables").fetchone()[0]
+    finally:
+        con.close()
+    assert count == 1
 
 
 def test_route_rejects_missing_authenticated_identity_without_writing(client):

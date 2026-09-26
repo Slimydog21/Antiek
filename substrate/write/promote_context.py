@@ -313,70 +313,73 @@ def promote_investigation_to_deliverable(
         ).fetchall()
         live_types = {r[0]: r[1] for r in type_rows}
 
-    # 4. Create the deliverable (linked to its source investigation) + one
-    #    section titled with the synthesis's target question.
-    did = insert_deliverable(
-        con,
-        title=title or target_question or "(untitled deliverable)",
-        deliverable_kind=deliverable_kind,
-        owner_user_id=owner_user_id,
-        investigation_root_id=investigation_id,
-        metadata={
-            "promoted_from": "investigation_synthesis",
-            "source_synthesis_id": synthesis_id,
-        },
-    )
-    sid = insert_section(
-        con,
-        deliverable_id=did,
-        section_index=0,
-        title=(target_question[:120] if target_question else None),
-    )
-
-    # 5. One graph-node block per pinned source node. A dangling node's type is
-    #    unknown (it is gone) → it places as a generic 'insight' block whose
-    #    resolve_provenance is 'dangling'. No node is dropped.
-    block_ids: list[str] = []
-    dangling = 0
-    for index, node_id in enumerate(source_node_ids):
-        if node_id not in live_types:
-            dangling += 1
-        block_kind = _block_kind_for_node_type(live_types.get(node_id))
-        obid = place_block(
+    # 4. Create the deliverable, section, blocks, and idempotency receipt in
+    # one transaction. A crash after the deliverable INSERT but before the
+    # receipt INSERT must not leave a durable unclaimed promotion that a retry
+    # would duplicate.
+    with con.transaction():
+        did = insert_deliverable(
             con,
-            section_id=sid,
-            block_kind=block_kind,
-            provenance_kind="graph_node",
-            node_id=node_id,
-            block_index=index,
+            title=title or target_question or "(untitled deliverable)",
+            deliverable_kind=deliverable_kind,
+            owner_user_id=owner_user_id,
+            investigation_root_id=investigation_id,
+            metadata={
+                "promoted_from": "investigation_synthesis",
+                "source_synthesis_id": synthesis_id,
+            },
+        )
+        sid = insert_section(
+            con,
             deliverable_id=did,
-            investigation_id=investigation_id,
+            section_index=0,
+            title=(target_question[:120] if target_question else None),
         )
-        block_ids.append(obid)
 
-    result = InvestigationPromoteResult(
-        deliverable_id=did,
-        section_id=sid,
-        block_ids=block_ids,
-        block_count=len(block_ids),
-        dangling_count=dangling,
-        source_node_count=len(source_node_ids),
-        insufficient_evidence=(len(block_ids) == 0),
-        synthesis_id=synthesis_id,
-        synthesis_status=synthesis_status,
-        synthesis_recommendation=recommendation,
-    )
-    if idempotency_key is not None and request_digest is not None:
-        con.execute(
-            "INSERT INTO deliverable_promotion_idempotency "
-            "(owner_user_id, idempotency_key, request_digest, deliverable_id, result_json) "
-            "VALUES (?, ?, ?, ?, ?)",
-            [
-                owner_user_id,
-                idempotency_key,
-                request_digest,
-                result.deliverable_id,
-                json.dumps(asdict(result), separators=(",", ":"), sort_keys=True),
-            ],
+        # 5. One graph-node block per pinned source node. A dangling node's type
+        # is unknown (it is gone) → it places as a generic 'insight' block whose
+        # resolve_provenance is 'dangling'. No node is dropped.
+        block_ids: list[str] = []
+        dangling = 0
+        for index, node_id in enumerate(source_node_ids):
+            if node_id not in live_types:
+                dangling += 1
+            block_kind = _block_kind_for_node_type(live_types.get(node_id))
+            obid = place_block(
+                con,
+                section_id=sid,
+                block_kind=block_kind,
+                provenance_kind="graph_node",
+                node_id=node_id,
+                block_index=index,
+                deliverable_id=did,
+                investigation_id=investigation_id,
+            )
+            block_ids.append(obid)
+
+        result = InvestigationPromoteResult(
+            deliverable_id=did,
+            section_id=sid,
+            block_ids=block_ids,
+            block_count=len(block_ids),
+            dangling_count=dangling,
+            source_node_count=len(source_node_ids),
+            insufficient_evidence=(len(block_ids) == 0),
+            synthesis_id=synthesis_id,
+            synthesis_status=synthesis_status,
+            synthesis_recommendation=recommendation,
         )
-    return result
+        if idempotency_key is not None and request_digest is not None:
+            con.execute(
+                "INSERT INTO deliverable_promotion_idempotency "
+                "(owner_user_id, idempotency_key, request_digest, deliverable_id, result_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    owner_user_id,
+                    idempotency_key,
+                    request_digest,
+                    result.deliverable_id,
+                    json.dumps(asdict(result), separators=(",", ":"), sort_keys=True),
+                ],
+            )
+        return result
