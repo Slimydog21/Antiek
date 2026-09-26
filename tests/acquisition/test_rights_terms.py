@@ -507,3 +507,50 @@ def test_the_permit_combinators_treat_an_undeclared_whitelist_as_the_identity() 
     assert permits_in_both(None, None) is None
     assert permits_without(None, ("usage:ai-train",)) is None
     assert permits_without(("usage:ai-train",), ("usage:ai-train",)) == ()
+
+
+def test_a_site_wide_whitelist_survives_a_narrower_scope_that_sets_none() -> None:
+    """Review probe 1k (RSL 1.0 s3.1.1, "interpreted conservatively to avoid
+    the unintended expansion of rights"): the site-wide scope licenses only
+    search. A narrower scope that declares no <permits> says nothing about
+    permissions, so it cannot license ai-train on /x/a; the site-wide
+    whitelist stands, and the narrower scope still sets payment and adds its
+    prohibition."""
+    licence = parse_rsl_licence(
+        "<rsl>"
+        '<content url="/"><license><permits type="usage">search</permits></license></content>'
+        '<content url="/x/"><license><prohibits type="usage">ai-input</prohibits>'
+        '<payment type="free"/></license></content>'
+        "</rsl>",
+        license_url=f"{_ORIGIN}/license.xml",
+    )
+
+    terms = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/x/a")
+
+    assert terms.permits == ("usage:search",)
+    assert terms.prohibits == ("usage:ai-input",)
+    assert terms.payment_types == ("free",)
+    assert terms.content_url == "/x/"
+
+
+def test_the_nearest_declared_whitelist_decides_a_page_whose_scope_sets_none() -> None:
+    """Three nested scopes: / permits search, /x/ permits search and ai-train,
+    /x/y/ declares no <permits>. The most specific declaration of permissions
+    (/x/) takes precedence over the less specific one (/), as for any other
+    term; a scope declaring none leaves that declaration standing."""
+    licence = parse_rsl_licence(
+        "<rsl>"
+        '<content url="/"><license><permits type="usage">search</permits></license></content>'
+        '<content url="/x/"><license><permits type="usage">search,ai-train</permits>'
+        "</license></content>"
+        '<content url="/x/y/"><license><payment type="free"/></license></content>'
+        "</rsl>",
+        license_url=f"{_ORIGIN}/license.xml",
+    )
+
+    deep = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/x/y/z")
+    top = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/other")
+
+    assert set(deep.permits or ()) == {"usage:search", "usage:ai-train"}
+    assert deep.permits is not None
+    assert top.permits == ("usage:search",)

@@ -397,15 +397,26 @@ def redact_url(url: str) -> str:
 
 
 # Anything shaped like an absolute URL inside free text (an exception
-# message, typically). Delimiters that commonly close a quoted URL end it.
-_URL_IN_TEXT = re.compile(r"""[A-Za-z][A-Za-z0-9+.-]*://[^\s'"<>]+""")
+# message, typically), up to a character RFC 3986 never allows in a URI
+# (whitespace, ``"``, ``<``, ``>``). An apostrophe does not end it: it is a
+# sub-delim, legal in userinfo and in a query, so stopping there would leave
+# the rest of a password or token unredacted. Trailing apostrophes and
+# closing parentheses, which close a quoted URL or a ``repr``, are split off
+# before redaction and put back after it (:func:`_redacted_in_text`).
+_URL_IN_TEXT = re.compile(r"""[A-Za-z][A-Za-z0-9+.-]*://[^\s"<>]+""")
+
+
+def _redacted_in_text(found: re.Match[str]) -> str:
+    url = found.group(0)
+    stem = url.rstrip("')")
+    return redact_url(stem) + url[len(stem):]
 
 
 def _error_text(exc: BaseException) -> str:
     """``exc`` as a stored reason or a log line may carry it: its type and
     message, with every URL in the message redacted (:func:`redact_url`),
     because transports commonly name the URL they failed on."""
-    message = _URL_IN_TEXT.sub(lambda found: redact_url(found.group(0)), str(exc))
+    message = _URL_IN_TEXT.sub(_redacted_in_text, str(exc))
     return f"{type(exc).__name__}: {message}"
 
 
@@ -528,16 +539,22 @@ def terms_covering(licence: RslLicence, *, origin: str, url: str) -> RightsTerms
       robots.txt association (s3.3.1, s4.4) and grants nothing, but
       dropping its restrictions would expand rights. A narrower scope can
       set its own price; it cannot lift a site-wide ban or licence server.
-    - Payment and permissions come from the most specific covering scope.
-      Equally specific scopes have no precedence over each other, so they
-      are combined conservatively, whatever their order in the file: a
-      usage is permitted only if every one of them that declares a
-      ``<permits>`` whitelist permits it (a scope declaring none restricts
-      only through its prohibitions; ``permits`` is ``None`` when no
-      decisive scope declares one, and ``()`` when their whitelists share
-      nothing); if any of them names a price, only the priced payment types
-      are kept, and otherwise, if any of them declares no payment at all,
-      none is.
+    - Payment comes from the most specific covering scope. Equally specific
+      scopes have no precedence over each other, so they are combined
+      conservatively, whatever their order in the file: if any of them
+      names a price, only the priced payment types are kept, and otherwise,
+      if any of them declares no payment at all, none is.
+    - Permissions come from the most specific covering scope that declares
+      a ``<permits>`` whitelist. A scope declaring none says nothing about
+      permissions (it restricts only through its prohibitions), so it does
+      not conflict with a broader whitelist and cannot lift it: a site-wide
+      scope licensing only search keeps a narrower free scope with no
+      ``<permits>`` from licensing ai-train. A narrower declared whitelist
+      does take precedence over a broader one. Equally specific declared
+      whitelists are intersected: a usage is permitted only if every one of
+      them permits it. ``permits`` is ``None`` when no covering scope
+      declares a whitelist, and ``()`` when the deciding whitelists share
+      nothing.
     - No usage ``prohibits`` names or covers is left in ``permits``
       (:func:`acquisition.urls.rights_terms.permits_without`, which knows
       the usage umbrellas of s3.4.1.1); a whitelist the prohibitions empty
@@ -600,9 +617,13 @@ def terms_covering(licence: RslLicence, *, origin: str, url: str) -> RightsTerms
     decisive = [scope for specificity, scope in covering if specificity == top]
     restricting = [scope for _specificity, scope in covering] + unplaced
     prohibits = _union(scope.prohibits for scope in restricting)
-    permits = decisive[0].permits
-    for scope in decisive[1:]:
-        permits = permits_in_both(permits, scope.permits)
+    whitelisting = [(specificity, scope) for specificity, scope in covering if scope.permits is not None]
+    permits: tuple[str, ...] | None = None
+    if whitelisting:
+        nearest = max(specificity for specificity, _scope in whitelisting)
+        for specificity, scope in whitelisting:
+            if specificity == nearest:
+                permits = permits_in_both(permits, scope.permits)
     payment = _union(scope.payment_types for scope in decisive)
     priced = tuple(p for p in payment if p not in NO_CHARGE_PAYMENT_TYPES)
     if not priced and not all(scope.payment_types for scope in decisive):

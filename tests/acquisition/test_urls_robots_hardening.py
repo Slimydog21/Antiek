@@ -989,3 +989,88 @@ def test_an_http_error_names_the_page_without_credentials_or_query() -> None:
     assert "403" in str(excinfo.value)
     assert "https://a.example/x" in str(excinfo.value)
     assert _leaks(str(excinfo.value)) == []
+
+
+# --- adversarial review of c07a3f713 -----------------------------------------
+
+
+def test_a_transport_error_url_with_an_apostrophe_in_its_query_is_redacted(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """RFC 3986 allows a literal apostrophe (a sub-delim) in a query, and
+    httpx keeps it literal. The reason must not keep what follows it."""
+    client, _requested = _raising_client(
+        {("a.example", "/page"): (200, b"<html>ok</html>")},
+        {("a.example", "/robots.txt"): "/moved?token=ab'q-secret"},
+        {("a.example", "/moved")},
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        page = fetch("https://a.example/page", client=client)
+
+    reason = page.robots_fail_open_reason or ""
+    assert "https://a.example/moved" in reason
+    assert _leaks(reason) == []
+    assert _leaks(_logged(caplog, "acquisition")) == []
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("failed https://alice:p'probe-pass@h.example/x", "failed https://h.example/x"),
+        ("GET https://h.example/r?token=ab'q-secret failed", "GET https://h.example/r failed"),
+        (
+            "GET 'https://alice:probe-pass@h.example/r?token=q-secret' failed",
+            "GET 'https://h.example/r' failed",
+        ),
+        ("URL('https://h.example/r?token=ab'q-secret')", "URL('https://h.example/r')"),
+    ],
+)
+def test_an_error_text_url_holding_an_apostrophe_is_redacted_whole(
+    message: str, expected: str
+) -> None:
+    """An apostrophe inside userinfo or a query does not end the URL: neither
+    the user name nor anything after the apostrophe survives. A quote or
+    parenthesis that closes a quoted URL is kept."""
+    text = acquisition.urls.robots._error_text(RuntimeError(message))
+
+    assert text == f"RuntimeError: {expected}"
+    assert _leaks(text) == []
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "http://alice:probe-pass@a.example/x",
+        "https://alice:probe-pass@a.example:8443/x",
+    ],
+)
+def test_a_redirect_repeating_the_callers_credentials_to_another_origin_is_refused(
+    location: str,
+) -> None:
+    """Review probe: the caller's own userinfo, repeated in a Location on the
+    same host but another scheme or port, is another origin (RFC 6454).
+    httpx would send ``Authorization: Basic`` there, in cleartext for http.
+    Only the caller's own origin may receive the caller's credentials."""
+    authorized: list[str] = []
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        origin = acquisition.urls.robots.origin_of(str(request.url))
+        requested.append(origin)
+        if "authorization" in request.headers:
+            authorized.append(origin)
+        if (origin, request.url.path) == ("https://a.example", "/page"):
+            return httpx.Response(302, headers={"Location": location}, request=request)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, content=b"User-agent: *\nAllow: /\n", request=request)
+        return httpx.Response(200, content=b"<html>x</html>", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(CredentialedRedirect) as excinfo:
+        fetch("https://alice:probe-pass@a.example/page", client=client)
+
+    assert set(authorized) <= {"https://a.example"}
+    assert set(requested) == {"https://a.example"}
+    assert _leaks(str(excinfo.value)) == []

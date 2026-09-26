@@ -26,7 +26,7 @@ import httpx
 
 from acquisition.contact import ANTIEK_CONTACT_URL
 from acquisition.urls.rights_terms import NO_TERMS, RightsTerms
-from acquisition.urls.robots import RobotsDisallowed, redact_url, robots_policy_for
+from acquisition.urls.robots import RobotsDisallowed, origin_of, redact_url, robots_policy_for
 
 logger = logging.getLogger("acquisition.urls.client")
 DEFAULT_TIMEOUT_S = 20.0
@@ -99,7 +99,9 @@ class CredentialedRedirect(httpx.RequestError):
     text) would carry them. The hop is refused before it is requested, as
     the robots.txt and licence hops are (acquisition.urls.robots). A
     relative Location that only keeps the caller's own userinfo on the same
-    host is followed. The message names both URLs redacted
+    origin (scheme, host and port, RFC 6454) is followed; the same userinfo
+    on another scheme or port is refused, since httpx would send it to that
+    origin, in cleartext over http. The message names both URLs redacted
     (``robots.redact_url``)."""
 
 
@@ -275,7 +277,9 @@ def fetch(
             nxt = r.next_request
             hop_url = str(nxt.url)
             here = r.request.url
-            if nxt.url.userinfo and (nxt.url.userinfo, nxt.url.host) != (here.userinfo, here.host):
+            if nxt.url.userinfo and (
+                nxt.url.userinfo != here.userinfo or origin_of(hop_url) != origin_of(str(here))
+            ):
                 raise CredentialedRedirect(
                     f"{redact_url(str(here))} redirected to {redact_url(hop_url)} with "
                     "credentials in the URL; not followed",
