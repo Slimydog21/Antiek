@@ -21,7 +21,7 @@ import sqlite3
 import stat
 import time
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal, Protocol, TypeVar
 
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
@@ -123,6 +123,9 @@ class IngestResponse(BaseModel):
     title: str | None
     content_class: str
     source_tier: int
+
+
+ResponseT = TypeVar("ResponseT", SearchResponse, IngestResponse)
 
 
 _Table = Literal["searches", "ingests"]
@@ -237,7 +240,7 @@ def _digest(body: SearchRequest | IngestRequest) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def _claim[ResponseT: (SearchResponse, IngestResponse)](
+def _claim(  # noqa: UP047 - keep Python 3.11 syntax
     owner: str,
     body: SearchRequest | IngestRequest,
     *,
