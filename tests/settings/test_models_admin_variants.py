@@ -1,6 +1,6 @@
 """One key, many variants — SPR-03 Task 2.
 
-One registration carrying ``model_ids`` [deepseek-reasoner, deepseek-chat]
+One registration carrying ``model_ids`` [deepseek-v4-pro, deepseek-flash]
 must produce exactly ONE ``UserModelRecord`` and exactly ONE stored
 credential, with TWO selectable variants that both resolve under the same
 record id (so usage and balance stay on one ledger key). All offline: the
@@ -61,7 +61,7 @@ def _pid(slug: str) -> str:
 _TWO_VARIANTS = {
     "provider_kind": "openai_compat",
     "provider_catalog_id": "deepseek",
-    "model_ids": ["deepseek-reasoner", "deepseek-chat"],
+    "model_ids": ["deepseek-v4-pro", "deepseek-flash"],
     "display_name": "My DeepSeek",
     "api_key": _SECRET,
 }
@@ -111,8 +111,8 @@ def test_one_registration_two_variants_one_record_one_credential(client: TestCli
     assert created.status_code == 201, created.text
     row = created.json()
     assert row["id"] == _pid("my-deepseek")
-    assert row["model_id"] == "deepseek-reasoner"  # primary = first listed
-    assert row["model_ids"] == ["deepseek-reasoner", "deepseek-chat"]
+    assert row["model_id"] == "deepseek-v4-pro"  # primary = first listed
+    assert row["model_ids"] == ["deepseek-v4-pro", "deepseek-flash"]
     assert row["key_present"] is True
     assert row["registered"] is True
     assert "api_key" not in created.text
@@ -122,7 +122,7 @@ def test_one_registration_two_variants_one_record_one_credential(client: TestCli
     registry = _load_registry()
     assert list(registry) == [_pid("my-deepseek")]
     record: UserModelRecord = registry[_pid("my-deepseek")]
-    assert record.model_ids == ["deepseek-reasoner", "deepseek-chat"]
+    assert record.model_ids == ["deepseek-v4-pro", "deepseek-flash"]
     credentials = list_credentials()
     assert len(credentials) == 1
     assert credentials[0].account_handle == _pid("my-deepseek")
@@ -131,11 +131,11 @@ def test_one_registration_two_variants_one_record_one_credential(client: TestCli
     # The inventory shows ONE key row carrying TWO variants, not two rows.
     inventory = client.get("/settings/models/user").json()
     assert inventory["count"] == 1
-    assert inventory["models"][0]["model_ids"] == ["deepseek-reasoner", "deepseek-chat"]
+    assert inventory["models"][0]["model_ids"] == ["deepseek-v4-pro", "deepseek-flash"]
 
     # Both variants are selectable under the SAME record id; each resolves
     # to the variant that was asked for, and an unlisted one is refused.
-    for variant in ("deepseek-reasoner", "deepseek-chat"):
+    for variant in ("deepseek-v4-pro", "deepseek-flash"):
         resolved = client.post("/settings/models/user/resolve", json=_choice(variant))
         assert resolved.status_code == 200, resolved.text
         assert resolved.json()["provider_id"] == _pid("my-deepseek")
@@ -147,7 +147,7 @@ def test_each_variant_is_priced_as_itself_under_one_key(client: TestClient) -> N
     assert client.post("/settings/models/user", json=_TWO_VARIANTS).status_code == 201
     preset = get_provider_preset("deepseek")
     snapshots = {}
-    for variant in ("deepseek-reasoner", "deepseek-chat"):
+    for variant in ("deepseek-v4-pro", "deepseek-flash"):
         choice = UserModelChoice(
             authority="user_model", provider_id=_pid("my-deepseek"), model_id=variant,
         )
@@ -162,7 +162,7 @@ def test_each_variant_is_priced_as_itself_under_one_key(client: TestClient) -> N
         assert route.rate_snapshot == get_model_variant(preset, variant).snapshot
         snapshots[variant] = route.rate_snapshot
     # V4 Pro and V4 Flash carry different pinned pricing; one key, two prices.
-    assert snapshots["deepseek-reasoner"] != snapshots["deepseek-chat"]
+    assert snapshots["deepseek-v4-pro"] != snapshots["deepseek-flash"]
     with pytest.raises(UserModelChoiceUnavailable):
         resolve_owner_model_authority(
             client.app,
@@ -174,29 +174,29 @@ def test_each_variant_is_priced_as_itself_under_one_key(client: TestClient) -> N
 
 
 def test_explicit_model_id_becomes_primary_when_listed(client: TestClient) -> None:
-    body = {**_TWO_VARIANTS, "model_id": "deepseek-chat"}
+    body = {**_TWO_VARIANTS, "model_id": "deepseek-flash"}
     created = client.post("/settings/models/user", json=body)
     assert created.status_code == 201, created.text
-    assert created.json()["model_id"] == "deepseek-chat"
-    assert created.json()["model_ids"] == ["deepseek-chat", "deepseek-reasoner"]
+    assert created.json()["model_id"] == "deepseek-flash"
+    assert created.json()["model_ids"] == ["deepseek-flash", "deepseek-v4-pro"]
 
 
 def test_single_model_id_registration_is_a_one_variant_record(client: TestClient) -> None:
     body = {k: v for k, v in _TWO_VARIANTS.items() if k != "model_ids"}
-    created = client.post("/settings/models/user", json={**body, "model_id": "deepseek-chat"})
+    created = client.post("/settings/models/user", json={**body, "model_id": "deepseek-flash"})
     assert created.status_code == 201, created.text
-    assert created.json()["model_id"] == "deepseek-chat"
-    assert created.json()["model_ids"] == ["deepseek-chat"]
+    assert created.json()["model_id"] == "deepseek-flash"
+    assert created.json()["model_ids"] == ["deepseek-flash"]
 
 
 @pytest.mark.parametrize(
     ("mutation", "reason"),
     [
-        ({"model_ids": ["deepseek-chat", "gpt-5.6-sol"]}, "not in preset"),
-        ({"model_ids": ["deepseek-chat", "deepseek-chat"]}, "repeated"),
+        ({"model_ids": ["deepseek-flash", "gpt-5.6-sol"]}, "not in preset"),
+        ({"model_ids": ["deepseek-flash", "deepseek-flash"]}, "repeated"),
         ({"model_ids": []}, "empty"),
-        ({"model_ids": "deepseek-chat"}, "not a list"),
-        ({"model_ids": ["deepseek-chat"], "model_id": "deepseek-reasoner"}, "primary unlisted"),
+        ({"model_ids": "deepseek-flash"}, "not a list"),
+        ({"model_ids": ["deepseek-flash"], "model_id": "deepseek-v4-pro"}, "primary unlisted"),
         ({"model_ids": ["deep seek"]}, "whitespace"),
     ],
 )
@@ -213,7 +213,7 @@ def test_malformed_variant_lists_are_refused_value_free(
 def test_pre_variant_registry_row_loads_as_single_variant(client: TestClient, env: Path) -> None:
     """A row written before ``model_ids`` existed normalises on read."""
     body = {k: v for k, v in _TWO_VARIANTS.items() if k != "model_ids"}
-    assert client.post("/settings/models/user", json={**body, "model_id": "deepseek-chat"}).status_code == 201
+    assert client.post("/settings/models/user", json={**body, "model_id": "deepseek-flash"}).status_code == 201
     path = env / "settings" / "user_models.json"
     raw = path.read_text()
     assert '"model_ids"' in raw
@@ -224,4 +224,4 @@ def test_pre_variant_registry_row_loads_as_single_variant(client: TestClient, en
     path.write_text(json.dumps(registry))
 
     record = _load_registry()[_pid("my-deepseek")]
-    assert record.model_ids == ["deepseek-chat"]
+    assert record.model_ids == ["deepseek-flash"]

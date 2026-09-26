@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -200,7 +201,10 @@ class OpenAICompatProvider:
         prompt: str,
         max_tokens: int,
         temperature: float,
+        extra_body: Mapping[str, Any] | None = None,
     ) -> RawProviderResponse:
+        """``extra_body`` adds fields for this call only, after the
+        constructor's; a shared adapter instance is never mutated per call."""
         api_key = self._resolve_api_key()
         url = self.base_url + self.chat_completions_path
         headers = {
@@ -217,6 +221,8 @@ class OpenAICompatProvider:
         # top, never overriding the core request shape.
         if self._extra_body:
             body.update(self._extra_body)
+        if extra_body:
+            body.update(extra_body)
 
         client = self._ensure_client()
         t_start = time.monotonic()

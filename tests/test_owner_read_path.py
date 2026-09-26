@@ -264,7 +264,7 @@ def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner
         json={
             "provider_kind": "openai_compat",
             "provider_catalog_id": "deepseek",
-            "model_id": "deepseek-chat",
+            "model_id": "deepseek-flash",
             "display_name": "Book model",
             "api_key": "test-owner-key-123456",
         },
@@ -298,7 +298,7 @@ def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner
             "model_choice": {
                 "authority": "user_model",
                 "provider_id": provider_id,
-                "model_id": "deepseek-chat",
+                "model_id": "deepseek-flash",
             },
         },
     )
@@ -307,9 +307,9 @@ def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner
     assert receipt == {
         "authority": "owner_byot",
         "requested_provider_id": provider_id,
-        "requested_model_id": "deepseek-chat",
+        "requested_model_id": "deepseek-flash",
         "actual_provider_id": provider_id,
-        "actual_model_id": "deepseek-chat",
+        "actual_model_id": "deepseek-flash",
         "authority_digest": receipt["authority_digest"],
     }
     assert len(receipt["authority_digest"]) == 64
@@ -335,7 +335,7 @@ def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner
     operation_ledger.record_operation_result(
         "owner-a", "talk-reconcile-1", actual_cents=2,
         evidence_sha256="b" * 64, dispatch_event_id="evt-reconcile",
-        provider_id=provider_id, model_id="deepseek-chat",
+        provider_id=provider_id, model_id="deepseek-flash",
     )
     reconciled = client.post(
         "/books/model-operations/talk-reconcile-1/reconcile", cookies=owner_cookie,
@@ -379,7 +379,7 @@ def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner
         "/books/doc-owner-model/ask", cookies=owner_cookie,
         json={"question": "raced owner", "operation_id": "talk-race-1", "model_choice": {
             "authority": "user_model", "provider_id": provider_id,
-            "model_id": "deepseek-chat",
+            "model_id": "deepseek-flash",
         }},
     )
     assert raced.status_code == 503
@@ -427,7 +427,7 @@ def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner
             "model_choice": {
                 "authority": "user_model",
                 "provider_id": provider_id,
-                "model_id": "deepseek-chat",
+                "model_id": "deepseek-flash",
             },
         },
     )
@@ -443,7 +443,7 @@ def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner
             "model_choice": {
                 "authority": "user_model",
                 "provider_id": provider_id,
-                "model_id": "deepseek-chat",
+                "model_id": "deepseek-flash",
             },
         },
     )

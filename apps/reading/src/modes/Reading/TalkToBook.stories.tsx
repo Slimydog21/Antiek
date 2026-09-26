@@ -17,8 +17,8 @@ function handleFetch(url: string): Response {
       models: [{
         id: "user-deepseek",
         provider_kind: "openai_compat",
-        model_id: "deepseek-chat",
-        display_name: "DeepSeek V4 Flash",
+        model_id: "deepseek-flash",
+        display_name: "DeepSeek V4.1 Flash",
         base_url: "https://api.deepseek.com",
         enabled: true,
         key_present: true,
@@ -47,9 +47,9 @@ function handleFetch(url: string): Response {
       model_receipt: {
         authority: "owner_byot",
         requested_provider_id: "user-deepseek",
-        requested_model_id: "deepseek-chat",
+        requested_model_id: "deepseek-flash",
         actual_provider_id: "user-deepseek",
-        actual_model_id: "deepseek-chat",
+        actual_model_id: "deepseek-flash",
         authority_digest: "story-only-digest",
       },
     });
@@ -98,11 +98,11 @@ export const ModelChoice: Story = {
     const chooser = await canvas.findByRole("combobox", { name: "Model for this answer" });
     await expect(chooser).toBeVisible();
     await userEvent.click(within(chooser).getByRole("button"));
-    await userEvent.click(await canvas.findByRole("option", { name: /DeepSeek V4 Flash/ }));
-    await expect(await canvas.findByText(/Requested: DeepSeek V4 Flash/)).toBeVisible();
+    await userEvent.click(await canvas.findByRole("option", { name: /DeepSeek V4.1 Flash/ }));
+    await expect(await canvas.findByText(/Requested: DeepSeek V4.1 Flash/)).toBeVisible();
     await userEvent.type(canvas.getByRole("textbox", { name: "Question for this book" }), "How does the author define uncertainty?");
     await userEvent.click(canvas.getByRole("button", { name: "Ask" }));
-    await expect(await canvas.findByText(/Used user-deepseek · deepseek-chat/)).toBeVisible();
+    await expect(await canvas.findByText(/Used user-deepseek · deepseek-flash/)).toBeVisible();
   },
 };
 

@@ -54,8 +54,9 @@ def test_presets_have_exact_positive_price_rows() -> None:
     )
     deepseek = get_provider_preset("deepseek")
     assert {variant.model_id for variant in deepseek.models} == {
-        "deepseek-chat",
-        "deepseek-reasoner",
+        "deepseek-flash",
+        "deepseek-flash-nothink",
+        "deepseek-v4-pro",
     }
 
     entries = route_authority_catalog_entries()
@@ -181,7 +182,10 @@ def test_preset_user_key_is_registered_route_eligible_and_priced(
         assert row["route_eligible"] is True
         assert row["pricing_status"] == "known"
         assert row["execution_status"] == "blocked_idempotency_unproven"
-        assert row["rate_snapshot"] == "deepseek-v4-flash-2026-08-spec"
+        # Registered under the retired name, stored and priced as the current
+        # variant with the same mode: deepseek-chat was Flash non-thinking.
+        assert row["model_id"] == "deepseek-flash-nothink"
+        assert row["rate_snapshot"] == "deepseek-flash-v4.1-nothink-2026-09-24"
 
         custom = client.post(
             "/settings/models/user",
@@ -197,3 +201,65 @@ def test_preset_user_key_is_registered_route_eligible_and_priced(
         assert custom.json()["pricing_status"] == "unknown"
         assert custom.json()["execution_status"] == "blocked_unknown_pricing"
     reset_provider_registry()
+
+
+@pytest.mark.parametrize(
+    ("legacy", "current", "wire", "thinking"),
+    [
+        ("deepseek-chat", "deepseek-flash-nothink", "deepseek-flash", "disabled"),
+        ("deepseek-reasoner", "deepseek-flash", "deepseek-flash", "enabled"),
+        ("deepseek-v4-flash", "deepseek-flash", "deepseek-flash", "enabled"),
+    ],
+)
+def test_retired_deepseek_names_keep_their_mode_and_price_class(
+    legacy: str, current: str, wire: str, thinking: str,
+) -> None:
+    """DeepSeek pointed deepseek-chat / deepseek-reasoner at V4 Flash
+    non-thinking / thinking (updates, 2026-04-24), discontinued both names on
+    2026-07-24, and moved V4 Flash to V4.1 Flash on 2026-09-10. A key saved
+    under an old name resolves to the variant with the same mode and the same
+    rates, never silently to a dearer model."""
+    from runtime.research_runner.byot_provider_catalog import (
+        canonical_model_id,
+        get_model_variant,
+    )
+
+    deepseek = get_provider_preset("deepseek")
+    flash = get_model_variant(deepseek, "deepseek-flash")
+    variant = get_model_variant(deepseek, legacy)
+    assert canonical_model_id(deepseek, legacy) == current
+    assert variant.model_id == current
+    assert variant.request_model_id == wire
+    assert variant.thinking == thinking
+    assert variant.rates == flash.rates
+
+
+def test_current_deepseek_names_are_not_remapped() -> None:
+    from runtime.research_runner.byot_provider_catalog import (
+        canonical_model_id,
+        get_model_variant,
+    )
+
+    deepseek = get_provider_preset("deepseek")
+    for current in ("deepseek-flash", "deepseek-flash-nothink", "deepseek-v4-pro"):
+        assert canonical_model_id(deepseek, current) == current
+    pro = get_model_variant(deepseek, "deepseek-v4-pro")
+    # Pro is sent under its own name with no mode switch: DeepSeek's default.
+    assert (pro.request_model_id, pro.thinking) == ("deepseek-v4-pro", None)
+    # Legacy aliases are scoped to their provider.
+    assert canonical_model_id(get_provider_preset("kimi"), "deepseek-chat") == "deepseek-chat"
+
+
+def test_deepseek_ceiling_uses_peak_cache_miss_rates() -> None:
+    """The ceiling projection must never under-estimate: DeepSeek's peak
+    cache-miss rates per 1M tokens (pricing page, checked 2026-09-23)."""
+    from decimal import Decimal
+
+    million = Decimal("1000000")
+    rows = {
+        v.model_id: {r.unit.value: r.usd_per_unit * million for r in v.rates}
+        for v in get_provider_preset("deepseek").models
+    }
+    assert rows["deepseek-flash"] == {"input_token": Decimal("0.30"), "output_token": Decimal("1.20")}
+    assert rows["deepseek-flash-nothink"] == rows["deepseek-flash"]
+    assert rows["deepseek-v4-pro"] == {"input_token": Decimal("1.32"), "output_token": Decimal("3.96")}

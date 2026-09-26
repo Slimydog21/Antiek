@@ -82,11 +82,11 @@ import re
 import stat
 import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -104,6 +104,7 @@ from runtime.research_runner.byot_provider_catalog import (
     BYOT_PROVIDER_PRESETS,
     ProviderCatalogId,
     canonical_catalog_id,
+    canonical_model_id,
     get_model_variant,
     get_provider_preset,
     route_authority_catalog_entries,
@@ -116,7 +117,7 @@ from runtime.research_runner.provider_route_authority import (
     RouteExecutionStatus,
     canonical_provider_endpoint,
 )
-from substrate.dispatch.base import Provider, ProviderError
+from substrate.dispatch.base import Provider, ProviderError, RawProviderResponse
 from substrate.dispatch.providers.anthropic import AnthropicProvider
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
 from substrate.dispatch.router import get_provider, register_provider
@@ -564,6 +565,42 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
         self._user_model_id = record.id
         self._cred_ref = record.cred_ref
         self._user_model_authority_fingerprint = _record_fingerprint(record)
+        self._provider_catalog_id = record.provider_catalog_id
+
+    def call(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        extra_body: Mapping[str, Any] | None = None,
+    ) -> RawProviderResponse:
+        """Send a catalog variant as the provider knows it: its wire model name
+        plus its mode switch, so a legacy or mode-split id keeps the behaviour
+        it was chosen and priced for. Custom endpoints send ``model`` as is."""
+        wire_model = model
+        body: dict[str, Any] = {}
+        if self._provider_catalog_id is not None:
+            try:
+                variant = get_model_variant(
+                    get_provider_preset(self._provider_catalog_id), model
+                )
+            except KeyError:
+                variant = None
+            if variant is not None:
+                wire_model = variant.request_model_id
+                if variant.thinking is not None:
+                    body["thinking"] = {"type": variant.thinking}
+        if extra_body:
+            body.update(extra_body)
+        return super().call(
+            model=wire_model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            extra_body=body or None,
+        )
 
 
 class _UserAnthropicProvider(_ByokResolvedKeyMixin, AnthropicProvider):
@@ -746,15 +783,31 @@ class OwnerModelAuthority:
     model_id: str
 
 
+def _current_model_id(record: UserModelRecord, model_id: str) -> str:
+    """``model_id`` under the provider's current name when the record uses a
+    catalog preset; a custom endpoint's ids are left exactly as registered."""
+    if record.provider_catalog_id is None:
+        return model_id
+    try:
+        return canonical_model_id(get_provider_preset(record.provider_catalog_id), model_id)
+    except KeyError:
+        return model_id
+
+
 def resolve_owner_model_authority(
     app: FastAPI, choice: UserModelChoice, *, owner_user_id: str,
 ) -> OwnerModelAuthority:
     """Resolve and revalidate an owner route without decrypting its credential."""
     validated = UserModelChoice.model_validate(choice.model_dump(mode="json"))
     registry = _load_registry()
+    # Compare under current provider names, so a record or a remembered
+    # choice saved under a retired name still resolves (and is sent as the
+    # current model).
     matches = [
         item for item in registry.values()
-        if item.id == validated.provider_id and validated.model_id in item.model_ids
+        if item.id == validated.provider_id
+        and _current_model_id(item, validated.model_id)
+        in {_current_model_id(item, m) for m in item.model_ids}
     ]
     record = matches[0] if len(matches) == 1 else None
     metadata = _credential_metadata()
@@ -777,7 +830,7 @@ def resolve_owner_model_authority(
         credential_id=credential.cred_id,
         credential_fingerprint=credential.artifact_fingerprint or "",
         registration_fingerprint=registration,
-        model_id=validated.model_id,
+        model_id=_current_model_id(record, validated.model_id),
     )
 
 
@@ -795,7 +848,7 @@ def _route_execution_authority(
     app: FastAPI, record: UserModelRecord, *, model_id: str | None = None,
 ) -> ProviderRouteAuthority:
     # ``model_id`` picks the variant to price; the primary when not given.
-    chosen = model_id or record.model_id
+    chosen = _current_model_id(record, model_id or record.model_id)
     endpoint = record.base_url or "https://api.anthropic.com"
     identity = ProviderRouteIdentity(
         provider_kind=record.provider_kind,
@@ -876,18 +929,22 @@ def resolve_user_model_choice(
         or record.owner_user_id != owner_user_id
         or not record.enabled
         or record.id != validated.provider_id
-        or validated.model_id not in record.model_ids
+        or _current_model_id(record, validated.model_id)
+        not in {_current_model_id(record, m) for m in record.model_ids}
         or not _credential_matches_record(record, metadata)
         or record.id not in _seam_names(app)
         or fingerprints.get(record.id) != _record_fingerprint(record)
         or not _live_adapter_matches(app, record.id)
     ):
         raise UserModelChoiceUnavailable("user model route is unavailable")
-    authority = _route_execution_authority(app, record, model_id=validated.model_id)
+    # Resolve under the provider's current name, like the owner route, so a
+    # choice saved under a retired name is priced and sent as the same variant.
+    chosen = _current_model_id(record, validated.model_id)
+    authority = _route_execution_authority(app, record, model_id=chosen)
     return ResolvedUserModelRoute(
         authority="user_model",
         provider_id=record.id,
-        model_id=validated.model_id,
+        model_id=chosen,
         credential_ref=record.cred_ref,
         pricing_status=authority.pricing_status,
         hard_ceiling_eligible=authority.hard_ceiling_eligible,
@@ -987,6 +1044,12 @@ def _parse_create(payload: object) -> _ValidatedCreate:
             variants.remove(primary)
             variants.insert(0, primary)
         model_ids = tuple(variants)
+    if preset is not None:
+        # Store the provider's current names, never a retired alias.
+        current = tuple(dict.fromkeys(canonical_model_id(preset, v) for v in model_ids))
+        if len(current) != len(model_ids):
+            raise _reject("model_ids name the same model twice under old and new names")
+        model_ids = current
     model_id = model_ids[0]
     if preset is not None:
         for variant_id in model_ids:
