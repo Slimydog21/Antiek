@@ -32,6 +32,7 @@ import { fetchLibraryCatalog } from "../../api/libraryCatalog";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
+import { positionStorageKey } from "../Reading/usePosition";
 import GlassSurface from "../../shell/GlassSurface";
 import BookCard from "./BookCard";
 import CorpusSearch from "./CorpusSearch";
@@ -553,7 +554,7 @@ export default function Library() {
     (documentId: string, pageIndex?: number | null) => {
       if (pageIndex !== null && pageIndex !== undefined && pageIndex >= 0) {
         try {
-          window.sessionStorage.setItem(`antiek.read.pos.${documentId}`, String(pageIndex));
+          window.sessionStorage.setItem(positionStorageKey(documentId), String(pageIndex));
         } catch {
           /* private mode — the reader still opens, just at the saved page */
         }

@@ -4,9 +4,10 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 import type { BookDetail, FullTextResponse } from "../../api/books";
 import { paginate, windowForTocPage } from "./paginate";
-import { usePosition } from "./usePosition";
+import { positionStorageKey, setReadingPositionOwner, usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { resetReadingStateBus } from "../../hooks/useReadingState";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 const {
@@ -78,7 +79,10 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 // ── jsdom selection helper (mirrors FloatMenu.test.tsx) ──────────────
 // Build a REAL Range over the text node inside the scope element so the
@@ -152,7 +156,10 @@ describe("paginate", () => {
 // ── usePosition (return-to-reading) ─────────────────────────────────
 
 describe("usePosition", () => {
-  beforeEach(() => window.sessionStorage.clear());
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    setReadingPositionOwner("reader-a");
+  });
 
   it("persists and restores the page index per document", () => {
     const { result, unmount } = renderHook(() => usePosition("doc-a", 10));
@@ -165,9 +172,17 @@ describe("usePosition", () => {
   });
 
   it("clamps a saved position past the end of a shorter book", () => {
-    window.sessionStorage.setItem("antiek.read.pos.doc-b", "99");
+    window.sessionStorage.setItem(positionStorageKey("doc-b"), "99");
     const { result } = renderHook(() => usePosition("doc-b", 3));
     expect(result.current.pageIndex).toBe(2); // clamped to last page
+  });
+
+  it("keeps another owner's saved page out of the fallback", () => {
+    window.sessionStorage.setItem(positionStorageKey("doc-b"), "4");
+    setReadingPositionOwner("reader-b");
+    const { result } = renderHook(() => usePosition("doc-b", 10));
+    expect(result.current.pageIndex).toBe(0);
+    expect(window.sessionStorage.getItem(positionStorageKey("doc-b"))).toBeNull();
   });
 });
 
@@ -277,8 +292,10 @@ describe("BookReader", () => {
     getBookMock.mockReset();
     getFullTextMock.mockReset();
     listBooksMock.mockReset();
+    spinResearchMock.mockReset();
     navigateMock.mockReset();
     useWorkspace.getState().reset();
+    resetReadingStateBus();
     // Default: a calm, empty reading thread (the no-key / nothing-yet case).
     useInvestigationMock.mockReset();
     useInvestigationMock.mockReturnValue({
@@ -462,7 +479,7 @@ describe("BookReader", () => {
     expect(env.payload.note_text).toBe("a thought while reading");
   });
 
-  it("Deep-research in-book spins research and navigates to /inv/:id (dogfood vertical slice)", async () => {
+  it("Deep-research in-book spins research and the island emerges — no navigation (island SPR-03)", async () => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
     spinResearchMock.mockResolvedValue({
@@ -473,6 +490,52 @@ describe("BookReader", () => {
       servability: "public_domain",
       seed_preview: "The opening of the book.",
     });
+    // createAnchor / linkAnchorInvestigation are lib/api-internal (the module
+    // mock spreads ...actual), so the pin + write-back ride the GLOBAL fetch.
+    // Stub exactly the two endpoints the spawn flow needs; everything else
+    // fails the way jsdom's relative-URL fetch already does (the anchor-map
+    // stays empty, the pin goes out on the servable quote path).
+    const anchorRow = {
+      anchor_id: "ahl-1",
+      document_id: "doc-1",
+      anchor: {
+        node_id: "chunk-1",
+        node_text_sha256: "deadbeef",
+        start_scalar: 0,
+        end_scalar: 24,
+        quote: "The opening of the book.",
+        prefix: "",
+        suffix: "",
+      },
+      servable_at_pin: true,
+      selection_text_sha256: "cafe",
+      page_index_hint: 0,
+      source: "floatmenu_deep_research",
+      status: "exact",
+      exact_valid: true,
+      investigation_id: null,
+      created_at: "2026-09-24T00:00:00Z",
+      updated_at: "2026-09-24T00:00:00Z",
+    };
+    const fetchStub = vi.fn((input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (method === "POST" && url.includes("/books/doc-1/anchors")) {
+        return Promise.resolve(
+          new Response(JSON.stringify(anchorRow), { status: 201 }),
+        );
+      }
+      if (method === "PATCH" && url.includes("/books/doc-1/anchors/")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ ...anchorRow, investigation_id: "inv-from-highlight" }),
+            { status: 200 },
+          ),
+        );
+      }
+      return Promise.reject(new TypeError(`Failed to parse URL from ${url}`));
+    });
+    vi.stubGlobal("fetch", fetchStub);
     await renderReader();
     const para = await screen.findByText("The opening of the book.");
     selectTextIn(para, "The opening of the book.");
@@ -486,7 +549,23 @@ describe("BookReader", () => {
       0,
       expect.stringContaining("The opening of the book."),
     );
-    expect(navigateMock).toHaveBeenCalledWith("/inv/inv-from-highlight");
+    // The full chain: pin (POST) → spin → write-back (PATCH the thread onto
+    // the anchor).
+    const sawPin = fetchStub.mock.calls.some(
+      ([u, i]) =>
+        String(u).includes("/books/doc-1/anchors") &&
+        (i as RequestInit | undefined)?.method === "POST",
+    );
+    const sawLink = fetchStub.mock.calls.some(
+      ([u, i]) =>
+        String(u).includes("/books/doc-1/anchors/") &&
+        (i as RequestInit | undefined)?.method === "PATCH",
+    );
+    expect(sawPin).toBe(true);
+    expect(sawLink).toBe(true);
+    // Island SPR-03 retires the navigate-away: the island emerges on the
+    // passage and "Open research" on it is the explicit jump.
+    expect(navigateMock).not.toHaveBeenCalled();
     // Reader no longer opens ChaseThread for Deep-research — that path lacked
     // book provenance and never hit spin-research / notebook distill.
     expect(
