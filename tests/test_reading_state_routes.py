@@ -26,6 +26,18 @@ from substrate.graph.ops import insert_document
 
 @pytest.fixture
 def api_env(monkeypatch):
+    # This is a substrate-free route fixture: ambient operator credentials on
+    # a development workstation must not turn the hermetic TestClient into a
+    # 401-only suite.
+    for variable in (
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_DEV_LOGIN_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID",
+        "CF_ACCESS_CLIENT_SECRET",
+    ):
+        monkeypatch.delenv(variable, raising=False)
     tmpdir = tempfile.mkdtemp(prefix="reading-state-api-")
     db = os.path.join(tmpdir, "t.duckdb")
     events = os.path.join(tmpdir, "events")
@@ -55,6 +67,25 @@ def _seed_book(db: str, document_id: str = "doc-bus") -> None:
             content_class="public_domain",
             on_conflict="ignore",
         )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, "
+            "section_path, text, token_count) VALUES (?, ?, 0, 'Page 1', ?, 7)",
+            [f"chunk-{document_id}", document_id, "A short book for the bus."],
+        )
+
+
+def _pin(client: TestClient, document_id: str = "doc-bus") -> str:
+    response = client.post(
+        f"/books/{document_id}/anchors",
+        json={
+            "quote": "short book",
+            "prefix": "A ",
+            "suffix": " for the bus.",
+            "source": "pin",
+        },
+    )
+    assert response.status_code == 201
+    return str(response.json()["anchor_id"])
 
 
 # ── Proof 1: the round-trip, the owner boundary, the concurrency rules ─────
@@ -64,6 +95,7 @@ def test_put_get_round_trip_per_owner(api_env) -> None:
     db = api_env["db"]
     _seed_book(db)
     client = _client()
+    anchor_id = _pin(client)
 
     # No position recorded yet — an honest 404, never a fabricated page 0.
     missing = client.get("/books/doc-bus/reading-state")
@@ -73,12 +105,12 @@ def test_put_get_round_trip_per_owner(api_env) -> None:
     # First write (revision 0 = the row does not exist yet) creates it.
     created = client.put(
         "/books/doc-bus/reading-state",
-        json={"page_index": 3, "anchor_ref": "ahl-1", "prefs": {}, "revision": 0},
+        json={"page_index": 3, "anchor_ref": anchor_id, "prefs": {}, "revision": 0},
     )
     assert created.status_code == 200
     body = created.json()
     assert body["page_index"] == 3
-    assert body["anchor_ref"] == "ahl-1"
+    assert body["anchor_ref"] == anchor_id
     assert body["prefs"] == {}
     assert body["revision"] == 1
 
@@ -96,6 +128,120 @@ def test_put_get_round_trip_per_owner(api_env) -> None:
     assert moved.json()["revision"] == 2
     # anchor_ref defaults to null when omitted (refs, never content).
     assert moved.json()["anchor_ref"] is None
+
+
+def test_anchor_ref_must_be_an_owned_anchor_on_this_document(api_env) -> None:
+    db = api_env["db"]
+    _seed_book(db)
+    _seed_book(db, "doc-bus-2")
+    client = _client()
+    owned_anchor = _pin(client)
+    other_document_anchor = _pin(client, "doc-bus-2")
+
+    with connect_write(db, purpose="test/rekey-anchor-owner") as con:
+        con.execute(
+            "UPDATE anchored_highlights SET owner_user_id = 'someone-else' "
+            "WHERE anchor_id = ?",
+            [owned_anchor],
+        )
+
+    for invalid in (
+        "A short book for the bus.",
+        "short book",
+        "ahl-0000000000000000",
+        other_document_anchor,
+        owned_anchor,
+        "x" * 21,
+    ):
+        response = client.put(
+            "/books/doc-bus/reading-state",
+            json={"page_index": 3, "anchor_ref": invalid, "revision": 0},
+        )
+        assert response.status_code == 422
+        if invalid == "short book":
+            assert response.json()["detail"] == "anchor_ref_invalid"
+        assert client.get("/books/doc-bus/reading-state").status_code == 404
+
+    accepted = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 3, "anchor_ref": None, "revision": 0},
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["anchor_ref"] is None
+
+
+def test_deleted_anchor_echo_keeps_next_page_turn_and_drops_ref(api_env) -> None:
+    db = api_env["db"]
+    _seed_book(db)
+    client = _client()
+    anchor_id = _pin(client)
+    first = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 3, "anchor_ref": anchor_id, "revision": 0},
+    )
+    assert first.status_code == 200
+    assert client.delete(f"/books/doc-bus/anchors/{anchor_id}").status_code == 204
+
+    changed_ref = client.put(
+        "/books/doc-bus/reading-state",
+        json={
+            "page_index": 4,
+            "anchor_ref": "ahl-0000000000000000",
+            "revision": 1,
+        },
+    )
+    assert changed_ref.status_code == 422
+    assert client.get("/books/doc-bus/reading-state").json()["page_index"] == 3
+
+    stale = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 4, "anchor_ref": anchor_id, "revision": 0},
+    )
+    assert stale.status_code == 409
+
+    moved = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 4, "anchor_ref": anchor_id, "revision": 1},
+    )
+    assert moved.status_code == 200
+    assert moved.json()["page_index"] == 4
+    assert moved.json()["anchor_ref"] is None
+    assert moved.json()["revision"] == 2
+    got = client.get("/books/doc-bus/reading-state").json()
+    assert got["page_index"] == 4
+    assert got["anchor_ref"] is None
+
+
+def test_stale_revision_wins_over_a_dead_changed_anchor_ref(api_env) -> None:
+    """Concurrency is canonical: stale revision is 409, even with a dead ref."""
+    db = api_env["db"]
+    _seed_book(db)
+    client = _client()
+    anchor_id = _pin(client)
+    assert client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 3, "anchor_ref": anchor_id, "revision": 0},
+    ).status_code == 200
+    assert client.delete(f"/books/doc-bus/anchors/{anchor_id}").status_code == 204
+
+    # Another device moves the row while this client still carries both the
+    # old revision and a ref that has since been deleted.
+    competing = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 6, "anchor_ref": None, "revision": 1},
+    )
+    assert competing.status_code == 200
+
+    stale = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 4, "anchor_ref": anchor_id, "revision": 1},
+    )
+    assert stale.status_code == 409
+    assert "reading_state_stale_revision" in stale.json()["detail"]
+    got = client.get("/books/doc-bus/reading-state").json()
+    assert got["page_index"] == 6
+    assert got["anchor_ref"] is None
+    assert got["revision"] == 2
 
 
 def test_second_owner_gets_no_row(api_env) -> None:
