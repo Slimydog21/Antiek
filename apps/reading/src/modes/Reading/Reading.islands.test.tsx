@@ -528,7 +528,11 @@ describe("the island actions", () => {
     });
     await renderReader();
     await screen.findByText("The ope");
-    fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
+    fireEvent.click(await awaitIsland("a-island"));
+    // Family view mounts after the expand — await it before reading text.
+    await waitFor(() =>
+      expect(document.querySelector("[data-island-family]")).toBeTruthy(),
+    );
     const family = document.querySelector("[data-island-family]")!;
     expect(family.textContent).toContain("root q");
     expect(family.textContent).toContain("chase q");
