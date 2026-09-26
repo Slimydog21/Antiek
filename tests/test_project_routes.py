@@ -454,6 +454,30 @@ def test_a_pruned_subtree_restores_from_its_retired_nodes_unchanged(env):
     assert body["tree"]["nodes"]["a"]["child_order"] == ["a1"]
 
 
+def test_a_restore_brings_the_retired_node_back_unchanged(env):
+    """GLM contract round 9: §1.6 restores the retired node unchanged. A
+    "restore" that swaps the tab's kind, ref or origin would let a new tab
+    borrow the retired tab's numbers. What a restore may change is where it
+    hangs (the nearest surviving ancestor), its child order, and a
+    refreshed title or pane."""
+    pid = _project(env)
+    origin = {"document_id": "doc-1", "kind": "citation"}
+    tree = _tree(_node("p", "1"), _node("c", "1.1", parent="p", branch_origin=origin))
+    assert _put(env, pid, tree, 0).status_code == 200
+    retired = {e["node"]["tab_id"]: e["node"] for e in _put(env, pid, _tree(_node("p", "1")), 1).json()["retired"]}
+    for field, value in (("ref", "ref-other"), ("kind", "document"), ("branch_origin", None)):
+        changed = {**retired["c"], field: value}
+        r = _put(env, pid, {"nodes": {"p": _tree(_node("p", "1"))["nodes"]["p"] | {"child_order": ["c"]},
+                                      "c": changed}, "root_order": ["p"]}, 2)
+        assert r.status_code == 422, (field, r.text)
+        assert r.json()["tab_id"] == "c", (field, r.text)
+    moved = {**retired["c"], "parent_tab_id": None, "title": "A refreshed title"}
+    ok = _put(env, pid, {"nodes": {"p": _tree(_node("p", "1"))["nodes"]["p"], "c": moved},
+                         "root_order": ["p", "c"]}, 2)
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["tree"]["nodes"]["c"]["hier_number"] == "1.1"
+
+
 def test_pruned_at_on_a_tab_that_is_not_being_restored_is_refused(env):
     pid = _project(env)
     fresh = _put(env, pid, _tree(_node("a", "1", pruned_at="2026-09-27T00:00:00Z")), 0)

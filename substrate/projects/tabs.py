@@ -57,6 +57,8 @@ _ANCHOR_KEYS = frozenset({
 _LOCATOR_KEYS = frozenset({"start", "end", "text_sha256", "block_id"})
 _OPENED_BY_KEYS = frozenset({"thread_id", "agent_kind"})
 _PANE_KEYS = frozenset({"docked_kind", "docked_ref"})
+#: What a restore may not change: what the tab is and where it came from.
+_RESTORE_IDENTITY = ("side", "kind", "ref", "branch_origin", "opened_by")
 
 
 class TabsError(Exception):
@@ -464,10 +466,12 @@ def put_snapshot(
 
     nodes: dict[str, Any] = tree["nodes"]
     previous_nodes: dict[str, Any] = previous.get("nodes") or {}
-    restorable = {
-        str(r[0])
+    # A tab has at most one unrestored retirement: it can only close again
+    # after a restore has marked the previous one.
+    restorable: dict[str, dict[str, Any]] = {
+        str(r[0]): json.loads(r[1])
         for r in con.execute(
-            "SELECT DISTINCT tab_id FROM project_tab_retirements WHERE owner_user_id = ? AND project_id = ? "
+            "SELECT tab_id, node_json FROM project_tab_retirements WHERE owner_user_id = ? AND project_id = ? "
             "AND mothership = ? AND restored_at IS NULL",
             scope,
         ).fetchall()
@@ -480,6 +484,16 @@ def put_snapshot(
         # tree never stores it: the tab is open again.
         if node.pop("pruned_at", None) is not None and (tab_id in previous_nodes or tab_id not in restorable):
             raise TreeInvalid("pruned_at belongs to a retired tab; only a restore may carry it", tab_id)
+        # A restore brings the retired node back unchanged (§1.6). Where it
+        # hangs, its child order and a refreshed title or pane may differ;
+        # what the tab is may not, or a new tab could borrow its numbers.
+        if tab_id not in previous_nodes and tab_id in restorable:
+            retired = restorable[tab_id]
+            changed = [f for f in _RESTORE_IDENTITY if node.get(f) != retired.get(f)]
+            if changed:
+                raise TreeInvalid(
+                    f"a restore brings the retired tab back unchanged; it changed {', '.join(changed)}", tab_id
+                )
         registered = public_by_tab.get(tab_id)
         if registered is not None and registered[1] != mothership:
             raise TreeInvalid(f"this tab's number was allocated in the {registered[1]} tree", tab_id)
