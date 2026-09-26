@@ -88,7 +88,7 @@ export default function DocumentsIndex() {
   return (
     <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
+        <div className="max-w-4xl mx-auto px-1 sm:px-8 py-10 space-y-6">
           <header className="space-y-2">
             <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Documents
@@ -162,6 +162,7 @@ export default function DocumentsIndex() {
           {rows.length > 0 && (
             // S10 acceptance: DocumentsIndex uses LemonTable.
             <LemonTable
+              className="overflow-x-auto [&_table]:min-w-[48rem] [&_table]:table-fixed"
               rows={rows}
               rowKey={(r) => r.document_id}
               onRowClick={(r) =>
@@ -171,7 +172,7 @@ export default function DocumentsIndex() {
                 {
                   key: "title",
                   header: "Title",
-                  width: "50%",
+                  width: "40%",
                   render: (r) => (
                     <div>
                       <p className="font-serif text-ink dark:text-bright truncate">
@@ -226,9 +227,11 @@ export default function DocumentsIndex() {
                   key: "styles",
                   header: "Styles",
                   align: "right",
+                  width: "20%",
                   render: (r) => (
                     <button
                       type="button"
+                      aria-label={previewId === r.document_id ? "Hide styles" : "Preview styles"}
                       aria-pressed={previewId === r.document_id}
                       onClick={(e) => {
                         // The row itself navigates to /wrestle; this stays here.
@@ -237,13 +240,18 @@ export default function DocumentsIndex() {
                           current === r.document_id ? null : r.document_id,
                         );
                       }}
-                      className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors whitespace-nowrap ${
+                      className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors whitespace-nowrap scroll-mb-20 sm:scroll-mb-0 ${
                         previewId === r.document_id
                           ? "bg-ink text-white"
                           : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4"
                       }`}
                     >
-                      {previewId === r.document_id ? "Hide styles" : "Preview styles"}
+                      <span className="sm:hidden">
+                        {previewId === r.document_id ? "Hide" : "Styles"}
+                      </span>
+                      <span className="hidden sm:inline">
+                        {previewId === r.document_id ? "Hide styles" : "Preview styles"}
+                      </span>
                     </button>
                   ),
                 },

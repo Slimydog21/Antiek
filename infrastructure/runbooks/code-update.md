@@ -21,7 +21,7 @@ the backend whenever a commit on `main` has every required check green.
    gh run watch $(gh run list --workflow deploy-backend --limit 1 --json databaseId --jq '.[0].databaseId')
    ```
 
-The workflow runs the very same `playbooks/deploy.yml` this runbook used to
+The workflow runs the very same `playbooks/deploy_atomic.yml` this runbook used to
 ask you to run by hand, from an ubuntu runner instead of your Mac, and then
 asserts prod parity independently of the playbook's own assertion.
 
@@ -81,29 +81,36 @@ deploying a ref that is deliberately not `main`.
 
    ```bash
    cd ~/Desktop/Antiek/infrastructure/ansible
-   ansible-playbook -i inventory.ini playbooks/deploy.yml
+   ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml \
+     -e "antiek_target_sha=$(git rev-parse origin/main)"
    ```
+
+   For an incident rollback release, replace the resolved SHA with the
+   exact 40-hex known-good SHA. Never use a branch name or short SHA.
 
    The playbook will:
    - SSH into the VM as root
-   - `git pull` in `/opt/antiek`
-   - re-install editable Python deps (fast — usually no-op when nothing
-     changed in pyproject.toml)
-   - re-render `antiek.service` / `Caddyfile` / `backup.sh` from
-     templates, reloading systemd/Caddy if any actually changed
-   - `systemctl restart antiek`
-   - poll `systemctl is-active antiek` until it reports active
+   - build the exact SHA under `/opt/antiek-releases/<sha>` while the
+     current release keeps serving
+   - create a frozen production venv from that SHA's lock, then remove
+     the bootstrap `uv`
+   - publish the frontend built from the same exact checkout
+   - render and verify systemd, Cloudflared, and Caddy configuration
+   - quiesce DuckDB writers, checkpoint and snapshot the database, run
+     candidate schema initialization and verifiers
+   - make one `/opt/antiek` symlink cutover, activate candidate edge
+     routes, then start the candidate service
    - GET `https://api.antiek.ai/health` from your Mac and assert
-     `registered_providers` is non-empty
+     the exact SHA, non-empty providers, and public parity
 
-   **Expected end**: `failed=0` and a success_msg confirming registered
-   providers.
+   **Expected end**: `failed=0`, `/opt/antiek` resolving to the candidate,
+   and a release receipt in the immutable release directory.
 
-   **If the health check fails**, the playbook fails too. Read the
-   `assert` block's `fail_msg` — most often the issue is the secrets
-   file was wiped (it shouldn't be by deploy.yml, but if you ran
-   setup.yml since the last code change with `force: yes` toggled, it
-   would have been; default is `force: false`).
+   **If verification fails after cutover**, the playbook's rescue path
+   restores the previous symlink and Caddy routes, restarts the previous
+   release, resumes consumers, and verifies its public health before
+   failing the deploy. The DuckDB snapshot remains for database recovery;
+   code rollback does not reverse committed application writes.
 
 3. **(Optional) Spot-check a quick investigation** — same as first-deploy
    step 14, against a cheap throwaway question.
@@ -119,41 +126,49 @@ cd ~/Desktop/Antiek
 git revert HEAD              # or the bad commit's SHA
 git push origin main
 cd infrastructure/ansible
-ansible-playbook -i inventory.ini playbooks/deploy.yml
+ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml
 ```
 
-**Option B — checkout an old commit on the VM directly** (faster but
+**Option B — restore a retained release on the VM directly** (faster but
 leaves the deployed state out of sync with `main`):
 
 ```bash
 ssh -i ~/.ssh/antiek_ed25519 root@<vm-ip>
-cd /opt/antiek
-sudo -u antiek git fetch
-sudo -u antiek git checkout <known-good-sha>
+PREVIOUS=<known-good-40-hex-sha>
+LINK=/opt/antiek.rollback.$$
+ln -s "/opt/antiek-releases/$PREVIOUS" "$LINK"
+mv -Tf "$LINK" /opt/antiek
 systemctl restart antiek
 ```
 
-Then verify with `curl https://api.antiek.ai/health` from your Mac.
+Then verify with `curl https://api.antiek.ai/health` from your Mac and
+confirm `build_sha` equals `$PREVIOUS`. If the candidate changed Caddy
+routes and no automatic rollback ran, restore
+`/etc/caddy/Caddyfile.pre-atomic-<candidate-sha>` before reload; the SPA
+itself follows `/opt/antiek/frontend-dist`, so restoring the release
+pointer normally restores both API and SPA.
 
-After Option B, push the rollback to `main` so the next deploy.yml run
+After Option B, push the rollback to `main` so the next deploy_atomic.yml run
 doesn't undo your manual fix.
 
-## What deploy.yml does NOT do
+## What deploy_atomic.yml does NOT do
 
-- It does not run database migrations. The substrate's DuckDB schema is
-  managed in code (`substrate/graph/schema.py` is idempotent on
-  startup); the migration happens implicitly when uvicorn restarts.
-- It does not back up before deploying. If you're deploying a risky
-  change, run `playbooks/backup.yml` first.
-- It does not update Caddy or Python versions. Those are setup.yml's
-  concern; re-run setup.yml (idempotent) when you need OS-level upgrades.
+- It does not reverse committed application writes. The pre-migration
+  DuckDB snapshot is a recovery point, not an automatic two-phase
+  database rollback.
+- It does not update OS packages, Caddy binaries, Cloudflared binaries,
+  or Python versions. Those are setup.yml's concern; re-run setup.yml
+  (idempotently) when you need OS-level upgrades.
+- It does not deploy a mutable ref. Every invocation needs an exact
+  40-hex commit SHA and green checks unless `antiek_force_deploy=true`
+  is used deliberately.
 
 ## Common failure modes
 
 | Symptom | Most likely cause | Fix |
 |---|---|---|
-| `git pull` reports merge conflict | someone edited code on the VM directly | `ssh ... && cd /opt/antiek && git stash` then re-run deploy.yml |
-| `pip install` fails on a new dep | new optional extra added but not in `[pdf,urls,embedding]` | edit `deploy.yml`'s pip task to add the new extra |
-| systemd reports `failed` after restart | a Python import error in the new code | `ssh ... journalctl -u antiek -n 100` to see the traceback |
-| health check times out | Caddy refusing to talk to uvicorn (probably port 8001 already bound by an old uvicorn) | `ssh ... && pkill -f uvicorn && systemctl restart antiek` |
+| receipt assertion fails | an earlier build of this SHA was interrupted | the playbook removes and rebuilds the unpublished candidate; do not publish it manually |
+| lock check or exact sync fails | `uv.lock` is stale or a production extra is missing | run `uv lock` locally, commit the lock, and include every production extra in the playbook contract |
+| systemd reports `failed` after restart | a Python import error in the new code | use the playbook rollback if it did not complete; otherwise inspect `journalctl -u antiek -n 100` |
+| health check times out | Caddy, tunnel, or uvicorn failed after cutover | inspect `systemctl status antiek caddy cloudflared` and use the recorded previous release only after stopping the candidate |
 | `registered_providers: []` after deploy | secrets file got blanked (rare — only if you re-ran setup.yml with `force: yes`) | re-run secret-rotation.md to repopulate |
