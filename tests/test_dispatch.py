@@ -526,3 +526,44 @@ def test_config_role_tiers_covers_every_dispatching_role():
     # registration that un-deadens the writing-generate path. Asserting the
     # tier (not just presence) guards against a future empty-string entry.
     assert config.role_tiers["creative_writer"] == "pro"
+
+
+def test_every_literal_dispatch_role_in_the_codebase_has_a_tier():
+    """The KeyError-to-500 class, closed for good rather than role by role.
+
+    The hand-kept list above missed ``reformat`` (substrate/reformat/
+    pipeline.py), so POST /books/{id}/reformats answered 500 in production:
+    the router raises ``KeyError`` for an unregistered role. This scans
+    every ``dispatch(...)`` call in product code and requires each literal
+    role to have a tier. A role passed through a variable cannot be checked
+    statically; those call sites resolve roles from registered constants.
+    """
+    import ast
+
+    root = Path(__file__).parent.parent
+    config = DispatchConfig.from_yaml(root / "substrate" / "dispatch" / "config.yaml")
+    skip = {".venv", "node_modules", ".git", "tests", "apps", "mutants", "docs", ".claude"}
+    found: dict[str, str] = {}
+    for path in root.rglob("*.py"):
+        if any(part in skip or part.startswith(".venv") for part in path.relative_to(root).parts):
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else None
+            if name != "dispatch":
+                continue
+            role = node.args[1] if len(node.args) >= 2 else None
+            for kw in node.keywords:
+                if kw.arg == "role":
+                    role = kw.value
+            if isinstance(role, ast.Constant) and isinstance(role.value, str):
+                found.setdefault(role.value, f"{path.relative_to(root)}:{node.lineno}")
+    assert "reformat" in found, "the scan must see the reformat pipeline's dispatch call"
+    missing = {role: where for role, where in found.items() if role not in config.role_tiers}
+    assert not missing, f"roles dispatched without a role_tiers entry (router raises KeyError): {missing}"

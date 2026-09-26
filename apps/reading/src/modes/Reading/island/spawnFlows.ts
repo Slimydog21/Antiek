@@ -34,6 +34,11 @@ import { ApiError } from "../../../lib/api";
 import type { BookAnchor } from "../../../lib/api";
 import type { SpinResearchResponse } from "../../../api/books";
 
+/** The flow reads only the spawned thread id — a structural minimum, so a
+ *  NON-research spawn (the reformat generation thread, SPR-02) rides the
+ *  same pin→spin→link discipline without faking a research response. */
+export type SpawnedThread = Pick<SpinResearchResponse, "investigation_id">;
+
 /** Where a spawn flow stopped (null = it ran clean). */
 export type SpawnFailure = "pin" | "spawn" | "link" | null;
 
@@ -58,7 +63,7 @@ export interface SpawnFlowDeps {
   /** Pin the passage (the anchors unit's pin machinery). */
   pin: () => Promise<BookAnchor>;
   /** Spin the research (spinResearch — gate-safe by its own contract). */
-  spin: (passageText: string) => Promise<SpinResearchResponse>;
+  spin: (passageText: string) => Promise<SpawnedThread>;
   /** The SPR-04 write-back (first-link-wins PATCH). */
   link: (anchorId: string, investigationId: string) => Promise<unknown>;
   /** The passage text the spin is seeded with (already §9.0-safe — the
@@ -123,7 +128,7 @@ export async function runSpawnFlow(deps: SpawnFlowDeps): Promise<SpawnFlowResult
   // 2. The spin. A failure here leaves the lawful pinned highlight in place
   //    with an honest error; a retry reuses the SAME anchor (the dedupe
   //    above skips the pin).
-  let spawned: SpinResearchResponse;
+  let spawned: SpawnedThread;
   try {
     spawned = await deps.spin(deps.passageText);
   } catch (e) {

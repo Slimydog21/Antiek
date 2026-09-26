@@ -25,6 +25,13 @@ Reinstatement (:func:`reinstate`) restores the saved content_class and
 clears the flag, but does NOT restore ``raw_text`` — the body was purged
 and must be re-ingested. Takedown is meant to be heavy to undo; that
 asymmetry is the point.
+
+Derived documents (a reformat records ``derived_from_document_id`` in its
+metadata) carry the source's words, so a takedown of the source takes each of
+them down too, recursively, with the reason ``source taken down: <id>``.
+Reinstating the source reinstates exactly the derivatives its takedown took
+down, never one taken down for its own reason. The serve gate additionally
+caps a derivative by its source's current status (``substrate.books.serve``).
 """
 
 from __future__ import annotations
@@ -130,7 +137,30 @@ def take_down(con: LockedConnection, document_id: str, *, reason: str) -> bool:
         role="read/books",
         policy_id="read/books/takedown",
     )
+    for derived_id in _derived_books(con, document_id, taken_down=False):
+        take_down(con, derived_id, reason=_source_takedown_reason(document_id))
     return True
+
+
+def _source_takedown_reason(source_document_id: str) -> str:
+    return f"source taken down: {source_document_id}"
+
+
+def _derived_books(con: Any, source_document_id: str, *, taken_down: bool) -> list[str]:
+    """The registered books derived from ``source_document_id`` in the given
+    takedown state."""
+    rows = con.execute(
+        """
+        SELECT d.document_id
+        FROM documents d
+        JOIN book_assets b ON b.document_id = d.document_id
+        WHERE json_extract_string(d.metadata, '$.derived_from_document_id') = ?
+          AND COALESCE(b.taken_down, FALSE) = ?
+        ORDER BY d.document_id
+        """,
+        [source_document_id, taken_down],
+    ).fetchall()
+    return [str(r[0]) for r in rows]
 
 
 def reinstate(con: LockedConnection, document_id: str) -> bool:
@@ -179,4 +209,11 @@ def reinstate(con: LockedConnection, document_id: str) -> bool:
         role="read/books",
         policy_id="read/books/reinstate",
     )
+    reason = _source_takedown_reason(document_id)
+    for derived_id in _derived_books(con, document_id, taken_down=True):
+        own = con.execute(
+            "SELECT takedown_reason FROM book_assets WHERE document_id = ?", [derived_id]
+        ).fetchone()
+        if own is not None and own[0] == reason:
+            reinstate(con, derived_id)
     return True

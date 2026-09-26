@@ -1962,6 +1962,15 @@ def create_app(
     # text), the queue read, and dismiss.
     from .diligence_routes import register_diligence_routes
     register_diligence_routes(app)
+    # Companions SPR-02 — the companion surfaces + the evidence-base query
+    # API: per-document companion (HTML export / structured payload), the
+    # owner-scoped evidence reads, project scope honestly unavailable.
+    from .companion_routes import register_companion_routes
+    register_companion_routes(app)
+    # Reformat-provenance SPR-02 — the reformat generation call + the
+    # provenance read the review surface renders.
+    from .reformat_routes import register_reformat_routes
+    register_reformat_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
