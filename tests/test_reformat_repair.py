@@ -175,6 +175,65 @@ def test_an_unavailable_generator_answers_503(env, monkeypatch, failure) -> None
     assert resp.json()["detail"] == "reformat_generator_unavailable"
 
 
+# A model's block references are checked, never coerced. Before: a string or a
+# scalar raised ValueError/TypeError past the route (HTTP 500), and a float, a
+# numeric string or a JSON true became a definite reference to a block the
+# model never named (GLM re-review of #3527).
+
+
+def _nothing_derived(db: str) -> bool:
+    con = connect_read(db)
+    try:
+        docs = con.execute(
+            "SELECT count(*) FROM documents WHERE document_id LIKE 'drv-%'"
+        ).fetchone()[0]
+        has_records = con.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'generation_records'"
+        ).fetchone()[0]
+        records = (
+            con.execute("SELECT count(*) FROM generation_records").fetchone()[0]
+            if has_records else 0
+        )
+    finally:
+        con.close()
+    return docs == 0 and records == 0
+
+
+@pytest.mark.parametrize(
+    "indices",
+    ["bad", 3, [[0]], [0.5], [1.0], [-1], [True], ["0"], {"0": 0}],
+    ids=["string", "scalar", "nested", "float", "integral-float", "negative", "bool",
+         "numeric-string", "object"],
+)
+def test_malformed_block_references_are_a_422_not_a_500(env, monkeypatch, indices) -> None:  # noqa: F811
+    import substrate.dispatch.router as router
+    from interfaces.research.api.app import create_app
+
+    _seed(env["db"])
+    bites = [{"text": "pricing, compressed", "contribution_class": "llm_compressed",
+              "source_block_indices": indices, "investigation_id": None}]
+    monkeypatch.setattr(router, "dispatch", lambda *a, **k: _dispatch_result(json.dumps(bites)))
+    client = TestClient(create_app(register_wrestling=False), raise_server_exceptions=False)
+    resp = client.post("/books/doc-1/reformats", json={"prompt": "the 20-minute version"})
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"].startswith("malformed_source_block_indices"), resp.text
+    assert _nothing_derived(env["db"])
+
+
+def test_an_injected_generators_bool_reference_is_refused(env) -> None:  # noqa: F811
+    # The check sits at verification too, so a GenerateFn that bypasses the
+    # dispatch parser cannot have True land on block 1 through dict hashing.
+    _seed(env["db"])
+
+    def bool_reference(prompt, blocks, params):
+        return [GeneratedBite(text="pricing, compressed", contribution_class="llm_compressed",
+                              source_block_indices=(True,))]
+
+    with pytest.raises(ReformatError, match="malformed_source_block_indices"):
+        _run(env, generate_fn=bool_reference)
+    assert _nothing_derived(env["db"])
+
+
 # ── (d) the derived document opens in the reader; it is not in the library ─
 
 

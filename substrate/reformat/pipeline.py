@@ -276,11 +276,7 @@ def _dispatch_generate(
             GeneratedBite(
                 text=item["text"],
                 contribution_class=str(item.get("contribution_class") or ""),
-                source_block_indices=(
-                    None
-                    if indices is None
-                    else tuple(int(i) for i in indices)
-                ),
+                source_block_indices=_block_indices(indices),
                 investigation_id=(
                     None
                     if item.get("investigation_id") is None
@@ -294,6 +290,23 @@ def _dispatch_generate(
         model=result.model,
         dispatch_event_id=result.event_id,
         cost_usd=float(result.cost_usd),
+    )
+
+
+def _block_indices(value: object) -> tuple[int, ...] | None:
+    """A bite's source block references: null, or a list of non-negative
+    integers. Anything else is malformed output and an honest refusal, never
+    coerced: a float, a numeric string or a JSON true would otherwise become a
+    definite reference to a block the model never named."""
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)) and all(
+        type(i) is int and i >= 0 for i in value
+    ):
+        return tuple(value)
+    raise ReformatError(
+        f"malformed_source_block_indices: expected null or a list of "
+        f"non-negative integers, got {value!r:.80}"
     )
 
 
@@ -466,7 +479,7 @@ def reformat_document(
         if not text:
             continue  # an empty bite is dropped honestly (never a blank row)
         declared = bite.contribution_class
-        indices = bite.source_block_indices
+        indices = _block_indices(bite.source_block_indices)
         source_refs: list[str] | None = None
         source_sha: str | None = None
         if indices:
