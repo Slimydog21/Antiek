@@ -7,12 +7,19 @@ from pathlib import Path
 import yaml
 
 _REPO = Path(__file__).resolve().parents[1]
-_DEPLOY = _REPO / "infrastructure" / "ansible" / "playbooks" / "deploy.yml"
+_DEPLOY = _REPO / "infrastructure" / "ansible" / "playbooks" / "deploy_atomic.yml"
 
 
 def _code_tasks() -> list[dict[str, object]]:
     plays = yaml.safe_load(_DEPLOY.read_text(encoding="utf-8"))
-    return [task for task in plays[1]["tasks"] if "code" in task.get("tags", [])]
+
+    def walk(tasks: list[dict[str, object]]):
+        for task in tasks:
+            yield task
+            for key in ("block", "rescue", "always"):
+                yield from walk(task.get(key, []))
+
+    return [task for task in walk(plays[1]["tasks"]) if "code" in task.get("tags", [])]
 
 
 def _task_args(task: dict[str, object], module: str) -> dict[str, object]:
@@ -77,7 +84,7 @@ def test_bootstrap_uv_is_pinned_then_removed_after_exact_sync() -> None:
     assert cleanup_args == {
         "name": "uv",
         "state": "absent",
-        "virtualenv": "{{ antiek_install_dir }}/.venv",
+        "virtualenv": "{{ antiek_release_dir }}/.venv",
     }
 
 
@@ -104,11 +111,11 @@ def test_deploy_records_a_lock_check_before_the_exact_sync() -> None:
     assert tasks.index(bootstrap_task) < tasks.index(lock_check) < tasks.index(sync)
     args = _task_args(lock_check, "ansible.builtin.command")
     assert args["argv"] == [
-        "{{ antiek_install_dir }}/.venv/bin/uv",
+        "{{ antiek_release_dir }}/.venv/bin/uv",
         "lock",
         "--check",
     ]
-    assert args["chdir"] == "{{ antiek_install_dir }}"
+    assert args["chdir"] == "{{ antiek_release_dir }}"
     assert lock_check["changed_when"] is False
 
 
