@@ -40,7 +40,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Literal
+from typing import IO, TYPE_CHECKING, Any, BinaryIO, Literal
 
 from substrate.schemas.documents import ArxivOaiRecord
 
@@ -654,29 +654,128 @@ def iter_bulk_oai_records(
     """
     yielded = 0
     for line in snapshot:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(record, dict):
-            continue
-        try:
-            oai = record_dict_to_oai_record(record)
-        except ValueError:
-            continue
-        if category is not None and category not in oai.categories:
-            continue
-        if since is not None and oai.datestamp and oai.datestamp < since:
-            continue
-        if until is not None and oai.datestamp and oai.datestamp > until:
+        oai = _parse_bulk_oai_line(
+            line, since=since, until=until, category=category
+        )
+        if oai is None:
             continue
         yield oai
         yielded += 1
         if limit is not None and yielded >= limit:
             return
+
+
+@dataclass(frozen=True, slots=True)
+class BulkOaiLine:
+    """One physical JSONL line and the byte position immediately after it.
+
+    ``record`` is ``None`` for blank, malformed, non-object, invalid-record,
+    or filtered lines. Yielding those lines as well as selected records lets a
+    transactional caller advance across skipped input only after all earlier
+    selected records have committed. The final ``is_eof`` event reports exact
+    EOF even when the file or resumed suffix has no physical lines.
+    ``line_number`` counts physical lines within this iterator invocation; it
+    does not infer a file-global number on resume.
+    """
+
+    record: ArxivOaiRecord | None
+    end_offset: int
+    line_number: int
+    is_eof: bool = False
+
+
+def _parse_bulk_oai_line(
+    line: str,
+    *,
+    since: str | None,
+    until: str | None,
+    category: str | None,
+) -> ArxivOaiRecord | None:
+    """Parse and filter one decoded JSONL line; shared by text and byte APIs."""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        record = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(record, dict):
+        return None
+    try:
+        oai = record_dict_to_oai_record(record)
+    except ValueError:
+        return None
+    if category is not None and category not in oai.categories:
+        return None
+    if since is not None and oai.datestamp and oai.datestamp < since:
+        return None
+    if until is not None and oai.datestamp and oai.datestamp > until:
+        return None
+    return oai
+
+
+def iter_bulk_oai_lines(
+    snapshot: BinaryIO,
+    *,
+    start_offset: int = 0,
+    since: str | None = None,
+    until: str | None = None,
+    category: str | None = None,
+) -> Iterator[BulkOaiLine]:
+    """Stream plain JSONL bytes with a physical end offset for every line.
+
+    The caller must provide a seekable binary stream. Offsets are measured in
+    source bytes, not decoded characters, and therefore remain exact for
+    UTF-8 multibyte text and CRLF input. A nonzero starting offset must be
+    immediately after LF; EOF is accepted as an empty suffix. The iterator
+    yields skipped/filtered lines with ``record=None`` so a caller can commit
+    progress through them only after every earlier selected record is durable.
+    It ends with one ``is_eof`` event containing the exact physical EOF offset
+    and the count of lines read during this invocation.
+
+    This deliberately does not accept gzip or tar streams: their logical
+    positions are not seekable physical offsets in the JSONL source.
+    """
+    if start_offset < 0:
+        raise ValueError("start_offset must be nonnegative")
+    try:
+        if not snapshot.seekable():
+            raise ValueError("bulk JSONL offsets require a seekable binary stream")
+        snapshot.seek(0, os.SEEK_END)
+        file_size = snapshot.tell()
+        if start_offset > file_size:
+            raise ValueError("start_offset exceeds snapshot size")
+        if start_offset and start_offset < file_size:
+            snapshot.seek(start_offset - 1)
+            if snapshot.read(1) != b"\n":
+                raise ValueError("start_offset is not after a physical LF boundary")
+        snapshot.seek(start_offset)
+    except (OSError, AttributeError) as exc:
+        raise ValueError("bulk JSONL offsets require a seekable binary stream") from exc
+
+    line_number = 0
+    while True:
+        raw_line = snapshot.readline()
+        if not raw_line:
+            yield BulkOaiLine(
+                record=None,
+                end_offset=snapshot.tell(),
+                line_number=line_number,
+                is_eof=True,
+            )
+            return
+        line_number += 1
+        end_offset = snapshot.tell()
+        # Match strict text-mode UTF-8 decoding: a corrupt byte sequence must
+        # stop the scan before this line can advance a durable cursor.
+        decoded = raw_line.decode("utf-8")
+        yield BulkOaiLine(
+            record=_parse_bulk_oai_line(
+                decoded, since=since, until=until, category=category
+            ),
+            end_offset=end_offset,
+            line_number=line_number,
+        )
 
 
 @contextmanager

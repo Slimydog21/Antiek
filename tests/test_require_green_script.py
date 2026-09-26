@@ -23,11 +23,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools" / "deploy" / "require_green.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy_backend.yml"
 SHA = "0123456789abcdef0123456789abcdef01234567"
-REQUIRED = [
+SHARD_AND_BASE_CONTEXTS = [
     "tsc", "vitest", "keystone",
     "mypy --strict + ruff (declared scope, baselined)",
     "pytest shard 0 of 4", "pytest shard 1 of 4", "pytest shard 2 of 4", "pytest shard 3 of 4",
 ]
+REQUIRED = [*SHARD_AND_BASE_CONTEXTS, "pytest"]
 
 pytestmark = pytest.mark.skipif(shutil.which("jq") is None, reason="fake gh applies --jq with jq")
 
@@ -99,10 +100,10 @@ def _green(names=REQUIRED, started="2026-09-22T20:00:00Z"):
     return [{"name": n, "status": "completed", "conclusion": "success", "started_at": started} for n in names]
 
 
-def test_all_eight_green_exits_0(tmp_path):
+def test_all_nine_green_exits_0(tmp_path):
     rc, out, _, calls = _run(tmp_path, _green())
     assert rc == 0, out
-    assert "all 8 required contexts are success" in out
+    assert "all 9 required contexts are success" in out
     assert calls == [
         f"repos/Slimydog21/Antiek/compare/{SHA}...main",
         f"repos/Slimydog21/Antiek/commits/{SHA}/check-runs?per_page=100",
@@ -140,9 +141,24 @@ def test_one_failure_exits_1(tmp_path):
 
 
 def test_absent_context_exits_1(tmp_path):
-    rc, out, _, _ = _run(tmp_path, _green(REQUIRED[:-1]))
+    rc, out, _, _ = _run(tmp_path, _green(REQUIRED[:-2]))
     assert rc == 1
     assert "NOT GREEN: 'pytest shard 3 of 4' => absent" in out
+
+
+@pytest.mark.parametrize("rollup", [
+    None,
+    {"name": "pytest", "status": "in_progress", "conclusion": None, "started_at": "2026-09-22T20:00:00Z"},
+    {"name": "pytest", "status": "completed", "conclusion": "failure", "started_at": "2026-09-22T20:00:00Z"},
+])
+def test_eight_base_and_shard_contexts_green_but_pytest_rollup_not_green_exits_1(tmp_path, rollup):
+    runs = _green(SHARD_AND_BASE_CONTEXTS)
+    if rollup is not None:
+        runs.append(rollup)
+    rc, out, _, _ = _run(tmp_path, runs)
+    assert rc == 1
+    expected = "absent" if rollup is None else "pending" if rollup["conclusion"] is None else "failure"
+    assert f"NOT GREEN: 'pytest' => {expected}" in out
 
 
 @pytest.mark.parametrize("newest_first", [True, False])
@@ -191,7 +207,7 @@ def test_main_tip_or_a_main_ancestor_passes(tmp_path, status):
 
 @pytest.mark.parametrize("status", ["behind", "diverged", ""])
 def test_all_green_commit_not_on_main_exits_4(tmp_path, status):
-    # A fork PR's head carries the same eight green contexts from its PR CI.
+    # A fork PR's head carries the same nine green contexts from its PR CI.
     # Green says it passed, not that it merged: refuse before reading checks.
     rc, out, err, calls = _run(tmp_path, _green(), compare_status=status)
     assert rc == 4, out + err
@@ -246,10 +262,17 @@ def _deploy_step() -> dict:
 
 def _deploy_playbook_tasks() -> list[dict]:
     playbook = yaml.safe_load(
-        (ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy.yml").read_text()
+        (ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy_atomic.yml").read_text()
     )
-    substrate_play = next(p for p in playbook if p["name"] == "Antiek substrate — deploy update")
-    return substrate_play["tasks"]
+    substrate_play = next(p for p in playbook if p["hosts"] == "antiek_prod")
+
+    def walk(tasks: list[dict]):
+        for task in tasks:
+            yield task
+            for key in ("block", "rescue", "always"):
+                yield from walk(task.get(key, []))
+
+    return list(walk(substrate_play["pre_tasks"] + substrate_play["tasks"]))
 
 
 def test_deploy_pins_the_exact_sha_verified_by_the_gate():
@@ -261,21 +284,20 @@ def test_deploy_pins_the_exact_sha_verified_by_the_gate():
     assert step["env"]["ANTIEK_TARGET_SHA"] == "${{ needs.gate.outputs.sha }}"
     assert 'antiek_target_sha=$ANTIEK_TARGET_SHA' in step["run"]
 
-    resolve = next(
+    exact = next(
         task for task in _deploy_playbook_tasks()
-        if task["name"] == "resolve the SHA this deploy will pull"
+        if task["name"] == "require an exact 40-hex release identity"
     )
-    assert resolve["when"] == "antiek_target_sha is not defined"
-    set_target = next(
+    assert exact["ansible.builtin.assert"]["that"] == [
+        "antiek_target_sha is defined",
+        "antiek_target_sha | length == 40",
+        "antiek_target_sha is match('^[0-9a-f]{40}$')",
+    ]
+    checkout = next(
         task for task in _deploy_playbook_tasks()
-        if task["name"] == "set antiek_target_sha"
+        if task["name"] == "check out the gated SHA at its final release path"
     )
-    assert set_target["when"] == "antiek_target_sha is not defined"
-    git_pull = next(
-        task for task in _deploy_playbook_tasks()
-        if task["name"] == "git pull"
-    )
-    assert git_pull["ansible.builtin.git"]["version"] == "{{ antiek_target_sha }}"
+    assert checkout["ansible.builtin.git"]["version"] == "{{ antiek_target_sha }}"
 
 
 def _resolve_step_run(env: dict[str, str]) -> subprocess.CompletedProcess:
