@@ -4,23 +4,19 @@
  * 1.2, …). Section tabs are sub-surfaces of the piece, NOT routes — their
  * refs deliberately do not start with "/", so activation never navigates to
  * a fabricated URL; WriteHome reads the active tab and scopes its view.
- * Idempotent: existing tabs (by stable id) are left alone.
+ * Idempotent: existing tabs (by stable id) are left alone. The piece's
+ * title and section headings are registered as the tabs' titles here, so
+ * the strip never shows a raw ref for a piece that is already loaded.
  */
 import { useEffect } from "react";
 
 import type { DeliverableDetailResponse } from "../lib/api";
 import { childTabId, rootTabId } from "./documentSpace";
+import { SECTION_REF_PREFIX, sectionIdFromRef, sectionRefOf } from "./sectionRef";
+import { registerDeliverableTitles } from "./tabTitles";
 import { useTabTrees } from "./tabTreeStore";
 
-export const SECTION_REF_PREFIX = "section:";
-
-export function sectionRefOf(sectionId: string): string {
-  return `${SECTION_REF_PREFIX}${sectionId}`;
-}
-
-export function sectionIdFromRef(ref: string): string | null {
-  return ref.startsWith(SECTION_REF_PREFIX) ? ref.slice(SECTION_REF_PREFIX.length) : null;
-}
+export { SECTION_REF_PREFIX, sectionIdFromRef, sectionRefOf };
 
 export function useWriteTreeSync(detail: DeliverableDetailResponse | null) {
   useEffect(() => {
@@ -31,7 +27,8 @@ export function useWriteTreeSync(detail: DeliverableDetailResponse | null) {
       await store.ensureMothership("writing");
       if (cancelled) return;
       const bodyRef = `/write/${detail.deliverable_id}`;
-      const bodyId = rootTabId({ kind: "document", ref: bodyRef, title: detail.title });
+      registerDeliverableTitles(detail);
+      const bodyId = rootTabId({ kind: "document", ref: bodyRef });
       let s = useTabTrees.getState();
       let tree = s.trees.writing;
       if (!tree) return;

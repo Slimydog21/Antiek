@@ -290,7 +290,7 @@ function focusPane(side: "left" | "right") {
  * visual overflow is never a hopping boundary.
  */
 function cycleCompanionTab(direction: 1 | -1) {
-  if (mothershipForPath(window.location.pathname) === "writing") {
+  if (mothershipForPath(window.location.pathname, window.location.search) === "writing") {
     const ws = useWorkspace.getState();
     if (writeOutlineVisible(ws.layoutPreset, Boolean(ws.panels[WRITE_OUTLINE_PANEL_ID]))) {
       useWriteOutline.getState().cycle(direction);
@@ -315,7 +315,7 @@ function cycleCompanionTab(direction: 1 | -1) {
 type TabTreeStore = NonNullable<(typeof tabTreeHandle)["store"]>;
 
 function tabTreeKey(run: (store: TabTreeStore, mothership: Mothership) => void) {
-  const mothership = mothershipForPath(window.location.pathname);
+  const mothership = mothershipForPath(window.location.pathname, window.location.search);
   const store = tabTreeHandle.store;
   if (!store) return;
   const s = store.getState();

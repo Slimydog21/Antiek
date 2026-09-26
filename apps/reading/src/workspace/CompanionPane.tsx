@@ -19,6 +19,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 
+import { EmptyState } from "../components/states";
 import { useInvestigationList } from "../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../lib/api";
 import { AGENT_TAB_KINDS } from "./companionRegistry";
@@ -57,21 +58,40 @@ export default function CompanionPane() {
       data-companion-pane
       className="flex flex-col h-full min-h-0 min-w-0"
     >
-      <div
-        role="tablist"
-        aria-label="Agents"
-        className="flex items-center gap-1 shrink-0 border-b border-hairline px-1.5 py-1"
-      >
-        {visible.map((tab) => (
-          <AgentTab
-            key={tab.id}
-            tab={tab}
-            summary={summaryOf(tab)}
-            active={tab.id === activeTabId}
-            onActivate={() => activateAgentTab(tab.id)}
-            onClose={() => closeAgentTab(tab.id)}
-          />
-        ))}
+      <div className="flex items-center gap-1 shrink-0 border-b border-hairline px-1.5 py-1">
+        <div
+          role="tablist"
+          aria-label="Agents"
+          aria-orientation="horizontal"
+          onKeyDown={(e) => {
+            // The ARIA tabs pattern, automatic activation: an agent surface
+            // swaps in place, so the arrow keys open as they move.
+            if (e.ctrlKey || e.metaKey || e.altKey || visible.length === 0) return;
+            const i = Math.max(0, visible.findIndex((t) => t.id === activeTabId));
+            let next: number | null = null;
+            if (e.key === "ArrowRight") next = (i + 1) % visible.length;
+            else if (e.key === "ArrowLeft") next = (i - 1 + visible.length) % visible.length;
+            else if (e.key === "Home") next = 0;
+            else if (e.key === "End") next = visible.length - 1;
+            if (next === null) return;
+            e.preventDefault();
+            const id = visible[next].id;
+            activateAgentTab(id);
+            document.getElementById(agentTabDomId(id))?.focus();
+          }}
+          className="flex items-center gap-1 min-w-0"
+        >
+          {visible.map((tab) => (
+            <AgentTab
+              key={tab.id}
+              tab={tab}
+              summary={summaryOf(tab)}
+              active={tab.id === activeTabId}
+              onActivate={() => activateAgentTab(tab.id)}
+              onClose={() => closeAgentTab(tab.id)}
+            />
+          ))}
+        </div>
         {overflowed.length > 0 ? (
           <OverflowMenu
             tabs={overflowed}
@@ -83,18 +103,33 @@ export default function CompanionPane() {
         <NewAgentButton investigations={investigations} onPick={openAgentTab} />
       </div>
 
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div
+        className="flex-1 min-h-0 overflow-auto"
+        id={COMPANION_PANEL_DOM_ID}
+        {...(active ? { role: "tabpanel", "aria-labelledby": agentTabDomId(active.id) } : {})}
+      >
         {active ? (
           <ActiveAgentSurface tab={active} summary={summaryOf(active)} />
         ) : (
-          <p className="p-3 text-sm text-ink-soft dark:text-moonlight" data-companion-empty>
-            No agents yet. <span className="text-shadow-1">+ new agent</span> starts a
-            research thread or a one-shot dialogue here — beside your reading.
-          </p>
+          <div className="p-3" data-companion-empty>
+            <EmptyState
+              variant="inline"
+              art={false}
+              title="No agents yet"
+              body="+ new agent starts a research thread or a one-shot dialogue here, beside your reading."
+            />
+          </div>
         )}
       </div>
     </section>
   );
+}
+
+/** The agent surface the tabs control. */
+const COMPANION_PANEL_DOM_ID = "companion-agent-panel";
+
+function agentTabDomId(tabId: string): string {
+  return `agenttab-${tabId.replace(/[^A-Za-z0-9-]/g, (c) => `_${c.charCodeAt(0).toString(36)}_`)}`;
 }
 
 function ActiveAgentSurface({
@@ -125,22 +160,35 @@ function AgentTab({
   const meta = AGENT_TAB_KINDS[tab.kind];
   const glyph = meta.glyph(tab, summary);
   const title = tab.kind === "research-thread" ? (summary?.question ?? tab.title) : tab.title;
+  // The tab IS the button (the ARIA tabs pattern: a tab's children are
+  // presentational, so it can never hold a second control). Close is a mouse
+  // affordance outside the tab; from the keyboard, Delete closes.
   return (
-    <div
-      role="tab"
-      aria-selected={active}
+    <span
+      role="none"
       data-agent-tab={tab.id}
-      className={`group flex items-center gap-1 max-w-[140px] rounded px-1.5 py-0.5 text-xs cursor-default ${
+      className={`group flex items-center max-w-[140px] rounded text-xs ${
         active ? "bg-shadow-2 text-bright" : "text-ink-soft dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1"
       }`}
     >
       <button
         type="button"
+        role="tab"
+        id={agentTabDomId(tab.id)}
+        aria-selected={active}
+        aria-controls={COMPANION_PANEL_DOM_ID}
+        tabIndex={active ? 0 : -1}
         onClick={onActivate}
-        className="flex items-center gap-1 min-w-0 text-left"
-        aria-label={`Activate ${title}`}
+        onKeyDown={(e) => {
+          if (e.key === "Delete" || e.key === "Backspace") {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+        className="flex items-center gap-1 min-w-0 pl-1.5 py-0.5 text-left rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
       >
         <span
+          role="img"
           className={`inline-block w-2 h-2 rounded-full shrink-0 ${glyph.className}`}
           aria-label={glyph.label}
           title={glyph.label}
@@ -149,13 +197,17 @@ function AgentTab({
       </button>
       <button
         type="button"
+        tabIndex={-1}
+        aria-hidden="true"
+        data-agent-close
         onClick={onClose}
         aria-label={`Close ${title} agent (the agent itself is untouched)`}
-        className="shrink-0 text-shadow-1 hover:text-bright px-0.5"
+        title={`Close ${title} (Delete). The agent itself is untouched.`}
+        className="shrink-0 text-shadow-1 hover:text-bright px-1 py-0.5"
       >
         ×
       </button>
-    </div>
+    </span>
   );
 }
 
@@ -199,7 +251,12 @@ function OverflowMenu({
             >
               <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${glyph.className}`} />
               <span className="truncate">{title}</span>
-              {tab.id === activeTabId ? <span aria-label="active">·</span> : null}
+              {tab.id === activeTabId ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="sr-only">(active)</span>
+                </>
+              ) : null}
             </button>
           );
         })}

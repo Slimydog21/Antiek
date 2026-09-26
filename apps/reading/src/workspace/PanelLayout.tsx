@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { toast } from "../components/lemon/LemonToast";
 import { radius } from "../design/tokens";
 import RightPaneForMode from "./RightPaneForMode";
+import { DOCUMENT_PANEL_ID } from "./documentPanel";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { useWorkspace } from "./WorkspaceStore";
 import { isTextEditing } from "./shortcuts";
@@ -170,8 +171,9 @@ export function PanelLayout({ mainSlot }: Props) {
         <DocumentTabStrip />
       </Suspense>
       <main className="flex-1 min-w-0 relative overflow-hidden">
-        {/* Underlying mainSlot — the route content */}
-        <div className="absolute inset-0 overflow-auto">{mainSlot}</div>
+        {/* Underlying mainSlot — the route content (the document tabs'
+            tabpanel while the strip is mounted) */}
+        <div id={DOCUMENT_PANEL_ID} className="absolute inset-0 overflow-auto">{mainSlot}</div>
 
         {/* Floating layer — pointer-events:none container, panels opt back in */}
         <div className="absolute inset-0 pointer-events-none">

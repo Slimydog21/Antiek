@@ -18,6 +18,7 @@
 import { useEffect, useState } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 
+import { EmptyState, ErrorState, LoadingState } from "../components/states";
 import { getDeliverable } from "../lib/api";
 import type { SectionResponse } from "../lib/api";
 import {
@@ -52,7 +53,10 @@ export default function WriteOutlinePane() {
     .deliverableId as string | undefined;
 
   const [sections, setSections] = useState<SectionBlocks[]>([]);
-  const [failed, setFailed] = useState(false);
+  // Loading, loaded and failed are three states: an empty piece is not a
+  // piece still loading, and a failure offers a retry.
+  const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const [attempt, setAttempt] = useState(0);
   const activeBlockId = useWriteOutline((s) => s.activeBlockId);
   const setActiveBlock = useWriteOutline((s) => s.setActiveBlock);
   const setBlocks = useWriteOutline((s) => s.setBlocks);
@@ -70,11 +74,12 @@ export default function WriteOutlinePane() {
       return;
     }
     let cancelled = false;
+    setStatus("loading");
     void (async () => {
       try {
         const detail = await getDeliverable(deliverableId);
         if (cancelled || !detail) {
-          if (!cancelled) setFailed(true);
+          if (!cancelled) setStatus("failed");
           return;
         }
         const perSection = await Promise.all(
@@ -89,19 +94,19 @@ export default function WriteOutlinePane() {
         );
         if (cancelled) return;
         setSections(perSection);
-        setFailed(false);
+        setStatus("ready");
         setBlocks(
           perSection.flatMap((s) => s.blocks.map((b) => b.outline_block_id)),
         );
         void ensureDeliverable(deliverableId);
       } catch {
-        if (!cancelled) setFailed(true);
+        if (!cancelled) setStatus("failed");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [deliverableId, setBlocks, ensureDeliverable]);
+  }, [deliverableId, setBlocks, ensureDeliverable, attempt]);
 
   const flat = sections.flatMap((s) =>
     s.blocks.map((b) => ({ section: s.section, block: b })),
@@ -110,11 +115,13 @@ export default function WriteOutlinePane() {
 
   if (!deliverableId) {
     return (
-      <section aria-label="Outline" data-write-outline className="flex h-full flex-col">
-        <p className="p-3 text-sm text-ink-soft dark:text-moonlight">
-          Open a piece to see its building blocks here — one tab each, ready to
-          take source documents by drag-and-drop.
-        </p>
+      <section aria-label="Outline" data-write-outline className="flex h-full flex-col p-3">
+        <EmptyState
+          variant="inline"
+          art={false}
+          title="No piece open"
+          body="Open a piece to see its building blocks here: one tab each, ready to take source documents by drag-and-drop."
+        />
       </section>
     );
   }
@@ -125,16 +132,17 @@ export default function WriteOutlinePane() {
       data-write-outline
       className="flex h-full min-h-0 min-w-0 flex-col"
     >
+      {status === "loading" ? (
+        <div className="shrink-0 border-b border-hairline">
+          <LoadingState variant="inline" shape="strip" label="Opening the outline" />
+        </div>
+      ) : null}
+      {status === "ready" && flat.length > 0 ? (
       <div
         role="tablist"
         aria-label="Outline blocks"
         className="flex items-center gap-1 shrink-0 overflow-x-auto border-b border-hairline px-1.5 py-1"
       >
-        {flat.length === 0 && !failed ? (
-          <span className="px-1 text-xs text-shadow-1 dark:text-moonlight">
-            loading the outline…
-          </span>
-        ) : null}
         {flat.map(({ section, block }) => {
           const assigned = assignments[block.outline_block_id] ?? [];
           const isActive = block.outline_block_id === activeBlockId;
@@ -174,12 +182,18 @@ export default function WriteOutlinePane() {
           );
         })}
       </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-auto">
-        {failed ? (
-          <p className="p-3 text-sm text-ink-soft dark:text-moonlight">
-            That piece isn't available right now.
-          </p>
+        {status === "loading" ? null : status === "failed" ? (
+          <div className="p-3">
+            <ErrorState
+              variant="inline"
+              title="Couldn't open this piece's outline"
+              body="The piece itself is untouched; its blocks just didn't load."
+              onRetry={() => setAttempt((n) => n + 1)}
+            />
+          </div>
         ) : active ? (
           <BlockCard
             section={active.section}
@@ -189,12 +203,17 @@ export default function WriteOutlinePane() {
               unassign(deliverableId, active.block.outline_block_id, documentId)
             }
           />
+        ) : flat.length === 0 ? (
+          <div className="p-3">
+            <EmptyState
+              variant="inline"
+              art={false}
+              title="No blocks yet"
+              body="Add them in the outline on the left; each block gets a tab here."
+            />
+          </div>
         ) : (
-          <p className="p-3 text-sm text-ink-soft dark:text-moonlight">
-            {flat.length === 0
-              ? "This piece has no blocks yet — add them in the outline on the left."
-              : "Pick a block tab."}
-          </p>
+          <p className="p-3 text-sm text-ink-soft dark:text-moonlight">Pick a block tab.</p>
         )}
       </div>
     </section>

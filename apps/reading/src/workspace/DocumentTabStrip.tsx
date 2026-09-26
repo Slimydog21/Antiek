@@ -1,58 +1,86 @@
 /**
- * DocumentTabStrip — the cockpit's left document tab strip (D6).
+ * DocumentTabStrip — the cockpit's left document tabs (D6, DESIGN-MODEL §2a).
  *
- * Mounted ONCE in PanelLayout's shared centre column, so both presets get it
- * (the inset left pane; the docked main surface area) and every route's
- * mothership gets it (universal — Write mode's C5 groundwork). It renders:
+ * Mounted ONCE in PanelLayout's shared centre column, so both presets and
+ * every route's mothership get it. From the top:
  *
- *   - the ACTIVE PATH's tabs as a calm strip (hier numbers + labels, click
- *     to activate) — the model's addressing is the ancestry display;
- *   - the Opus Trail as the breadcrumb for the active tab's ancestry, over
- *     a Thread built by documentSpace.threadForPath in the ONE form Trail
- *     lawfully renders (every hop on the same canonical entity — the
- *     one-entity integrity contract is never bent). Never a second
- *     breadcrumb component;
- *   - the tree panel (prefix t): the full tree, with subtree focus;
- *   - the undo affordance after a close (the model's undo tokens).
+ *   - the PATH HEADER (TabPathHeader), root → active tab, compressed past
+ *     four crumbs; shown once the active tab has a parent;
+ *   - the SIBLING STRIP (SiblingStrip): the active tab and its siblings as an
+ *     ARIA tablist controlling the route content, the tree toggle before it
+ *     and a `↳ n` chip after it for the active tab's children;
+ *   - the TREE PANEL (TabTreePanel, prefix t): the whole forest.
+ *
+ * Labels are titles derived from each tab's ref (tabTitles + tabLabels),
+ * never a raw id. Close is held for 10 s behind a LemonToast Undo
+ * (tabTreeStore). Loading, empty and error use the shared state primitives.
  *
  * Tabs are navigation state: ACTIVATING a tab navigates to its canonical
- * route (routeForTab — the URL stays canonical, never a guessed embedding).
- * Kinds with no canonical route render the honest "opens as window" bridge.
- *
- * Two sync directions, both loop-safe:
- *   route → tree: the current route's surface is seeded as a root tab and
- *     activated (a route the operator navigated to directly still has a tab);
- *   tree → route: activating a tab with a canonical route (strip, keys)
- *     navigates there.
+ * route (routeForTab). Two sync directions, both loop-safe:
+ *   route → tree: documentSpace.adoptTabForRoute — an open tab that shows
+ *     the route is adopted before a root is seeded, so a child stays a child;
+ *   tree → route: an activation (strip, keys, the cross-pane seam) navigates
+ *     to the tab's route unless the route already shows it.
  *
  * Test/story seam: without a Router context the strip renders nothing (it
- * exists to navigate) — PanelLayout's router-free tests keep their DOM.
+ * exists to navigate). DocumentTabStripView is the presentational half the
+ * stories render with a fixed tree.
  */
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useInRouterContext, useLocation, useNavigate } from "react-router-dom";
+import { CornerDownRight, ListTree } from "lucide-react";
 
-import { Trail } from "../shell/Trail";
+import { ErrorState, LoadingState } from "../components/states";
 import {
+  adoptTabForRoute,
+  freshTabId,
   mothershipForPath,
-  rootRefForPath,
   rootTabId,
   routeForTab,
-  threadForPath,
+  tabShowsPath,
 } from "./documentSpace";
-import { pathTo, type TabNode } from "./tabTree";
+import { SiblingStrip } from "./SiblingStrip";
+import { TabPathHeader } from "./TabPathHeader";
+import { TabTreePanel } from "./TabTreePanel";
+import { labelForTab, type TabLabel } from "./tabLabels";
+import { DOCUMENT_PANEL_ID, domIdFor } from "./tabStripParts";
+import { requestTabTitle, titleKey, useTabTitles, type TitleEntry } from "./tabTitles";
+import { pathTo, type Mothership, type TabTree } from "./tabTree";
 import { useTabTrees } from "./tabTreeStore";
 
-/** The display label the model can honestly offer (it stores no titles —
- *  titles live in the surfaces): a branch anchor's quote, else the ref. */
-export function labelForTab(tab: TabNode): string {
-  const quote = tab.branch_origin?.anchor?.quote?.trim();
-  if (quote) return quote.length > 36 ? `${quote.slice(0, 36)}…` : quote;
-  return tab.ref;
+export { labelForTab };
+
+/** The route → tree sync, shared by the route effect and "Try again". */
+async function syncRouteToTree(mothership: Mothership, pathname: string): Promise<void> {
+  await useTabTrees.getState().ensureMothership(mothership);
+  const store = useTabTrees.getState();
+  const tree = store.trees[mothership];
+  if (!tree) return;
+  const adoption = adoptTabForRoute(tree, pathname);
+  if (adoption.action === "activate") store.activateTab(mothership, adoption.tabId);
+  else if (adoption.action === "seed") {
+    store.spawnTab(mothership, null, {
+      tab_id: freshTabId(tree, rootTabId(adoption.ref)),
+      kind: adoption.ref.kind,
+      ref: adoption.ref.ref,
+      mothership,
+      activate: true,
+    });
+  }
+}
+
+export function labelsFor(
+  tree: TabTree | null,
+  entries: Record<string, TitleEntry>,
+): (tabId: string) => TabLabel {
+  return (tabId) => {
+    const tab = tree!.nodes[tabId];
+    const parent = tab.parent_tab_id ? tree!.nodes[tab.parent_tab_id] : null;
+    return labelForTab(tab, parent, entries[titleKey(tab.kind, tab.ref)]);
+  };
 }
 
 export function DocumentTabStrip() {
-  // Test/story seam: without a Router context the strip renders nothing (it
-  // exists to navigate) — PanelLayout's router-free tests keep their DOM.
   // The guard is an OUTER component because hooks cannot be conditional.
   if (!useInRouterContext()) return null;
   return <DocumentTabStripInner />;
@@ -61,246 +89,249 @@ export function DocumentTabStrip() {
 function DocumentTabStripInner() {
   const location = useLocation();
   const navigate = useNavigate();
-  const mothership = mothershipForPath(location.pathname);
+  const mothership = mothershipForPath(location.pathname, location.search);
 
   const tree = useTabTrees((s) => s.trees[mothership]);
+  const loadError = useTabTrees((s) => s.loadError[mothership]);
   const treePanelOpen = useTabTrees((s) => s.treePanelOpen);
   const subtreeFocusId = useTabTrees((s) => s.subtreeFocusId);
-  const lastUndo = useTabTrees((s) => s.lastUndo);
+  const entries = useTabTitles((s) => s.entries);
 
-  // route → tree: seed the current route's surface as a root tab and follow
-  // it (unless the operator is already down one of its branches).
   useEffect(() => {
-    // (the outer component already proved a Router exists)
-    let cancelled = false;
-    void (async () => {
-      await useTabTrees.getState().ensureMothership(mothership);
-      if (cancelled) return;
-      const ref = rootRefForPath(location.pathname);
-      if (!ref) return;
-      const store = useTabTrees.getState();
-      const tree = store.trees[mothership];
-      if (!tree) return;
-      const id = rootTabId(ref);
-      if (!tree.nodes[id]) {
-        store.spawnTab(mothership, null, {
-          tab_id: id,
-          kind: ref.kind,
-          ref: ref.ref,
-          mothership,
-          activate: true,
-        });
-        return;
-      }
-      const active = tree.active_tab_id;
-      const inSubtree = active !== null && pathTo(tree, active).includes(id);
-      if (!inSubtree && active !== id) store.activateTab(mothership, id);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void syncRouteToTree(mothership, location.pathname);
   }, [location.pathname, mothership]);
 
-  // tree → route: an ACTIVATION (strip clicks, the prefix keys, the
-  // cross-pane seam) navigates to the tab's canonical route. Guarded to
-  // changes only: whatever was already active when this strip mounted (a
-  // stale store from an earlier surface) is NOT a mandate to hijack the
-  // current route — the route sync above is the authority on mount.
+  // tree → route: only an ACTIVATION navigates. Whatever was active when
+  // the strip mounted is not a mandate to hijack the current route.
   const activeTab = tree?.active_tab_id ? tree.nodes[tree.active_tab_id] : null;
-  const activeRoute = activeTab ? routeForTab(activeTab) : null;
   const prevActiveRef = useRef<string | null>(activeTab?.tab_id ?? null);
   useEffect(() => {
     const id = activeTab?.tab_id ?? null;
     if (id === prevActiveRef.current) return;
     prevActiveRef.current = id;
-    if (activeRoute && location.pathname !== activeRoute) navigate(activeRoute);
-  }, [activeTab, activeRoute, location.pathname, navigate]);
-
-  function openTab(tab: TabNode) {
-    useTabTrees.getState().activateTab(mothership, tab.tab_id);
-    const route = routeForTab(tab);
+    if (!activeTab || tabShowsPath(activeTab, location.pathname)) return;
+    const route = routeForTab(activeTab);
     if (route) navigate(route);
+  }, [activeTab, location.pathname, navigate]);
+
+  // Activation only moves the tree; the effect above does the navigating,
+  // so a click, a key and the cross-pane seam take one path.
+  const activate = useCallback(
+    (tabId: string) => useTabTrees.getState().activateTab(mothership, tabId),
+    [mothership],
+  );
+
+  const labelOf = useMemo(() => labelsFor(tree, entries), [tree, entries]);
+
+  // Titles resolve for what is on screen: the path, the siblings, the
+  // active tab's children (the chip's tooltip); the panel asks for its rows.
+  const path = tree && tree.active_tab_id ? pathTo(tree, tree.active_tab_id) : [];
+  const siblings = siblingsOf(tree);
+  const visibleKey = [...path, ...siblings].join("\u0000");
+  useEffect(() => {
+    if (!tree) return;
+    for (const id of new Set([...path, ...siblings])) requestTabTitle(tree.nodes[id]);
+    // visibleKey stands for path + siblings.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleKey, tree]);
+  const requestRows = useCallback(
+    (ids: string[]) => {
+      const t = useTabTrees.getState().trees[mothership];
+      if (!t) return;
+      for (const id of ids) if (t.nodes[id]) requestTabTitle(t.nodes[id]);
+    },
+    [mothership],
+  );
+
+  // The route content is the tabpanel the selected tab controls.
+  const selectedDomId = tree?.active_tab_id ? domIdFor("doctab", tree.active_tab_id) : null;
+  useEffect(() => {
+    const panel = document.getElementById(DOCUMENT_PANEL_ID);
+    if (!panel || !selectedDomId) return;
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", selectedDomId);
+    return () => {
+      panel.removeAttribute("role");
+      panel.removeAttribute("aria-labelledby");
+    };
+  }, [selectedDomId]);
+
+  const status: StripStatus = tree ? "ready" : loadError ? "error" : "loading";
+
+  return (
+    <DocumentTabStripView
+      status={status}
+      errorDetail={loadError}
+      onRetry={() => {
+        void useTabTrees
+          .getState()
+          .retryLoad(mothership)
+          .then(() => syncRouteToTree(mothership, window.location.pathname));
+      }}
+      tree={tree}
+      labelOf={labelOf}
+      treePanelOpen={treePanelOpen}
+      subtreeFocusId={subtreeFocusId}
+      onActivate={activate}
+      onToggleTree={() => useTabTrees.getState().toggleTreePanel()}
+      onFocusSubtree={(id) => useTabTrees.getState().setSubtreeFocus(id)}
+      onVisitChild={() => useTabTrees.getState().visitChildOfActive(mothership)}
+      onRowsShown={requestRows}
+    />
+  );
+}
+
+function siblingsOf(tree: TabTree | null | undefined): readonly string[] {
+  const active = tree?.active_tab_id ? tree.nodes[tree.active_tab_id] : null;
+  if (!tree || !active) return tree ? tree.root_order : [];
+  return active.parent_tab_id === null
+    ? tree.root_order
+    : (tree.nodes[active.parent_tab_id]?.child_order ?? []);
+}
+
+export type StripStatus = "loading" | "error" | "ready";
+
+export interface DocumentTabStripViewProps {
+  status: StripStatus;
+  errorDetail?: string | null;
+  onRetry: () => void;
+  tree: TabTree | null | undefined;
+  labelOf: (tabId: string) => TabLabel;
+  treePanelOpen: boolean;
+  subtreeFocusId: string | null;
+  onActivate: (tabId: string) => void;
+  onToggleTree: () => void;
+  onFocusSubtree: (tabId: string | null) => void;
+  onVisitChild: () => void;
+  onRowsShown?: (tabIds: string[]) => void;
+}
+
+/** The presentational strip: every state, no store, no router. */
+export function DocumentTabStripView({
+  status,
+  errorDetail,
+  onRetry,
+  tree,
+  labelOf,
+  treePanelOpen,
+  subtreeFocusId,
+  onActivate,
+  onToggleTree,
+  onFocusSubtree,
+  onVisitChild,
+  onRowsShown,
+}: DocumentTabStripViewProps) {
+  const toggleRef = useRef<HTMLButtonElement>(null);
+
+  if (status === "loading" || !tree) {
+    if (status === "error") {
+      return (
+        <div data-document-strip className="shrink-0 border-b border-hairline p-1.5">
+          <ErrorState
+            variant="inline"
+            title="Couldn't open your tabs"
+            body="Your documents are untouched; only the list of open tabs didn't load."
+            detail={errorDetail ?? null}
+            onRetry={onRetry}
+          />
+        </div>
+      );
+    }
+    return (
+      <div data-document-strip className="shrink-0 border-b border-hairline">
+        <LoadingState variant="inline" shape="strip" rows={3} label="Opening your tabs" />
+      </div>
+    );
   }
 
-  const path = tree && tree.active_tab_id ? pathTo(tree, tree.active_tab_id) : [];
-  const thread = tree ? threadForPath(tree, tree.active_tab_id) : null;
+  const active = tree.active_tab_id ? tree.nodes[tree.active_tab_id] : null;
+  const path = active ? pathTo(tree, active.tab_id) : [];
+  const siblings = siblingsOf(tree);
+  const parent = active?.parent_tab_id ? tree.nodes[active.parent_tab_id] : null;
+  const children = active ? active.child_order.filter((c) => Object.hasOwn(tree.nodes, c)) : [];
+  const bridge = active !== null && routeForTab(active) === null;
 
   return (
     <div className="relative shrink-0" data-document-strip>
-      <div className="flex items-center gap-1 border-b border-hairline px-2 py-1 text-xs">
+      {path.length > 1 ? (
+        <TabPathHeader tree={tree} path={path} labelOf={labelOf} onActivate={onActivate} />
+      ) : null}
+
+      <div className="flex items-stretch min-w-0 border-b border-hairline">
         <button
+          ref={toggleRef}
           type="button"
-          onClick={() => useTabTrees.getState().toggleTreePanel()}
+          onClick={onToggleTree}
           aria-expanded={treePanelOpen}
-          aria-label="Toggle the tab tree"
-          className="shrink-0 rounded px-1.5 py-0.5 text-shadow-1 dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1"
+          aria-controls="document-tab-tree"
+          aria-label="Tab tree (prefix t)"
+          title="All tabs (prefix t)"
+          className="shrink-0 flex items-center px-2 text-shadow-1 dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1 hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
         >
-          ≡
+          <ListTree size={14} strokeWidth={1.75} aria-hidden="true" />
         </button>
-        {!tree && <span className="text-shadow-1 dark:text-moonlight">tabs…</span>}
-        {path.map((tabId, i) => {
-          const tab = tree!.nodes[tabId];
-          const isActive = tabId === tree!.active_tab_id;
-          return (
-            <span key={tabId} className="flex items-center gap-1 min-w-0">
-              {i > 0 && <span aria-hidden="true" className="text-ink-mute dark:text-moonlight/60">›</span>}
-              <button
-                type="button"
-                onClick={() => openTab(tab)}
-                data-tab-id={tabId}
-                draggable={tab.kind === "reader"}
-                onDragStart={
-                  tab.kind === "reader"
-                    ? (e) => {
-                        e.dataTransfer.setData(
-                          "application/x-antiek-source-document",
-                          JSON.stringify({ document_id: tab.ref, document_title: null }),
-                        );
-                        e.dataTransfer.effectAllowed = "copy";
-                      }
-                    : undefined
-                }
-                aria-current={isActive ? "page" : undefined}
-                className={`flex items-center gap-1 min-w-0 rounded px-1.5 py-0.5 ${
-                  isActive
-                    ? "bg-ice-2 dark:bg-charcoal-1 text-ink dark:text-bright"
-                    : "text-ink-soft dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1"
-                }`}
-              >
-                <span className="font-mono text-shadow-1 dark:text-moonlight shrink-0">
-                  {tab.hier_number}
-                </span>
-                <span className="truncate">{labelForTab(tab)}</span>
-              </button>
-            </span>
-          );
-        })}
-        {activeTab && routeForTab(activeTab) === null ? (
+
+        {active ? (
+          <SiblingStrip
+            tree={tree}
+            siblings={siblings}
+            activeId={active.tab_id}
+            label={parent ? `Tabs under ${parent.hier_number}` : "Top-level tabs"}
+            labelOf={labelOf}
+            onActivate={onActivate}
+          />
+        ) : (
+          <span className="flex items-center px-1 text-xs text-shadow-1 dark:text-moonlight">
+            No open tabs
+          </span>
+        )}
+
+        {active && children.length > 0 ? (
+          <button
+            type="button"
+            data-children-chip
+            onClick={onVisitChild}
+            aria-label={`${children.length} tab${children.length === 1 ? "" : "s"} under ${active.hier_number}: open the last visited (prefix o)`}
+            title={`${children.length} under ${active.hier_number} (prefix o)`}
+            className="shrink-0 ml-1 my-1 flex items-center gap-0.5 rounded px-1.5 font-mono text-xxs text-ink-soft dark:text-moonlight border border-hairline hover:bg-ice-2 dark:hover:bg-charcoal-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+          >
+            <CornerDownRight size={11} aria-hidden="true" />
+            {children.length}
+          </button>
+        ) : null}
+
+        {bridge ? (
           <span
-            className="ml-1 text-shadow-1 dark:text-moonlight italic"
+            className="shrink-0 ml-1 flex items-center text-xs text-shadow-1 dark:text-moonlight italic pr-2"
             data-tab-bridge
             title="This surface is route-bound — it opens as a window, never an embedding guess."
           >
             opens as window
           </span>
         ) : null}
-        {lastUndo ? (
-          <button
-            type="button"
-            onClick={() => useTabTrees.getState().undoLastClose(mothership)}
-            className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-sun-deep hover:bg-ice-2 dark:hover:bg-charcoal-1"
-            data-undo-close
-          >
-            Undo close
-          </button>
-        ) : null}
       </div>
 
-      {thread && thread.hops.length > 1 ? (
-        <div className="border-b border-hairline" data-tab-trail>
-          <Trail
-            thread={thread}
-            onJump={(hop) => {
-              if (hop.provenanceRef) {
-                const tab = tree?.nodes[hop.provenanceRef];
-                if (tab) openTab(tab);
-              }
-            }}
-          />
-        </div>
-      ) : null}
-
-      {treePanelOpen && tree ? (
+      {treePanelOpen ? (
         <div
+          id="document-tab-tree"
           data-tab-tree-panel
-          className="absolute left-0 top-full z-20 mt-0.5 max-h-[60vh] min-w-[260px] max-w-[360px] overflow-auto rounded border border-hairline bg-ice-0 dark:bg-charcoal-2 shadow-z2 py-1"
+          className="absolute left-0 top-full z-20 mt-0.5 w-[min(24rem,calc(100vw-2rem))] rounded border border-hairline bg-ice-0 dark:bg-charcoal-2 shadow-z2 dark:shadow-z2-night overflow-hidden"
         >
-          <TreePanel
+          <TabTreePanel
             tree={tree}
             focusId={subtreeFocusId}
-            onActivate={openTab}
-            onFocus={(id) => useTabTrees.getState().setSubtreeFocus(id)}
+            labelOf={labelOf}
+            onActivate={onActivate}
+            onFocusSubtree={onFocusSubtree}
+            onClose={() => {
+              onToggleTree();
+              toggleRef.current?.focus();
+            }}
+            onRowsShown={onRowsShown}
           />
         </div>
       ) : null}
     </div>
-  );
-}
-
-function TreePanel({
-  tree,
-  focusId,
-  onActivate,
-  onFocus,
-}: {
-  tree: NonNullable<ReturnType<typeof useTabTrees.getState>["trees"]["reading"]>;
-  focusId: string | null;
-  onActivate: (tab: TabNode) => void;
-  onFocus: (id: string | null) => void;
-}) {
-  const roots = focusId ? [focusId] : [...tree.root_order];
-  const focusTab = focusId ? tree.nodes[focusId] : null;
-  const rows: { tab: TabNode; depth: number }[] = [];
-  const stack = roots.map((id) => ({ id, depth: 0 }));
-  while (stack.length > 0) {
-    const { id, depth } = stack.shift() as { id: string; depth: number };
-    const tab = tree.nodes[id];
-    if (!tab) continue;
-    rows.push({ tab, depth });
-    for (const c of tab.child_order) stack.push({ id: c, depth: depth + 1 });
-  }
-  return (
-    <>
-      <div className="flex items-center justify-between px-2 py-1 border-b border-hairline">
-        <span className="text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
-          {focusTab ? `Subtree of ${focusTab.hier_number}` : "All tabs"}
-        </span>
-        {focusTab ? (
-          <button
-            type="button"
-            onClick={() => onFocus(null)}
-            className="text-xxs text-sun-deep hover:underline"
-          >
-            show full tree
-          </button>
-        ) : null}
-      </div>
-      {rows.length === 0 ? (
-        <p className="px-2 py-1 text-xs text-shadow-1 dark:text-moonlight">No open tabs.</p>
-      ) : null}
-      {rows.map(({ tab, depth }) => (
-        <div
-          key={tab.tab_id}
-          className={`flex items-center gap-1.5 px-2 py-0.5 text-xs ${
-            tab.tab_id === tree.active_tab_id ? "bg-ice-2 dark:bg-charcoal-1" : ""
-          }`}
-          style={{ paddingLeft: `${8 + depth * 14}px` }}
-          data-tree-row={tab.tab_id}
-        >
-          <button
-            type="button"
-            onClick={() => onActivate(tab)}
-            className="flex items-center gap-1.5 min-w-0 text-left text-ink dark:text-bright"
-          >
-            <span className="font-mono text-shadow-1 dark:text-moonlight shrink-0">
-              {tab.hier_number}
-            </span>
-            <span className="truncate">{labelForTab(tab)}</span>
-            <span className="text-xxs text-shadow-1 dark:text-moonlight shrink-0">
-              {tab.kind}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onFocus(tab.tab_id)}
-            aria-label={`Focus the subtree at ${tab.hier_number}`}
-            className="ml-auto shrink-0 text-shadow-1 hover:text-ink dark:hover:text-bright px-0.5"
-          >
-            ⌄
-          </button>
-        </div>
-      ))}
-    </>
   );
 }
 

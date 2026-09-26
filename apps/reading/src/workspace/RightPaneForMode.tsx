@@ -39,7 +39,8 @@ export default function RightPaneForMode() {
 }
 
 function RightPaneForModeInner() {
-  const mothership = mothershipForPath(useLocation().pathname);
+  const { pathname, search } = useLocation();
+  const mothership = mothershipForPath(pathname, search);
   if (mothership === "writing") {
     return (
       <Suspense fallback={<PaneLoading what="outline" />}>

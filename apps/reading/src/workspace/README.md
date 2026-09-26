@@ -95,16 +95,40 @@ pure model (`tabTree.ts`, MS-04 — TAB ≠ BRANCH: navigation state, never
 provenance). One tree per mothership (research/writing/reading), driven by
 `tabTreeStore.ts` and rendered by `DocumentTabStrip.tsx` (mounted once in
 PanelLayout's shared centre column — inset left pane and docked main area
-share it; router-guarded). The strip shows the active path (hier numbers are
-the addressing), the Opus `Trail` as the ancestry breadcrumb (fed by
-`documentSpace.threadForPath` in Trail's lawful one-entity form), a tree
-panel with subtree focus (prefix `t`), and an undo affordance after closes.
-Keys: prefix `n`/`p` siblings (the corpus's canonical tab keys — companion
-cycling moved to prefix `,`/`.`), `u` parent, `o` last-visited child, `c`
-close-with-lift, `shift+x` prune, all with `ctrl+alt` twins where one was
-lawfully reserved. Persistence is ONLY through a `TabTreeAdapter` (§1.6:
-never web storage) — the in-memory adapter makes trees session-scoped until
-lane B's HTTP adapter lands (`setTabTreeAdapter` is the seam).
+share it; router-guarded).
+
+Stage 2 of the cockpit rescue (2026-09-26) rebuilt the strip to DESIGN-MODEL
+§2a:
+- **Path header** (`TabPathHeader.tsx`): root → active tab, every crumb a
+  link; past four crumbs it compresses to `1 › … › parent › current`, the
+  ellipsis opens the whole path and Esc closes it.
+- **Sibling strip** (`SiblingStrip.tsx`): the active tab and its siblings as
+  an ARIA tablist (manual activation, one roving tab stop, ←/→/Home/End)
+  controlling the route content (`documentPanel.ts`, marked `tabpanel` while
+  the strip is mounted), with a `↳ n` chip for the active tab's children.
+- **Tree panel** (`TabTreePanel.tsx`, prefix `t`): an ARIA tree over
+  `tabRows.flattenTabRows` (depth-first pre-order), indent capped at six
+  levels with a `dN` badge past it, virtualised fixed-height rows, subtree
+  focus with "up".
+- **Labels** (`tabLabels.ts` over `tabTitles.ts`): titles derived from the
+  ref (a book's title, a research question, a piece or section heading),
+  resolved lazily or registered by the surface that holds them; a raw id is
+  never a label. Long numbers compact to `1…4.2` beside a label.
+- **Route adoption** (`documentSpace.adoptTabForRoute`): a route change
+  adopts an open tab that shows it before seeding a root, so a child stays a
+  child. A tab whose route belongs to another mode carries `?m=<tree>` so it
+  never switches trees (`mothershipForPath(pathname, search)`).
+- **Close** is held locally for 10 s behind a `toast.undo` (LemonToast's undo
+  slot, `UNDO_TTL_MS`); the close joins the snapshot only when the window
+  lapses. Loading/error/empty use the shared state primitives, and a failed
+  tree load offers "Try again" (`retryLoad`).
+
+Keys: prefix `n`/`p` siblings, `u` parent, `o` last-visited child, `c`
+close-with-lift, `shift+x` prune, `t` the tree panel, with `ctrl+alt` twins
+where one was lawfully reserved (forensic defect 10 reconciles this table).
+Persistence is ONLY through a `TabTreeAdapter` (§1.6: never web storage) —
+the in-memory adapter makes trees session-scoped until lane B's HTTP adapter
+lands (`setTabTreeAdapter` is the seam).
 
 ## Write mode (C5, 2026-09-24)
 

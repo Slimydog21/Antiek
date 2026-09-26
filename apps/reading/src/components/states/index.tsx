@@ -34,8 +34,9 @@ export function LoadingState({
 }: {
   /** What is opening, in the reader's words: "Opening the library". */
   label: string;
-  /** The geometry being loaded: list rows, or the lines of a page. */
-  shape?: "list" | "page";
+  /** The geometry being loaded: list rows, the lines of a page, or a row
+   *  of tabs (a strip: label and pills side by side, one line tall). */
+  shape?: "list" | "page" | "strip";
   rows?: number;
   variant?: Variant;
 }) {

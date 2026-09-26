@@ -15,7 +15,7 @@
  * MemoryRouter's location.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { BrowserRouter, useLocation } from "react-router-dom";
 
 beforeAll(() => {
@@ -110,14 +110,20 @@ afterEach(() => {
   window.localStorage.removeItem("antiek.workspace.layout-preset");
 });
 
-const M = () => mothershipForPath(window.location.pathname);
+const M = () => mothershipForPath(window.location.pathname, window.location.search);
+
+/** The strip loaded its tree and the route's tab is active. (Labels are
+ *  titles now, so a raw id is no longer something to wait for.) */
+async function loadedTree() {
+  await waitFor(() => expect(tabs().trees[M()]?.active_tab_id ?? null).not.toBeNull());
+}
 
 // ─── route seeding + the active path ─────────────────────────────────────
 
 describe("route seeding and the active path", () => {
   it("a /read/:id route seeds a root reader tab with hier number 1", async () => {
     mountStrip("/read/doc-9");
-    await screen.findByText("doc-9");
+    await loadedTree();
     const tree = tabs().trees[M()]!;
     const root = Object.values(tree.nodes).find((n) => n.parent_tab_id === null);
     expect(root?.kind).toBe("reader");
@@ -128,7 +134,7 @@ describe("route seeding and the active path", () => {
 
   it("a /inv/:id route seeds a root research tab in the research mothership", async () => {
     mountStrip("/inv/inv-1");
-    await screen.findAllByText("/inv/inv-1");
+    await loadedTree();
     const tree = tabs().trees.research!;
     const root = Object.values(tree.nodes).find((n) => n.parent_tab_id === null);
     expect(root?.kind).toBe("research");
@@ -137,7 +143,7 @@ describe("route seeding and the active path", () => {
 
   it("child spawns take hierarchical numbers and render on the active path", async () => {
     mountStrip("/read/doc-9");
-    await screen.findByText("doc-9");
+    await loadedTree();
     const m = M();
     const rootId = tabs().trees[m]!.active_tab_id!;
     act(() => {
@@ -153,20 +159,23 @@ describe("route seeding and the active path", () => {
     const tree = tabs().trees[m]!;
     expect(tree.nodes["child-footnote"].hier_number).toBe("1.1");
     expect(tree.nodes["child-footnote"].parent_tab_id).toBe(rootId);
-    // The active path shows root › child with hier numbers.
-    expect(screen.getByText("1.1")).toBeTruthy();
-    expect(labelForTab(tree.nodes["child-footnote"])).toBe("the footnote text");
+    // The path header shows root › child with hier numbers; the child is
+    // named by its passage (a branch inside its parent's surface).
+    expect(document.querySelector('[data-tab-path] [data-crumb="child-footnote"]')!.textContent).toContain("1.1");
+    expect(labelForTab(tree.nodes["child-footnote"], tree.nodes[rootId], undefined).text).toBe("the footnote text");
   });
 });
 
-// ─── the breadcrumb (the Opus Trail, lawfully driven) ────────────────────
+// ─── the breadcrumb (the §2a path header) ────────────────────────────────
 
 describe("the ancestry breadcrumb", () => {
-  it("renders the Opus Trail over the path — one canonical entity, never a fork", async () => {
+  it("renders the path header over the ancestry — a crumb per tab, the current one marked", async () => {
     mountStrip("/read/doc-9");
-    await screen.findByText("doc-9");
+    await loadedTree();
     const m = M();
     const rootId = tabs().trees[m]!.active_tab_id!;
+    // A root alone needs no path: the strip already shows it.
+    expect(document.querySelector("[data-tab-path]")).toBeNull();
     act(() => {
       tabs().spawnTab(m, rootId, {
         tab_id: "child-ref",
@@ -177,11 +186,11 @@ describe("the ancestry breadcrumb", () => {
         activate: true,
       });
     });
-    // The Trail renders: a single-entity Thread (its fork guard must NOT trip).
-    expect(document.querySelector('[data-tab-trail] [data-testid="thread-breadcrumb"]')).toBeTruthy();
-    expect(document.querySelector('[data-testid="thread-breadcrumb-integrity-warning"]')).toBeNull();
-    // Two hops: root (reader) and the footnote branch, current = the child.
-    expect(document.querySelector('[data-testid="thread-hop-current-read"]')?.textContent).toContain("footnote");
+    const crumbs = document.querySelectorAll("[data-tab-path] [data-crumb]");
+    expect(Array.from(crumbs).map((c) => c.getAttribute("data-crumb"))).toEqual([rootId, "child-ref"]);
+    expect(crumbs[1].getAttribute("aria-current")).toBe("page");
+    // A same-surface branch with no passage is named by its branch kind.
+    expect(crumbs[1].textContent).toContain("Footnote");
   });
 });
 
@@ -190,7 +199,7 @@ describe("the ancestry breadcrumb", () => {
 describe("the tree panel (prefix t)", () => {
   it("toggles the full tree and focuses a subtree honestly", async () => {
     mountStrip("/read/doc-9");
-    await screen.findByText("doc-9");
+    await loadedTree();
     const m = M();
     const rootId = tabs().trees[m]!.active_tab_id!;
     act(() => {
@@ -203,7 +212,7 @@ describe("the tree panel (prefix t)", () => {
     expect(document.querySelector('[data-tab-tree-panel]')).toBeTruthy();
     expect(document.querySelector('[data-tree-row="c1-1"]')).toBeTruthy();
     // Subtree focus narrows the panel to c1's subtree; "show full tree" returns.
-    const focusButtons = document.querySelectorAll('[data-tree-row="c1"] [aria-label^="Focus the subtree"]');
+    const focusButtons = document.querySelectorAll('[data-tree-row="c1"] [data-focus-subtree]');
     act(() => {
       (focusButtons[0] as HTMLElement).click();
     });
@@ -220,7 +229,7 @@ describe("the tree panel (prefix t)", () => {
 
   it("the ctrl+alt+y twin also toggles the panel", async () => {
     mountStrip("/read/doc-9");
-    await screen.findByText("doc-9");
+    await loadedTree();
     key(document.body, "ctrl+alt+y");
     expect(tabs().treePanelOpen).toBe(true);
   });
@@ -231,7 +240,7 @@ describe("the tree panel (prefix t)", () => {
 describe("spawn seams", () => {
   it("the cross-pane seam spawns a reader child tab under the active tab", async () => {
     mountStrip("/inv/inv-1");
-    await screen.findAllByText("/inv/inv-1");
+    await loadedTree();
     const rootId = tabs().trees.research!.active_tab_id!;
     act(() => {
       openDocumentInLeftPane("doc-9", { from: "companion", investigationId: "inv-1" });
@@ -259,7 +268,7 @@ describe("spawn seams", () => {
     // The exact call the research surfaces' "open in reader" affordance makes
     // through the same seam — proven once, used by every future caller.
     mountStrip("/inv/inv-1");
-    await screen.findAllByText("/inv/inv-1");
+    await loadedTree();
     act(() => {
       openDocumentInLeftPane("doc-source", { from: "research", investigationId: "inv-1" });
     });
@@ -271,20 +280,26 @@ describe("spawn seams", () => {
     expect(child!.hier_number).toBe("1.1");
   });
 
-  it("a reader child tab activation navigates to the canonical /read route (tree → route)", async () => {
+  it("a reader child tab activation navigates to the canonical /read route and stays a research child", async () => {
     mountStrip("/inv/inv-1");
-    await screen.findAllByText("/inv/inv-1");
+    await loadedTree();
+    const rootId = tabs().trees.research!.active_tab_id!;
     act(() => {
       openDocumentInLeftPane("doc-9", { from: "companion" });
     });
     await act(async () => {});
     await act(async () => {});
-    await screen.findByText("doc-9");
-    // The strip's tree→route sync navigated to the document's canonical URL.
+    await act(async () => {});
+    // The strip's tree→route sync navigated to the document's canonical URL,
+    // carrying the tree it belongs to…
     expect(screen.getByTestId("location").textContent).toBe("/read/doc-9");
-    // …and the reading mothership's tree now hosts the document as its root.
+    expect(window.location.search).toBe("?m=research");
+    // …and the tab is still the research root's child: no reading-tree root.
+    const child = Object.values(tabs().trees.research!.nodes).find((n) => n.ref === "doc-9")!;
+    expect(child.parent_tab_id).toBe(rootId);
+    expect(tabs().trees.research!.active_tab_id).toBe(child.tab_id);
     const reading = tabs().trees.reading;
-    expect(reading && Object.values(reading.nodes).some((n) => n.kind === "reader" && n.ref === "doc-9")).toBe(true);
+    expect(reading ? Object.values(reading.nodes).some((n) => n.ref === "doc-9") : false).toBe(false);
   });
 });
 
@@ -293,7 +308,7 @@ describe("spawn seams", () => {
 describe("the tab-tree keys", () => {
   async function seedTree() {
     mountStrip("/read/doc-9");
-    await screen.findByText("doc-9");
+    await loadedTree();
     const m = M();
     const rootId = tabs().trees[m]!.active_tab_id!;
     act(() => {
@@ -338,7 +353,7 @@ describe("the tab-tree keys", () => {
     expect(tabs().trees[m]!.active_tab_id).toBe("c2");
   });
 
-  it("prefix c closes with lift_children (children keep their numbers); undo restores", async () => {
+  it("prefix c closes with lift_children (children keep their numbers); the toast's Undo restores", async () => {
     const { m } = await seedTree();
     act(() => {
       tabs().spawnTab(m, "c1", { tab_id: "c1-1", kind: "reader", ref: "doc-a1", mothership: m, activate: false });
@@ -352,17 +367,15 @@ describe("the tab-tree keys", () => {
     // number (addresses are never renumbered on lift).
     expect(tree.nodes["c1-1"].hier_number).toBe("1.1.1");
     expect(tree.nodes["root:reader:doc-9"].child_order).toContain("c1-1");
-    expect(tabs().lastUndo).toBeTruthy();
-    // The undo affordance restores the exact tree.
-    const undoBtn = document.querySelector("[data-undo-close]")!;
-    expect(undoBtn).toBeTruthy();
+    // The close is held for its undo window, and the undo is the toast's.
+    expect(tabs().heldClose?.token.tab_id).toBe("c1");
     act(() => {
-      (undoBtn as HTMLElement).click();
+      tabs().undoClose(tabs().heldClose!.token.close_id);
     });
     tree = tabs().trees[m]!;
     expect(tree.nodes["c1"]).toBeTruthy();
     expect(tree.nodes["c1"].child_order).toContain("c1-1");
-    expect(tabs().lastUndo).toBeNull();
+    expect(tabs().heldClose).toBeNull();
   });
 
   it("prefix shift+x prunes the whole subtree (soft close, numbers kept in history)", async () => {
@@ -408,7 +421,7 @@ describe("the tab-tree keys", () => {
 describe("the adapter path", () => {
   it("operations persist through the in-memory adapter (session-scoped, honest)", async () => {
     mountStrip("/read/doc-9");
-    await screen.findByText("doc-9");
+    await loadedTree();
     // The save pipeline is queued; flush it and reload through the adapter.
     await act(async () => {});
     await act(async () => {});

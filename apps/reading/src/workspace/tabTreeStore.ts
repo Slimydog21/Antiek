@@ -15,10 +15,19 @@
  * touches the investigation/document it pointed at. public_number stays null
  * this wave — the model assigns one only from the server's allocate route,
  * which is lane B's; a null number is the lawful state until then.
+ *
+ * Close is HELD locally through the 10 s undo window (§2.2): the tree drops
+ * the tab at once, a LemonToast offers Undo for UNDO_TTL_MS, and the close
+ * joins the pending log (and so the next snapshot) only when the window
+ * lapses. Saves wait while a close is held, so no snapshot other devices
+ * read ever carries a close that was undone. A close lost to a reload
+ * inside the window was never written: the tab is simply back.
  */
 import { create } from "zustand";
 
-import { toast } from "../components/lemon/LemonToast";
+import { toast, UNDO_TTL_MS } from "../components/lemon/LemonToast";
+import { labelForTab } from "./tabLabels";
+import { resetTabTitles, titleKey, useTabTitles } from "./tabTitles";
 import { tabTreeHandle } from "./tabTreeHandle";
 import {
   closeTab,
@@ -46,8 +55,14 @@ import {
  *  a secret default. */
 export const TAB_PROJECT_ID = "default";
 
-/** The pathological project id used in tests to exercise the load path. */
 export type { Mothership, TabNode, TabTree, UndoToken };
+
+/** A close inside its undo window, not yet in the pending log. */
+export interface HeldClose {
+  mothership: Mothership;
+  token: UndoToken;
+  op: TabOp;
+}
 
 export interface SpawnTabResult {
   ok: boolean;
@@ -60,24 +75,33 @@ interface TabTreeState {
   trees: Record<Mothership, TabTree | null>;
   /** Motherships whose initial adapter load has completed. */
   loaded: Record<Mothership, boolean>;
+  /** The last load failure per mothership (null = none). The raw message is
+   *  for "Copy error details", never for the screen. */
+  loadError: Record<Mothership, string | null>;
   /** The pending op log per mothership (replayed by rebase after a 409). */
   pendingOps: Record<Mothership, TabOp[]>;
   /** The tree-panel toggle (prefix t). */
   treePanelOpen: boolean;
   /** The tree panel's subtree focus (null = the whole tree). */
   subtreeFocusId: string | null;
-  /** The most recent close's undo token — the strip's undo affordance. */
-  lastUndo: UndoToken | null;
+  /** The close inside its 10 s window (written only when it lapses). */
+  heldClose: HeldClose | null;
   adapter: TabTreeAdapter;
 
   setTabTreeAdapter: (adapter: TabTreeAdapter) => void;
+  /** Load a mothership's tree once. Never rejects: a failure lands in
+   *  loadError and retryLoad tries again. */
   ensureMothership: (mothership: Mothership) => Promise<void>;
+  retryLoad: (mothership: Mothership) => Promise<void>;
   spawnTab: (mothership: Mothership, parentId: string | null, input: SpawnInput) => SpawnTabResult;
   activateTab: (mothership: Mothership, tabId: string | null) => void;
   goToParent: (mothership: Mothership) => void;
   visitChildOfActive: (mothership: Mothership) => void;
   cycleSibling: (mothership: Mothership, direction: 1 | -1) => void;
   closeActiveTab: (mothership: Mothership, mode: CloseMode) => void;
+  /** Undo one close by its id: a held close is dropped without a write; a
+   *  close already written is undone through the model (numbers reclaimed). */
+  undoClose: (closeId: string) => void;
   undoLastClose: (mothership: Mothership) => void;
   toggleTreePanel: () => void;
   setSubtreeFocus: (tabId: string | null) => void;
@@ -87,6 +111,18 @@ interface TabTreeState {
 
 /** Serialize adapter saves per mothership (expected-version discipline). */
 const saveQueues = new Map<Mothership, Promise<void>>();
+/** One in-flight load per mothership (the route sync and a cross-pane open
+ *  can both ask on the same tick). */
+const loads = new Map<Mothership, Promise<void>>();
+/** Saves asked for while a close was held; run when the hold resolves. */
+const deferredSaves = new Set<Mothership>();
+let holdTimer: ReturnType<typeof setTimeout> | null = null;
+/** Written closes still inside their toast's window, by close_id. */
+const recentCloses = new Map<string, { mothership: Mothership; token: UndoToken }>();
+
+function noErrors(): Record<Mothership, string | null> {
+  return { research: null, writing: null, reading: null };
+}
 
 function emptyLoaded(): Record<Mothership, boolean> {
   return { research: false, writing: false, reading: false };
@@ -111,6 +147,10 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
   }
 
   function queueSave(mothership: Mothership): void {
+    if (get().heldClose) {
+      deferredSaves.add(mothership);
+      return;
+    }
     const prior = saveQueues.get(mothership) ?? Promise.resolve();
     const run = prior.then(() => saveNow(mothership));
     saveQueues.set(mothership, run);
@@ -168,34 +208,101 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     console.error("[antiek/tabs] snapshot rejected:", result.reasons);
   }
 
+  /** The hold lapsed (or a newer close superseded it): the close joins the
+   *  pending log and every save it deferred runs. */
+  function commitHeld(): void {
+    const held = get().heldClose;
+    if (holdTimer !== null) clearTimeout(holdTimer);
+    holdTimer = null;
+    if (!held) return;
+    set((s) => ({
+      heldClose: null,
+      pendingOps: {
+        ...s.pendingOps,
+        [held.mothership]: [...(s.pendingOps[held.mothership] ?? []), held.op],
+      },
+    }));
+    recentCloses.set(held.token.close_id, { mothership: held.mothership, token: held.token });
+    setTimeout(() => recentCloses.delete(held.token.close_id), UNDO_TTL_MS);
+    deferredSaves.add(held.mothership);
+    flushDeferred();
+  }
+
+  function flushDeferred(): void {
+    const pending = [...deferredSaves];
+    deferredSaves.clear();
+    for (const m of pending) queueSave(m);
+  }
+
+  /** "Closed 1.3 · Lyell" / "Pruned 1.3 · Lyell and 4 tabs under it". */
+  function closeMessage(tree: TabTree, tabId: string, mode: CloseMode, closedCount: number): string {
+    const tab = tree.nodes[tabId];
+    const parent = tab.parent_tab_id ? tree.nodes[tab.parent_tab_id] : null;
+    const label = labelForTab(tab, parent, useTabTitles.getState().entries[titleKey(tab.kind, tab.ref)]).text;
+    const name = `${tab.hier_number} · ${label}`;
+    if (mode === "prune" && closedCount > 1) {
+      const under = closedCount - 1;
+      return `Pruned ${name} and ${under} tab${under === 1 ? "" : "s"} under it`;
+    }
+    return mode === "prune" ? `Pruned ${name}` : `Closed ${name}`;
+  }
+
   return {
     trees: { research: null, writing: null, reading: null },
     loaded: emptyLoaded(),
+    loadError: noErrors(),
     pendingOps: { research: [], writing: [], reading: [] },
     treePanelOpen: false,
     subtreeFocusId: null,
-    lastUndo: null,
+    heldClose: null,
     adapter: createInMemoryTabTreeAdapter(),
 
-    setTabTreeAdapter: (adapter) =>
+    setTabTreeAdapter: (adapter) => {
+      loads.clear();
       set({
         adapter,
         trees: { research: null, writing: null, reading: null },
         loaded: emptyLoaded(),
+        loadError: noErrors(),
         pendingOps: { research: [], writing: [], reading: [] },
-      }),
+      });
+    },
 
-    ensureMothership: async (mothership) => {
-      if (get().loaded[mothership]) return;
-      const snapshot = await get().adapter.load(TAB_PROJECT_ID, mothership);
-      const parsed = fromSnapshot(snapshot);
-      set((s) => ({
-        trees: {
-          ...s.trees,
-          [mothership]: parsed.ok ? parsed.tree : emptyTabTree(mothership, snapshot.version),
-        },
-        loaded: { ...s.loaded, [mothership]: true },
-      }));
+    ensureMothership: (mothership) => {
+      if (get().loaded[mothership]) return Promise.resolve();
+      const inflight = loads.get(mothership);
+      if (inflight) return inflight;
+      const adapter = get().adapter;
+      let run: Promise<void> | null = null;
+      run = (async () => {
+        try {
+          const snapshot = await adapter.load(TAB_PROJECT_ID, mothership);
+          if (get().adapter !== adapter) return; // swapped mid-flight
+          const parsed = fromSnapshot(snapshot);
+          set((s) => ({
+            trees: {
+              ...s.trees,
+              [mothership]: parsed.ok ? parsed.tree : emptyTabTree(mothership, snapshot.version),
+            },
+            loaded: { ...s.loaded, [mothership]: true },
+            loadError: { ...s.loadError, [mothership]: null },
+          }));
+        } catch (e) {
+          if (get().adapter !== adapter) return;
+          set((s) => ({
+            loadError: { ...s.loadError, [mothership]: e instanceof Error ? e.message : String(e) },
+          }));
+        } finally {
+          if (loads.get(mothership) === run) loads.delete(mothership);
+        }
+      })();
+      loads.set(mothership, run);
+      return run;
+    },
+
+    retryLoad: (mothership) => {
+      set((s) => ({ loadError: { ...s.loadError, [mothership]: null } }));
+      return get().ensureMothership(mothership);
     },
 
     spawnTab: (mothership, parentId, input) => {
@@ -203,7 +310,6 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       const result = spawnChild(tree, parentId, input);
       if (!result.ok) return { ok: false, error: result.error.message };
       apply(mothership, result.tree, result.op);
-      set({ lastUndo: null });
       return { ok: true, tabId: input.tab_id, hier: result.tree.nodes[input.tab_id].hier_number };
     },
 
@@ -254,37 +360,78 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       if (!tree || !active) return;
       const result = closeTab(tree, active, mode, new Date().toISOString());
       if (!result.ok) return;
-      set({ lastUndo: result.undo });
-      apply(mothership, result.tree, result.op);
+      // One close is held at a time: a newer close writes the older one (its
+      // toast's Undo still works, through the model's undo-after-write).
+      commitHeld();
+      const closedCount = Object.keys(tree.nodes).length - Object.keys(result.tree.nodes).length;
+      const message = closeMessage(tree, active, mode, closedCount);
+      set((s) => ({
+        trees: { ...s.trees, [mothership]: result.tree },
+        heldClose: { mothership, token: result.undo, op: result.op },
+      }));
+      holdTimer = setTimeout(commitHeld, UNDO_TTL_MS);
+      const closeId = result.undo.close_id;
+      toast.undo(message, () => get().undoClose(closeId));
+    },
+
+    undoClose: (closeId) => {
+      const held = get().heldClose;
+      if (held && held.token.close_id === closeId) {
+        if (holdTimer !== null) clearTimeout(holdTimer);
+        holdTimer = null;
+        const tree = get().trees[held.mothership];
+        const result = tree ? undo(tree, held.token) : null;
+        set((s) => ({
+          heldClose: null,
+          ...(result?.ok ? { trees: { ...s.trees, [held.mothership]: result.tree } } : {}),
+        }));
+        // The close and its undo were never written; the other ops made in
+        // the window were, just late.
+        flushDeferred();
+        return;
+      }
+      const recent = recentCloses.get(closeId);
+      if (!recent) return;
+      recentCloses.delete(closeId);
+      const tree = get().trees[recent.mothership];
+      if (!tree) return;
+      const result = undo(tree, recent.token);
+      if (result.ok) apply(recent.mothership, result.tree, result.op);
+      else toast.info("That close can no longer be undone: the tree changed since.");
     },
 
     undoLastClose: (mothership) => {
-      const tree = get().trees[mothership];
-      const token = get().lastUndo;
-      if (!tree || !token) return;
-      const result = undo(tree, token);
-      if (result.ok) {
-        set({ lastUndo: null });
-        apply(mothership, result.tree, result.op);
-      } else {
-        // The close was superseded; the token is dead — clear it honestly.
-        set({ lastUndo: null });
+      const held = get().heldClose;
+      if (held && held.mothership === mothership) {
+        get().undoClose(held.token.close_id);
+        return;
       }
+      const last = [...recentCloses.entries()].reverse().find(([, r]) => r.mothership === mothership);
+      if (last) get().undoClose(last[0]);
     },
 
     toggleTreePanel: () => set((s) => ({ treePanelOpen: !s.treePanelOpen })),
     setSubtreeFocus: (tabId) => set({ subtreeFocusId: tabId }),
 
-    resetTabTrees: () =>
+    resetTabTrees: () => {
+      if (holdTimer !== null) clearTimeout(holdTimer);
+      holdTimer = null;
+      loads.clear();
+      deferredSaves.clear();
+      recentCloses.clear();
+      saveQueues.clear();
+      resetTabTitles();
       set({
         trees: { research: null, writing: null, reading: null },
         loaded: emptyLoaded(),
+        loadError: noErrors(),
         pendingOps: { research: [], writing: [], reading: [] },
         treePanelOpen: false,
         subtreeFocusId: null,
-        lastUndo: null,
+        heldClose: null,
         adapter: createInMemoryTabTreeAdapter(),
-      }),
+      });
+    },
   };
 });
 

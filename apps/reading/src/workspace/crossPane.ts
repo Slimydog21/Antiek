@@ -11,7 +11,8 @@
  * setOpenDocumentHandler. Every caller speaks `openDocumentInLeftPane` and
  * never changes.
  */
-import { childTabId, mothershipForPath, rootTabId } from "./documentSpace";
+import { childTabId, freshTabId, mothershipForPath, rootTabId } from "./documentSpace";
+import { setTabTitle } from "./tabTitles";
 import { useTabTrees } from "./tabTreeStore";
 
 export interface OpenDocumentOrigin {
@@ -24,28 +25,38 @@ export interface OpenDocumentOrigin {
 export interface OpenDocumentRequest {
   documentId: string;
   origin: OpenDocumentOrigin;
+  /** The document's title when the caller knows it (the tab shows it at
+   *  once); absent, the strip resolves it from the corpus. */
+  documentTitle?: string | null;
 }
 
 /** The D6 handler: a left child tab under the spawning (active) tab — or a
  *  root tab when nothing is active. Re-opening the same document under the
- *  same parent ACTIVATES the existing tab (stable ids, never duplicates). */
+ *  same parent ACTIVATES the open tab (never a duplicate); reopening one
+ *  that was closed takes a fresh id, since the closed id stays in history. */
 function spawnDocumentTab(req: OpenDocumentRequest): void {
-  const mothership = mothershipForPath(window.location.pathname);
+  const mothership = mothershipForPath(window.location.pathname, window.location.search);
   const store = useTabTrees.getState();
   void store.ensureMothership(mothership).then(() => {
     const s = useTabTrees.getState();
     const tree = s.trees[mothership];
     if (!tree) return;
     const parentId = tree.active_tab_id;
-    const id = parentId
-      ? childTabId(parentId, "reader", req.documentId)
-      : rootTabId({ kind: "reader", ref: req.documentId, title: req.documentId });
-    if (tree.nodes[id]) {
-      s.activateTab(mothership, id);
+    const shows = (id: string) => tree.nodes[id].kind === "reader" && tree.nodes[id].ref === req.documentId;
+    // Already on screen: the active tab IS the document — nothing to open.
+    if (parentId && shows(parentId)) return;
+    const siblings = parentId ? tree.nodes[parentId].child_order : tree.root_order;
+    const open = siblings.find(shows);
+    if (open) {
+      s.activateTab(mothership, open);
       return;
     }
+    const base = parentId
+      ? childTabId(parentId, "reader", req.documentId)
+      : rootTabId({ kind: "reader", ref: req.documentId });
+    if (req.documentTitle) setTabTitle("reader", req.documentId, req.documentTitle);
     s.spawnTab(mothership, parentId, {
-      tab_id: id,
+      tab_id: freshTabId(tree, base),
       origin: { document_id: req.documentId, kind: "reference" },
       kind: "reader",
       ref: req.documentId,
@@ -70,7 +81,8 @@ export function setOpenDocumentHandler(
 export function openDocumentInLeftPane(
   documentId: string,
   origin: OpenDocumentOrigin,
+  documentTitle?: string | null,
 ): void {
   if (!documentId.trim()) return;
-  handler({ documentId, origin });
+  handler({ documentId, origin, ...(documentTitle ? { documentTitle } : {}) });
 }
