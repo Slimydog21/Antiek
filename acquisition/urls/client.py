@@ -90,6 +90,19 @@ DEFAULT_PURPOSE = FetchPurpose.AGENT
 DEFAULT_USER_AGENT = user_agent_for(DEFAULT_PURPOSE)
 
 
+class CredentialedRedirect(httpx.RequestError):
+    """A redirect's Location put credentials (userinfo) in the next hop's URL.
+
+    httpx would send them as an ``Authorization: Basic`` header on that hop,
+    so a server could make the fetcher hand credentials of its choosing to
+    another host, and every record of the hop (``final_url``, an error's
+    text) would carry them. The hop is refused before it is requested, as
+    the robots.txt and licence hops are (acquisition.urls.robots). A
+    relative Location that only keeps the caller's own userinfo on the same
+    host is followed. The message names both URLs redacted
+    (``robots.redact_url``)."""
+
+
 REFUSAL_STATUSES: frozenset[int] = frozenset({401, 402, 403})
 _refusals: Counter[tuple[str, int]] = Counter()
 _refusals_lock = threading.Lock()
@@ -179,7 +192,10 @@ def fetch(
     follow_redirects: bool = True,
     purpose: FetchPurpose = DEFAULT_PURPOSE,
 ) -> FetchedHtml:
-    """GET ``url``. Raises ``httpx.HTTPStatusError`` on 4xx/5xx.
+    """GET ``url``. Raises ``httpx.HTTPStatusError`` on 4xx/5xx, its text
+    naming the URL redacted (``robots.redact_url``: no userinfo or query);
+    the response is on the exception. A redirect whose Location carries
+    credentials raises :class:`CredentialedRedirect` before it is followed.
 
     ``purpose`` selects the User-Agent; a 401/402/403 response is counted per
     host (``refusal_counts()``) and logged at WARNING before ``raise_for_status``
@@ -258,6 +274,13 @@ def fetch(
                 raise httpx.TooManyRedirects("Exceeded maximum allowed redirects.", request=r.request)
             nxt = r.next_request
             hop_url = str(nxt.url)
+            here = r.request.url
+            if nxt.url.userinfo and (nxt.url.userinfo, nxt.url.host) != (here.userinfo, here.host):
+                raise CredentialedRedirect(
+                    f"{redact_url(str(here))} redirected to {redact_url(hop_url)} with "
+                    "credentials in the URL; not followed",
+                    request=r.request,
+                )
             policy = None if _is_robots_txt(hop_url) else robots_policy_for(
                 hop_url, fetch_text=_fetch_text, user_agent=user_agent,
             )
@@ -267,7 +290,16 @@ def fetch(
             hops += 1
         if r.status_code in REFUSAL_STATUSES:
             _record_refusal((r.url.host or urlsplit(url).hostname or "").lower(), r.status_code, purpose)
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # httpx's text holds the whole URL (and, for a redirect, the
+            # Location): credentials and tokens a caller would then log.
+            raise httpx.HTTPStatusError(
+                f"HTTP {r.status_code} {r.reason_phrase} for url {redact_url(str(r.url))!r}",
+                request=exc.request,
+                response=exc.response,
+            ) from None
         content_type = r.headers.get("content-type", "") or ""
         return FetchedHtml(
             requested_url=url,

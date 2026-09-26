@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 import acquisition.urls.robots
-from acquisition.urls.client import clear_refusal_counts, fetch
+from acquisition.urls.client import CredentialedRedirect, clear_refusal_counts, fetch
 from acquisition.urls.robots import (
     FetchText,
     RobotsDisallowed,
@@ -598,13 +598,14 @@ def test_a_page_redirect_with_credentials_never_records_them(
         try:
             page = fetch("https://a.example/page", client=client)
             refusal = page.robots_fail_open_reason or ""
-        except RobotsDisallowed as exc:
+        except (RobotsDisallowed, CredentialedRedirect) as exc:
             refusal = str(exc)
 
     assert refusal
     assert _leaks(refusal) == []
-    # Every record: when b.example allows /x the page GET is sent to the
-    # Location as given, and httpx's INFO line for it is redacted too.
+    # Every record: the credentialed hop is refused whatever b.example's
+    # robots.txt says (test_a_page_redirect_carrying_credentials_is_refused_
+    # before_they_are_sent), and nothing logged on the way names it whole.
     assert _leaks(_logged(caplog)) == []
     assert _leaks(" ".join(cached_origins())) == []
 
@@ -766,13 +767,12 @@ def test_the_scope_budget_warning_redacts_the_licence_url(
 
 def test_robots_disallowed_keeps_no_credential_in_any_attribute() -> None:
     client, _requested = _client(
-        {("a.example", "/robots.txt"): (200, b"User-agent: *\nAllow: /\n"),
-         ("b.example", "/robots.txt"): (200, b"User-agent: *\nDisallow: /x\n")},
-        {("a.example", "/page"): _SECRET_LOCATION},
+        {("b.example", "/robots.txt"): (200, b"User-agent: *\nDisallow: /x\n")},
+        {},
     )
 
     with pytest.raises(RobotsDisallowed) as caught:
-        fetch("https://a.example/page", client=client)
+        fetch(_SECRET_LOCATION, client=client)
 
     exc = caught.value
     assert exc.url == "https://b.example/x"
@@ -923,3 +923,69 @@ def test_an_opaque_robots_txt_redirect_is_refused_without_its_data(
     assert "not an http(s) URL" in reason
     assert _leaks(reason) == []
     assert _leaks(_all_records(caplog)) == []
+
+
+# --- adversarial review of dae1d1ddd -----------------------------------------
+
+
+def test_a_page_redirect_carrying_credentials_is_refused_before_they_are_sent() -> None:
+    """httpx turns a Location's userinfo into an ``Authorization: Basic``
+    header on the next hop, so following it would send credentials a server
+    chose to another host, as robots.txt and licence hops already refuse to.
+    The refusal names the hop redacted; nothing is requested from it."""
+    seen_auth: list[str] = []
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        if "authorization" in request.headers:
+            seen_auth.append(request.url.host or "")
+        if (request.url.host, request.url.path) == ("a.example", "/page"):
+            return httpx.Response(302, headers={"Location": _SECRET_LOCATION}, request=request)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, content=b"User-agent: *\nAllow: /\n", request=request)
+        return httpx.Response(200, content=b"<html>b</html>", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(httpx.RequestError, match="credentials") as excinfo:
+        fetch("https://a.example/page", client=client)
+
+    assert seen_auth == []
+    assert "https://b.example/x" in str(excinfo.value)
+    assert _leaks(str(excinfo.value)) == []
+    assert not any(url.startswith("https://alice") or "b.example/x" in url for url in requested)
+
+
+def test_a_relative_redirect_keeping_the_callers_own_credentials_is_followed() -> None:
+    """Only credentials a server put in a Location are refused: a relative
+    hop on the same host inherits the userinfo the caller chose to send."""
+    client, requested = _client(
+        {("a.example", "/robots.txt"): (200, b"User-agent: *\nAllow: /\n"),
+         ("a.example", "/y"): (200, b"<html>y</html>")},
+        {("a.example", "/page"): "/y"},
+    )
+
+    page = fetch("https://alice:probe-pass@a.example/page", client=client)
+
+    assert page.status_code == 200
+    assert requested[-1] == "https://alice:probe-pass@a.example/y"
+
+
+def test_an_http_error_names_the_page_without_credentials_or_query() -> None:
+    """``raise_for_status`` puts the whole URL in the exception text, and a
+    caller that logs the exception logs it. The text keeps scheme, host and
+    path only; the response stays on the exception for whoever needs it."""
+    client, _requested = _client(
+        {("a.example", "/robots.txt"): (200, b"User-agent: *\nAllow: /\n"),
+         ("a.example", "/x"): (403, b"no")},
+        {},
+    )
+
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
+        fetch("https://alice:probe-pass@a.example/x?token=q-secret", client=client)
+
+    assert excinfo.value.response.status_code == 403
+    assert "403" in str(excinfo.value)
+    assert "https://a.example/x" in str(excinfo.value)
+    assert _leaks(str(excinfo.value)) == []
