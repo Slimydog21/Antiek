@@ -159,12 +159,13 @@ def _destroy_warm_slot(slot: _WarmWriterSlot) -> None:
     """Fully release a parked writer (DuckDB close + flock + local registry)."""
     with contextlib.suppress(Exception):
         slot.con.close()
-    with contextlib.suppress(Exception):
-        _unregister_local_writer(slot.db_path)
     with contextlib.suppress(OSError):
         fcntl.flock(slot.lock_fd, fcntl.LOCK_UN)
     with contextlib.suppress(OSError):
         os.close(slot.lock_fd)
+    # Only now is the kernel no longer counting us as the holder.
+    with contextlib.suppress(Exception):
+        _unregister_local_writer(slot.db_path)
 
 
 def _take_warm_slot(
@@ -352,6 +353,12 @@ def _db_identity(db_path: str) -> str:
     return os.path.realpath(os.path.abspath(os.fspath(db_path)))
 
 
+# _active_writers is the registry of LOCAL holders of the DB's write flock — every
+# path that takes the sidecar LOCK_EX in this process registers here after the
+# acquisition and unregisters only AFTER the LOCK_UN, so process_holds_write_flock
+# never reads "free" while the kernel still counts us as the holder. Holders:
+# connect_write (cold open; a warm reuse keeps the registration parked with the
+# slot), authority_handoff_guard, and the write-log append.
 def _register_local_writer(db_path: str) -> None:
     identity = _db_identity(db_path)
     pid = os.getpid()
@@ -565,6 +572,7 @@ def _log_write_event_sync(
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     acquired = True
+                    _register_local_writer(db_path)
                     break
                 except OSError as e:
                     if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
@@ -603,6 +611,8 @@ def _log_write_event_sync(
                     fcntl.flock(fd, fcntl.LOCK_UN)
             with contextlib.suppress(OSError):
                 os.close(fd)
+            if acquired:
+                _unregister_local_writer(db_path)
     except Exception as e:  # pragma: no cover — observability is best-effort
         # If write_log doesn't exist yet (pre-migration), or any other failure,
         # don't propagate. A single line on stderr is enough for ops.
@@ -829,13 +839,14 @@ class LockedConnection:
         try:
             self._con.close()
         finally:
-            if self._db_path:
-                _unregister_local_writer(self._db_path)
             try:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
             finally:
                 with contextlib.suppress(OSError):
                     os.close(self._lock_fd)
+                # The kernel has released us; only now drop the registration.
+                if self._db_path:
+                    _unregister_local_writer(self._db_path)
             with contextlib.suppress(RuntimeError):
                 _PROCESS_WRITE_GATE.release()
         # Log AFTER the lock is released, on a fresh connection (briefly
@@ -1254,6 +1265,7 @@ def authority_handoff_guard(
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 acquired = True
+                _register_local_writer(db_path)
                 break
             except OSError as exc:
                 if exc.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
@@ -1288,6 +1300,8 @@ def authority_handoff_guard(
         if acquired:
             fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
+        if acquired:
+            _unregister_local_writer(db_path)
         if acquired:
             _log_write_event(
                 db_path, purpose, time.monotonic() - started,

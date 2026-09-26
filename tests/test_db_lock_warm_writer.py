@@ -365,3 +365,50 @@ def test_process_holds_write_flock_during_an_expiry_close(tmp_path: Path):
     finally:
         con.release.set()
         db_lock.flush_warm_writers(db)
+
+
+def test_process_holds_write_flock_inside_authority_handoff_guard(tmp_path: Path):
+    db = str(tmp_path / "guard.duckdb")
+    assert not db_lock.process_holds_write_flock(db)
+    with db_lock.authority_handoff_guard(db, timeout_s=1, purpose="test-guard"):
+        assert db_lock.process_holds_write_flock(db)
+    assert not db_lock.process_holds_write_flock(db)
+
+
+def test_registration_outlives_the_flock_on_every_release_path(tmp_path: Path, monkeypatch):
+    """At the moment LOCK_UN runs, the process must still be registered as the
+    holder — a predicate that reads "free" while the kernel still counts us
+    is the round-5 undercount. Covers LockedConnection.close, flush of a
+    parked slot, and the authority handoff guard."""
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    db = str(tmp_path / "order.duckdb")
+    lock_path = db_lock._lock_path_for(db)
+    seen: list[bool] = []
+    real_flock = db_lock.fcntl.flock
+
+    def recording_flock(fd: int, op: int) -> None:
+        if op == db_lock.fcntl.LOCK_UN:
+            try:
+                same = os.fstat(fd).st_ino == os.stat(lock_path).st_ino
+            except OSError:
+                same = False
+            if same:
+                seen.append(db_lock.process_holds_write_flock(db))
+        real_flock(fd, op)
+
+    monkeypatch.setattr(db_lock.fcntl, "flock", recording_flock)
+    try:
+        with db_lock.connect_write(db, purpose="cold"):
+            pass  # parks (keepalive on)
+        assert db_lock.flush_warm_writers(db) == 1  # LOCK_UN via _destroy_warm_slot
+        monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "0")
+        with db_lock.connect_write(db, purpose="cold-no-park"):
+            pass  # LOCK_UN via LockedConnection.close
+        with db_lock.authority_handoff_guard(db, timeout_s=1, purpose="guard"):
+            pass  # LOCK_UN via the guard
+    finally:
+        monkeypatch.setattr(db_lock.fcntl, "flock", real_flock)
+        db_lock.flush_warm_writers(db)
+    assert seen, "no sidecar LOCK_UN observed"
+    assert all(seen), seen
