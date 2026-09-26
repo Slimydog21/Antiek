@@ -20,7 +20,7 @@ import type { CostView, ConsentView } from "./CostConsent";
 
 // ── Cost fixture: research + read + speak + remote-exec + unmapped ───────────
 
-export const COST_FIXTURE: CostView = {
+const COST_FIXTURE: CostView = {
   per_workflow: [
     {
       workflow: "research",
@@ -82,7 +82,7 @@ export const COST_FIXTURE: CostView = {
 };
 
 /** Idle instance — every figure $0. Proves the cost-proportional posture. */
-export const COST_IDLE: CostView = {
+const COST_IDLE: CostView = {
   per_workflow: COST_FIXTURE.per_workflow.map((w) => ({
     ...w,
     raw_cost_usd: "0",
@@ -107,7 +107,7 @@ const GATED_GATE = {
   label: "accruing — disbursement gated on G2+G3",
 };
 
-export const CONSENT_GATED: ConsentView = {
+const CONSENT_GATED: ConsentView = {
   holders: [
     {
       ip_holder_id: "ipholder-aaa",
@@ -157,7 +157,7 @@ export const CONSENT_GATED: ConsentView = {
 };
 
 /** Zero-buyer everywhere — the whole surface honestly reads $0 accruing. */
-export const CONSENT_ZERO_BUYER: ConsentView = {
+const CONSENT_ZERO_BUYER: ConsentView = {
   holders: [
     {
       ip_holder_id: "ipholder-zzz",
@@ -199,7 +199,7 @@ export default costMeta;
 type CostStory = StoryObj<typeof costMeta>;
 
 /** Cost with spend across workflows, remote-exec surfaced, margins stubbed. */
-export const Cost: CostStory = {
+export const CostFixture: CostStory = {
   args: { cost: COST_FIXTURE },
 };
 

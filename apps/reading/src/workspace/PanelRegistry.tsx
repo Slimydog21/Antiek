@@ -29,7 +29,7 @@ import { FakeSidebar } from "./__fakes__/FakeSidebar";
 
 // Eager imports for renderers that ALSO appear as direct main-slot
 // children of routes (RW imports MasterMdViewer + TrajectoryView,
-// WrestleApp imports PdfViewer, App.tsx imports Notebook + Stats).
+// WrestleApp imports PdfViewer, App.tsx imports Notebook).
 // Marking these as `lazy()` here while they're statically imported
 // elsewhere defeats the code-split — vite warns "dynamic import will
 // not move module into another chunk." Make the registry match
@@ -38,7 +38,6 @@ import PdfViewer from "../components/PdfViewer";
 import NotebookPage from "../modes/Notebook";
 import MasterMdViewer from "../modes/ResearchWorkstation/MasterMdViewer";
 import TrajectoryView from "../modes/ResearchWorkstation/TrajectoryView";
-import Stats from "../modes/Stats";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Renderer = ComponentType<any> | LazyExoticComponent<ComponentType<any>>;
@@ -87,8 +86,8 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   // SPR-04: now the workflow-scoped content-first tree at shell/.
   ProjectTree: lazy(() => import("../shell/ProjectTree")),
 
-  // S10 — Stats is also rendered as a route → eager.
-  Stats,
+  // S10 — Stats is also a lazy route; the panel shares its deferred chunk.
+  Stats: lazy(() => import("../modes/Stats")),
 
   // S10 row 10.7 — CreationStudio side panels
   DeliverableSidebar: lazy(() => import("../modes/CreationStudio/DeliverableSidebar")),
