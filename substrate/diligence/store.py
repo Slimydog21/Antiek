@@ -52,6 +52,10 @@ class DiligenceFlagRow:
     source_document_id: str | None
     status: str
     spawned_investigation_id: str | None
+    """The daemon's bookkeeping (SPR-03): WHY the row is where it is — the
+    spawn iteration's receipt (reserve + caps checked) or the honest skip
+    reason. JSON text; None until the daemon writes one."""
+    receipt_json: str | None
     created_at: str
     updated_at: str
 
@@ -67,15 +71,17 @@ def _to_row(r: Any) -> DiligenceFlagRow:
         source_document_id=None if r[6] is None else str(r[6]),
         status=str(r[7]),
         spawned_investigation_id=None if r[8] is None else str(r[8]),
-        created_at=str(r[9]),
-        updated_at=str(r[10]),
+        receipt_json=None if r[9] is None else str(r[9]),
+        created_at=str(r[10]),
+        updated_at=str(r[11]),
     )
 
 
 _SELECT = (
     "SELECT flag_id, owner_user_id, kind, object_ref, note, "
     "source_investigation_id, source_document_id, status, "
-    "spawned_investigation_id, created_at, updated_at FROM diligence_queue"
+    "spawned_investigation_id, receipt_json, created_at, updated_at "
+    "FROM diligence_queue"
 )
 
 
@@ -94,7 +100,7 @@ class QueuedClaim:
 
 
 def _to_claim(r: Any) -> QueuedClaim:
-    return QueuedClaim(flag=_to_row(r), question=None if r[11] is None else str(r[11]))
+    return QueuedClaim(flag=_to_row(r), question=None if r[12] is None else str(r[12]))
 
 
 def _mint_flag_id() -> str:
@@ -207,7 +213,7 @@ class DiligenceStore:
         rows = con.execute(
             "SELECT q.flag_id, q.owner_user_id, q.kind, q.object_ref, q.note, "
             "q.source_investigation_id, q.source_document_id, q.status, "
-            "q.spawned_investigation_id, q.created_at, q.updated_at, "
+            "q.spawned_investigation_id, q.receipt_json, q.created_at, q.updated_at, "
             "CASE WHEN q.kind = 'concept' THEN q.object_ref "
             "ELSE n.canonical_label END "
             "FROM diligence_queue q "
@@ -246,23 +252,75 @@ class DiligenceStore:
         owner_user_id: str,
         flag_id: str,
         spawned_investigation_id: str,
+        receipt_json: str | None = None,
     ) -> DiligenceFlagRow | None:
-        """queued → spawned with the spawned investigation id. The SPR-02
-        daemon write path (claimed flags only); present from day one so the
-        transition is one store method, not raw SQL in the daemon."""
+        """queued → spawned with the spawned investigation id AND the spawn
+        iteration's receipt (SPR-03: which caps were checked, the reserve
+        amount) in ONE statement — the write-back is a single bounded
+        scope. The SPR-02 daemon write path (claimed flags only)."""
         init_diligence_schema(con)
         row = self.get_for_owner(con, owner_user_id=owner_user_id, flag_id=flag_id)
         if row is None or row.status != "queued":
             return row
         con.execute(
             "UPDATE diligence_queue SET status = 'spawned', "
-            "spawned_investigation_id = ?, updated_at = CURRENT_TIMESTAMP "
+            "spawned_investigation_id = ?, receipt_json = ?, "
+            "updated_at = CURRENT_TIMESTAMP "
             "WHERE flag_id = ?",
-            [spawned_investigation_id, flag_id],
+            [spawned_investigation_id, receipt_json, flag_id],
         )
         out = self.get_for_owner(con, owner_user_id=owner_user_id, flag_id=flag_id)
         assert out is not None  # the update above just landed
         return out
+
+    def record_skip(
+        self,
+        con: LockedConnection,
+        *,
+        owner_user_id: str,
+        flag_id: str,
+        receipt_json: str,
+    ) -> None:
+        """Record the honest skip reason on a QUEUED flag (SPR-03's daemon
+        bookkeeping — a cap hit, a dedupe, a concurrency wait). Status stays
+        queued; the receipt is rewritten next iteration while the cause
+        persists. No-op for rows that left queued between claim and write."""
+        init_diligence_schema(con)
+        con.execute(
+            "UPDATE diligence_queue SET receipt_json = ?, "
+            "updated_at = CURRENT_TIMESTAMP "
+            "WHERE flag_id = ? AND owner_user_id = ? AND status = 'queued'",
+            [receipt_json, flag_id, owner_user_id],
+        )
+
+
+# ── The lazy terminal projection (SPR-03) ─────────────────────────────
+
+#: The terminal set the monitor already trusts (cascade_session.py:426-430),
+#: mapped to the flag's honest OUTCOME vocabulary: a budget-halted spawn
+#: reads stopped (app.py:3026-3033's terminal-honest rule), never "running".
+SPAWNED_TERMINAL_OUTCOMES: dict[str, str] = {
+    "investigation.completed": "completed",
+    "investigation.failed": "failed",
+    "investigation.chase_halted": "stopped",
+}
+
+
+def project_flag_status(
+    row: DiligenceFlagRow, spawned_terminal_action: str | None
+) -> tuple[str, str | None]:
+    """The lazy, read-only projection: a SPAWNED flag whose investigation
+    reached a terminal event reads done with the honest outcome; everything
+    else reads as stored. The caller supplies the terminal action from the
+    event log (None = still in flight) — the projection itself is pure.
+
+    Returns (status, outcome): ("done", "completed" | "failed" | "stopped")
+    for a terminal spawned flag, else (row.status, None)."""
+    if row.status == "spawned" and spawned_terminal_action is not None:
+        outcome = SPAWNED_TERMINAL_OUTCOMES.get(spawned_terminal_action)
+        if outcome is not None:
+            return "done", outcome
+    return row.status, None
 
 
 # Re-export so consumers read the vocabulary from one place.
@@ -272,5 +330,7 @@ __all__ = [
     "FLAG_KINDS",
     "FLAG_STATUSES",
     "QueuedClaim",
+    "SPAWNED_TERMINAL_OUTCOMES",
     "normalize_concept_key",
+    "project_flag_status",
 ]

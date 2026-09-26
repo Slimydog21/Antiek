@@ -33,6 +33,7 @@ from substrate.diligence.store import (
     DiligenceFlagRow,
     DiligenceStore,
     normalize_concept_key,
+    project_flag_status,
 )
 
 _KIND_TO_NODE_TYPE = {"open_question": "question", "insight": "insight"}
@@ -53,18 +54,51 @@ class FlagOut(BaseModel):
     note: str | None
     source_investigation_id: str | None
     source_document_id: str | None
+    """The PROJECTED status (SPR-03): a spawned row whose investigation
+    reached a terminal event reads done — projected lazily from the event
+    log on read, never a poller."""
     status: str
+    """The honest outcome of a done flag's investigation (completed |
+    failed | stopped), None otherwise."""
+    outcome: str | None
     spawned_investigation_id: str | None
+    """The daemon's receipt — WHY the row is where it is (the spawn
+    iteration's reserve + caps checked, or the honest skip reason)."""
+    receipt: dict[str, Any] | None
     created_at: str
     updated_at: str
+
+
+class QueueSummaryOut(BaseModel):
+    """The calm summary line's numbers — sourced from the budget sidecar
+    (the daemon's own spend tally, READ through budget.py's public read)
+    and the event log projection. NEVER from new counters."""
+    diligenced_this_week: int
+    spent_usd: float
+    cap_usd: float
 
 
 class FlagListOut(BaseModel):
     flags: list[FlagOut]
     count: int
+    summary: QueueSummaryOut
 
 
-def _out(row: DiligenceFlagRow) -> FlagOut:
+def _out(
+    row: DiligenceFlagRow,
+    *,
+    spawned_terminal_action: str | None = None,
+) -> FlagOut:
+    import json
+
+    status, outcome = project_flag_status(row, spawned_terminal_action)
+    receipt: dict[str, Any] | None = None
+    if row.receipt_json:
+        try:
+            parsed = json.loads(row.receipt_json)
+            receipt = parsed if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            receipt = None  # a corrupt receipt reads as none, never a 500
     return FlagOut(
         flag_id=row.flag_id,
         kind=row.kind,
@@ -72,10 +106,71 @@ def _out(row: DiligenceFlagRow) -> FlagOut:
         note=row.note,
         source_investigation_id=row.source_investigation_id,
         source_document_id=row.source_document_id,
-        status=row.status,
+        status=status,
+        outcome=outcome,
         spawned_investigation_id=row.spawned_investigation_id,
+        receipt=receipt,
         created_at=row.created_at,
         updated_at=row.updated_at,
+    )
+
+
+def _terminal_of(investigation_id: str) -> tuple[str, str] | None:
+    """The spawned investigation's terminal (action, emitted_at), read from
+    the event log (the LAZY projection's only input — the log already
+    records every terminal transition; no daemon poller, no second truth).
+    The emitted_at is the DONE event's own time — the honest timestamp for
+    "diligenced this week", never a row's mutable updated_at."""
+    from substrate.diligence.store import SPAWNED_TERMINAL_OUTCOMES
+    from substrate.event_log import default_events_dir, trajectory
+
+    try:
+        rows = trajectory(investigation_id, events_dir=default_events_dir())
+    except Exception:
+        return None  # a missing/corrupt trajectory reads as in-flight
+    for row in rows:
+        at = row.get("action_type")
+        if at in SPAWNED_TERMINAL_OUTCOMES:
+            emitted = row.get("emitted_at")
+            return str(at), "" if emitted is None else str(emitted)
+    return None
+
+
+def _summary(
+    rows: list[DiligenceFlagRow],
+    projected: list[str],
+    terminal_times: list[str | None],
+) -> QueueSummaryOut:
+    """The summary line's numbers: the diligenced count from the queue rows
+    + the event-log projection (spawned, now terminal — counted by the
+    TERMINAL EVENT's emitted_at, falling back to updated_at only when the
+    trajectory is unreadable), the dollars from the budget SIDECAR via
+    budget.py's public read — never a new counter."""
+    from datetime import UTC, datetime, timedelta
+
+    from orchestration.continuous.budget import DaemonBudget
+
+    week_ago = datetime.now(UTC) - timedelta(days=7)
+    diligenced = 0
+    for row, status, terminal_at in zip(rows, projected, terminal_times, strict=True):
+        if status != "done":
+            continue
+        when = terminal_at or row.updated_at
+        try:
+            done_at = datetime.fromisoformat(when.replace("Z", "+00:00"))
+            if done_at.tzinfo is None:
+                done_at = done_at.replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        if done_at >= week_ago:
+            diligenced += 1
+    budget = DaemonBudget.from_env()
+    cap = budget.daily_cap_usd
+    spent = max(0.0, cap - budget.remaining_today())
+    return QueueSummaryOut(
+        diligenced_this_week=diligenced,
+        spent_usd=round(spent, 6),
+        cap_usd=cap,
     )
 
 
@@ -100,17 +195,21 @@ def _ground_ref(con: Any, kind: str, object_ref: str) -> None:
         )
 
 
-def _ground_source_document(con: Any, source_document_id: str | None) -> None:
+def _ground_source_document(
+    con: Any, source_document_id: str | None, owner_user_id: str
+) -> None:
+    """The source document grounds to the CALLER (existence AND ownership)
+    — a flag may never steer the daemon at another owner's document."""
     if source_document_id is None:
         return
     hit = con.execute(
-        "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1",
-        [source_document_id],
+        "SELECT 1 FROM documents WHERE document_id = ? AND owner_user_id = ? LIMIT 1",
+        [source_document_id, owner_user_id],
     ).fetchone()
     if hit is None:
         raise HTTPException(
             status_code=422,
-            detail="diligence_source_ungrounded: no document with that id",
+            detail="diligence_source_ungrounded: no document of yours with that id",
         )
 
 
@@ -143,7 +242,7 @@ def register_diligence_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         with connect_write(db, purpose="diligence/flags/create") as con:
             _ground_ref(con, body.kind, object_ref)
-            _ground_source_document(con, body.source_document_id)
+            _ground_source_document(con, body.source_document_id, owner)
             row, created = DiligenceStore().create_flag(
                 con,
                 owner_user_id=owner,
@@ -173,7 +272,27 @@ def register_diligence_routes(app: FastAPI) -> None:
             rows = DiligenceStore().list_for_owner(con, owner_user_id=owner)
         finally:
             con.close()
-        return FlagListOut(flags=[_out(r) for r in rows], count=len(rows))
+        # The lazy projection (SPR-03): terminal truth comes from the event
+        # log at READ time — read-only, no poller, no write-back.
+        terminals = [
+            _terminal_of(r.spawned_investigation_id)
+            if r.status == "spawned" and r.spawned_investigation_id
+            else None
+            for r in rows
+        ]
+        flags = [
+            _out(r, spawned_terminal_action=t[0] if t else None)
+            for r, t in zip(rows, terminals, strict=True)
+        ]
+        return FlagListOut(
+            flags=flags,
+            count=len(flags),
+            summary=_summary(
+                rows,
+                [f.status for f in flags],
+                [t[1] if t else None for t in terminals],
+            ),
+        )
 
     @app.post(
         "/diligence/flags/{flag_id}/dismiss",

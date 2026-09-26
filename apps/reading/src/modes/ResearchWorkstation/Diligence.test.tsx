@@ -50,10 +50,11 @@ import ResearchArtifactReceipt from "../../components/windows/ResearchArtifactRe
 interface DiligenceServer {
   flags: DiligenceFlag[];
   posts: Record<string, unknown>[];
+  summary: { diligenced_this_week: number; spent_usd: number; cap_usd: number } | null;
 }
 
 function seedServer(rows: DiligenceFlag[] = []): DiligenceServer {
-  const server: DiligenceServer = { flags: [...rows], posts: [] };
+  const server: DiligenceServer = { flags: [...rows], posts: [], summary: null };
   apiFetchMock.mockImplementation(async (input: unknown, init?: { method?: string; body?: string }) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -76,7 +77,9 @@ function seedServer(rows: DiligenceFlag[] = []): DiligenceServer {
         source_investigation_id: parsedBody.source_investigation_id ?? null,
         source_document_id: parsedBody.source_document_id ?? null,
         status: "queued",
+        outcome: null,
         spawned_investigation_id: null,
+        receipt: null,
         created_at: "2026-09-25T12:00:00Z",
         updated_at: "2026-09-25T12:00:00Z",
       };
@@ -84,7 +87,11 @@ function seedServer(rows: DiligenceFlag[] = []): DiligenceServer {
       return jsonResponse(row, 201);
     }
     if (url.endsWith("/diligence/queue") && method === "GET") {
-      return jsonResponse({ flags: server.flags.map((f) => ({ ...f })), count: server.flags.length });
+      return jsonResponse({
+        flags: server.flags.map((f) => ({ ...f })),
+        count: server.flags.length,
+        summary: server.summary ?? null,
+      });
     }
     if (url.includes("/dismiss") && method === "POST") {
       const id = url.split("/flags/")[1]?.split("/dismiss")[0];
@@ -116,7 +123,9 @@ function flagRow(over: Partial<DiligenceFlag> = {}): DiligenceFlag {
     source_investigation_id: "inv-1",
     source_document_id: null,
     status: "queued",
+    outcome: null,
     spawned_investigation_id: null,
+    receipt: null,
     created_at: "2026-09-25T12:00:00Z",
     updated_at: "2026-09-25T12:00:00Z",
     ...over,
@@ -286,5 +295,111 @@ describe("the queue rail", () => {
     );
     expect(server.flags[0].status).toBe("dismissed");
     expect(document.querySelector('[data-diligence-row="queued"]')).toBeNull();
+  });
+});
+
+// ── SPR-03 proof 3: the rail end-to-end through the loop's transitions ────
+
+describe("the rail end-to-end (flag → spawned → terminal → done)", () => {
+  it("renders each step honestly — queued, spawned with its receipt + linked investigation, done with the outcome + the summary line", async () => {
+    const server = seedServer([]);
+    renderWithRouter(
+      <>
+        <BlockCard node={node("q-1", "question", "What is the moat?")} sourceInvestigationId="inv-1" />
+        <DiligenceRail />
+      </>,
+    );
+    await screen.findByText(/Nothing flagged yet/);
+
+    // 1. FLAG: the operator's click → queued in the rail.
+    fireEvent.click(screen.getByRole("button", { name: "flag for diligence" }));
+    fireEvent.click(screen.getByRole("button", { name: "flag" }));
+    await waitFor(() =>
+      expect(document.querySelector('[data-diligence-row="queued"]')).toBeTruthy(),
+    );
+    expect(document.querySelector("[data-diligence-rail]")!.textContent).toContain(
+      "queued — the loop will pick it up",
+    );
+
+    // 2. THE ITERATION (server-side, simulated here as the store's truth):
+    // the row transitions to spawned with the receipt + the investigation.
+    const row = server.flags[0];
+    row.status = "spawned";
+    row.spawned_investigation_id = "inv-daemon-1";
+    row.receipt = {
+      kind: "spawned",
+      reserve_usd: 0.5,
+      caps_checked: ["per_spawn_reserve", "daily", "iteration", "concurrency", "topic_depth"],
+      iteration: 1,
+    };
+    window.dispatchEvent(new Event("antiek:diligence-changed"));
+    await waitFor(() =>
+      expect(document.querySelector('[data-diligence-row="spawned"]')).toBeTruthy(),
+    );
+    const link = document.querySelector("[data-diligence-spawned-link]")!;
+    expect(link.getAttribute("href")).toBe("/inv/inv-daemon-1");
+    expect(document.querySelector("[data-diligence-receipt]")!.textContent).toContain(
+      "reserved $0.50 · caps checked",
+    );
+
+    // 3. TERMINAL: the projected done with the honest outcome + the summary.
+    row.status = "done";
+    row.outcome = "completed";
+    server.summary = { diligenced_this_week: 1, spent_usd: 0.5, cap_usd: 5.0 };
+    window.dispatchEvent(new Event("antiek:diligence-changed"));
+    await waitFor(() =>
+      expect(document.querySelector('[data-diligence-row="done"]')).toBeTruthy(),
+    );
+    expect(
+      document.querySelector('[data-diligence-row="done"]')!.textContent,
+    ).toContain("diligenced");
+    expect(document.querySelector("[data-diligence-summary]")!.textContent).toBe(
+      "1 flag diligenced this week · $0.50 of $5.00 daily cap",
+    );
+  });
+
+  it("a chase-halted spawn reads done — ended stopped (terminal-honest, never running)", async () => {
+    seedServer([
+      flagRow({
+        flag_id: "dfl-h",
+        note: "the halted one",
+        status: "done",
+        outcome: "stopped",
+        spawned_investigation_id: "inv-halted",
+      }),
+    ]);
+    renderWithRouter(<DiligenceRail />);
+    await waitFor(() =>
+      expect(document.querySelector('[data-diligence-row="done"]')).toBeTruthy(),
+    );
+    expect(document.querySelector("[data-diligence-rail]")!.textContent).toContain(
+      "diligenced — ended stopped",
+    );
+    expect(document.querySelector("[data-diligence-rail]")!.textContent).not.toContain(
+      "being diligenced",
+    );
+  });
+
+  it("a queued flag's skip receipt reads as an honest waiting reason", async () => {
+    seedServer([
+      flagRow({
+        flag_id: "dfl-w",
+        note: "the waiting one",
+        status: "queued",
+        receipt: {
+          kind: "skipped",
+          reason: "concurrency",
+          detail: "the loop is at capacity (2 in flight)",
+          iteration: 3,
+        },
+      }),
+    ]);
+    renderWithRouter(<DiligenceRail />);
+    await waitFor(() =>
+      expect(document.querySelector("[data-diligence-receipt]")).toBeTruthy(),
+    );
+    expect(document.querySelector("[data-diligence-receipt]")!.textContent).toBe(
+      "waiting — the loop is at capacity (2 in flight)",
+    );
   });
 });
