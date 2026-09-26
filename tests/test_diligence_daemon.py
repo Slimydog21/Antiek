@@ -610,3 +610,20 @@ def test_never_flags_parity_suggestions_identical_and_daemon_idle(isolated_env):
         ]
 
     assert _stable(before) == _stable(after)
+
+
+@pytest.fixture(autouse=True)
+def _scrub_operator_auth_env(monkeypatch):
+    """Environment invariance (the F2 rule, extended to this chain): the
+    suite must pass on the operator's own Mac, where the login shell
+    exports the operator-auth env — otherwise the middleware answers 401
+    and CI-clean tests fail locally."""
+    for key in (
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_DEV_LOGIN_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_COOKIE_INSECURE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+

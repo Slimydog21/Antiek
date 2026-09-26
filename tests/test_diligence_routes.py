@@ -391,3 +391,125 @@ def test_no_new_spend_counters_in_the_diligence_surface() -> None:
             assert token not in text, f"{src.name} carries spend-counter machinery: {token}"
     route_text = sources[2].read_text()
     assert "remaining_today" in route_text  # the sidecar's PUBLIC read
+
+
+# ── Review hardening D1 (2026-09-25): the source document grounds to the
+# CALLER. A flag may never steer the daemon at another owner's document. ──
+
+
+def test_flag_cannot_reference_another_owners_document(api_env, monkeypatch) -> None:
+    from interfaces.research.api import diligence_routes
+
+    _seed_graph(api_env["db"])
+    with connect_write(api_env["db"], purpose="test/seed-foreign-doc") as con:
+        insert_document(
+            con,
+            document_id="doc-foreign",
+            source_tier=2,
+            document_type="book",
+            title="Someone Else's Book",
+            raw_text="not yours to diligence",
+            content_class="personal_reading",
+            owner_user_id="owner-b",
+            on_conflict="ignore",
+        )
+    monkeypatch.setattr(
+        diligence_routes, "_reader_owner_id", lambda request: "owner-a"
+    )
+    client = _client()
+    denied = client.post(
+        "/diligence/flags", json=_flag_payload(source_document_id="doc-foreign")
+    )
+    assert denied.status_code == 422
+    assert "diligence_source_ungrounded" in denied.json()["detail"]
+
+    # The caller's own document still grounds (existence AND ownership).
+    with connect_write(api_env["db"], purpose="test/own-doc") as con:
+        insert_document(
+            con,
+            document_id="doc-own",
+            source_tier=2,
+            document_type="book",
+            title="My Book",
+            raw_text="mine to diligence",
+            content_class="public_domain",
+            owner_user_id="owner-a",
+            on_conflict="ignore",
+        )
+    allowed = client.post(
+        "/diligence/flags",
+        json=_flag_payload(
+            object_ref="q-1", source_document_id="doc-own"
+        ),
+    )
+    assert allowed.status_code == 201
+
+
+# ── Review hardening D2 (2026-09-25): "diligenced this week" counts by the
+# TERMINAL EVENT's time — the lazy projection's own truth — never by
+# updated_at, which any later write (a receipt rewrite) refreshes. ────────
+
+
+def test_weekly_count_uses_the_terminal_event_time_not_updated_at(api_env) -> None:
+    import json as _json
+    from datetime import UTC as _UTC
+    from datetime import datetime as _datetime
+    from datetime import timedelta as _timedelta
+    from pathlib import Path as _Path
+
+    db = api_env["db"]
+    _seed_graph(db)
+    client = _client()
+    created = client.post(
+        "/diligence/flags", json={"kind": "concept", "object_ref": "old-done"}
+    )
+    _force_spawned(db, created.json()["flag_id"], "inv-week-old")
+    # The terminal event landed 8 days ago…
+    old = _datetime.now(_UTC) - _timedelta(days=8)
+    rows = [
+        {
+            "event_id": "evt-week-old-start",
+            "investigation_id": "inv-week-old",
+            "action_type": "investigation.start_requested",
+            "policy_id": "continuous_daemon",
+            "emitted_at": old.isoformat(),
+            "payload": {"action_type": "investigation.start_requested", "question": "q"},
+        },
+        {
+            "event_id": "evt-week-old-terminal",
+            "investigation_id": "inv-week-old",
+            "action_type": "investigation.completed",
+            "policy_id": "continuous_daemon",
+            "emitted_at": old.isoformat(),
+            "payload": {"action_type": "investigation.completed"},
+        },
+    ]
+    path = _Path(api_env["events"]) / f"{ 'inv-week-old' }.jsonl"
+    path.write_text("".join(_json.dumps(r) + "\n" for r in rows))
+    # …but a later bookkeeping write refreshed updated_at to NOW.
+    with connect_write(db, purpose="test/refresh-updated-at") as con:
+        con.execute(
+            "UPDATE diligence_queue SET updated_at = ? "
+            "WHERE spawned_investigation_id = 'inv-week-old'",
+            [_datetime.now(_UTC).isoformat()],
+        )
+
+    summary = client.get("/diligence/queue").json()["summary"]
+    assert summary["diligenced_this_week"] == 0
+
+
+@pytest.fixture(autouse=True)
+def _scrub_operator_auth_env(monkeypatch):
+    """Environment invariance (the F2 rule, extended to this chain): the
+    suite must pass on the operator's own Mac, where the login shell
+    exports the operator-auth env — otherwise the middleware answers 401
+    and CI-clean tests fail locally."""
+    for key in (
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_DEV_LOGIN_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_COOKIE_INSECURE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
