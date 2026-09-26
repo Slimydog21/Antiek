@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 
 import { toast } from "../components/lemon/LemonToast";
 import { radius } from "../design/tokens";
-import CompanionPane from "./CompanionPane";
+import RightPaneForMode from "./RightPaneForMode";
+import { DocumentTabStrip } from "./DocumentTabStrip";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { useWorkspace } from "./WorkspaceStore";
 import { isTextEditing } from "./shortcuts";
@@ -153,9 +154,12 @@ export function PanelLayout({ mainSlot }: Props) {
 
   // The centre column is IDENTICAL in both presets — one JSX value, so the
   // docked DOM is byte-identical to before the preset existed and the inset
-  // preset cannot drift from it.
+  // preset cannot drift from it. The document tab strip (D6) mounts here
+  // once, so the inset left pane and the docked main surface share it
+  // (router-guarded: it renders nothing without a Router context).
   const centreColumn = (
     <div className="flex-1 min-w-0 flex flex-col">
+      <DocumentTabStrip />
       <main className="flex-1 min-w-0 relative overflow-hidden">
         {/* Underlying mainSlot — the route content */}
         <div className="absolute inset-0 overflow-auto">{mainSlot}</div>
@@ -260,7 +264,7 @@ export function PanelLayout({ mainSlot }: Props) {
             style={{ width: rightPaneWidth, borderRadius: radius.lg }}
             onFocusCapture={() => setFocusedPane("right")}
           >
-            <CompanionPane />
+            <RightPaneForMode />
             {dockRightIds.length > 0 && (
               <aside
                 className="flex flex-col shrink-0 min-w-0 max-h-[50%] border-t border-hairline"

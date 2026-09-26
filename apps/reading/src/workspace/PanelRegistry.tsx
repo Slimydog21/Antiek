@@ -39,6 +39,7 @@ import NotebookPage from "../modes/Notebook";
 import MasterMdViewer from "../modes/ResearchWorkstation/MasterMdViewer";
 import TrajectoryView from "../modes/ResearchWorkstation/TrajectoryView";
 import CompanionPane from "./CompanionPane";
+import WriteOutlinePane from "./WriteOutlinePane";
 import Stats from "../modes/Stats";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,6 +94,10 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   // cockpit chrome, mounted whenever the inset preset is active), so the
   // registry matches reality rather than pretending to split it.
   Companion: CompanionPane,
+
+  // Cockpit C5 — the Write outline (block tabs + source DnD). EAGER for the
+  // same reason as the companion: RightPaneForMode statically imports it.
+  WriteOutline: WriteOutlinePane,
 
   // S10 — Stats is also rendered as a route → eager.
   Stats,
