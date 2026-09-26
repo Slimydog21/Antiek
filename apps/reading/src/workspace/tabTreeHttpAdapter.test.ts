@@ -206,6 +206,67 @@ describe("createHttpTabTreeAdapter: load and save (contract §1.6)", () => {
     expect(adopted.history["t-doc"].closed_at).toBe("2026-09-27T05:00:00.000001Z");
     expect(undo(adopted, closed.undo).ok).toBe(true);
   });
+
+  it("an undo after a pruned close was written puts the server's pruned_at back and sends it (§2.2 rev 8.8)", async () => {
+    // t-doc has an open child, so closing it in prune mode is a real prune.
+    const kid: WireNode = {
+      tab_id: "t-kid",
+      parent_tab_id: "t-doc",
+      side: "left",
+      kind: "reader",
+      ref: "doc-fixture-4",
+      title: "Bolt schedule",
+      mothership: "research",
+      public_number: 5,
+      hier_number: "2.1",
+      child_order: [],
+    };
+    const loaded = expected();
+    loaded.tree.nodes["t-kid"] = clone(kid);
+    loaded.tree.nodes["t-doc"].child_order = ["t-kid"];
+    loaded.next_child_index = { ...loaded.next_child_index, "t-doc": 2 };
+    respond(200, loaded);
+    const adapter = createHttpTabTreeAdapter();
+    const tree = treeOf(await adapter.load("fld-1", "research"));
+    const closed = closeTab(tree, "t-doc", "prune", "2026-09-27T06:00:00Z");
+    if (!closed.ok) throw new Error(closed.error.message);
+    expect(closed.tree.history["t-doc"].close_mode).toBe("prune");
+
+    // The server records both retirements as prunes and sets pruned_at = closed_at.
+    const closedAt = "2026-09-27T06:00:00.000001Z";
+    const server = clone(loaded);
+    server.version = 3;
+    const nodes = server.tree.nodes as Record<string, WireNode>;
+    const docRow = { ...clone(nodes["t-doc"]), pruned_at: closedAt };
+    const kidRow = { ...clone(nodes["t-kid"]), pruned_at: closedAt };
+    delete nodes["t-doc"];
+    delete nodes["t-kid"];
+    server.tree.root_order = ["t-thread"];
+    server.retired = [
+      { closed_at: closedAt, close_mode: "prune", node: docRow },
+      { closed_at: closedAt, close_mode: "prune", node: kidRow },
+      ...server.retired,
+    ];
+    respond(200, server);
+    const result = await adapter.save("fld-1", "research", toSnapshot(closed.tree));
+    if (result.status !== "saved") throw new Error(result.status);
+    const adopted = treeOf(result.snapshot);
+    expect(adopted.history["t-doc"].node.pruned_at).toBe(closedAt);
+
+    // The store's undoClose reaches this undo: the same tab_ids come back with
+    // pruned_at intact, for the server to clear.
+    const u = undo(adopted, closed.undo);
+    if (!u.ok) throw new Error(u.error.message);
+    expect(u.tree.nodes["t-doc"].pruned_at).toBe(closedAt);
+    expect(u.tree.nodes["t-kid"].pruned_at).toBe(closedAt);
+
+    respond(409, { reason: "version_stale", current: server }); // the body is what is under test
+    await adapter.save("fld-1", "research", toSnapshot(u.tree));
+    const sent = sentBody(2).tree.nodes;
+    expect(sent["t-doc"].pruned_at).toBe(closedAt);
+    expect(sent["t-kid"].pruned_at).toBe(closedAt);
+    expect(sent["t-doc"]).toStrictEqual(docRow);
+  });
 });
 
 describe("restore from history (contract §2.2 rev 8.8)", () => {
