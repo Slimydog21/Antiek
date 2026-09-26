@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
@@ -32,7 +32,19 @@ import {
   type BookAnchor,
 } from "../../lib/api";
 import { buildPinBody } from "./pinBody";
-import { collectDecorations } from "../../reading-physics/registry";
+import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
+import { enactWidgetLayout } from "../../reading-physics/facets/anchored-widgets";
+import { anchorKey } from "../../reading-physics/facets/decorations";
+import { baseGeometryFromMap, createLayoutMap } from "../../reading-physics/layout-map";
+import type { Rect as PhysicsRect, RenderContext } from "../../reading-physics/types";
+import { makeIslandAugmentation } from "../../reading-physics/augmentations/thread-island";
+import ThreadIsland from "./island/ThreadIsland";
+import { deriveIslandRefs } from "./island/islandModel";
+import {
+  HIDDEN_ISLANDS_CHANGED,
+  readHiddenIslands,
+  unhideIsland,
+} from "./island/hiddenIslands";
 import type { ReadingContext } from "../../reading-physics/types";
 import { makeHighlightAnchorAugmentation } from "../../reading-physics/augmentations/highlight-anchor";
 import {
@@ -123,6 +135,8 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     setReloadToken((token) => token + 1);
   }, []);
 
+
+
   useEffect(() => {
     // The anchor-map is only meaningful with a readable body (the reader
     // renders only gate-served text — a gated snippet carries no anchorable
@@ -179,6 +193,118 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     for (const chunk of anchorMapChunks) byId.set(chunk.chunk_id, chunk);
     return byId;
   }, [anchorMapChunks]);
+
+  // ── Research-thread islands (island SPR-02) ───────────────────────────
+  // Islands are the thread-linked anchors (SPR-01's deriveIslandRefs). An
+  // island SUPERSEDES a plain highlight mark: the unit-1 wash + underline
+  // already paints its anchor; this widget adds the live status glyph and
+  // the pinned overlay card. Orphaned islands follow the parent's rule
+  // (nothing in the body, one honest list row).
+  const islands = useMemo(() => deriveIslandRefs(anchors), [anchors]);
+
+  // The per-device "hide" preference (client-side only; never deletes
+  // anything). Re-read on the module's change event so Hide/Unhide both
+  // reflect immediately.
+  const [hiddenIslands, setHiddenIslands] = useState<Set<string>>(() =>
+    readHiddenIslands(),
+  );
+  useEffect(() => {
+    function sync() {
+      setHiddenIslands(readHiddenIslands());
+    }
+    window.addEventListener(HIDDEN_ISLANDS_CHANGED, sync);
+    return () => window.removeEventListener(HIDDEN_ISLANDS_CHANGED, sync);
+  }, []);
+
+  const visibleIslands = useMemo(
+    () => islands.filter((i) => !hiddenIslands.has(i.anchorId)),
+    [islands, hiddenIslands],
+  );
+
+  // The widget surface: pin each visible island through the reading-physics
+  // plan (declare), resolve geometry from the island's mark span (the ONE
+  // place pixels are measured — the surface owns the read, PR-4), and enact
+  // the widgets over the reading column. An island whose anchor isn't laid
+  // out (off-page, orphaned) resolves null and renders nothing — the
+  // LayoutMap contract, never a fabricated position.
+  const mainRef = useRef<HTMLElement>(null);
+  const [islandRects, setIslandRects] = useState<ReadonlyMap<string, PhysicsRect>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main || visibleIslands.length === 0) {
+      setIslandRects(new Map());
+      return;
+    }
+    function measure() {
+      const mainRect = main!.getBoundingClientRect();
+      const next = new Map<string, PhysicsRect>();
+      for (const island of visibleIslands) {
+        const key = anchorKey({
+          kind: "passage",
+          chunkId: island.passageAnchor.chunkId as never,
+          start: island.passageAnchor.start,
+          end: island.passageAnchor.end,
+        });
+        const span = main!.querySelector(`[data-anchor-id="${island.anchorId}"]`);
+        if (span) {
+          const r = span.getBoundingClientRect();
+          next.set(key, {
+            top: r.top - mainRect.top,
+            left: r.left - mainRect.left,
+            width: r.width,
+            height: r.height,
+          });
+        }
+      }
+      setIslandRects(next);
+    }
+    measure();
+    // jsdom has no ResizeObserver: the one measurement per pass stands there
+    // (repagination re-runs this effect anyway); real browsers get live
+    // resize tracking too.
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(main);
+    return () => observer.disconnect();
+  }, [visibleIslands, pageIndex, pages, anchors, anchorMapChunks]);
+
+  const islandLayoutMap = useMemo(
+    () => createLayoutMap(baseGeometryFromMap(islandRects)),
+    [islandRects],
+  );
+
+  const enactedIslands = useMemo(() => {
+    if (visibleIslands.length === 0) return [];
+    const augmentations = visibleIslands.map((island) =>
+      makeIslandAugmentation({
+        anchorId: island.anchorId,
+        documentId: island.documentId,
+        chunkId: island.passageAnchor.chunkId,
+        start: island.passageAnchor.start,
+        end: island.passageAnchor.end,
+        investigationId: island.investigationId,
+        servable: island.servable,
+        passageQuote: island.servable
+          ? anchors.find((a) => a.anchor_id === island.anchorId)?.anchor.quote || null
+          : null,
+        pageIndexHint:
+          anchors.find((a) => a.anchor_id === island.anchorId)?.page_index_hint ?? null,
+      }),
+    );
+    const plan = collectAnchoredWidgets(augmentations, ANCHOR_STUB_CTX);
+    return enactWidgetLayout(plan, islandLayoutMap);
+  }, [visibleIslands, anchors, islandLayoutMap]);
+
+  const islandRenderCtx: RenderContext = useMemo(
+    () => ({
+      pass: "main",
+      layout: islandLayoutMap,
+      components: { ThreadIsland },
+    }),
+    [islandLayoutMap],
+  );
 
   // Citation → page jump (M2). A talk-to-book / search citation carries a
   // resolved 0-based page; map it to the window index and move the reader.
@@ -580,7 +706,7 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
           {book.author ?? "Unknown author"}
         </p>
         <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={setPageIndex} />
-        {orphanedAnchors.length > 0 && (
+        {(orphanedAnchors.length > 0 || hiddenIslands.size > 0) && (
           <div
             className="mt-3 border-t border-rule dark:border-charcoal-1 pt-2"
             data-anchor-list
@@ -598,6 +724,16 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
                   {a.page_index_hint !== null ? `Page ${a.page_index_hint + 1} · ` : ""}
                   text no longer found
                 </span>
+                {a.investigation_id ? (
+                  <Link
+                    to={`/inv/${encodeURIComponent(a.investigation_id)}`}
+                    className="shrink-0 text-sun-deep hover:underline"
+                    title="Open the research thread (the anchor's text is gone; the thread is untouched)"
+                    data-orphaned-island-open
+                  >
+                    →
+                  </Link>
+                ) : null}
                 <button
                   type="button"
                   aria-label={`Delete orphaned anchor on page ${
@@ -610,6 +746,25 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
                 </button>
               </div>
             ))}
+            {islands
+              .filter((i) => hiddenIslands.has(i.anchorId))
+              .map((i) => (
+                <div
+                  key={i.anchorId}
+                  data-hidden-island={i.anchorId}
+                  className="flex items-center gap-1 py-0.5 text-xs text-shadow-1 dark:text-moonlight"
+                >
+                  <span className="min-w-0 truncate italic">hidden island</span>
+                  <button
+                    type="button"
+                    aria-label="Show this island again on this device"
+                    className="shrink-0 text-sun-deep hover:underline"
+                    onClick={() => unhideIsland(i.anchorId)}
+                  >
+                    show again
+                  </button>
+                </div>
+              ))}
           </div>
         )}
       </aside>
@@ -638,7 +793,29 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
 
 
       {/* Reading column */}
-      <main className="flex-1 overflow-y-auto">
+      <main ref={mainRef} className="relative flex-1 overflow-y-auto">
+        {/* The island widget layer (SPR-02): anchored widgets enacted over the
+            reading column at their layout-map rects. Pointer-events pass
+            through except on the widgets themselves — the SAME pattern as the
+            floating layer. NEVER a workspace window. */}
+        {enactedIslands.length > 0 && (
+          <div className="absolute inset-0 pointer-events-none z-20" data-island-layer>
+            {enactedIslands.map((enacted) =>
+              enacted.rect ? (
+                <div
+                  key={enacted.widget.id}
+                  className="absolute pointer-events-auto"
+                  style={{
+                    top: enacted.rect.top,
+                    left: enacted.rect.left + enacted.rect.width,
+                  }}
+                >
+                  {enacted.widget.render(enacted.rect, islandRenderCtx)}
+                </div>
+              ) : null,
+            )}
+          </div>
+        )}
         <div className="max-w-2xl mx-auto px-6 py-6 flex flex-col gap-4 min-h-full">
           <header className="flex items-center justify-between gap-3">
             <h1 className="text-xl font-serif text-ink dark:text-bright truncate">

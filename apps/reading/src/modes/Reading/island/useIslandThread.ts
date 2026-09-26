@@ -29,13 +29,18 @@ import { useInvestigation } from "../../../hooks/useInvestigation";
 import { useInvestigationList } from "../../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../../hooks/useInvestigationTree";
 import { getDistillation } from "../../../lib/api";
-import type { InvestigationSummary } from "../../../lib/api";
+import type { DistilledNode, InvestigationSummary } from "../../../lib/api";
 import {
   islandStatus,
   selectIslandFamily,
   type IslandFamilyNode,
   type IslandStatus,
 } from "./islandModel";
+
+export interface IslandOutcome {
+  insights: DistilledNode[];
+  questions: DistilledNode[];
+}
 
 export interface IslandThreadState {
   status: IslandStatus;
@@ -49,6 +54,9 @@ export interface IslandThreadState {
   loading: boolean;
   /** True while the terminal thread's distill read is in flight. */
   outcomeLoading: boolean;
+  /** The distilled outcome (lead insights + open questions), present once the
+   *  terminal thread's distill read lands — null before or on failure. */
+  outcome: IslandOutcome | null;
   /** How the status was reached, for an honest debug view. */
   sessionState: ResearchRunState | null;
 }
@@ -106,10 +114,12 @@ export function useIslandThread(investigationId: string | null): IslandThreadSta
     summary?.status === "failed" ||
     summary?.status === "stopped";
   const [insightCount, setInsightCount] = useState<number | null>(null);
+  const [outcome, setOutcome] = useState<IslandOutcome | null>(null);
   const [outcomeLoading, setOutcomeLoading] = useState(false);
   useEffect(() => {
     if (!investigationId || !projectionTerminal) {
       setInsightCount(null);
+      setOutcome(null);
       return;
     }
     let cancelled = false;
@@ -117,11 +127,19 @@ export function useIslandThread(investigationId: string | null): IslandThreadSta
     void (async () => {
       try {
         const distillation = await getDistillation(investigationId);
-        if (!cancelled) setInsightCount(distillation.insights.length);
+        if (cancelled) return;
+        setInsightCount(distillation.insights.length);
+        setOutcome({
+          insights: distillation.insights,
+          questions: distillation.questions,
+        });
       } catch {
         // A terminal thread whose distill read fails still gets an honest
         // status — unknown insight count, never a fabricated empty.
-        if (!cancelled) setInsightCount(null);
+        if (!cancelled) {
+          setInsightCount(null);
+          setOutcome(null);
+        }
       } finally {
         if (!cancelled) setOutcomeLoading(false);
       }
@@ -145,6 +163,7 @@ export function useIslandThread(investigationId: string | null): IslandThreadSta
     family,
     loading: projection.status === "loading",
     outcomeLoading,
+    outcome,
     sessionState,
   };
 }
