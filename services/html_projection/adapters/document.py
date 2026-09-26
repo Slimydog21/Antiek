@@ -153,6 +153,11 @@ _HEADINGS: dict[str, int] = {f"h{n}": n for n in range(1, 7)}
 
 _WS_RE = re.compile(r"\s+")
 
+_TEXT_DERIVED_LABEL = (
+    "Antiek presentation reconstructed from retained text. "
+    "The original page layout was not recovered."
+)
+
 # The URL policy of substrate/books/html_sanitizer.py (_ALLOWED_URL_SCHEMES
 # + _safe_url), which remains the authority. It is repeated here because
 # this function is public and a caller can reach it without having gone
@@ -606,7 +611,9 @@ def adapt_document_for_projection(
         (``substrate.reader_html.store.serve_reader_html``). Already through
         ``sanitize_book_html``; this function parses, it does not sanitize.
     source_kind:
-        ``url`` / ``upload`` / ``book`` — the sidecar's own ``source_kind``.
+        ``url`` / ``url_text_derived`` / ``upload`` / ``book`` — the
+        sidecar's own ``source_kind``. Text-derived URL bodies receive a
+        visible provenance note, since they are not original page HTML.
     source_url:
         Where the document came from, when there is one.
     title:
@@ -623,9 +630,15 @@ def adapt_document_for_projection(
         wheel re-renders it with no model call.
     """
     tree = _parse(html_body or "")
+    content = _blocks(tree.children, 0)
+    if source_kind == "url_text_derived":
+        content.insert(0, {
+            "type": "paragraph",
+            "content": [{"type": "text", "text": _TEXT_DERIVED_LABEL}],
+        })
     return {
         "title": title,
-        "content": _blocks(tree.children, 0),
+        "content": content,
         "source": {
             "document_id": document_id,
             "source_kind": source_kind,
