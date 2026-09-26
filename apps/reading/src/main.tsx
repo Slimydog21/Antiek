@@ -7,6 +7,7 @@ import "./design/motion.css";
 import App from "./App";
 import AppLegacy from "./AppLegacy";
 import { PostHogRoot } from "./lib/PostHogRoot";
+import { AppErrorBoundary } from "./lib/AppErrorBoundary";
 
 /**
  * S12 cutover flag.
@@ -33,7 +34,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <PostHogRoot>
       <BrowserRouter>
-        {uiVersion === "v1" ? <AppLegacy /> : <App />}
+        {/* F-01: the one root boundary, covering both UI trees. Inside the
+            router only so it can reset on pathname change; its fallback
+            never depends on the router (see AppErrorBoundary.tsx). */}
+        <AppErrorBoundary>
+          {uiVersion === "v1" ? <AppLegacy /> : <App />}
+        </AppErrorBoundary>
       </BrowserRouter>
     </PostHogRoot>
   </React.StrictMode>,
