@@ -49,7 +49,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.1.0",
-    "react-router-dom": "^6.30.3",
+    "react-router-dom": "7.18.4",
     "remark-gfm": "^4.0.1",
     "zustand": "^5.0.13"
   },
@@ -78,7 +78,27 @@
     "tailwindcss": "^3.4.15",
     "tsx": "^4.22.3",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11",
+    "vite": "6.4.3",
     "vitest": "^4.1.7"
+  },
+  "overrides": {
+    "axios": "1.18.0",
+    "form-data": "4.0.6",
+    "lost-pixel": {
+      "esbuild": "0.25.10",
+      "serve-handler": {
+        "minimatch": "3.1.5"
+      },
+      "shelljs": {
+        "glob": {
+          "minimatch": "3.1.5"
+        }
+      }
+    },
+    "@storybook/addon-essentials": {
+      "@storybook/addon-actions": {
+        "uuid": "^11.1.1"
+      }
+    }
   }
 }
