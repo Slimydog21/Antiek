@@ -1,0 +1,101 @@
+name: coverage report
+
+# Informational test-coverage measurement. NEVER blocks: every step ends
+# `exit 0`, and the job itself is `continue-on-error: true`. This exists to
+# close the "no coverage % is measured anywhere" gap (Code-facet finding,
+# independent re-grade 2026-09-26) without introducing a gate that could red
+# a merge before a baseline has been established.
+#
+# Policy follows docs/decisions/test-integrity-ci-floor.md: a new measurement
+# runs informational-first and prints full findings; it flips to blocking only
+# after a written reconsider-if condition is met and recorded. There is no
+# coverage baseline yet, so this workflow cannot fail the build on any number.
+#
+# Reconsider-if (record when satisfied, then flip):
+#   - a coverage floor has been captured from a green main run and committed
+#     as tools/lints/baselines/coverage.json with a documented reason;
+#   - the floor has been stable (no downward move) for >= 2 weeks on main;
+#   - the operator has reviewed the largest uncovered modules and agrees the
+#     floor is fair. Then make this job's `exit 0` unconditional-on-zero
+#     and let a floor breach red the build.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: coverage-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: pytest coverage (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" --quiet
+
+      - name: Measure coverage (does not gate)
+        # `|| true` plus `continue-on-error: true` means this step cannot fail
+        # the workflow even if pytest itself errors. The point is the NUMBER,
+        # not a verdict. Full output is preserved in the log for the record.
+        run: |
+          set +e
+          python -m pytest tests/ \
+            -q -p no:cacheprovider \
+            --cov=substrate --cov=interfaces --cov=runtime --cov=orchestration \
+            --cov-report=term-missing:skip-covered \
+            --cov-report=xml:coverage.xml
+          rc=$?
+          echo "pytest_exit=$rc (informational — does not gate)"
+          if [ -f coverage.xml ]; then
+            python - <<'PY'
+          import xml.etree.ElementTree as ET, os
+          root = ET.parse("coverage.xml").getroot()
+          line = root.attrib.get("line-rate", "?")
+          branch = root.attrib.get("branch-rate", "?")
+          lines_valid = root.attrib.get("lines-valid", "?")
+          lines_covered = root.attrib.get("lines-covered", "?")
+          pct = float(line) * 100 if line not in ("?",) else 0.0
+          print(f"COVERAGE line_rate={line} ({pct:.2f}%) "
+                f"branch_rate={branch} "
+                f"lines_covered={lines_covered}/{lines_valid}")
+          # Surface as a GitHub Actions notice so it appears in the PR checks
+          # summary without ever failing the job.
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as fh:
+                  fh.write("## Test coverage (informational)\n\n")
+                  fh.write(f"- line rate: **{pct:.2f}%** ({lines_covered}/{lines_valid})\n")
+                  fh.write(f"- branch rate: {branch}\n\n")
+                  fh.write("This job is informational and cannot block a merge. ")
+                  fh.write("See this workflow's header for the flip-to-blocking condition.\n")
+          PY
+          fi
+          exit 0
+
+      - name: Upload coverage.xml
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
+          retention-days: 14
