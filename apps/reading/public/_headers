@@ -1,0 +1,30 @@
+# Cloudflare Pages response headers for antiek.ai (the SPA host).
+#
+# Verified live 2026-09-26 before this file existed:
+#   Strict-Transport-Security  absent on this host
+#   Content-Security-Policy    absent on this host
+#   X-Frame-Options            absent on this host (API host had it)
+#   Referrer-Policy            present (strict-origin-when-cross-origin)
+#   X-Content-Type-Options     present (nosniff)
+#   Permissions-Policy         absent on this host
+#
+# The two hosts previously disagreed about which headers exist at all.
+# This file and infrastructure/ansible/templates/Caddyfile.j2 now state the
+# same policy on both surfaces. Cloudflare Pages copies this file from the
+# build output (apps/reading/public/ → dist/) and applies it at the edge.
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: frame-ancestors 'self'
+
+# Hashed Vite bundles are content-addressed; immutable caching is safe.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# index.html must never be cached — it is the SPA shell that boots the app.
+/index.html
+  Cache-Control: no-store, must-revalidate

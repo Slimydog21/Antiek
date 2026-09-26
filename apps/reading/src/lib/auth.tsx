@@ -10,7 +10,7 @@
 // Cookies are cross-origin (antiek.ai → api.antiek.ai) so every
 // request goes through apiFetch which sets credentials: "include".
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type {
   AuthenticationResponseJSON,
@@ -26,6 +26,7 @@ import {
   type AuthDiagnosticLayer,
 } from "./authDiagnosticCodes";
 import { posthog, posthogEnabled } from "./posthogClient";
+import { setReadingStateOwner } from "../hooks/useReadingState";
 
 /** Layer A transport — never surface raw browser "Failed to fetch" to users. */
 export const AUTH_TRANSPORT_FETCH_MESSAGE = "Cannot reach Antiek API";
@@ -71,23 +72,33 @@ async function fetchIdentity(): Promise<AuthIdentity | null> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
+  const refreshEpochRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const epoch = ++refreshEpochRef.current;
     try {
       const identity = await fetchIdentity();
+      if (refreshEpochRef.current !== epoch) return;
+      setReadingStateOwner(identity?.user_id ?? null);
       if (identity) {
         setState({ status: "authenticated", identity });
       } else {
         setState({ status: "unauthenticated" });
       }
     } catch {
-      // Network error → treat as unauthenticated; the login page can
-      // show a generic "something went wrong" if needed.
+      if (refreshEpochRef.current !== epoch) return;
+      // Unknown transport failure is not an identity transition. Keep the
+      // reading-state owner until /auth/me proves a different or null user;
+      // this preserves pending work across a transient API outage.
       setState({ status: "unauthenticated" });
     }
   }, []);
 
   const signOut = useCallback(async () => {
+    // A logout invalidates every identity answer already in flight; it must
+    // never be reversed by an older /auth/me response.
+    refreshEpochRef.current += 1;
+    setReadingStateOwner(null);
     await apiFetch(authUrl("/auth/logout"), { method: "POST" });
     setState({ status: "unauthenticated" });
   }, []);
