@@ -26,6 +26,18 @@ from substrate.graph.ops import insert_document
 
 @pytest.fixture
 def api_env(monkeypatch):
+    # This is a substrate-free route fixture: ambient operator credentials on
+    # a development workstation must not turn the hermetic TestClient into a
+    # 401-only suite.
+    for variable in (
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_DEV_LOGIN_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID",
+        "CF_ACCESS_CLIENT_SECRET",
+    ):
+        monkeypatch.delenv(variable, raising=False)
     tmpdir = tempfile.mkdtemp(prefix="reading-state-api-")
     db = os.path.join(tmpdir, "t.duckdb")
     events = os.path.join(tmpdir, "events")
