@@ -14,6 +14,7 @@ import {
   ACTIONS,
   KEYMAP,
   KEYMAP_DECISION,
+  RESERVED_FOR_LATER,
   isUsablePrefix,
   readPrefix,
   setPrefix,
@@ -161,8 +162,45 @@ describe("every SPR-08 binding moved into the table (M4 migration list)", () => 
   });
 });
 
-describe("D2 rows cite the decision record, and the record exists (M7)", () => {
-  it("every D2 and herdr-default row carries the record's path", () => {
+describe("the cockpit pane rows (C3) and companion rows (C4): bound, twinned, and out of RESERVED_FOR_LATER", () => {
+  it.each([
+    ["prefix-pane-left", "pane.focusLeft", "h", "ctrl+alt+h"],
+    ["prefix-pane-right", "pane.focusRight", "l", "ctrl+alt+l"],
+    ["prefix-pane-full", "pane.fullscreen", "f", "ctrl+alt+f"],
+    ["prefix-layout-preset", "layout.togglePreset", "i", "ctrl+alt+i"],
+    ["prefix-agent-next", "companion.nextTab", "n", "ctrl+alt+]"],
+    ["prefix-agent-prev", "companion.prevTab", "p", "ctrl+alt+["],
+  ])("%s binds %s as prefix+%s with the %s twin", (id, action, prefixKey, chord) => {
+    const prefixRow = KEYMAP.find((r) => r.id === id);
+    expect(prefixRow?.action).toBe(action);
+    expect(prefixRow?.prefixKey).toBe(prefixKey);
+    expect(prefixRow?.scope).toBe("outside-text");
+    expect(prefixRow?.origin).toBe("D2");
+    expect(prefixRow?.decision).toContain("mothership-keys-herdr-prefix.md");
+    const chordRow = KEYMAP.find((r) => r.action === action && r.chord === chord);
+    expect(chordRow, `the chord twin ${chord}`).toBeTruthy();
+    expect(chordRow?.origin).toBe("D2");
+  });
+
+  it("no reserved row is left behind for the keys the cockpit rows took", () => {
+    // h and l were never reserved; f, i, n, p (prefix) and the six chords
+    // were, and must be gone now that the rows own them.
+    for (const k of ["h", "l", "f", "i", "n", "p"]) {
+      expect(RESERVED_FOR_LATER.prefixKeys).not.toContain(k);
+    }
+    for (const c of ["ctrl+alt+h", "ctrl+alt+l", "ctrl+alt+f", "ctrl+alt+i", "ctrl+alt+]", "ctrl+alt+["]) {
+      expect(RESERVED_FOR_LATER.chords).not.toContain(c);
+    }
+    // And every remaining reserved key is still refused to a probing row.
+    const probe = validateKeymap(
+      [...KEYMAP, { id: "probe", action: "palette.toggle", prefixKey: "1", scope: "outside-text", origin: "D2", decision: KEYMAP_DECISION }],
+      handlerIds,
+    );
+    expect(probe).toContainEqual(expect.objectContaining({ kind: "reserved-key", row: "probe" }));
+  });
+});
+
+describe("D2 rows cite the decision record, and the record exists (M7)", () => {  it("every D2 and herdr-default row carries the record's path", () => {
     const cited = KEYMAP.filter((r) => r.origin === "D2" || r.origin === "herdr-default");
     expect(cited.length).toBeGreaterThan(0);
     for (const r of cited) {

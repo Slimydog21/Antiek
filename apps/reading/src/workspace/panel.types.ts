@@ -18,6 +18,39 @@ export type PanelMode =
   | "popout";
 
 /**
+ * Cockpit chrome (C2, 2026-09-24): which layout recipe PanelLayout paints.
+ *   "docked"        — today's docks, byte-identical DOM (the default).
+ *   "omarchy-inset" — the two tall inset rectangles over the scene: the
+ *                     primary material (left dock + main slot) and the
+ *                     companion (right dock) as rounded, hairline-bordered
+ *                     panes with the scene background showing in the gaps.
+ * Deliberately NOT part of WorkspaceSnapshot: the preset is chrome
+ * preference, not layout state, and persists via its own global blob
+ * (persistence.ts, the custom-hotkeys precedent) — never per-scope.
+ */
+export type LayoutPreset = "docked" | "omarchy-inset";
+
+/** The two inset panes. "left" is the primary material, "right" the companion. */
+export type PaneSide = "left" | "right";
+
+/**
+ * Cockpit-chrome state layered onto the workspace store (outside
+ * WorkspaceSnapshot, so the S9 persisted layout shape is unchanged).
+ * `fullscreenPane` and `focusedPane` are transient, like `focusedPanelId`:
+ * never written to disk.
+ */
+export type CockpitChrome = {
+  layoutPreset: LayoutPreset;
+  /** The pane filling the cockpit while the other is hidden, or null. In the
+   *  "docked" preset a non-null value collapses every dock (the main slot
+   *  fills) — the same "hide the companion areas" gesture in both presets. */
+  fullscreenPane: PaneSide | null;
+  /** The inset pane holding the focus ring (the "docked" preset never sets
+   *  this — pane focus there is panel focus via cycleFocus). */
+  focusedPane: PaneSide | null;
+};
+
+/**
  * Stable string vocabulary of renderable panel surfaces. The
  * PanelRegistry maps each entry to a React component (or React.lazy).
  *
@@ -55,7 +88,8 @@ export type PanelKind =
   | "InterviewNotes"
   | "Lightbox"
   | "BrainstormWatchList"
-  | "BrainstormThoughtPartner";
+  | "BrainstormThoughtPartner"
+  | "Companion";
 
 export type PanelDescriptor = {
   /** Stable id. e.g. "InvestigationSidebar:default", "Chat:inv-abc:42". */

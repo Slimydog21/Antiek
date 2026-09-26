@@ -24,6 +24,7 @@
  */
 
 import type { WorkspaceSnapshot } from "./panel.types";
+import type { LayoutPreset } from "./panel.types";
 
 const LS_PREFIX = "antiek.workspace.";
 
@@ -319,6 +320,74 @@ export function clearCustomHotkeys(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(CUSTOM_HOTKEYS_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Layout preset — cockpit chrome C2 (ADDITIVE: a SEPARATE global-scoped,
+// versioned blob, deliberately NOT folded into the layout PersistedSnapshot)
+// ─────────────────────────────────────────────────────────────────────
+//
+// Same rationale as custom-hotkeys above: the layout preset is global +
+// route-agnostic + low-churn (an operator picks it once), whereas the layout
+// snapshot is per-scope + high-churn. Coupling them would rewrite the preset
+// into every scope key on every panel move. One global key, its own
+// schemaVersion, owned by the cockpit chrome. Stored at
+// `antiek.workspace.layout-preset`; absent/invalid reads as "docked", so a
+// stored preset never surprises an operator who never chose one.
+
+const LAYOUT_PRESET_KEY = LS_PREFIX + "layout-preset";
+
+/** The versioned envelope written to localStorage. */
+export interface PersistedLayoutPreset {
+  schemaVersion: 1;
+  preset: LayoutPreset;
+}
+
+/** Read the persisted preset. "docked" on miss, parse error, version
+ *  mismatch, or an unknown value — the default is the failure mode. */
+export function readLayoutPreset(): LayoutPreset {
+  if (typeof window === "undefined") return "docked";
+  try {
+    const raw = window.localStorage.getItem(LAYOUT_PRESET_KEY);
+    if (!raw) return "docked";
+    const parsed = JSON.parse(raw) as PersistedLayoutPreset;
+    if (typeof parsed !== "object" || parsed === null || parsed.schemaVersion !== 1) {
+      if (typeof console !== "undefined") {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[antiek/persistence] ignoring layout-preset with mismatched schemaVersion:",
+          (parsed as PersistedLayoutPreset | null)?.schemaVersion,
+        );
+      }
+      return "docked";
+    }
+    return parsed.preset === "omarchy-inset" ? "omarchy-inset" : "docked";
+  } catch {
+    return "docked";
+  }
+}
+
+/** Write the preset blob. Silent on quota errors. */
+export function writeLayoutPreset(preset: LayoutPreset): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      LAYOUT_PRESET_KEY,
+      JSON.stringify({ schemaVersion: 1, preset } satisfies PersistedLayoutPreset),
+    );
+  } catch {
+    // Quota exceeded / storage disabled — silent; in-memory state stands.
+  }
+}
+
+/** Delete the preset blob (back to "docked" on next load). */
+export function clearLayoutPreset(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(LAYOUT_PRESET_KEY);
   } catch {
     // ignore
   }

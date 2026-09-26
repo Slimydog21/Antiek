@@ -41,6 +41,7 @@ import { useEffect, useRef } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
+import { companionVisible, useCompanion } from "./companionStore";
 import { readCustomHotkeys } from "./persistence";
 import { emitProductActivate, normalizeBinding } from "../components/hotkeys/bindings";
 import {
@@ -130,7 +131,10 @@ function hydrateCustomFromStorage(): void {
   setCustomHotkeys(readCustomHotkeys().bindings);
 }
 
-function isTextEditing(t: Element | null): boolean {
+/** Exported for element-scoped key guards (PanelLayout's fullscreen-pane Esc
+ *  restore ignores Esc pressed while typing, mirroring the dispatcher's
+ *  outside-text rule without adding a global key). */
+export function isTextEditing(t: Element | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
   const tag = t.tagName.toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
@@ -251,6 +255,40 @@ function cycleFocus(direction: 1 | -1) {
   ws.focus(visible[next]);
 }
 
+/**
+ * Cockpit pane focus (C3). In the omarchy-inset preset: move DOM focus to
+ * the named inset pane and set its focus ring. Honest no-op when that pane
+ * is not on screen — collapsed (an empty right dock renders no pane) or
+ * hidden by the other pane's fullscreen: there is nowhere for focus to go,
+ * and pretending otherwise would focus an invisible element. In the docked
+ * preset the keys are never dead: they cycle the dock areas through the
+ * existing cycleFocus mechanics (left = previous, right = next).
+ */
+function focusPane(side: "left" | "right") {
+  const ws = useWorkspace.getState();
+  if (ws.layoutPreset !== "omarchy-inset") {
+    cycleFocus(side === "left" ? -1 : 1);
+    return;
+  }
+  if (ws.fullscreenPane && ws.fullscreenPane !== side) return;
+  const el = document.querySelector<HTMLElement>(`[data-pane="${side}"]`);
+  if (!el) return;
+  ws.setFocusedPane(side);
+  el.focus();
+}
+
+/**
+ * Companion agent-tab cycling (C4). Acts ONLY when the companion pane is
+ * visible (inset preset: always; docked preset: the "Companion" panel is
+ * open) — an honest no-op otherwise, never a dead key in a surface without
+ * the pane. The store's cycle wraps across ALL tabs, so visual overflow
+ * (the ⋯ menu) is never a hopping boundary.
+ */
+function cycleCompanionTab(direction: 1 | -1) {
+  if (!companionVisible()) return;
+  useCompanion.getState().cycleAgentTab(direction);
+}
+
 /** Runs an action. Returning false means "not mine after all": the key is
  *  left to the browser and nothing is prevented. */
 export type KeyHandler = (e: KeyboardEvent) => boolean | void;
@@ -290,6 +328,12 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     "panel.focusPrev": () => cycleFocus(-1),
     "panel.focusNext": () => cycleFocus(1),
     "panel.closeFloating": () => closeFocusedFloat(),
+    "pane.focusLeft": () => focusPane("left"),
+    "pane.focusRight": () => focusPane("right"),
+    "pane.fullscreen": () => useWorkspace.getState().toggleFullscreenPane(),
+    "layout.togglePreset": () => useWorkspace.getState().toggleLayoutPreset(),
+    "companion.nextTab": () => cycleCompanionTab(1),
+    "companion.prevTab": () => cycleCompanionTab(-1),
   };
 }
 
