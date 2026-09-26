@@ -36,18 +36,19 @@ function parseState(raw: unknown, documentId: string): ReadingState {
     typeof r.document_id !== "string" ||
     r.document_id !== documentId ||
     typeof r.page_index !== "number" ||
-    !Number.isInteger(r.page_index) ||
+    !Number.isSafeInteger(r.page_index) ||
     r.page_index < 0 ||
     typeof r.revision !== "number" ||
-    !Number.isInteger(r.revision) ||
+    !Number.isSafeInteger(r.revision) ||
     r.revision < 0 ||
     !(r.anchor_ref === null || typeof r.anchor_ref === "string") ||
-    (typeof r.anchor_ref === "string" && r.anchor_ref.length > 20) ||
+    (typeof r.anchor_ref === "string" && (r.anchor_ref.length === 0 || r.anchor_ref.length > 20)) ||
     typeof r.prefs !== "object" ||
     r.prefs === null ||
     Array.isArray(r.prefs) ||
     Object.keys(r.prefs).length !== 0 ||
-    typeof r.updated_at !== "string"
+    typeof r.updated_at !== "string" ||
+    r.updated_at.length === 0
   ) {
     throw new ApiError("reading-state: malformed response body", 0, JSON.stringify(raw));
   }
@@ -78,8 +79,8 @@ export async function getReadingState(documentId: string): Promise<ReadingState 
 }
 
 /** PUT the position with the last-seen revision. A stale revision throws
- *  ApiError 409 (never a silent clobber — the caller re-reads and the
- *  server value wins). */
+ *  ApiError 409 (never a silent clobber — the caller re-reads; the server
+ *  value wins only when no later local turn remains unsettled). */
 export async function putReadingState(
   documentId: string,
   body: ReadingStatePutBody,

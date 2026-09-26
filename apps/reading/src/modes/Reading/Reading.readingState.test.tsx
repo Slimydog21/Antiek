@@ -305,19 +305,12 @@ describe("degradation and recovery", () => {
     await screen.findByText("The opening of the book.");
 
     // The bus is down: the page turn still works (the sessionStorage
-    // fallback layer), and the failed write is marked, never blocking.
+    // fallback layer), but the stale/unreachable bus is not spent on a blind
+    // retry; reading is never blocked.
     fireEvent.click(screen.getByText("Next →"));
     await screen.findByText("The second page.");
     expect(window.sessionStorage.getItem(positionStorageKey("doc-1"))).toBe("1");
-    await waitFor(() =>
-      expect(
-        apiFetchMock.mock.calls.some(
-          ([u, i]) =>
-            String(u).endsWith("/reading-state") &&
-            (i as { method?: string } | undefined)?.method === "PUT",
-        ),
-      ).toBe(true),
-    );
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 500)); });
     expect(server.row).toBeNull(); // nothing reached the server
 
     // Recovery: the server has a competing value written during the outage.
@@ -332,6 +325,15 @@ describe("degradation and recovery", () => {
       updated_at: "2026-09-25T12:00:00Z",
     };
     window.dispatchEvent(new Event("focus"));
+    await waitFor(() =>
+      expect(
+        apiFetchMock.mock.calls.some(
+          ([u, i]) =>
+            String(u).endsWith("/reading-state") &&
+            (i as { method?: string } | undefined)?.method === "PUT",
+        ),
+      ).toBe(true),
+    );
     await waitFor(() => expect(server.puts).toEqual([{ page_index: 1, revision: 1 }]));
     await screen.findByText("The second page.");
     expect(server.row?.page_index).toBe(1);
@@ -469,6 +471,39 @@ describe("local turns and asynchronous server work", () => {
     await waitFor(() => expect(server.row?.page_index).toBe(2));
     expect(server.puts).toEqual([{ page_index: 2, revision: 4 }]);
     expect(result.current.pageIndex).toBe(2);
+  });
+
+  it("re-reads before retrying a later turn when a 409 refetch fails", async () => {
+    const server = busServer({ ...initialRow });
+    route(server);
+    const held = gate();
+    server.putGate = held.promise;
+    const { result } = renderHook(() => useReadingState("doc-1", 10));
+    await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]?.revision).toBe(3));
+
+    act(() => result.current.setPageIndex(1));
+    await waitFor(() => expect(
+      apiFetchMock.mock.calls.filter(([u, i]) => String(u).endsWith("/reading-state") && i?.method === "PUT"),
+    ).toHaveLength(1));
+    act(() => result.current.setPageIndex(2));
+    server.row = { ...initialRow, page_index: 6, revision: 4 };
+    server.down = true;
+    held.release();
+
+    await waitFor(() => expect(useReadingStateBus.getState().byDocument["doc-1"]?.reachable).toBe(false));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 500)); });
+    expect(server.puts).toEqual([{ page_index: 1, revision: 3 }]);
+
+    // The next user trigger proves the bus and the current revision before
+    // spending a page turn; it never sends the stale revision directly.
+    server.down = false;
+    act(() => result.current.setPageIndex(3));
+    await waitFor(() => expect(server.puts).toEqual([
+      { page_index: 1, revision: 3 }, { page_index: 3, revision: 4 },
+    ]));
+    expect(server.row?.page_index).toBe(3);
+    expect(server.row?.revision).toBe(5);
+    expect(result.current.pageIndex).toBe(3);
   });
 
   it("keeps a pending turn and waits for a new trigger after a non-conflict PUT failure", async () => {
@@ -739,7 +774,7 @@ describe("auth owner transitions", () => {
         if (!firstIdentityRequested) {
           firstIdentityRequested = true;
           await releaseStaleIdentity.promise;
-          return { user_id: "reader-a", email: null, auth_method: "passkey" };
+          return jsonResponse({ user_id: "reader-a", email: null, auth_method: "passkey" });
         }
         return signedIn
           ? jsonResponse({ user_id: signedIn, email: null, auth_method: "passkey" })

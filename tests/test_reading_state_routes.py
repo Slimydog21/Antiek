@@ -212,6 +212,38 @@ def test_deleted_anchor_echo_keeps_next_page_turn_and_drops_ref(api_env) -> None
     assert got["anchor_ref"] is None
 
 
+def test_stale_revision_wins_over_a_dead_changed_anchor_ref(api_env) -> None:
+    """Concurrency is canonical: stale revision is 409, even with a dead ref."""
+    db = api_env["db"]
+    _seed_book(db)
+    client = _client()
+    anchor_id = _pin(client)
+    assert client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 3, "anchor_ref": anchor_id, "revision": 0},
+    ).status_code == 200
+    assert client.delete(f"/books/doc-bus/anchors/{anchor_id}").status_code == 204
+
+    # Another device moves the row while this client still carries both the
+    # old revision and a ref that has since been deleted.
+    competing = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 6, "anchor_ref": None, "revision": 1},
+    )
+    assert competing.status_code == 200
+
+    stale = client.put(
+        "/books/doc-bus/reading-state",
+        json={"page_index": 4, "anchor_ref": anchor_id, "revision": 1},
+    )
+    assert stale.status_code == 409
+    assert "reading_state_stale_revision" in stale.json()["detail"]
+    got = client.get("/books/doc-bus/reading-state").json()
+    assert got["page_index"] == 6
+    assert got["anchor_ref"] is None
+    assert got["revision"] == 2
+
+
 def test_second_owner_gets_no_row(api_env) -> None:
     """A position written by one owner is invisible to another."""
     db = api_env["db"]

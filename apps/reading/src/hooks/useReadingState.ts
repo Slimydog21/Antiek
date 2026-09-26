@@ -8,13 +8,13 @@
  *     they read the same store — never because they signal each other.
  *   - The server row wins on mount, focus and a genuine 409 when no local
  *     turn remains unsettled. A pending turn keeps its page while GET
- *     supplies the current revision. Writes run serially so a later turn
- *     uses the preceding write's revision.
+ *     supplies the current revision. Writes run serially; an unreachable or
+ *     stale bus is re-read before a later turn is written.
  *   - usePosition is the FALLBACK LAYER, composed below: its sessionStorage
  *     carries the position when the bus is unreachable (reading never
  *     blocks on the bus — honest degradation), and its clamp-on-shrink
- *     (usePosition.ts:39-45) is preserved: every adoption and every read
- *     clamps against the live page count.
+ *     clamp-on-shrink is preserved: every adoption and every read clamps
+ *     against the live page count.
  */
 import { useCallback, useEffect } from "react";
 import { create } from "zustand";
@@ -66,7 +66,11 @@ function flushIfReady(documentId: string): void {
   if (
     entry && entry.loaded && entry.turnVersion > entry.settledVersion &&
     !debounceTimers.has(documentId) && !activeWrites.has(documentId)
-  ) void flushPut(documentId);
+  ) {
+    // Never spend a revision until a successful read proves it current.
+    if (!entry.reachable) void useReadingStateBus.getState().load(documentId);
+    else void flushPut(documentId);
+  }
 }
 
 function seedEntry(pageIndex: number): ReadingStateEntry {
@@ -230,6 +234,8 @@ async function flushPut(documentId: string): Promise<void> {
       if (joinedOlderLoad && current(requestGeneration)) {
         await useReadingStateBus.getState().load(documentId);
       }
+      const refetched = useReadingStateBus.getState().byDocument[documentId];
+      if (!refetched || !refetched.reachable) retryFromThisFailure = true;
       return;
     }
     retryFromThisFailure = true;
