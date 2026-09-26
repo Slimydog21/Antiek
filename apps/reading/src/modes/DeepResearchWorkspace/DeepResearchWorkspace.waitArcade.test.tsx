@@ -73,7 +73,12 @@ vi.mock("./Canvas/Canvas", () => ({
   ),
 }));
 
-vi.mock("../../components/windows/openWindow", () => ({ openWindow: openWindowMock }));
+vi.mock("../../components/windows/openWindow", async (orig) => ({
+  // The real module minus the store-touching open (readerWindowId stays
+  // real — the stable-id invariant is asserted through it).
+  ...(await orig<typeof import("../../components/windows/openWindow")>()),
+  openWindow: openWindowMock,
+}));
 
 vi.mock("../../lib/analytics", () => ({ track }));
 
@@ -228,7 +233,10 @@ describe("Deep Research wait arcade gate", () => {
 
     expect(openWindowMock).toHaveBeenCalledWith(
       "reader",
-      { documentId: " doc/evidence 1 ", evidenceSourceContext: true },
+      // Reading-global SPR-02: the write-only evidenceSourceContext flag is
+      // unified into the typed origin shape — the canvas's investigation is
+      // the calling context.
+      { documentId: " doc/evidence 1 ", origin: { from: "evidence", id: "done-1" } },
       expect.objectContaining({
         id: "win:reader:%20doc%2Fevidence%201%20",
         title: "Research source",

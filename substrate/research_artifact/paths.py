@@ -56,6 +56,17 @@ def artifact_source_path_for(artifact_id: str, content_hash: str) -> Path:
     )
 
 
+def companion_path_for(document_id: str) -> Path:
+    """The per-document companion's export path (companions SPR-02): beside
+    the research artifacts, under the same validated-id + bounded-read
+    conventions."""
+    return (
+        research_artifacts_dir()
+        / "companions"
+        / f"{validate_artifact_id(document_id)}.html"
+    )
+
+
 def read_bounded_nofollow(path: Path, limit: int) -> bytes:
     """Descriptor-bound read: reject symlinks and size before allocation.
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
@@ -20,6 +20,13 @@ import {
 } from "../../lib/api";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
+import {
+  getDocumentCompanion,
+  listDocumentEvidence,
+  type CompanionPayload,
+  type EvidenceRowItem,
+} from "../../api/companions";
+import ReformatReview from "./ReformatReview";
 import Thinking from "../../shared/Thinking";
 
 /**
@@ -601,6 +608,12 @@ export default function ReadingCompanion({
         </section>
       ) : null}
 
+      {/* Reformat-provenance SPR-02: the review surface renders ONLY for a
+          derived document (a plain book shows nothing). */}
+      <ReformatReview documentId={documentId} />
+
+      <CompanionSection documentId={documentId} />
+
       <div className="flex-1 min-h-0">
         {notes.length === 0 ? (
           <p className="px-4 py-6 text-sm font-serif text-ink-mute dark:text-moonlight leading-relaxed">
@@ -695,4 +708,135 @@ function handoffStatusLabel(summary: InvestigationSummary | undefined): string {
     case "not_found":
       return "not found";
   }
+}
+
+/**
+ * CompanionSection — the generated document companion in the rail
+ * (companions SPR-02). READ-ONLY like the whole rail: it renders the
+ * companion's STRUCTURED payload (the sanctioned path — generated content
+ * arrives as data and renders as elements; raw generated HTML is never
+ * injected anywhere in this path). Claims carry their evidence ids as
+ * data attributes (provenance markers, never rendered as labels); a
+ * withheld book's claims render metadata lines only (the server withholds
+ * the text — the rail never receives it). The "inspect evidence base"
+ * toggle is the index's ONLY user surface: an honest debug dump for trust
+ * calibration, not a browsable index UI.
+ */
+function CompanionSection({ documentId }: { documentId: string }) {
+  const [state, setState] = useState<
+    | { kind: "loading" }
+    | { kind: "ready"; payload: CompanionPayload }
+    | { kind: "unavailable" }
+  >({ kind: "loading" });
+  const [inspectRows, setInspectRows] = useState<EvidenceRowItem[] | null>(null);
+
+  useEffect(() => {
+    // load-on-mount; a failed/malformed read is the honest unavailable state.
+    let cancelled = false;
+    void getDocumentCompanion(documentId)
+      .then((payload) => {
+        if (!cancelled) setState({ kind: "ready", payload });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ kind: "unavailable" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId]);
+
+  if (state.kind === "loading") return null;
+  if (state.kind === "unavailable") return null; // the rail stands alone honestly
+
+  const { payload } = state;
+  return (
+    <section
+      className="border-b border-rule px-4 py-3 dark:border-charcoal-1"
+      aria-label="Document companion"
+      data-companion-section
+    >
+      <p className="mb-2 font-mono text-xxs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        The companion so far
+      </p>
+      {!payload.servable && (
+        <p className="mb-1.5 font-serif text-xs italic text-ink-mute dark:text-moonlight">
+          This book's text is withheld — only its metadata shows here.
+        </p>
+      )}
+      {payload.claims.length === 0 && payload.processes.length === 0 ? (
+        <p className="font-serif text-xs italic text-ink-mute dark:text-moonlight">
+          No companion yet — it gathers as you read and research this book.
+        </p>
+      ) : (
+        <ol className="space-y-1.5" data-companion-claims>
+          {payload.claims.slice(0, 5).map((claim) => (
+            <li
+              key={claim.evidence_id}
+              data-evidence-id={claim.evidence_id}
+              className="font-serif text-xs leading-relaxed text-ink dark:text-bright"
+            >
+              <span className="mr-1 font-mono text-xxs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                {claim.kind === "insight" ? "Finding" : "Open question"} ·
+              </span>
+              {claim.text ?? <span className="italic">grounded in a withheld source</span>}
+            </li>
+          ))}
+          {payload.processes.slice(0, 4).map((process) => (
+            <li
+              key={process.evidence_id}
+              data-evidence-id={process.evidence_id}
+              className="font-mono text-xxs text-shadow-1 dark:text-moonlight"
+            >
+              {process.label} — {process.status_line}
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p className="font-mono text-xxs text-shadow-2 dark:text-moonlight">
+          generated · rebuilt {payload.rebuilt_at.slice(0, 10)}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (inspectRows !== null) {
+              setInspectRows(null);
+              return;
+            }
+            void listDocumentEvidence(documentId)
+              .then((resp) => setInspectRows(resp.rows))
+              .catch(() => setInspectRows([]));
+          }}
+          className="font-mono text-xxs text-shadow-1 underline decoration-dotted underline-offset-2 hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          title="The evidence base's inspect dump — operator debug, read-only"
+        >
+          {inspectRows !== null ? "close inspect" : "inspect evidence base"}
+        </button>
+      </div>
+      {inspectRows !== null && (
+        <div
+          className="mt-2 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-xxs text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight"
+          data-companion-inspect
+          role="region"
+          aria-label="Evidence base inspect dump"
+        >
+          {inspectRows.length === 0 ? (
+            <p className="italic">No evidence rows on record.</p>
+          ) : (
+            <ul className="space-y-1">
+              {inspectRows.map((row) => (
+                <li key={row.evidence_id} data-evidence-id={row.evidence_id}>
+                  {row.kind} · {row.evidence_id}
+                  {row.tombstone ? " · tombstone" : ""}
+                  <span className="block truncate" title={row.refs.join(" · ")}>
+                    {row.refs.join(" · ")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
 }

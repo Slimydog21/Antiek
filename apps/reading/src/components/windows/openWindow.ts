@@ -117,6 +117,40 @@ export function isWindowEligible(kind: string): kind is WindowEligibleKind {
 }
 
 /**
+ * The reader window's ORIGIN context (reading-global SPR-02): WHO opened the
+ * reader — payload metadata, never a spawn path. This is the first consumer
+ * of the write-only `evidenceSourceContext` precedent (the DRW evidence
+ * caller's unread flag), unified into one typed shape. The reader's ONE
+ * consumer is the dig-deeper prefill; ignoring the context is lawful and
+ * changes nothing.
+ */
+export interface ReaderOrigin {
+  /** research/evidence: `id` is the INVESTIGATION the operator came from
+   *  (chase-parent–able). write: `id` is the DELIVERABLE (never an
+   *  investigation — it never parents a chase). reformat (SPR-02): `id` is
+   *  the GENERATION thread — an engagement, never a chase parent. */
+  from: "research" | "write" | "evidence" | "reformat";
+  id: string;
+}
+
+/** The reader window's typed payload. `documentId` is the document the
+ *  reader opens through its own gated fetch authority (unchanged); `origin`
+ *  is the optional calling context above. */
+export interface ReaderWindowPayload extends Record<string, unknown> {
+  documentId: string;
+  origin?: ReaderOrigin;
+}
+
+/** The stable per-document reader window id (reading-global SPR-02): EVERY
+ *  reader-opening caller uses this, so "open the same document" from any
+ *  surface is "focus the one reader window" (windowsStore re-opening an
+ *  existing id focuses instead of duplicating) — the one-reader-per-document
+ *  invariant holds by construction. */
+export function readerWindowId(documentId: string): string {
+  return `win:reader:${encodeURIComponent(documentId)}`;
+}
+
+/**
  * Map a route path (as the launcher/taxonomy knows it) to a window-eligible
  * kind, or null if that route is not contract-verified for windows. Keeps the
  * launcher decoupled from the kind vocabulary — it only knows routes.
