@@ -26,7 +26,13 @@ import type { TabKind, TabNode } from "./tabTree";
 export type TitleEntry =
   | { state: "loading" }
   | { state: "known"; title: string | null }
-  | { state: "failed" };
+  /** `at` (ms) is when the lookup failed; it is asked for again, on the
+   *  next request, once TITLE_RETRY_MS has passed. */
+  | { state: "failed"; at?: number };
+
+/** How long a failed title waits before the next request asks again: long
+ *  enough not to hammer an offline API, short enough to recover in-session. */
+export const TITLE_RETRY_MS = 30_000;
 
 export function titleKey(kind: TabKind, ref: string): string {
   return `${kind}\u0000${ref}`;
@@ -110,10 +116,12 @@ export function setTitleResolvers(next: Partial<Record<TabKind, TitleResolver>> 
   resolvers = next ?? DEFAULT_RESOLVERS;
 }
 
-/** Ask for a tab's title once; later calls for the same ref are no-ops. */
+/** Ask for a tab's title once; later calls for the same ref are no-ops,
+ *  except that a failed lookup is retried once TITLE_RETRY_MS has passed. */
 export function requestTabTitle(tab: Pick<TabNode, "kind" | "ref">): void {
   const key = titleKey(tab.kind, tab.ref);
-  if (useTabTitles.getState().entries[key]) return;
+  const entry = useTabTitles.getState().entries[key];
+  if (entry && !(entry.state === "failed" && Date.now() - (entry.at ?? 0) >= TITLE_RETRY_MS)) return;
   const resolve = resolvers[tab.kind];
   if (!resolve) return;
   put(key, { state: "loading" });
@@ -125,7 +133,7 @@ export function requestTabTitle(tab: Pick<TabNode, "kind" | "ref">): void {
       }
     },
     () => {
-      if (useTabTitles.getState().entries[key]?.state === "loading") put(key, { state: "failed" });
+      if (useTabTitles.getState().entries[key]?.state === "loading") put(key, { state: "failed", at: Date.now() });
     },
   );
 }

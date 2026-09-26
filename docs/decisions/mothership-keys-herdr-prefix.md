@@ -116,8 +116,15 @@ decision:
 - **Close is `prefix+shift+x` alone.** Destructive acts stay behind the prefix, so no direct
   chord closes a tab. The key performs §2a's default outcome: the tab and everything branched
   from it (prune), held locally for 10 s behind the toast's Undo. §2a's second outcome, "close
-  only this" (children lift), stays in the tree model and store for the close-choice affordance,
-  but no key reaches it yet.
+  only this" (children lift to the parent), lives in the tree panel (`prefix+t`), where the
+  outcome can be seen before it is chosen: on a focused row `Delete` prunes and `Shift+Delete`
+  closes only that tab. Both undo for 10 s. These are plain keys inside a focused tree widget,
+  not global chords, so the "destructive acts stay behind the prefix" rule holds. The panel
+  takes focus when it opens and closes on a press outside it (repair round 1).
+- **Esc restores fullscreen from any focus.** The restore listens on the document while a pane
+  is fullscreen, not on the layout root, so Esc works with focus on `<body>`. Esc inside a text
+  field or a dialog stays theirs. Right-pane fullscreen fills the cockpit; it no longer keeps the
+  companion's 320 px column (repair round 1).
 - **The layout preset moves to `prefix+shift+i`, with no chord.** The cockpit is the default, so
   the toggle is rarely needed.
 - **`f` stays pane fullscreen and `h`/`l` stay pane focus.** Both match Omarchy. The operator's

@@ -19,6 +19,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 
+import { toast } from "../components/lemon/LemonToast";
 import { EmptyState } from "../components/states";
 import { useInvestigationList } from "../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../lib/api";
@@ -39,7 +40,6 @@ export default function CompanionPane() {
   const tabs = useCompanion((s) => s.tabs);
   const activeTabId = useCompanion((s) => s.activeTabId);
   const activateAgentTab = useCompanion((s) => s.activateAgentTab);
-  const closeAgentTab = useCompanion((s) => s.closeAgentTab);
   const openAgentTab = useCompanion((s) => s.openAgentTab);
   const { investigations } = useInvestigationList();
 
@@ -88,7 +88,7 @@ export default function CompanionPane() {
               summary={summaryOf(tab)}
               active={tab.id === activeTabId}
               onActivate={() => activateAgentTab(tab.id)}
-              onClose={() => closeAgentTab(tab.id)}
+              onClose={() => closeAgentTabWithUndo(tab, summaryOf(tab))}
             />
           ))}
         </div>
@@ -144,6 +144,20 @@ function ActiveAgentSurface({
   return <Surface tab={tab} summary={summary} />;
 }
 
+/** Close an agent tab (a view act: the agent itself is untouched) behind
+ *  the shared 10 s Undo, which puts it back in its place. */
+function closeAgentTabWithUndo(tab: AgentTabDescriptor, summary?: InvestigationSummary): void {
+  const s = useCompanion.getState();
+  const index = s.tabs.findIndex((t) => t.id === tab.id);
+  if (index === -1) return;
+  const wasActive = s.activeTabId === tab.id;
+  s.closeAgentTab(tab.id);
+  const title = tab.kind === "research-thread" ? (summary?.question ?? tab.title) : tab.title;
+  toast.undo(`Closed ${title}. The agent itself is untouched.`, () =>
+    useCompanion.getState().restoreAgentTab(tab, index, wasActive),
+  );
+}
+
 function AgentTab({
   tab,
   summary,
@@ -162,7 +176,9 @@ function AgentTab({
   const title = tab.kind === "research-thread" ? (summary?.question ?? tab.title) : tab.title;
   // The tab IS the button (the ARIA tabs pattern: a tab's children are
   // presentational, so it can never hold a second control). Close is a mouse
-  // affordance outside the tab; from the keyboard, Delete closes.
+  // affordance outside the tab; from the keyboard, Delete closes (never
+  // Backspace, too easy to hit by accident), behind a 10 s Undo, and the
+  // tab names that key to assistive tech (aria-keyshortcuts).
   return (
     <span
       role="none"
@@ -178,9 +194,10 @@ function AgentTab({
         aria-selected={active}
         aria-controls={COMPANION_PANEL_DOM_ID}
         tabIndex={active ? 0 : -1}
+        aria-keyshortcuts="Delete"
         onClick={onActivate}
         onKeyDown={(e) => {
-          if (e.key === "Delete" || e.key === "Backspace") {
+          if (e.key === "Delete") {
             e.preventDefault();
             onClose();
           }

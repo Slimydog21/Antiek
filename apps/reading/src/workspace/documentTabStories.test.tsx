@@ -38,6 +38,30 @@ describe("DocumentTabStrip stories", () => {
     }
   });
 
+  it("close outcomes: the hint names both; Shift+Delete lifts a row's children, Delete prunes", async () => {
+    const { fireEvent, act } = await import("@testing-library/react");
+    mount("TreePanelCloseOutcomesDay");
+    const panel = document.querySelector("[data-tab-tree-panel]")!;
+    expect(panel.textContent).toMatch(/Delete prunes/);
+    expect(panel.textContent).toMatch(/⇧Delete closes only this/);
+    const rows = () => Array.from(panel.querySelectorAll<HTMLElement>("[data-tree-row]"));
+    const before = rows().length;
+    const second = rows()[1];
+    act(() => second.focus());
+    act(() => {
+      fireEvent.keyDown(second, { key: "Delete", shiftKey: true });
+    });
+    // One tab gone; its children stay (lifted).
+    expect(rows().length).toBe(before - 1);
+    const first = rows()[0];
+    act(() => first.focus());
+    act(() => {
+      fireEvent.keyDown(first, { key: "Delete" });
+    });
+    // The root pruned with everything under it.
+    expect(rows().length).toBeLessThan(before - 1);
+  });
+
   it("depth 1: no path header, three top-level tabs, a ↳2 chip", () => {
     mount("Depth1Day");
     expect(q("[data-tab-path]")).toHaveLength(0);

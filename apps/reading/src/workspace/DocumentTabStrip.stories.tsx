@@ -63,6 +63,18 @@ export const TreePanelSiblings174Day: Story = {
   globals: day,
 };
 
+/** The panel's two close outcomes (§2a): on a focused row, Delete prunes
+ *  the branch and Shift+Delete closes only that tab, lifting its children.
+ *  The hint line names both. */
+export const TreePanelCloseOutcomesDay: Story = {
+  args: { fixture: depthFixture(4), panelOpen: true },
+  globals: day,
+};
+export const TreePanelCloseOutcomesNight: Story = {
+  args: { fixture: depthFixture(4), panelOpen: true },
+  globals: night,
+};
+
 export const LoadingDay: Story = { args: { fixture: depthFixture(1), status: "loading" }, globals: day };
 export const LoadingNight: Story = { args: { fixture: depthFixture(1), status: "loading" }, globals: night };
 export const ErrorDay: Story = { args: { fixture: depthFixture(1), status: "error" }, globals: day };

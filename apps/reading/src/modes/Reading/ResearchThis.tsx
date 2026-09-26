@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import { LemonButton } from "../../components/lemon";
 import { openWindow } from "../../components/windows/openWindow";
+import { useBranchTo } from "../../workspace/useBranchTo";
 import { spinResearch } from "../../api/books";
 import { track } from "../../lib/analytics";
 
@@ -31,7 +31,7 @@ export interface ResearchThisProps {
 }
 
 export default function ResearchThis({ documentId, pageIndex, passageText }: ResearchThisProps) {
-  const navigate = useNavigate();
+  const branchTo = useBranchTo();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +64,13 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
       }
       // Hand off to the Research workflow. Return-to-reading is handled by
       // usePosition persisting this page.
-      navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
+      // A branch of the reader's tab ("deep researches triggered from a
+      // single document"), never a root in another tree.
+      branchTo(`/inv/${encodeURIComponent(res.investigation_id)}`, {
+        document_id: documentId,
+        kind: "research",
+        page_index: pageIndex,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);

@@ -17,6 +17,7 @@
 // fill while `text-emperor` is the theme's danger text colour.
 
 import defaultColors from "tailwindcss/colors.js";
+import plugin from "tailwindcss/plugin.js";
 
 /** rgb(var(--<name>-rgb) / <alpha-value>) */
 const ch = (name) => `rgb(var(--${name}-rgb) / <alpha-value>)`;
@@ -283,5 +284,21 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // A surface that lives inside a cockpit pane sizes its columns to its OWN
+    // width, not the viewport: in the inset preset a 1024 px viewport gives
+    // the left pane ~666 px, and viewport breakpoints would put a 256 px TOC
+    // and a 320 px notes column beside ~42 px of text. `container-reader`
+    // makes the reader root an inline-size container; `reader-md:` and
+    // `reader-lg:` are md/lg measured against it (768 / 1024 px, the same
+    // numbers the viewport breakpoints used when the reader filled the
+    // window). Guarded by src/design/containerVariants.test.ts.
+    plugin(({ addUtilities, addVariant }) => {
+      addUtilities({
+        ".container-reader": { "container-type": "inline-size", "container-name": "reader" },
+      });
+      addVariant("reader-md", "@container reader (min-width: 768px)");
+      addVariant("reader-lg", "@container reader (min-width: 1024px)");
+    }),
+  ],
 };

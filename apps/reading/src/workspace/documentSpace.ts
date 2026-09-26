@@ -7,12 +7,26 @@
  *   - routeForTab: the canonical URL a tab ACTIVATES to (null = the kind has
  *     no canonical route: the strip renders the honest "opens as window"
  *     bridge, never a guessed embedding; a Write section scopes in place).
+ *   - routeTabFor: the tab whose route an activation navigates to — the tab
+ *     itself, or, for a Write section (which scopes its piece in place), the
+ *     piece it belongs to (critic P-B).
  *   - adoptTabForRoute: what the route → tree sync does on a route change.
  *     An open tab that already shows the route is ADOPTED before any root is
- *     seeded, so a child tab stays a child (forensic defect 2).
+ *     seeded, so a child tab stays a child (forensic defect 2); a navigation
+ *     that carries a branch intent files its surface under the tab it was
+ *     triggered from (critic P-D).
  */
+import type { BranchIntent } from "./branchNavigation";
 import { mothershipForPath } from "./mothershipForPath";
-import { pathTo, subtreeIds, type TabKind, type TabNode, type TabTree } from "./tabTree";
+import { sectionIdFromRef } from "./sectionRef";
+import {
+  pathTo,
+  subtreeIds,
+  type BranchOrigin,
+  type TabKind,
+  type TabNode,
+  type TabTree,
+} from "./tabTree";
 
 export { mothershipForPath };
 
@@ -73,6 +87,29 @@ export function routeForTab(tab: TabNode): string | null {
   return mothershipForPath(base) === tab.mothership ? base : `${base}?m=${tab.mothership}`;
 }
 
+function isSectionTab(tab: TabNode): boolean {
+  return tab.kind === "document" && sectionIdFromRef(tab.ref) !== null;
+}
+
+/**
+ * The tab whose canonical route shows `tabId`: the tab itself when it has a
+ * route; for a Write section, the nearest ancestor that has one (its piece),
+ * since a section is a view of that piece; otherwise null (the honest
+ * "opens as window" bridge).
+ */
+export function routeTabFor(tree: TabTree, tabId: string): TabNode | null {
+  const tab = tree.nodes[tabId];
+  if (!tab) return null;
+  if (basePathForTab(tab) !== null) return tab;
+  if (!isSectionTab(tab)) return null;
+  const ancestry = pathTo(tree, tabId);
+  for (let i = ancestry.length - 2; i >= 0; i--) {
+    const up = tree.nodes[ancestry[i]];
+    if (basePathForTab(up) !== null) return up;
+  }
+  return null;
+}
+
 /** Does this tab show the surface at `pathname`? Compared decoded, so
  *  `/read/a%20b` and `/read/a b` are one surface. */
 export function tabShowsPath(tab: TabNode, pathname: string): boolean {
@@ -106,26 +143,61 @@ export function freshTabId(tree: TabTree, base: string): string {
 export type RouteAdoption =
   | { action: "none" }
   | { action: "activate"; tabId: string }
-  | { action: "seed"; ref: RootRef };
+  | { action: "seed"; ref: RootRef }
+  | { action: "branch"; parentId: string; ref: RootRef; origin: BranchIntent["origin"] };
+
+/** The branch_origin a branch intent gives its new tab. */
+export function branchOriginOf(origin: BranchIntent["origin"]): BranchOrigin {
+  return {
+    document_id: origin.document_id,
+    kind: origin.kind,
+    ...(origin.page_index !== undefined
+      ? { anchor: { document_id: origin.document_id, page_index: origin.page_index } }
+      : {}),
+  };
+}
 
 /**
  * What the route → tree sync does when the route is `pathname`:
  *
  *   1. not a document surface: nothing;
- *   2. the active tab already shows it: nothing;
- *   3. the active tab has no route of its own (a Write section scoped in
+ *   2. a branch intent whose parent is open in this tree: the parent's open
+ *      child showing the route is activated (or the parent itself, when it
+ *      shows it), else a CHILD is spawned under the parent — the surface was
+ *      triggered from that tab's document;
+ *   3. the active tab already shows it: nothing;
+ *   4. the active tab has no route of its own (a Write section scoped in
  *      place) and an ancestor shows it: nothing — the section is the view;
- *   4. an open tab shows it: ADOPT it — the nearest ancestor of the active
+ *   5. an open tab shows it: ADOPT it — the nearest ancestor of the active
  *      tab first (Back from a child lands on its parent), else the first in
  *      depth-first order;
- *   5. otherwise seed a root tab for it.
+ *   6. otherwise seed a root tab for it.
  *
- * Step 4 before step 5 is the whole of forensic defect 2: a child reader tab
+ * Step 5 before step 6 is the whole of forensic defect 2: a child reader tab
  * whose activation navigated here is found, so no root is minted beside it.
+ * Step 2 is critic P-D: a deep research spun from a reader, or a link out of
+ * it, is a branch of the reader's tab, never a root in another tree.
  */
-export function adoptTabForRoute(tree: TabTree, pathname: string): RouteAdoption {
+export function adoptTabForRoute(
+  tree: TabTree,
+  pathname: string,
+  intent?: BranchIntent | null,
+): RouteAdoption {
   const ref = rootRefForPath(pathname);
   if (!ref) return { action: "none" };
+  if (intent && intent.mothership === tree.mothership && Object.hasOwn(tree.nodes, intent.parentTabId)) {
+    const parent = tree.nodes[intent.parentTabId];
+    if (tabShowsPath(parent, pathname)) {
+      return tree.active_tab_id === parent.tab_id ? { action: "none" } : { action: "activate", tabId: parent.tab_id };
+    }
+    const open = parent.child_order.find(
+      (id) => Object.hasOwn(tree.nodes, id) && tabShowsPath(tree.nodes[id], pathname),
+    );
+    if (open) {
+      return tree.active_tab_id === open ? { action: "none" } : { action: "activate", tabId: open };
+    }
+    return { action: "branch", parentId: parent.tab_id, ref, origin: intent.origin };
+  }
   const active = tree.active_tab_id ? tree.nodes[tree.active_tab_id] : undefined;
   const ancestry = active ? pathTo(tree, active.tab_id) : [];
   if (active && tabShowsPath(active, pathname)) return { action: "none" };

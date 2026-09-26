@@ -53,7 +53,7 @@ export const NOTES: Partial<Record<ActionId, string>> = {
   "tab.prev": "The same pane rule as the next tab.",
   "tab.new": "Not built yet: the picker (reader, document, research, companion) will open here. Until then the key does nothing.",
   "tab.close":
-    "Closes the tab and everything branched from it; the pages it pointed at are untouched. Undo stays in the toast for 10 seconds.",
+    "Closes the tab and everything branched from it; the pages it pointed at are untouched. Undo stays in the toast for 10 seconds. To close only one tab and keep its branches, use Shift+Delete on its row in the tab tree.",
   "inbox.toggle": "Not built yet: the key is kept for the attention inbox. Until it ships the key does nothing.",
 };
 

@@ -7,27 +7,31 @@
  * tests get the companion, their previous right pane).
  *
  * Both panes load on first show, not with the entry chunk (it has a hard
- * gzip budget, npm run build:check); each says what it is loading meanwhile.
+ * gzip budget, npm run build:check); meanwhile each shows the shared
+ * LoadingState, naming what is opening.
  */
 import { Suspense, lazy } from "react";
 import { useInRouterContext, useLocation } from "react-router-dom";
 
+import { LoadingState } from "../components/states";
 import { mothershipForPath } from "./mothershipForPath";
 
 const CompanionPane = lazy(() => import("./CompanionPane"));
 const WriteOutlinePane = lazy(() => import("./WriteOutlinePane"));
 
+/** The shared LoadingState, naming what is opening, while a pane's chunk
+ *  loads. */
 function PaneLoading({ what }: { what: string }) {
   return (
-    <div role="status" aria-live="polite" className="flex-1 min-h-0 px-3 py-2 text-xs text-ink-mute dark:text-moonlight">
-      Loading {what}…
+    <div className="flex-1 min-h-0 px-3 py-2">
+      <LoadingState variant="inline" shape="list" rows={3} label={`Opening ${what}`} />
     </div>
   );
 }
 
 function Companion() {
   return (
-    <Suspense fallback={<PaneLoading what="agents" />}>
+    <Suspense fallback={<PaneLoading what="your agents" />}>
       <CompanionPane />
     </Suspense>
   );
@@ -43,7 +47,7 @@ function RightPaneForModeInner() {
   const mothership = mothershipForPath(pathname, search);
   if (mothership === "writing") {
     return (
-      <Suspense fallback={<PaneLoading what="outline" />}>
+      <Suspense fallback={<PaneLoading what="the outline" />}>
         <WriteOutlinePane />
       </Suspense>
     );

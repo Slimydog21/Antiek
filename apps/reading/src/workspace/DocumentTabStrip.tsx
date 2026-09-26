@@ -31,12 +31,16 @@ import { useInRouterContext, useLocation, useNavigate } from "react-router-dom";
 import { CornerDownRight, ListTree } from "lucide-react";
 
 import { ErrorState, LoadingState } from "../components/states";
+import { branchIntentOf, type BranchIntent } from "./branchNavigation";
 import {
   adoptTabForRoute,
+  branchOriginOf,
+  childTabId,
   freshTabId,
   mothershipForPath,
   rootTabId,
   routeForTab,
+  routeTabFor,
   tabShowsPath,
 } from "./documentSpace";
 import { sectionIdFromRef } from "./sectionRef";
@@ -51,17 +55,32 @@ import { useTabTrees } from "./tabTreeStore";
 
 export { labelForTab };
 
-/** The route → tree sync, shared by the route effect and "Try again". */
-async function syncRouteToTree(mothership: Mothership, pathname: string): Promise<void> {
+/** The route → tree sync, shared by the route effect and "Try again". A
+ *  navigation that carries a branch intent (branchNavigation) files its
+ *  surface under the tab it was triggered from. */
+async function syncRouteToTree(
+  mothership: Mothership,
+  pathname: string,
+  intent: BranchIntent | null = null,
+): Promise<void> {
   await useTabTrees.getState().ensureMothership(mothership);
   const store = useTabTrees.getState();
   const tree = store.trees[mothership];
   if (!tree) return;
-  const adoption = adoptTabForRoute(tree, pathname);
+  const adoption = adoptTabForRoute(tree, pathname, intent);
   if (adoption.action === "activate") store.activateTab(mothership, adoption.tabId);
   else if (adoption.action === "seed") {
     store.spawnTab(mothership, null, {
       tab_id: freshTabId(tree, rootTabId(adoption.ref)),
+      kind: adoption.ref.kind,
+      ref: adoption.ref.ref,
+      mothership,
+      activate: true,
+    });
+  } else if (adoption.action === "branch") {
+    store.spawnTab(mothership, adoption.parentId, {
+      tab_id: freshTabId(tree, childTabId(adoption.parentId, adoption.ref.kind, adoption.ref.ref)),
+      origin: branchOriginOf(adoption.origin),
       kind: adoption.ref.kind,
       ref: adoption.ref.ref,
       mothership,
@@ -98,9 +117,14 @@ function DocumentTabStripInner() {
   const subtreeFocusId = useTabTrees((s) => s.subtreeFocusId);
   const entries = useTabTitles((s) => s.entries);
 
+  // Keyed by the history entry, so a branch navigation to a surface already
+  // on screen elsewhere still files under its parent.
+  const intent = branchIntentOf(location.state);
   useEffect(() => {
-    void syncRouteToTree(mothership, location.pathname);
-  }, [location.pathname, mothership]);
+    void syncRouteToTree(mothership, location.pathname, intent);
+    // `intent` is derived from the entry `location.key` names.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, location.key, mothership]);
 
   // tree → route: only an ACTIVATION navigates. Whatever was active when
   // the strip mounted is not a mandate to hijack the current route.
@@ -110,10 +134,14 @@ function DocumentTabStripInner() {
     const id = activeTab?.tab_id ?? null;
     if (id === prevActiveRef.current) return;
     prevActiveRef.current = id;
-    if (!activeTab || tabShowsPath(activeTab, location.pathname)) return;
-    const route = routeForTab(activeTab);
+    if (!activeTab || !tree) return;
+    // A Write section navigates to its piece (it scopes that piece in place),
+    // so a section of another piece never leaves this piece on screen.
+    const holder = routeTabFor(tree, activeTab.tab_id);
+    if (!holder || tabShowsPath(holder, location.pathname)) return;
+    const route = routeForTab(holder);
     if (route) navigate(route);
-  }, [activeTab, location.pathname, navigate]);
+  }, [activeTab, tree, location.pathname, navigate]);
 
   // Activation only moves the tree; the effect above does the navigating,
   // so a click, a key and the cross-pane seam take one path.
@@ -178,6 +206,7 @@ function DocumentTabStripInner() {
       onFocusSubtree={(id) => useTabTrees.getState().setSubtreeFocus(id)}
       onVisitChild={() => useTabTrees.getState().visitChildOfActive(mothership)}
       onRowsShown={requestRows}
+      onCloseTab={(id, mode) => useTabTrees.getState().closeTabById(mothership, id, mode)}
     />
   );
 }
@@ -209,6 +238,8 @@ export interface DocumentTabStripViewProps {
   onFocusSubtree: (tabId: string | null) => void;
   onVisitChild: () => void;
   onRowsShown?: (tabIds: string[]) => void;
+  /** The tree panel's Delete / Shift+Delete (prune / close only this). */
+  onCloseTab?: (tabId: string, mode: "prune" | "lift_children") => void;
 }
 
 /** The presentational strip: every state, no store, no router. */
@@ -225,8 +256,23 @@ export function DocumentTabStripView({
   onFocusSubtree,
   onVisitChild,
   onRowsShown,
+  onCloseTab,
 }: DocumentTabStripViewProps) {
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // The tree panel is a popover: a press anywhere outside the strip closes it
+  // (the toggle is inside, and keeps its own toggling).
+  useEffect(() => {
+    if (!treePanelOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const root = rootRef.current;
+      if (root && e.target instanceof Node && root.contains(e.target)) return;
+      onToggleTree();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [treePanelOpen, onToggleTree]);
 
   if (status === "loading" || !tree) {
     if (status === "error") {
@@ -260,7 +306,7 @@ export function DocumentTabStripView({
   const bridge = active !== null && routeForTab(active) === null && !isSectionTab(active);
 
   return (
-    <div className="relative shrink-0" data-document-strip>
+    <div ref={rootRef} className="relative shrink-0" data-document-strip>
       {path.length > 1 ? (
         <TabPathHeader tree={tree} path={path} labelOf={labelOf} onActivate={onActivate} />
       ) : null}
@@ -336,6 +382,8 @@ export function DocumentTabStripView({
               toggleRef.current?.focus();
             }}
             onRowsShown={onRowsShown}
+            onCloseTab={onCloseTab}
+            focusOnOpen
           />
         </div>
       ) : null}

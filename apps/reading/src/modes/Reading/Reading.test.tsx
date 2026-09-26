@@ -510,7 +510,9 @@ describe("BookReader", () => {
       0,
       expect.stringContaining("The opening of the book."),
     );
-    expect(navigateMock).toHaveBeenCalledWith("/inv/inv-from-highlight");
+    // The hand-off loads the branch module first (useBranchTo), so it lands
+    // a tick later.
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-from-highlight"));
     // Reader no longer opens ChaseThread for Deep-research — that path lacked
     // book provenance and never hit spin-research / notebook distill.
     expect(
@@ -846,5 +848,110 @@ describe("BookReader", () => {
       expect(screen.getByText(/includes a restricted source/)).toBeTruthy(),
     );
     expect(searchBlocksMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── Cockpit repair round 1 ─────────────────────────────────────────────
+// H1: in the inset preset the reader lives in a ~666 px pane at a 1024 px
+// viewport, but its TOC (md:) and notes (lg:) columns answered to the
+// VIEWPORT, leaving the text ~42 px. They now answer to the reader's own
+// width (a CSS container on the reader root).
+// P-D: a deep research or a document link triggered from this document is a
+// branch of its tab (workspace/branchNavigation), never a new root.
+describe("BookReader in the cockpit (repair round 1)", () => {
+  beforeEach(() => {
+    getBookMock.mockReset();
+    getFullTextMock.mockReset();
+    spinResearchMock.mockReset();
+    navigateMock.mockReset();
+    listBooksMock.mockReset();
+    window.sessionStorage.clear();
+    useWorkspace.getState().reset();
+    useInvestigationMock.mockReset();
+    useInvestigationMock.mockReturnValue({
+      id: "read-doc-1",
+      status: "not_found",
+      events: [],
+      question: null,
+      terminalPayload: null,
+      costTotal: 0,
+      completedAt: null,
+      reconnects: 0,
+    });
+  });
+  afterEach(async () => {
+    const { tabTreeHandle } = await import("../../workspace/tabTreeHandle");
+    tabTreeHandle.store = null;
+  });
+
+  it("its side columns answer to the reader's own width, not the viewport", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    const root = await screen.findByTestId("book-reader-root");
+    await screen.findByText("The opening of the book.");
+    expect(root.className.split(/\s+/)).toContain("container-reader");
+    const toc = root.querySelector("aside")!;
+    const toks = toc.className.split(/\s+/);
+    expect(toks).toContain("reader-md:block");
+    expect(toks.some((t) => /^(sm|md|lg|xl):/.test(t))).toBe(false);
+    const notes = screen.getByRole("complementary", { name: /Reading companion/ });
+    const ntoks = notes.className.split(/\s+/);
+    expect(ntoks).toContain("reader-lg:flex");
+    expect(ntoks.some((t) => /^(sm|md|lg|xl):/.test(t))).toBe(false);
+  });
+
+  it("a highlight's deep research branches from the reader's tab (?m= keeps its tree)", async () => {
+    const { tabTreeHandle } = await import("../../workspace/tabTreeHandle");
+    tabTreeHandle.store = {
+      getState: () => ({ trees: { reading: { active_tab_id: "root:reader:doc-1" } } }),
+    } as never;
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    spinResearchMock.mockResolvedValue({
+      investigation_id: "inv-from-highlight",
+      document_id: "doc-1",
+      page_index: 0,
+      gated: false,
+      servability: "public_domain",
+      seed_preview: "The opening of the book.",
+    });
+    await renderReader();
+    const para = await screen.findByText("The opening of the book.");
+    selectTextIn(para, "The opening of the book.");
+    const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Deep-research" }));
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled());
+    const [to, options] = navigateMock.mock.calls.at(-1)!;
+    expect(to).toBe("/inv/inv-from-highlight?m=reading");
+    const branch = (options as { state: { tabBranch: Record<string, unknown> } }).state.tabBranch;
+    expect(branch.parentTabId).toBe("root:reader:doc-1");
+    expect(branch.origin).toEqual({ document_id: "doc-1", kind: "research", page_index: 0 });
+  });
+
+  it("'Research this page' branches from the reader's tab too", async () => {
+    const { tabTreeHandle } = await import("../../workspace/tabTreeHandle");
+    tabTreeHandle.store = {
+      getState: () => ({ trees: { reading: { active_tab_id: "root:reader:doc-1" } } }),
+    } as never;
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    spinResearchMock.mockResolvedValue({
+      investigation_id: "inv-child-xyz",
+      document_id: "doc-1",
+      page_index: 0,
+      gated: false,
+      servability: "public_domain",
+      seed_preview: "From the book…",
+    });
+    await renderReader();
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Research this page/ }));
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled());
+    const [to, options] = navigateMock.mock.calls.at(-1)!;
+    expect(to).toBe("/inv/inv-child-xyz?m=reading");
+    expect((options as { state: { tabBranch: { parentTabId: string } } }).state.tabBranch.parentTabId).toBe(
+      "root:reader:doc-1",
+    );
   });
 });

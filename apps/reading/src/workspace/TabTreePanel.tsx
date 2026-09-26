@@ -14,7 +14,10 @@
  *     screen reader still hears "7 of 999".
  *   - Keys (the ARIA tree pattern): ↑/↓ move, Home/End jump, → opens or
  *     steps into a branch, ← closes it or steps to the parent, Enter opens
- *     the tab, s focuses the subtree, Esc closes the panel.
+ *     the tab, s focuses the subtree, Esc closes the panel. Delete closes the
+ *     row's tab with everything under it (prune, the default); Shift+Delete
+ *     closes only that tab and lifts its children (§2a's two outcomes). Both
+ *     undo for 10 s.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronDown, ChevronRight, Crosshair } from "lucide-react";
@@ -42,6 +45,12 @@ export interface TabTreePanelProps {
   onClose: () => void;
   /** Called with the ids in the rendered window (titles resolve lazily). */
   onRowsShown?: (tabIds: string[]) => void;
+  /** Delete / Shift+Delete on a row: the two close outcomes (§2a). Absent,
+   *  the panel offers no close. */
+  onCloseTab?: (tabId: string, mode: "prune" | "lift_children") => void;
+  /** Move focus onto the active row when the panel opens (prefix t), so its
+   *  keys work at once. */
+  focusOnOpen?: boolean;
 }
 
 export function TabTreePanel({
@@ -52,6 +61,8 @@ export function TabTreePanel({
   onFocusSubtree,
   onClose,
   onRowsShown,
+  onCloseTab,
+  focusOnOpen = false,
 }: TabTreePanelProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const rows = useMemo(() => flattenTabRows(tree, { focusId, collapsed }), [tree, focusId, collapsed]);
@@ -107,7 +118,8 @@ export function TabTreePanel({
   }, [focusId]);
 
   const rowEls = useRef(new Map<string, HTMLDivElement>());
-  const pendingFocus = useRef<string | null>(null);
+  // Opening the panel from the keyboard lands on the active row.
+  const pendingFocus = useRef<string | null>(focusOnOpen ? cursorId : null);
   useLayoutEffect(() => {
     const id = pendingFocus.current;
     if (id === null) return;
@@ -168,6 +180,27 @@ export function TabTreePanel({
       case "s":
         onFocusSubtree(row.id);
         break;
+      case "Delete": {
+        if (!onCloseTab) {
+          handled = false;
+          break;
+        }
+        // Prune (the default) takes the row's subtree with it; Shift closes
+        // only this tab and lifts its children. Focus stays in the tree, on
+        // the row that takes this one's place.
+        const lift = e.shiftKey;
+        let next: TabRow | undefined;
+        if (lift) next = rows[cursorIndex + 1] ?? rows[cursorIndex - 1];
+        else {
+          next = rows.slice(cursorIndex + 1).find((r) => r.level <= row.level) ?? rows[cursorIndex - 1];
+        }
+        if (next) {
+          setCursor(next.id);
+          pendingFocus.current = next.id;
+        }
+        onCloseTab(row.id, lift ? "lift_children" : "prune");
+        break;
+      }
       case "Escape":
         onClose();
         break;
@@ -316,7 +349,8 @@ export function TabTreePanel({
       )}
       {rows.length > 0 ? (
         <p className="shrink-0 border-t border-hairline px-2 py-1 text-xxs text-shadow-1 dark:text-moonlight">
-          ↑↓ move · → ← open, close · Enter opens · s focuses the subtree · Esc closes
+          ↑↓ move · → ← open, close · Enter opens · s focuses the subtree
+          {onCloseTab ? " · Delete prunes · ⇧Delete closes only this" : ""} · Esc closes
         </p>
       ) : null}
     </div>

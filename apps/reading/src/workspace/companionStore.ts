@@ -66,6 +66,9 @@ export interface CompanionState {
   openAgentTab: (input: OpenAgentTabInput) => string;
   /** Remove the tab (the agent/thread is untouched — a view act). */
   closeAgentTab: (id: string) => void;
+  /** Put a closed tab back where it was (its toast's Undo). A tab opened
+   *  again meanwhile is left as it is. */
+  restoreAgentTab: (tab: AgentTabDescriptor, index: number, activate: boolean) => void;
   activateAgentTab: (id: string) => void;
   /** Wrap-cycling for the prefix n/p keys (all tabs, overflow included). */
   cycleAgentTab: (direction: 1 | -1) => void;
@@ -118,6 +121,14 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
         activeTabId = tabs[idx - 1]?.id ?? tabs[idx]?.id ?? null;
       }
       return { tabs, activeTabId };
+    }),
+
+  restoreAgentTab: (tab, index, activate) =>
+    set((s) => {
+      if (s.tabs.some((t) => t.id === tab.id)) return s;
+      const tabs = [...s.tabs];
+      tabs.splice(Math.max(0, Math.min(index, tabs.length)), 0, tab);
+      return { tabs, activeTabId: activate ? tab.id : s.activeTabId };
     }),
 
   activateAgentTab: (id) =>

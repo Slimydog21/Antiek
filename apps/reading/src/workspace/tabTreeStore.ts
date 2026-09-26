@@ -19,7 +19,8 @@
  * Close is HELD locally through the 10 s undo window (§2.2): the tree drops
  * the tab at once, a LemonToast offers Undo for UNDO_TTL_MS, and the close
  * joins the pending log (and so the next snapshot) only when the window
- * lapses. Saves wait while a close is held, so no snapshot other devices
+ * lapses. A save waits while a close is held (checked when it RUNS, so a
+ * save queued before the close waits too), so no snapshot other devices
  * read ever carries a close that was undone. A close lost to a reload
  * inside the window was never written: the tab is simply back.
  */
@@ -99,6 +100,9 @@ interface TabTreeState {
   visitChildOfActive: (mothership: Mothership) => void;
   cycleSibling: (mothership: Mothership, direction: 1 | -1) => void;
   closeActiveTab: (mothership: Mothership, mode: CloseMode) => void;
+  /** Close any open tab (the tree panel's Delete / Shift+Delete). Held for
+   *  the 10 s window exactly like closeActiveTab. */
+  closeTabById: (mothership: Mothership, tabId: string, mode: CloseMode) => void;
   /** Undo one close by its id: a held close is dropped without a write; a
    *  close already written is undone through the model (numbers reclaimed). */
   undoClose: (closeId: string) => void;
@@ -147,7 +151,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
   }
 
   function queueSave(mothership: Mothership): void {
-    if (get().heldClose) {
+    if (heldOn(mothership)) {
       deferredSaves.add(mothership);
       return;
     }
@@ -156,21 +160,40 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     saveQueues.set(mothership, run);
   }
 
+  function heldOn(mothership: Mothership): HeldClose | null {
+    const held = get().heldClose;
+    return held && held.mothership === mothership ? held : null;
+  }
+
+  /** Record a save's new version on the tree, and drop from the pending log
+   *  the ops that save carried (ops made while it was in flight stay, for a
+   *  later rebase). */
+  function markSaved(mothership: Mothership, version: number, sentOps: number): void {
+    set((s) => ({
+      trees: {
+        ...s.trees,
+        [mothership]: s.trees[mothership] ? { ...s.trees[mothership]!, version } : s.trees[mothership],
+      },
+      pendingOps: { ...s.pendingOps, [mothership]: (s.pendingOps[mothership] ?? []).slice(sentOps) },
+    }));
+  }
+
   async function saveNow(mothership: Mothership): Promise<void> {
+    // The hold is checked when the save RUNS, not when it was queued: a save
+    // queued before a close would otherwise run inside the window and write
+    // the close that the toast may yet undo (critic P-A). It waits instead,
+    // and commitHeld/undoClose run it once the hold resolves.
+    if (heldOn(mothership)) {
+      deferredSaves.add(mothership);
+      return;
+    }
     const { adapter, trees, pendingOps } = get();
     const tree = trees[mothership];
     if (!tree) return;
+    const sentOps = (pendingOps[mothership] ?? []).length;
     const result = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(tree));
     if (result.status === "saved") {
-      set((s) => ({
-        trees: {
-          ...s.trees,
-          [mothership]: s.trees[mothership]
-            ? { ...s.trees[mothership]!, version: result.version }
-            : s.trees[mothership],
-        },
-        pendingOps: { ...s.pendingOps, [mothership]: [] },
-      }));
+      markSaved(mothership, result.version, sentOps);
       return;
     }
     if (result.status === "conflict") {
@@ -179,27 +202,41 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       // once more. The in-memory adapter cannot produce this path in a single
       // tab; lane B's multi-device adapter can, and it is fully wired.
       const parsed = fromSnapshot(result.current);
-      if (parsed.ok) {
-        const { tree: rebased, dropped } = rebase(parsed.tree, pendingOps[mothership] ?? []);
-        set((s) => ({
-          trees: { ...s.trees, [mothership]: rebased },
-          pendingOps: { ...s.pendingOps, [mothership]: [] },
-        }));
-        if (dropped.length > 0) {
-          toast.info("A tab was closed on another device; your other changes were kept.");
-        }
-        const retry = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(rebased));
-        if (retry.status === "saved") {
-          set((s) => ({
-            trees: {
-              ...s.trees,
-              [mothership]: s.trees[mothership]
-                ? { ...s.trees[mothership]!, version: retry.version }
-                : s.trees[mothership],
-            },
-          }));
+      if (!parsed.ok) return;
+      // Every op made so far, including those made while the save was in
+      // flight; a close still inside its window is not one of them.
+      const ops = get().pendingOps[mothership] ?? [];
+      const { tree: rebased, dropped } = rebase(parsed.tree, ops);
+      if (dropped.length > 0) {
+        toast.info("A tab was closed on another device; your other changes were kept.");
+      }
+      // A close held while the save was in flight stays held: it is replayed
+      // onto the rebased tree for the screen only (same close_id, so its
+      // toast's Undo still finds it), and the retry below writes the tree
+      // WITHOUT it.
+      const held = heldOn(mothership);
+      let shown = rebased;
+      if (held && held.op.type === "close") {
+        const op = held.op;
+        const replay = closeTab(rebased, op.tab_id, op.mode, op.now, op.close_id);
+        if (replay.ok) {
+          shown = replay.tree;
+          set({ heldClose: { mothership, token: replay.undo, op: replay.op } });
+        } else {
+          // Another device already closed it: nothing is left to hold.
+          if (holdTimer !== null) clearTimeout(holdTimer);
+          holdTimer = null;
+          set({ heldClose: null });
         }
       }
+      set((s) => ({
+        trees: { ...s.trees, [mothership]: shown },
+        pendingOps: { ...s.pendingOps, [mothership]: [] },
+      }));
+      const retry = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(rebased));
+      if (retry.status === "saved") markSaved(mothership, retry.version, 0);
+      // The hold may have ended while the rebase was in flight.
+      if (!heldOn(mothership)) flushDeferred();
       return;
     }
     // "rejected" — the adapter refused the snapshot as invalid. The model's
@@ -355,9 +392,13 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     },
 
     closeActiveTab: (mothership, mode) => {
+      const active = get().trees[mothership]?.active_tab_id;
+      if (active) get().closeTabById(mothership, active, mode);
+    },
+
+    closeTabById: (mothership, active, mode) => {
       const tree = get().trees[mothership];
-      const active = tree?.active_tab_id;
-      if (!tree || !active) return;
+      if (!tree || !Object.hasOwn(tree.nodes, active)) return;
       const result = closeTab(tree, active, mode, new Date().toISOString());
       if (!result.ok) return;
       // One close is held at a time: a newer close writes the older one (its

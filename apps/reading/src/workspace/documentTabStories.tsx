@@ -9,6 +9,7 @@ import { DocumentTabStripView, labelsFor, type StripStatus } from "./DocumentTab
 import { sectionRefOf } from "./sectionRef";
 import { titleKey, type TitleEntry } from "./tabTitles";
 import {
+  closeTab,
   emptyTabTree,
   setActive,
   spawnChild,
@@ -166,6 +167,11 @@ export function StoryStrip({
           onVisitChild={() => {
             if (!tree.active_tab_id) return;
             const r = visitChild(tree, tree.active_tab_id);
+            if (r.ok) setTree(r.tree);
+          }}
+          onCloseTab={(id, mode) => {
+            // The story closes through the real model (no hold, no toast).
+            const r = closeTab(tree, id, mode, "2026-09-26T00:00:00Z");
             if (r.ok) setTree(r.tree);
           }}
         />

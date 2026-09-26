@@ -374,11 +374,14 @@ describe("section tabs scope in place (defect 5)", () => {
     act(() => {
       tabs().activateTab("writing", cid);
     });
-    const strip = container.querySelector<HTMLElement>("[data-document-strip]")!;
+    // Queried inside the wait: until its chunk loads, the strip is its
+    // loading skeleton (a different node).
+    const stripNow = () => container.querySelector<HTMLElement>("[data-document-strip]")!;
     await waitFor(() => {
-      const selected = strip.querySelector<HTMLElement>("[role='tab'][aria-selected='true']")!;
+      const selected = stripNow().querySelector<HTMLElement>("[role='tab'][aria-selected='true']")!;
       expect(selected.textContent).toContain("Body section");
     });
+    const strip = stripNow();
     expect(strip.querySelector("[data-tab-bridge]")).toBeNull();
     expect(strip.textContent).not.toMatch(/opens as window/i);
     expect(strip.textContent).not.toMatch(/section:/);

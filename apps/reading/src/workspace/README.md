@@ -68,8 +68,10 @@ The preset persists via its own global blob
 precedent — never folded into the per-scope layout snapshot). Pane keys are
 keymap rows like every other key: prefix h/l (+ `ctrl+alt` twins) move pane
 focus with a ring (`ring-focus`; in `docked` they cycle dock areas via
-`cycleFocus`); prefix f fullscreens the focused pane (Esc — element-scoped
-on the layout root, never a global binding — or the same key restores);
+`cycleFocus`); prefix f fullscreens the focused pane (Esc from any focus —
+a document listener that exists only while a pane is fullscreen, never a
+keymap row; Esc in a text field or a dialog stays theirs — or the same key
+restores; right-pane fullscreen fills the cockpit);
 prefix shift+i toggles the preset (no chord; `i` is the attention inbox's).
 
 ## The companion (C4, 2026-09-24)
@@ -117,10 +119,19 @@ Stage 2 of the cockpit rescue (2026-09-26) rebuilt the strip to DESIGN-MODEL
 - **Route adoption** (`documentSpace.adoptTabForRoute`): a route change
   adopts an open tab that shows it before seeding a root, so a child stays a
   child. A tab whose route belongs to another mode carries `?m=<tree>` so it
-  never switches trees (`mothershipForPath(pathname, search)`).
+  never switches trees (`mothershipForPath(pathname, search)`). A Write
+  section tab activates to its own piece (`routeTabFor`).
+- **Branches from a document** (`branchNavigation.ts`, `useBranchTo.ts`,
+  repair round 1): a deep research spun from the reader, a document opened
+  from it and a Write citation traced to its source navigate with a branch
+  intent in the history state; the route sync files the new surface as a
+  CHILD of the tab it came from, in that tab's tree.
 - **Close** is held locally for 10 s behind a `toast.undo` (LemonToast's undo
   slot, `UNDO_TTL_MS`); the close joins the snapshot only when the window
-  lapses. Loading/error/empty use the shared state primitives, and a failed
+  lapses, and a save queued before the close waits too (the hold is checked
+  when a save runs; a 409 inside the window keeps the close held). In the
+  tree panel, Delete prunes a row and Shift+Delete closes only that tab
+  (§2a's two outcomes). Loading/error/empty use the shared state primitives, and a failed
   tree load offers "Try again" (`retryLoad`).
 
 Keys (the lane-A cockpit decision, stage 3, recorded in

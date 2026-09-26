@@ -1,7 +1,10 @@
 import { Suspense, lazy, useCallback, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
+import { useInRouterContext } from "react-router-dom";
+
 import { toast } from "../components/lemon/LemonToast";
+import { LoadingState } from "../components/states";
 import { radius } from "../design/tokens";
 import RightPaneForMode from "./RightPaneForMode";
 import { DOCUMENT_PANEL_ID } from "./documentPanel";
@@ -18,6 +21,17 @@ import { useViewportTier } from "./useViewportTier";
 const DocumentTabStrip = lazy(() =>
   import("./DocumentTabStrip").then((m) => ({ default: m.DocumentTabStrip })),
 );
+
+/** The strip's own loading skeleton, drawn while its chunk loads, so the
+ *  strip lands in place with no layout shift. The same markup as the loaded
+ *  strip's loading state. */
+function DocumentStripFallback() {
+  return (
+    <div data-document-strip className="shrink-0 border-b border-hairline">
+      <LoadingState variant="inline" shape="strip" rows={3} label="Opening your tabs" />
+    </div>
+  );
+}
 
 /**
  * PanelLayout — the orchestrator.
@@ -67,6 +81,8 @@ export function PanelLayout({ mainSlot }: Props) {
   const setFocusedPane = useWorkspace((s) => s.setFocusedPane);
   const setFullscreenPane = useWorkspace((s) => s.setFullscreenPane);
   const reduceMotion = usePrefersReducedMotion();
+  // The strip renders nothing without a router, so neither does its fallback.
+  const inRouter = useInRouterContext();
   const tier = useViewportTier();
 
   // S11 — at tier "lg" the two side docks can't both be visible; if both
@@ -135,18 +151,26 @@ export function PanelLayout({ mainSlot }: Props) {
     startRef.current = null;
   }, []);
 
-  // Cockpit fullscreen restore (C3): Esc is scoped to the layout root — an
-  // overlay's own key, the one sanctioned exception to the one-dispatcher
-  // rule (never a global binding, never a keymap row). A key an element
-  // claimed first (defaultPrevented) or pressed while typing stays theirs.
-  const onLayoutKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (!fullscreenPane || e.key !== "Escape" || e.defaultPrevented) return;
-      if (isTextEditing(e.target as Element)) return;
+  // Cockpit fullscreen restore (C3): "Esc restores from any focus"
+  // (DESIGN-MODEL §2), so the listener is on the document, not the layout
+  // root; with focus on <body> a root-scoped handler never saw the key. It
+  // exists only while a pane is fullscreen: an overlay's own key, the one
+  // sanctioned exception to the one-dispatcher rule (never a global
+  // binding, never a keymap row). A key an element claimed first
+  // (defaultPrevented), pressed while typing, or pressed inside a dialog
+  // (whose own Esc closes it) stays theirs.
+  useEffect(() => {
+    if (!fullscreenPane) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target && isTextEditing(target)) return;
+      if (target?.closest("[role='dialog'], [role='alertdialog']")) return;
       setFullscreenPane(null);
-    },
-    [fullscreenPane, setFullscreenPane],
-  );
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [fullscreenPane, setFullscreenPane]);
 
   // Tier `sm` (< 768px) is the phone layout: one column, the route view
   // alone and scrollable. The docks and floating panels stay out of it (a
@@ -167,7 +191,7 @@ export function PanelLayout({ mainSlot }: Props) {
   // (router-guarded: it renders nothing without a Router context).
   const centreColumn = (
     <div className="flex-1 min-w-0 flex flex-col">
-      <Suspense fallback={null}>
+      <Suspense fallback={inRouter ? <DocumentStripFallback /> : null}>
         <DocumentTabStrip />
       </Suspense>
       <main className="flex-1 min-w-0 relative overflow-hidden">
@@ -229,7 +253,11 @@ export function PanelLayout({ mainSlot }: Props) {
     // collapse rules in dockSide still govern its width.
     const rightPaneWidth = dockSide("right", Math.max(1, dockRightIds.length));
     const showLeftPane = fullscreenPane !== "right";
-    const showRightPane = rightPaneWidth > 0 && fullscreenPane !== "left";
+    // Right-pane fullscreen is fullscreen: the companion takes the whole
+    // cockpit, never its 320 px column beside an empty scene (and it shows
+    // even where the tier would collapse its column).
+    const rightFull = fullscreenPane === "right";
+    const showRightPane = rightFull || (rightPaneWidth > 0 && fullscreenPane !== "left");
     const paneShell = (side: "left" | "right"): string =>
       "flex flex-col min-w-0 min-h-0 overflow-hidden border border-hairline " +
       "bg-ice-1 dark:bg-charcoal-1" +
@@ -239,7 +267,6 @@ export function PanelLayout({ mainSlot }: Props) {
         className="relative h-full w-full flex bg-transparent overflow-hidden"
         style={{ padding: INSET_GAP, gap: INSET_GAP }}
         data-layout-preset="omarchy-inset"
-        onKeyDown={onLayoutKeyDown}
       >
         {showLeftPane && (
           <div
@@ -271,8 +298,8 @@ export function PanelLayout({ mainSlot }: Props) {
             data-pane="right"
             tabIndex={-1}
             aria-label="Companion pane"
-            className={`shrink-0 ${paneShell("right")}`}
-            style={{ width: rightPaneWidth, borderRadius: radius.lg }}
+            className={`${rightFull ? "flex-1" : "shrink-0"} ${paneShell("right")}`}
+            style={rightFull ? { borderRadius: radius.lg } : { width: rightPaneWidth, borderRadius: radius.lg }}
             onFocusCapture={() => setFocusedPane("right")}
           >
             <RightPaneForMode />
@@ -293,7 +320,7 @@ export function PanelLayout({ mainSlot }: Props) {
   }
 
   return (
-    <div className="relative h-full w-full flex bg-transparent overflow-hidden" onKeyDown={onLayoutKeyDown}>{/* SPR-04: root made transparent (was bg-ice-2 dark:bg-space-2) so the z-0 living mountainscape shows through the glassy route surface; the docks below keep their opaque chrome bg for legibility. */}
+    <div className="relative h-full w-full flex bg-transparent overflow-hidden">{/* SPR-04: root made transparent (was bg-ice-2 dark:bg-space-2) so the z-0 living mountainscape shows through the glassy route surface; the docks below keep their opaque chrome bg for legibility. */}
       {/* LEFT DOCK */}
       <aside
         className={`flex flex-col shrink-0 ${dockLeftIds.length ? "border-r border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}

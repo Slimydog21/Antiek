@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
@@ -13,6 +13,7 @@ import type {
 import ReadingColumn from "../../components/reader/ReadingColumn";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states";
 import { useInWindow } from "../../components/windows/windowHostContext";
+import { useBranchTo } from "../../workspace/useBranchTo";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
 import ArxivFrame from "./ArxivFrame";
@@ -50,7 +51,7 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
   const documentId = documentIdProp ?? routeDocumentId;
   const inWindow = useInWindow();
-  const navigate = useNavigate();
+  const branchTo = useBranchTo();
   const [searchParams] = useSearchParams();
   const openTalkOnLoad = searchParams.get("talk") === "1";
 
@@ -248,14 +249,20 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
       void (async () => {
         try {
           const res = await spinResearch(documentId, pageIndex, safeSpawnText);
-          navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
+          // A branch of this document's tab (the operator's "deep researches
+          // triggered from a single document"), not a root in another tree.
+          branchTo(`/inv/${encodeURIComponent(res.investigation_id)}`, {
+            document_id: documentId,
+            kind: "research",
+            page_index: pageIndex,
+          });
         } catch (err: unknown) {
           console.error("spin-research from highlight failed", err);
         }
       })();
 
     },
-    [documentId, pageIndex, navigate],
+    [documentId, pageIndex, branchTo],
 
   );
 
@@ -281,9 +288,11 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     };
   }, [housePool, documentId]);
 
+  // A document opened from this one is a branch of its tab (a reference).
   const openHouse = useCallback(
-    (docId: string) => navigate(`/read/${encodeURIComponent(docId)}`),
-    [navigate],
+    (docId: string) =>
+      branchTo(`/read/${encodeURIComponent(docId)}`, { document_id: documentId, kind: "reference" }),
+    [branchTo, documentId],
   );
 
   // Tell the impression tracker which slots are showing on this page. It
@@ -390,10 +399,13 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
   return (
     <div
       data-testid="book-reader-root"
-      className={`flex ${inWindow ? "h-full bg-transparent" : "h-full bg-ice-0 dark:bg-charcoal-2"}`}
+      className={`container-reader flex ${inWindow ? "h-full bg-transparent" : "h-full bg-ice-0 dark:bg-charcoal-2"}`}
     >
-      {/* TOC sidebar */}
-      <aside className="w-64 flex-shrink-0 border-r border-rule dark:border-charcoal-1 overflow-y-auto p-3 hidden md:block">
+      {/* TOC sidebar. It (and the notes column) answers to the READER's width
+          (container-reader, tailwind.config.js), not the viewport: in the
+          cockpit the reader lives in a pane, and the text column must keep
+          its measure when the pane is narrower than the window. */}
+      <aside className="w-64 flex-shrink-0 border-r border-rule dark:border-charcoal-1 overflow-y-auto p-3 hidden reader-md:block">
         <p className="font-serif text-sm text-ink dark:text-bright mb-1 truncate">
           {book.title ?? documentId}
         </p>

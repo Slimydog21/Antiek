@@ -26,10 +26,11 @@ import {
   getTraceTarget,
   type RepositoryHit,
 } from "./writeApi";
+import { useBranchTo } from "../../workspace/useBranchTo";
 import { useTabTrees } from "../../workspace/tabTreeStore";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { WRITE_OUTLINE_PANEL_ID } from "../../workspace/writeOutlineStore";
-import { sectionIdFromRef, useWriteTreeSync } from "../../workspace/writeTreeSync";
+import { sectionScopeFor, useWriteTreeSync } from "../../workspace/writeTreeSync";
 
 /**
  * Write Home — the Write door (Product Depth SPR-07 M1).
@@ -52,6 +53,7 @@ import { sectionIdFromRef, useWriteTreeSync } from "../../workspace/writeTreeSyn
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
   const navigate = useNavigate();
+  const branchTo = useBranchTo();
   const [searchParams] = useSearchParams();
   const fromInvestigation = (searchParams.get("investigation") || "").trim() || null;
   const titleFromQuery = (searchParams.get("title") || "").trim();
@@ -109,7 +111,9 @@ export default function WriteHome() {
     const t = s.trees.writing;
     return t?.active_tab_id ? t.nodes[t.active_tab_id] : null;
   });
-  const scopedSectionId = activeWritingTab ? sectionIdFromRef(activeWritingTab.ref) : null;
+  // Only a section of THIS piece scopes it (another piece's section tab
+  // navigates to its own piece; until it lands, this one stays whole).
+  const scopedSectionId = detail ? sectionScopeFor(activeWritingTab, detail.sections) : null;
 
   useEffect(() => {
     if (deliverableId) return; // only list pieces on the home (no piece) view
@@ -133,7 +137,12 @@ export default function WriteHome() {
         try {
           const target = await getTraceTarget(intent.outlineBlockId!);
           if (target.full_text_allowed && target.document_id) {
-            navigate(`/read/${encodeURIComponent(target.document_id)}`);
+            // A branch of the piece's tab (a citation traced to its source),
+            // kept in the writing tree — never a root in the reading tree.
+            branchTo(`/read/${encodeURIComponent(target.document_id)}`, {
+              document_id: target.document_id,
+              kind: "citation",
+            });
           } else {
             // Honest fallback (§9.0): gated/unreachable source — say so, don't
             // open a dead page.
@@ -147,7 +156,7 @@ export default function WriteHome() {
         }
       })();
     });
-  }, [navigate]);
+  }, [branchTo]);
 
   // The "start a piece" action — the obvious way to begin (WX-01). SPR-09 M1:
   // it now runs title → project-type → connect-to-research, so a piece is

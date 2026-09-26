@@ -35,7 +35,6 @@ import OutcomesIndex from "./modes/OutcomesIndex";
 import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
 import BookReader from "./modes/Reading";
-import MetaReading from "./modes/Reading/MetaReading";
 import PersonalSpace from "./modes/Reading/PersonalSpace";
 import Replay from "./modes/Replay";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
@@ -73,6 +72,11 @@ const DocumentsIndex = lazy(() => import("./modes/DocumentsIndex"));
 const OperatorDashboard = lazy(() => import("./modes/OperatorDashboard"));
 const PayoutsAudit = lazy(() => import("./modes/PayoutsAudit"));
 const SkillRules = lazy(() => import("./modes/SkillRules"));
+// The meta-reading generator (a proposed surface, sign-off pending) loads on
+// demand too: it paid its way into the entry chunk on every page load, and
+// the cockpit's reader branching (useBranchTo) and pane skeletons replace
+// its bytes there (npm run build:check: the entry must not grow).
+const MetaReading = lazy(() => import("./modes/Reading/MetaReading"));
 
 function operatorRoute(label: string, page: JSX.Element): JSX.Element {
   return (
@@ -219,11 +223,14 @@ function AuthenticatedRoutes() {
             Literal route declared BEFORE /read/:documentId; React-Router v6
             ranks static segments above params, so /read/meta-reading never
             resolves the book reader. */}
-        <Route path="/read/meta-reading" element={<MetaReading />} />
+        <Route path="/read/meta-reading" element={operatorRoute("meta-reading", <MetaReading />)} />
         {/* SPR-13 M1 — re-open a SAVED meta-reading asset by id (the personal
             space item opens back into the meta-doc view). Declared after the
             literal /read/meta-reading so it doesn't shadow the generator. */}
-        <Route path="/read/meta-reading/:assetId" element={<MetaReading />} />
+        <Route
+          path="/read/meta-reading/:assetId"
+          element={operatorRoute("meta-reading", <MetaReading />)}
+        />
         {/* SPR-13 M1 — the personal document space (created deliverables +
             saved reads, auto-categorized, suggest-file-into-project). */}
         <Route path="/readings" element={<PersonalSpace />} />
