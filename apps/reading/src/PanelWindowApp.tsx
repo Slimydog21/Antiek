@@ -28,12 +28,21 @@ import type { PanelDescriptor } from "./workspace/panel.types";
  *
  * Persistence is disabled in popout windows so two parallel writers
  * don't fight over localStorage (the main tab is the one that persists).
+ *
+ * A hand-off that does not complete ends on "This panel couldn't be
+ * opened." with a Close action (A-15). receivePopoutPanel already gives up
+ * after 2 s (workspace/popout.ts) and resolves null; HANDOFF_DEADLINE_MS is
+ * the backstop for a handshake that never settles at all. 10 s is five times
+ * the handshake's own 2 s budget, so a slow main tab that answers late still
+ * wins, and a window opened with nothing to receive from cannot spin forever.
  */
+const HANDOFF_DEADLINE_MS = 10_000;
+
 export default function PanelWindowApp() {
   const params = useParams<{ panelId?: string }>();
   const panelId = params.panelId ? decodeURIComponent(params.panelId) : null;
   const [descriptor, setDescriptor] = useState<PanelDescriptor | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [failed, setFailed] = useState<boolean>(false);
 
   useEffect(() => {
     disablePersistence();
@@ -42,24 +51,32 @@ export default function PanelWindowApp() {
 
   useEffect(() => {
     if (!panelId) {
-      setError("No panel id in URL.");
+      setFailed(true);
       return;
     }
     let cancelled = false;
+    const deadline = window.setTimeout(() => {
+      if (!cancelled) setFailed(true);
+    }, HANDOFF_DEADLINE_MS);
     void (async () => {
-      const d = await receivePopoutPanel(panelId);
+      let d: PanelDescriptor | null = null;
+      try {
+        d = await receivePopoutPanel(panelId);
+      } catch (e: unknown) {
+        console.warn("[PanelWindowApp] hand-off failed", e);
+      }
       if (cancelled) return;
+      window.clearTimeout(deadline);
       if (!d) {
-        setError(
-          "Could not hand off this panel from the main window. " +
-            "BroadcastChannel may be unsupported or the main tab may have closed.",
-        );
+        console.warn(`[PanelWindowApp] no hand-off for panel ${panelId}`);
+        setFailed(true);
         return;
       }
       setDescriptor(d);
     })();
     return () => {
       cancelled = true;
+      window.clearTimeout(deadline);
     };
   }, [panelId]);
 
@@ -90,15 +107,21 @@ export default function PanelWindowApp() {
     };
   }, [descriptor]);
 
-  if (error) {
+  if (failed && !descriptor) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-ice-2 dark:bg-space-2 text-ink dark:text-bright p-8">
-        <div className="max-w-md text-center">
-          <h1 className="text-xl font-bold mb-2">Panel hand-off failed</h1>
-          <p className="text-sm text-shadow-1 dark:text-moonlight">{error}</p>
-          <p className="text-xs font-mono text-ink-mute dark:text-moonlight mt-4">
-            panel id: {panelId}
+        <div role="alert" className="max-w-md text-center space-y-3">
+          <h1 className="text-xl font-bold">This panel couldn't be opened.</h1>
+          <p className="text-sm text-shadow-1 dark:text-moonlight">
+            Pop it out again from the main Antiek window.
           </p>
+          <button
+            type="button"
+            onClick={() => window.close()}
+            className="px-3 py-1.5 rounded-md border border-rule dark:border-charcoal-1 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+          >
+            Close
+          </button>
         </div>
       </div>
     );

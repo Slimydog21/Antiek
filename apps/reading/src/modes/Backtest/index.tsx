@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import LemonButton from "../../components/lemon/LemonButton";
 import LemonCard from "../../components/lemon/LemonCard";
 import { ModePage } from "../../components/lemon/ModePage";
-import { apiFetch } from "../../lib/api";
+import { ApiError, apiFetch } from "../../lib/api";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 
 /**
  * Backtest report UI (master-spec §13.8).
@@ -36,27 +38,32 @@ export default function Backtest() {
   const { synthesisId } = useParams<{ synthesisId: string }>();
   const [report, setReport] = useState<BacktestReport | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<DescribedFailure | null>(null);
+  // A 404 is an answer, not a failure: there is no backtest for this id
+  // (A-15: the full report surface used to render around it).
+  const [notFound, setNotFound] = useState<boolean>(false);
 
   const reload = useCallback(async () => {
     if (!synthesisId) return;
     setLoading(true);
-    setError(null);
+    setFailure(null);
+    setNotFound(false);
     try {
       const resp = await apiFetch(
         `/backtest/${encodeURIComponent(synthesisId)}`,
       );
       if (resp.status === 404) {
         setReport(null);
-        setError("No backtest available — synthesis not archived.");
+        setNotFound(true);
         return;
       }
       if (!resp.ok) {
-        throw new Error(`GET /backtest: HTTP ${resp.status}`);
+        throw new ApiError(`GET /backtest failed: HTTP ${resp.status}`, resp.status, await resp.text());
       }
       setReport(await resp.json());
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      console.warn("[Backtest] load failed", e);
+      setFailure(describeFailure(e, { what: "load this backtest" }));
     } finally {
       setLoading(false);
     }
@@ -65,6 +72,31 @@ export default function Backtest() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  if (notFound) {
+    return (
+      <ModePage
+        width="lg"
+        header={
+          <header className="space-y-2">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
+              That backtest isn't available.
+            </h1>
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
+              The research it belongs to may not have been archived yet, or
+              the link is out of date.
+            </p>
+          </header>
+        }
+      >
+        <p className="text-sm">
+          <Link to="/outcomes" className="text-ink dark:text-bright underline">
+            Go to outcomes
+          </Link>
+        </p>
+      </ModePage>
+    );
+  }
 
   return (
     <ModePage
@@ -89,9 +121,15 @@ export default function Backtest() {
         <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
       )}
 
-      {error && (
-        <ErrorBanner>
-          {error}
+      {failure && (
+        <ErrorBanner className="space-y-2">
+          <p className="font-medium">{failure.title}</p>
+          <p>{failure.detail}</p>
+          {failure.retryable && (
+            <LemonButton variant="secondary" size="sm" type="button" onClick={() => void reload()}>
+              Try again
+            </LemonButton>
+          )}
         </ErrorBanner>
       )}
 
