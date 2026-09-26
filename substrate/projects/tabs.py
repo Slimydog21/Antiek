@@ -42,7 +42,8 @@ RETIRED_PAGE_MAX = 200
 ROOT_KEY = "root"
 
 TAB_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
-HIER_RE = re.compile(r"[1-9][0-9]{0,8}(?:\.[1-9][0-9]{0,8}){0,31}")
+# Depth is unbounded (Part 2 §2.2); the 1,000-tab bound limits it.
+HIER_RE = re.compile(r"[1-9][0-9]{0,8}(?:\.[1-9][0-9]{0,8})*")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 _NODE_KEYS = frozenset({
@@ -206,8 +207,8 @@ def _check_node(key: str, node: Any, mothership: str) -> None:
         raise TreeInvalid("child_order is a list of tab ids", tab_id)
     if n.get("last_visited_child_id") is not None and n["last_visited_child_id"] not in child_order:
         raise TreeInvalid("last_visited_child_id is one of the tab's children", tab_id)
-    if n.get("pruned_at") is not None:
-        raise TreeInvalid("a pruned tab has left the tree; it lives in the retirements", tab_id)
+    if n.get("pruned_at") is not None and not _is_str(n["pruned_at"], 40):
+        raise TreeInvalid("pruned_at is a timestamp string or null", tab_id)
 
 
 def validate_snapshot(tree: Any, active: Any, mothership: str) -> list[str]:
@@ -323,10 +324,15 @@ def read_snapshot(con: Any, *, owner_user_id: str, project_id: str, mothership: 
 
 def retired_page(
     con: Any, *, owner_user_id: str, project_id: str, mothership: str, before: datetime | None, limit: int
-) -> list[dict[str, Any]]:
-    """Older unrestored retirements, newest first. ``closed_at`` is unique
-    per (owner, project, mothership), so ``before`` pages exactly."""
-    return _retired(con, owner_user_id, project_id, mothership, before, max(1, min(limit, RETIRED_PAGE_MAX)))
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Older unrestored retirements, newest first, and the cursor for the
+    next page, or None when this page is the last. ``closed_at`` is unique
+    per (owner, project, mothership), so ``before`` pages exactly. One row
+    past the page is read, so an exactly full last page still answers None."""
+    size = max(1, min(limit, RETIRED_PAGE_MAX))
+    rows = _retired(con, owner_user_id, project_id, mothership, before, size + 1)
+    page = rows[:size]
+    return page, (page[-1]["closed_at"] if len(rows) > size else None)
 
 
 # ---------------------------------------------------------------------------
@@ -375,15 +381,16 @@ def _close_mode(tab_id: str, previous: dict[str, Any], kept: dict[str, Any], dro
                 memo: dict[str, str]) -> str:
     """How a dropped tab left, read off the diff: its children were lifted
     if any of them stayed; it was pruned if it took children with it or went
-    with a pruned parent; otherwise it was closed."""
-    if tab_id in memo:
-        return memo[tab_id]
+    with a pruned parent; otherwise it was closed.
+
+    Called in the previous tree's order, parents first, so a dropped
+    parent's mode is already in ``memo``: no recursion, whatever the depth."""
     node = previous[tab_id]
     children = node.get("child_order") or []
     parent = node.get("parent_tab_id")
     if any(child in kept for child in children):
         mode = "lift_children"
-    elif children or (parent in dropped and _close_mode(parent, previous, kept, dropped, memo) == "prune"):
+    elif children or (parent in dropped and memo.get(parent) == "prune"):
         mode = "prune"
     else:
         mode = "close"
@@ -456,9 +463,23 @@ def put_snapshot(
         tab_by_hier[str(hier)] = str(tab_id)
 
     nodes: dict[str, Any] = tree["nodes"]
+    previous_nodes: dict[str, Any] = previous.get("nodes") or {}
+    restorable = {
+        str(r[0])
+        for r in con.execute(
+            "SELECT DISTINCT tab_id FROM project_tab_retirements WHERE owner_user_id = ? AND project_id = ? "
+            "AND mothership = ? AND restored_at IS NULL",
+            scope,
+        ).fetchall()
+    }
     stored: dict[str, dict[str, Any]] = {}
     for tab_id in ordered:
         node = dict(nodes[tab_id])
+        # A retired pruned node carries pruned_at, and a restore PUTs that
+        # node back unchanged. It is taken only as a restore, and the open
+        # tree never stores it: the tab is open again.
+        if node.pop("pruned_at", None) is not None and (tab_id in previous_nodes or tab_id not in restorable):
+            raise TreeInvalid("pruned_at belongs to a retired tab; only a restore may carry it", tab_id)
         registered = public_by_tab.get(tab_id)
         if registered is not None and registered[1] != mothership:
             raise TreeInvalid(f"this tab's number was allocated in the {registered[1]} tree", tab_id)
@@ -504,7 +525,6 @@ def put_snapshot(
             counters[key] = max(counters.get(key, 1), k + 1)
         stored[tab_id] = node
 
-    previous_nodes: dict[str, Any] = previous.get("nodes") or {}
     dropped = [tab_id for tab_id in _tree_order(previous) if tab_id not in nodes]
     if dropped:
         latest = con.execute(

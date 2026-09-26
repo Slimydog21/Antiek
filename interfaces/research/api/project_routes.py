@@ -23,6 +23,7 @@ import asyncio
 import json
 import sys
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -62,6 +63,17 @@ def _invalid(error: tabs.TreeInvalid) -> JSONResponse:
     return JSONResponse(
         status_code=422, content={"reason": error.reason, "tab_id": error.tab_id, "detail": error.detail}
     )
+
+
+def _one_snapshot[T](con: Any, read: Callable[[], T]) -> T:
+    """Run several reads in one transaction, so they see one snapshot: the
+    tree and its 200 retirements must agree on the version (§1.6), even if a
+    PUT commits between the two SELECTs."""
+    con.execute("BEGIN TRANSACTION")
+    try:
+        return read()
+    finally:
+        con.execute("ROLLBACK")
 
 
 def _body_fields(body: Any, allowed: set[str], required: set[str]) -> dict[str, Any]:
@@ -204,9 +216,13 @@ def register_project_routes(app: FastAPI) -> None:
         owner = _reader_owner_id(request)
         _require_mothership(mothership)
         con = connect_read(_resolve_db_path())
-        try:
+
+        def read() -> tabs.Snapshot:
             registry.require_project(con, owner_user_id=owner, project_id=project_id)
-            snapshot = tabs.read_snapshot(con, owner_user_id=owner, project_id=project_id, mothership=mothership)
+            return tabs.read_snapshot(con, owner_user_id=owner, project_id=project_id, mothership=mothership)
+
+        try:
+            snapshot = _one_snapshot(con, read)
         except registry.ProjectError as e:
             raise _refuse(e) from None
         finally:
@@ -234,20 +250,25 @@ def register_project_routes(app: FastAPI) -> None:
         con = connect_read(_resolve_db_path())
         try:
             registry.require_project(con, owner_user_id=owner, project_id=project_id)
-            page = tabs.retired_page(
+            page, next_before = tabs.retired_page(
                 con, owner_user_id=owner, project_id=project_id, mothership=mothership, before=cursor, limit=limit
             )
         except registry.ProjectError as e:
             raise _refuse(e) from None
         finally:
             con.close()
-        return {"retired": page, "next_before": page[-1]["closed_at"] if len(page) == limit else None}
+        return {"retired": page, "next_before": next_before}
 
     def _put(owner: str, project_id: str, mothership: str, body: Any) -> tuple[int, dict[str, Any]]:
         try:
             fields = _body_fields(body, {"tree", "active", "expected_version"}, {"tree", "active", "expected_version"})
-            if len(json.dumps(fields["tree"])) > tabs.MAX_TREE_JSON_BYTES:
-                raise tabs.TreeInvalid(f"a tree is at most {tabs.MAX_TREE_JSON_BYTES} bytes of JSON")
+            # Bytes of the canonical compact UTF-8 JSON, so the bound does not
+            # depend on how the client formatted or escaped its body.
+            canonical = json.dumps(fields["tree"], ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            if len(canonical) > tabs.MAX_TREE_JSON_BYTES:
+                raise tabs.TreeInvalid(
+                    f"a tree is at most {tabs.MAX_TREE_JSON_BYTES} bytes of canonical UTF-8 JSON"
+                )
         except tabs.TreeInvalid as e:
             return 422, {"reason": e.reason, "tab_id": e.tab_id, "detail": e.detail}
         with connect_write(_resolve_db_path(), purpose="projects/tabs/put") as con:

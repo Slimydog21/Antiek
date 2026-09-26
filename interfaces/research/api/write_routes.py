@@ -372,12 +372,19 @@ def remove_folder_block(folder_id: str, node_id: str, request: Request) -> dict[
 
 @write_router.get("/blocks/search")
 def search_repository(
+    request: Request,
     q: str = Query(default="", max_length=300),
     folder_id: str | None = Query(default=None),
     source_document_id: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> dict[str, Any]:
     with _read() as con:
+        if folder_id is not None:
+            # A folder filter reads that folder's members, so it is scoped
+            # like every other folder route: another owner's folder is missing.
+            if not folders_mod._folders_schema_exists(con):
+                raise HTTPException(status_code=404, detail="folder_not_found")
+            _require_owned_folder(con, folder_id, _folder_owner(request))
         hits = block_search.search_blocks(
             con, query=q, folder_id=folder_id,
             source_document_id=source_document_id, limit=limit,

@@ -240,6 +240,20 @@ def test_a_non_node_member_is_never_a_write_block(env):
     assert c.get(f"/projects/{fid}").json()["member_count"] == 2
 
 
+def test_block_search_refuses_another_owners_folder(env):
+    """GLM on LB-2 (F1): the folder-filtered search was the one folder read
+    left unscoped, and it returned another owner's node hits."""
+    c = env["client"]
+    mine = c.post("/write/folders", json={"name": "Mine"}).json()["folder_id"]
+    theirs = c.post("/write/folders", json={"name": "Theirs"}).json()["folder_id"]
+    _rekey_project(env["db"], theirs, "user-bob")
+    refused = c.get("/write/blocks/search", params={"q": "anything", "folder_id": theirs})
+    assert (refused.status_code, refused.json()["detail"]) == (404, "folder_not_found")
+    assert c.get("/write/blocks/search", params={"folder_id": "fld-missing"}).status_code == 404
+    assert c.get("/write/blocks/search", params={"q": "anything", "folder_id": mine}).status_code == 200
+    assert c.get("/write/blocks/search", params={"q": "anything"}).status_code == 200
+
+
 def test_write_folders_are_owner_scoped(env):
     c = env["client"]
     mine = c.post("/write/folders", json={"name": "Mine"}).json()["folder_id"]
@@ -421,6 +435,102 @@ def test_close_modes_are_read_off_the_diff(env):
     assert modes == {"a": "prune", "a1": "prune", "a11": "prune", "b": "close", "c": "lift_children"}
     pruned = {e["node"]["tab_id"]: e["node"].get("pruned_at") for e in after.json()["retired"]}
     assert all(pruned[t] for t in ("a", "a1", "a11")) and pruned["b"] is None
+
+
+def test_a_pruned_subtree_restores_from_its_retired_nodes_unchanged(env):
+    """GLM on LB-2 (F2): a retired pruned node carries pruned_at, and the
+    contract restores by PUTting that node back unchanged. The server takes
+    it and clears pruned_at, since the tab is open again."""
+    pid = _project(env)
+    assert _put(env, pid, _tree(_node("a", "1"), _node("a1", "1.1", parent="a")), 0).status_code == 200
+    retired = _put(env, pid, _tree(), 1).json()["retired"]
+    nodes = {e["node"]["tab_id"]: e["node"] for e in retired}
+    assert all(n.get("pruned_at") for n in nodes.values())
+    restored = _put(env, pid, {"nodes": nodes, "root_order": ["a"]}, 2)
+    assert restored.status_code == 200, restored.text
+    body = restored.json()
+    assert body["retired"] == []
+    assert all("pruned_at" not in n for n in body["tree"]["nodes"].values())
+    assert body["tree"]["nodes"]["a"]["child_order"] == ["a1"]
+
+
+def test_pruned_at_on_a_tab_that_is_not_being_restored_is_refused(env):
+    pid = _project(env)
+    fresh = _put(env, pid, _tree(_node("a", "1", pruned_at="2026-09-27T00:00:00Z")), 0)
+    assert (fresh.status_code, fresh.json()["reason"], fresh.json()["tab_id"]) == (422, "tab_tree_invalid", "a")
+    assert _put(env, pid, _tree(_node("b", "1")), 0).status_code == 200
+    stays_open = _put(env, pid, _tree(_node("b", "1", pruned_at="2026-09-27T00:00:00Z")), 1)
+    assert (stays_open.status_code, stays_open.json()["tab_id"]) == (422, "b")
+
+
+def test_a_get_reads_the_tree_and_its_retirements_in_one_transaction(monkeypatch, env):
+    """GLM on LB-2 (F4): the contract reads the 200 retirements in the same
+    transaction as the tree, so a PUT committing between the two reads
+    cannot pair version N with a retirement from N+1."""
+    import runtime.db_lock as db_lock
+
+    statements: list[str] = []
+    real_connect_read = db_lock.connect_read
+
+    class Spy:
+        def __init__(self, con: Any) -> None:
+            self._con = con
+
+        def execute(self, sql: str, *args: Any) -> Any:
+            statements.append(" ".join(sql.split()))
+            return self._con.execute(sql, *args)
+
+        def close(self) -> None:
+            self._con.close()
+
+    monkeypatch.setattr(db_lock, "connect_read", lambda *a, **k: Spy(real_connect_read(*a, **k)))
+    client = TestClient(create_app(register_wrestling=False))
+    pid = _project(env)
+    _put(env, pid, _tree(_node("a", "1")), 0)
+    _put(env, pid, _tree(), 1)
+    statements.clear()
+    assert client.get(f"/projects/{pid}/tabs/research").status_code == 200
+    begin = next(i for i, s in enumerate(statements) if s.upper().startswith("BEGIN"))
+    tree_read = next(i for i, s in enumerate(statements) if "FROM project_tabs" in s)
+    retired_read = next(i for i, s in enumerate(statements) if "FROM project_tab_retirements" in s)
+    end = next(i for i, s in enumerate(statements) if s.upper().startswith(("ROLLBACK", "COMMIT")) and i > begin)
+    assert begin < tree_read < end and begin < retired_read < end
+
+
+def test_the_tree_size_bound_is_utf8_bytes_of_the_canonical_json(env):
+    """GLM round 8: the bound is bytes of tree JSON. 600 tabs titled in a
+    three-byte character are about 660 KB and must be accepted; an escaped
+    character count would have refused them at 1.2 MB of '\\u20ac'."""
+    pid = _project(env)
+    wide = [_node(f"t{i}", str(i + 1), title="€" * 300) for i in range(600)]
+    assert _put(env, pid, _tree(*wide), 0).status_code == 200
+    over = [_node(f"u{i}", str(i + 1), title="€" * 300, ref="€" * 256) for i in range(1000)]
+    too_big = _put(env, pid, _tree(*over), 1)
+    assert (too_big.status_code, too_big.json()["reason"]) == (422, "tab_tree_invalid")
+    assert "bytes" in too_big.json()["detail"]
+
+
+def test_depth_is_unbounded_up_to_the_tab_limit(env):
+    """GLM round 8: Part 2 makes depth unbounded; only the 1,000-tab bound
+    applies. A 60-deep chain is accepted, and closing it prunes every tab
+    without recursing once per level."""
+    pid = _project(env)
+    chain, parent, hier = [], None, ""
+    for i in range(60):
+        hier = f"{hier}.1" if hier else "1"
+        chain.append(_node(f"d{i}", hier, parent=parent))
+        parent = f"d{i}"
+    assert _put(env, pid, _tree(*chain), 0).status_code == 200
+    closed = _put(env, pid, _tree(), 1).json()["retired"]
+    assert len(closed) == 60 and {e["close_mode"] for e in closed} == {"prune"}
+
+
+def test_an_exact_full_last_page_has_no_cursor(env):
+    pid = _project(env)
+    assert _put(env, pid, _tree(_node("a", "1"), _node("b", "2")), 0).status_code == 200
+    _put(env, pid, _tree(), 1)
+    page = env["client"].get(f"/projects/{pid}/tabs/research/retired?limit=2").json()
+    assert len(page["retired"]) == 2 and page["next_before"] is None
 
 
 def test_retirements_page_exactly_by_closed_at(env):
