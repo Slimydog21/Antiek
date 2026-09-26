@@ -113,7 +113,7 @@ jobs:
           pip-audit --no-deps -r /tmp/prod-resolved.txt
       - name: publish the resolved production set
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: prod-resolved-requirements
           path: /tmp/prod-resolved.txt
