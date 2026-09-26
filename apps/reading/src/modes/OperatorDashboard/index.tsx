@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { apiFetch } from "../../lib/api";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import LemonButton from "../../components/lemon/LemonButton";
+import { ApiError, apiFetch } from "../../lib/api";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 
 interface PublisherSummary {
   ip_holder_id: string;
@@ -31,10 +34,41 @@ interface PayoutTransfer {
   initiated_at: string | null;
 }
 
+/**
+ * One read's state. A failed read is never shown as a zero or an empty list
+ * (F-09: the three snapshot reads were `.catch(() => null)` and rendered as
+ * 0 counts, "0" pending deletion requests and "No transfers yet.").
+ */
+type Read<T> =
+  | { state: "loading" }
+  | { state: "ok"; data: T }
+  | { state: "failed"; failure: DescribedFailure };
+
+const LOADING = { state: "loading" } as const;
+
 interface CompositeSnapshot {
-  stats: StatsResponse | null;
-  pendingDeletions: number;
-  recentPayouts: PayoutTransfer[];
+  stats: Read<StatsResponse>;
+  pendingDeletions: Read<number>;
+  recentPayouts: Read<PayoutTransfer[]>;
+}
+
+/** GET a JSON body; each read settles on its own so one failure leaves the
+ *  others standing. `what` is the operator's intent, used for the title. */
+async function read<T>(path: string, what: string): Promise<Read<T>> {
+  try {
+    const resp = await apiFetch(path);
+    if (!resp.ok) {
+      throw new ApiError(`GET ${path} failed: HTTP ${resp.status}`, resp.status, await resp.text());
+    }
+    return { state: "ok", data: (await resp.json()) as T };
+  } catch (e: unknown) {
+    console.warn(`[OperatorDashboard] ${what} failed`, e);
+    return { state: "failed", failure: describeFailure(e, { what }) };
+  }
+}
+
+function mapRead<T, U>(r: Read<T>, f: (data: T) => U): Read<U> {
+  return r.state === "ok" ? { state: "ok", data: f(r.data) } : r;
 }
 
 /**
@@ -50,78 +84,64 @@ interface CompositeSnapshot {
  * existing auth path; cross-user access not exposed here.
  */
 export default function OperatorDashboard() {
-  const [publishers, setPublishers] = useState<PublisherSummary[]>([]);
+  const [publishersRead, setPublishersRead] = useState<Read<PublisherSummary[]>>(LOADING);
   const [snapshot, setSnapshot] = useState<CompositeSnapshot>({
-    stats: null,
-    pendingDeletions: 0,
-    recentPayouts: [],
+    stats: LOADING,
+    pendingDeletions: LOADING,
+    recentPayouts: LOADING,
   });
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [notifyFailure, setNotifyFailure] = useState<{
+    failure: DescribedFailure;
+    retry: () => void;
+  } | null>(null);
 
   const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [
-        publishersResp,
-        statsResp,
-        deletionsResp,
-        payoutsResp,
-      ] = await Promise.all([
-        apiFetch("/publishers"),
-        apiFetch("/stats").catch(() => null),
-        apiFetch("/trust-center/deletion-requests").catch(() => null),
-        apiFetch("/payouts/transfers?limit=5").catch(() => null),
-      ]);
-
-      if (!publishersResp.ok) {
-        throw new Error(`GET /publishers failed: HTTP ${publishersResp.status}`);
-      }
-      const pubData = await publishersResp.json();
-      setPublishers(pubData.publishers ?? []);
-
-      let stats: StatsResponse | null = null;
-      if (statsResp?.ok) stats = await statsResp.json();
-
-      let pendingDeletions = 0;
-      if (deletionsResp?.ok) {
-        const drData = await deletionsResp.json();
-        pendingDeletions = (drData.requests ?? []).filter(
-          (r: DeletionRequest) => r.status === "pending",
-        ).length;
-      }
-
-      let recentPayouts: PayoutTransfer[] = [];
-      if (payoutsResp?.ok) {
-        const pData = await payoutsResp.json();
-        recentPayouts = pData.transfers ?? [];
-      }
-
-      setSnapshot({ stats, pendingDeletions, recentPayouts });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+    setPublishersRead(LOADING);
+    setSnapshot({ stats: LOADING, pendingDeletions: LOADING, recentPayouts: LOADING });
+    const [pubData, stats, drData, pData] = await Promise.all([
+      read<{ publishers?: PublisherSummary[] }>("/publishers", "load publishers"),
+      read<StatsResponse>("/stats", "load substrate counts"),
+      read<{ requests?: DeletionRequest[] }>(
+        "/trust-center/deletion-requests",
+        "load deletion requests",
+      ),
+      read<{ transfers?: PayoutTransfer[] }>("/payouts/transfers?limit=5", "load transfers"),
+    ]);
+    setPublishersRead(mapRead(pubData, (d) => d.publishers ?? []));
+    setSnapshot({
+      stats,
+      pendingDeletions: mapRead(
+        drData,
+        (d) => (d.requests ?? []).filter((r) => r.status === "pending").length,
+      ),
+      recentPayouts: mapRead(pData, (d) => d.transfers ?? []),
+    });
   }, []);
+
+  const loading = publishersRead.state === "loading";
+  const publishers = publishersRead.state === "ok" ? publishersRead.data : [];
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   const handleNotify = async (id: string) => {
+    setNotifyFailure(null);
     try {
       const resp = await apiFetch(
         `/publishers/${encodeURIComponent(id)}/notify`,
         { method: "POST", headers: { "Content-Type": "application/json" } },
       );
       if (!resp.ok) {
-        throw new Error(`POST notify failed: HTTP ${resp.status}`);
+        throw new ApiError(`POST notify failed: HTTP ${resp.status}`, resp.status, await resp.text());
       }
       await reload();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      console.warn("[OperatorDashboard] notify failed", e);
+      setNotifyFailure({
+        failure: describeFailure(e, { what: "mark that publisher notified" }),
+        retry: () => void handleNotify(id),
+      });
     }
   };
 
@@ -154,11 +174,14 @@ export default function OperatorDashboard() {
           {loading && (
             <p className="text-sm text-shadow-1 dark:text-moonlight">Loading publishers…</p>
           )}
-          {error && (
-            <p className="text-sm text-emperor">{error}</p>
+          {publishersRead.state === "failed" && (
+            <FailureNotice failure={publishersRead.failure} onRetry={() => void reload()} />
+          )}
+          {notifyFailure && (
+            <FailureNotice failure={notifyFailure.failure} onRetry={notifyFailure.retry} />
           )}
 
-          <CompositeSnapshotSection snapshot={snapshot} />
+          <CompositeSnapshotSection snapshot={snapshot} onRetry={() => void reload()} />
 
           <PublisherSection
             title="Pre-onboarded (no notification sent)"
@@ -197,8 +220,48 @@ export default function OperatorDashboard() {
   );
 }
 
-function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot }) {
-  const counts = snapshot.stats?.counts ?? {};
+function FailureNotice({
+  failure,
+  onRetry,
+}: {
+  failure: DescribedFailure;
+  onRetry: () => void;
+}) {
+  return (
+    <ErrorBanner className="space-y-2">
+      <p className="font-medium">{failure.title}</p>
+      <p>{failure.detail}</p>
+      {failure.retryable && (
+        <LemonButton variant="secondary" size="sm" type="button" onClick={onRetry}>
+          Try again
+        </LemonButton>
+      )}
+    </ErrorBanner>
+  );
+}
+
+/** "…" while loading, "—" when the read failed or the key is absent. */
+function unknownMark(r: Read<unknown>): string {
+  return r.state === "loading" ? "…" : "—";
+}
+
+function CompositeSnapshotSection({
+  snapshot,
+  onRetry,
+}: {
+  snapshot: CompositeSnapshot;
+  onRetry: () => void;
+}) {
+  const { stats, pendingDeletions, recentPayouts } = snapshot;
+  // A key /stats did not report is unknown too, not zero.
+  const countFor = (k: string): string => {
+    const v = stats.state === "ok" ? stats.data.counts?.[k] : undefined;
+    return typeof v === "number" ? v.toLocaleString() : unknownMark(stats);
+  };
+  const failed = [stats, pendingDeletions, recentPayouts].filter(
+    (r): r is { state: "failed"; failure: DescribedFailure } => r.state === "failed",
+  );
+  const canRetry = failed.some((r) => r.failure.retryable);
   const headlineKeys: [string, string][] = [
     ["investigations", "Investigations"],
     ["notebooks", "Notebooks"],
@@ -227,7 +290,7 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
             className="border border-rule dark:border-charcoal-1 rounded-md px-2 py-2 text-center"
           >
             <p className="text-xl font-serif text-ink dark:text-bright">
-              {(counts[k] ?? 0).toLocaleString()}
+              {countFor(k)}
             </p>
             <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
               {label}
@@ -235,6 +298,9 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
           </div>
         ))}
       </div>
+      {stats.state === "failed" && (
+        <p className="text-sm text-emperor">{stats.failure.title}</p>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
@@ -242,8 +308,12 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
             Pending deletion requests
           </p>
           <p className="text-lg font-serif text-ink dark:text-bright">
-            {snapshot.pendingDeletions}
-            {snapshot.pendingDeletions > 0 && (
+            {pendingDeletions.state === "ok"
+              ? pendingDeletions.data
+              : unknownMark(pendingDeletions)}
+            {/* The review link stays when the count is unknown: a pending
+                request may exist and the operator must be able to check. */}
+            {(pendingDeletions.state !== "ok" || pendingDeletions.data > 0) && (
               <Link
                 to="/privacy"
                 className="ml-2 text-xs font-mono text-shadow-1 dark:text-moonlight hover:underline"
@@ -252,16 +322,23 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
               </Link>
             )}
           </p>
+          {pendingDeletions.state === "failed" && (
+            <p className="text-sm text-emperor">{pendingDeletions.failure.title}</p>
+          )}
         </div>
         <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
           <p className="text-xxs font-mono uppercase text-shadow-1 dark:text-moonlight">
             Recent payouts
           </p>
-          {snapshot.recentPayouts.length === 0 ? (
+          {recentPayouts.state === "loading" ? (
+            <p className="text-sm italic text-shadow-1 dark:text-moonlight">…</p>
+          ) : recentPayouts.state === "failed" ? (
+            <p className="text-sm text-emperor">{recentPayouts.failure.title}</p>
+          ) : recentPayouts.data.length === 0 ? (
             <p className="text-sm italic text-shadow-1 dark:text-moonlight">No transfers yet.</p>
           ) : (
             <ul className="text-xs font-mono text-ink dark:text-bright space-y-0.5">
-              {snapshot.recentPayouts.slice(0, 3).map((p, i) => (
+              {recentPayouts.data.slice(0, 3).map((p, i) => (
                 <li
                   key={i}
                   className="flex justify-between gap-2 truncate"
@@ -280,6 +357,16 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
           </Link>
         </div>
       </div>
+      {failed.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-ink-soft dark:text-starlight">{failed[0].failure.detail}</p>
+          {canRetry && (
+            <LemonButton variant="secondary" size="sm" type="button" onClick={onRetry}>
+              Try again
+            </LemonButton>
+          )}
+        </div>
+      )}
     </section>
   );
 }
