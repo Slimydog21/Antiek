@@ -156,10 +156,12 @@ tiers:
       # Whisper is per-minute, not per-token. NOTHING computes or records
       # a per-call Whisper cost today: WhisperTranscriber emits no
       # ``dispatch.call`` event and reads no pricing. These values are
-      # static config, read only where this file's tiers are read whole
-      # (the ops-objective dispatch card, settings-budget tier pricing).
-      # The 6.0 encodes the per-minute price under a placeholder
-      # convention (1 minute = 1000 "output_tokens") no caller applies.
+      # static config, parsed wherever this file's tiers are read whole:
+      # substrate.dispatch.router.DispatchConfig loads every tier, but no
+      # role_tiers entry routes to this one, and the ops-objective card
+      # and settings-budget tier pricing display it. The 6.0 encodes the
+      # per-minute price under a placeholder convention
+      # (1 minute = 1000 "output_tokens") that no caller applies.
       input_per_mtok: 0.0
       output_per_mtok: 6.0  # 1 mtok placeholder ≈ 1000 minutes
       cached_input_per_mtok: 0.0
