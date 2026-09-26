@@ -17,12 +17,38 @@ transcript (400) so a misheard ASR line never becomes a confident insight.
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from roles.note_taker import NOTE_TAKER_SYSTEM_PROMPT, parse_notes_response
 from roles.note_taker.parser import ExtractedNote
 from substrate.dispatch import ProviderError, dispatch
+
+# Whisper's own upload ceiling. The edge sets no request_body max (the Caddy
+# template has none), so this route is the only bound on what one caller can
+# make the single uvicorn worker hold in memory.
+MAX_TRANSCRIBE_BYTES = 25 * 1024 * 1024
+
+
+async def _read_bounded_audio(request: Request) -> bytes:
+    """Read the raw audio body, refusing with 413 ``too_large`` once it passes
+    ``MAX_TRANSCRIBE_BYTES``. A declared Content-Length over the cap is refused
+    before any byte is read; the streamed count is the authority, so a chunked
+    upload or a lying header stops being read at the cap instead of being
+    buffered whole (the epub import's bound in books.py does the same)."""
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > MAX_TRANSCRIBE_BYTES:
+        raise HTTPException(status_code=413, detail="too_large")
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > MAX_TRANSCRIBE_BYTES:
+            raise HTTPException(status_code=413, detail="too_large")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 class DispatchNoteDistiller:
@@ -92,13 +118,23 @@ def register_read_voice_routes(app: FastAPI) -> None:
     async def transcribe(request: Request) -> TranscribeResponse:
         """Transcribe a captured audio blob (raw request body, e.g.
         ``audio/webm``). Gated on the operator key — 503 if Whisper is
-        unavailable, so the reader can retry rather than see a crash."""
+        unavailable, so the reader can retry rather than see a crash.
+        Bodies over 25 MiB are refused (413 ``too_large``) before Whisper is
+        called. The audio lives only in this request's memory: nothing here
+        or in the Whisper client writes it to disk."""
         from substrate.books.voice_note import transcribe_voice_note
 
-        audio = await request.body()
+        audio = await _read_bounded_audio(request)
         if not audio:
             raise HTTPException(status_code=400, detail="empty_audio")
-        outcome = transcribe_voice_note(audio, filename="voice-note.webm")
+        # The Whisper call is a blocking httpx POST of up to 120 s. Inline in
+        # this async def it parks the event loop, and the service runs
+        # --workers 1, so every other request (``/health`` included) waits on
+        # it. Hop it to a thread, the idiom speak_routes._off_loop uses for
+        # the invitee voice answer.
+        outcome = await asyncio.to_thread(
+            transcribe_voice_note, audio, filename="voice-note.webm"
+        )
         if not outcome.ok:
             raise HTTPException(status_code=503, detail=f"transcription_unavailable: {outcome.error}")
         t = outcome.transcript
