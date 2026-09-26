@@ -116,13 +116,37 @@ def _iso(value: Any) -> str:
     return str(value)
 
 
+def read_trajectory_honest(
+    events_dir: str, investigation_id: str
+) -> tuple[str, list[dict[str, Any]]]:
+    """The corruption-honest trajectory read (knowledge_event_projector.py's
+    corruption class): ("ok", rows) · ("absent", []) — nothing on disk ·
+    ("corrupt", []) — a trajectory EXISTS but cannot be parsed (a corrupt
+    sealed snapshot raises out of trajectory()). Poison is told apart from
+    empty, never silently flattened into a benign "no events"."""
+    import os as _os
+
+    from substrate.event_log.events import _jsonl_path, _parquet_path
+
+    try:
+        return "ok", trajectory(investigation_id, events_dir=events_dir)
+    except Exception:
+        pass
+    jl = _jsonl_path(investigation_id, events_dir=events_dir)
+    pq = _parquet_path(investigation_id, events_dir=events_dir)
+    if _os.path.exists(jl) or _os.path.exists(pq):
+        return "corrupt", []
+    return "absent", []
+
+
 def trajectory_status_line(events_dir: str, investigation_id: str) -> str:
     """One thread's honest status line from its trajectory: the terminal
-    set's line, else 'working…' when started, else 'no events on record'."""
-    try:
-        rows = trajectory(investigation_id, events_dir=events_dir)
-    except Exception:
-        return "no events on record"
+    set's line, else 'working…' when started, else 'no events on record'.
+    A CORRUPT trajectory reads as itself — the poison is named, never
+    flattened."""
+    state, rows = read_trajectory_honest(events_dir, investigation_id)
+    if state == "corrupt":
+        return "the record is unreadable — marked honestly, nothing guessed"
     status = "no events on record"
     for row in rows:
         at = row.get("action_type")
@@ -136,9 +160,8 @@ def trajectory_status_line(events_dir: str, investigation_id: str) -> str:
 def _artifact_ref(events_dir: str, investigation_id: str) -> str | None:
     """The artifact's PATH hash when the thread generated one (refs only —
     the hash of the path, never the artifact's content)."""
-    try:
-        rows = trajectory(investigation_id, events_dir=events_dir)
-    except Exception:
+    state, rows = read_trajectory_honest(events_dir, investigation_id)
+    if state != "ok":
         return None
     for row in rows:
         if row.get("action_type") == "artifact.generated":
@@ -253,12 +276,12 @@ def project_document(
             refs.append(artifact)
         eid = make_evidence_id("process", iid, refs)
         status_line = trajectory_status_line(resolved_events, iid)
-        try:
-            rows_ev = trajectory(iid, events_dir=resolved_events)
-            last_event = _iso(rows_ev[-1].get("emitted_at")) if rows_ev else ""
-        except Exception:
-            rows_ev = []
-            last_event = ""
+        traj_state, rows_ev = read_trajectory_honest(resolved_events, iid)
+        last_event = _iso(rows_ev[-1].get("emitted_at")) if rows_ev else ""
+        # Poison containment (SPR-03): a corrupt trajectory poisons ONLY its
+        # own row — the process row is written TOMBstoned with the honest
+        # status line, and the rebuild completes for everything else.
+        poisoned = traj_state == "corrupt"
         rows.append(
             EvidenceRow(
                 evidence_id=eid,
@@ -267,7 +290,7 @@ def project_document(
                 scope_id=document_id,
                 kind="process",
                 refs=tuple(refs),
-                tombstone=False,
+                tombstone=poisoned,
                 rebuilt_at=last_event or _EPOCH,
             )
         )
