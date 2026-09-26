@@ -213,16 +213,31 @@ def list_public_opportunities(
     """
     if ensure:
         ensure_speak_schema(con)
+    # Takedowns are honoured here because this list is served to logged-out
+    # visitors: a project whose subject demanded removal is not advertised,
+    # and an interview under takedown is not counted, since even the count
+    # would still reveal the withdrawn testimony. A claim takedown leaves
+    # the project listed; the claim is never part of this list.
     rows = con.execute(
         """
         SELECT p.project_id, ip.title, p.subject_ref,
                (SELECT COUNT(*) FROM interviews i
                 WHERE i.project_id = p.project_id
-                  AND i.status NOT IN ('declined')) AS voice_count,
+                  AND i.status NOT IN ('declined')
+                  AND NOT EXISTS (
+                      SELECT 1 FROM speak_takedowns t
+                      WHERE t.project_id = p.project_id AND t.status = 'active'
+                        AND t.target_kind = 'interview' AND t.target_id = i.interview_id
+                  )) AS voice_count,
                p.created_at
         FROM speak_projects p
         JOIN interview_projects ip ON ip.project_id = p.project_id
         WHERE p.publish_intent = 'will_be_public'
+          AND NOT EXISTS (
+              SELECT 1 FROM speak_takedowns t
+              WHERE t.project_id = p.project_id AND t.status = 'active'
+                AND t.target_kind = 'subject'
+          )
         """
     ).fetchall()
     has_interest = bool(tokenize_interest(interest))
