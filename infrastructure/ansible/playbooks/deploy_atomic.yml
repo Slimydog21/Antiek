@@ -396,6 +396,22 @@
       when: cloudflared_config.changed
       tags: [cloudflared]
 
+    # The candidate routes are named by the SHA and go live in the cutover.
+    # This guard carries [caddy] alone: a task is skipped when any one of its
+    # tags is skipped, so a guard shared with another group would vanish under
+    # that group's --skip-tags while these routes still rendered.
+    - name: require the gate to have cleared this exact SHA before routing it
+      ansible.builtin.assert:
+        that:
+          - antiek_gate_cleared_ref is defined
+          - antiek_gate_cleared_ref == antiek_target_sha
+        fail_msg: >-
+          The required-checks gate did not run or did not clear
+          {{ antiek_target_sha | default('(no target)') }} in this run (a tag
+          selection or --start-at-task skipped it); refusing to route it. Run the
+          whole play, or pass antiek_force_deploy=true deliberately.
+      tags: [caddy]
+
     - name: render the candidate Caddyfile for post-cutover activation
       ansible.builtin.template:
         src: ../templates/Caddyfile.j2
@@ -414,6 +430,21 @@
           --adapter caddyfile
       changed_when: false
       tags: [caddy]
+
+    # The unit stamps ANTIEK_BUILD_SHA (antiek.service.j2), and the exact-SHA
+    # /health check reads it as release evidence, so an ungated stamp is false
+    # evidence. [systemd] alone, for the same reason as the caddy guard.
+    - name: require the gate to have cleared this exact SHA before stamping it into the units
+      ansible.builtin.assert:
+        that:
+          - antiek_gate_cleared_ref is defined
+          - antiek_gate_cleared_ref == antiek_target_sha
+        fail_msg: >-
+          The required-checks gate did not run or did not clear
+          {{ antiek_target_sha | default('(no target)') }} in this run (a tag
+          selection or --start-at-task skipped it); refusing to stamp it. Run the
+          whole play, or pass antiek_force_deploy=true deliberately.
+      tags: [systemd]
 
     - name: render antiek.service
       ansible.builtin.template:

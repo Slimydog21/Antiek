@@ -9,12 +9,20 @@ published a supplied SHA with zero calls to require_green.sh (executed on
 to "start antiek into the candidate release" with neither gate task). The
 gate has to be carried by the release, not by the caller's choice of tags.
 
+The same holds per tag group outside the release build. "render antiek.service"
+stamps ANTIEK_BUILD_SHA into the unit (antiek.service.j2), which the exact-SHA
+/health check reads as release evidence, and the candidate Caddyfile is named
+by the SHA. A task is skipped when any one of its tags is skipped, so each
+group carries its own guard, tagged with that group alone.
+
 The executed tests run a staged copy of the real playbook against a local
 "box": a bare file:// origin whose main holds commits A, B (green) and C
-(checks pending). A fake `gh` answers require_green.sh. The only change to
-the staged copy is the release root's owner and group (a non-root run cannot
-chown to root); it touches no gate. The play fails later on this host (no
-systemd, no root), so each test asserts what reached the box before that.
+(checks pending). A fake `gh` answers require_green.sh. The staged copy only
+sandboxes the host: /etc/systemd/system, /etc/caddy, /etc/cloudflared and
+/usr/local/bin move under the test's tmp dir, and root/caddy ownership becomes
+the running user's (a non-root run cannot chown). Staging asserts every gate,
+recorder and guard task is unchanged. The play fails later on this host (no
+systemd, no caddy, no root), so each test asserts what reached the box first.
 
 setup.yml is a second entrypoint to the same state: its clone task must
 only ever clone into an empty dest. Moving an existing checkout is the gated
@@ -24,6 +32,7 @@ release's job alone.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -35,6 +44,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 PLAYBOOKS = ROOT / "infrastructure" / "ansible" / "playbooks"
 ATOMIC = PLAYBOOKS / "deploy_atomic.yml"
+TEMPLATES = ROOT / "infrastructure" / "ansible" / "templates"
 SETUP = PLAYBOOKS / "setup.yml"
 REQUIRE_GREEN = ROOT / "tools" / "deploy" / "require_green.sh"
 
@@ -63,13 +73,7 @@ for c in tsc vitest keystone 'mypy --strict + ruff (declared scope, baselined)' 
 done
 """
 
-_RELEASE_ROOT_TASK = """    - name: prepare the release root
-      ansible.builtin.file:
-        path: "{{ antiek_release_root }}"
-        state: directory
-        owner: root
-        group: root
-"""
+HOST_PATHS = ("/etc/systemd/system/", "/etc/caddy/", "/etc/cloudflared/", "/usr/local/bin/")
 
 
 def _git(*args: str, cwd: Path) -> str:
@@ -85,20 +89,49 @@ def _user_and_group() -> tuple[str, str]:
     return user, group
 
 
+def _all_tasks(play: dict) -> list[dict]:
+    found: list[dict] = []
+
+    def walk(tasks: list[dict] | None) -> None:
+        for t in tasks or []:
+            found.append(t)
+            for key in ("block", "rescue", "always"):
+                walk(t.get(key))
+
+    for key in ("pre_tasks", "tasks"):
+        walk(play.get(key))
+    return found
+
+
+def _gate_like(plays: list[dict]) -> dict[str, dict]:
+    play = next(p for p in plays if p.get("hosts") == "antiek_prod")
+    return {t["name"]: t for t in _all_tasks(play)
+            if t.get("name", "") in GATE_TASKS or t.get("name", "").startswith(GUARD_PREFIX)}
+
+
 def _stage(tmp: Path) -> Path:
-    """A copy of deploy_atomic.yml at its real depth, so its relative path to
-    require_green.sh resolves. Only the release root's owner and group change."""
+    """A copy of deploy_atomic.yml and its templates at their real depth, so
+    the relative paths to require_green.sh and ../templates resolve, with the
+    host sandboxed under tmp. No gate, recorder or guard task changes."""
     repo = tmp / "control"
     (repo / "infrastructure" / "ansible" / "playbooks").mkdir(parents=True)
     (repo / "tools" / "deploy").mkdir(parents=True)
     shutil.copy2(REQUIRE_GREEN, repo / "tools" / "deploy" / "require_green.sh")
+    shutil.copytree(TEMPLATES, repo / "infrastructure" / "ansible" / "templates")
     text = ATOMIC.read_text()
-    assert text.count(_RELEASE_ROOT_TASK) == 1, "the release-root task changed shape"
+    host = tmp / "host"
+    for real in HOST_PATHS:
+        (host / real.strip("/")).mkdir(parents=True, exist_ok=True)
+        text = text.replace(real, f"{host}{real}")
+    (host / "etc/systemd/system/antiek.service.d").mkdir(parents=True, exist_ok=True)
     user, group = _user_and_group()
-    text = text.replace(_RELEASE_ROOT_TASK, _RELEASE_ROOT_TASK.replace(
-        "owner: root\n        group: root", f"owner: {user}\n        group: {group}"))
+    text = re.sub(r"owner: root(\n\s+)group: (?:root|caddy)",
+                  lambda m: f"owner: {user}{m.group(1)}group: {group}", text)
     staged = repo / "infrastructure" / "ansible" / "playbooks" / "deploy_atomic.yml"
     staged.write_text(text)
+    real_gate = _gate_like(yaml.safe_load(ATOMIC.read_text()))
+    assert set(GATE_TASKS) <= set(real_gate), sorted(real_gate)
+    assert _gate_like(yaml.safe_load(text)) == real_gate, "staging must not touch the gate"
     return staged
 
 
@@ -138,10 +171,13 @@ def box(tmp_path: Path) -> dict:
         "[antiek_prod]\n"
         "box ansible_connection=local ansible_python_interpreter=auto_silent\n"
     )
+    user, group = _user_and_group()
     return {"tmp": tmp_path, "remote": remote, "install": install, "bin": binw,
             "gh_log": gh_log, "secrets": secrets, "inv": inv,
             "releases": tmp_path / "releases", "public": tmp_path / "public",
-            "sha_a": sha_a, "sha_b": sha_b}
+            "unit": tmp_path / "host/etc/systemd/system/antiek.service",
+            "caddy": tmp_path / "host/etc/caddy",
+            "user": user, "group": group, "sha_a": sha_a, "sha_b": sha_b}
 
 
 def _env(box: dict, *, green: bool, green_only: str) -> dict[str, str]:
@@ -167,6 +203,14 @@ def _release(box: dict, *selection: str, sha: str | None, green: bool = False,
         "-e", f"antiek_install_dir={box['public']}",
         "-e", "antiek_release_min_free_gb=0",
         "-e", f"antiek_secrets_file={box['secrets']}",
+        # Template inputs for the unit and route renders (group_vars/all.yml
+        # sits beside the real inventory, not this one).
+        "-e", f"antiek_user={box['user']}",
+        "-e", f"antiek_group={box['group']}",
+        "-e", f"antiek_state_dir={box['tmp'] / 'state'}",
+        "-e", "uvicorn_port=8001",
+        "-e", "api_domain=api.example.invalid",
+        "-e", f"frontend_dist_dir={box['tmp'] / 'frontend-dist'}",
     ]
     if sha is not None:
         extra += ["-e", f"antiek_target_sha={sha}"]
@@ -292,6 +336,11 @@ def test_a_green_gate_builds_the_supplied_sha_positive_control(box):
     out = proc.stdout + proc.stderr
     assert _checked_out(box, box["sha_b"]), out[-3000:]
     assert not (box["releases"] / sha_c).exists()
+    # Each release is a fresh clone of the gated commit on a detached HEAD;
+    # no long-lived checkout is ever moved between branches.
+    detached = subprocess.run(["git", "symbolic-ref", "-q", "HEAD"],
+                              cwd=box["releases"] / box["sha_b"], capture_output=True)
+    assert detached.returncode != 0, detached.stdout
     gh_calls = box["gh_log"].read_text()
     assert box["sha_b"] in gh_calls and sha_c not in gh_calls, gh_calls
 
@@ -303,6 +352,49 @@ def test_force_override_still_builds_positive_control(box):
     assert _checked_out(box, box["sha_b"]), out[-3000:]
     assert "Emergency override is deploying" in out, out[-3000:]
     assert box["gh_log"].read_text() == ""
+
+
+def _stamped(box: dict, sha: str) -> bool:
+    return box["unit"].exists() and f"ANTIEK_BUILD_SHA={sha}" in box["unit"].read_text()
+
+
+def _routed(box: dict, sha: str) -> bool:
+    return (box["caddy"] / f"Caddyfile.candidate-{sha}").exists()
+
+
+GROUPS = {
+    "systemd": (_stamped, "render antiek.service"),
+    "caddy": (_routed, "render the candidate Caddyfile for post-cutover activation"),
+}
+
+
+@needs_ansible
+@pytest.mark.parametrize("group", sorted(GROUPS))
+def test_a_group_run_without_the_gate_never_stamps_or_routes_the_sha(box, group):
+    # `--skip-tags always` drops the gate; the group's own guard must refuse
+    # before its first task that writes the SHA onto the box.
+    reached, first_task = GROUPS[group]
+    sha_c = _advance_main(box, "c — supplied, checks pending\n")
+    proc = _release(box, "--tags", group, "--skip-tags", "always", sha=sha_c,
+                    green=True, green_only=box["sha_b"])
+    out = proc.stdout + proc.stderr
+    assert not reached(box, sha_c), (
+        f"--tags {group} --skip-tags always wrote pending {sha_c} onto the box.\n{out[-3000:]}"
+    )
+    assert proc.returncode != 0, out[-3000:]
+    assert GUARD_REFUSAL in out, out[-3000:]
+    assert f"TASK [{first_task}]" not in out, out[-3000:]
+    assert box["gh_log"].read_text() == ""
+
+
+@needs_ansible
+@pytest.mark.parametrize("group", sorted(GROUPS))
+def test_a_green_gate_still_stamps_and_routes_positive_control(box, group):
+    reached, _ = GROUPS[group]
+    proc = _release(box, "--tags", group, sha=box["sha_b"], green=True, green_only=box["sha_b"])
+    out = proc.stdout + proc.stderr
+    assert reached(box, box["sha_b"]), out[-3000:]
+    assert box["sha_b"] in box["gh_log"].read_text()
 
 
 def _setup_env_and_run(box: dict) -> subprocess.CompletedProcess:
@@ -364,8 +456,15 @@ GATE_TASKS = (
     "warn that the required-check gate is deliberately bypassed",
     "record the gate-cleared release identity",
 )
-BUILD_GUARD = "require the gate to have cleared this exact SHA before building it"
-LIVE_GUARD = "require the gate to have cleared this exact SHA before the release goes live"
+GUARD_PREFIX = "require the gate to have cleared this exact SHA before"
+BUILD_GUARD = f"{GUARD_PREFIX} building it"
+LIVE_GUARD = f"{GUARD_PREFIX} the release goes live"
+# group -> (its guard, the group's first task that writes the SHA onto the box)
+GROUP_GUARDS = {
+    "systemd": (f"{GUARD_PREFIX} stamping it into the units", "render antiek.service"),
+    "caddy": (f"{GUARD_PREFIX} routing it",
+              "render the candidate Caddyfile for post-cutover activation"),
+}
 
 
 def test_the_gate_is_tagged_always_and_nothing_else():
@@ -452,3 +551,62 @@ def test_only_the_guarded_release_checkout_can_move_code_onto_the_box():
             "required-checks gate; set `update: false` (clone-if-absent only)."
         )
     assert guarded == 1
+
+
+def test_each_group_guard_carries_only_its_tag_and_precedes_the_first_stamp():
+    tasks = _play()["tasks"]
+    names = [t.get("name", "") for t in tasks]
+    for group, (guard_name, first) in GROUP_GUARDS.items():
+        guard = tasks[names.index(first) - 1]
+        assert guard["name"] == guard_name, (group, guard.get("name"))
+        assert guard["tags"] == [group], group
+        assert _guard_assertion(guard) == [
+            "antiek_gate_cleared_ref is defined",
+            "antiek_gate_cleared_ref == antiek_target_sha",
+        ]
+
+
+_SHA_VARS = re.compile(r"antiek_(?:target|build|previous)_sha|antiek_release_(?:dir|receipt)")
+_READ_ONLY = ("ansible.builtin.assert", "ansible.builtin.debug", "ansible.builtin.set_fact",
+              "ansible.builtin.stat", "ansible.builtin.uri")
+
+
+def _writes_the_sha(task: dict) -> bool:
+    if any(module in task for module in _READ_ONLY) or task.get("changed_when") is False:
+        return False
+    text = yaml.safe_dump({k: v for k, v in task.items() if k not in ("name", "block", "rescue", "always")})
+    template = (task.get("ansible.builtin.template") or {}).get("src", "")
+    sources = [item["src"] for item in task.get("loop", [])] if "item.src" in template else [template]
+    for src in filter(None, sources):
+        text += (TEMPLATES / Path(src).name).read_text()
+    return bool(_SHA_VARS.search(text))
+
+
+def test_every_group_that_writes_the_sha_outside_the_build_is_guarded_first():
+    # Walk the release in order, outside the build block (its first task is
+    # the build guard) and outside the rollback rescue. Any task that writes
+    # a SHA-derived value onto the box must find, earlier in the run, a guard
+    # tagged with each of its own tags, or the gate itself (code, always).
+    play = _play()
+    seen: set[str] = set()
+    order: list[dict] = []
+
+    def walk(tasks: list[dict]) -> None:
+        for t in tasks:
+            if t.get("name") == "build and validate the exact-SHA release":
+                continue
+            order.append(t)
+            walk(t.get("block", []))
+
+    walk(play["pre_tasks"] + play["tasks"])
+    unguarded = []
+    for t in order:
+        if t.get("name", "").startswith(GUARD_PREFIX):
+            seen.update(t["tags"])
+            continue
+        tags = set(t.get("tags", []))
+        if "code" in tags or "always" in tags or not _writes_the_sha(t):
+            continue
+        if not tags <= seen:
+            unguarded.append((t.get("name"), sorted(tags - seen)))
+    assert unguarded == [], unguarded
