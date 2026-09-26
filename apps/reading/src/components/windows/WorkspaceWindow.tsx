@@ -89,6 +89,16 @@ export function WorkspaceWindow({
     };
   }, []);
 
+  // Re-opening a stable-id window does not remount it. When store focus moves
+  // back here, move DOM focus too so keyboard and assistive-tech users receive
+  // the same context transition as on the initial open.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (isFocused && root && !root.contains(document.activeElement)) {
+      root.focus();
+    }
+  }, [isFocused]);
+
   const onDragDown = useCallback(
     (e: React.PointerEvent) => {
       const target = e.target as HTMLElement;

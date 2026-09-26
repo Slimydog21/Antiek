@@ -96,6 +96,13 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
     title: "Sub-actions",
     renderer: lazy(() => import("./SubActionList")),
   },
+  // A document identity opens the SAME rights-aware HTML reader used by
+  // `/read/:documentId`. The payload contains no caller-supplied HTML; the
+  // reader remains the sole owner of fetching and servability truth.
+  reader: {
+    title: "Source reader",
+    renderer: lazy(() => import("../../modes/Reading")),
+  },
 };
 
 export type WindowEligibleKind = keyof typeof WINDOW_PAGES;

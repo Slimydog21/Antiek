@@ -23,6 +23,7 @@ import { useParams } from "react-router-dom";
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import LemonButton from "../../components/lemon/LemonButton";
+import { openWindow } from "../../components/windows/openWindow";
 import missionControlEnvironment from "../../brand/werner/research/deep_research_mission_control_v1.webp";
 import {
   approvePlan,
@@ -37,11 +38,16 @@ import {
 } from "../../api/research";
 import { track } from "../../lib/analytics";
 import type { DistilledNode } from "../../lib/api";
+import { DEFAULT_WINDOW_RECT } from "../../workspace/windowsStore";
 import CostMeter from "./CostMeter";
 import HardCeilingEvidence from "./HardCeilingEvidence";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
 import Canvas from "./Canvas/Canvas";
+import {
+  chooseEvidenceWindowRect,
+  type SourceAnchorRect,
+} from "./Canvas/evidenceWindowPlacement";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
 import { useWernerResearchReactions } from "./useWernerResearchReactions";
@@ -326,6 +332,40 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
     setResultView(null);
   };
 
+  const openEvidenceSource = useCallback((node: DistilledNode, anchor: SourceAnchorRect) => {
+    const documentId = node.source_document_id;
+    if (!documentId?.trim()) return;
+    const host = document.querySelector<HTMLElement>("[data-windows-layer]");
+    const hostRect = host?.getBoundingClientRect();
+    const originLeft = hostRect?.left ?? 0;
+    const originTop = hostRect?.top ?? 0;
+    const viewport = {
+      width: hostRect?.width || window.innerWidth,
+      height: hostRect?.height || window.innerHeight,
+    };
+    const relativeAnchor = {
+      ...anchor,
+      left: anchor.left - originLeft,
+      right: anchor.right - originLeft,
+      top: anchor.top - originTop,
+      bottom: anchor.bottom - originTop,
+    };
+    const rect = chooseEvidenceWindowRect(relativeAnchor, viewport, {
+      width: DEFAULT_WINDOW_RECT.width,
+      height: DEFAULT_WINDOW_RECT.height,
+    });
+    openWindow(
+      "reader",
+      { documentId, evidenceSourceContext: true },
+      {
+        id: `win:reader:${encodeURIComponent(documentId)}`,
+        title: "Research source",
+        replaceOldestAtLimit: true,
+        ...(rect ? { rect } : {}),
+      },
+    );
+  }, []);
+
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
     try {
@@ -366,7 +406,11 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           </span>
         </div>
         <div className="relative min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
-          <Canvas investigationId={resultView.investigationId} onOpenDetail={setOpenNode} />
+          <Canvas
+            investigationId={resultView.investigationId}
+            onOpenDetail={setOpenNode}
+            onCiteSource={openEvidenceSource}
+          />
           {/* SPR-04: the block detail is the SECOND live FloatMenu host. It
               opens off a BlockCard click as an overlay over the canvas (the
               canvas stays mounted underneath — non-breaking) and dismisses
