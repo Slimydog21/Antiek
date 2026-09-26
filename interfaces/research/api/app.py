@@ -1666,6 +1666,18 @@ def create_app(
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=[
+                "X-Artifact-ID",
+                "X-Artifact-Style",
+                "X-Artifact-Version",
+                "X-Content-SHA256",
+                "X-Source-SHA256",
+                "X-Artifact-Source-State",
+                "X-Artifact-Current-Source-SHA256",
+                "X-Document-ID",
+                "X-Reader-Revision",
+                "ETag",
+            ],
         )
 
     # ── H4 + H4.5 + H6: operator auth middleware ──
