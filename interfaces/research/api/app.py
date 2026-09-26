@@ -90,10 +90,7 @@ from substrate.schemas import (  # noqa: E402
     TypedPayload,
 )
 
-from .account_memory_context import (  # noqa: E402
-    account_memory_context,
-    record_account_memory_from_turn,
-)
+from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
@@ -6736,18 +6733,6 @@ def create_app(
             ) from None
 
         parsed = parse_thought_partner_response(result.text)
-        # SPR-11 T7: write stable first-person facts from this turn back into
-        # owner-private account memory. Dark until the env flag named in
-        # substrate.memory.interaction_extractor is set; best-effort, so it can
-        # never change the response below. Off the loop thread because it
-        # takes the write lock (the sanctioned to_thread shape, as /health's
-        # flywheel probe).
-        await asyncio.to_thread(
-            record_account_memory_from_turn,
-            request,
-            prompt=req.prompt,
-            investigation_id=req.investigation_id,
-        )
         return ThoughtPartnerResponseBody(
             shape=parsed.shape,
             text=result.text,
