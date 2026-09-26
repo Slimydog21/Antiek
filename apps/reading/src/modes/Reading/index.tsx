@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
@@ -22,7 +22,40 @@ import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
 import { paginate, windowForTocPage } from "./paginate";
-import { usePosition } from "./usePosition";
+import { useReadingState } from "../../hooks/useReadingState";
+import { useAnchors } from "../../hooks/useAnchors";
+import {
+  createAnchor,
+  getAnchorMap,
+  linkAnchorInvestigation,
+  type AnchorMapChunk,
+  type BookAnchor,
+} from "../../lib/api";
+import { buildPinBody } from "./pinBody";
+import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
+import { enactWidgetLayout } from "../../reading-physics/facets/anchored-widgets";
+import { anchorKey } from "../../reading-physics/facets/decorations";
+import { baseGeometryFromMap, createLayoutMap } from "../../reading-physics/layout-map";
+import type { Rect as PhysicsRect, RenderContext } from "../../reading-physics/types";
+import { makeIslandAugmentation } from "../../reading-physics/augmentations/thread-island";
+import ThreadIsland from "./island/ThreadIsland";
+import { deriveIslandRefs } from "./island/islandModel";
+import { runSpawnFlow } from "./island/spawnFlows";
+import { toast } from "../../components/lemon/LemonToast";
+import {
+  HIDDEN_ISLANDS_CHANGED,
+  readHiddenIslands,
+  unhideIsland,
+} from "./island/hiddenIslands";
+import type { ReadingContext } from "../../reading-physics/types";
+import { makeHighlightAnchorAugmentation } from "../../reading-physics/augmentations/highlight-anchor";
+import {
+  anchorBodyRange,
+  chunkIdAtOffset,
+  normalizeNodeText,
+  orphanedForList,
+  rangesForPage,
+} from "./anchorRanges";
 import { clearReadingFocus, setReadingFocus } from "../../lib/readingFocus";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { emitSourceRead, isRead } from "./sourceRead";
@@ -44,6 +77,15 @@ export interface BookReaderProps {
    * resolving `/read/:documentId` exactly as before. */
   documentId?: string;
 }
+
+/** The decorations registry needs a ReadingContext; the highlight
+ *  augmentation closes over its spec and never reads it (same stub the
+ *  reading-physics tests use). */
+const ANCHOR_STUB_CTX: ReadingContext = {
+  synthesis: { question: null, claims: [] },
+  layout: { resolve: () => null },
+  substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
+};
 
 export default function BookReader({ documentId: documentIdProp }: BookReaderProps = {}) {
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
@@ -95,11 +137,176 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     setReloadToken((token) => token + 1);
   }, []);
 
-  const pages = useMemo(
-    () => paginate(body?.full_text ?? body?.snippet ?? ""),
+
+
+  useEffect(() => {
+    // The anchor-map is only meaningful with a readable body (the reader
+    // renders only gate-served text — a gated snippet carries no anchorable
+    // passages). ownerReadable is the same flag the FloatMenu outbound guard
+    // uses; the owner manifest path mirrors owner-full-text.
+    const readable = body?.servable || body?.reason === "owner_personal_reading";
+    if (!documentId || !readable) {
+      setAnchorMapChunks([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const map = await getAnchorMap(documentId, {
+          owner: body?.reason === "owner_personal_reading",
+        });
+        if (!cancelled) setAnchorMapChunks(map.chunks);
+      } catch {
+        // The map is best-effort beside the body (a 403 on a just-gated book
+        // must not break reading); decorations simply don't paint.
+        if (!cancelled) setAnchorMapChunks([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId, body]);
+
+  // The ONE scalar space: the anchor-map's offsets and the anchor schema
+  // both pin to unicode-nfc-v1 normalized text, so the body the reader
+  // paginates is normalized the same way (anchorRanges.normalizeNodeText
+  // mirrors substrate/feedback/domain.py:18-20).
+  const normalizedBody = useMemo(
+    () => normalizeNodeText(body?.full_text ?? body?.snippet ?? ""),
     [body],
   );
-  const { pageIndex, setPageIndex } = usePosition(documentId, pages.length);
+  const pages = useMemo(() => paginate(normalizedBody), [normalizedBody]);
+  const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
+
+  // ── Anchored highlights (anchor-first SPR-02) ─────────────────────────
+  // The owner's persisted anchors (SPR-03) and the chunk anchor-map — the
+  // endpoint that finally exposes per-chunk identity for the served body,
+  // closing the HONEST GAP below (was: representativeChunkId = null because
+  // the books read path exposed no per-chunk id). The owner path serves the
+  // manifest for personal-reading books; the public path for servable ones.
+  const {
+    anchors,
+    refetch: refetchAnchors,
+    remove: removeAnchor,
+  } = useAnchors(documentId);
+  const [anchorMapChunks, setAnchorMapChunks] = useState<AnchorMapChunk[]>([]);
+  const anchorChunksById = useMemo(() => {
+    const byId = new Map<string, AnchorMapChunk>();
+    for (const chunk of anchorMapChunks) byId.set(chunk.chunk_id, chunk);
+    return byId;
+  }, [anchorMapChunks]);
+
+  // ── Research-thread islands (island SPR-02) ───────────────────────────
+  // Islands are the thread-linked anchors (SPR-01's deriveIslandRefs). An
+  // island SUPERSEDES a plain highlight mark: the unit-1 wash + underline
+  // already paints its anchor; this widget adds the live status glyph and
+  // the pinned overlay card. Orphaned islands follow the parent's rule
+  // (nothing in the body, one honest list row).
+  const islands = useMemo(() => deriveIslandRefs(anchors), [anchors]);
+
+  // The per-device "hide" preference (client-side only; never deletes
+  // anything). Re-read on the module's change event so Hide/Unhide both
+  // reflect immediately.
+  const [hiddenIslands, setHiddenIslands] = useState<Set<string>>(() =>
+    readHiddenIslands(),
+  );
+  useEffect(() => {
+    function sync() {
+      setHiddenIslands(readHiddenIslands());
+    }
+    window.addEventListener(HIDDEN_ISLANDS_CHANGED, sync);
+    return () => window.removeEventListener(HIDDEN_ISLANDS_CHANGED, sync);
+  }, []);
+
+  const visibleIslands = useMemo(
+    () => islands.filter((i) => !hiddenIslands.has(i.anchorId)),
+    [islands, hiddenIslands],
+  );
+
+  // The widget surface: pin each visible island through the reading-physics
+  // plan (declare), resolve geometry from the island's mark span (the ONE
+  // place pixels are measured — the surface owns the read, PR-4), and enact
+  // the widgets over the reading column. An island whose anchor isn't laid
+  // out (off-page, orphaned) resolves null and renders nothing — the
+  // LayoutMap contract, never a fabricated position.
+  const mainRef = useRef<HTMLElement>(null);
+  const [islandRects, setIslandRects] = useState<ReadonlyMap<string, PhysicsRect>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main || visibleIslands.length === 0) {
+      setIslandRects(new Map());
+      return;
+    }
+    function measure() {
+      const mainRect = main!.getBoundingClientRect();
+      const next = new Map<string, PhysicsRect>();
+      for (const island of visibleIslands) {
+        const key = anchorKey({
+          kind: "passage",
+          chunkId: island.passageAnchor.chunkId as never,
+          start: island.passageAnchor.start,
+          end: island.passageAnchor.end,
+        });
+        const span = main!.querySelector(`[data-anchor-id="${island.anchorId}"]`);
+        if (span) {
+          const r = span.getBoundingClientRect();
+          next.set(key, {
+            top: r.top - mainRect.top,
+            left: r.left - mainRect.left,
+            width: r.width,
+            height: r.height,
+          });
+        }
+      }
+      setIslandRects(next);
+    }
+    measure();
+    // jsdom has no ResizeObserver: the one measurement per pass stands there
+    // (repagination re-runs this effect anyway); real browsers get live
+    // resize tracking too.
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(main);
+    return () => observer.disconnect();
+  }, [visibleIslands, pageIndex, pages, anchors, anchorMapChunks]);
+
+  const islandLayoutMap = useMemo(
+    () => createLayoutMap(baseGeometryFromMap(islandRects)),
+    [islandRects],
+  );
+
+  const enactedIslands = useMemo(() => {
+    if (visibleIslands.length === 0) return [];
+    const augmentations = visibleIslands.map((island) =>
+      makeIslandAugmentation({
+        anchorId: island.anchorId,
+        documentId: island.documentId,
+        chunkId: island.passageAnchor.chunkId,
+        start: island.passageAnchor.start,
+        end: island.passageAnchor.end,
+        investigationId: island.investigationId,
+        servable: island.servable,
+        passageQuote: island.servable
+          ? anchors.find((a) => a.anchor_id === island.anchorId)?.anchor.quote || null
+          : null,
+        pageIndexHint:
+          anchors.find((a) => a.anchor_id === island.anchorId)?.page_index_hint ?? null,
+      }),
+    );
+    const plan = collectAnchoredWidgets(augmentations, ANCHOR_STUB_CTX);
+    return enactWidgetLayout(plan, islandLayoutMap);
+  }, [visibleIslands, anchors, islandLayoutMap]);
+
+  const islandRenderCtx: RenderContext = useMemo(
+    () => ({
+      pass: "main",
+      layout: islandLayoutMap,
+      components: { ThreadIsland },
+    }),
+    [islandLayoutMap],
+  );
 
   // Citation → page jump (M2). A talk-to-book / search citation carries a
   // resolved 0-based page; map it to the window index and move the reader.
@@ -131,23 +338,13 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
 
   // §9.0 — the chunk the read/note is attributed to.
   //
-  // HONEST GAP (Read SPR-07 M4, tightened): the reader client has NO chunk id
-  // to attribute to this sprint. BookDetail / FullTextResponse expose
-  // title/toc/full_text/servability — never per-chunk ids — and surfacing them
-  // is a backend change (a /books endpoint that returns chunk ids) deliberately
-  // OUT OF SCOPE here. So we attribute to null HONESTLY rather than invent a
-  // chunk id. Consequence, stated plainly so the M4 claim is not overstated:
-  //   • source.read EVENT + the SiteSee resolver are LIVE (sourceRead.ts);
-  //   • the SiteSee "read" tint keys on chunk_id, so it PAINTS only once a
-  //     real chunk anchor is resolved — a documented follow-up (a books
-  //     endpoint exposing chunk ids), NOT something this sprint claims paints
-  //     end-to-end.
-  // For the in-book NOTE: document_id still completes the claim→chunk→document
-  // chain (the note's per-book insight node is grounded on its document via
-  // node metadata, so block_search returns it per-book even with a null chunk —
-  // see substrate/graph/insight_question.promote_from_marginalia_event). The
-  // chunk anchor on the note is the SAME documented follow-up.
-  const representativeChunkId: string | null = null;
+  // THE HONEST GAP, CLOSED (anchor-first SPR-02): this used to record null
+  // because the books read path exposed no per-chunk id for the linear body.
+  // The SPR-03 anchor-map now serves exactly that (chunk_id → body offsets),
+  // so a selection's chunk resolves for real — by locating the selected text
+  // in the current page and mapping the offset through the manifest. A
+  // selection that doesn't locate uniquely still records null HONESTLY
+  // (never a fabricated coverage claim).
   const ownerReadable =
     book?.servable_full_text === true || body?.reason === "owner_personal_reading";
 
@@ -156,6 +353,9 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
   // tracker already runs. A per-session guard (ref) coalesces it: never per-page
   // spam, never refired. §9.0: the event carries no body (sourceRead.ts).
   const readEmittedRef = useRef(false);
+  // The current page's chunk for the source.read event — resolved live from
+  // the anchor-map (the HONEST GAP closure), never the old null placeholder.
+  const pageChunkRef = useRef<string | null>(null);
   const onDwell = useCallback(
     (dwell: { totalDwellMs: number; pagesSeen: number }) => {
       if (readEmittedRef.current) return;
@@ -164,7 +364,7 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
       void emitSourceRead({
         documentId,
         readingThreadId,
-        chunkId: representativeChunkId,
+        chunkId: pageChunkRef.current,
         dwellMs: dwell.totalDwellMs,
         pageCount: dwell.pagesSeen,
       });
@@ -198,12 +398,13 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
   // servable for FloatMenu outbound so highlight → Deep-research works in
   // dogfood without weakening the public /full-text contract.
   const resolveProvenance = useCallback(
-    (_range: Range, _text: string): SelectionProvenance => ({
-      documentId,
-      chunkId: representativeChunkId,
-      servable: ownerReadable,
-    }),
-    [documentId, ownerReadable],
+    (_range: Range, text: string): SelectionProvenance => {
+      const chunkId = resolveSelectionChunk(text);
+      return { documentId, chunkId, servable: ownerReadable };
+    },
+    // resolveSelectionChunk is defined below (after the page locator helpers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [documentId, ownerReadable, anchorMapChunks, normalizedBody, pageIndex, pages],
   );
 
   // TP SERVABLE mount — BEFORE any early returns (Rules of Hooks).
@@ -236,27 +437,168 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     minLength: 8,
   });
 
-  // Deep-research (highlight) -> spin-research + /inv/:id. Book-bound provenance
-  // via POST /books/{id}/spin-research. ChaseThread stays the in-investigation
-  // chase path on the Research workstation. Section 9.0: null safeSpawnText = refuse.
+  // ── Pin machinery (anchor-first SPR-02) ───────────────────────────────
+  // Locate the selected text UNIQUELY in the current page, then map the page
+  // offset through the anchor-map to a chunk + chunk-relative offsets. A
+  // non-unique or cross-chunk match resolves null — never a guessed anchor.
+  const locateSelection = useCallback(
+    (
+      text: string,
+    ): { chunkId: string; start: number; end: number; bodyOffset: number } | null => {
+      const page = pages[pageIndex];
+      if (!page || !text) return null;
+      const first = page.text.indexOf(text);
+      if (first < 0 || page.text.indexOf(text, first + 1) >= 0) return null;
+      const bodyOffset = page.bodyStart + first;
+      const end = bodyOffset + text.length;
+      const chunkId = chunkIdAtOffset(bodyOffset, anchorMapChunks);
+      if (!chunkId) return null;
+      const chunk = anchorChunksById.get(chunkId);
+      if (!chunk || end > chunk.body_end) return null; // cross-chunk selection
+      return { chunkId, start: bodyOffset - chunk.body_start, end: end - chunk.body_start, bodyOffset };
+    },
+    [pages, pageIndex, anchorMapChunks, anchorChunksById],
+  );
 
-  const onDeepResearch = useCallback(
-    (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
-      if (safeSpawnText === null) return;
-      window.getSelection()?.removeAllRanges();
+  const resolveSelectionChunk = useCallback(
+    (text: string): string | null => locateSelection(text)?.chunkId ?? null,
+    [locateSelection],
+  );
+
+  // Persist one anchor from a selection. Returns the stored row (null on an
+  // honest no-location). The §9.0 rule at the pin boundary: a WITHHELD
+  // selection's text never leaves the client — it resolves LOCALLY via the
+  // anchor-map and posts ids+numbers only (the explicit metadata-only form);
+  // a servable selection posts the quote and the server resolves canonically.
+  const pinFromSelection = useCallback(
+    async (source: string, sel: FloatMenuSelection): Promise<BookAnchor | null> => {
+      const loc = locateSelection(sel.text);
+      const body = buildPinBody(source, sel, loc, normalizedBody, pageIndex);
+      if (!body) return null;
+      return createAnchor(documentId, body);
+    },
+    [documentId, pageIndex, locateSelection, normalizedBody],
+  );
+
+  // The FloatMenu's pin seam: Note/Dialogue/Search + the Pin button fire here
+  // (Deep-research pins inside onDeepResearch below — the SPR-04 write-back
+  // needs the anchor id). Auto-pins are best-effort beside their action: a
+  // failed pin never breaks the action (it is logged, never surfaced as if
+  // the action failed); the manual Pin is surfaced honestly.
+  const onPinAnchor = useCallback(
+    (pin: { source: string }, sel: FloatMenuSelection) => {
       void (async () => {
         try {
-          const res = await spinResearch(documentId, pageIndex, safeSpawnText);
-          navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
-        } catch (err: unknown) {
-          console.error("spin-research from highlight failed", err);
+          await pinFromSelection(pin.source, sel);
+          refetchAnchors();
+        } catch (e) {
+          console.warn(`anchor pin (${pin.source}) failed`, e);
         }
       })();
-
     },
-    [documentId, pageIndex, navigate],
-
+    [pinFromSelection, refetchAnchors],
   );
+
+  // Deep-research (highlight) -> pin -> spin-research -> write-back, and the
+  // ISLAND emerges collapsed at the passage (island SPR-03) — the reader does
+  // NOT navigate away; "Open research" on the island is the explicit jump.
+  // Book-bound provenance via POST /books/{id}/spin-research. ChaseThread
+  // stays the in-investigation chase path on the Research workstation.
+  // Section 9.0: null safeSpawnText = refuse. First link wins — a second
+  // spawn never overwrites. The failure matrix (pin / spawn / link) surfaces
+  // honestly, never an anchorless island.
+  const onDeepResearch = useCallback(
+    (safeSpawnText: string | null, sel: FloatMenuSelection) => {
+      if (safeSpawnText === null) return;
+      window.getSelection()?.removeAllRanges();
+      const loc = locateSelection(sel.text);
+      void (async () => {
+        const result = await runSpawnFlow({
+          anchors,
+          locate: () => loc,
+          pin: async () => {
+            const pinned = await pinFromSelection("floatmenu_deep_research", sel);
+            if (!pinned) throw new Error("the passage could not be anchored");
+            return pinned;
+          },
+          spin: (passageText) => spinResearch(documentId, pageIndex, passageText),
+          link: (anchorId, investigationId) =>
+            linkAnchorInvestigation(documentId, anchorId, investigationId),
+          passageText: safeSpawnText,
+        });
+        if (result.ok) {
+          refetchAnchors();
+          toast.info("Research started — the island is on your passage.");
+        } else {
+          toast.warn(result.message ?? "Couldn't start the research.");
+          refetchAnchors(); // a lawful pinned highlight may remain
+        }
+      })();
+    },
+    [documentId, pageIndex, anchors, locateSelection, pinFromSelection, refetchAnchors],
+  );
+
+  // Free-inquiry (island SPR-03): pin the current page's LEAD passage first
+  // (source=pin), then spin with the pinned passage, then the island. The
+  // same dedupe + failure matrix as the highlight path; a gated book's
+  // passage can't anchor (no manifest) and refuses honestly with no withheld
+  // text anywhere.
+  const spawnFreeInquiry = useCallback(() => {
+    const page = pages[pageIndex];
+    if (!page) return;
+    const lead = page.text.split(/\n{2,}/).map((b) => b.trim()).find(Boolean);
+    if (!lead) return;
+    const startInPage = page.text.indexOf(lead);
+    const bodyOffset = page.bodyStart + startInPage;
+    const chunkId = chunkIdAtOffset(bodyOffset, anchorMapChunks);
+    const chunk = chunkId ? anchorChunksById.get(chunkId) : undefined;
+    const loc = chunk
+      ? {
+          chunkId: chunk.chunk_id,
+          start: bodyOffset - chunk.body_start,
+          end: bodyOffset + lead.length - chunk.body_start,
+        }
+      : null;
+    void (async () => {
+      const servableForOutbound = ownerReadable;
+      const result = await runSpawnFlow({
+        anchors,
+        locate: () => loc,
+        pin: async () => {
+          if (!loc || !chunkId) throw new Error("the passage could not be anchored");
+          if (servableForOutbound) {
+            return createAnchor(documentId, {
+              quote: lead,
+              prefix: normalizedBody.slice(Math.max(0, bodyOffset - 32), bodyOffset),
+              suffix: normalizedBody.slice(bodyOffset + lead.length, bodyOffset + lead.length + 32),
+              page_index_hint: pageIndex,
+              source: "pin",
+            });
+          }
+          // Metadata-only (owner-readable withheld book): ids/numbers only —
+          // the passage text never leaves the client in the pin.
+          return createAnchor(documentId, {
+            node_id: chunkId,
+            start_scalar: loc.start,
+            end_scalar: loc.end,
+            page_index_hint: pageIndex,
+            source: "pin",
+          });
+        },
+        spin: (passageText) => spinResearch(documentId, pageIndex, passageText),
+        link: (anchorId, investigationId) =>
+          linkAnchorInvestigation(documentId, anchorId, investigationId),
+        passageText: lead,
+      });
+      if (result.ok) {
+        refetchAnchors();
+        toast.info("Research started — the island is on your passage.");
+      } else {
+        toast.warn(result.message ?? "Couldn't start the research.");
+        refetchAnchors();
+      }
+    })();
+  }, [documentId, pageIndex, pages, anchors, anchorMapChunks, anchorChunksById, normalizedBody, ownerReadable, refetchAnchors]);
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the
   // anchored menu would otherwise float over the wrong page. A chase already in
@@ -284,6 +626,56 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     (docId: string) => navigate(`/read/${encodeURIComponent(docId)}`),
     [navigate],
   );
+
+  // The decorations pipeline (anchor-first SPR-02): each persisted anchor
+  // declares a decoration through the highlight augmentation (declare), the
+  // registry combines (dedup/union on the same range), and the surface maps
+  // the resolved decorations to inline painted marks (enact). Orphaned
+  // anchors never paint — they list honestly below instead.
+  const pageMarks = useMemo(() => {
+    const current = pages[pageIndex];
+    if (!current || anchors.length === 0 || anchorMapChunks.length === 0) return [];
+    const paintable = anchors.filter(
+      (a) => a.status !== "orphaned" && anchorBodyRange(a, anchorChunksById),
+    );
+    if (paintable.length === 0) return [];
+    // DECLARE: each anchor declares its decoration through the highlight
+    // augmentation (the spec's declaration layer); the registry COMBINES
+    // (same-range union, order-independent). The combine output is the paint
+    // set — the tuples to mark.
+    const augmentations = paintable.map((a) =>
+      makeHighlightAnchorAugmentation({
+        anchorId: a.anchor_id,
+        chunkId: a.anchor.node_id,
+        start: a.anchor.start_scalar,
+        end: a.anchor.end_scalar,
+        treatment: a.status === "drifted" ? "drifted" : "active",
+        title:
+          a.status === "drifted"
+            ? "Moved — re-anchored here after the text changed"
+            : "Anchored highlight",
+      }),
+    );
+    const resolved = collectDecorations(augmentations, ANCHOR_STUB_CTX);
+    const paintKeys = new Set(
+      resolved.flatMap((d) =>
+        d.anchor.kind === "passage"
+          ? [`${d.anchor.chunkId}:${d.anchor.start}:${d.anchor.end}`]
+          : [],
+      ),
+    );
+    // ENACT: the registry-selected tuples, mapped through the anchor-map's
+    // body geometry (chunk-relative → body → page-relative — rangesForPage's
+    // tested math), painted inline.
+    const matched = paintable.filter((a) =>
+      paintKeys.has(
+        `${a.anchor.node_id}:${a.anchor.start_scalar}:${a.anchor.end_scalar}`,
+      ),
+    );
+    return rangesForPage(current, matched, anchorChunksById);
+  }, [anchors, anchorMapChunks, anchorChunksById, pages, pageIndex]);
+
+  const orphanedAnchors = useMemo(() => orphanedForList(anchors), [anchors]);
 
   // Tell the impression tracker which slots are showing on this page. It
   // flushes the previous page's impressions (with focused dwell) when the
@@ -329,6 +721,9 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
 
   const { label, colour } = servabilityLabel(book.servability);
   const page = pages[pageIndex];
+  pageChunkRef.current = page ? chunkIdAtOffset(page.bodyStart, anchorMapChunks) : null;
+
+
 
   const slotBase = `slot:${documentId}:p${pageIndex}`;
 
@@ -375,6 +770,67 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
           {book.author ?? "Unknown author"}
         </p>
         <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={setPageIndex} />
+        {(orphanedAnchors.length > 0 || hiddenIslands.size > 0) && (
+          <div
+            className="mt-3 border-t border-rule dark:border-charcoal-1 pt-2"
+            data-anchor-list
+          >
+            <p className="text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-1">
+              Anchors
+            </p>
+            {orphanedAnchors.map((a) => (
+              <div
+                key={a.anchor_id}
+                data-orphaned-anchor={a.anchor_id}
+                className="flex items-center gap-1 py-0.5 text-xs text-shadow-1 dark:text-moonlight"
+              >
+                <span className="min-w-0 truncate">
+                  {a.page_index_hint !== null ? `Page ${a.page_index_hint + 1} · ` : ""}
+                  text no longer found
+                </span>
+                {a.investigation_id ? (
+                  <Link
+                    to={`/inv/${encodeURIComponent(a.investigation_id)}`}
+                    className="shrink-0 text-sun-deep hover:underline"
+                    title="Open the research thread (the anchor's text is gone; the thread is untouched)"
+                    data-orphaned-island-open
+                  >
+                    →
+                  </Link>
+                ) : null}
+                <button
+                  type="button"
+                  aria-label={`Delete orphaned anchor on page ${
+                    a.page_index_hint !== null ? a.page_index_hint + 1 : "?"
+                  }`}
+                  className="shrink-0 px-0.5 text-shadow-1 hover:text-ink dark:hover:text-bright"
+                  onClick={() => void removeAnchor(a.anchor_id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {islands
+              .filter((i) => hiddenIslands.has(i.anchorId))
+              .map((i) => (
+                <div
+                  key={i.anchorId}
+                  data-hidden-island={i.anchorId}
+                  className="flex items-center gap-1 py-0.5 text-xs text-shadow-1 dark:text-moonlight"
+                >
+                  <span className="min-w-0 truncate italic">hidden island</span>
+                  <button
+                    type="button"
+                    aria-label="Show this island again on this device"
+                    className="shrink-0 text-sun-deep hover:underline"
+                    onClick={() => unhideIsland(i.anchorId)}
+                  >
+                    show again
+                  </button>
+                </div>
+              ))}
+          </div>
+        )}
       </aside>
 
       {/* In-book SPR-04 float-menu (SPR-07 M2). Highlighting any passage in the
@@ -390,17 +846,41 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
           /events/typed endpoint promotes on emit, backfill is the safety net).
           §9: source_kind "user" is carried onto the node — never conflated with
           a model-emerged insight. Deep-research spins book-bound research and
-          navigates to /inv/:id. §9.0: the outbound chokepoint refuses Search/Deep-research
+          the island emerges on the passage (island SPR-03 — no navigate-away).
+          §9.0: the outbound chokepoint refuses Search/Deep-research
           over a non-servable book. */}
       <FloatMenu
         selection={selection}
         investigationId={readingThreadId}
         onDeepResearch={onDeepResearch}
+        onPinAnchor={onPinAnchor}
       />
 
 
       {/* Reading column */}
-      <main className="flex-1 overflow-y-auto">
+      <main ref={mainRef} className="relative flex-1 overflow-y-auto">
+        {/* The island widget layer (SPR-02): anchored widgets enacted over the
+            reading column at their layout-map rects. Pointer-events pass
+            through except on the widgets themselves — the SAME pattern as the
+            floating layer. NEVER a workspace window. */}
+        {enactedIslands.length > 0 && (
+          <div className="absolute inset-0 pointer-events-none z-20" data-island-layer>
+            {enactedIslands.map((enacted) =>
+              enacted.rect ? (
+                <div
+                  key={enacted.widget.id}
+                  className="absolute pointer-events-auto"
+                  style={{
+                    top: enacted.rect.top,
+                    left: enacted.rect.left + enacted.rect.width,
+                  }}
+                >
+                  {enacted.widget.render(enacted.rect, islandRenderCtx)}
+                </div>
+              ) : null,
+            )}
+          </div>
+        )}
         <div className="max-w-2xl mx-auto px-6 py-6 flex flex-col gap-4 min-h-full">
           <header className="flex items-center justify-between gap-3">
             <h1 className="text-xl font-serif text-ink dark:text-bright truncate">
@@ -484,8 +964,12 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
               <ReadingColumn
                 ref={articleRef}
                 assetId={ownerReadable ? documentId : null}
+                chunkId={
+                  page ? chunkIdAtOffset(page.bodyStart, anchorMapChunks) : null
+                }
                 text={page?.text ?? ""}
                 contentFormat={body.content_format ?? "text"}
+                marks={pageMarks}
               />
 
               {/* Per-page actions: voice note + spin a deep research. */}
@@ -500,6 +984,15 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
                       onClick={() => setShowVoice((v) => !v)}
                     >
                       {showVoice ? "Close voice note" : "＋ Voice note"}
+                    </LemonButton>
+                    <LemonButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={spawnFreeInquiry}
+                      title="Pin this page's lead passage and start a research thread on it — the island stays on the passage"
+                    >
+                      Research from here
                     </LemonButton>
                     <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />
                   </div>

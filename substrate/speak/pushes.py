@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from runtime.db_lock import DEFAULT_TIMEOUT_S
+from runtime.db_lock import DEFAULT_TIMEOUT_S, ReadLockTimeout
 from substrate.speak import async_interview
 from substrate.speak.schema import ensure_speak_schema
 
@@ -267,7 +267,7 @@ def list_private_repings_at(
 ) -> list[PrivateReping]:
     """Invitees still in flight; fills pending_question_count via resume().
 
-    ``timeout_s`` bounds the write-lock wait (see ``async_interview``)."""
+    ``timeout_s`` bounds the write lease and the later read open."""
     from runtime.db_lock import connect_write
 
     with connect_write(
@@ -296,8 +296,12 @@ def list_private_repings_at(
         interview_id = r[2]
         token = r[5]
         try:
-            session = async_interview.resume(db_path, interview_id)
+            session = async_interview.resume(
+                db_path, interview_id, external_lock_timeout_s=timeout_s
+            )
             pending = len(session.pending_questions())
+        except ReadLockTimeout:
+            raise
         except Exception:
             pending = 0
         # Surface invitees who still owe answers OR are merely invited

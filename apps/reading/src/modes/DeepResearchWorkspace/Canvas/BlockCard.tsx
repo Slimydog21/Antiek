@@ -31,6 +31,7 @@
  */
 
 import type { DistilledNode } from "../../../lib/api";
+import FlagForDiligence from "../../../shared/FlagForDiligence";
 import type { SourceAnchorRect } from "./evidenceWindowPlacement";
 
 export interface BlockCardProps {
@@ -42,6 +43,10 @@ export interface BlockCardProps {
    *  still show the source's *presence* (or absence) honestly, just without a
    *  click target. */
   onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
+  /** The investigation the node was distilled from. Present ⇒ the calm
+   *  "flag for diligence" action renders (autonomous-diligence SPR-01);
+   *  absent ⇒ no flag affordance (never a dead one). */
+  sourceInvestigationId?: string;
 }
 
 const KIND_STYLE = {
@@ -67,7 +72,7 @@ function styleFor(kind: string) {
   return kind === "insight" ? KIND_STYLE.insight : KIND_STYLE.question;
 }
 
-export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCardProps) {
+export default function BlockCard({ node, onOpenDetail, onCiteSource, sourceInvestigationId }: BlockCardProps) {
   const s = styleFor(node.kind);
   const hasSource = Boolean(node.source_document_id?.trim());
   const clickable = Boolean(onOpenDetail);
@@ -139,6 +144,9 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
           <span className="font-mono">
             changed {node.refinement_count === 1 ? "once" : `${node.refinement_count} times`}
           </span>
+        )}
+        {sourceInvestigationId && (
+          <FlagForDiligence node={node} sourceInvestigationId={sourceInvestigationId} />
         )}
       </div>
     </div>

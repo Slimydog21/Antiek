@@ -234,15 +234,20 @@ def start_async_interview(
     return resume(db_path, iid)
 
 
-def resume(db_path: str, interview_id: str) -> AsyncInterviewSession:
+def resume(
+    db_path: str,
+    interview_id: str,
+    *,
+    external_lock_timeout_s: float = 0.0,
+) -> AsyncInterviewSession:
     """Reconstruct an interview's state from persisted storage — the
     whole point of an async interview is that you can leave and return.
 
     Read-only (``connect_read`` / LazyRW) — never takes the write flock.
-    Invite landing and other reconstruct paths must not hang behind
-    ``agent_work`` / write_log close contention (#3121 coexist).
+    HTTP callers can opt into a bounded external-writer wait off the event
+    loop. Other callers retain the immediate-open behavior.
     """
-    with connect_read(db_path) as con:
+    with connect_read(db_path, external_lock_timeout_s=external_lock_timeout_s) as con:
         row = con.execute(
             "SELECT project_id, status FROM interviews WHERE interview_id = ?",
             [interview_id],

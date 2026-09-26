@@ -6,13 +6,20 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = ROOT / "infrastructure" / "ansible" / "templates"
-DEPLOY_PATH = ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy.yml"
+DEPLOY_PATH = ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy_atomic.yml"
 
 
 def _tasks() -> list[dict[str, object]]:
     document = yaml.safe_load(DEPLOY_PATH.read_text(encoding="utf-8"))
     deploy_play = next(play for play in document if play.get("hosts") == "antiek_prod")
-    return deploy_play["tasks"]
+
+    def walk(tasks: list[dict[str, object]]):
+        for task in tasks:
+            yield task
+            for key in ("block", "rescue", "always"):
+                yield from walk(task.get(key, []))
+
+    return list(walk(deploy_play["tasks"]))
 
 
 def _task(name: str) -> dict[str, object]:
@@ -39,74 +46,38 @@ def test_health_probe_templates_are_bounded_and_least_privilege() -> None:
     assert "WantedBy=timers.target" in timer
 
 
-def test_deploy_renders_health_probe_before_daemon_reload() -> None:
-    wrapper = _task("re-render Antiek health-probe wrapper")["ansible.builtin.template"]
-    service = _task("re-render antiek-health-probe.service")
-    timer = _task("re-render antiek-health-probe.timer")
-    reload_task = _task("systemd daemon-reload if any unit changed")
-
-    assert wrapper == {
+def test_deploy_renders_and_verifies_the_health_probe_topology() -> None:
+    units = _task("render background and probe units")["loop"]
+    scripts = _task("render scripts consumed through the stable release path")["loop"]
+    verify = _task("verify all rendered systemd units")["ansible.builtin.command"]["argv"]
+    assert {
+        "src": "../templates/antiek-health-probe.service.j2",
+        "dest": "/etc/systemd/system/antiek-health-probe.service",
+    } in units
+    assert {
+        "src": "../templates/antiek-health-probe.timer.j2",
+        "dest": "/etc/systemd/system/antiek-health-probe.timer",
+    } in units
+    assert {
         "src": "../templates/antiek-health-probe.sh.j2",
         "dest": "/usr/local/bin/antiek-health-probe",
-        "owner": "root",
-        "group": "{{ antiek_group }}",
-        "mode": "0750",
-    }
-    assert service["ansible.builtin.template"]["dest"] == (
-        "/etc/systemd/system/antiek-health-probe.service"
-    )
-    assert service["register"] == "antiek_health_probe_unit"
-    assert timer["ansible.builtin.template"]["dest"] == (
-        "/etc/systemd/system/antiek-health-probe.timer"
-    )
-    assert timer["register"] == "antiek_health_probe_timer"
-    assert "antiek_health_probe_unit.changed" in reload_task["when"]
-    assert "antiek_health_probe_timer.changed" in reload_task["when"]
-    assert "default(false)" in reload_task["when"]
-    assert "health_probe" in reload_task["tags"]
-    assert _tasks().index(service) < _tasks().index(reload_task)
-    assert _tasks().index(timer) < _tasks().index(reload_task)
+    } in scripts
+    assert "/etc/systemd/system/antiek-health-probe.service" in verify
+    assert "/etc/systemd/system/antiek-health-probe.timer" in verify
 
 
-def test_deploy_verifies_enables_and_rearms_health_probe_timer() -> None:
-    verify_units = _task("verify Antiek health-probe systemd units")
-    enable = _task("enable and start antiek-health-probe.timer")
-    rearm = _task("re-arm antiek-health-probe.timer after timer unit changes")
-    enabled = _task("verify antiek-health-probe.timer is enabled")
-    active = _task("verify antiek-health-probe.timer is active")
-
-    assert verify_units["ansible.builtin.command"]["argv"] == [
-        "systemd-analyze",
-        "verify",
-        "/etc/systemd/system/antiek-health-probe.service",
-        "/etc/systemd/system/antiek-health-probe.timer",
-    ]
-    assert verify_units["changed_when"] is False
-    assert enable["ansible.builtin.systemd"] == {
-        "name": "antiek-health-probe.timer",
-        "enabled": True,
-        "state": "started",
-    }
-    assert rearm["ansible.builtin.systemd"]["state"] == "restarted"
-    assert rearm["when"] == "antiek_health_probe_timer.changed"
-    assert enabled["ansible.builtin.command"]["argv"][1] == "is-enabled"
-    assert active["ansible.builtin.command"]["argv"][1] == "is-active"
-    assert enabled["changed_when"] is False
-    assert active["changed_when"] is False
+def test_deploy_quiesces_and_resumes_the_health_probe_around_cutover() -> None:
+    pause = _task("pause every release-path consumer before cutover")
+    resume = _task("resume background consumers after candidate is active")
+    assert "antiek-health-probe.service" in pause["loop"]
+    assert "antiek-health-probe.timer" in pause["loop"]
+    assert "antiek-health-probe.timer" in resume["loop"]
+    assert _tasks().index(pause) < _tasks().index(resume)
 
 
-def test_health_probe_tag_selects_the_complete_topology() -> None:
-    names = {
-        "re-render Antiek health-probe wrapper",
-        "re-render antiek-health-probe.service",
-        "re-render antiek-health-probe.timer",
-        "systemd daemon-reload if any unit changed",
-        "verify Antiek health-probe systemd units",
-        "enable and start antiek-health-probe.timer",
-        "re-arm antiek-health-probe.timer after timer unit changes",
-        "verify antiek-health-probe.timer is enabled",
-        "verify antiek-health-probe.timer is active",
-    }
-
-    for name in names:
-        assert "health_probe" in _task(name)["tags"], name
+def test_health_probe_release_uses_the_exact_candidate_chain() -> None:
+    names = [task.get("name", "") for task in _tasks()]
+    cutover = names.index("make the one public API/SPA cutover")
+    start = names.index("start antiek into the candidate release")
+    verify = names.index("run blocking public parity on the candidate")
+    assert cutover < start < verify

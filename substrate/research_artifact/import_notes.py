@@ -63,9 +63,14 @@ def import_agent_notes(
     investigation_id: str | None = None,
     events_dir: str | None = None,
     generating_role: str = "note_taker",
+    html_text: str | None = None,
 ) -> ImportNotesResult:
-    """Emit artifact.generated per new agent note. Does not mutate graph insights."""
-    body = parse_body_from_path(html_path)
+    """Emit artifact.generated per new agent note. Does not mutate graph insights.
+
+    ``html_text`` is the artifact's contents when the caller already read it
+    through a confined reader (the HTTP route); otherwise ``html_path`` is read.
+    """
+    body = parse_body_from_html(html_text) if html_text is not None else parse_body_from_path(html_path)
     iid = investigation_id or body.investigation_id
     if body.investigation_id != iid:
         raise ValueError(

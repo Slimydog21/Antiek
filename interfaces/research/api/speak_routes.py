@@ -41,7 +41,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
-from runtime.db_lock import WriteLockTimeout, connect_read, connect_write
+from runtime.db_lock import ReadLockTimeout, WriteLockTimeout, connect_read, connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.speak import (
     biography,
@@ -147,20 +147,18 @@ _T = TypeVar("_T")
 
 
 async def _off_loop(fn: Callable[[], _T]) -> _T:  # noqa: UP047 -- runtime supports Python 3.11
-    """Run a write-lock-holding sync call off the uvicorn event loop.
+    """Run bounded DuckDB waits off the uvicorn event loop.
 
-    A write-lock timeout is designed backpressure, not a server fault:
-    ``_write`` bounds the flock wait to ``_WRITE_TIMEOUT_S`` so a Speak
-    request fails fast instead of parking a thread (pre-migration, the
-    whole ``--workers 1`` loop) behind a held writer. Uncaught,
-    ``WriteLockTimeout`` (a RuntimeError) surfaces as HTTP 500 — 503 is
-    the retryable signal, the same contract ``agent_work_routes.
+    Both ``_write``'s flock wait and opt-in ``_read``'s external DuckDB
+    lock wait use ``_WRITE_TIMEOUT_S``. Exhaustion is retryable backpressure,
+    surfaced as 503 instead of an unhandled 500. The same contract
+    ``agent_work_routes.
     _write_off_loop`` ("agent_work_writer_busy") and ad_routes
     ("ad_frame_writer_busy") already return.
     """
     try:
         return await asyncio.to_thread(fn)
-    except WriteLockTimeout as exc:
+    except (WriteLockTimeout, ReadLockTimeout) as exc:
         raise HTTPException(status_code=503, detail="speak_writer_busy") from exc
 
 
@@ -169,8 +167,9 @@ def _read(purpose: str) -> Iterator[Any]:
     """Read-only Speak path — LazyRW / connect_read; does not take the write flock.
 
     Used for public feed + opportunities + invite landing so browse stays
-    responsive when agent_work/lease holds the writer. Schema must already
-    exist (prod / prior writes). Does NOT call ``ensure_initialized`` /
+    responsive when an in-process writer holds the DB. External writer
+    collisions wait for at most ``_WRITE_TIMEOUT_S`` in a worker thread.
+    Schema must already exist (prod / prior writes). Does NOT call ``ensure_initialized`` /
     ``ensure_speak_schema`` — those contend with note-taker
     ``_schema_is_present`` on the hot path (prod hang after #3153).
 
@@ -182,7 +181,7 @@ def _read(purpose: str) -> Iterator[Any]:
     db = default_db_path()
     if not _os.path.exists(db):
         raise FileNotFoundError(db)
-    con = connect_read(db)
+    con = connect_read(db, external_lock_timeout_s=_WRITE_TIMEOUT_S)
     try:
         yield con
     finally:
@@ -443,9 +442,12 @@ async def get_project(project_id: str) -> ProjectResponse:
 
 
 @speak_router.get("/projects/{project_id}/economics")
-async def get_economics(project_id: str) -> dict:
-    with _translate(), _read("speak/api:economics") as con:
-        policy = economics_mode.policy_for_project(con, project_id)
+async def get_economics(project_id: str) -> dict[str, Any]:
+    def _sync() -> Any:
+        with _translate(), _read("speak/api:economics") as con:
+            return economics_mode.policy_for_project(con, project_id)
+
+    policy = await _off_loop(_sync)
     # The G2/G3 gate STATE, read-only (gate_status.py). The UI shows these
     # as "gated / not yet activated" — there is no flip/close affordance
     # here; closing a gate is an operator action, never a code path.
@@ -472,9 +474,9 @@ async def public_feed() -> dict:
     the surface a visitor scrolls and can 'interview-with'/chime in on.
     Honest when empty (returns ``[]``). Distinct from ``GET /projects``,
     which is the operator's full index (their private dashboard)."""
-    try:
+    def _sync() -> Any:
         with _translate(), _read("speak/api:feed") as con:
-            rows = con.execute(
+            return con.execute(
                 "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
                 "p.invitation_mode, "
                 "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id) "
@@ -492,6 +494,9 @@ async def public_feed() -> dict:
                 "WHERE t.project_id = p.project_id AND t.status = 'active') "
                 "ORDER BY p.created_at DESC"
             ).fetchall()
+
+    try:
+        rows = await _off_loop(_sync)
     except FileNotFoundError:
         rows = []
     except Exception as exc:
@@ -546,10 +551,12 @@ async def list_invites(project_id: str) -> dict:
 
 @speak_router.get("/invites/resolve")
 async def resolve_invite(token: str) -> InviteResponse:
+    def _sync() -> Any:
+        with _translate(), _read("speak/api:resolve") as con:
+            return _invite_read_or_404(con, token)
+
     try:
-        read_cm = _read("speak/api:resolve")
-        with _translate(), read_cm as con:
-            iv = _invite_read_or_404(con, token)
+        iv = await _off_loop(_sync)
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=404, detail="unknown or expired invite token"
@@ -689,8 +696,14 @@ async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict:
 
 @speak_router.get("/interviews/{interview_id}")
 async def get_interview(interview_id: str) -> dict:
-    with _translate():
-        session = resume(default_db_path(), interview_id)
+    def _sync() -> Any:
+        with _translate():
+            return resume(
+                default_db_path(), interview_id,
+                external_lock_timeout_s=_WRITE_TIMEOUT_S,
+            )
+
+    session = await _off_loop(_sync)
     return {
         "interview_id": session.interview_id,
         "project_id": session.project_id,
@@ -987,11 +1000,14 @@ async def public_opportunities(
     """
     from substrate.speak.invitations import public_ecosystem_enabled
 
-    try:
+    def _sync() -> Any:
         with _translate(), _read("speak/api:opportunities") as con:
-            pubs = speak_pushes.list_public_opportunities(
+            return speak_pushes.list_public_opportunities(
                 con, interest=interest, ensure=False
             )
+
+    try:
+        pubs = await _off_loop(_sync)
     except FileNotFoundError:
         pubs = []
     except Exception as exc:
@@ -1048,9 +1064,12 @@ async def list_pushes() -> dict[str, Any]:
     ``private_repings`` — invitees still in flight with an invite token;
     pending question counts from async_interview.resume.
     """
-    try:
+    def _read_sync() -> Any:
         with _translate(), _read("speak/api:pushes") as con:
-            pubs = speak_pushes.list_public_opportunities(con, ensure=False)
+            return speak_pushes.list_public_opportunities(con, ensure=False)
+
+    try:
+        pubs = await _off_loop(_read_sync)
     except Exception as exc:
         if "speak_projects" not in str(exc) and "Catalog" not in type(exc).__name__:
             raise
@@ -1216,7 +1235,7 @@ async def invitee_landing(token: str) -> dict:
     invited to, the consent scopes the invite asks for, what they've
     already granted (so a returning invitee skips re-consent), and — once
     consented — the pending questions + transcript so far."""
-    try:
+    def _sync() -> Any:
         with _translate(), _read("speak/api:invite_landing") as con:
             iv = _invite_read_or_404(con, token)
             if iv is None:
@@ -1235,12 +1254,20 @@ async def invitee_landing(token: str) -> dict:
             granted = sorted(
                 s.value for s in consent_mod.consent_state(con, interview_id).granted
             )
+        # A second read must follow closing the first handle; both opens can
+        # collide with an external writer and must stay off the event loop.
+        session = resume(
+            default_db_path(), interview_id,
+            external_lock_timeout_s=_WRITE_TIMEOUT_S,
+        )
+        return interview_id, project_id, required, prow, granted, session
+
+    try:
+        interview_id, project_id, required, prow, granted, session = await _off_loop(_sync)
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=404, detail="unknown or expired invite link"
         ) from exc
-    # resume() is connect_read — call AFTER releasing our read handle.
-    session = resume(default_db_path(), interview_id)
     return {
         "interview_id": interview_id,
         "project_id": project_id,
@@ -1387,14 +1414,17 @@ async def invitee_voice(
     # whole payload into memory, and this route is waved through the operator
     # gate, so doing it first let an anonymous caller with a junk token push
     # an arbitrary number of bytes into the process before being 404'd.
-    try:
-        with _translate(), _read("speak/api:invite_voice_resolve:precheck") as _pre:
-            _known = _invite_read_or_404(_pre, token) is not None
-    except FileNotFoundError:
-        # No DB file yet means no invite can exist. Map to the same 404
-        # rather than letting the writer create the database for an
-        # anonymous caller -- _read documents this exact contract.
-        _known = False
+    def _precheck_sync() -> bool:
+        try:
+            with _translate(), _read("speak/api:invite_voice_resolve:precheck") as _pre:
+                return _invite_read_or_404(_pre, token) is not None
+        except FileNotFoundError:
+            # No DB file yet means no invite can exist. Map to the same 404
+            # rather than letting the writer create the database for an
+            # anonymous caller -- _read documents this exact contract.
+            return False
+
+    _known = await _off_loop(_precheck_sync)
     if not _known:
         raise HTTPException(
             status_code=404, detail="unknown or expired invite link"
