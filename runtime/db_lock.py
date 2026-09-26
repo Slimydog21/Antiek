@@ -256,6 +256,8 @@ _WRITE_LOG_PURPOSE = "_write_log_internal"
 _SAME_FILE_DIFFERENT_CONFIG = (
     "Can't open a connection to same database file with a different configuration"
 )
+_READ_MODE_RETRY_WINDOW_S = 0.25
+_READ_MODE_RETRY_INTERVAL_S = 0.01
 
 
 def _external_duckdb_lock_conflict(exc: Exception) -> bool:
@@ -428,6 +430,10 @@ class WriteLockClosed(RuntimeError):
 
 class WriteLockTimeout(RuntimeError):
     """Raised when the flock could not be acquired within the timeout."""
+
+
+class ReadLockTimeout(RuntimeError):
+    """Raised when another process holds DuckDB's file lock past the read budget."""
 
 
 # Spec-facing alias. The spec names this WriteCoordinatorTimeout; the existing
@@ -1208,6 +1214,8 @@ ReadConnection: TypeAlias = (  # noqa: UP040 -- runtime supports Python 3.11
 
 def connect_read(
     db_path: str,
+    *,
+    external_lock_timeout_s: float = 0.0,
 ) -> ReadConnection:
     """Open the DB read-only. Use this instead of raw duckdb.connect(...,
     read_only=True) at read sites so every DB access funnels through one
@@ -1220,21 +1228,79 @@ def connect_read(
     same-config read-write handle whose direct SQL mutation surfaces are
     rejected (``_ReadOrientedConnection``). Other connection failures stay
     explicit rather than being retried with broader privileges.
+    If the RW fallback races with a new read-only opener, retry the mode
+    selection decision for 250 ms after the first exact same-file conflict.
+    This bounds retry decisions and sleeps; an individual synchronous
+    ``duckdb.connect`` call is not preempted by that deadline.
+
+    An opt-in bounded retry covers another process's transient DuckDB file
+    lock. The default remains immediate so existing read callers retain their
+    latency contract; routes that opt in must dispatch this synchronous wait
+    off the event loop. Other connection errors are never retried.
 
     Cite: #3121 LazyRW coexist; Ads fills #3157/#3158 (BinderException wedge).
     """
-    try:
-        return duckdb.connect(db_path, read_only=True)
-    except Exception as exc:
-        msg = str(exc)
-        lazy_ok = (
-            _SAME_FILE_DIFFERENT_CONFIG in msg
-            or "Unique file handle conflict" in msg
-            or "already attached" in msg
-        )
-        if not lazy_ok:
-            raise
-        return _ReadOrientedConnection(duckdb.connect(db_path, read_only=False))
+    if not math.isfinite(external_lock_timeout_s) or external_lock_timeout_s < 0:
+        raise ValueError("external_lock_timeout_s must be finite and nonnegative")
+
+    retry_deadline: float | None = None
+    external_deadline: float | None = None
+
+    def wait_for_external_lock(exc: Exception) -> bool:
+        nonlocal external_deadline, retry_deadline
+        if not _external_duckdb_lock_conflict(exc) or external_lock_timeout_s == 0:
+            return False
+        # An external writer can span a complete local-handle handoff.
+        # A later local mode conflict is a new transition, not a continuation
+        # of the 250 ms window that preceded this writer.
+        retry_deadline = None
+        if external_deadline is None:
+            external_deadline = time.monotonic() + external_lock_timeout_s
+        remaining = external_deadline - time.monotonic()
+        if remaining <= 0:
+            raise ReadLockTimeout(f"Timed out opening read connection on {db_path}") from exc
+        time.sleep(min(0.05, remaining))
+        return True
+
+    while True:
+        try:
+            return duckdb.connect(db_path, read_only=True)
+        except Exception as exc:
+            if wait_for_external_lock(exc):
+                continue
+            msg = str(exc)
+            lazy_ok = (
+                _SAME_FILE_DIFFERENT_CONFIG in msg
+                or "Unique file handle conflict" in msg
+                or "already attached" in msg
+            )
+            if not lazy_ok:
+                raise
+            try:
+                return _ReadOrientedConnection(
+                    duckdb.connect(db_path, read_only=False)
+                )
+            except Exception as fallback_exc:
+                if wait_for_external_lock(fallback_exc):
+                    continue
+                # Another local handle can change modes between the RO open
+                # and RW fallback. Retry only the exact same-file and Binder
+                # transition errors for the short decision window; unrelated
+                # errors stay immediate. This cannot interrupt a synchronous
+                # DuckDB connect already in flight.
+                fallback_msg = str(fallback_exc)
+                if not (
+                    _SAME_FILE_DIFFERENT_CONFIG in fallback_msg
+                    or "Unique file handle conflict" in fallback_msg
+                    or "already attached" in fallback_msg
+                ):
+                    raise
+                if retry_deadline is None:
+                    retry_deadline = time.monotonic() + _READ_MODE_RETRY_WINDOW_S
+                remaining = retry_deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(_READ_MODE_RETRY_INTERVAL_S, remaining))
 
 
 @contextlib.contextmanager
