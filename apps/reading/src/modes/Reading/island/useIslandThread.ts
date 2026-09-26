@@ -59,11 +59,15 @@ export interface IslandThreadState {
   outcome: IslandOutcome | null;
   /** How the status was reached, for an honest debug view. */
   sessionState: ResearchRunState | null;
+  /** Refetch the investigations list (the family's source) — called after a
+   *  dig-deeper launch so the new chase appears in the family view
+   *  immediately, without a reload. */
+  refetchFamily: () => void;
 }
 
 export function useIslandThread(investigationId: string | null): IslandThreadState {
   const projection = useInvestigation(investigationId);
-  const { investigations } = useInvestigationList();
+  const { investigations, refetch: refetchFamily } = useInvestigationList();
   const tree = useInvestigationTree(investigations);
 
   const summary: InvestigationSummary | null = useMemo(
@@ -165,5 +169,6 @@ export function useIslandThread(investigationId: string | null): IslandThreadSta
     outcomeLoading,
     outcome,
     sessionState,
+    refetchFamily,
   };
 }

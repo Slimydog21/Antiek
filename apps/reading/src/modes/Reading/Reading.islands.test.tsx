@@ -16,8 +16,8 @@
  *     an orphaned anchor nothing in the body + one honest list row (with the
  *     open-thread link, the parent's "still openable" rule).
  *   - Dismiss collapses for the session; Hide is the per-device preference
- *     (with an honest unhide row); Dig deeper is the placed-but-inert stub;
- *     Open research navigates to /inv/:id.
+ *     (with an honest unhide row); Dig deeper opens the SPR-04 chase
+ *     composer inside the card; Open research navigates to /inv/:id.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -28,6 +28,7 @@ import type { BookAnchor, DistillationResponse } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useWindows } from "../../workspace/windowsStore";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { resetReadingStateBus } from "../../hooks/useReadingState";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 const {
@@ -264,6 +265,7 @@ beforeEach(() => {
   listBooksMock.mockReset().mockResolvedValue({ books: [], count: 0 });
   useInvestigationMock.mockReset().mockReturnValue(projection("in_progress"));
   useWorkspace.getState().reset();
+  resetReadingStateBus();
   useWindows.getState().reset();
 });
 
@@ -459,17 +461,28 @@ describe("drifted and orphaned inheritance (the parent's rule)", () => {
 // ── Actions: open / dig-deeper stub / dismiss-session / hide-per-device ───
 
 describe("the island actions", () => {
-  it("Open research links to /inv/:id; Dig deeper is the placed-but-inert stub", async () => {
+  it("Open research links to /inv/:id; Dig deeper opens the SPR-04 chase composer inside the card", async () => {
     route({ anchors: [islandAnchor()], investigations: [summary()] });
     await renderReader();
     await screen.findByText("The ope");
     fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
     const open = await screen.findByText("Open research →");
     expect(open.closest("a")!.getAttribute("href")).toBe("/inv/inv-thread");
-    const dig = document.querySelector("[data-island-dig-deeper]")!;
-    expect(dig).toBeTruthy();
-    expect(dig.textContent).toContain("soon");
-    expect((dig as HTMLButtonElement).disabled).toBe(true);
+    const dig = document.querySelector("[data-island-dig-deeper]")! as HTMLButtonElement;
+    expect(dig.disabled).toBe(false);
+    fireEvent.click(dig);
+    // The composer opens INSIDE the card: the passage quote prefilled, the
+    // question textarea, the chase's one-line cost semantics.
+    const composer = document.querySelector("[data-dig-deeper]")!;
+    expect(composer).toBeTruthy();
+    expect(composer.querySelector("[data-dig-quote]")!.textContent).toContain("The ope");
+    expect(screen.getByRole("button", { name: "Follow this" })).toBeTruthy();
+    expect(composer.querySelector("[data-dig-chase-cost]")!.textContent).toContain(
+      "new child investigation",
+    );
+    // Cancel returns to the action row.
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.querySelector("[data-dig-deeper]")).toBeNull();
   });
 
   it("Hide removes the island for this device with an honest unhide row (nothing is deleted)", async () => {

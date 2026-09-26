@@ -137,6 +137,30 @@ def test_post_get_delete_lifecycle(api_env) -> None:
     assert client.get("/books/doc-anchor/anchors").json()["count"] == 0
 
 
+def test_repinning_the_same_passage_returns_the_existing_row(api_env) -> None:
+    """Pin idempotency (island SPR-03): a retry or a second spawn from the
+    same passage re-pins the exact resolved location — the server returns
+    the EXISTING row with 200 (not 201) and never duplicates the anchor."""
+    db = api_env["db"]
+    _seed_default_chunks(db)
+    client = _client()
+
+    first = client.post("/books/doc-anchor/anchors", json=_pin_payload())
+    assert first.status_code == 201
+    second = client.post("/books/doc-anchor/anchors", json=_pin_payload())
+    assert second.status_code == 200
+    assert second.json()["anchor_id"] == first.json()["anchor_id"]
+
+    # One row only — the retry never duplicated the pin.
+    con = connect_read(db)
+    try:
+        row = con.execute("SELECT COUNT(*) FROM anchored_highlights").fetchone()
+    finally:
+        con.close()
+    assert row is not None and row[0] == 1
+    assert client.get("/books/doc-anchor/anchors").json()["count"] == 1
+
+
 def test_ambiguous_quote_is_a_422(api_env) -> None:
     db = api_env["db"]
     _seed_book(

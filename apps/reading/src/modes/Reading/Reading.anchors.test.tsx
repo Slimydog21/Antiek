@@ -24,6 +24,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { BookDetail, FullTextResponse } from "../../api/books";
 import type { BookAnchor } from "../../lib/api";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { resetReadingStateBus } from "../../hooks/useReadingState";
 import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 const {
@@ -191,8 +192,12 @@ function seedServer(rows: BookAnchor[]): AnchorServer {
     if (url.includes("/anchors/") && method === "PATCH") {
       const id = url.split("/anchors/")[1];
       const row = server.rows.find((r) => r.anchor_id === id);
-      if (row) row.investigation_id = parsedBody?.investigation_id ?? null;
-      return jsonResponse(row ?? {});
+      if (!row) return jsonResponse({ detail: "anchor_not_found" }, 404);
+      if (row.investigation_id && row.investigation_id !== parsedBody?.investigation_id) {
+        return jsonResponse({ detail: "anchor_already_linked" }, 409);
+      }
+      row.investigation_id = parsedBody?.investigation_id ?? row.investigation_id;
+      return jsonResponse(row);
     }
     if (url.includes("/anchors/") && method === "DELETE") {
       const id = url.split("/anchors/")[1];
@@ -315,6 +320,7 @@ beforeEach(() => {
   startInvestigationMock.mockClear();
   apiFetchMock.mockReset();
   useWorkspace.getState().reset();
+  resetReadingStateBus();
   useInvestigationMock.mockReset().mockReturnValue({
     id: "read-doc-1",
     status: "not_found",
@@ -455,8 +461,21 @@ describe("every FloatMenu action auto-pins exactly once (reader host)", () => {
 
 // ── Proof 6: the Deep-research spawn write-back (first link wins) ──────────
 
-describe("the Deep-research spawn write-back (SPR-04 tail)", () => {
-  it("pins, spins, writes the spawned thread onto the anchor — and a second spawn does NOT overwrite", async () => {
+describe("the Deep-research spawn flow + the island consequence (SPR-03)", () => {
+  it("pins, spins, writes the link — and the island emerges with NO navigation away from the book", async () => {
+    // The island's thread projection is live (SPR-01's path, end-to-end).
+    useInvestigationMock.mockImplementation((id: string) => ({
+      id,
+      status: "in_progress",
+      question: "the spawned question",
+      events: [],
+      terminalPayload: null,
+      costTotal: 0.42,
+      completedAt: null,
+      streamStatus: "open" as const,
+      reconnects: 0,
+      sourcePolicy: [],
+    }));
     const server = seedServer([]);
     await renderReader();
     await screen.findByText("The opening of the book.");
@@ -466,7 +485,8 @@ describe("the Deep-research spawn write-back (SPR-04 tail)", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research" }));
     await waitFor(() => expect(spinResearchMock).toHaveBeenCalledTimes(1));
 
-    // The pin POST preceded the spin; the PATCH link followed it.
+    // The pin POST preceded the spin; the PATCH link followed it. The reader
+    // did NOT navigate away — the island emerges instead.
     const posts = server.calls.filter(
       (c) => c.method === "POST" && c.url.endsWith("/anchors"),
     );
@@ -476,26 +496,25 @@ describe("the Deep-research spawn write-back (SPR-04 tail)", () => {
     expect(patches).toHaveLength(1);
     expect(patches[0].body).toEqual({ investigation_id: "inv-spawned" });
     expect(server.rows[0].investigation_id).toBe("inv-spawned");
-    expect(navigateMock).toHaveBeenCalledWith("/inv/inv-spawned");
+    expect(navigateMock).not.toHaveBeenCalled();
 
-    // A second spawn from another highlight: the server keeps the first link.
-    const firstLink = server.rows[0].investigation_id;
-    spinResearchMock.mockResolvedValueOnce({
-      investigation_id: "inv-second",
-      document_id: "doc-1",
-      page_index: 0,
-      gated: false,
-      servability: "public_domain",
-      seed_preview: "seed",
-      artifact_path: null,
-      twin_notes_path: null,
-    });
-    selectTextIn(article, "opening of");
+    // The island emerges collapsed at the passage (the SPR-02 widget, live).
+    await waitFor(() =>
+      expect(document.querySelector('[data-island-id="ahl-1"]')).toBeTruthy(),
+    );
+    expect(document.querySelector('[data-island-id="ahl-1"]')!.getAttribute("data-island-status")).toBe("live");
+
+    // A second spawn from the same passage: the SAME anchor is reused (no
+    // duplicate pin), the new thread spawns, and the FIRST link wins.
+    selectTextIn(article, "The open");
     fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research" }));
     await waitFor(() => expect(spinResearchMock).toHaveBeenCalledTimes(2));
-    // The second pin is a NEW anchor; the FIRST anchor's link is unchanged.
-    expect(server.rows[0].investigation_id).toBe(firstLink);
-    expect(server.rows[1].investigation_id).toBe("inv-second");
+    expect(
+      server.calls.filter((c) => c.method === "POST" && c.url.endsWith("/anchors")),
+    ).toHaveLength(1); // no duplicate pin
+    expect(server.rows).toHaveLength(1);
+    expect(server.rows[0].investigation_id).toBe("inv-spawned"); // never overwritten
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });
 

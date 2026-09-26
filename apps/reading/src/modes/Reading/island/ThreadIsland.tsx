@@ -19,8 +19,9 @@
  *     2. the distilled outcome when terminal (lead insights + open questions
  *        with refinement counts + honest empty states);
  *     3. the thread FAMILY (root + chases, per-node status);
- *     4. three actions: Open research (/inv/:id), Dig deeper (inert stub,
- *        placed for SPR-04), Dismiss (+ the per-device Hide preference).
+ *     4. three actions: Open research (/inv/:id), Dig deeper (SPR-04's
+ *        chase composer, opened inside the card), Dismiss (+ the
+ *        per-device Hide preference).
  *
  * The §9.0 boundary is structural: `passageQuote` arrives null on a
  * metadata-only anchor, so the card can only ever show passage POSITION
@@ -34,6 +35,7 @@ import {
   researchStateLabel,
 } from "../../../shared/researchState";
 import type { ResearchState } from "../../../shared/researchState";
+import DigDeeper from "./DigDeeper";
 import { hideIsland } from "./hiddenIslands";
 import { useIslandThread } from "./useIslandThread";
 import type { IslandStatus } from "./islandModel";
@@ -98,10 +100,21 @@ export default function ThreadIsland({
   pageIndexHint,
 }: ThreadIslandProps) {
   const [expanded, setExpanded] = useState(false);
+  // The SPR-04 chase composer, opened inside the card: null = closed; a
+  // value carries the dig's seed (the anchor quote for a bare dig, the
+  // distilled question's text + its reserved child id when digging on one —
+  // the no-orphan seam).
+  const [dig, setDig] = useState<{
+    initialQuestion: string;
+    reservedChildId: string | null;
+  } | null>(null);
   const thread = useIslandThread(investigationId);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const collapse = useCallback(() => setExpanded(false), []);
+  const collapse = useCallback(() => {
+    setExpanded(false);
+    setDig(null);
+  }, []);
 
   // Esc (element-scoped — the card's own key, never a global binding) and
   // click-away collapse the open card. Dismiss is the same collapse.
@@ -145,6 +158,16 @@ export default function ThreadIsland({
 
   const terminal =
     thread.status !== "live" && thread.status !== "gone";
+
+  // The chase seed (island SPR-04): the anchor quote + the parent thread's
+  // question. A metadata-only anchor contributes POSITION text — never a
+  // withheld sentence (the §9.0 boundary, same rule as the card's quote).
+  const positionText =
+    pageIndexHint !== null ? `Passage on page ${pageIndexHint + 1}` : "A passage in this book";
+  const quoteForContext = servable && passageQuote ? passageQuote : positionText;
+  const spawnContext = thread.question
+    ? `${quoteForContext}\n\n${thread.question}`
+    : quoteForContext;
 
   return (
     <div
@@ -226,6 +249,24 @@ export default function ThreadIsland({
                     <li key={q.node_id} className="leading-snug text-shadow-1 dark:text-moonlight">
                       ? {q.text}
                       {q.refinement_count > 0 ? ` · refined ×${q.refinement_count}` : ""}
+                      {" "}
+                      <button
+                        type="button"
+                        data-island-dig-question={q.node_id}
+                        onClick={() =>
+                          setDig({
+                            initialQuestion: q.text,
+                            // The no-orphan seam: an escalated question's
+                            // reserved child id rides the dig (launch INTO
+                            // it, never a duplicate child).
+                            reservedChildId: q.reserved_child_investigation_id ?? null,
+                          })
+                        }
+                        className="text-sun-deep underline-offset-2 hover:underline"
+                        title="Dig deeper on this question — a chase into the thread's family"
+                      >
+                        dig →
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -260,7 +301,21 @@ export default function ThreadIsland({
         </ul>
       ) : null}
 
-      {/* 4 — the actions. */}
+      {/* 4 — the chase composer (island SPR-04), opened inside the card by
+          Dig deeper or by a distilled question's dig →. */}
+      {dig ? (
+        <DigDeeper
+          parentInvestigationId={investigationId}
+          spawnContext={spawnContext}
+          initialQuestion={dig.initialQuestion}
+          reservedChildId={dig.reservedChildId}
+          sessionState={thread.sessionState}
+          onLaunched={() => thread.refetchFamily()}
+          onClose={() => setDig(null)}
+        />
+      ) : null}
+
+      {/* 5 — the actions. */}
       <div className="flex items-center gap-2 border-t border-hairline pt-2">
         <Link
           to={`/inv/${encodeURIComponent(investigationId)}`}
@@ -271,12 +326,21 @@ export default function ThreadIsland({
         </Link>
         <button
           type="button"
-          disabled
           data-island-dig-deeper
-          title="Dig deeper — wires in the next sprint (SPR-04)"
-          className="text-shadow-1 dark:text-moonlight italic cursor-not-allowed"
+          disabled={thread.status === "gone"}
+          onClick={() =>
+            setDig((open) =>
+              open ? null : { initialQuestion: quoteForContext, reservedChildId: null },
+            )
+          }
+          title={
+            thread.status === "gone"
+              ? "The thread's record is missing — there is nothing to chase from"
+              : "Dig deeper — chase this thread from the passage, inside the card"
+          }
+          className="text-sun-deep underline-offset-2 hover:underline disabled:text-shadow-1 disabled:dark:text-moonlight disabled:italic disabled:cursor-not-allowed"
         >
-          Dig deeper (soon)
+          Dig deeper
         </button>
         <button
           type="button"
