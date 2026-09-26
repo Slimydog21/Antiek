@@ -348,6 +348,19 @@ def reformat_document(
     mostly_generated = null_share > NOVELTY_CEILING_SHARE
 
     with connect_write(db_path, purpose="reformat/write-derived") as con, con.transaction():
+        # The derived id is freshly minted; a row already carrying it is an
+        # anomaly (a pre-seeded or collided id). Refuse the WHOLE write —
+        # never attach chunks or a generation record to a foreign document
+        # through insert-on-conflict's silent skip.
+        collision = con.execute(
+            "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1",
+            [derived_document_id],
+        ).fetchone()
+        if collision is not None:
+            raise ReformatError(
+                f"derived document id collision: {derived_document_id} — "
+                "nothing was written"
+            )
         # The derived document: registered through the rights chokepoint
         # with the parent's rights posture inherited (deny-by-default).
         from substrate.graph.ops import insert_document
@@ -367,7 +380,7 @@ def reformat_document(
                 "generation_id": generation_id,
                 "provisional": True,
             },
-            on_conflict="ignore",
+            on_conflict="error",
         )
         register_source_document(
             con,

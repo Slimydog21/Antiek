@@ -527,3 +527,65 @@ def test_derived_document_carries_the_callers_ownership(env) -> None:
     finally:
         con.close()
     assert (doc_owner, gen_owner) == ("owner-x", "owner-x")
+
+
+def test_derived_id_collision_refuses_and_attaches_nothing(env, monkeypatch) -> None:
+    """Grok counter-review probe (2026-09-25): a pre-existing derived id
+    owned by ANOTHER owner must abort the whole write scope — never attach
+    chunks or a generation record to the foreign document."""
+    import substrate.reformat.pipeline as pipeline_mod
+
+    monkeypatch.setattr(
+        pipeline_mod, "mint_generation_id", lambda: "gen-deadbeefdeadbeef"
+    )
+    _seed_source(env["db"])
+    with __import__("runtime.db_lock", fromlist=["connect_write"]).connect_write(
+        env["db"], purpose="test/seed-collision"
+    ) as con:
+        insert_document(
+            con,
+            document_id="drv-deadbeefdeadbeef",
+            source_tier=1,
+            document_type="derived",
+            title="Pre-existing foreign derived doc",
+            raw_text="original foreign body",
+            content_class="personal_reading",
+            owner_user_id="owner-b",
+            on_conflict="ignore",
+        )
+    with pytest.raises(ReformatError, match="derived document id collision"):
+        reformat_document(
+            env["db"],
+            owner_user_id="owner-a",
+            source_document_id="doc-1",
+            prompt=ACCEPTANCE_PROMPT,
+            generate_fn=_fixture_generator,
+            events_dir=env["events"],
+        )
+    con = connect_read(env["db"])
+    try:
+        doc_row = con.execute(
+            "SELECT owner_user_id, raw_text FROM documents "
+            "WHERE document_id = 'drv-deadbeefdeadbeef'"
+        ).fetchone()
+        chunk_count = con.execute(
+            "SELECT count(*) FROM chunks WHERE document_id = 'drv-deadbeefdeadbeef'"
+        ).fetchone()[0]
+        from substrate.provenance.schema import provenance_tables_exist
+
+        # The aborted write scope never even created the provenance tables
+        # (their DDL lands with the first record) — absence is the proof.
+        gen_count = (
+            0
+            if not provenance_tables_exist(con)
+            else con.execute(
+                "SELECT count(*) FROM generation_records "
+                "WHERE generation_id = 'gen-deadbeefdeadbeef' "
+                "OR derived_document_id = 'drv-deadbeefdeadbeef'"
+            ).fetchone()[0]
+        )
+    finally:
+        con.close()
+    assert doc_row == ("owner-b", "original foreign body")
+    assert chunk_count == 0
+    assert gen_count == 0
