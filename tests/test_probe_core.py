@@ -344,3 +344,19 @@ def test_passage_chunk_that_did_not_locate_in_the_served_body_is_404(api_env) ->
     )
     assert resp.status_code == 404
     assert resp.json()["detail"] == "passage_not_found"
+
+
+@pytest.fixture(autouse=True)
+def _scrub_operator_auth_env(monkeypatch):
+    """Environment invariance (review F2): these suites must pass on the
+    operator's own Mac, where the login shell exports the operator-auth
+    env — otherwise the middleware answers 401 and CI-clean tests fail
+    locally. Scrub the credential env for every test in this module."""
+    for key in (
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_DEV_LOGIN_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_COOKIE_INSECURE",
+    ):
+        monkeypatch.delenv(key, raising=False)

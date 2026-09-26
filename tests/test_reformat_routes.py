@@ -239,3 +239,19 @@ def test_reformat_requires_the_source_owner(api_env, monkeypatch) -> None:
     )
     assert allowed.status_code == 201
     assert allowed.json()["bite_count"] > 0
+
+
+@pytest.fixture(autouse=True)
+def _scrub_operator_auth_env(monkeypatch):
+    """Environment invariance (review F2): these suites must pass on the
+    operator's own Mac, where the login shell exports the operator-auth
+    env — otherwise the middleware answers 401 and CI-clean tests fail
+    locally. Scrub the credential env for every test in this module."""
+    for key in (
+        "ANTIEK_AUTH_SECRET",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_DEV_LOGIN_TOKEN",
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_COOKIE_INSECURE",
+    ):
+        monkeypatch.delenv(key, raising=False)
