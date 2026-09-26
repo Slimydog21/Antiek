@@ -528,8 +528,8 @@
               - >-
                 import duckdb;
                 duckdb.connect("{{ antiek_state_dir }}/antiek.duckdb").execute("CHECKPOINT")
-            become: true
-            become_user: "{{ antiek_user }}"
+          become: true
+          become_user: "{{ antiek_user }}"
           changed_when: false
           tags: [code]
 
