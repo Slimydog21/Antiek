@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import hmac
 import json
@@ -11,8 +12,8 @@ import stat
 import tempfile
 import textwrap
 import threading
-import time
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -188,11 +189,10 @@ class LocalSourceCardRegistry:
                     "INSERT INTO multimedia_local_source_cards VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     [*values, _mac(values, self._key)],
                 )
-            else:
-                return self._reopen(
-                    current, request, owner_digest, snapshot_digest, input_digest
-                )
-        return self._reopen(tuple([*values, _mac(values, self._key)]), request, owner_digest, snapshot_digest, input_digest)
+        # Reopening may wait for filesystem publication. Release the database
+        # writer first, including when another creator inserted the winning row.
+        row = current if current is not None else tuple([*values, _mac(values, self._key)])
+        return self._reopen(row, request, owner_digest, snapshot_digest, input_digest)
 
     def reopen(
         self,
@@ -461,8 +461,24 @@ def _private_directory(value: str) -> Path:
     return path
 
 
+@contextmanager
+def _locked_directory(root: Path, operation: int) -> Iterator[int]:
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        fcntl.flock(descriptor, operation)
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
 def _publish(root: Path, name: str, payload: bytes) -> None:
-    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    # Readers must not observe the temporary second link. Closing the directory
+    # descriptor releases the lock only after the temporary name is removed.
+    with _locked_directory(root, fcntl.LOCK_EX) as descriptor:
+        _publish_locked(descriptor, name, payload)
+
+
+def _publish_locked(descriptor: int, name: str, payload: bytes) -> None:
     temporary = f".{name}.{os.getpid()}.{threading.get_ident()}.tmp"
     try:
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=descriptor)
@@ -485,22 +501,26 @@ def _publish(root: Path, name: str, payload: bytes) -> None:
     finally:
         with suppress(FileNotFoundError):
             os.unlink(temporary, dir_fd=descriptor)
-        os.close(descriptor)
 
 
 def _private_png(path: Path) -> str:
+    # Every acquisition has its own descriptor, so this also serializes threads.
+    # This lock is released before create() acquires the database writer.
+    try:
+        with _locked_directory(path.parent, fcntl.LOCK_SH) as descriptor:
+            return _private_png_locked(descriptor, path.name)
+    except OSError:
+        raise LocalSourceCardError("local source-card output is unavailable") from None
+
+
+def _private_png_locked(descriptor: int, name: str) -> str:
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
-        fd = os.open(path, flags)
+        fd = os.open(name, flags, dir_fd=descriptor)
     except OSError:
         raise LocalSourceCardError("local source-card output is unavailable") from None
     try:
         info = os.fstat(fd)
-        for _attempt in range(20):
-            if info.st_nlink != 2:
-                break
-            time.sleep(0.005)
-            info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or not 32 <= info.st_size <= _MAX_CARD_BYTES:
             raise LocalSourceCardError("local source-card output is not private and bounded")
         header = os.read(fd, 24)
