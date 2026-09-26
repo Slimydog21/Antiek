@@ -415,7 +415,7 @@ export function installShortcuts(
     if (row) {
       if (!scopeAllows(row, ctx)) return;
       // A ctrl+alt chord that would type a character stays the field's.
-      if (ctx.kind !== "default" && parseCombo(row.chord!).alt && chordTypesText(e, platform)) return;
+      if (ctx.kind !== "default" && parseCombo(row.chord!).alt && chordTypesText(e)) return;
       // In a Mac text field ctrl+letter is an editing key (ctrl+k deletes to
       // the end of the line), so there "mod" means ⌘ only.
       if (ctx.kind !== "default" && platform === "mac" && e.ctrlKey && !e.metaKey && !e.altKey) return;

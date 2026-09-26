@@ -7,8 +7,8 @@
  * PLAIN key do, against the real component that owns the context:
  *
  *   context               prefix        chord    ⌘J       ⌘K        plain key
- *   text input            not armed     fires    ignored  fires     typed ("?")
- *   contenteditable       not armed     fires    ignored  fires     typed ("?")
+ *   text input            not armed     field's* ignored  fires     typed ("?")
+ *   contenteditable       not armed     field's* ignored  fires     typed ("?")
  *     (the Write editor)  (an element that handled a key first keeps it)
  *   FloatMenu             arms; Esc     fires    fires    fires     Esc → FloatMenu
  *                         cancels the                               (when unarmed)
@@ -19,6 +19,10 @@
  *   open LemonModal       not armed     ignored  ignored  ignored   Esc → the modal
  *   the palette (modal)   not armed     ignored  ignored  CLOSES    "?" typed
  *   arXiv iframe          nothing reaches the window: nothing fires
+ *
+ *   * Inside text a ctrl+alt chord fires only when the key typed nothing but
+ *     its own letter (chordTypesText). On a Mac, Control+Option composes a
+ *     glyph ("∫"), so the chord stays with the field there (carrier critic r2).
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
@@ -96,7 +100,7 @@ function prefixThen(target: EventTarget, next: string) {
 }
 
 describe("text input", () => {
-  it("prefix does not arm; the chord and ⌘K fire; ⌘J and '?' stay with the field", () => {
+  it("prefix does not arm; ⌘K fires; the Mac chord, ⌘J and '?' stay with the field", () => {
     const input = document.createElement("input");
     document.body.appendChild(input);
     input.focus();
@@ -104,8 +108,9 @@ describe("text input", () => {
     expect(armed).toBe(false);
     expect(counts.total()).toBe(0);
 
-    press(input, "ctrl+alt+b", "mac");
-    expect(counts.calls["projecttree.toggle"]).toBe(1);
+    const chord = press(input, "ctrl+alt+b", "mac");
+    expect(counts.calls["projecttree.toggle"]).toBe(0);
+    expect(chord.defaultPrevented, "the Option glyph must reach the field").toBe(false);
     press(input, "mod+k", "mac");
     expect(counts.calls["palette.toggle"]).toBe(1);
     const j = press(input, "mod+j", "mac");
@@ -175,12 +180,41 @@ describe("text surfaces keep keys that type characters (carrier critic r1)", () 
     expect(e.defaultPrevented).toBe(true);
   });
 
-  it("on the Mac, ctrl+option+b fires in the field: Control-modified keys insert no text", () => {
+  it("on the Mac, ctrl+option+b stays with the field: Chromium may type its glyph", () => {
     reinstallFor("mac");
     const input = focusedInput();
-    // keyInit gives the Option glyph "∫"; with Control held Cocoa types nothing.
+    // keyInit gives the Option glyph "∫". Chromium's editing behaviour lets
+    // Control+Option insert printable text, so cancelling it could eat it.
     const e = press(input, "ctrl+alt+b", "mac");
     expect(e.key).toBe("∫");
+    expect(counts.calls["projecttree.toggle"]).toBe(0);
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it("on the Mac, outside text, ctrl+option+b still fires (nothing can be typed)", () => {
+    reinstallFor("mac");
+    (document.activeElement as HTMLElement | null)?.blur();
+    const e = press(document.body, "ctrl+alt+b", "mac");
+    expect(counts.calls["projecttree.toggle"]).toBe(1);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("an IME 'Process' key on ctrl+alt stays with the field, even with isComposing false", () => {
+    reinstallFor("other");
+    const input = focusedInput();
+    const e = pressKey(input, { key: "Process", code: "KeyB", ctrlKey: true, altKey: true });
+    expect(counts.calls["projecttree.toggle"]).toBe(0);
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it("a non-Latin letter on ctrl+alt (ЙЦУКЕН 'и' on KeyB) stays with the field, fires outside", () => {
+    reinstallFor("other");
+    const input = focusedInput();
+    const inField = pressKey(input, { key: "и", code: "KeyB", ctrlKey: true, altKey: true });
+    expect(counts.calls["projecttree.toggle"]).toBe(0);
+    expect(inField.defaultPrevented).toBe(false);
+    input.blur();
+    pressKey(document.body, { key: "и", code: "KeyB", ctrlKey: true, altKey: true });
     expect(counts.calls["projecttree.toggle"]).toBe(1);
   });
 
@@ -196,7 +230,7 @@ describe("text surfaces keep keys that type characters (carrier critic r1)", () 
 });
 
 describe("contenteditable: the Write editor", () => {
-  it("prefix does not arm; the chord and ⌘K fire; ⌘J, ⌘B and '?' stay with the editor", async () => {
+  it("prefix does not arm; ⌘K fires; the Mac chord, ⌘J, ⌘B and '?' stay with the editor", async () => {
     const { container } = render(
       <WriteEditor deliverableId="d-1" sectionId="s-1" initialContent="<p>Words.</p>" />,
     );
@@ -210,14 +244,14 @@ describe("contenteditable: the Write editor", () => {
     expect(counts.total()).toBe(0);
 
     press(editor, "ctrl+alt+b", "mac");
-    expect(counts.calls["projecttree.toggle"]).toBe(1);
+    expect(counts.calls["projecttree.toggle"]).toBe(0);
     press(editor, "mod+k", "mac");
     expect(counts.calls["palette.toggle"]).toBe(1);
     press(editor, "mod+j", "mac");
     press(editor, "mod+b", "mac");
     press(editor, "?", "mac");
     expect(counts.calls["door.research"]).toBe(0);
-    expect(counts.calls["projecttree.toggle"]).toBe(1);
+    expect(counts.calls["projecttree.toggle"]).toBe(0);
     expect(counts.calls["keysheet.toggle"]).toBe(0);
   });
 

@@ -334,25 +334,25 @@ function altGraph(e: KeyboardEvent): boolean {
 }
 
 /**
- * Would keydown `e` type a character into a focused text surface? Inside
- * text, a ctrl+alt chord fires only when it types nothing (carrier critic
- * r1). eventMatchesCombo already refuses a press that reports AltGraph; this
- * covers the presses that don't.
- *  - Off the Mac, Windows treats left ctrl+alt as AltGr on layouts that type
- *    characters with it (Hungarian and Czech ctrl+alt+b is "{"), and the
- *    AltGraph modifier is not always reported. e.key then carries the
- *    character, or "Dead" for a dead key, and the field keeps the key. A
- *    shifted chord is judged the same way, so off the Mac it never fires in
- *    text.
- *  - On the Mac, Cocoa inserts no text for a Control-modified key (it becomes
- *    a command, not insertText). So the Option glyph in e.key ("∫") is never
- *    typed while Control is held, and the chord takes nothing from the field.
- *    This is not measured on hardware; the prefix path works either way.
+ * Would keydown `e` type something into a focused text surface? Inside text,
+ * a ctrl+alt chord fires only when the key typed nothing but its own physical
+ * letter: e.key is one character and equals the key printed on e.code. Any
+ * other key belongs to the field. eventMatchesCombo already refuses a press
+ * that reports AltGraph; this rule covers the presses that do not
+ * (carrier critic r1 and r2).
+ *  - AltGr layouts: Windows treats left ctrl+alt as AltGr (Hungarian and
+ *    Czech ctrl+alt+b is "{"), sometimes without reporting AltGraph.
+ *  - macOS: Chromium lets Control+Option insert printable characters
+ *    (editing_behavior.cc), and a cancelled keydown suppresses its input
+ *    (UI Events). So an Option glyph such as "∫" is the field's too. On a
+ *    Mac, inside text, the chords therefore do not fire; the prefix works
+ *    outside text, and so do the chords.
+ *  - Dead keys ("Dead"), IME processing ("Process"), "Unidentified" and
+ *    every other named key are never a chord inside text.
  */
-export function chordTypesText(e: KeyboardEvent, platform: Platform): boolean {
-  if (e.isComposing || e.key === "Dead") return true;
-  if (platform === "mac") return false;
-  return e.key.length === 1 && e.key.toLowerCase() !== codeToKey(e.code ?? "");
+export function chordTypesText(e: KeyboardEvent): boolean {
+  if (e.isComposing) return true;
+  return !(e.key.length === 1 && e.key.toLowerCase() === codeToKey(e.code ?? ""));
 }
 
 /**

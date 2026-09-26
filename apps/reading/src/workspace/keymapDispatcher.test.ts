@@ -13,12 +13,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { KEYMAP, isActiveOn, readPrefix, type KeymapRow, type Platform } from "../components/hotkeys/keymap";
+import { KEYMAP, isActiveOn, parseCombo, readPrefix, type KeymapRow, type Platform } from "../components/hotkeys/keymap";
 import { prefixState } from "../components/hotkeys/prefixState";
 import { PRODUCT_ACTIVATE_EVENT, type ProductActivateDetail } from "../components/hotkeys/bindings";
 import { SHORTCUT_EVENTS, installShortcuts, setCustomHotkeys } from "./shortcuts";
 import { useWorkspace } from "./WorkspaceStore";
-import { countingHandlers, pinPlatform, press, pressKey, unpinPlatform } from "./keymapTestKit";
+import { countingHandlers, keyInit, pinPlatform, press, pressKey, unpinPlatform } from "./keymapTestKit";
 
 let uninstall: (() => void) | null = null;
 
@@ -371,10 +371,17 @@ function mountContext(ctx: Ctx): HTMLElement {
 }
 
 /** What the scope rules say a row does from each context. */
-function expectedFires(row: KeymapRow, ctx: Ctx): boolean {
+function expectedFires(row: KeymapRow, ctx: Ctx, platform: "mac" | "other"): boolean {
   if (row.prefixKey) return ctx === "body";
   if (ctx === "body") return true;
-  if (ctx === "input" || ctx === "contenteditable") return row.scope === "anywhere";
+  if (ctx === "input" || ctx === "contenteditable") {
+    if (row.scope !== "anywhere") return false;
+    // Inside text a ctrl+alt chord fires only when its key typed nothing but
+    // its own letter (carrier critic r2): never an Option glyph or dead key.
+    const combo = parseCombo(row.chord!);
+    if (!combo.alt) return true;
+    return (keyInit(row.chord!, platform).key ?? "").toLowerCase() === combo.key;
+  }
   if (ctx === "palette-modal") return row.action === "palette.toggle";
   return false;
 }
@@ -405,7 +412,7 @@ describe("fuzz: no key reaches two handlers, and every row reaches its own", () 
             } else {
               last = press(target, row.chord!, platform);
             }
-            const fires = expectedFires(row, ctx);
+            const fires = expectedFires(row, ctx, platform);
             const label = `${row.id} (${row.prefixKey ? `prefix+${row.prefixKey}` : row.chord}) from ${ctx}`;
             expect(total(), `${label}: handler count`).toBe(fires ? 1 : 0);
             if (fires) {

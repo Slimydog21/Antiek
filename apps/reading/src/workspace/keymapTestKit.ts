@@ -20,7 +20,12 @@ const PUNCT_CODES: Record<string, string> = {
 
 /** What macOS composes option+<key> into (a sample; enough to prove a chord
  *  matches the physical key, not the character). */
-const MAC_OPTION_GLYPHS: Record<string, string> = { b: "∫", g: "©", 1: "¡", k: "˚" };
+const MAC_OPTION_GLYPHS: Record<string, string> = {
+  b: "∫", g: "©", 1: "¡", k: "˚",
+  // Every ctrl+alt chord key in the table, so the Mac fuzz sees real
+  // composition. Option+i is a dead key (the circumflex), reported as "Dead".
+  h: "˙", l: "¬", f: "ƒ", i: "Dead", "]": "‘", "[": "“",
+};
 
 /** The KeyboardEventInit a keyboard produces for `spec` on `platform`. */
 export function keyInit(spec: string, platform: Platform): KeyboardEventInit {
