@@ -36,6 +36,8 @@ import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 
+import { getChunkLoadFailure, isChunkLoadError } from "./chunkLoadRecovery";
+
 /** The pathname for logging, read from the document — never from the router,
  *  which may be the thing that threw. Never throws itself. */
 function documentPathname(): string {
@@ -92,7 +94,7 @@ class RootErrorBoundary extends Component<BoundaryProps, BoundaryState> {
 
   render(): ReactNode {
     if (!this.state.hasError) return this.props.children;
-    const staleDeploy = false;
+    const staleDeploy = isChunkLoadError(this.state.error) || getChunkLoadFailure() !== null;
     return (
       <main
         role="alert"

@@ -8,6 +8,7 @@ import App from "./App";
 import AppLegacy from "./AppLegacy";
 import { PostHogRoot } from "./lib/PostHogRoot";
 import { AppErrorBoundary } from "./lib/AppErrorBoundary";
+import { installChunkLoadRecovery } from "./lib/chunkLoadRecovery";
 
 /**
  * S12 cutover flag.
@@ -29,6 +30,10 @@ if (import.meta.env.DEV) {
   // eslint-disable-next-line no-console
   console.info(`[antiek] UI version: ${uiVersion}`);
 }
+
+// P-05: a stale tab whose hashed chunks were replaced by a deploy reloads
+// once per failed asset, then falls through to the boundary (never a loop).
+installChunkLoadRecovery();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
