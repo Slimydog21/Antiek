@@ -406,7 +406,11 @@ def project_document(
         if gen_row is not None:
             store = ProvenanceStore()
             record = store.get_generation(con, str(gen_row[0]))
-            assert record is not None  # the FK guarantees it
+            if record is None:  # the FK guarantees it — refuse loudly if not
+                raise RuntimeError(
+                    f"generation record {gen_row[0]} vanished between read "
+                    "and projection"
+                )
             for bite in store.bites_for_generation(con, record.generation_id):
                 refs = [
                     f"bite:{bite.bite_id}",

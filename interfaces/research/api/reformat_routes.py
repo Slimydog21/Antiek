@@ -166,7 +166,10 @@ def register_reformat_routes(app: FastAPI) -> None:
                 )
             store = ProvenanceStore()
             record = store.get_generation(con, str(record_row[0]))
-            assert record is not None  # the FK guarantees it
+            if record is None:  # the FK guarantees it — refuse loudly if not
+                raise HTTPException(
+                    status_code=500, detail="provenance_record_missing"
+                )
             source_title_row = con.execute(
                 "SELECT title FROM documents WHERE document_id = ? LIMIT 1",
                 [record.source_document_id],
