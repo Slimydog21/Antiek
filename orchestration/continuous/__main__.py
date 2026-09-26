@@ -46,6 +46,7 @@ def main() -> int:
     from orchestration.continuous.daemon import (
         DaemonConfig,
         DaemonState,
+        refuse_spawn_switch,
         run_one_iteration,
     )
     from orchestration.continuous.daemon import (
@@ -53,6 +54,10 @@ def main() -> int:
     )
 
     if args.once:
+        # A smoke run must answer a set spawn switch exactly as the service does.
+        import os
+
+        refuse_spawn_switch(os.environ)
         run_one_iteration(
             state=DaemonState(),
             config=DaemonConfig(),

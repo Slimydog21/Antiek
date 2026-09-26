@@ -2,22 +2,22 @@
 #
 # systemd unit for the continuous-research daemon (master-spec §7.3 +
 # §7.4). Scans the trajectory event log for unresolved evidentiary
-# gaps across investigations and spawns follow-on chases when budget
-# allows.
+# gaps across investigations and scores them.
 #
-# This unit is INDEPENDENT of the main `antiek` service: the daemon
-# reads the event log but never writes to the DuckDB it reads. All
-# spawned investigations are submitted to the substrate via the
-# in-process API the same way an operator would — so the
-# single-writer invariant holds (the substrate's uvicorn is still
-# the only DuckDB writer). The daemon is a READ-side cron loop, not
-# a parallel writer.
+# Spawning is OFF and refused (LB-10): with ANTIEK_DAEMON_SPAWN_ENABLED set
+# the daemon exits 78 (EX_CONFIG) and RestartPreventExitStatus below keeps
+# it down, because its spawn path has no investigation handler in this
+# process and diligence has no per-flag consent yet (D4). Spawning returns
+# with an API-routed, consented launch, submitted through the substrate API
+# so the single-writer invariant holds.
 #
-# Budget cap per §16 ("Letting the daemon's chase budget exceed
-# $5/day by default… Cost runaway is the failure mode that turns
-# Antiek into a $5000/month surprise charge"). Enforced via
-# ANTIEK_DAEMON_BUDGET_USD_PER_DAY which the daemon checks on every
-# tick before spawning.
+# This unit is INDEPENDENT of the main `antiek` service: the daemon reads
+# the event log and never writes the DuckDB it reads.
+#
+# Budget cap per §16: $5/day by default (orchestration/continuous/budget.py).
+# The ANTIEK_DAEMON_BUDGET_USD_PER_DAY line below is not the variable the
+# code reads (ANTIEK_DAEMON_HOURLY_BUDGET_USD); both are 5.0 today. Aligning
+# them is a recorded follow-up.
 
 [Unit]
 Description=Antiek continuous-research daemon (§7.3 + §7.4)

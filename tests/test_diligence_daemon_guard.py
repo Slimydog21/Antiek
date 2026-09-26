@@ -18,7 +18,6 @@ import pytest
 
 import orchestration.continuous.daemon as daemon_mod
 from runtime.db_lock import connect_write
-from substrate.diligence import store as store_mod
 from substrate.diligence.store import DiligenceStore
 from substrate.graph import ensure_initialized
 
@@ -69,7 +68,6 @@ def test_a_flag_that_vanishes_after_its_write_fails_loudly(monkeypatch, tmp_path
         extra = {"spawned_investigation_id": "inv-x"} if method == "mark_spawned" else {}
         with pytest.raises(RuntimeError, match=f"diligence flag {flag_id} vanished"):
             getattr(store, method)(con, owner_user_id="owner-1", flag_id=flag_id, **extra)
-    assert store_mod  # the module under test is the one the daemon imports
 
 
 def test_the_unit_does_not_restart_a_refused_configuration():
@@ -81,3 +79,18 @@ def test_the_unit_does_not_restart_a_refused_configuration():
     prevent = [line.split("=", 1)[1].split() for line in unit.splitlines()
                if line.startswith("RestartPreventExitStatus=")]
     assert prevent and str(daemon_mod.EX_CONFIG) in prevent[0]
+
+
+def test_the_once_smoke_run_refuses_the_switch_like_the_service(monkeypatch):
+    import sys
+
+    import orchestration.continuous.__main__ as cli
+
+    ran: list[str] = []
+    monkeypatch.setattr(daemon_mod, "run_one_iteration", lambda **kw: ran.append("tick"))
+    monkeypatch.setattr(sys, "argv", ["python -m orchestration.continuous", "--once"])
+    monkeypatch.setenv("ANTIEK_DAEMON_SPAWN_ENABLED", "1")
+    with pytest.raises(SystemExit) as refused:
+        cli.main()
+    assert refused.value.code == daemon_mod.EX_CONFIG
+    assert ran == []

@@ -690,6 +690,21 @@ def run_forever(
     return state
 
 
+def refuse_spawn_switch(env: dict[str, str] | Any) -> None:
+    """Exit EX_CONFIG when the spawn switch is on (LB-10). Every entrypoint
+    calls this first: main() and ``python -m orchestration.continuous --once``
+    must answer a set switch the same way."""
+    if spawn_enabled(env):
+        print(
+            f"{ENV_DAEMON_SPAWN_ENABLED} is set, but daemon spawning is refused: its spawns "
+            "would emit on a bus with no investigation handler in this process, and diligence "
+            "has no per-flag consent yet (D4; THREAD-CONTRACT §1.13). Unset it; spawning "
+            "returns with the API-routed, consented launch path.",
+            file=sys.stderr,
+        )
+        raise SystemExit(EX_CONFIG)
+
+
 def main() -> None:
     """Module CLI: ``python -m orchestration.continuous``. Reads
     config from env and runs forever.
@@ -706,15 +721,7 @@ def main() -> None:
     - Diligence has no per-flag consent yet (D4, THREAD-CONTRACT §1.13).
 
     Spawning returns only with the API-routed, consented path."""
-    if spawn_enabled(os.environ):
-        print(
-            f"{ENV_DAEMON_SPAWN_ENABLED} is set, but daemon spawning is refused: its spawns "
-            "would emit on a bus with no investigation handler in this process, and diligence "
-            "has no per-flag consent yet (D4; THREAD-CONTRACT §1.13). Unset it; spawning "
-            "returns with the API-routed, consented launch path.",
-            file=sys.stderr,
-        )
-        raise SystemExit(EX_CONFIG)
+    refuse_spawn_switch(os.environ)
     config = DaemonConfig(
         sleep_seconds=float(os.environ.get("ANTIEK_DAEMON_SLEEP_SECONDS", "60")),
         expected_cost_per_spawn_usd=float(
