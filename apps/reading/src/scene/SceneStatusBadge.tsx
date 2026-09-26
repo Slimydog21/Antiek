@@ -28,7 +28,22 @@ export function sceneStatusReason(status: KreaStatusSnapshot | null): string | n
   return latest?.reason ?? null;
 }
 
+/**
+ * The badge is an operator diagnostic (why the scene is procedural, e.g. no
+ * Krea key), so a production user never sees it (A-12). It stays on in dev
+ * builds and Storybook, and `?scene=debug` turns it on in production, because
+ * an operator chasing a misconfigured Krea still needs it. Gated rather than
+ * deleted for that reason.
+ */
+export function sceneBadgeAllowed(): boolean {
+  if (import.meta.env.DEV) return true;
+  if (import.meta.env.STORYBOOK === "true") return true;
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("scene") === "debug";
+}
+
 export function SceneStatusBadge({ status, error = null }: SceneStatusBadgeProps) {
+  if (!sceneBadgeAllowed()) return null;
   const reason = error ? "offline" : sceneStatusReason(status);
   const fallback = Boolean(error) || Boolean(status && !status.enabled) || Boolean(reason);
   if (!fallback) return null;
