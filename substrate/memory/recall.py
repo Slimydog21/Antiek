@@ -28,6 +28,7 @@ def recall_memory(
     *,
     query: str | None = None,
     limit: int = DEFAULT_RECALL_LIMIT,
+    exclude_provenance: tuple[str, str] | None = None,
 ) -> list[MemoryItem]:
     """Return current owner memory ranked by lexical salience and recency.
 
@@ -39,6 +40,9 @@ def recall_memory(
     query (``salient_tokens`` + ``limit``) so at most ``RECALL_CANDIDATE_CAP``
     rows reach Python; the salience rank is then applied to that candidate set
     exactly as it was to the full set.
+
+    ``exclude_provenance`` applies in SQL before the bounded candidate set is
+    ranked, so excluded rows cannot crowd out eligible memory.
     """
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError("limit must be a positive integer")
@@ -51,6 +55,7 @@ def recall_memory(
         owner_user_id,
         salient_tokens=_prefilter_tokens(query_tokens),
         limit=max(RECALL_CANDIDATE_CAP, limit),
+        exclude_provenance=exclude_provenance,
     )
     ranked = sorted(items, key=lambda item: (item.memory_id, item.edge_id))
     ranked.sort(
