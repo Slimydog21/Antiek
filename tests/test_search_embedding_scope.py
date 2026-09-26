@@ -167,6 +167,14 @@ def test_direct_helper_stays_global_and_other_sql_errors_surface(db):
         hits(db, model, document_id="a")
 
 
+def test_missing_candidate_table_is_not_treated_as_absent_metadata(db):
+    model = HashEmbedding(dimension=8)
+    with pytest.raises(duckdb.CatalogException):
+        assert_embedding_compatible(
+            db, model, candidate_sql="SELECT chunk_id FROM missing_candidates",
+        )
+
+
 @pytest.mark.parametrize("column", ["fingerprint", "dimension"])
 def test_present_null_identity_fails_closed(db, column):
     model = HashEmbedding(dimension=8)

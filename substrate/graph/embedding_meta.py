@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+import duckdb
+
 from processing.embedding import (
     embedding_model_name,
     embedding_provider_fingerprint,
@@ -71,11 +73,12 @@ def assert_embedding_compatible(
     params.extend([fingerprint, dimension])
     try:
         row = con.execute(sql, params).fetchone()
-    except Exception as exc:
-        if (exc.__class__.__name__ == "CatalogException"
-                and str(exc).startswith(
-                    "Catalog Error: Table with name embeddings_meta does not exist!"
-                )):
+    except duckdb.CatalogException:
+        # A legacy DB may lack this table. Probe only on an error so an
+        # unrelated missing candidate relation cannot masquerade as legacy.
+        try:
+            con.execute("SELECT 1 FROM embeddings_meta LIMIT 0")
+        except duckdb.CatalogException:
             return
         raise
     if row is None:
