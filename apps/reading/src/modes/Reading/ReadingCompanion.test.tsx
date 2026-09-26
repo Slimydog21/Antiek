@@ -341,7 +341,7 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     renderCompanion();
     fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
 
-    expect(await screen.findByText("1 hash conflict need review")).toBeTruthy();
+    expect(await screen.findByText("1 hash conflict needs review")).toBeTruthy();
     expect(screen.getByRole("region", { name: /Draft merge receipt/i })).toBeTruthy();
   });
 
@@ -380,7 +380,7 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(receipt.textContent).toMatch(/Review only · the book is never changed/);
     // The conflict is still surfaced, so review stays honest.
-    expect(screen.getByText("1 hash conflict need review")).toBeTruthy();
+    expect(screen.getByText("1 hash conflict needs review")).toBeTruthy();
   });
 
   it("keeps draft merge disabled until two chases are ready", () => {

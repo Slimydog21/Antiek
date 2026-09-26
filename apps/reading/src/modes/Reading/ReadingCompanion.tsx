@@ -220,8 +220,9 @@ export default function ReadingCompanion({
               </p>
               {draftMergeReceipt.hash_conflicts.length > 0 ? (
                 <p className="text-emperor">
-                  {draftMergeReceipt.hash_conflicts.length} hash conflict
-                  {draftMergeReceipt.hash_conflicts.length === 1 ? "" : "s"} need review
+                  {draftMergeReceipt.hash_conflicts.length === 1
+                    ? "1 hash conflict needs review"
+                    : `${draftMergeReceipt.hash_conflicts.length} hash conflicts need review`}
                 </p>
               ) : (
                 <p>No hash conflicts</p>
