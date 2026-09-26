@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { apiFetch } from "../../lib/api";
+import { ApiError, apiFetch } from "../../lib/api";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import LemonButton from "../../components/lemon/LemonButton";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import {
   fetchPrivacySettings,
   setPrivacySurface,
@@ -74,13 +76,26 @@ interface DeletionRequest {
 export default function PrivacyDashboard() {
   const [data, setData] = useState<TrustCenterData | null>(null);
   const [privacy, setPrivacy] = useState<PrivacySurface[] | null>(null);
+  // `error` is the deletion-ledger notice below (written for people, kept
+  // as is). Every failed request goes through `failure` instead, so no
+  // status, path or transport string reaches the page (F-07).
   const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{
+    failure: DescribedFailure;
+    retry: () => void;
+  } | null>(null);
   const [pendingDeletion, setPendingDeletion] = useState<
     DeletionRequest | null | "unknown"
   >(null);
   const [savingSurface, setSavingSurface] = useState<string | null>(null);
 
+  const fail = useCallback((e: unknown, what: string, retry: () => void) => {
+    console.warn(`[PrivacyDashboard] ${what} failed`, e);
+    setFailure({ failure: describeFailure(e, { what }), retry });
+  }, []);
+
   const reload = useCallback(async () => {
+    setFailure(null);
     try {
       const [tc, dr, privacyResp] = await Promise.all([
         apiFetch("/trust-center"),
@@ -88,7 +103,7 @@ export default function PrivacyDashboard() {
         fetchPrivacySettings(),
       ]);
       if (!tc.ok) {
-        throw new Error(`GET /trust-center failed: HTTP ${tc.status}`);
+        throw new ApiError(`GET /trust-center failed: HTTP ${tc.status}`, tc.status, await tc.text());
       }
       setData(await tc.json());
       setPrivacy(privacyResp.surfaces);
@@ -111,9 +126,9 @@ export default function PrivacyDashboard() {
         );
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      fail(e, "load your privacy settings", () => void reload());
     }
-  }, []);
+  }, [fail]);
 
   useEffect(() => {
     void reload();
@@ -129,6 +144,7 @@ export default function PrivacyDashboard() {
       ),
     );
     setSavingSurface(surface.surface_name);
+    setFailure(null);
     try {
       const updated = await setPrivacySurface(surface.surface_name, enabled);
       setPrivacy((prev) =>
@@ -138,13 +154,14 @@ export default function PrivacyDashboard() {
       );
     } catch (e: unknown) {
       setPrivacy(previous);
-      setError(e instanceof Error ? e.message : String(e));
+      fail(e, "save that privacy setting", () => void toggleSurface(surface, enabled));
     } finally {
       setSavingSurface(null);
     }
   };
 
   const requestDeletion = async () => {
+    setFailure(null);
     try {
       const resp = await apiFetch("/trust-center/deletion-requests", {
         method: "POST",
@@ -152,27 +169,28 @@ export default function PrivacyDashboard() {
         body: JSON.stringify({ reason: null }),
       });
       if (!resp.ok) {
-        throw new Error(`POST deletion request: HTTP ${resp.status}`);
+        throw new ApiError(`POST deletion request: HTTP ${resp.status}`, resp.status, await resp.text());
       }
       await reload();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      fail(e, "request deletion", () => void requestDeletion());
     }
   };
 
   const cancelDeletion = async () => {
     if (!pendingDeletion || pendingDeletion === "unknown") return;
+    setFailure(null);
     try {
       const resp = await apiFetch(
         `/trust-center/deletion-requests/${encodeURIComponent(pendingDeletion.request_id)}/cancel`,
         { method: "POST" },
       );
       if (!resp.ok) {
-        throw new Error(`Cancel deletion: HTTP ${resp.status}`);
+        throw new ApiError(`Cancel deletion: HTTP ${resp.status}`, resp.status, await resp.text());
       }
       await reload();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      fail(e, "cancel the deletion request", () => void cancelDeletion());
     }
   };
 
@@ -210,6 +228,18 @@ export default function PrivacyDashboard() {
               </p>
             )}
           </header>
+
+          {failure && (
+            <ErrorBanner className="space-y-2">
+              <p className="font-medium">{failure.failure.title}</p>
+              <p>{failure.failure.detail}</p>
+              {failure.failure.retryable && (
+                <LemonButton variant="secondary" size="sm" type="button" onClick={failure.retry}>
+                  Try again
+                </LemonButton>
+              )}
+            </ErrorBanner>
+          )}
 
           {error && (
             <ErrorBanner>

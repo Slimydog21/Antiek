@@ -10,7 +10,8 @@ import {
   type RenderedArtifact,
   type StyleDraft,
 } from "../../api/styles";
-import { apiFetch } from "../../lib/api";
+import { ApiError, apiFetch } from "../../lib/api";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTag from "../../components/lemon/LemonTag";
 import ArtifactFeedbackReview from "./ArtifactFeedbackReview";
@@ -90,6 +91,12 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   const [selected, setSelected] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable" | "empty">("loading");
   const [error, setError] = useState<string | null>(null);
+  /** A failed version download, with the version to retry (F-07: this sink
+   *  rendered "Download unavailable (HTTP n)."). */
+  const [downloadFailure, setDownloadFailure] = useState<{
+    failure: DescribedFailure;
+    version?: string;
+  } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -310,9 +317,16 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   };
 
   const downloadVersion = async (version?: string) => {
+    setDownloadFailure(null);
     try {
       const response = await apiFetch(artifactVersionUrl(artifactId, version));
-      if (!response.ok) throw new Error(`Download unavailable (HTTP ${response.status}).`);
+      if (!response.ok) {
+        throw new ApiError(
+          `Download unavailable (HTTP ${response.status}).`,
+          response.status,
+          await response.text(),
+        );
+      }
       const url = URL.createObjectURL(await response.blob());
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -320,7 +334,11 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (cause) {
-      setError(messageOf(cause));
+      console.warn("[StyleWheel] version download failed", cause);
+      setDownloadFailure({
+        failure: describeFailure(cause, { what: "download this version" }),
+        version,
+      });
     }
   };
 
@@ -625,6 +643,17 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
               Download latest
             </button>
           </div>
+          {downloadFailure ? (
+            <div className="style-wheel__error" role="alert">
+              <p>{downloadFailure.failure.title}</p>
+              <p>{downloadFailure.failure.detail}</p>
+              {downloadFailure.failure.retryable ? (
+                <button type="button" onClick={() => void downloadVersion(downloadFailure.version)}>
+                  Try again
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </aside>
       ) : null}
     </section>

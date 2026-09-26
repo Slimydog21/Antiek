@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-vi.mock("../../lib/api", () => ({
-  API_BASE: "",
-  apiFetch: vi.fn(),
-}));
+vi.mock("../../lib/api", async () => {
+  // Keep ApiError & co. real: the dashboard's failures go through
+  // shared/failure.ts, which reads them.
+  const actual = await vi.importActual<typeof import("../../lib/api")>("../../lib/api");
+  return { ...actual, API_BASE: "", apiFetch: vi.fn() };
+});
 
 vi.mock("../../api/privacy", () => ({
   fetchPrivacySettings: vi.fn(),
@@ -170,6 +172,9 @@ describe("PrivacyDashboard", () => {
     await waitFor(() =>
       expect(skill.getAttribute("aria-checked")).toBe("true"),
     );
-    expect(screen.getByText(/privacy settings API 500/)).toBeTruthy();
+    // FFX SPR-03: the failure is plain copy; the raw "privacy settings API
+    // 500" diagnostic is logged, never rendered.
+    expect(screen.getByText("Couldn't save that privacy setting.")).toBeTruthy();
+    expect(screen.queryByText(/privacy settings API 500/)).toBeNull();
   });
 });

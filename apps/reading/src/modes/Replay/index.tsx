@@ -3,8 +3,10 @@ import { useParams } from "react-router-dom";
 
 import TrajectoryReplay from "../../components/TrajectoryReplay";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import LemonButton from "../../components/lemon/LemonButton";
 import type { Event } from "../../generated/types";
-import { API_BASE, apiFetch } from "../../lib/api";
+import { API_BASE, ApiError, apiFetch } from "../../lib/api";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import { PanelHost } from "../../workspace/PanelHost";
 
 /**
@@ -23,7 +25,7 @@ export default function Replay() {
   const { investigationId } = useParams<{ investigationId: string }>();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<DescribedFailure | null>(null);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -34,21 +36,24 @@ export default function Replay() {
       return;
     }
     setLoading(true);
-    setError(null);
+    setFailure(null);
     try {
       const resp = await apiFetch(
         `${API_BASE}/trajectory/${encodeURIComponent(investigationId)}`,
       );
       if (!resp.ok) {
-        throw new Error(
+        throw new ApiError(
           `GET /trajectory failed: HTTP ${resp.status}`,
+          resp.status,
+          await resp.text(),
         );
       }
       const data = await resp.json();
       const list: Event[] = (data.events ?? data) as Event[];
       setEvents(Array.isArray(list) ? list : []);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      console.warn("[Replay] load failed", e);
+      setFailure(describeFailure(e, { what: "load this replay" }));
       setEvents([]);
     } finally {
       setLoading(false);
@@ -174,12 +179,18 @@ export default function Replay() {
           {loading && (
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading trajectory…</p>
           )}
-          {error && (
-            <ErrorBanner>
-              {error}
+          {failure && (
+            <ErrorBanner className="space-y-2">
+              <p className="font-medium">{failure.title}</p>
+              <p>{failure.detail}</p>
+              {failure.retryable && (
+                <LemonButton variant="secondary" size="sm" type="button" onClick={() => void reload()}>
+                  Try again
+                </LemonButton>
+              )}
             </ErrorBanner>
           )}
-          {!loading && !error && events.length === 0 && (
+          {!loading && !failure && events.length === 0 && (
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">
               No events recorded for this investigation yet. The live
               tail will populate as events arrive.

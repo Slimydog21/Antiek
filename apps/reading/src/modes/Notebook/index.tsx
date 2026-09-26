@@ -9,6 +9,9 @@ import {
   reorderNotebookBlocks,
 } from "../../lib/api";
 import { ArtifactExport } from "../../components/ArtifactExport";
+import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import LemonButton from "../../components/lemon/LemonButton";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import NotebookCanvas from "./NotebookCanvas";
 import type {
   NotebookBlockResponse,
@@ -32,7 +35,14 @@ export default function Notebook() {
   const notebookId = params.notebookId ?? null;
   const [notebook, setNotebook] = useState<NotebookResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  // Two sinks, kept apart so a failed block action never replaces the
+  // notebook: `loadFailure` is the whole-notebook read, `actionFailure` one
+  // block action with the exact call to re-run on Try again.
+  const [loadFailure, setLoadFailure] = useState<DescribedFailure | null>(null);
+  const [actionFailure, setActionFailure] = useState<{
+    failure: DescribedFailure;
+    retry: () => void;
+  } | null>(null);
 
   const reload = useCallback(async () => {
     if (!notebookId) {
@@ -40,12 +50,13 @@ export default function Notebook() {
       return;
     }
     setLoading(true);
-    setError(null);
+    setLoadFailure(null);
     try {
       const data = (await getNotebook(notebookId)) as NotebookResponse;
       setNotebook(data);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      console.warn("[Notebook] load failed", e);
+      setLoadFailure(describeFailure(e, { what: "open this notebook" }));
     } finally {
       setLoading(false);
     }
@@ -55,47 +66,55 @@ export default function Notebook() {
     void reload();
   }, [reload]);
 
+  const failAction = useCallback((e: unknown, what: string, retry: () => void) => {
+    console.warn(`[Notebook] ${what} failed`, e);
+    setActionFailure({ failure: describeFailure(e, { what }), retry });
+  }, []);
+
   const appendBlock = useCallback(
     async (req: { block_type: string; content: unknown; ref_id?: string | null }) => {
       if (!notebookId) return;
+      setActionFailure(null);
       try {
         const data = (await appendNotebookBlock(notebookId, req)) as NotebookResponse;
         track("notebook_block_appended", { block_type: req.block_type });
         setNotebook(data);
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
+        failAction(e, "add the block", () => void appendBlock(req));
       }
     },
-    [notebookId],
+    [notebookId, failAction],
   );
 
   const deleteBlock = useCallback(
     async (blockId: string) => {
       if (!notebookId) return;
+      setActionFailure(null);
       try {
         const data = (await deleteNotebookBlock(notebookId, blockId)) as NotebookResponse;
         track("notebook_block_deleted");
         setNotebook(data);
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
+        failAction(e, "delete the block", () => void deleteBlock(blockId));
       }
     },
-    [notebookId],
+    [notebookId, failAction],
   );
 
   const editBlock = useCallback(
     async (blockId: string, content: Record<string, unknown>) => {
       if (!notebookId) return;
+      setActionFailure(null);
       try {
         const data = (await patchNotebookBlock(
           notebookId, blockId, { content },
         )) as NotebookResponse;
         setNotebook(data);
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
+        failAction(e, "save your edit", () => void editBlock(blockId, content));
       }
     },
-    [notebookId],
+    [notebookId, failAction],
   );
 
   const moveBlock = useCallback(
@@ -110,16 +129,17 @@ export default function Notebook() {
       if (swapWith < 0 || swapWith >= sorted.length) return;
       const newOrder = sorted.map((b) => b.block_id);
       [newOrder[idx], newOrder[swapWith]] = [newOrder[swapWith], newOrder[idx]];
+      setActionFailure(null);
       try {
         const data = (await reorderNotebookBlocks(
           notebookId, newOrder,
         )) as NotebookResponse;
         setNotebook(data);
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
+        failAction(e, "move the block", () => void moveBlock(blockId, direction));
       }
     },
-    [notebookId, notebook],
+    [notebookId, notebook, failAction],
   );
 
   if (!notebookId) {
@@ -132,8 +152,11 @@ export default function Notebook() {
         {loading && (
           <div className="px-8 py-6 text-sm text-shadow-1 dark:text-moonlight">Loading notebook…</div>
         )}
-        {error && (
-          <div className="px-8 py-6 text-sm text-emperor">{error}</div>
+        {loadFailure && (
+          <FailureNotice failure={loadFailure} onRetry={() => void reload()} />
+        )}
+        {actionFailure && (
+          <FailureNotice failure={actionFailure.failure} onRetry={actionFailure.retry} />
         )}
         {notebook && (
           <>
@@ -153,6 +176,28 @@ export default function Notebook() {
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+function FailureNotice({
+  failure,
+  onRetry,
+}: {
+  failure: DescribedFailure;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="px-8 py-6">
+      <ErrorBanner className="space-y-2">
+        <p className="font-medium">{failure.title}</p>
+        <p>{failure.detail}</p>
+        {failure.retryable && (
+          <LemonButton variant="secondary" size="sm" type="button" onClick={onRetry}>
+            Try again
+          </LemonButton>
+        )}
+      </ErrorBanner>
     </div>
   );
 }
