@@ -1,23 +1,21 @@
 # {{ ansible_managed }}
 #
-# systemd unit for the continuous-research daemon (master-spec §7.3 +
-# §7.4). Scans the trajectory event log for unresolved evidentiary
-# gaps across investigations and spawns follow-on chases when budget
-# allows.
+# systemd unit for the continuous-research scan daemon (master-spec §7.3 +
+# §7.4). Scans the trajectory event log for unresolved evidentiary gaps.
+# Production spawn wiring is not attached yet; the daemon's default
+# `no_op_spawn` deliberately starts no paid follow-on chases.
 #
 # This unit is INDEPENDENT of the main `antiek` service: the daemon
-# reads the event log but never writes to the DuckDB it reads. All
-# spawned investigations are submitted to the substrate via the
-# in-process API the same way an operator would — so the
-# single-writer invariant holds (the substrate's uvicorn is still
-# the only DuckDB writer). The daemon is a READ-side cron loop, not
-# a parallel writer.
+# reads the event log but never writes to the DuckDB it reads. When spawn
+# wiring is attached, it must submit investigations through the substrate
+# API so the single-writer invariant holds (the substrate's uvicorn remains
+# the only DuckDB writer). The daemon is a READ-side cron loop, not a
+# parallel writer.
 #
 # Budget cap per §16 ("Letting the daemon's chase budget exceed
 # $5/day by default… Cost runaway is the failure mode that turns
-# Antiek into a $5000/month surprise charge"). Enforced via
-# ANTIEK_DAEMON_BUDGET_USD_PER_DAY which the daemon checks on every
-# tick before spawning.
+# Antiek into a $5000/month surprise charge"). The settings are reserved
+# for the future spawn path; with `no_op_spawn`, no charge can be initiated.
 
 [Unit]
 Description=Antiek continuous-research daemon (§7.3 + §7.4)
@@ -31,9 +29,9 @@ User={{ antiek_user }}
 Group={{ antiek_group }}
 WorkingDirectory={{ antiek_install_dir }}
 
-# Same secrets file the main service uses; the daemon needs
-# OPENROUTER_API_KEY (or whichever dispatch provider) to spawn
-# investigations.
+# Same secrets file the main service uses. The scan path needs no model API
+# key; a future spawn implementation must inject and validate its own key
+# explicitly before enabling paid dispatch.
 EnvironmentFile={{ antiek_secrets_file }}
 
 Environment="PATH={{ antiek_install_dir }}/.venv/bin:/usr/bin:/bin"
