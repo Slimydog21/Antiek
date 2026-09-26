@@ -147,7 +147,10 @@ class DiligenceStore:
             row = self.get_for_owner(
                 con, owner_user_id=owner_user_id, flag_id=existing.flag_id
             )
-            assert row is not None  # the revive above just landed
+            if row is None:  # survives `python -O`
+                raise RuntimeError(
+                    f"diligence flag {existing.flag_id} vanished after its revive"
+                )
             return row, False
         flag_id = _mint_flag_id()
         con.execute(
@@ -165,7 +168,8 @@ class DiligenceStore:
             ],
         )
         row = self.get_for_owner(con, owner_user_id=owner_user_id, flag_id=flag_id)
-        assert row is not None  # the insert above just landed
+        if row is None:  # survives `python -O`
+            raise RuntimeError(f"diligence flag {flag_id} vanished after its insert")
         return row, True
 
     def _find(

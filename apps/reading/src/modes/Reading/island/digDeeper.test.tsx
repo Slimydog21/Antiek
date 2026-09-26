@@ -307,8 +307,20 @@ function projection(status: string) {
 
 async function expandIsland() {
   await screen.findByText("The ope");
+  // The island glyph mounts on a later tick than the passage text.
+  // Await it so the click can never see a null element (CI race).
+  await waitFor(() =>
+    expect(document.querySelector('[data-island-id="a-island"]')).toBeTruthy(),
+  );
   fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
   await screen.findByText("Open research →");
+  // The dig-deeper control renders after the expand. Await it so callers
+  // never fireEvent.click(null) on a tick where the button is not mounted
+  // (CI hit this as "Unable to fire a click event - please provide a DOM
+  // element" in the launch proof).
+  await waitFor(() =>
+    expect(document.querySelector("[data-island-dig-deeper]")).toBeTruthy(),
+  );
 }
 
 beforeEach(() => {
