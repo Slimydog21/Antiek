@@ -14,14 +14,18 @@ re-imported artifact against the export registry, mechanically:
 
 The content hash is the SHA-256 of the canonical content bytes (the same
 canonicalisation the `.antiek` signature covers), so two exports of the same
-content hash-match regardless of zip envelope. Detection emits a typed event;
-no path depends on the operator remembering to check anything.
+content hash-match regardless of zip envelope. Detection returns a typed event
+(``RoundTripResult.event``) carrying who re-imported it, who exported it, and
+when. NOTE: nothing in production records exports or persists these events yet
+(see ``analysis.GateNotRunnable``); the verdict refuses to run on a window that
+was never instrumented rather than reporting that absence as RETIRE.
 """
 
 from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from services.antiek_format.native_writer import _canonical_tiptap_node
 from services.antiek_format.signature import canonical_json_bytes
@@ -49,19 +53,38 @@ class RoundTripResult:
 
 
 class ExportRegistry:
-    """What Antiek has exported, so a re-import is classifiable mechanically.
-    Keyed document_id -> set of exported content hashes. In production this is
-    persisted alongside the export events; the class is storage-agnostic +
-    deterministic so the detector is unit-testable."""
+    """What Antiek has exported, and BY WHOM, so a re-import is classifiable
+    mechanically and "exported by a non-operator" (pre-registered criterion 1)
+    is checkable. Keyed document_id -> set of exported content hashes, plus
+    exporter ids per (document_id, content_hash): WHO exported WHICH bytes, so
+    an unmodified re-import is attributed to the exporters of exactly that
+    content, not to everyone who ever exported some version of the document.
+    In-memory only: no production caller persists it yet. Storage-agnostic +
+    deterministic so it is unit-testable."""
 
     def __init__(self) -> None:
         self._by_doc: dict[str, set[str]] = {}
+        self._exporters: dict[tuple[str, str], set[str]] = {}
 
-    def record_export(self, document_id: str, content_tiptap: dict) -> str:
-        """Record an export; returns the content hash recorded."""
+    def record_export(self, document_id: str, content_tiptap: dict, *, exporter_id: str) -> str:
+        """Record an export by ``exporter_id``; returns the content hash recorded.
+        An export with no exporter cannot be attributed, so it is refused."""
+        if not isinstance(exporter_id, str) or not exporter_id.strip():
+            raise ValueError("record_export requires a non-blank exporter_id")
         h = content_hash(content_tiptap)
         self._by_doc.setdefault(document_id, set()).add(h)
+        self._exporters.setdefault((document_id, h), set()).add(exporter_id)
         return h
+
+    def exporters_of(self, document_id: str, hash_: str | None = None) -> list[str]:
+        """Exporters of that exact content when ``hash_`` is given; otherwise
+        everyone who exported ANY version of the document (the only honest
+        answer when the source export is ambiguous)."""
+        if hash_ is not None:
+            return sorted(self._exporters.get((document_id, hash_), set()))
+        return sorted(
+            {x for (doc, _), ids in self._exporters.items() if doc == document_id for x in ids}
+        )
 
     def knows_document(self, document_id: str) -> bool:
         return document_id in self._by_doc
@@ -76,19 +99,31 @@ def classify_roundtrip(
     registry: ExportRegistry,
     *,
     user_id: str | None = None,
+    emitted_at: datetime | None = None,
 ) -> RoundTripResult:
     """Classify a re-imported artifact against the export registry.
 
-    ``user_id`` is WHO re-imported it and rides on the event: the verdict's
-    operator exclusion compares it to the operator, and an event with no
-    actor is not admissible as organic demand (see ``compute_verdict``)."""
+    ``user_id`` is WHO re-imported it and rides on the event, with the
+    exporters (``exported_by``) and the detection time (``emitted_at``,
+    default now): the verdict admits a round-trip only when both actors are
+    pinned testers and the time is inside the window (see
+    ``compute_verdict``).
+
+    ``exported_by`` is the exporters of the matched content for
+    ``returned_unmodified``. For ``traveled_and_changed`` the source export is
+    ambiguous (the edited bytes match no export), so it is every exporter of
+    the document; the verdict refuses such a round-trip if any of them is the
+    operator."""
     h = content_hash(content_tiptap)
     if registry.knows_exact(document_id, h):
         classification = "returned_unmodified"
+        exported_by = registry.exporters_of(document_id, h)
     elif registry.knows_document(document_id):
         classification = "traveled_and_changed"
+        exported_by = registry.exporters_of(document_id)
     else:
         classification = "novel"
+        exported_by = []
 
     is_roundtrip = classification != "novel"
     event: dict | None = None
@@ -99,6 +134,8 @@ def classify_roundtrip(
             "classification": classification,
             "content_hash": h,
             "user_id": user_id,
+            "exported_by": exported_by,
+            "emitted_at": (emitted_at or datetime.now(UTC)).isoformat(),
         }
     return RoundTripResult(
         classification=classification,

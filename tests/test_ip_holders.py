@@ -86,6 +86,21 @@ def test_accrue_escrow_rejects_non_positive(db):
         accrue_escrow(db, holder_id, Decimal("-1.00"))
 
 
+def test_accrue_escrow_unknown_holder_raises_and_moves_nothing(db):
+    """An accrual to an id with no ip_holders row must fail loudly. A bare
+    UPDATE matching zero rows used to return normally, so a caller that had
+    already recorded the credit (frame-attention ledger, book escrow) believed
+    the money landed when no escrow balance moved at all."""
+    holder_id = create_pre_onboarded(db, display_name="Real Press")
+    accrue_escrow(db, holder_id, Decimal("1.00"))
+    with pytest.raises(LookupError):
+        accrue_escrow(db, "ipholder-deadbeef0000", Decimal("5.00"))
+    (total,) = db.execute(
+        "SELECT SUM(escrow_balance_usd) FROM ip_holders"
+    ).fetchone()
+    assert Decimal(str(total)) == Decimal("1.00")
+
+
 def test_state_machine_pre_onboarded_to_invited_to_claimed(db):
     holder_id = create_pre_onboarded(db, display_name="Cambridge UP")
     mark_invited(db, holder_id)

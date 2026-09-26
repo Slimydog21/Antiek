@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import logging
 import os
 import time
 from collections.abc import Mapping
@@ -61,6 +62,8 @@ except ImportError:  # pragma: no cover
         RouteReceiptCandidate,
         RouteReceiptSelection,
     )
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -776,6 +779,33 @@ def _dispatch_authoritative(
         # Success: normalize, cost, emit, return.
         default_breaker.record_success(provider_name)
         usage = provider.normalize_usage(raw.raw_usage)
+        if usage.reported and usage.cache_unknown:
+            logger.warning(
+                "dispatch: %s/%s reported no valid cache split; billing all input "
+                "at the full rate", provider_name, model_name,
+            )
+        if not raw.raw_usage or not usage.reported:
+            # A paid 200 with no usage is not a free call. Bill the ceiling the
+            # call could have cost (one input token per prompt byte, the full
+            # output budget), the same bound owner-BYOT reserves, so no ledger
+            # settles an unmetered response at a definite 0.
+            logger.warning(
+                "dispatch: %s/%s reported no usage; billing the call ceiling",
+                provider_name, model_name,
+            )
+            ceiling_input = max(1, len(prompt.encode("utf-8")))
+            # A ceiling must bound what this provider can actually charge. An
+            # adapter that can bill prompt-cache writes (Anthropic: 1.25x base
+            # input) has its whole input term priced as writes; the others
+            # have no write premium, so base input is already their bound.
+            usage = NormalizedUsage(
+                input_tokens=ceiling_input,
+                output_tokens=effective_max_tokens,
+                cache_creation_input_tokens=(
+                    ceiling_input if getattr(provider, "bills_cache_writes", False) else 0
+                ),
+                reported=False,
+            )
         finish = normalize_finish_reason(raw.finish_reason)
         cost = _compute_cost_usd(usage, current.pricing)
         receipt = _route_receipt(

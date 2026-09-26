@@ -277,13 +277,26 @@ def accrue_contributions(
 
     lines: list[AccrualLine] = []
 
+    # Every earning line writes its speak_accruals row before its escrow
+    # credit, and connect_write autocommits each statement. A mapped
+    # ip_holder_id with no ip_holders row (the contributors route accepts a
+    # client-supplied id unchecked) would make accrue_escrow raise midway,
+    # after earlier lines had already committed rows and escrow credits, and
+    # a retry would credit those holders again. Check every payee first.
+    payees = {iv: get_payee(con, iv) for iv in contribution.shares}
+    if contributor_pool > 0:
+        ip_holders.require_holders(
+            con,
+            {m.ip_holder_id for m in payees.values() if m and m.ip_holder_id},
+        )
+
     # Earning lines. Iterate in descending share so the budget binds the
     # smallest contributors last (a stable, defensible exhaustion order),
     # and the clamp is applied to the SAME amount we write + escrow.
     for interview_id, share in sorted(
         contribution.shares.items(), key=lambda kv: kv[1], reverse=True
     ):
-        mapping = get_payee(con, interview_id)
+        mapping = payees[interview_id]
         ip_holder_id = mapping.ip_holder_id if mapping else None
         uncapped = (contributor_pool * Decimal(str(share))).quantize(Decimal("0.000001"))
         amount = uncapped
