@@ -369,7 +369,7 @@ describe("D6-F11 — two devices never lose an update (PROBE-8/9, V3/V4)", () =>
     let first = true;
     const adapter: TabTreeAdapter = {
       load: (p, m) => base.load(p, m),
-      allocate: (p, m) => base.allocate(p, m),
+      allocate: (p, m, id) => base.allocate(p, m, id),
       async save(p, m, snap) {
         if (first) {
           first = false;
@@ -409,7 +409,7 @@ describe("D6-F11 — two devices never lose an update (PROBE-8/9, V3/V4)", () =>
     let call = 0;
     const adapter: TabTreeAdapter = {
       load: (p, m) => base.load(p, m),
-      allocate: (p, m) => base.allocate(p, m),
+      allocate: (p, m, id) => base.allocate(p, m, id),
       async save(p, m, s) {
         call++;
         if (call === 1) {
@@ -452,7 +452,7 @@ describe("D6-F11 — two devices never lose an update (PROBE-8/9, V3/V4)", () =>
     const t0 = Date.now();
     const adapter: TabTreeAdapter = {
       load: (p, m) => base.load(p, m),
-      allocate: (p, m) => base.allocate(p, m),
+      allocate: (p, m, id) => base.allocate(p, m, id),
       async save(p, m, snap) {
         writes.push({ at: Date.now() - t0, nodes: Object.keys(snap.tree.nodes) });
         return base.save(p, m, snap);
@@ -498,7 +498,7 @@ describe("D6-F11 — two devices never lose an update (PROBE-8/9, V3/V4)", () =>
         await new Promise((r) => setTimeout(r, delay));
         return s;
       },
-      allocate: (p, m) => base.allocate(p, m),
+      allocate: (p, m, id) => base.allocate(p, m, id),
       save: (p, m, s) => base.save(p, m, s),
     };
     act(() => tabs().setTabTreeAdapter(adapter));

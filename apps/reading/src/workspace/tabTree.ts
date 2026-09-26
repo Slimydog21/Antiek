@@ -31,6 +31,14 @@
  *  - Close is soft. Closed tabs move to `history` with their numbers, so undo
  *    and history links stay stable. Reuse means a DIFFERENT tab_id taking a
  *    number; the same tab_id restored is not reuse (contract R3-1).
+ *  - `history` is the client's view of the server's `retired[]` (§1.6 rev 7):
+ *    each entry is `{node, closed_at, close_mode}` plus a client-only
+ *    `close_id`. `pruned_at` is the SERVER's: it is set on a retired node
+ *    that left by prune, never by this model, and a restore puts the node
+ *    back unchanged, `pruned_at` included, for the server to clear (rev 8.8).
+ *  - Every node has a `side` (§1.6 rev 7). A child inherits its parent's
+ *    side, except `agent` and `derivation` children, which are always left
+ *    (Part 2 §2.2). Every spawn this client makes today is left.
  *  - Every traversal is iterative, so depth is bounded by memory, not by the
  *    call stack.
  *  - Tab state never goes to localStorage or sessionStorage (§1.6).
@@ -44,20 +52,68 @@
 
 export type Mothership = "research" | "writing" | "reading";
 
-/** Branch kinds as the UI names them. */
-export type BranchKind = "footnote" | "reference" | "citation" | "island" | "research" | "manual";
+/** Branch kinds as the UI names them. `agent` is a document an agent tab
+ *  opened (it needs `opened_by`); `derivation` is a reformat result (§1.6
+ *  rev 7/8). Both are navigation state only and write no branch. */
+export type BranchKind =
+  | "footnote"
+  | "reference"
+  | "citation"
+  | "island"
+  | "research"
+  | "manual"
+  | "agent"
+  | "derivation";
 
 /** Branch kinds on the wire. "island" is never a backend or event name
  *  (contract §1.0, R2-1): payloads say "selection". */
-export type WireBranchKind = "footnote" | "reference" | "citation" | "selection" | "research" | "manual";
+export type WireBranchKind =
+  | "footnote"
+  | "reference"
+  | "citation"
+  | "selection"
+  | "research"
+  | "manual"
+  | "agent"
+  | "derivation";
 
-export type TabKind = "reader" | "research" | "document" | "companion" | "thread" | "flags";
+/** Left nodes are document tabs (the core material); right nodes are agent
+ *  tabs, each a view of one thread, plus the Findings tab (§1.6 rev 7). */
+export type TabSide = "left" | "right";
+
+/** Kinds by side (§1.6 rev 8.8). `research` is on both sides: on the left a
+ *  deep research spawned from a document, on the right a research as an
+ *  agent. This client spawns only left kinds today; the right kinds are here
+ *  so a tree read from the server holds its right nodes unchanged (A14 moves
+ *  the agent tabs into the tree). */
+export type LeftTabKind = "reader" | "document" | "research";
+export type RightTabKind =
+  | "research"
+  | "dialogue"
+  | "reformat"
+  | "diligence"
+  | "island"
+  | "findings"
+  | "flags"
+  | "block";
+export type TabKind = LeftTabKind | RightTabKind;
+
+const KINDS_BY_SIDE: Readonly<Record<TabSide, ReadonlySet<string>>> = {
+  left: new Set<LeftTabKind>(["reader", "document", "research"]),
+  right: new Set<RightTabKind>(["research", "dialogue", "reformat", "diligence", "island", "findings", "flags", "block"]),
+};
+
+/** True when `kind` is admitted on `side` (§1.6 rev 8.8). */
+export function kindAllowedOnSide(kind: string, side: TabSide): boolean {
+  return KINDS_BY_SIDE[side]?.has(kind) ?? false;
+}
 
 /** The `TextLocator` shape (contract §1.4). */
 export interface TextLocator {
   start: number;
   end: number;
   text_sha256: string;
+  block_id?: string;
 }
 
 /** Contract §1.4. `source_locator` is the durable key. */
@@ -65,10 +121,23 @@ export interface BranchAnchor {
   document_id: string;
   source_locator?: TextLocator;
   region_id?: string;
+  anchor_id?: string;
   quote?: string;
   prefix?: string;
   suffix?: string;
   page_index?: number;
+}
+
+/** Who opened an `agent`-origin tab (§1.6 rev 7, S1). Required for `agent`. */
+export interface OpenedBy {
+  thread_id: string;
+  agent_kind: string;
+}
+
+/** What the tab's pane has docked (Part 2 §2.2 Needs). */
+export interface PaneDock {
+  docked_kind?: string;
+  docked_ref?: string;
 }
 
 export interface BranchOrigin<K extends string = BranchKind> {
@@ -81,25 +150,42 @@ export interface BranchOrigin<K extends string = BranchKind> {
 export interface TabNode<K extends string = BranchKind> {
   tab_id: string;
   parent_tab_id: string | null;
+  side: TabSide;
   branch_origin?: BranchOrigin<K>;
+  /** Required when branch_origin.kind is `agent`. */
+  opened_by?: OpenedBy;
   hier_number: string;
   child_order: readonly string[];
   last_visited_child_id?: string;
+  /** The server's, on a retired node that left by prune. An open node carries
+   *  it only between a restore and the server accepting it (rev 8.8). */
   pruned_at?: string;
   kind: TabKind;
   ref: string;
+  /** Derived from the ref (§2.2); empty until the surface names it. */
+  title: string;
   mothership: Mothership;
+  pane?: PaneDock;
   public_number: number | null;
 }
 
+/** How a close is asked for (the operation). */
 export type CloseMode = "prune" | "lift_children";
 
-/** A closed tab. `node` is the tab exactly as it was when closed, plus
- *  `pruned_at`; `close_id` names the close that put it here, so an undo token
- *  can prove it is undoing that close and not a later one. */
+/** How the server records a retirement, read off the diff (§1.6):
+ *  `lift_children` when a child of the dropped tab stays, `prune` when it
+ *  took children with it or went with a pruned parent, otherwise `close`. */
+export type RetireMode = "close" | "prune" | "lift_children";
+
+/** A closed tab: one of the server's `retired[]` entries, or a local close
+ *  not yet written. `node` is the tab exactly as it left the tree;
+ *  `close_id` (client-only) names the close that put it here, so an undo
+ *  token can prove it is undoing that close and not a later one. */
 export interface ClosedTab<K extends string = BranchKind> {
   node: TabNode<K>;
   close_id: string;
+  closed_at: string;
+  close_mode: RetireMode;
 }
 
 export interface TabTree {
@@ -107,7 +193,11 @@ export interface TabTree {
   /** Open tabs by tab_id. */
   nodes: Readonly<Record<string, TabNode>>;
   root_order: readonly string[];
+  /** The focused tab. On the wire it is `active.left` when it is a left tab. */
   active_tab_id: string | null;
+  /** The server's `active.right`, held unchanged until agent tabs move into
+   *  the tree (A14); cleared when that tab closes. */
+  active_right: string | null;
   /** Closed and pruned tabs by tab_id (soft close: recoverable, numbers kept). */
   history: Readonly<Record<string, ClosedTab>>;
   /** Next index for a root tab. Monotonic. */
@@ -131,7 +221,9 @@ export type TabTreeErrorCode =
   | "already_numbered"
   | "not_closed_by_token"
   | "no_children"
-  | "invalid_snapshot";
+  | "invalid_snapshot"
+  | "invalid_origin"
+  | "kind_side_mismatch";
 
 export interface TabTreeError {
   code: TabTreeErrorCode;
@@ -146,6 +238,14 @@ export interface SpawnInput {
   kind: TabKind;
   ref: string;
   mothership: Mothership;
+  /** The tab's title, when the surface already knows it. Default "". */
+  title?: string;
+  /** A ROOT's side (default left). A child's side is derived: its parent's,
+   *  or left for an `agent` or `derivation` origin. */
+  side?: TabSide;
+  /** Required for an `agent` origin. */
+  opened_by?: OpenedBy;
+  pane?: PaneDock;
   /** Focus the new tab. Default true; false for a background spawn, such as
    *  an agent's autonomous branch, which must not steal focus. */
   activate?: boolean;
@@ -164,6 +264,8 @@ export interface UndoToken {
   prev_sibling_id: string | null;
   next_sibling_id: string | null;
   prev_active_tab_id: string | null;
+  /** The right pane's active tab at close time (absent on older tokens). */
+  prev_active_right?: string | null;
   /** The parent's last_visited_child_id pointed at the closed tab. */
   parent_remembered_it: boolean;
 }
@@ -210,12 +312,6 @@ function tabIdProblem(id: unknown): string | null {
 
 function siblingsOf(tree: TabTree, parentId: string | null): readonly string[] {
   return parentId === null ? tree.root_order : (openNode(tree, parentId)?.child_order ?? []);
-}
-
-function withoutPrunedAt(node: TabNode): TabNode {
-  const copy = { ...node };
-  delete copy.pruned_at;
-  return copy;
 }
 
 function withoutLastVisited(node: TabNode): TabNode {
@@ -265,7 +361,16 @@ export function fromWireKind(kind: WireBranchKind): BranchKind {
   return kind === "selection" ? "island" : kind;
 }
 
-const WIRE_KINDS: ReadonlySet<string> = new Set(["footnote", "reference", "citation", "selection", "research", "manual"]);
+const WIRE_KINDS: ReadonlySet<string> = new Set([
+  "footnote",
+  "reference",
+  "citation",
+  "selection",
+  "research",
+  "manual",
+  "agent",
+  "derivation",
+]);
 
 // ---------------------------------------------------------------------------
 // Construction and queries
@@ -277,6 +382,7 @@ export function emptyTabTree(mothership: Mothership, version = 0): TabTree {
     nodes: {},
     root_order: [],
     active_tab_id: null,
+    active_right: null,
     history: {},
     next_root_index: 1,
     next_child_index: {},
@@ -363,18 +469,30 @@ export function spawnChild(
   if (isKnown(tree, input.tab_id)) return fail("duplicate_tab_id", `tab_id ${input.tab_id} already exists`);
   const parent = parentId === null ? undefined : openNode(tree, parentId);
   if (parentId !== null && !parent) return fail("tab_not_open", `parent ${parentId} is not open`);
+  const originKind = input.origin?.kind;
+  if (originKind === "agent" && !input.opened_by) {
+    return fail("invalid_origin", "an agent-opened tab needs opened_by {thread_id, agent_kind}");
+  }
+  const side = sideForSpawn(parent, input);
+  if (!kindAllowedOnSide(input.kind, side)) {
+    return fail("kind_side_mismatch", `a ${side} tab cannot be of kind ${input.kind}`);
+  }
 
   const index = nextIndex(tree, parentId);
   const hier = parent ? `${parent.hier_number}.${index}` : String(index);
   const node: TabNode = {
     tab_id: input.tab_id,
     parent_tab_id: parentId,
+    side,
     ...(input.origin ? { branch_origin: input.origin } : {}),
+    ...(input.opened_by ? { opened_by: input.opened_by } : {}),
     hier_number: hier,
     child_order: [],
     kind: input.kind,
     ref: input.ref,
+    title: input.title ?? "",
     mothership: input.mothership,
+    ...(input.pane ? { pane: input.pane } : {}),
     public_number: null,
   };
   const nodes: Record<string, TabNode> = { ...tree.nodes, [input.tab_id]: node };
@@ -387,6 +505,16 @@ export function spawnChild(
   }
   if (input.activate ?? true) next = activate(next, input.tab_id, nodes);
   return { ok: true, tree: next, op: { type: "spawn", parent_tab_id: parentId, input, hier_number: hier } };
+}
+
+/** Part 2 §2.2: a child inherits its parent's side, except an agent-opened
+ *  document and a reformat result, which are always left. A root takes the
+ *  side it asks for, left by default. */
+function sideForSpawn(parent: TabNode | undefined, input: SpawnInput): TabSide {
+  const kind = input.origin?.kind;
+  if (kind === "agent" || kind === "derivation") return "left";
+  if (parent) return parent.side;
+  return input.side ?? "left";
 }
 
 /** The tab holding public number `n`, open or in history, or null. */
@@ -428,11 +556,14 @@ export function assignPublicNumber(
 
 /**
  * Close a tab.
- *  - `prune`: the tab and its whole subtree move to history with pruned_at.
- *  - `lift_children`: only the tab moves to history (it gets pruned_at too,
- *    the contract's only close timestamp). Its children take its place in its
- *    parent's child_order (or root_order) and keep their hier_numbers:
- *    numbers are addresses, so a lifted "3.2.1" stays "3.2.1" under "3".
+ *  - `prune`: the tab and its whole subtree move to history.
+ *  - `lift_children`: only the tab moves to history. Its children take its
+ *    place in its parent's child_order (or root_order) and keep their
+ *    hier_numbers: numbers are addresses, so a lifted "3.2.1" stays "3.2.1"
+ *    under "3".
+ * Each history entry records `closed_at: now` and the `close_mode` the server
+ * will read off the diff (see RetireMode). Nodes go to history unchanged: the
+ * server, not the client, sets `pruned_at` on a pruned retirement.
  *
  * Active tab rule: if the active tab is closed (in prune mode, anywhere in the
  * subtree), focus moves to the closed tab's parent; for a root, to the root
@@ -470,7 +601,11 @@ export function closeTab(
     nodes[parentId] = { ...updated, child_order: newSiblings };
   }
   const history: Record<string, ClosedTab> = { ...tree.history };
-  for (const id of removed) history[id] = { node: { ...tree.nodes[id], pruned_at: now }, close_id: closeId };
+  const headMode: RetireMode =
+    x.child_order.length === 0 ? "close" : mode === "prune" ? "prune" : "lift_children";
+  for (const id of removed) {
+    history[id] = { node: tree.nodes[id], close_id: closeId, closed_at: now, close_mode: id === tabId ? headMode : "prune" };
+  }
 
   let active = tree.active_tab_id;
   if (active !== null && removedSet.has(active)) {
@@ -485,6 +620,7 @@ export function closeTab(
     root_order: parentId === null ? newSiblings : tree.root_order,
     history,
     active_tab_id: active,
+    active_right: tree.active_right !== null && removedSet.has(tree.active_right) ? null : tree.active_right,
   };
   const token: UndoToken = {
     close_id: closeId,
@@ -495,6 +631,7 @@ export function closeTab(
     prev_sibling_id: index > 0 ? siblings[index - 1] : null,
     next_sibling_id: index + 1 < siblings.length ? siblings[index + 1] : null,
     prev_active_tab_id: tree.active_tab_id,
+    prev_active_right: tree.active_right,
     parent_remembered_it: parentRememberedIt,
   };
   return { ok: true, tree: next, undo: token, op: { type: "close", close_id: closeId, tab_id: tabId, mode, now } };
@@ -551,7 +688,9 @@ export function undo(tree: TabTree, token: UndoToken): TabTreeResult<{ tree: Tab
   let rootOrder: string[] = [...tree.root_order];
   const history: Record<string, ClosedTab> = {};
   for (const id of Object.keys(tree.history)) if (!restoreSet.has(id)) history[id] = tree.history[id];
-  for (const id of restore) nodes[id] = withoutPrunedAt(tree.history[id].node);
+  // Back unchanged, pruned_at included: a retirement the server recorded is
+  // restored by PUTting its node back, and the server clears it (rev 8.8).
+  for (const id of restore) nodes[id] = tree.history[id].node;
 
   const detach = (childId: string, fromParent: string | null) => {
     if (fromParent === null) {
@@ -598,7 +737,9 @@ export function undo(tree: TabTree, token: UndoToken): TabTreeResult<{ tree: Tab
 
   const active =
     token.prev_active_tab_id !== null && restoreSet.has(token.prev_active_tab_id) ? token.prev_active_tab_id : tree.active_tab_id;
-  const next: TabTree = { ...tree, nodes, root_order: rootOrder, history, active_tab_id: active };
+  const prevRight = token.prev_active_right ?? null;
+  const activeRight = prevRight !== null && restoreSet.has(prevRight) ? prevRight : tree.active_right;
+  const next: TabTree = { ...tree, nodes, root_order: rootOrder, history, active_tab_id: active, active_right: activeRight };
   return { ok: true, tree: next, op: { type: "undo", token } };
 }
 
@@ -616,7 +757,7 @@ export function lastRetired(tree: TabTree): string | null {
     const parentEntry = parent !== null ? closedTab(tree, parent) : undefined;
     // A tab pruned WITH its parent comes back with the parent.
     if (parentEntry && parentEntry.close_id === entry.close_id) continue;
-    const at = entry.node.pruned_at ?? "";
+    const at = entry.closed_at;
     if (best === null || at >= best.at) best = { id, at };
   }
   return best?.id ?? null;
@@ -657,7 +798,8 @@ export function restoreClosed(
   const history: Record<string, ClosedTab> = {};
   for (const id of Object.keys(tree.history)) if (!restoreSet.has(id)) history[id] = tree.history[id];
   for (const id of restore) {
-    let node: TabNode = withoutPrunedAt(tree.history[id].node);
+    // Unchanged, pruned_at included (rev 8.8): see undo.
+    let node: TabNode = tree.history[id].node;
     const kept = node.child_order.filter((c) => restoreSet.has(c));
     node = { ...node, child_order: kept };
     if (node.last_visited_child_id !== undefined && !kept.includes(node.last_visited_child_id)) {
@@ -794,7 +936,10 @@ export interface RetiredNumber {
   public_number: number | null;
 }
 
-/** The `tree` JSON on the wire: branch kinds use wire names ("selection"). */
+/** The model's own JSON snapshot: the currency every TabTreeAdapter speaks
+ *  (the in-memory stand-in stores it; the HTTP adapter maps it to and from
+ *  the server's §1.6 wire in tabTreeWire.ts). Branch kinds use wire names
+ *  ("selection"). It is NOT the server's shape: that one has no history. */
 export interface WireTabTree {
   mothership: Mothership;
   nodes: Record<string, TabNode<WireBranchKind>>;
@@ -807,6 +952,8 @@ export interface WireTabTree {
 export interface TabTreeSnapshot {
   tree: WireTabTree;
   active_tab_id: string | null;
+  /** The server's active.right (absent = null). */
+  active_right?: string | null;
   retired_numbers: RetiredNumber[];
   version: number;
 }
@@ -841,9 +988,17 @@ export function toSnapshot(tree: TabTree): TabTreeSnapshot {
       next_child_index: { ...tree.next_child_index },
     },
     active_tab_id: tree.active_tab_id,
+    active_right: tree.active_right,
     retired_numbers: retiredNumbers(tree),
     version: tree.version,
   };
+}
+
+/** A node from a snapshot, with the rev-7 fields a hand-built or older
+ *  snapshot may lack filled in (left side, empty title). */
+function normalizeNode(n: TabNode): TabNode {
+  if (n.side !== undefined && n.title !== undefined) return n;
+  return { ...n, side: n.side ?? "left", title: n.title ?? "" };
 }
 
 /** Parse a snapshot from the server. Refuses one that breaks an invariant,
@@ -867,18 +1022,24 @@ export function fromSnapshot(snapshot: TabTreeSnapshot): TabTreeResult<{ tree: T
     if (n.branch_origin && !WIRE_KINDS.has(n.branch_origin.kind)) {
       problems.push(`${n.tab_id}: unknown branch kind ${JSON.stringify(n.branch_origin.kind)}`);
     }
+    if (n.branch_origin?.kind === "agent" && !n.opened_by) {
+      problems.push(`${n.tab_id}: an agent-opened tab needs opened_by`);
+    }
   }
   if (problems.length > 0) return fail("invalid_snapshot", problems.join("; "));
 
   const nodes: Record<string, TabNode> = {};
-  for (const id of Object.keys(w.nodes)) nodes[id] = mapOrigin(w.nodes[id], fromWireKind);
+  for (const id of Object.keys(w.nodes)) nodes[id] = normalizeNode(mapOrigin(w.nodes[id], fromWireKind));
   const history: Record<string, ClosedTab> = {};
-  for (const id of Object.keys(w.history)) history[id] = { ...w.history[id], node: mapOrigin(w.history[id].node, fromWireKind) };
+  for (const id of Object.keys(w.history)) {
+    history[id] = { ...w.history[id], node: normalizeNode(mapOrigin(w.history[id].node, fromWireKind)) };
+  }
   const tree: TabTree = {
     mothership: w.mothership,
     nodes,
     root_order: [...w.root_order],
     active_tab_id: snapshot.active_tab_id,
+    active_right: snapshot.active_right ?? null,
     history,
     next_root_index: w.next_root_index,
     next_child_index: { ...w.next_child_index },
@@ -909,19 +1070,25 @@ export function checkInvariants(tree: TabTree): string[] {
   const openIds = Object.keys(tree.nodes);
   const closedIds = Object.keys(tree.history);
 
-  // I5: keys, disjointness, mothership, pruned_at.
+  // I5: keys, disjointness, mothership, side, retirement record. pruned_at
+  // is the server's (rev 8.8): an open tab carries it only while a restore
+  // is on its way to the server, so it is not an I5 fault either way.
   for (const id of openIds) {
     const n = tree.nodes[id];
     if (n.tab_id !== id) v.push(`I5: open key ${id} holds tab ${n.tab_id}`);
     if (Object.hasOwn(tree.history, id)) v.push(`I5: ${id} is both open and closed`);
     if (n.mothership !== tree.mothership) v.push(`I5: ${id} belongs to ${n.mothership}`);
-    if (n.pruned_at !== undefined) v.push(`I5: open tab ${id} has pruned_at`);
+    if (n.side !== "left" && n.side !== "right") v.push(`I5: ${id} has no side`);
   }
   for (const id of closedIds) {
-    const n = tree.history[id].node;
+    const entry = tree.history[id];
+    const n = entry.node;
     if (n.tab_id !== id) v.push(`I5: history key ${id} holds tab ${n.tab_id}`);
     if (n.mothership !== tree.mothership) v.push(`I5: closed ${id} belongs to ${n.mothership}`);
-    if (typeof n.pruned_at !== "string") v.push(`I5: closed tab ${id} has no pruned_at`);
+    if (typeof entry.closed_at !== "string") v.push(`I5: closed tab ${id} has no closed_at`);
+    if (entry.close_mode !== "close" && entry.close_mode !== "prune" && entry.close_mode !== "lift_children") {
+      v.push(`I5: closed tab ${id} has close_mode ${String(entry.close_mode)}`);
+    }
   }
 
   // I5: root_order <=> roots; child_order <=> parent_tab_id.
@@ -998,10 +1165,10 @@ export function checkInvariants(tree: TabTree): string[] {
       continue;
     }
     const spawnParent = byHier.get(n.hier_number.slice(0, dot));
-    if (spawnParent === undefined) {
-      v.push(`I4: ${n.hier_number} has no spawn parent`);
-      continue;
-    }
+    // The spawn parent can be unknown: the server's retired[] is a window of
+    // the 200 most recent retirements (§1.6), so an old parent may be off it.
+    // Its counter then lives only on the server, which checks it.
+    if (spawnParent === undefined) continue;
     const counter = Object.hasOwn(tree.next_child_index, spawnParent) ? tree.next_child_index[spawnParent] : 1;
     if (!(counter > last)) v.push(`I4: counter of ${spawnParent} is ${counter}, not above ${n.hier_number}`);
   }
@@ -1013,8 +1180,12 @@ export function checkInvariants(tree: TabTree): string[] {
     if (p && !isProperPrefix(p.hier_number, n.hier_number)) v.push(`I9: closed ${id}'s parent ${p.hier_number} is not a prefix of ${n.hier_number}`);
   }
 
-  // I8: active is null or open.
+  // I8: active is null or open; the right pane's active is null or an open
+  // right tab (§1.6: "active.right is null or an open tab on that side").
   if (tree.active_tab_id !== null && !openNode(tree, tree.active_tab_id)) v.push(`I8: active ${tree.active_tab_id} is not open`);
+  if (tree.active_right !== null && openNode(tree, tree.active_right)?.side !== "right") {
+    v.push(`I8: active_right ${tree.active_right} is not an open right tab`);
+  }
   return v;
 }
 
@@ -1050,34 +1221,63 @@ export function numberReuse(before: TabTree, after: TabTree): string[] {
 // Persistence adapter (contract §1.6)
 // ---------------------------------------------------------------------------
 
+/** The PUT's outcomes, in the model's terms (the server's §1.6 answers):
+ *  - `saved`: the server's snapshot, so its version, numbers and retired
+ *    entries replace the local ones;
+ *  - `conflict`: 409 `version_stale` (another device wrote first) or
+ *    `number_conflict` (a pending number the register gives another tab).
+ *    Both rebase the same way onto `current`;
+ *  - `invalid`: 422 `tab_origin_invalid` | `tab_tree_invalid`. Part 2 §2.2:
+ *    a lane-A bug. Log the detail, refetch and rebase; never tell the
+ *    operator it is their error. */
 export type SaveResult =
-  | { status: "saved"; version: number }
-  /** 409 {current}: another device wrote first. Rebase onto `current`. */
-  | { status: "conflict"; current: TabTreeSnapshot }
-  /** The server refused the snapshot (for example it reuses a number). Part 2
-   *  §2.2: a lane-A bug; log it, refetch and rebase, never blame the user. */
-  | { status: "rejected"; reasons: string[] };
+  | { status: "saved"; snapshot: TabTreeSnapshot }
+  | {
+      status: "conflict";
+      reason: "version_stale" | "number_conflict";
+      current: TabTreeSnapshot;
+      tab_id?: string;
+      detail?: string;
+    }
+  | { status: "invalid"; reason: "tab_origin_invalid" | "tab_tree_invalid"; tab_id: string | null; detail: string };
+
+/** One page of older retirements, newest first. `next_before` is null on
+ *  the last page (§1.6 rev 8.8), including an exactly full one. */
+export interface RetiredPage {
+  entries: ClosedTab[];
+  next_before: string | null;
+}
 
 /**
- * GET /projects/{id}/tabs/{mothership}, PUT with expected_version, and
- * POST …/allocate. The HTTP implementation arrives with lane B's W1; until
- * then `createInMemoryTabTreeAdapter` stands in. No implementation may use
+ * GET /projects/{id}/tabs/{mothership}, PUT with expected_version,
+ * POST …/allocate {tab_id} and GET …/retired. `createHttpTabTreeAdapter`
+ * (tabTreeHttpAdapter.ts) drives lane B's routes; `createInMemoryTabTreeAdapter`
+ * stands in where they are not deployed. No implementation may use
  * localStorage or sessionStorage (§1.6).
  */
 export interface TabTreeAdapter {
   load(projectId: string, mothership: Mothership): Promise<TabTreeSnapshot>;
   /** `snapshot.version` is the expected_version. */
   save(projectId: string, mothership: Mothership, snapshot: TabTreeSnapshot): Promise<SaveResult>;
-  /** Workstation-wide (per project, across motherships), monotonic, never reused. */
-  allocate(projectId: string, mothership: Mothership): Promise<{ public_number: number }>;
+  /** Workstation-wide (per project, across motherships), monotonic, never
+   *  reused, and idempotent per tab_id: a retry after a lost response
+   *  returns the same number. */
+  allocate(projectId: string, mothership: Mothership, tabId: string): Promise<{ public_number: number }>;
+  /** Older retirements than `load` carries, before `before` (null = the
+   *  newest page). Absent on an adapter whose load holds all of history. */
+  retired?(projectId: string, mothership: Mothership, before: string | null): Promise<RetiredPage>;
 }
 
 /**
  * The in-memory stand-in for lane B's routes. It enforces what the contract
- * says the server enforces: optimistic concurrency (409 with the current
- * snapshot) and refusal of a snapshot that reuses a number. It also refuses
- * a public number it never allocated, since a client must never invent one.
- * Rows are stored as JSON so no caller can alias server state.
+ * says the server enforces, with the server's answer shapes: optimistic
+ * concurrency (409 `version_stale` with the current snapshot), a number the
+ * register gives another tab (409 `number_conflict`), a public number it
+ * never allocated and `pruned_at` on a tab that is not being restored (422
+ * `tab_tree_invalid`, rev 8.8). On accept it does what the server does to the
+ * retirement rows: a restored tab's `pruned_at` is cleared, and a new pruned
+ * retirement's node gets `pruned_at` = its `closed_at`. Rows are stored as
+ * JSON so no caller can alias server state.
  */
 export function createInMemoryTabTreeAdapter(): TabTreeAdapter {
   const rows = new Map<string, string>();
@@ -1085,8 +1285,10 @@ export function createInMemoryTabTreeAdapter(): TabTreeAdapter {
   const hierHolders = new Map<string, Map<string, string>>();
   const publicHolders = new Map<string, Map<number, string>>();
   const nextPublic = new Map<string, number>();
+  /** allocate is idempotent per tab_id: project → tab_id → number. */
+  const allocated = new Map<string, Map<string, number>>();
   const rowKey = (projectId: string, mothership: Mothership) => `${projectId}\u0000${mothership}`;
-  const mapFor = <K>(store: Map<string, Map<K, string>>, key: string): Map<K, string> => {
+  const mapFor = <K, V = string>(store: Map<string, Map<K, V>>, key: string): Map<K, V> => {
     let m = store.get(key);
     if (!m) {
       m = new Map();
@@ -1098,6 +1300,12 @@ export function createInMemoryTabTreeAdapter(): TabTreeAdapter {
     const row = rows.get(rowKey(projectId, mothership));
     return row ? (JSON.parse(row) as TabTreeSnapshot) : toSnapshot(emptyTabTree(mothership, 0));
   };
+  const invalid = (detail: string, tab_id: string | null = null): SaveResult => ({
+    status: "invalid",
+    reason: "tab_tree_invalid",
+    tab_id,
+    detail,
+  });
 
   return {
     async load(projectId, mothership) {
@@ -1105,41 +1313,82 @@ export function createInMemoryTabTreeAdapter(): TabTreeAdapter {
     },
     async save(projectId, mothership, snapshot) {
       const stored = current(projectId, mothership);
-      if (snapshot.version !== stored.version) return { status: "conflict", current: stored };
+      if (snapshot.version !== stored.version) return { status: "conflict", reason: "version_stale", current: stored };
       const parsed = fromSnapshot(JSON.parse(JSON.stringify(snapshot)) as TabTreeSnapshot);
-      if (!parsed.ok) return { status: "rejected", reasons: [parsed.error.message] };
+      if (!parsed.ok) return invalid(parsed.error.message);
       const tree = parsed.tree;
-      if (tree.mothership !== mothership) return { status: "rejected", reasons: [`tree is for ${tree.mothership}`] };
+      if (tree.mothership !== mothership) return invalid(`tree is for ${tree.mothership}`);
+      // rev 8.8: pruned_at is sent only on a tab being restored, one the
+      // stored row holds as retired.
+      for (const id of Object.keys(tree.nodes)) {
+        if (tree.nodes[id].pruned_at === undefined) continue;
+        if (!Object.hasOwn(stored.tree.history, id)) return invalid(`pruned_at on ${id}, which is not being restored`, id);
+      }
       const hiers = mapFor(hierHolders, rowKey(projectId, mothership));
       const publics = mapFor(publicHolders, projectId);
-      const allocated = (nextPublic.get(projectId) ?? 1) - 1;
-      const reasons: string[] = [];
+      const issued = (nextPublic.get(projectId) ?? 1) - 1;
       const all = [
         ...Object.keys(tree.nodes).map((id) => tree.nodes[id]),
         ...Object.keys(tree.history).map((id) => tree.history[id].node),
       ];
       for (const n of all) {
-        const h = hiers.get(n.hier_number);
-        if (h !== undefined && h !== n.tab_id) reasons.push(`hier_number ${n.hier_number} belongs to ${h}, not ${n.tab_id}`);
-        if (n.public_number !== null) {
-          const p = publics.get(n.public_number);
-          if (p !== undefined && p !== n.tab_id) reasons.push(`public_number ${n.public_number} belongs to ${p}, not ${n.tab_id}`);
-          if (n.public_number > allocated) reasons.push(`public_number ${n.public_number} was never allocated`);
+        if (n.public_number !== null && n.public_number > issued) {
+          return invalid(`public_number ${n.public_number} was never allocated`, n.tab_id);
         }
       }
-      if (reasons.length > 0) return { status: "rejected", reasons };
+      const clashes: string[] = [];
+      let clashTab: string | null = null;
+      for (const n of all) {
+        const h = hiers.get(n.hier_number);
+        if (h !== undefined && h !== n.tab_id) clashes.push(`hier_number ${n.hier_number} belongs to ${h}, not ${n.tab_id}`);
+        if (n.public_number !== null) {
+          const p = publics.get(n.public_number);
+          if (p !== undefined && p !== n.tab_id) clashes.push(`public_number ${n.public_number} belongs to ${p}, not ${n.tab_id}`);
+        }
+        if (clashes.length > 0 && clashTab === null) clashTab = n.tab_id;
+      }
+      if (clashes.length > 0) {
+        return { status: "conflict", reason: "number_conflict", tab_id: clashTab ?? undefined, detail: clashes.join("; "), current: stored };
+      }
       for (const n of all) {
         hiers.set(n.hier_number, n.tab_id);
         if (n.public_number !== null) publics.set(n.public_number, n.tab_id);
       }
+      // What the server does to the rows: a restore clears pruned_at; a new
+      // pruned retirement records pruned_at = closed_at.
+      const nodes: Record<string, TabNode> = {};
+      for (const id of Object.keys(tree.nodes)) {
+        const n = tree.nodes[id];
+        if (n.pruned_at === undefined) nodes[id] = n;
+        else {
+          const cleared = { ...n };
+          delete cleared.pruned_at;
+          nodes[id] = cleared;
+        }
+      }
+      const history: Record<string, ClosedTab> = {};
+      for (const id of Object.keys(tree.history)) {
+        const entry = tree.history[id];
+        const known = Object.hasOwn(stored.tree.history, id);
+        if (known || entry.close_mode !== "prune" || entry.node.pruned_at === entry.closed_at) history[id] = entry;
+        else history[id] = { ...entry, node: { ...entry.node, pruned_at: entry.closed_at } };
+      }
       const version = stored.version + 1;
-      rows.set(rowKey(projectId, mothership), JSON.stringify({ ...toSnapshot(tree), version }));
-      return { status: "saved", version };
+      const accepted = toSnapshot({ ...tree, nodes, history, version });
+      rows.set(rowKey(projectId, mothership), JSON.stringify(accepted));
+      return { status: "saved", snapshot: JSON.parse(JSON.stringify(accepted)) as TabTreeSnapshot };
     },
-    async allocate(projectId, _mothership) {
+    async allocate(projectId, _mothership, tabId) {
+      const byTab = mapFor<string, number>(allocated, projectId);
+      const had = byTab.get(tabId);
+      if (had !== undefined) return { public_number: had };
       const n = nextPublic.get(projectId) ?? 1;
       nextPublic.set(projectId, n + 1);
+      byTab.set(tabId, n);
       return { public_number: n };
+    },
+    async retired() {
+      return { entries: [], next_before: null };
     },
   };
 }

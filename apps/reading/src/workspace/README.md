@@ -196,9 +196,15 @@ one helper (`mothershipForPath.inMode`, `useModeNavigate`, `ModeLink`).
 `c` / `ctrl+alt+c` (new tab) and `i` / `ctrl+alt+i` (attention inbox) are
 held for surfaces not yet built: their handlers return "not mine" and the
 key sheet marks them "Not built yet" (`keymapView.ts` `PENDING`).
-Persistence is ONLY through a `TabTreeAdapter` (§1.6: never web storage) —
-the in-memory adapter makes trees session-scoped until lane B's HTTP adapter
-lands (`setTabTreeAdapter` is the seam).
+Persistence is ONLY through a `TabTreeAdapter` (§1.6: never web storage).
+`bindActiveProject` (run on the first load when the app sets
+`tabTreeHandle.bindOnLoad`) binds the trees to the first non-archived project
+through `tabTreeHttpAdapter.ts` over lane B's routes and reports
+`tabsPersistence: "server"`; a 404 on `GET /projects` keeps the in-memory
+adapter (`"session"`: trees end with the page). `tabTreeWire.ts` maps the
+model to the §1.6 wire (history ↔ `retired[]`, island ↔ selection,
+`next_root_index` ↔ `next_child_index.root`); `setTabTreeAdapter` stays the
+test seam.
 
 ## Write mode (C5, 2026-09-24)
 

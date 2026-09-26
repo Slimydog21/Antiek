@@ -210,11 +210,16 @@ describe("assignPublicNumber", () => {
 });
 
 describe("close and undo", () => {
-  it("prune moves the subtree to history with pruned_at, and undo restores it exactly", () => {
+  it("prune moves the subtree to history with closed_at, and undo restores it exactly", () => {
     const t = must(assignPublicNumber(sampleTree(), "b1", 4)).tree;
     const c = must(closeTab(t, "b", "prune", "2026-09-24T10:00:00Z"));
     expect(Object.keys(c.tree.nodes).sort()).toEqual(["a", "c", "r1", "r2", "r3"]);
-    for (const id of ["b", "b1", "b2"]) expect(c.tree.history[id].node.pruned_at).toBe("2026-09-24T10:00:00Z");
+    for (const id of ["b", "b1", "b2"]) {
+      expect(c.tree.history[id].closed_at).toBe("2026-09-24T10:00:00Z");
+      expect(c.tree.history[id].close_mode).toBe("prune");
+      // pruned_at is the server's (rev 8.8): the client never sets it.
+      expect(c.tree.history[id].node.pruned_at).toBeUndefined();
+    }
     expect(c.tree.nodes.r3.child_order).toEqual(["a", "c"]);
     const u = must(undo(c.tree, c.undo));
     expect(u.tree).toStrictEqual(t);
@@ -228,7 +233,8 @@ describe("close and undo", () => {
     expect(c.tree.nodes.b1.parent_tab_id).toBe("r3");
     expect(c.tree.nodes.b1.hier_number).toBe("3.2.1");
     expect(c.tree.nodes.b2.hier_number).toBe("3.2.2");
-    expect(c.tree.history.b.node.pruned_at).toBe("t1");
+    expect(c.tree.history.b.closed_at).toBe("t1");
+    expect(c.tree.history.b.close_mode).toBe("lift_children");
     expect(checkInvariants(c.tree)).toEqual([]);
     expect(must(undo(c.tree, c.undo)).tree).toStrictEqual(t);
   });
@@ -398,6 +404,8 @@ describe("depth (D6: 'infinitely layered')", () => {
       nodes[`d${i}`] = {
         tab_id: `d${i}`,
         parent_tab_id: i === 1 ? null : `d${i - 1}`,
+        side: "left",
+        title: "",
         hier_number: h,
         child_order: i < depth ? [`d${i + 1}`] : [],
         ...(i < depth ? { last_visited_child_id: `d${i + 1}` } : {}),
@@ -476,7 +484,7 @@ describe("scale", () => {
         // First 16 tabs form a chain (depth 16 > 12); then fan out.
         const parent = i === 1 ? null : i <= 16 ? `${project}-t${i - 1}` : `${project}-t${1 + ((i * 7) % Math.min(i - 1, 40))}`;
         t = spawn(t, parent, id, { activate: i <= 16 });
-        const { public_number } = await server.allocate(project, M);
+        const { public_number } = await server.allocate(project, M, id);
         t = must(assignPublicNumber(t, id, public_number)).tree;
       }
       expect((await server.save(project, M, toSnapshot(t))).status).toBe("saved");
@@ -537,8 +545,8 @@ describe("rebase after a 409", () => {
     expect((await server.save("ws", M, toSnapshot(aTree))).status).toBe("saved");
     // A buggy client that skips rebase and just bumps the version:
     const r = await server.save("ws", M, toSnapshot(withVersion(bTree, 2)));
-    expect(r.status).toBe("rejected");
-    if (r.status === "rejected") expect(r.reasons.join(" ")).toContain("hier_number 1.2 belongs to from-a");
+    expect(r.status === "conflict" && r.reason).toBe("number_conflict");
+    if (r.status === "conflict") expect(r.detail).toContain("hier_number 1.2 belongs to from-a");
   });
 
   it("a spawn whose parent another device closed is re-homed, not lost; ops on the closed tab drop", async () => {
@@ -605,7 +613,7 @@ describe("persistence adapter (contract §1.6)", () => {
     const getItem = vi.spyOn(Storage.prototype, "getItem");
     const server = createInMemoryTabTreeAdapter();
     let t = sampleTree();
-    t = must(assignPublicNumber(t, "a", (await server.allocate("ws", M)).public_number)).tree;
+    t = must(assignPublicNumber(t, "a", (await server.allocate("ws", M, "a")).public_number)).tree;
     expect((await server.save("ws", M, toSnapshot(t))).status).toBe("saved");
     must(fromSnapshot(await server.load("ws", M)));
     rebase(t, []);
@@ -616,20 +624,28 @@ describe("persistence adapter (contract §1.6)", () => {
   it("allocates public numbers workstation-wide, across motherships", async () => {
     const server = createInMemoryTabTreeAdapter();
     const got = [
-      (await server.allocate("ws", "research")).public_number,
-      (await server.allocate("ws", "reading")).public_number,
-      (await server.allocate("ws", "writing")).public_number,
-      (await server.allocate("other", "research")).public_number,
+      (await server.allocate("ws", "research", "t1")).public_number,
+      (await server.allocate("ws", "reading", "t2")).public_number,
+      (await server.allocate("ws", "writing", "t3")).public_number,
+      (await server.allocate("other", "research", "t1")).public_number,
     ];
     expect(got).toEqual([1, 2, 3, 1]);
+  });
+
+  it("allocate is idempotent per tab_id: a retry after a lost response gets the same number", async () => {
+    const server = createInMemoryTabTreeAdapter();
+    const first = (await server.allocate("ws", M, "t1")).public_number;
+    expect((await server.allocate("ws", M, "t1")).public_number).toBe(first);
+    expect((await server.allocate("ws", M, "t2")).public_number).toBe(first + 1);
   });
 
   it("answers a stale version with 409 {current}", async () => {
     const server = createInMemoryTabTreeAdapter();
     const t = sampleTree();
-    expect(await server.save("ws", M, toSnapshot(t))).toEqual({ status: "saved", version: 1 });
+    const saved = await server.save("ws", M, toSnapshot(t));
+    expect(saved.status === "saved" && saved.snapshot.version).toBe(1);
     const stale = await server.save("ws", M, toSnapshot(t));
-    expect(stale.status).toBe("conflict");
+    expect(stale.status === "conflict" && stale.reason).toBe("version_stale");
     if (stale.status === "conflict") expect(stale.current.version).toBe(1);
   });
 
@@ -637,8 +653,8 @@ describe("persistence adapter (contract §1.6)", () => {
     const server = createInMemoryTabTreeAdapter();
     const invented = must(assignPublicNumber(sampleTree(), "a", 99)).tree;
     const r1 = await server.save("ws", M, toSnapshot(invented));
-    expect(r1.status).toBe("rejected");
-    if (r1.status === "rejected") expect(r1.reasons.join(" ")).toContain("never allocated");
+    expect(r1.status === "invalid" && r1.reason).toBe("tab_tree_invalid");
+    if (r1.status === "invalid") expect(r1.detail).toContain("never allocated");
 
     let t = sampleTree();
     expect((await server.save("ws", M, toSnapshot(t))).status).toBe("saved");
@@ -654,8 +670,8 @@ describe("persistence adapter (contract §1.6)", () => {
     delete (forged.nodes.imposter as { pruned_at?: string }).pruned_at;
     (forged.nodes as Record<string, TabNode>).r3 = { ...t.nodes.r3, child_order: [...t.nodes.r3.child_order, "imposter"] };
     const r2 = await server.save("ws", M, toSnapshot(forged));
-    expect(r2.status).toBe("rejected");
-    if (r2.status === "rejected") expect(r2.reasons.join(" ")).toContain("hier_number 3.3 belongs to c");
+    expect(r2.status === "conflict" && r2.reason).toBe("number_conflict");
+    if (r2.status === "conflict") expect(r2.detail).toContain("hier_number 3.3 belongs to c");
   });
 });
 
@@ -693,8 +709,16 @@ describe("reuse (contract R3-1) and the invariant checker's negative controls", 
       nodes: { ...t.nodes, r3: { ...t.nodes.r3, parent_tab_id: "b1" }, b1: { ...t.nodes.b1, child_order: ["r3"] } },
     })],
     ["I5", "last_visited_child_id that is not a child", (t) => ({ ...t, nodes: { ...t.nodes, r3: { ...t.nodes.r3, last_visited_child_id: "b1" } } })],
-    ["I5", "an open tab with pruned_at", (t) => ({ ...t, nodes: { ...t.nodes, a: { ...t.nodes.a, pruned_at: "x" } } })],
-    ["I5", "a tab both open and closed", (t) => ({ ...t, history: { a: { node: { ...t.nodes.a, pruned_at: "x" }, close_id: "x" } } })],
+    ["I5", "a closed tab with no closed_at", (t) => {
+      const c = must(closeTab(t, "c", "prune", "x")).tree;
+      return { ...c, history: { c: { ...c.history.c, closed_at: undefined as unknown as string } } };
+    }],
+    ["I5", "a closed tab with an unknown close_mode", (t) => {
+      const c = must(closeTab(t, "c", "prune", "x")).tree;
+      return { ...c, history: { c: { ...c.history.c, close_mode: "vanish" as unknown as "close" } } };
+    }],
+    ["I5", "a tab both open and closed", (t) => ({ ...t, history: { a: { node: t.nodes.a, close_id: "x", closed_at: "x", close_mode: "close" } } })],
+    ["I8", "an active right tab that is not a right tab", (t) => ({ ...t, active_right: "a" })],
     ["I8", "an active tab that is closed", (t) => ({ ...t, active_tab_id: "ghost" })],
     ["I9", "a parent that is not a spawn-ancestor", (t) => ({
       ...t,

@@ -7,6 +7,7 @@ import "./design/motion.css";
 import App from "./App";
 import AppLegacy from "./AppLegacy";
 import { PostHogRoot } from "./lib/PostHogRoot";
+import { tabTreeHandle } from "./workspace/tabTreeHandle";
 
 /**
  * S12 cutover flag.
@@ -28,6 +29,10 @@ if (import.meta.env.DEV) {
   // eslint-disable-next-line no-console
   console.info(`[antiek] UI version: ${uiVersion}`);
 }
+
+// Tabs persist to the active project's server row when lane B's routes
+// answer (THREAD-CONTRACT §1.6); otherwise they stay in this session.
+tabTreeHandle.bindOnLoad = true;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

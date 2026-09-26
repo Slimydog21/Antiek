@@ -39,7 +39,6 @@ function basePathForTab(tab: TabNode): string | null {
     case "reader":
       return `/read/${encodeURIComponent(tab.ref)}`;
     case "research":
-    case "thread":
       return tab.ref.startsWith("/") ? tab.ref : `/inv/${encodeURIComponent(tab.ref)}`;
     case "document":
       return tab.ref.startsWith("/") ? tab.ref : null;

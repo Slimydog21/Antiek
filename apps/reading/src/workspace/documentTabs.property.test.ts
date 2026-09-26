@@ -38,7 +38,7 @@ import {
 export const SEED = 0x57a6e2;
 const CASES = 300;
 
-const KINDS: TabKind[] = ["reader", "research", "document", "thread"];
+const KINDS: TabKind[] = ["reader", "research", "document"];
 const MOTHERSHIPS: Mothership[] = ["research", "writing", "reading"];
 
 function refFor(rng: Rng, kind: TabKind, pool: number): string {
@@ -47,7 +47,6 @@ function refFor(rng: Rng, kind: TabKind, pool: number): string {
     case "reader":
       return `doc-${n}`;
     case "research":
-    case "thread":
       return `/inv/inv-${n}`;
     case "document":
       return rng.next() < 0.5 ? `/write/d-${n}` : `section:s-${n}`;
