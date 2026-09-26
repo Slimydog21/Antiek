@@ -7,7 +7,7 @@ name: deploy-backend
 # webhook (when wired); for now the deploy stays manual but the gate exists."
 # The gate existed; nothing consumed it. A merge to main landed code that
 # could not reach production until an operator ran
-# `ansible-playbook playbooks/deploy.yml` from their Mac by hand — so a
+# `ansible-playbook playbooks/deploy_atomic.yml` from their Mac by hand — so a
 # correct, reviewed, green change stayed dead in production for as long as
 # the operator was away from the keyboard. Two Caddy-allowlist features sat
 # dead exactly that way.
@@ -147,7 +147,7 @@ jobs:
             exit 3
           }
           # Single source of truth for the gate: tools/deploy/require_green.sh,
-          # shared with infrastructure/ansible/playbooks/deploy.yml so the
+          # shared with infrastructure/ansible/playbooks/deploy_atomic.yml so the
           # manual / runbook deploy path is gated IDENTICALLY. The literal
           # list of 8 branch-required contexts plus the `pytest` rollup
           # (9 deploy-gate contexts total) now lives in that script.
@@ -247,7 +247,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: apps/reading/package-lock.json
 
-      # Phase A of playbooks/deploy.yml runs `npm run build` (tsc -b &&
+      # Phase A of playbooks/deploy_atomic.yml runs `npm run build` (tsc -b &&
       # vite build) on the control node. devDependencies must be present
       # before the playbook gets there, so install them here.
       #
@@ -337,7 +337,7 @@ jobs:
           # from the earlier gate job.
           GH_TOKEN: ${{ github.token }}
         run: >-
-          ansible-playbook -i inventory.ini playbooks/deploy.yml
+          ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml
           -e "antiek_target_sha=$ANTIEK_TARGET_SHA"
 
       # The playbook pulls the exact SHA that passed the gate. A different
