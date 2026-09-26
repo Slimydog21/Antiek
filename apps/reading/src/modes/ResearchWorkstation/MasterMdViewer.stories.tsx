@@ -22,85 +22,52 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-// The viewer renders a ParsedSynthesis (what parseSynthesis() derives from
-// the event stream), not raw markdown; these fixtures were written against
-// the older `markdown` prop, so the component received no synthesis at all.
-const emptySynthesis: ParsedSynthesis = {
+const sampleSynthesis = {
   synthesisId: null,
-  thesisSummary: "",
-  components: [],
+  thesisSummary:
+    "Published neutral-atom gate error rates cluster near the threshold for fault-tolerant operation, but the reported gates and measurement methods differ.",
+  components: [
+    {
+      index: 1,
+      claim:
+        "A shared gate decomposition is needed before the reported error rates can be compared directly.",
+      confidence: "high",
+      effectiveSourceTier: 2,
+      hedgingRequired: false,
+      chunkIds: [],
+      supportingPathIndices: [],
+    },
+  ],
   falsificationConditions: [],
   executionRisks: [],
-  recommendation: "undetermined",
+  recommendation: "conditional",
   hardConstraintsSatisfied: null,
   totalCostUsd: 0,
-  question: null,
+  question: "How do neutral-atom gate error rates compare at the 100-qubit scale?",
   masterMdPath: null,
   domainsPatched: [],
   chunkCitations: {},
   qualityScore: null,
   reuseProvenance: [],
   compoundingStat: null,
-};
+} satisfies ParsedSynthesis;
 
-const sampleSynthesis: ParsedSynthesis = {
-  ...emptySynthesis,
-  synthesisId: "syn-storybook-demo",
-  question: "Are neutral-atom gate error rates below threshold at the 100-qubit scale?",
-  thesisSummary:
-    "Neutral-atom platforms have published single-qubit gate error rates " +
-    "clustering between 8×10⁻⁴ and 1.5×10⁻³ at the 100-qubit scale across " +
-    "three independent groups in 2024-2025. Two of the three report errors " +
-    "below the surface-code threshold.",
-  components: [
-    {
-      index: 1,
-      claim:
-        "The Lukin lab and the QuEra production system both report errors " +
-        "below the surface-code threshold.",
-      rationale: "Two independent groups, the same gate decomposition.",
-      confidence: "high",
-      effectiveSourceTier: 1,
-      hedgingRequired: false,
-      chunkIds: ["chunk-lukin-2025", "chunk-quera-2025"],
-      supportingPathIndices: [],
-    },
-    {
-      index: 2,
-      claim:
-        "A circuit-depth normalization narrows the gap between groups by " +
-        "roughly half an order of magnitude but does not eliminate it.",
-      confidence: "moderate",
-      effectiveSourceTier: 2,
-      hedgingRequired: true,
-      chunkIds: ["chunk-vuletic-2025"],
-      supportingPathIndices: [],
-    },
-  ],
-  falsificationConditions: [
-    {
-      condition:
-        "A head-to-head benchmark with a shared gate decomposition shows the " +
-        "gap is methodological.",
-      specificObservable: "Error rates converge within 2×10⁻⁴ under one decomposition.",
-    },
-  ],
-  executionRisks: [
-    { risk: "No group has published a shared-decomposition benchmark yet." },
-  ],
-  recommendation: "conditional",
-  totalCostUsd: 0.42,
-  chunkCitations: {
-    "chunk-lukin-2025": [1],
-    "chunk-quera-2025": [1],
-    "chunk-vuletic-2025": [2],
+const emptySynthesis = {
+  ...sampleSynthesis,
+  thesisSummary: "",
+  components: [],
+  recommendation: "undetermined",
+  question: null,
+} satisfies ParsedSynthesis;
+
+export const SampleSynthesis: Story = {
+  args: {
+    synthesis: sampleSynthesis,
   },
 };
 
-export const SampleSynthesis: Story = {
-  args: { synthesis: sampleSynthesis },
-};
-
 export const Empty: Story = {
-  args: { synthesis: emptySynthesis },
+  args: {
+    synthesis: emptySynthesis,
+  },
 };

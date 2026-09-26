@@ -219,7 +219,10 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
   it("names what is opening while the list loads", () => {
     listState.current = { ...listState.current, loading: true };
     renderMonitor();
-    expect(screen.getByRole("status").textContent).toContain("Opening your research");
+    // Two live regions coexist while loading: the shared LoadingState (W3)
+    // and the diligence flag queue's own status (main); assert on ours.
+    const statuses = screen.getAllByRole("status").map((el) => el.textContent ?? "");
+    expect(statuses.some((text) => text.includes("Opening your research"))).toBe(true);
   });
 
   it("disables launch with a clear reason when unauthenticated", () => {
