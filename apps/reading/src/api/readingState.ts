@@ -28,25 +28,37 @@ export interface ReadingStatePutBody {
   revision: number;
 }
 
-function parseState(raw: unknown): ReadingState {
+function parseState(raw: unknown, documentId: string): ReadingState {
   const r = raw as Partial<ReadingState> | null;
   if (
     r === null ||
     typeof r !== "object" ||
+    typeof r.document_id !== "string" ||
+    r.document_id !== documentId ||
     typeof r.page_index !== "number" ||
-    !Number.isFinite(r.page_index) ||
+    !Number.isSafeInteger(r.page_index) ||
+    r.page_index < 0 ||
     typeof r.revision !== "number" ||
-    !Number.isFinite(r.revision)
+    !Number.isSafeInteger(r.revision) ||
+    r.revision < 0 ||
+    !(r.anchor_ref === null || typeof r.anchor_ref === "string") ||
+    (typeof r.anchor_ref === "string" && (r.anchor_ref.length === 0 || r.anchor_ref.length > 20)) ||
+    typeof r.prefs !== "object" ||
+    r.prefs === null ||
+    Array.isArray(r.prefs) ||
+    Object.keys(r.prefs).length !== 0 ||
+    typeof r.updated_at !== "string" ||
+    r.updated_at.length === 0
   ) {
     throw new ApiError("reading-state: malformed response body", 0, JSON.stringify(raw));
   }
   return {
-    document_id: String(r.document_id ?? ""),
+    document_id: r.document_id,
     page_index: r.page_index,
     anchor_ref: r.anchor_ref == null ? null : String(r.anchor_ref),
-    prefs: typeof r.prefs === "object" && r.prefs !== null ? r.prefs : {},
+    prefs: r.prefs,
     revision: r.revision,
-    updated_at: String(r.updated_at ?? ""),
+    updated_at: r.updated_at,
   };
 }
 
@@ -63,12 +75,12 @@ export async function getReadingState(documentId: string): Promise<ReadingState 
       await resp.text(),
     );
   }
-  return parseState(await resp.json());
+  return parseState(await resp.json(), documentId);
 }
 
 /** PUT the position with the last-seen revision. A stale revision throws
- *  ApiError 409 (never a silent clobber — the caller re-reads and the
- *  server value wins). */
+ *  ApiError 409 (never a silent clobber — the caller re-reads; the server
+ *  value wins only when no later local turn remains unsettled). */
 export async function putReadingState(
   documentId: string,
   body: ReadingStatePutBody,
@@ -88,5 +100,5 @@ export async function putReadingState(
       await resp.text(),
     );
   }
-  return parseState(await resp.json());
+  return parseState(await resp.json(), documentId);
 }

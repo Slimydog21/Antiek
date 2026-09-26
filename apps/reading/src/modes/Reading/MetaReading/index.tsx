@@ -6,6 +6,7 @@ import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import ReadAloud from "../../../components/voice/ReadAloud";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
+import { positionStorageKey } from "../usePosition";
 
 /**
  * MetaReading — the one-shot, READ-ONLY, page-cited synthesis over the OWNED
@@ -96,7 +97,7 @@ export default function MetaReading() {
     (c: BookCitation) => {
       if (c.page_resolved && c.page_index !== null && c.page_index >= 0) {
         try {
-          window.sessionStorage.setItem(`antiek.read.pos.${c.document_id}`, String(c.page_index));
+          window.sessionStorage.setItem(positionStorageKey(c.document_id), String(c.page_index));
         } catch {
           /* private mode — opens at the saved page */
         }

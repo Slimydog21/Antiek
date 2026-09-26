@@ -4,7 +4,7 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 import type { BookDetail, FullTextResponse } from "../../api/books";
 import { paginate, windowForTocPage } from "./paginate";
-import { usePosition } from "./usePosition";
+import { positionStorageKey, setReadingPositionOwner, usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { resetReadingStateBus } from "../../hooks/useReadingState";
@@ -156,7 +156,10 @@ describe("paginate", () => {
 // ── usePosition (return-to-reading) ─────────────────────────────────
 
 describe("usePosition", () => {
-  beforeEach(() => window.sessionStorage.clear());
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    setReadingPositionOwner("reader-a");
+  });
 
   it("persists and restores the page index per document", () => {
     const { result, unmount } = renderHook(() => usePosition("doc-a", 10));
@@ -169,9 +172,17 @@ describe("usePosition", () => {
   });
 
   it("clamps a saved position past the end of a shorter book", () => {
-    window.sessionStorage.setItem("antiek.read.pos.doc-b", "99");
+    window.sessionStorage.setItem(positionStorageKey("doc-b"), "99");
     const { result } = renderHook(() => usePosition("doc-b", 3));
     expect(result.current.pageIndex).toBe(2); // clamped to last page
+  });
+
+  it("keeps another owner's saved page out of the fallback", () => {
+    window.sessionStorage.setItem(positionStorageKey("doc-b"), "4");
+    setReadingPositionOwner("reader-b");
+    const { result } = renderHook(() => usePosition("doc-b", 10));
+    expect(result.current.pageIndex).toBe(0);
+    expect(window.sessionStorage.getItem(positionStorageKey("doc-b"))).toBeNull();
   });
 });
 

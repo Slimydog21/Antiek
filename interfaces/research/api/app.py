@@ -1960,6 +1960,11 @@ def create_app(
     # stale revision, the empty v1 prefs allowlist).
     from .reading_state_routes import register_reading_state_routes
     register_reading_state_routes(app)
+    # Autonomous-diligence SPR-01 — the flag queue: owner-scoped idempotent
+    # flags with write-time ref grounding (refs only — never the object's
+    # text), the queue read, and dismiss.
+    from .diligence_routes import register_diligence_routes
+    register_diligence_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
