@@ -275,6 +275,15 @@ afterEach(() => {
   window.localStorage.removeItem("antiek.island.hidden");
 });
 
+
+/** Await an island glyph by id so a click can never race a null node. */
+async function awaitIsland(id: string) {
+  await waitFor(() =>
+    expect(document.querySelector(`[data-island-id="${id}"]`)).toBeTruthy(),
+  );
+  return document.querySelector(`[data-island-id="${id}"]`)!;
+}
+
 // ── Proof 1: both mounts, expand/collapse, never a workspace window ───────
 
 describe("the island widget in BOTH mounts", () => {
@@ -283,7 +292,7 @@ describe("the island widget in BOTH mounts", () => {
     await renderReader();
     // The unit-1 mark paints the passage; the island adds the glyph.
     await screen.findByText("The ope");
-    const glyphButton = document.querySelector('[data-island-id="a-island"]')!;
+    const glyphButton = await awaitIsland("a-island");
     expect(glyphButton.getAttribute("data-island-state")).toBe("collapsed");
     expect(glyphButton.getAttribute("data-island-status")).toBe("live");
 
@@ -317,7 +326,7 @@ describe("the island widget in BOTH mounts", () => {
     route({ anchors: [islandAnchor()], investigations: [summary()] });
     await renderWindowReader("doc-1");
     await screen.findByText("The ope");
-    const glyphButton = document.querySelector('[data-island-id="a-island"]')!;
+    const glyphButton = await awaitIsland("a-island");
     expect(glyphButton.getAttribute("data-island-state")).toBe("collapsed");
     fireEvent.click(glyphButton);
     await screen.findByText("Open research →");
@@ -355,7 +364,7 @@ describe("the status glyphs", () => {
     useInvestigationMock.mockReturnValue(projection("completed"));
     await renderReader();
     await screen.findByText("The ope");
-    const btn = document.querySelector('[data-island-id="a-island"]')!;
+    const btn = await awaitIsland("a-island");
     expect(btn.getAttribute("data-island-status")).toBe("complete");
     const glyph = btn.querySelector("[data-island-glyph]")!;
     expect(glyph.className).toContain("bg-sun");
@@ -373,7 +382,7 @@ describe("the status glyphs", () => {
     useInvestigationMock.mockReturnValue(projection("not_found"));
     await renderReader();
     await screen.findByText("The ope");
-    const btn = document.querySelector('[data-island-id="a-island"]')!;
+    const btn = await awaitIsland("a-island");
     expect(btn.getAttribute("data-island-status")).toBe("gone");
     fireEvent.click(btn);
     await screen.findByText(/record is missing/);
@@ -407,7 +416,7 @@ describe("the servability boundary", () => {
     });
     await renderReader();
     await screen.findByText("The ope");
-    fireEvent.click(document.querySelector('[data-island-id="a-private"]')!);
+    fireEvent.click(await awaitIsland("a-private"));
     const card = await screen.findByRole("dialog");
     expect(document.querySelector("[data-island-quote]")).toBeNull();
     expect(card.textContent).not.toContain("“The ope”");
