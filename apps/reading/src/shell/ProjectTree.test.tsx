@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { BookSummary } from "../api/books";
 import type { InvestigationSummary } from "../lib/api";
 import { usePinned } from "../components/navigation/pinnedStore";
+import { useWorkspace } from "../workspace/WorkspaceStore";
 import ProjectTree from "./ProjectTree";
 
 const { listBooksMock, listInvestigationsMock, navigateMock } = vi.hoisted(() => ({
@@ -69,7 +70,10 @@ beforeEach(() => {
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function expectNoFabricatedIds(container: HTMLElement) {
   for (const id of fabricatedIds) {
@@ -136,5 +140,58 @@ describe("ProjectTree", () => {
     expect(screen.queryByText("No recent items yet.")).toBeNull();
     expect(screen.queryByText("Loading recent items...")).toBeNull();
     expectNoFabricatedIds(container);
+  });
+});
+
+describe("ProjectTree modifier-click (F-02)", () => {
+  // F-02: ⌘/Ctrl-click used to open a floating panel with { id } props that
+  // Trajectory / Notebook / PdfViewer do not accept (Trajectory threw). It
+  // must navigate in a new tab to the row's route and never open a panel.
+  const liveNotebookless = { count: 1, investigations: [liveInvestigation] };
+
+  function spies() {
+    const openPanel = vi.fn();
+    useWorkspace.setState({ open: openPanel } as Partial<ReturnType<typeof useWorkspace.getState>>);
+    const windowOpen = vi.spyOn(window, "open").mockReturnValue(null);
+    return { openPanel, windowOpen };
+  }
+
+  it.each([
+    ["metaKey", { metaKey: true }],
+    ["ctrlKey", { ctrlKey: true }],
+  ])("%s on an investigation row opens /inv/<id> in a new tab and never a panel", async (_k, mods) => {
+    listInvestigationsMock.mockResolvedValue(liveNotebookless);
+    const { openPanel, windowOpen } = spies();
+    renderTree("research");
+
+    fireEvent.click(await screen.findByText("Live seeded investigation"), mods);
+
+    expect(openPanel).not.toHaveBeenCalled();
+    expect(windowOpen).toHaveBeenCalledTimes(1);
+    expect(windowOpen).toHaveBeenCalledWith("/inv/inv-live-seeded", "_blank", "noopener");
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("metaKey on a document row opens the same route a plain click navigates to", async () => {
+    listBooksMock.mockResolvedValue({ books: [liveBook], count: 1 });
+    const { openPanel, windowOpen } = spies();
+    renderTree("read");
+
+    fireEvent.click(await screen.findByText("Live seeded document"), { metaKey: true });
+
+    expect(windowOpen).toHaveBeenCalledWith("/wrestle/doc-live-seeded", "_blank", "noopener");
+    expect(openPanel).not.toHaveBeenCalled();
+  });
+
+  it("a plain click keeps navigating in place and opens nothing", async () => {
+    listInvestigationsMock.mockResolvedValue(liveNotebookless);
+    const { openPanel, windowOpen } = spies();
+    renderTree("research");
+
+    fireEvent.click(await screen.findByText("Live seeded investigation"));
+
+    expect(navigateMock).toHaveBeenCalledWith("/inv/inv-live-seeded");
+    expect(windowOpen).not.toHaveBeenCalled();
+    expect(openPanel).not.toHaveBeenCalled();
   });
 });

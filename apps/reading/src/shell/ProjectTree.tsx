@@ -1,7 +1,6 @@
 import { useNavigate, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-import { useWorkspace } from "../workspace/WorkspaceStore";
 import { usePinned } from "../components/navigation/pinnedStore";
 import { LemonTag } from "../components/lemon/LemonTag";
 import { listBooks } from "../api/books";
@@ -71,17 +70,6 @@ const routeForNode = (n: TreeNode): string => {
       return `/wrestle/${n.id}`;
     case "notebook":
       return `/notebook/${n.id}`;
-  }
-};
-
-const panelKindForNode = (n: TreeNode) => {
-  switch (n.kind) {
-    case "investigation":
-      return "Trajectory" as const;
-    case "document":
-      return "PdfViewer" as const;
-    case "notebook":
-      return "Notebook" as const;
   }
 };
 
@@ -158,7 +146,6 @@ export function ProjectTree({
 
   const pinned = usePinned((s) => s.pinned);
   const togglePin = usePinned((s) => s.toggle);
-  const openPanel = useWorkspace((s) => s.open);
   const research = useInvestigationList();
   const read = useReadDocuments();
 
@@ -181,10 +168,14 @@ export function ProjectTree({
     all: true,
   });
 
+  // ⌘/Ctrl-click opens the row's own route in a new tab, the browser's
+  // convention. It used to open a floating panel with { id }, a prop none of
+  // Trajectory / Notebook / PdfViewer accept (Trajectory threw; F-02). Panel
+  // open can come back once those renderers take an id.
   const onItemClick = (n: TreeNode, e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey) {
       e.preventDefault();
-      openPanel(panelKindForNode(n), { id: n.id }, { mode: "floating", title: n.title });
+      window.open(routeForNode(n), "_blank", "noopener");
       return;
     }
     navigate(routeForNode(n));
@@ -347,7 +338,7 @@ function NodeRow({
         onClick={onClick}
         data-node-id={node.id}
         className="flex-1 flex items-center gap-2 px-3 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left min-w-0"
-        title="Click to open. Cmd/Ctrl+Click to open as floating panel."
+        title="Click to open. Cmd/Ctrl+Click to open in a new tab."
       >
         <span aria-hidden="true" className="text-ink-mute dark:text-moonlight shrink-0">
           {icon[node.kind]}
