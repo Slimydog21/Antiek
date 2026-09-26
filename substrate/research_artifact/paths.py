@@ -131,7 +131,7 @@ def atomic_write_nofollow(path: Path, data: bytes) -> None:
                 try:
                     os.close(fd)
                 except OSError as close_error:
-                    failure.add_note(f"closing the temp file also failed: {type(close_error).__name__}: {close_error}")
+                    failure.add_note(_cleanup_note("closing the temp file", close_error))
                 raise
             # Closed outside the handler: its own error is the failure then.
             os.close(fd)
@@ -143,10 +143,18 @@ def atomic_write_nofollow(path: Path, data: bytes) -> None:
             except FileNotFoundError:
                 pass  # never created, or already published by the replace
             except OSError as unlink_error:
-                failure.add_note(f"removing the temp file also failed: {type(unlink_error).__name__}: {unlink_error}")
+                failure.add_note(_cleanup_note("removing the temp file", unlink_error))
             raise
     finally:
         os.close(parent_fd)
+
+
+def _cleanup_note(stage: str, error: OSError) -> str:
+    """A cleanup failure as a note: the stage, the error's type and errno.
+
+    Never the error's text: an OSError's str names its file, and the temp's
+    name embeds the artifact id."""
+    return f"{stage} also failed: {type(error).__name__} (errno {error.errno}, {error.strerror})"
 
 
 def _open_parent_dir(path: Path, *, create: bool) -> tuple[int, str]:
