@@ -44,9 +44,12 @@ MEMBER_KINDS: tuple[str, ...] = ("node", "investigation", "document", "deliverab
 
 #: Tab kinds by pane side (contract Part 2 §2.2, rev 7). Left tabs are
 #: documents; right tabs are agent tabs (each a view of one thread), the
-#: Findings and flags tabs, and Writing's block outline.
+#: Findings and flags tabs, and Writing's block outline. ``research`` is on
+#: both sides: left is a deep research spawned from a document, opened as
+#: core material (R3, and §2.2's side inheritance); right is a research as
+#: an agent you talk to (R6, R18).
 TAB_KINDS_BY_SIDE: dict[str, tuple[str, ...]] = {
-    "left": ("reader", "document"),
+    "left": ("reader", "document", "research"),
     "right": ("research", "dialogue", "reformat", "diligence", "island", "findings", "flags", "block"),
 }
 

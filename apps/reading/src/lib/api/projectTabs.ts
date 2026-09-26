@@ -20,7 +20,9 @@ import { API_BASE, ApiError, apiFetch } from "../api";
 
 export type Mothership = "research" | "writing" | "reading";
 export type TabSide = "left" | "right";
-export type LeftTabKind = "reader" | "document";
+/** `research` is on both sides: left, a deep research spawned from a document
+ *  (R3, core material); right, a research as an agent you talk to (R6, R18). */
+export type LeftTabKind = "reader" | "document" | "research";
 export type RightTabKind =
   | "research"
   | "dialogue"

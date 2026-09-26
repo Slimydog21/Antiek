@@ -561,6 +561,26 @@ def test_each_mothership_keeps_its_own_tree(env):
     assert env["client"].get(f"/projects/{pid}/tabs/books").status_code == 404
 
 
+def test_a_deep_research_spawned_from_a_document_is_a_left_tab(env):
+    """R3 (the operator's words): document-level tabs include "deep researches
+    spawned from a document", and Part 2 §2.2 has a child inherit its
+    parent's side. So research is admitted on both sides: left as core
+    material opened from a document, right as an agent you talk to. Found
+    by lane A while wiring the adapter."""
+    pid = _project(env)
+    origin = {"document_id": "doc-1", "kind": "research"}
+    tree = _tree(
+        _node("doc", "1", side="left", kind="reader"),
+        _node("dr", "1.1", parent="doc", side="left", kind="research", branch_origin=origin),
+        _node("agent", "2", side="right", kind="research"),
+    )
+    r = _put(env, pid, tree, 0, active={"left": "dr", "right": "agent"})
+    assert r.status_code == 200, r.text
+    assert r.json()["tree"]["nodes"]["dr"]["side"] == "left"
+    island_left = _put(env, pid, _tree(_node("i", "3", side="left", kind="island")), 1)
+    assert (island_left.status_code, island_left.json()["tab_id"]) == (422, "i")
+
+
 def test_branch_origins_are_checked(env):
     pid = _project(env)
     origin = {"document_id": "doc-1", "kind": "agent"}
@@ -579,7 +599,7 @@ def test_branch_origins_are_checked(env):
         ({"nodes": {}}, None),
         ({"nodes": {}, "root_order": [], "history": {}}, None),
         (_tree(_node("a", "1", pruned_at="2026-09-26T00:00:00Z")), None),
-        (_tree(_node("a", "1", side="left", kind="research")), None),
+        (_tree(_node("a", "1", side="left", kind="dialogue")), None),
         (_tree(_node("a", "1", side="right", kind="reader")), None),
         (_tree(_node("a", "1", color="red")), None),
         (_tree(_node("a", "1.0")), None),
