@@ -18,6 +18,11 @@ export interface PageWindow {
   pageNumber: number;
   /** The page's body (the `## Page N` marker stripped). */
   text: string;
+  /** The offset of `text`'s first scalar in the (normalized) source markdown
+   *  the windows were split from. This is what maps a body-anchored range
+   *  (e.g. an anchored highlight's [start, end) from the anchor-map) into
+   *  page-relative offsets — content-derived, like the index itself. */
+  bodyStart: number;
 }
 
 const PAGE_MARKER = /^##\s+Page\s+(\d+)\s*$/i;
@@ -35,7 +40,11 @@ export function paginate(markdown: string): PageWindow[] {
   if (!markdown.trim()) return [];
   const lines = markdown.split("\n");
   const windows: PageWindow[] = [];
-  let current: { pageNumber: number; buf: string[] } | null = null;
+  let current: { pageNumber: number; buf: string[]; bufStart: number } | null =
+    null;
+  // The running offset of the CURRENT line's first scalar in the source
+  // markdown (each split consumed its trailing "\n").
+  let pos = 0;
 
   for (const line of lines) {
     const m = line.match(PAGE_MARKER);
@@ -43,26 +52,43 @@ export function paginate(markdown: string): PageWindow[] {
       if (current) {
         windows.push(finish(current));
       }
-      current = { pageNumber: parseInt(m[1], 10), buf: [] };
+      current = { pageNumber: parseInt(m[1], 10), buf: [], bufStart: -1 };
     } else if (current) {
+      if (current.buf.length === 0) current.bufStart = pos;
       current.buf.push(line);
     }
+    pos += line.length + 1;
   }
   if (current) windows.push(finish(current));
 
   if (windows.length === 0) {
     // No page markers (snippet / unpaginated) — one window at index 0.
-    return [{ pageIndex: 0, pageNumber: 1, text: markdown.trim() }];
+    const trimmed = markdown.trim();
+    return [
+      {
+        pageIndex: 0,
+        pageNumber: 1,
+        text: trimmed,
+        bodyStart: markdown.length - markdown.trimStart().length,
+      },
+    ];
   }
   // Re-index 0-based by position (defends against non-contiguous N).
   return windows.map((w, i) => ({ ...w, pageIndex: i }));
 }
 
-function finish(c: { pageNumber: number; buf: string[] }): PageWindow {
+function finish(c: {
+  pageNumber: number;
+  buf: string[];
+  bufStart: number;
+}): PageWindow {
+  const raw = c.buf.join("\n");
+  const trimmedStart = raw.length - raw.trimStart().length;
   return {
     pageIndex: c.pageNumber - 1,
     pageNumber: c.pageNumber,
-    text: c.buf.join("\n").trim(),
+    text: raw.trim(),
+    bodyStart: c.bufStart + trimmedStart,
   };
 }
 

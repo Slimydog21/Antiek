@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from runtime.db_lock import LockedConnection
+from substrate.books.highlights.resolve import reanchor_document
 from substrate.event_log import log_event
 from substrate.research_artifact.paths import read_reviewed_draft_merge
 
@@ -478,6 +479,13 @@ def commit_source_merge_review(
             event_id,
         ],
     )
+    # Anchor-first SPR-01 post-commit hook: a body rewrite must not leave
+    # anchored highlights pointing at stale offsets. Re-resolve this
+    # document's anchors INSIDE the same write-lock scope — the merge's own
+    # append-only rewrite leaves original chunks intact, but any chunk-level
+    # change (a re-chunk that landed with the merge) converges here:
+    # active | migrated | drifted | orphaned, never silently stale.
+    reanchor_document(con, document_id=document_id, events_dir=events_dir)
     return SourceMergeCommitReceipt(
         status="committed",
         document_id=document_id,
