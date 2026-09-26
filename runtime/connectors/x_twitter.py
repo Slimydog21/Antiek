@@ -31,6 +31,7 @@ operator's smoke test.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import httpx
@@ -77,6 +78,10 @@ SEARCH_MAX_RESULTS = _MAX_RESULTS
 X_POST_READ_USD = 0.005
 X_PRICING_SOURCE_URL = "https://docs.x.com/x-api/getting-started/pricing"
 X_PRICING_CHECKED_ON = "2026-09-21"
+
+# A post id is a decimal snowflake. Checked before any send so a malformed id
+# never reaches X or spends a read.
+_TWEET_ID = re.compile(r"^[0-9]{1,19}$")
 
 
 def estimated_search_cost_usd(max_results: int = _DEFAULT_MAX_RESULTS) -> float:
@@ -143,6 +148,7 @@ class XTwitterConnector(PasteKeyConnector):
         key_file: str | None = None,
         client: httpx.Client | None = None,
         governor: VendorRateGovernor | None = None,
+        owner: str | None = None,
         state_dir: str | None = None,
         timeout_s: float = 30.0,
     ) -> None:
@@ -158,7 +164,8 @@ class XTwitterConnector(PasteKeyConnector):
         if governor is not None:
             self._governor = governor
         else:
-            kwargs: dict[str, Any] = {}
+            # The owner keys the window: their bearer, their brake.
+            kwargs: dict[str, Any] = {"owner": owner}
             if state_dir is not None:
                 kwargs["state_dir"] = state_dir
             self._governor = VendorRateGovernor("x", _X_RATE, **kwargs)
@@ -266,6 +273,46 @@ class XTwitterConnector(PasteKeyConnector):
             },
         )
         return _flatten_search_page(payload)
+
+    def get_tweet(self, tweet_id: str) -> dict[str, Any]:
+        """One post by id: ``GET /2/tweets/:id`` with the author expanded.
+
+        Returns one flat record with the keys a search row carries
+        (``tweet_id``, ``text``, ``author_handle``, ``created_at``,
+        ``conversation_id``) plus ``author_verified``, which the ingest model
+        reads. COST: under pay-per-use credits this is ONE billed post read of
+        the owner's own credit (``X_POST_READ_USD``); a malformed id is
+        refused before any send and costs nothing. A post X does not return
+        raises :class:`XTwitterError` with ``status_code=404``.
+        """
+        if not isinstance(tweet_id, str) or not _TWEET_ID.match(tweet_id):
+            raise ValueError("tweet_id must be a numeric X post id")
+        payload = self._get(
+            f"/tweets/{tweet_id}",
+            {
+                "tweet.fields": "created_at,author_id,conversation_id",
+                "expansions": "author_id",
+                "user.fields": "username,verified",
+            },
+        )
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise XTwitterError("X post was not found", status_code=404)
+        author: dict[str, Any] = {}
+        includes = payload.get("includes")
+        if isinstance(includes, dict) and isinstance(includes.get("users"), list):
+            for user in includes["users"]:
+                if isinstance(user, dict) and str(user.get("id")) == str(data.get("author_id")):
+                    author = user
+                    break
+        return {
+            "tweet_id": str(data.get("id") or tweet_id),
+            "text": str(data.get("text", "")),
+            "author_handle": str(author.get("username", "")).lstrip("@"),
+            "created_at": data.get("created_at"),
+            "conversation_id": data.get("conversation_id"),
+            "author_verified": bool(author.get("verified", False)),
+        }
 
     def close(self) -> None:
         """Close the held httpx client — only if this connector created it."""

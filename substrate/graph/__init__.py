@@ -33,17 +33,23 @@ def default_db_path() -> str:
     return _os.path.expanduser(_DUCKDB_PATH)
 
 
-def ensure_initialized(db_path: str | None = None) -> str:
+def ensure_initialized(
+    db_path: str | None = None, *, timeout_s: float | None = None
+) -> str:
     """Make sure the schema is present at ``db_path``. Returns the
     resolved path. Idempotent — CREATE IF NOT EXISTS is the workhorse.
 
     Used by the wrestling bridge before the first DB-touching event
     in a given process. Cheap (~1ms after first call) so we don't
     bother with a "has-this-been-called" memo.
+
+    ``timeout_s`` bounds the write-lock wait on the cold path (schema
+    absent, or the read-only probe refused because another process holds
+    the file). ``None`` keeps ``connect_write``'s default.
     """
     resolved = db_path or default_db_path()
     from .schema import init_database_at_path
-    init_database_at_path(resolved)
+    init_database_at_path(resolved, timeout_s=timeout_s)
     return resolved
 
 

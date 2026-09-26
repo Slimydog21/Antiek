@@ -61,6 +61,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
@@ -68,18 +69,13 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-# Defensive SSL bootstrap: a python.org-3.11 interpreter ships without a system
-# CA bundle (the arxiv-missing-ssl-env failure mode). Point at certifi when the
-# env is unset so the HTTPS handshake to arxiv.org / OA sources does not fail
-# silently mid-window. Idempotent and read-only w.r.t. the DB.
-if not os.environ.get("SSL_CERT_FILE"):
-    try:
-        import certifi
+from runtime.ssl_bootstrap import bootstrap as _ssl_bootstrap  # noqa: E402
 
-        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
-        os.environ.setdefault("SSL_CERT_DIR", os.path.dirname(certifi.where()))
-    except Exception:
-        pass  # certifi absent -> leave env as-is; fall through to system default
+# Defensive SSL bootstrap: a python.org interpreter ships without a system CA
+# bundle (the arxiv-missing-ssl-env failure mode). The shared helper points at
+# certifi only when SSL_CERT_FILE is unset, so systemd / ca-certificates keep
+# priority. Read-only w.r.t. the DB.
+_ssl_bootstrap()
 
 from acquisition.corpus_quality import (  # noqa: E402
     CandidateRef,
@@ -490,8 +486,14 @@ def _arxiv_candidates(
     shared = SourceThrottle()
 
     def _mirror_export_ban() -> None:
+        # Mirror only a LIVE ban. An expired sentinel (the throttle clears one
+        # on its next permitted request, but a stale value can still be read
+        # here — a concurrent last-writer-wins rewrite, or a Retry-After that
+        # elapsed in flight) must not be copied forward: it would make the
+        # next run's source rotation skip arXiv for a ban that is already over.
         until = throttle.banned_until()
-        if until > 0:
+        now = time.time()
+        if until > now:
             shared.note_response_at(ARXIV_EXPORT_KEY, until)
 
     papers: list[ArxivPaper] = []
@@ -963,7 +965,7 @@ def _fetch_paper_pdf(rec, *, throttle, source: str) -> bytes:
     ) as c:
         r = c.get(url, headers={"User-Agent": "Antiek/0.1 (acquisition.papers)"}, timeout=30.0)
     if r.status_code in (429, 503):
-        throttle.note_response(throttle_key, r.status_code, dict(r.headers))
+        throttle.note_response(throttle_key, r.status_code, dict(r.headers), url=url)
     r.raise_for_status()
     content = r.content
     assert_pdf(content, content_type=r.headers.get("content-type"), url=url)

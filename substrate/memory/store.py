@@ -12,7 +12,7 @@ this module never opens a DuckDB connection.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Literal, cast
 
@@ -31,6 +31,9 @@ from .models import MemoryItem
 
 _GRAPH_SCOPE: Literal["depth"] = "depth"
 _MEMORY_METADATA_SCHEMA = "antiek.account-memory.v1"
+# Bounds the ORDER BY the lexical prefilter expands into (three LIKEs per token).
+MAX_SALIENT_TOKENS = 32
+_SALIENT_COLUMNS = ("s.canonical_label", "e.relation", "m.canonical_label")
 
 
 class MemoryStoreError(RuntimeError):
@@ -220,12 +223,22 @@ def list_memory(
     include_invalidated: bool = False,
     valid_at: datetime | None = None,
     limit: int | None = None,
+    salient_tokens: Sequence[str] | None = None,
 ) -> list[MemoryItem]:
     """List memory for exactly one owner, newest-valid first.
 
     Current items are returned by default. ``include_invalidated=True`` exposes
     the preserved history; ``valid_at`` instead selects the interval that was
     valid at one point in time.
+
+    ``salient_tokens`` is the lexical prefilter bounded recall pushes into the
+    query: rows whose subject, predicate or object contains any token as a
+    case-insensitive substring are ordered before the rest, each group still
+    newest-valid first, so a ``limit`` keeps every lexical hit it can before
+    spending rows on recency alone. It is an ordering, never a filter — without
+    ``limit`` the returned set is unchanged — and a substring match is a
+    superset of whole-token overlap, so a row that ranks lexically in Python is
+    never ordered behind one that does not.
     """
     _assert_locked(con)
     owner = _required_text(owner_user_id, "owner_user_id")
@@ -250,6 +263,11 @@ def list_memory(
         point = datetime.now(UTC).replace(tzinfo=None)
         conditions.extend(["e.valid_from <= ?", "(e.valid_until IS NULL OR e.valid_until > ?)"])
         params.extend([point, point])
+    order_sql = " ORDER BY e.valid_from DESC, e.extracted_at DESC, e.edge_id"
+    if salient_tokens:
+        match_sql, match_params = _salient_match_sql(salient_tokens)
+        order_sql = f" ORDER BY CASE WHEN {match_sql} THEN 0 ELSE 1 END," + order_sql[len(" ORDER BY"):]
+        params.extend(match_params)
     limit_sql = ""
     if limit is not None:
         if isinstance(limit, bool) or limit < 1:
@@ -257,14 +275,33 @@ def list_memory(
         limit_sql = " LIMIT ?"
         params.append(limit)
     rows = con.execute(
-        _SELECT_MEMORY
-        + " WHERE "
-        + " AND ".join(conditions)
-        + " ORDER BY e.valid_from DESC, e.extracted_at DESC, e.edge_id"
-        + limit_sql,
+        _SELECT_MEMORY + " WHERE " + " AND ".join(conditions) + order_sql + limit_sql,
         params,
     ).fetchall()
     return [_row_to_item(row) for row in rows]
+
+
+def _salient_match_sql(tokens: Sequence[str]) -> tuple[str, list[str]]:
+    """``lower(column) LIKE '%token%'`` over the triple, OR-joined, bound as params."""
+    distinct: list[str] = []
+    for token in tokens:
+        normalized = _required_text(token, "salient_token").lower()
+        if normalized not in distinct:
+            distinct.append(normalized)
+    if len(distinct) > MAX_SALIENT_TOKENS:
+        raise ValueError(f"at most {MAX_SALIENT_TOKENS} salient tokens are supported")
+    clauses: list[str] = []
+    params: list[str] = []
+    for token in distinct:
+        pattern = "%" + _escape_like(token) + "%"
+        for column in _SALIENT_COLUMNS:
+            clauses.append(f"lower({column}) LIKE ? ESCAPE '\\'")
+            params.append(pattern)
+    return " OR ".join(clauses), params
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 _SELECT_MEMORY = """
@@ -608,4 +645,4 @@ def _canonical_json(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
 
-__all__ = ["MemoryStoreError", "list_memory", "write_memory_item"]
+__all__ = ["MAX_SALIENT_TOKENS", "MemoryStoreError", "list_memory", "write_memory_item"]

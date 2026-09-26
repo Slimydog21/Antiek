@@ -156,7 +156,10 @@ class ThrottledFetcher:
                     and resp.status_code in _BAN_STATUS
                 ):
                     self._persistent.note_response(
-                        self._source, resp.status_code, dict(resp.headers)
+                        self._source,
+                        resp.status_code,
+                        dict(resp.headers),
+                        url=str(resp.url),
                     )
                 last_exc = FetchError(f"{url} returned {resp.status_code}")
                 self._backoff(attempt, reason=f"HTTP {resp.status_code}")

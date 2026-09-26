@@ -50,6 +50,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from substrate.ban_events import append_ban_event as _append_ban_event
+
 # Default per-source spacing. A research-batch tool is not latency-sensitive,
 # so a courteous floor keeps us off any rate-limiter's radar. OA polite pools
 # serve ~10 req/s; gutendex and the arXiv PDF host are comparable. 1.0s is the
@@ -94,14 +96,24 @@ DEFAULT_MAX_ATTEMPTS = 4
 
 
 def default_state_path() -> str:
-    """The cross-process state file. Honors ``ANTIEK_SOURCE_THROTTLE_PATH``
-    for tests / alternate homes; otherwise lands under ``~/.antiek/`` alongside
-    the other Antiek runtime state (the same convention ``ArxivThrottle`` and
-    the event log use). It is NOT the DuckDB path — this state never goes
-    through the single-writer lock."""
+    """The cross-process state file.
+
+    Precedence: ``ANTIEK_SOURCE_THROTTLE_PATH`` (non-empty) >
+    ``$ANTIEK_HOME/source_throttle.json`` when ``ANTIEK_HOME`` is non-empty
+    after ``.strip()`` > ``~/.antiek/source_throttle.json``. ``ANTIEK_HOME``
+    replaces the ``~/.antiek`` directory itself (it is NOT a home directory
+    to append ``.antiek`` to). Honouring ``ANTIEK_HOME`` here and in
+    ``acquisition.arxiv.throttle.default_state_path`` is one lever for both
+    sentinel files, so a half-redirected run cannot write one sentinel to
+    tmp and the other into the operator's live file. It is NOT the DuckDB
+    path — this state never goes through the single-writer lock.
+    """
     env = os.environ.get("ANTIEK_SOURCE_THROTTLE_PATH")
     if env:
         return env
+    home = os.environ.get("ANTIEK_HOME", "").strip()
+    if home:
+        return str(Path(home) / "source_throttle.json")
     return str(Path.home() / ".antiek" / "source_throttle.json")
 
 
@@ -261,6 +273,8 @@ class SourceThrottle:
         source: str,
         status_code: int,
         headers: Mapping[str, str] | None = None,
+        *,
+        url: str | None = None,
     ) -> None:
         """Record a request outcome for ``source``. On a 429/503 arm the
         ``banned_until`` sentinel; any other status is a no-op.
@@ -269,6 +283,22 @@ class SourceThrottle:
         emit) is honored when present and parseable, taking the LONGER of the
         header value and the conservative default so a tiny advertised window
         cannot under-cut the floor that protects the IP.
+
+        ``url`` is the request URL (optional) used only to attribute the
+        ban-event log line. The sentinel is written FIRST; the append never
+        raises and cannot block the sentinel.
+
+        A ban-event line is appended only when this call ARMS ``source``'s
+        sentinel, that is when no ban was active for it before. A repeat note
+        of an active ban re-arms the sentinel but is not a new ban, so the log
+        counts bans rather than notes (the same rule as
+        ``ArxivThrottle.note_response``). Each source key is its own sentinel:
+        one arXiv PDF 429 on the bulk path arms both the ``arxiv`` throttle and
+        the ``arxiv_pdf`` source here, and logs one line for each.
+
+        ``note_response_at`` deliberately does NOT log a ban event: it is a
+        mirror of a ban already logged by ``ArxivThrottle``, and logging it
+        again would double-count.
         """
         if status_code not in _BAN_STATUS:
             return
@@ -280,9 +310,18 @@ class SourceThrottle:
                     backoff = max(backoff, float(int(str(retry_after).strip())))
         all_state = self._read_all()
         state = self._source_state(all_state, source)
-        state.banned_until = self._now() + backoff
+        now = self._now()
+        newly_armed = state.banned_until <= now
+        state.banned_until = now + backoff
         all_state.sources[source] = state
         self._write_all(all_state)
+        if newly_armed:
+            _append_ban_event(
+                source=source,
+                status=status_code,
+                url=url,
+                ts=now,
+            )
 
     def note_response_at(self, source: str, banned_until: float) -> None:
         """Arm ``source``'s ban sentinel at an EXPLICIT absolute expiry, taking
@@ -290,7 +329,10 @@ class SourceThrottle:
         an active ban. Used to bridge a ban computed elsewhere (e.g. the
         dedicated ``ArxivThrottle``'s export-endpoint ban) into this shared file
         so the orchestrator's source rotation can see it — without re-deriving a
-        default that could disagree with the source-of-truth expiry."""
+        default that could disagree with the source-of-truth expiry.
+
+        Does NOT append a ban event: this is a mirror of a ban already logged
+        by ``ArxivThrottle`` (see ``note_response``)."""
         all_state = self._read_all()
         state = self._source_state(all_state, source)
         state.banned_until = max(state.banned_until, float(banned_until))

@@ -35,6 +35,7 @@ from processing.embedding.embed import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
+from runtime.db_lock import DEFAULT_TIMEOUT_S  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
@@ -125,12 +126,17 @@ def ingest_voice_note(
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
 ) -> IngestVoiceNoteResult:
     """Write a transcribed voice note into the substrate graph.
 
     The transcript is the text-only output of whisper (or a stub for
     tests). This adapter does not perform transcription itself; pair
     with ``transcribe_and_ingest`` to chain the two.
+
+    ``timeout_s`` bounds the write-lock wait. An HTTP caller passes its
+    own bounded wait so a held writer fails fast instead of pinning an
+    executor thread for ``connect_write``'s 300s default.
     """
     when = recorded_at or datetime.now(UTC)
     document_id = voice_note_doc_id(operator_id, when)
@@ -182,7 +188,9 @@ def ingest_voice_note(
 
     from runtime.db_lock import connect_write
 
-    with connect_write(resolved_db_path, purpose="acquisition/voice") as con:
+    with connect_write(
+        resolved_db_path, purpose="acquisition/voice", timeout_s=timeout_s
+    ) as con:
         insert_document(
             con,
             document_id=document_id,

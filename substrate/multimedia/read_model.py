@@ -1513,7 +1513,8 @@ class MultimediaAssetStore:
         _validate_production_link(record, owner_digest)
         path = self._path(owner_digest, record.asset.asset_id)
         account = self._account_dir(owner_digest, create=True)
-        assert account is not None
+        if account is None:
+            raise RuntimeError("multimedia account directory vanished after creation")
         if path.is_symlink():
             raise ValueError("multimedia asset path cannot be a symlink")
         if path.exists():

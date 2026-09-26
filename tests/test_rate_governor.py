@@ -1749,3 +1749,59 @@ def test_an_unreadable_conditional_file_fails_closed():
     assert len(violations) == 1, violations
     assert violations[0].startswith("tools/gone.py:"), violations
     assert "unreadable" in violations[0], violations
+
+
+# ── SPR-04 task 4: the BYO-tools connector governor keys its window per owner ──
+#
+# ``runtime.connectors.rate_governor`` generalizes the arXiv governor above.
+# Its state used to be ``{state_dir}/{vendor}.json`` for everyone, which made
+# user B wait on user A's calls to a key that was not B's.
+
+from runtime.connectors.base import RateSpec, owner_state_key  # noqa: E402
+from runtime.connectors.rate_governor import VendorRateGovernor  # noqa: E402
+
+
+def test_state_path_is_keyed_per_owner(tmp_path: Path) -> None:
+    """Two owners of the same vendor never share a window.
+
+    A connected key is that user's budget, so the sidecar is keyed
+    ``{state_dir}/{vendor}/{owner_hash}.json``. The host-shared layout
+    survives ONLY for a governor built with no owner, which is the explicit
+    Antiek-owned-key case. The behavioural half proves the naming is
+    load-bearing: with a 1-per-100s window, B's send goes out at the same
+    instant as A's instead of sleeping 100s on A's record.
+    """
+    clock = _FakeClock()
+    rate = RateSpec(max_calls=1, window_s=100.0)
+    state_dir = str(tmp_path / "rate")
+
+    def governor(owner: str | None) -> VendorRateGovernor:
+        return VendorRateGovernor(
+            "x", rate, owner=owner, state_dir=state_dir,
+            clock=clock.now, sleeper=clock.sleep, lock_sleeper=lambda _s: None,
+        )
+
+    a = governor("owner-a")
+    b = governor("owner-b")
+    shared = governor(None)
+    print("owner-a state file:", a.state_path)
+    print("owner-b state file:", b.state_path)
+    print("host-shared state file:", shared.state_path)
+
+    assert a.state_path != b.state_path
+    assert Path(a.state_path).parent == tmp_path / "rate" / "x"
+    assert Path(b.state_path).parent == tmp_path / "rate" / "x"
+    assert Path(a.state_path).name == f"{owner_state_key('owner-a')}.json"
+    assert "owner-a" not in a.state_path  # a hash on disk, never the id
+    assert a.lock_path != b.lock_path
+    assert (a.scope, shared.scope) == ("owner", "host_shared")
+    assert shared.state_path == str(tmp_path / "rate" / "x.json")
+
+    t0 = clock.now()
+    a.governed_send(lambda: _Resp(200))
+    b.governed_send(lambda: _Resp(200))
+    assert clock.now() == t0, "B waited on A's window"
+    assert Path(a.state_path).exists() and Path(b.state_path).exists()
+    # The window itself is intact; only its key changed.
+    a.governed_send(lambda: _Resp(200))
+    assert clock.now() == t0 + 100.0

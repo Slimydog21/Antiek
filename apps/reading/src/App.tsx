@@ -14,7 +14,6 @@ import Coordination from "./modes/Coordination";
 import CostConsent from "./modes/Coordination/CostConsent";
 import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
-import Federation from "./modes/Federation";
 import Home from "./modes/Home/Home";
 import Library from "./modes/Library";
 // Link Monster is lazy-loaded: its p5 furnace-stage chunk must not
@@ -37,7 +36,6 @@ import PrivacyDashboard from "./modes/PrivacyDashboard";
 import BookReader from "./modes/Reading";
 import MetaReading from "./modes/Reading/MetaReading";
 import PersonalSpace from "./modes/Reading/PersonalSpace";
-import Replay from "./modes/Replay";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
 import MyResearch from "./modes/ResearchWorkstation/MyResearch";
@@ -48,7 +46,6 @@ import SpeakConsole from "./modes/Speak";
 import SpeakIndex from "./modes/SpeakIndex";
 import SpeakInvite from "./modes/SpeakInvite";
 import SpeakPublicBrowse from "./modes/SpeakPublicBrowse";
-import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
 import Explain from "./modes/Explain";
 import ObjectiveCard from "./modes/ObjectiveCard";
@@ -64,24 +61,30 @@ const AccountMemory = lazy(() => import("./modes/AccountMemory"));
 // row preview pulls in the style wheel; lazy-loading it keeps both out of the
 // entry chunk, which sits within about 1 KB of the 700 KB gz ceiling.
 const DocumentsIndex = lazy(() => import("./modes/DocumentsIndex"));
-// Operator-only surfaces load on demand: the entry chunk ships on every page
-// load and sits at its 700 KB gz budget, and no reader visits these routes.
+// These secondary routes are not part of the first paint. Loading them on
+// visit keeps their tables and replay view out of the entry bundle; the
+// operator-only surfaces (dashboard, payouts, skill rules) are visited by no
+// reader, and the entry chunk sits at its 700 KB gz budget.
+const Federation = lazy(() => import("./modes/Federation"));
 const OperatorDashboard = lazy(() => import("./modes/OperatorDashboard"));
 const PayoutsAudit = lazy(() => import("./modes/PayoutsAudit"));
+const Replay = lazy(() => import("./modes/Replay"));
+const Stats = lazy(() => import("./modes/Stats"));
 const SkillRules = lazy(() => import("./modes/SkillRules"));
 
-function operatorRoute(label: string, page: JSX.Element): JSX.Element {
+function RouteLoading({ label }: { label: string }) {
   return (
-    <Suspense
-      fallback={
-        <div className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
-          Loading {label}…
-        </div>
-      }
+    <div
+      role="status"
+      className="h-full flex items-center justify-center text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans"
     >
-      {page}
-    </Suspense>
+      {label}
+    </div>
   );
+}
+
+function operatorRoute(label: string, page: JSX.Element): JSX.Element {
+  return <Suspense fallback={<RouteLoading label={`Loading ${label}…`} />}>{page}</Suspense>;
 }
 
 /**
@@ -224,7 +227,14 @@ function AuthenticatedRoutes() {
         <Route path="/meta-readings" element={<PersonalSpace metaDocsOnly />} />
         <Route path="/read/:documentId" element={<BookReader />} />
         <Route path="/billing" element={<Billing />} />
-        <Route path="/stats" element={<Stats />} />
+        <Route
+          path="/stats"
+          element={
+            <Suspense fallback={<RouteLoading label="Loading statistics…" />}>
+              <Stats />
+            </Suspense>
+          }
+        />
         <Route path="/map" element={<Map />} />
         <Route path="/multimedia" element={<Multimedia />} />
         <Route path="/backtest/:synthesisId" element={<Backtest />} />
@@ -269,7 +279,14 @@ function AuthenticatedRoutes() {
         <Route path="/signals" element={<Signals />} />
         <Route path="/outcomes" element={<OutcomesIndex />} />
         <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
-        <Route path="/replay/:investigationId" element={<Replay />} />
+        <Route
+          path="/replay/:investigationId"
+          element={
+            <Suspense fallback={<RouteLoading label="Loading replay…" />}>
+              <Replay />
+            </Suspense>
+          }
+        />
         {/* Speak SPR-08 ONE DOOR: the duplicate Interview surface is folded
             into Speak. There is exactly one door to interview-as-acquisition —
             /speak. The old /interviews index redirects to /speak (the warm
@@ -292,7 +309,14 @@ function AuthenticatedRoutes() {
         <Route path="/loop-3" element={<Loop3 />} />
         <Route path="/skill-rules" element={operatorRoute("skill rules", <SkillRules />)} />
         <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />
-        <Route path="/federation" element={<Federation />} />
+        <Route
+          path="/federation"
+          element={
+            <Suspense fallback={<RouteLoading label="Loading federation…" />}>
+              <Federation />
+            </Suspense>
+          }
+        />
         <Route path="/cross-graph/citations" element={<CrossGraphCitations />} />
         {/* SPR-05 — the one multi-research monitor. Folds the three split
             "manage your researches" surfaces (the docked sidebar tree, the

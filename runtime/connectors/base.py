@@ -27,6 +27,7 @@ Posture, reused verbatim from the substrates the spec pins (do NOT rebuild):
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Literal
 
@@ -47,6 +48,21 @@ AuthModel = Literal[
 # Hard upper bound on any pasted key, matching the settings vertical's input
 # bound (interfaces/research/api/settings_models_admin.py — api_key <= 512).
 KEY_MAX_LEN = 512
+
+
+def owner_state_key(owner_user_id: str) -> str:
+    """The filename-safe key under which one owner's connector state lives.
+
+    A connected credential is the OWNER's budget — YouTube meters per GCP
+    project, X bills per key — so the rate governor and the quota meter key
+    their sidecars per owner, and this is the one derivation both use. It is
+    a fixed-length blake2b digest rather than the owner id itself so the
+    on-disk layout never carries an email-derived identifier, and so the key
+    is the same shape as the registry's own record key.
+    """
+    if not owner_user_id or not owner_user_id.strip():
+        raise ValueError("owner_user_id must be a non-empty string")
+    return hashlib.blake2b(owner_user_id.encode(), digest_size=16).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -248,5 +264,6 @@ __all__ = [
     "KeyShapeError",
     "PasteKeyConnector",
     "RateSpec",
+    "owner_state_key",
     "validate_key_shape",
 ]

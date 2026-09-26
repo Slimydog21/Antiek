@@ -10,9 +10,16 @@ from runtime.db_lock import LockedConnection
 
 from ._text import lexical_tokens
 from .models import MemoryItem
-from .store import list_memory
+from .store import MAX_SALIENT_TOKENS, list_memory
 
 DEFAULT_RECALL_LIMIT = 8
+# Rows materialised into Python per recall. This sits on every thought-partner
+# turn under the writer lock, so the owner's whole history must not be read to
+# pick eight rows. The ranking below is byte-identical to ranking the full set
+# whenever the owner has at most this many lexical hits for the query (the SQL
+# orders hits first, then recency, so every hit plus the newest non-hits fit);
+# beyond that the oldest hits are the ones the bound leaves out.
+RECALL_CANDIDATE_CAP = 200
 
 
 def recall_memory(
@@ -27,6 +34,11 @@ def recall_memory(
     Query overlap is deliberately dependency-free and takes precedence when a
     non-blank query is supplied. Within the same lexical score, newer validity
     and extraction timestamps rank first. Stable identities break final ties.
+
+    The lexical prefilter and the recency order are pushed into the store's
+    query (``salient_tokens`` + ``limit``) so at most ``RECALL_CANDIDATE_CAP``
+    rows reach Python; the salience rank is then applied to that candidate set
+    exactly as it was to the full set.
     """
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError("limit must be a positive integer")
@@ -34,7 +46,12 @@ def recall_memory(
         raise TypeError("query must be a string or None")
 
     query_tokens = frozenset(lexical_tokens(query or ""))
-    items = list_memory(con, owner_user_id)
+    items = list_memory(
+        con,
+        owner_user_id,
+        salient_tokens=_prefilter_tokens(query_tokens),
+        limit=max(RECALL_CANDIDATE_CAP, limit),
+    )
     ranked = sorted(items, key=lambda item: (item.memory_id, item.edge_id))
     ranked.sort(
         key=lambda item: _salience_key(item, query_tokens=query_tokens),
@@ -77,6 +94,18 @@ def format_memory_for_prompt(items: Sequence[MemoryItem]) -> str:
         separators=(",", ":"),
         sort_keys=True,
     )
+
+
+def _prefilter_tokens(query_tokens: frozenset[str]) -> list[str]:
+    """The query tokens the store may order by, longest first.
+
+    A thought-partner prompt is the query, so it can carry far more tokens than
+    the store binds. Longer tokens are kept because short ones ("the", "i")
+    match almost every row and discriminate nothing; the rank in Python still
+    counts every token, so this only shapes which rows the bound keeps.
+    """
+    ordered = sorted(query_tokens, key=lambda token: (-len(token), token))
+    return ordered[:MAX_SALIENT_TOKENS]
 
 
 def _salience_key(
@@ -130,6 +159,7 @@ def _date_key(value: datetime) -> tuple[int, int, int, int, int, int, int]:
 
 __all__ = [
     "DEFAULT_RECALL_LIMIT",
+    "RECALL_CANDIDATE_CAP",
     "format_memory_for_prompt",
     "recall_memory",
 ]

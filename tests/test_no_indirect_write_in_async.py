@@ -131,18 +131,27 @@ async def handler():
     assert scan_file(p) == []
 
 
-def test_speak_routes_remains_the_dominant_site() -> None:
+def test_speak_routes_stays_clean() -> None:
     """Regression anchor on the real tree.
 
     speak_routes.py routes every Speak write through one module-level
-    ``@contextmanager _write``, which is why it holds the majority of the
-    exposure. If this count reaches zero the migration is done and the
-    baseline should shrink to match; if it grows, a new blocking route landed.
+    ``@contextmanager _write``, which is why it held the majority of the
+    exposure for so long: the indirect lint exists because of this file.
+    The 2026-09 Speak write migration moved all 24 write routes into
+    nested ``def _sync()`` helpers dispatched via ``_off_loop``, at which
+    point — per this test's own earlier docstring — "the migration is done
+    and the baseline should shrink to match" (it did, to zero). The anchor
+    now points the other way: this file must stay at ZERO, so a single
+    reverted or newly added on-loop write fails here by name instead of
+    hiding in a whole-tree count.
     """
     root = Path(__file__).resolve().parents[1]
     target = root / "interfaces" / "research" / "api" / "speak_routes.py"
     if not target.exists():           # pragma: no cover - path moved
         return
     found = scan_paths([target])
-    assert found, "expected speak_routes.py to still carry indirect write-lock calls"
-    assert all(v.helper == "_write" for v in found)
+    assert not found, (
+        "speak_routes.py migrated to `_off_loop` on 2026-09; these on-loop "
+        "write-lock calls are regressions: "
+        + "; ".join(f"line {v.line} in async def {v.func}" for v in found)
+    )

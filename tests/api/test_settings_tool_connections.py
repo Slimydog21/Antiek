@@ -47,7 +47,7 @@ def test_inventory_connect_replace_disconnect_and_no_secret_echo(client, tmp_pat
     assert initial.status_code == 200
     assert initial.headers["cache-control"] == "private, no-store"
     assert [item["vendor"] for item in initial.json()["connections"]] == [
-        "youtube", "polygon", "fmp", "edgar", "x",
+        "youtube", "polygon", "fmp", "edgar", "x", "fred", "alpha_vantage",
     ]
 
     created = client.put(
@@ -182,11 +182,34 @@ def test_oversized_and_malformed_bodies_are_bounded_and_value_free(client) -> No
     assert "SENTINEL" not in malformed.text
 
 
-def test_quota_copy_discloses_host_global_scope(client) -> None:
+def test_quota_copy_discloses_per_account_scope_and_meters_per_owner(client, tmp_path) -> None:
+    """The YouTube meter a user sees is theirs, and the copy says so.
+
+    It used to be one host-wide sidecar, and the note admitted it: user B was
+    refused because user A had spent 10,000 units on a key that was not B's.
+    Exhaust A's meter directly and check that B's row is untouched.
+    """
     response = client.put(
         "/settings/tools/youtube", json={"credential": SECRET}, cookies=_cookie("user-a")
     )
-    assert "Host-global shared" in response.json()["quota"]["note"]
+    note = response.json()["quota"]["note"]
+    assert "Per-account" in note
+    assert "Host-global" not in note and "host-global" not in note
+    assert client.put(
+        "/settings/tools/youtube", json={"credential": SECRET}, cookies=_cookie("user-b")
+    ).status_code == 200
+
+    from runtime.connectors.quota_meter import QuotaMeter
+
+    QuotaMeter("youtube", owner="user-a", state_dir=str(tmp_path / "quota")).mark_exhausted()
+
+    quota_a = _row(client.get("/settings/tools", cookies=_cookie("user-a")).json(), "youtube")["quota"]
+    quota_b = _row(client.get("/settings/tools", cookies=_cookie("user-b")).json(), "youtube")["quota"]
+    assert quota_a["hard_exhausted"] is True and quota_a["remaining"] == 0
+    assert quota_b["hard_exhausted"] is False and quota_b["remaining"] == 10_000
+
+    x_note = _row(client.get("/settings/tools", cookies=_cookie("user-a")).json(), "x")["quota"]["note"]
+    assert "per-account" in x_note and "host-global" not in x_note
 
 
 def _row(payload: dict, vendor: str) -> dict:
@@ -233,3 +256,74 @@ def test_x_tool_quota_cost_is_not_invented_for_vendors_without_a_sourced_rate(
         quota = _row(payload, vendor)["quota"]
         assert quota["estimated_cost_usd"] is None, vendor
         assert quota["cost_note"] is None, vendor
+
+
+def test_tool_connections_inventory_marks_which_vendors_are_searchable(client) -> None:
+    """A stored key is only "configured" if some surface will spend it.
+
+    Polygon, FMP and EDGAR are connectable, and nothing on main calls their
+    connectors outside the resolver itself, so a user who pastes a paid key
+    was told "configured" over zero behaviour. The payload now says which
+    vendors a research surface actually reads; the panel labels the rest
+    "connected, not yet used". The flag is pinned per vendor so that adding a
+    consuming branch is the only way to flip it.
+    """
+    payload = client.get("/settings/tools", cookies=_cookie("user-a")).json()
+    flags = {item["vendor"]: item["searchable"] for item in payload["connections"]}
+    assert flags == {
+        "youtube": True,
+        "x": True,
+        "polygon": False,
+        "fmp": False,
+        "edgar": False,
+        "fred": False,
+        "alpha_vantage": False,
+    }
+
+    # Storing a key does not promote the vendor: the row a PUT hands back
+    # is configured_unverified AND still not searchable.
+    stored = client.put(
+        "/settings/tools/polygon",
+        json={"credential": "polygon-key-" + "p" * 24},
+        cookies=_cookie("user-a"),
+    )
+    assert stored.status_code == 200, stored.text
+    assert stored.json()["status"] == "configured_unverified"
+    assert stored.json()["searchable"] is False
+
+
+def test_rate_ceiling_note_comes_from_the_catalog_rate(client) -> None:
+    """The brake a user is told about is the one their connector runs.
+
+    The note was hardcoded as "25 if x else 8", which was true only while X
+    and EDGAR were the two rate-limited vendors: FRED would have been shown
+    EDGAR's "8 requests per second". It now reads each vendor's RateSpec.
+    """
+    payload = client.get("/settings/tools", cookies=_cookie("user-a")).json()
+    quotas = {item["vendor"]: item["quota"] for item in payload["connections"]}
+    assert quotas["fred"]["kind"] == "rate_ceiling"
+    assert quotas["fred"]["limit"] == 100
+    assert "100 requests per minute" in quotas["fred"]["note"]
+    assert quotas["alpha_vantage"]["limit"] == 1
+    assert "1 request per second" in quotas["alpha_vantage"]["note"]
+    # The two vendors that were right before stay byte-identical.
+    assert "25 requests per 15 minutes" in quotas["x"]["note"]
+    assert "8 requests per second" in quotas["edgar"]["note"]
+    # Only X quotes a sourced price.
+    assert quotas["fred"]["estimated_cost_usd"] is None
+    assert quotas["alpha_vantage"]["cost_note"] is None
+
+
+def test_edgar_rate_note_says_its_brake_is_shared_by_every_account(client) -> None:
+    """EDGAR has no key and SEC limits by IP, so its brake is the server's.
+
+    The note told EDGAR users about a "per-account brake on your key": there
+    is no key, and the one window is shared by every account on the host.
+    """
+    payload = client.get("/settings/tools", cookies=_cookie("user-a")).json()
+    quotas = {item["vendor"]: item["quota"] for item in payload["connections"]}
+    edgar = quotas["edgar"]["note"]
+    assert "shared by every account" in edgar
+    assert "per-account" not in edgar and "your key" not in edgar
+    assert "8 requests per second" in edgar
+    assert "per-account brake on your key" in quotas["x"]["note"]

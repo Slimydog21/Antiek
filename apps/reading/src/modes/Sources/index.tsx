@@ -1,9 +1,8 @@
 import WorkflowArt from "../../brand/WorkflowArt";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import LemonCard from "../../components/lemon/LemonCard";
-import ConnectedToolSearch from "./ConnectedToolSearch";
 import {
   ingestSource,
   type IngestSourceResponse,
@@ -17,6 +16,11 @@ import {
   uploadSource,
   validateSourceUpload,
 } from "../../lib/sourceUploadApi";
+
+// The connected-tool search sits below the ingest form and is only useful once
+// a tool is connected, so it loads as its own chunk rather than in the entry,
+// which is within about 1 KB of its 700 KB gz ceiling.
+const ConnectedToolSearch = lazy(() => import("./ConnectedToolSearch"));
 
 type Status = "idle" | "ingesting" | "done";
 
@@ -428,7 +432,9 @@ export default function Sources() {
             </div>
           </form>
 
-          <ConnectedToolSearch />
+          <Suspense fallback={null}>
+            <ConnectedToolSearch />
+          </Suspense>
 
           {rows.length > 0 && (
             <section className="mt-8">

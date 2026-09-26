@@ -132,6 +132,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           </p>
           <a
             class="mt-1 inline-block font-mono text-xs text-sun-deep underline dark:text-sun"
+            data-discover="true"
             href="/speak/browse"
           >
             Open public browse (no login)
@@ -439,6 +440,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           <li>
             <a
               class="block"
+              data-discover="true"
               href="/speak/y1"
             >
               <section
@@ -473,6 +475,7 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           <li>
             <a
               class="block"
+              data-discover="true"
               href="/speak/y2"
             >
               <section
