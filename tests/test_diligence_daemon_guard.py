@@ -70,3 +70,14 @@ def test_a_flag_that_vanishes_after_its_write_fails_loudly(monkeypatch, tmp_path
         with pytest.raises(RuntimeError, match=f"diligence flag {flag_id} vanished"):
             getattr(store, method)(con, owner_user_id="owner-1", flag_id=flag_id, **extra)
     assert store_mod  # the module under test is the one the daemon imports
+
+
+def test_the_unit_does_not_restart_a_refused_configuration():
+    # Restart=on-failure with RestartSec=30s would relaunch an EX_CONFIG exit
+    # forever; the unit must hold the refusal down, on the same code main() uses.
+    from pathlib import Path
+
+    unit = Path("infrastructure/ansible/templates/antiek-continuous-research.service.j2").read_text()
+    prevent = [line.split("=", 1)[1].split() for line in unit.splitlines()
+               if line.startswith("RestartPreventExitStatus=")]
+    assert prevent and str(daemon_mod.EX_CONFIG) in prevent[0]

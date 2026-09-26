@@ -64,6 +64,11 @@ ExecStart={{ antiek_install_dir }}/.venv/bin/python -m orchestration.continuous
 
 Restart=on-failure
 RestartSec=30s
+# 78 = EX_CONFIG: the daemon refused its configuration (for example the
+# spawn switch before spawning is API-routed and consented). Restarting
+# cannot fix a configuration, so the unit stays down and reads failed
+# instead of flapping every RestartSec.
+RestartPreventExitStatus=78
 
 StandardOutput=journal
 StandardError=journal
