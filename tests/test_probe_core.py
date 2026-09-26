@@ -249,3 +249,98 @@ def test_the_original_is_byte_identical_through_the_whole_flow(api_env) -> None:
     first_bite = next(r for r in rows if any(ref.startswith("bite:") for ref in r.refs))
     client.get(f"/evidence/{first_bite.evidence_id}")
     assert _source_hash(api_env["db"]) == before
+
+
+# ── Span-bound honesty (review F1, 2026-09-25): a client-supplied span may
+# never reach outside the chunk it names. Negative wrap-around, inverted
+# spans, and overshoot past the chunk body are client errors (422), never
+# silent beyond-chunk text. ──────────────────────────────────────────────
+
+
+def test_passage_rejects_negative_inverted_and_oversized_spans(api_env) -> None:
+    _seed(api_env["db"])
+    client = _client()
+    # The whole-document wrap-around repro from the review: negative start
+    # previously served ALL of doc-1 (147 chars) as a "chunk-relative" span.
+    negative = client.get(
+        "/books/doc-1/passage",
+        params={"chunk_id": "c-1-doc-1", "start_scalar": -100000, "end_scalar": 100000},
+    )
+    assert negative.status_code == 422
+    assert negative.json()["detail"] == "passage_span_invalid"
+
+    inverted = client.get(
+        "/books/doc-1/passage",
+        params={"chunk_id": "c-1-doc-1", "start_scalar": 10, "end_scalar": 10},
+    )
+    assert inverted.status_code == 422
+
+    negative_start = client.get(
+        "/books/doc-1/passage",
+        params={"chunk_id": "c-1-doc-1", "start_scalar": -1, "end_scalar": 4},
+    )
+    assert negative_start.status_code == 422
+
+    # Overshoot past the chunk body is rejected even when it stays inside
+    # the document (c-1's body is shorter than the whole served text).
+    overshoot = client.get(
+        "/books/doc-1/passage",
+        params={"chunk_id": "c-1-doc-1", "start_scalar": 0, "end_scalar": 100000},
+    )
+    assert overshoot.status_code == 422
+
+    # A withheld source keeps its metadata-only 200 for structurally valid
+    # spans and still rejects structurally invalid ones without serving body.
+    _seed(api_env["db"], document_id="doc-dead", content_class="personal_reading")
+    with connect_write(api_env["db"], purpose="test/takedown-bounds") as con:
+        con.execute(
+            "INSERT INTO book_assets (document_id, taken_down) "
+            "VALUES ('doc-dead', TRUE) ON CONFLICT DO NOTHING"
+        )
+    withheld_bad = client.get(
+        "/books/doc-dead/passage",
+        params={"chunk_id": "c-1-doc-dead", "start_scalar": -5, "end_scalar": 5},
+    )
+    assert withheld_bad.status_code == 422
+    withheld_ok = client.get(
+        "/books/doc-dead/passage",
+        params={"chunk_id": "c-1-doc-dead", "start_scalar": 0, "end_scalar": 5},
+    )
+    assert withheld_ok.status_code == 200
+    assert withheld_ok.json() == {
+        "servable": False,
+        "text": None,
+        "page_index_hint": 0,
+        "chunk_id": "c-1-doc-dead",
+        "start_scalar": 0,
+        "end_scalar": 5,
+    }
+
+
+def test_passage_chunk_that_did_not_locate_in_the_served_body_is_404(api_env) -> None:
+    """A chunk row that exists but did not locate in the anchor map is an
+    honest 404 (the span cannot be resolved), never servable-with-null-text
+    that misreads as a withheld source."""
+    _seed(api_env["db"])
+    con = connect_write(api_env["db"], purpose="test/unlocatable-chunk")
+    try:
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, "
+            "section_path, text, token_count) VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                "ghost-doc-1",
+                "doc-1",
+                99,
+                "Page 99",
+                "THIS TEXT IS NOT IN THE SERVED BODY SOURCE",
+                8,
+            ],
+        )
+    finally:
+        con.close()
+    resp = _client().get(
+        "/books/doc-1/passage",
+        params={"chunk_id": "ghost-doc-1", "start_scalar": 0, "end_scalar": 4},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "passage_not_found"

@@ -229,6 +229,12 @@ def register_reformat_routes(app: FastAPI) -> None:
         """The pull-a-snippet probe (SPR-03): the core document's passage,
         GATE-SERVED (the owner lane — the probe surface is owner-scoped);
         a withheld source's probe carries position, NEVER body."""
+        # A client-supplied span is chunk-relative and may never reach
+        # outside the chunk it names: negative wrap-around, an inverted
+        # span, or overshoot past the chunk body is a client error, never
+        # silent beyond-chunk text (the citation substrate contract).
+        if start_scalar < 0 or end_scalar <= start_scalar:
+            raise HTTPException(status_code=422, detail="passage_span_invalid")
         from runtime.db_lock import connect_read
         from substrate.books.serve_guard import serve_full_text_guarded
 
@@ -265,12 +271,20 @@ def register_reformat_routes(app: FastAPI) -> None:
                 anchor_map = build_anchor_map(
                     con, document_id=document_id, served_text=normalized
                 )
-                for chunk_map in anchor_map.chunks:
-                    if chunk_map.chunk_id == chunk_id:
-                        text = normalized[
-                            chunk_map.body_start + start_scalar : chunk_map.body_start + end_scalar
-                        ]
-                        break
+                chunk_map = next(
+                    (c for c in anchor_map.chunks if c.chunk_id == chunk_id), None
+                )
+                if chunk_map is None:
+                    # The chunk row exists but did not locate in the served
+                    # body: the span cannot be resolved, so say so — never
+                    # servable-with-null-text, which misreads as withheld.
+                    raise HTTPException(status_code=404, detail="passage_not_found")
+                body_length = chunk_map.body_end - chunk_map.body_start
+                if end_scalar > body_length:
+                    raise HTTPException(status_code=422, detail="passage_span_invalid")
+                text = normalized[
+                    chunk_map.body_start + start_scalar : chunk_map.body_start + end_scalar
+                ]
         finally:
             con.close()
         return PassageOut(
