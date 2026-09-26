@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { apiFetch } from "../../lib/api";
+import { ApiError, apiFetch } from "../../lib/api";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import { LemonButton } from "../../components/lemon/LemonButton";
 import LemonCard from "../../components/lemon/LemonCard";
@@ -41,7 +42,7 @@ export default function CrossGraphCitations() {
   const [federationToggle, setFederationToggle] = useState<boolean>(false);
   const [federatedSubstrateId, setFederatedSubstrateId] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<DescribedFailure | null>(null);
   const [recorded, setRecorded] = useState<RecordedCitation[]>([]);
 
   const canSubmit =
@@ -54,7 +55,7 @@ export default function CrossGraphCitations() {
   const submit = useCallback(async () => {
     if (!canSubmit || submitting) return;
     setSubmitting(true);
-    setError(null);
+    setFailure(null);
     try {
       const body: Record<string, unknown> = {
         referencing_user_id: referencingUserId.trim(),
@@ -71,9 +72,12 @@ export default function CrossGraphCitations() {
         body: JSON.stringify(body),
       });
       if (!resp.ok) {
-        const txt = await resp.text();
-        throw new Error(
-          `POST /cross-graph/citations: HTTP ${resp.status} — ${txt}`,
+        // The body stays in the ApiError for logs and describeFailure's
+        // envelope check; it is never rendered (F-08).
+        throw new ApiError(
+          `POST /cross-graph/citations failed: HTTP ${resp.status}`,
+          resp.status,
+          await resp.text(),
         );
       }
       const created: RecordedCitation = await resp.json();
@@ -81,7 +85,8 @@ export default function CrossGraphCitations() {
       setReferencedUserId("");
       setReferencedNoteId("");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      console.warn("[CrossGraphCitations] record failed", e);
+      setFailure(describeFailure(e, { what: "record the citation" }));
     } finally {
       setSubmitting(false);
     }
@@ -120,9 +125,21 @@ export default function CrossGraphCitations() {
         </header>
       }
     >
-      {error && (
-        <ErrorBanner>
-          {error}
+      {failure && (
+        <ErrorBanner className="space-y-2">
+          <p className="font-medium">{failure.title}</p>
+          <p>{failure.detail}</p>
+          {failure.retryable && (
+            <LemonButton
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={() => void submit()}
+              disabled={submitting}
+            >
+              Try again
+            </LemonButton>
+          )}
         </ErrorBanner>
       )}
 

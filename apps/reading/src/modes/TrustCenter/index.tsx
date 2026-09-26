@@ -2,8 +2,10 @@ import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import LemonButton from "../../components/lemon/LemonButton";
 
-import { apiFetch } from "../../lib/api";
+import { ApiError, apiFetch } from "../../lib/api";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import { PUBLIC_LANE_LABELS } from "../../lib/speakVocab";
 
 /**
@@ -77,17 +79,22 @@ const EPSILON_CAP = 10;
 
 export default function TrustCenter() {
   const [data, setData] = useState<TrustCenterData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<DescribedFailure | null>(null);
 
   const reload = useCallback(async () => {
+    setFailure(null);
     try {
       const resp = await apiFetch("/trust-center");
       if (!resp.ok) {
-        throw new Error(`GET /trust-center failed: HTTP ${resp.status}`);
+        // The message is a diagnostic for logs; only describeFailure's
+        // title and detail reach the page (P-01: logged-out visitors saw
+        // a raw "Failed to fetch").
+        throw new ApiError(`GET /trust-center failed: HTTP ${resp.status}`, resp.status, await resp.text());
       }
       setData(await resp.json());
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      console.warn("[TrustCenter] load failed", e);
+      setFailure(describeFailure(e, { what: "load the Trust Center" }));
     }
   }, []);
 
@@ -132,9 +139,15 @@ export default function TrustCenter() {
             </p>
           </aside>
 
-          {error && (
-            <ErrorBanner>
-              {error}
+          {failure && (
+            <ErrorBanner className="space-y-2">
+              <p className="font-medium">{failure.title}</p>
+              <p>{failure.detail}</p>
+              {failure.retryable && (
+                <LemonButton variant="secondary" size="sm" type="button" onClick={() => void reload()}>
+                  Try again
+                </LemonButton>
+              )}
             </ErrorBanner>
           )}
 
