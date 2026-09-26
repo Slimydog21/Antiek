@@ -109,27 +109,28 @@ def unlink_anchored(path: Path, *, missing_ok: bool = True) -> None:
 def atomic_write_nofollow(path: Path, data: bytes) -> None:
     """Publish bytes atomically via an exclusive, fsynced sibling temp.
 
-    The parent directory's descriptor is closed on every path out, and a
-    failed cleanup of the temp file never replaces the error that caused it:
-    removing the temp is best effort, the original failure is what raises."""
+    The parent directory's descriptor is closed on every path out, and no
+    cleanup step replaces the error that caused it: closing and removing the
+    temp after a failure are best effort, the original failure is what
+    raises. A temp that fails to close is removed and never published."""
     parent_fd, name = _open_parent_dir(path, create=True)
     try:
         temp_name = f".{name}.{secrets.token_hex(12)}.tmp"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(temp_name, flags, 0o600, dir_fd=parent_fd)
         try:
-            view = memoryview(data)
-            while view:
-                written = os.write(fd, view)
-                view = view[written:]
-            os.fsync(fd)
-        except BaseException:
-            with suppress(OSError):
-                os.unlink(temp_name, dir_fd=parent_fd)
-            raise
-        finally:
+            try:
+                view = memoryview(data)
+                while view:
+                    written = os.write(fd, view)
+                    view = view[written:]
+                os.fsync(fd)
+            except BaseException:
+                with suppress(OSError):
+                    os.close(fd)
+                raise
+            # Closed outside the handler: its own error is the failure then.
             os.close(fd)
-        try:
             os.replace(temp_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
             os.fsync(parent_fd)
         except BaseException:
