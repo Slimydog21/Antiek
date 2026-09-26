@@ -188,6 +188,10 @@ export interface AnchoredWidgetComponents {
     /** The anchor's page hint — the position the card shows on a
      *  metadata-only anchor. */
     readonly pageIndexHint: number | null;
+    /** The reader window's origin context (reading-global SPR-02) —
+     *  payload metadata for the dig-deeper prefill's one consumer; null
+     *  without an origin (the default affordance, unchanged). */
+    readonly origin?: { readonly from: string; readonly id: string } | null;
   }) => ReactNode;
   /**
    * SPR-06 — SiteSee's citation hover card. The SURFACE owns the card chrome
