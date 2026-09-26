@@ -391,3 +391,55 @@ def test_no_new_spend_counters_in_the_diligence_surface() -> None:
             assert token not in text, f"{src.name} carries spend-counter machinery: {token}"
     route_text = sources[2].read_text()
     assert "remaining_today" in route_text  # the sidecar's PUBLIC read
+
+
+# ── Review hardening D1 (2026-09-25): the source document grounds to the
+# CALLER. A flag may never steer the daemon at another owner's document. ──
+
+
+def test_flag_cannot_reference_another_owners_document(api_env, monkeypatch) -> None:
+    from interfaces.research.api import diligence_routes
+
+    _seed_graph(api_env["db"])
+    with connect_write(api_env["db"], purpose="test/seed-foreign-doc") as con:
+        insert_document(
+            con,
+            document_id="doc-foreign",
+            source_tier=2,
+            document_type="book",
+            title="Someone Else's Book",
+            raw_text="not yours to diligence",
+            content_class="personal_reading",
+            owner_user_id="owner-b",
+            on_conflict="ignore",
+        )
+    monkeypatch.setattr(
+        diligence_routes, "_reader_owner_id", lambda request: "owner-a"
+    )
+    client = _client()
+    denied = client.post(
+        "/diligence/flags", json=_flag_payload(source_document_id="doc-foreign")
+    )
+    assert denied.status_code == 422
+    assert "diligence_source_ungrounded" in denied.json()["detail"]
+
+    # The caller's own document still grounds (existence AND ownership).
+    with connect_write(api_env["db"], purpose="test/own-doc") as con:
+        insert_document(
+            con,
+            document_id="doc-own",
+            source_tier=2,
+            document_type="book",
+            title="My Book",
+            raw_text="mine to diligence",
+            content_class="public_domain",
+            owner_user_id="owner-a",
+            on_conflict="ignore",
+        )
+    allowed = client.post(
+        "/diligence/flags",
+        json=_flag_payload(
+            object_ref="q-1", source_document_id="doc-own"
+        ),
+    )
+    assert allowed.status_code == 201
