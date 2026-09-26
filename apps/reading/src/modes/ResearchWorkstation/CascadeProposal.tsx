@@ -586,7 +586,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                 aria-describedby="aggregate-stop-limit-note"
                 aria-invalid={!ceilingValid && priceCeiling !== ""}
                 aria-label={spendMode === "hard_ceiling" ? "Authorized spend ceiling" : "Aggregate stop limit"}
-                className="w-24 bg-transparent font-mono text-sm text-ink outline-none dark:text-bright"
+                className="w-24 bg-transparent font-mono text-sm text-ink transition-shadow shadow-none focus-visible:outline-none focus-visible:shadow-z1 dark:focus-visible:shadow-z1-night dark:text-bright"
                 inputMode="decimal"
                 min="0.01"
                 step="0.01"
