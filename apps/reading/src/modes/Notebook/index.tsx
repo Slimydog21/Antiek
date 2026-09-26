@@ -35,14 +35,12 @@ export default function Notebook() {
   const notebookId = params.notebookId ?? null;
   const [notebook, setNotebook] = useState<NotebookResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  // Two sinks, kept apart so a failed block action never replaces the
-  // notebook: `loadFailure` is the whole-notebook read, `actionFailure` one
-  // block action with the exact call to re-run on Try again.
+  // Two failure sinks (FFX SPR-03, F-07): a failed load replaces nothing but
+  // the loading line; a failed block action (useBlockAction, below) keeps the
+  // notebook on screen and re-runs the exact call on Try again. Neither
+  // renders a status, a method or a path: describeFailure owns the copy.
   const [loadFailure, setLoadFailure] = useState<DescribedFailure | null>(null);
-  const [actionFailure, setActionFailure] = useState<{
-    failure: DescribedFailure;
-    retry: () => void;
-  } | null>(null);
+  const { actionFailure, runAction } = useBlockAction(setNotebook);
 
   const reload = useCallback(async () => {
     if (!notebookId) {
@@ -66,55 +64,38 @@ export default function Notebook() {
     void reload();
   }, [reload]);
 
-  const failAction = useCallback((e: unknown, what: string, retry: () => void) => {
-    console.warn(`[Notebook] ${what} failed`, e);
-    setActionFailure({ failure: describeFailure(e, { what }), retry });
-  }, []);
-
   const appendBlock = useCallback(
     async (req: { block_type: string; content: unknown; ref_id?: string | null }) => {
       if (!notebookId) return;
-      setActionFailure(null);
-      try {
-        const data = (await appendNotebookBlock(notebookId, req)) as NotebookResponse;
+      await runAction("add the block", async () => {
+        const data = await appendNotebookBlock(notebookId, req);
         track("notebook_block_appended", { block_type: req.block_type });
-        setNotebook(data);
-      } catch (e: unknown) {
-        failAction(e, "add the block", () => void appendBlock(req));
-      }
+        return data;
+      });
     },
-    [notebookId, failAction],
+    [notebookId, runAction],
   );
 
   const deleteBlock = useCallback(
     async (blockId: string) => {
       if (!notebookId) return;
-      setActionFailure(null);
-      try {
-        const data = (await deleteNotebookBlock(notebookId, blockId)) as NotebookResponse;
+      await runAction("delete the block", async () => {
+        const data = await deleteNotebookBlock(notebookId, blockId);
         track("notebook_block_deleted");
-        setNotebook(data);
-      } catch (e: unknown) {
-        failAction(e, "delete the block", () => void deleteBlock(blockId));
-      }
+        return data;
+      });
     },
-    [notebookId, failAction],
+    [notebookId, runAction],
   );
 
   const editBlock = useCallback(
     async (blockId: string, content: Record<string, unknown>) => {
       if (!notebookId) return;
-      setActionFailure(null);
-      try {
-        const data = (await patchNotebookBlock(
-          notebookId, blockId, { content },
-        )) as NotebookResponse;
-        setNotebook(data);
-      } catch (e: unknown) {
-        failAction(e, "save your edit", () => void editBlock(blockId, content));
-      }
+      await runAction("save your edit", () =>
+        patchNotebookBlock(notebookId, blockId, { content }),
+      );
     },
-    [notebookId, failAction],
+    [notebookId, runAction],
   );
 
   const moveBlock = useCallback(
@@ -129,17 +110,9 @@ export default function Notebook() {
       if (swapWith < 0 || swapWith >= sorted.length) return;
       const newOrder = sorted.map((b) => b.block_id);
       [newOrder[idx], newOrder[swapWith]] = [newOrder[swapWith], newOrder[idx]];
-      setActionFailure(null);
-      try {
-        const data = (await reorderNotebookBlocks(
-          notebookId, newOrder,
-        )) as NotebookResponse;
-        setNotebook(data);
-      } catch (e: unknown) {
-        failAction(e, "move the block", () => void moveBlock(blockId, direction));
-      }
+      await runAction("move the block", () => reorderNotebookBlocks(notebookId, newOrder));
     },
-    [notebookId, notebook, failAction],
+    [notebookId, notebook, runAction],
   );
 
   if (!notebookId) {
@@ -178,6 +151,33 @@ export default function Notebook() {
       </main>
     </div>
   );
+}
+
+interface ActionFailure {
+  failure: DescribedFailure;
+  retry: () => void;
+}
+
+/** Runs one block action; on failure records a described failure whose
+ *  retry re-runs the same call, and leaves the notebook as it was. */
+function useBlockAction(setNotebook: (n: NotebookResponse) => void) {
+  const [actionFailure, setActionFailure] = useState<ActionFailure | null>(null);
+  const runAction = useCallback(
+    async (what: string, call: () => Promise<unknown>): Promise<void> => {
+      setActionFailure(null);
+      try {
+        setNotebook((await call()) as NotebookResponse);
+      } catch (e: unknown) {
+        console.warn(`[Notebook] ${what} failed`, e);
+        setActionFailure({
+          failure: describeFailure(e, { what }),
+          retry: () => void runAction(what, call),
+        });
+      }
+    },
+    [setNotebook],
+  );
+  return { actionFailure, runAction };
 }
 
 function FailureNotice({
