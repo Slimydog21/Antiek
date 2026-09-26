@@ -31,6 +31,9 @@ import { setReadingStateOwner } from "../hooks/useReadingState";
 /** Layer A transport — never surface raw browser "Failed to fetch" to users. */
 export const AUTH_TRANSPORT_FETCH_MESSAGE = "Cannot reach Antiek API";
 
+/** F-03: the full-viewport message while /auth/me cannot answer. */
+export const AUTH_UNAVAILABLE_COPY = "Antiek can't reach its server right now.";
+
 // Every helper prepends API_BASE so the fetch goes to api.antiek.ai
 // (the FastAPI), not antiek.ai (the Pages bundle). In dev, API_BASE
 // is empty and Vite's /auth proxy handles the same-origin path.
@@ -44,10 +47,21 @@ export interface AuthIdentity {
   auth_method: string;
 }
 
+/** Why /auth/me could not answer (F-03). None of these is an identity. */
+export type AuthUnavailableReason = "offline" | "server" | "malformed";
+
 export type AuthState =
   | { status: "loading" }
   | { status: "authenticated"; identity: AuthIdentity }
-  | { status: "unauthenticated" };
+  | { status: "unauthenticated" }
+  /**
+   * /auth/me could not give an identity answer: the fetch threw (offline),
+   * the server answered with a transient failure (server), or a 200 body was
+   * unreadable (malformed). AuthProvider renders its own full-viewport
+   * screen INSTEAD of its children in this state, so no consumer (notably
+   * RequireAuth in App.tsx) ever observes it.
+   */
+  | { status: "unavailable"; reason: AuthUnavailableReason };
 
 export interface AuthContextValue {
   state: AuthState;
@@ -59,15 +73,108 @@ export interface AuthContextValue {
 
 const AuthCtx = createContext<AuthContextValue | null>(null);
 
-async function fetchIdentity(): Promise<AuthIdentity | null> {
-  const r = await apiFetch(authUrl("/auth/me"));
-  if (r.status === 401) return null;
-  if (!r.ok) throw new Error(`auth/me HTTP ${r.status}`);
-  const body = (await r.json()) as AuthIdentity;
-  // The middleware returns "unauthenticated_local" when no auth env
-  // vars are set (local dev). Treat that as authenticated so dev
-  // doesn't loop through the login page.
-  return body;
+type IdentityAnswer =
+  | { kind: "identity"; identity: AuthIdentity }
+  | { kind: "anonymous" }
+  | { kind: "unavailable"; reason: AuthUnavailableReason };
+
+/**
+ * Statuses that mean "the server could not answer right now", as opposed to
+ * an answer about who you are. 5xx covers a backend restart behind the
+ * Cloudflare tunnel (502/503/504/530); 408 and 429 are retryable by
+ * definition. A 401 is the one identity answer ("no session"). Other 4xx
+ * (403, 404, …) keep their pre-F-03 meaning, unauthenticated: they are
+ * definitive answers that a Retry will not change, and Storybook's /auth/me
+ * probe is a static-server 404 that the Topbar/AppShell stories (and their
+ * lost-pixel baselines) rely on settling to unauthenticated.
+ */
+function isTransientStatus(status: number): boolean {
+  return status >= 500 || status === 408 || status === 429;
+}
+
+function isIdentity(body: unknown): body is AuthIdentity {
+  if (typeof body !== "object" || body === null) return false;
+  const b = body as Record<string, unknown>;
+  return typeof b.user_id === "string" && b.user_id !== "" && typeof b.auth_method === "string";
+}
+
+async function fetchIdentity(): Promise<IdentityAnswer> {
+  let r: Response;
+  try {
+    r = await apiFetch(authUrl("/auth/me"));
+  } catch {
+    // fetch rejects with a TypeError when the network, DNS, TLS or CORS
+    // fails: we never reached a server that could say who we are.
+    return { kind: "unavailable", reason: "offline" };
+  }
+  if (r.status === 401) return { kind: "anonymous" };
+  if (!r.ok) {
+    return isTransientStatus(r.status)
+      ? { kind: "unavailable", reason: "server" }
+      : { kind: "anonymous" };
+  }
+  let body: unknown;
+  try {
+    body = await r.json();
+  } catch {
+    // e.g. an HTML error page with a 200 from a proxy (SyntaxError).
+    return { kind: "unavailable", reason: "malformed" };
+  }
+  // The middleware returns auth_method "unauthenticated_local" when no auth
+  // env vars are set (local dev). That is a real identity (user_id
+  // "__operator__"), so dev doesn't loop through the login page.
+  if (!isIdentity(body)) return { kind: "unavailable", reason: "malformed" };
+  return { kind: "identity", identity: body };
+}
+
+const UNAVAILABLE_HINT: Record<AuthUnavailableReason, string> = {
+  offline: "Check your connection, then try again.",
+  server: "The server didn't answer. It may be restarting.",
+  malformed: "The server sent a reply Antiek couldn't read.",
+};
+
+/**
+ * Full-viewport outage screen (F-03). Plain markup on purpose: it renders in
+ * place of the whole app, from the entry chunk, so it must not import
+ * components/lemon/* (the lemon chunk's budget headroom is ~7.5 KB).
+ */
+function AuthUnavailableScreen({
+  reason,
+  onRetry,
+}: {
+  reason: AuthUnavailableReason;
+  onRetry: () => Promise<void>;
+}) {
+  const [retrying, setRetrying] = useState(false);
+  const retry = useCallback(async () => {
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
+  }, [onRetry]);
+  return (
+    <main
+      role="alert"
+      data-auth-unavailable={reason}
+      className="min-h-screen flex items-center justify-center p-8 bg-ice-2 dark:bg-space-2 text-ink dark:text-bright font-sans"
+    >
+      <div className="max-w-md text-center">
+        <p className="text-lg font-semibold mb-2">{AUTH_UNAVAILABLE_COPY}</p>
+        <p className="text-sm text-shadow-1 dark:text-moonlight mb-6">{UNAVAILABLE_HINT[reason]}</p>
+        <button
+          type="button"
+          onClick={() => void retry()}
+          disabled={retrying}
+          aria-busy={retrying}
+          className="rounded-md px-4 py-2 text-sm font-semibold bg-sun text-ink hover:bg-sun-deep disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink dark:focus-visible:ring-bright focus-visible:ring-offset-2"
+        >
+          Retry
+        </button>
+      </div>
+    </main>
+  );
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -76,20 +183,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     const epoch = ++refreshEpochRef.current;
+    let answer: IdentityAnswer;
     try {
-      const identity = await fetchIdentity();
-      if (refreshEpochRef.current !== epoch) return;
-      setReadingStateOwner(identity?.user_id ?? null);
-      if (identity) {
-        setState({ status: "authenticated", identity });
-      } else {
-        setState({ status: "unauthenticated" });
-      }
+      answer = await fetchIdentity();
     } catch {
-      if (refreshEpochRef.current !== epoch) return;
+      // fetchIdentity classifies every failure itself; this is belt and
+      // braces for a bug in that classification, and it errs to unavailable.
+      answer = { kind: "unavailable", reason: "offline" };
+    }
+    if (refreshEpochRef.current !== epoch) return;
+    if (answer.kind === "unavailable") {
       // Unknown transport failure is not an identity transition. Keep the
       // reading-state owner until /auth/me proves a different or null user;
-      // this preserves pending work across a transient API outage.
+      // this preserves pending work across a transient API outage. F-03:
+      // and do not claim "unauthenticated" either — that sent a signed-in
+      // user to /login during every backend restart.
+      setState({ status: "unavailable", reason: answer.reason });
+      return;
+    }
+    const identity = answer.kind === "identity" ? answer.identity : null;
+    setReadingStateOwner(identity?.user_id ?? null);
+    if (identity) {
+      setState({ status: "authenticated", identity });
+    } else {
       setState({ status: "unauthenticated" });
     }
   }, []);
@@ -114,7 +230,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // $set_once. reset() on sign-out. No-op without a token. Lives here rather
   // than a component mounted in App.tsx so the route tree stays untouched.
   useEffect(() => {
-    if (!posthogEnabled || state.status === "loading") return;
+    // An outage (unavailable) is not a sign-out: never reset the analytics
+    // identity for it.
+    if (!posthogEnabled || state.status === "loading" || state.status === "unavailable") return;
     if (state.status === "authenticated") {
       const { user_id, email, auth_method } = state.identity;
       posthog.identify(
@@ -131,7 +249,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({ state, refresh, signOut }),
     [state, refresh, signOut],
   );
-  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
+  return (
+    <AuthCtx.Provider value={value}>
+      {state.status === "unavailable" ? (
+        <AuthUnavailableScreen reason={state.reason} onRetry={refresh} />
+      ) : (
+        children
+      )}
+    </AuthCtx.Provider>
+  );
 }
 
 export function useAuth(): AuthContextValue {
