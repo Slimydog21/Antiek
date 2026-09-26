@@ -62,6 +62,7 @@ class SourceRef:
     ip_holder_id: str | None
     locator: str | None = None
     chunk_text: str | None = None
+    chunk_id: str | None = None
 
     @property
     def servable(self) -> bool:
@@ -70,8 +71,8 @@ class SourceRef:
 
     @property
     def resolved(self) -> bool:
-        # Ties to a real document → counts toward provenance completeness.
-        return bool(self.document_id)
+        # Document-only references do not establish a claim/chunk/document chain.
+        return bool(self.chunk_id and self.document_id)
 
 
 @dataclass(frozen=True)
@@ -87,8 +88,8 @@ class Claim:
 @dataclass(frozen=True)
 class SynthesisExport:
     """The resolved synthesis the adapter consumes. The M3 route builds this
-    from the live graph (reusing ``compute_attribution_for_synthesis`` +
-    chunk/document resolution); the adapter stays pure + DB-free + testable."""
+    from archived thesis components and current graph chunk/document resolution;
+    the adapter stays pure + DB-free + testable."""
 
     synthesis_id: str
     target_question: str
@@ -100,6 +101,7 @@ class SynthesisExport:
     parameters: dict[str, Any] = field(default_factory=dict)
     attribution_manifest: dict[str, Any] = field(default_factory=dict)
     claims: list[Claim] = field(default_factory=list)
+    provenance_note: str | None = None
 
 
 # ── doc-model node builders (existing SPR-02 renderer node types) ──
@@ -148,11 +150,16 @@ def _recommendation_tone(rec: str) -> str:
 def _source_label(src: SourceRef) -> str:
     """A citation label built ONLY from non-text provenance — title, owner,
     locator. NEVER the chunk text (that would defeat cite-only)."""
-    parts = [src.document_title or src.document_id or "unknown source"]
+    unresolved = f"unresolved citation {src.chunk_id}" if src.chunk_id else "unknown source"
+    parts = [src.document_title or src.document_id or unresolved]
     if src.ip_holder_id:
         parts.append(src.ip_holder_id)
     if src.locator:
         parts.append(src.locator)
+    elif src.document_id:
+        if src.document_id not in parts:
+            parts.append(src.document_id)
+        parts.append("reader link unavailable")
     return " · ".join(parts)
 
 
@@ -172,6 +179,8 @@ def adapt_synthesis(export: SynthesisExport) -> dict[str, Any]:
     complete = total > 0 and fully == total
 
     content: list[dict[str, Any]] = []
+    if export.provenance_note:
+        content.append(_prose(export.provenance_note))
 
     # M4: honest provenance banner at the top when incomplete.
     if not complete and total > 0:
@@ -210,6 +219,8 @@ def adapt_synthesis(export: SynthesisExport) -> dict[str, Any]:
                 content.append(
                     _prose("(cite-only — full text withheld under the source's rights)")
                 )
+            elif not src.chunk_text:
+                content.append(_prose("(source passage unavailable)"))
             if not src.resolved:
                 content.append(_prose("(unsourced)"))
 
