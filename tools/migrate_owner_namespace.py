@@ -25,6 +25,13 @@ oauth_routes, settings_tiers and settings_privacy):
   5. graph DuckDB — ``owner_compute_capacity``, ``owner_compute_acu_ledger``
      and ``chunk_tier_overrides.set_by``.
   6. telemetry preferences sqlite — ``user_telemetry_preferences.user_id``.
+  7. connected BYO tools JSON (``settings_tool_connections``, read by
+     ``research_tool_search``) — each row moves to the key hashed from the
+     derived owner and its ``connector_<vendor>`` credential is re-sealed to
+     that owner. The old credentials are queued as the registry's own
+     pending deletions in the same write that moves the rows, so a run
+     interrupted after that write is finished by the registry's recovery; an
+     error before it deletes the re-sealed copies and writes nothing.
 
 REFUSALS (fail-closed, no partial silent migration):
 
@@ -32,7 +39,15 @@ REFUSALS (fail-closed, no partial silent migration):
     re-owning everything to one e-mail would misassign a second person's
     data;
   * the target owner already holds conflicting rows (same record id, key id,
-    operation id, capacity row, lineup entry or preference surface);
+    operation id, capacity row, lineup entry, preference surface or tool
+    vendor);
+  * a legacy tool connection's stored credential is not bound to that row
+    (owner, kind, handle, fingerprint), so re-sealing it could hand someone
+    else's secret to the target owner;
+  * a legacy tool connection's credential is absent from the BYOK artifact
+    this run reads. That is almost always a run without the API service's
+    ANTIEK_BYOK_* environment, and moving the row anyway would strand the key
+    for good;
   * ``--email`` does not derive (``derive_owner_from_verified_email``
     returns None).
 
@@ -57,7 +72,7 @@ import re
 import sqlite3
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -75,12 +90,22 @@ from interfaces.research.api.account_memory_identity import (  # noqa: E402
 )
 from runtime.byok.store import (  # noqa: E402
     CredentialIntegrityError,
+    CredentialMetadata,
     delete_credential,
     list_credentials,
     load_credential,
     store_credential,
+    store_credential_with_metadata,
 )
-from runtime.db_lock import connect_read, connect_write  # noqa: E402
+from runtime.byok.store import _default_artifact_path as _byok_artifact_path  # noqa: E402
+from runtime.byok.store import _default_key_file as _byok_key_file  # noqa: E402
+from runtime.connectors import registry as connectors  # noqa: E402
+from runtime.db_lock import (  # noqa: E402
+    LockedConnection,
+    ReadConnection,
+    connect_read,
+    connect_write,
+)
 from substrate.byot_usage.ledger import default_byot_usage_db_path  # noqa: E402
 from substrate.graph import default_db_path  # noqa: E402
 
@@ -217,7 +242,7 @@ def _apply_user_models(report: MigrationReport) -> None:
         models_admin._write_registry_unlocked(registry)
 
 
-def _byok_reown_candidates() -> tuple[list, list[str]]:
+def _byok_reown_candidates() -> tuple[list[CredentialMetadata], list[str]]:
     """OAuth + dispatch-provider credentials still owned by the sentinel.
 
     Model-provider credentials are re-sealed with their registry record
@@ -390,7 +415,7 @@ def _apply_lineup(report: MigrationReport) -> None:
     logger.info("lineup.json owners: %s -> %s", LEGACY_OWNER, report.target_owner)
 
 
-def _duckdb_tables(con) -> set[str]:
+def _duckdb_tables(con: ReadConnection | LockedConnection) -> set[str]:
     return {
         row[0]
         for row in con.execute("SELECT table_name FROM information_schema.tables").fetchall()
@@ -532,11 +557,177 @@ def _apply_telemetry(report: MigrationReport) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Connected BYO tools. The registry hashes the owner into each row's key, so
+# re-owning a row means moving it to a new key; the credential is bound to
+# (owner, kind, handle), so it has to be re-sealed with the row or
+# ``_metadata_matches`` reads the connection as tampered. ``account_handle``
+# stays as it was: the registry compares it between row and credential, and
+# keeping both sides on the old value keeps them equal.
+# ---------------------------------------------------------------------------
+
+_ToolMove = tuple[str, str, connectors.ToolConnectionRecord]
+
+
+def _legacy_tool_connections(
+    records: dict[str, connectors.ToolConnectionRecord], target_owner: str
+) -> list[_ToolMove]:
+    """``(old key, new key, row)`` for every sentinel-owned connection, checked."""
+    _check_legacy_owners({r.owner_user_id for r in records.values()}, "tool connections")
+    metadata = {m.cred_id: m for m in list_credentials()}
+    moves: list[_ToolMove] = []
+    conflicts: list[str] = []
+    unbound: list[str] = []
+    missing: list[str] = []
+    for key, record in records.items():
+        if record.owner_user_id != LEGACY_OWNER:
+            continue
+        new_key = connectors._record_key(target_owner, record.vendor)
+        if new_key in records:
+            conflicts.append(f"{record.vendor}/{new_key}")
+            continue
+        meta = metadata.get(record.cred_id)
+        if meta is None:
+            missing.append(f"{record.vendor}/{record.cred_id}")
+        elif not connectors._metadata_matches(record, meta):
+            unbound.append(f"{record.vendor}/{record.cred_id}")
+        moves.append((key, new_key, record))
+    _check_no_target_conflict(conflicts, "tool connections")
+    if unbound:
+        raise MigrationRefused(
+            f"tool connections: stored credential(s) {unbound!r} are not bound to "
+            f"their {LEGACY_OWNER!r} row; refusing to re-seal a secret whose owner "
+            "cannot be proven"
+        )
+    if missing:
+        raise MigrationRefused(
+            f"tool connections: credential(s) {missing!r} are not in the BYOK artifact "
+            f"{_byok_artifact_path()!r}. Run with the API service's environment "
+            "(ANTIEK_BYOK_ARTIFACT, ANTIEK_BYOK_KEY_FILE); moving a row without its "
+            "credential strands the key. If a credential is genuinely gone, remove "
+            "that row from tool_connections.json with the API stopped"
+        )
+    return moves
+
+
+def _plan_tool_connections(report: MigrationReport) -> None:
+    path = connectors._path()
+    if not path.exists():
+        report.skipped.append(f"tool connections: {path} absent")
+        return
+    with connectors._guard(exclusive=False):
+        records, _pending = connectors._load_unlocked()
+    if not records:
+        report.skipped.append("tool connections: empty")
+        return
+    for key, new_key, record in _legacy_tool_connections(records, report.target_owner):
+        report.moves.append(
+            Move("tool_connections.json", "registry", f"{record.vendor}: {key} -> {new_key}")
+        )
+
+
+def _apply_tool_connections(report: MigrationReport) -> None:
+    if not connectors._path().exists():
+        return
+    with connectors._guard(exclusive=True):
+        records, pending = connectors._load_unlocked()
+        moves = _legacy_tool_connections(records, report.target_owner)
+        if not moves:
+            return
+        resealed: list[str] = []
+        retired: list[connectors.PendingDeletion] = []
+        try:
+            for key, new_key, record in moves:
+                # Decrypt-then-restore is the only route: the SecretBox key is
+                # bound to (owner, handle). Plaintext never leaves here.
+                plaintext: str | None = None
+                try:
+                    plaintext = load_credential(record.cred_id).reveal()
+                    meta = store_credential_with_metadata(
+                        record.account_handle,
+                        plaintext,
+                        pipeline_kind=f"connector_{record.vendor}",
+                        owner_user_id=report.target_owner,
+                    )
+                finally:
+                    plaintext = None
+                resealed.append(meta.cred_id)
+                retired.append(connectors._pending_for(record))
+                del records[key]
+                records[new_key] = replace(
+                    record,
+                    owner_user_id=report.target_owner,
+                    cred_id=meta.cred_id,
+                    credential_fingerprint=meta.artifact_fingerprint,
+                )
+                logger.info(
+                    "tool_connections.json: %s %s -> %s (owner %s -> %s, cred re-sealed)",
+                    record.vendor, key, new_key, LEGACY_OWNER, report.target_owner,
+                )
+            connectors._write_unlocked(records, [*pending, *retired])
+        except Exception:
+            for new_cred_id in resealed:
+                delete_credential(new_cred_id)
+            raise
+        # The rows now point at the re-sealed credentials and the old ones are
+        # queued for deletion, so a crash from here is finished by the
+        # registry's own recovery. Delete them now and clear the queue.
+        for item in retired:
+            delete_credential(item.cred_id)
+        connectors._write_unlocked(records, pending)
+
+
+# ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
 
-_PLANNERS = (_plan_user_models, _plan_byok, _plan_byot_usage, _plan_lineup, _plan_duckdb, _plan_telemetry)
-_APPLIERS = (_apply_user_models, _apply_byok, _apply_byot_usage, _apply_lineup, _apply_duckdb, _apply_telemetry)
+_PLANNERS = (
+    _plan_user_models, _plan_byok, _plan_byot_usage, _plan_lineup, _plan_duckdb,
+    _plan_telemetry, _plan_tool_connections,
+)
+_APPLIERS = (
+    _apply_user_models, _apply_byok, _apply_byot_usage, _apply_lineup, _apply_duckdb,
+    _apply_telemetry, _apply_tool_connections,
+)
+
+
+def _legacy_credential_ids() -> list[str]:
+    return sorted(m.cred_id for m in list_credentials() if m.owner_user_id == LEGACY_OWNER)
+
+
+def _refuse_without_master_key() -> None:
+    """Refuse (in dry-run too) when legacy credentials exist but the master key
+    file this run would use does not. The store's loader creates a fresh key on
+    first use, so without this check an apply run under the wrong environment
+    would mint a new key, fail to decrypt, and fail half-way through the stores.
+    Read-only: the key file is checked with ``lstat``, never created or read."""
+    if not _legacy_credential_ids():
+        return
+    key_file = Path(_byok_key_file())
+    if not (key_file.exists() or key_file.is_symlink()):
+        raise MigrationRefused(
+            f"BYOK master key file {str(key_file)!r} does not exist, but "
+            f"{LEGACY_OWNER!r} credentials do. Run with the API service's environment "
+            "(ANTIEK_BYOK_ARTIFACT, ANTIEK_BYOK_KEY_FILE); nothing was written"
+        )
+
+
+def _refuse_unless_every_legacy_credential_decrypts() -> None:
+    """Before ANY store is written: every legacy credential an applier will
+    re-seal must decrypt under this run's key. Otherwise an applier fails after
+    earlier stores have moved (a partial migration), or re-owns a row without
+    its secret. The plaintext is discarded immediately; nothing is logged."""
+    unreadable: list[str] = []
+    for cred_id in _legacy_credential_ids():
+        try:
+            load_credential(cred_id)
+        except (KeyError, ValueError, CredentialIntegrityError):
+            unreadable.append(cred_id)
+    if unreadable:
+        raise MigrationRefused(
+            f"legacy credential(s) {unreadable!r} do not decrypt with the master key "
+            f"{_byok_key_file()!r}. Run with the API service's key file; nothing was "
+            "written"
+        )
 
 
 def run_migration(email: str, *, apply: bool = False) -> MigrationReport:
@@ -544,7 +735,10 @@ def run_migration(email: str, *, apply: bool = False) -> MigrationReport:
 
     The plan phase is fully read-only and never decrypts key material; the
     apply phase re-runs the planners first, so a store that changed between
-    dry-run and apply is re-validated before anything is written.
+    dry-run and apply is re-validated before anything is written. Both phases
+    refuse when legacy credentials exist but the master key file does not;
+    the apply phase also proves every legacy credential decrypts before the
+    first applier runs, so a wrong key can never leave a partial migration.
     """
     target = derive_owner_from_verified_email(email)
     if target is None:
@@ -555,12 +749,14 @@ def run_migration(email: str, *, apply: bool = False) -> MigrationReport:
     report = MigrationReport(target_owner=target)
     for planner in _PLANNERS:
         planner(report)
+    _refuse_without_master_key()
     if not apply:
         return report
     # Re-validate immediately before writing, then apply store by store.
     fresh = MigrationReport(target_owner=target)
     for planner in _PLANNERS:
         planner(fresh)
+    _refuse_unless_every_legacy_credential_decrypts()
     fresh.applied = True
     for applier in _APPLIERS:
         applier(fresh)
