@@ -100,7 +100,6 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
   const [housePool, setHousePool] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,11 +130,8 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     return () => {
       cancelled = true;
     };
-  }, [documentId, reloadToken]);
+  }, [documentId]);
 
-  const refreshSourceBody = useCallback(() => {
-    setReloadToken((token) => token + 1);
-  }, []);
 
 
 
@@ -1055,7 +1051,6 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
         documentId={documentId}
         title={book.title}
         readingThreadId={readingThreadId}
-        onSourceBodyChanged={refreshSourceBody}
       />
 
 
