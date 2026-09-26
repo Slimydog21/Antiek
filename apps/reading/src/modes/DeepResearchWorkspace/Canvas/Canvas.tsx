@@ -348,6 +348,7 @@ function DraggableBlock({
         node={node}
         onOpenDetail={onOpenDetail}
         onCiteSource={onCiteSource}
+        sourceInvestigationId={investigationId}
       />
     </div>
   );
