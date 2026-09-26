@@ -40,17 +40,25 @@ const CLASS_LABELS: Record<string, string> = {
   research_supplemented: "research-added",
 };
 
+/** "HTTP 503" for an API failure, "no connection" otherwise. */
+function failureLabel(e: unknown): string {
+  return e instanceof ApiError ? `HTTP ${e.status}` : "no connection";
+}
+
 export default function ReformatReview({ documentId }: { documentId: string }) {
   const [provenance, setProvenance] = useState<ProvenanceResponse | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<
-    Record<string, "idle" | "busy" | "pending" | "done">
+    Record<string, "idle" | "busy" | "pending" | "done" | "error">
   >({});
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setProvenance(null);
     setUnavailable(false);
+    setLoadError(null);
     void getProvenance(documentId)
       .then((p) => {
         if (!cancelled) {
@@ -58,14 +66,27 @@ export default function ReformatReview({ documentId }: { documentId: string }) {
           setUnavailable(p === null);
         }
       })
-      .catch(() => {
-        if (!cancelled) setUnavailable(true);
+      .catch((e: unknown) => {
+        // Only a 404 means "not a derived document"; any other failure is a
+        // failure to read, and says so rather than looking like a plain book.
+        if (!cancelled) setLoadError(failureLabel(e));
       });
     return () => {
       cancelled = true;
     };
   }, [documentId]);
 
+  if (loadError) {
+    return (
+      <p
+        className="border-b border-rule px-4 py-3 font-mono text-xxs text-emperor dark:border-charcoal-1"
+        role="alert"
+        data-reformat-review-error
+      >
+        This document's reformat record couldn't be read ({loadError}).
+      </p>
+    );
+  }
   if (unavailable || !provenance) return null; // a plain document shows nothing
 
   const gen = provenance.generation;
@@ -86,12 +107,16 @@ export default function ReformatReview({ documentId }: { documentId: string }) {
       }
       setActionState((s) => ({ ...s, [kind]: "done" }));
     } catch (e) {
-      // HONEST DEGRADATION: a 404 means the unit-5 API isn't on this stack —
-      // the named pending state, never a fake success.
-      setActionState((s) => ({
-        ...s,
-        [kind]: e instanceof ApiError && e.status === 404 ? "pending" : "pending",
-      }));
+      // HONEST DEGRADATION: only a 404 means the unit-5 API isn't on this
+      // stack (the named pending state). Anything else failed, and says so.
+      if (e instanceof ApiError && e.status === 404) {
+        setActionState((s) => ({ ...s, [kind]: "pending" }));
+      } else {
+        setActionState((s) => ({ ...s, [kind]: "error" }));
+        setActionError(
+          `${kind === "fork" ? "The fork" : "Merge later"} failed (${failureLabel(e)}). Nothing was changed.`,
+        );
+      }
     }
   }
 
@@ -148,6 +173,11 @@ export default function ReformatReview({ documentId }: { documentId: string }) {
         {(actionState.fork === "pending" || actionState.merge === "pending") && (
           <span className="font-mono text-xxs text-shadow-1 dark:text-moonlight" role="status">
             fork/merge API pending — unit 5's implementation isn't on this stack yet
+          </span>
+        )}
+        {actionError && (
+          <span className="font-mono text-xxs text-emperor" role="alert" data-reformat-action-error>
+            {actionError}
           </span>
         )}
       </div>
@@ -234,21 +264,28 @@ function BiteTrace({
   const [snippet, setSnippet] = useState<PassageSnippet | null>(null);
   const [question, setQuestion] = useState("");
   const [probeState, setProbeState] = useState<"idle" | "busy" | "launched">("idle");
+  const [traceError, setTraceError] = useState<string | null>(null);
 
   async function pullSnippet() {
     if (!bite.source_refs?.length) return;
     const span = bite.source_refs[0];
-    const value = await getPassageSnippet(sourceDocumentId, span);
-    setSnippet(value);
-    // The probing composer prefills from the gate-served snippet (never
-    // from a withheld body — metadata-only there).
-    setQuestion((q) => q || (value.text ?? "the cited core passage"));
+    setTraceError(null);
+    try {
+      const value = await getPassageSnippet(sourceDocumentId, span);
+      setSnippet(value);
+      // The probing composer prefills from the gate-served snippet (never
+      // from a withheld body — metadata-only there).
+      setQuestion((q) => q || (value.text ?? "the cited core passage"));
+    } catch (e) {
+      setTraceError(`The core passage couldn't be pulled (${failureLabel(e)}).`);
+    }
   }
 
   async function probe() {
     const q = question.trim();
     if (q.length < 3) return;
     setProbeState("busy");
+    setTraceError(null);
     try {
       // THE MANDATORY CITATION (the agent-facing rule): a probe's chase
       // ALWAYS carries the resolved core span refs in its context — the
@@ -274,6 +311,8 @@ function BiteTrace({
           : {}),
       });
       setProbeState("launched");
+    } catch (e) {
+      setTraceError(`The probe didn't start (${failureLabel(e)}).`);
     } finally {
       setProbeState((s) => (s === "busy" ? "idle" : s));
     }
@@ -338,6 +377,11 @@ function BiteTrace({
           >
             pull the core passage
           </button>
+          {traceError && (
+            <p className="mt-1 text-emperor" role="alert" data-bite-trace-error>
+              {traceError}
+            </p>
+          )}
           {snippet && (
             <blockquote
               data-probe-snippet

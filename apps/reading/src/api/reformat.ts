@@ -15,8 +15,6 @@ export type ReformatMode = "time_window" | "themes";
 export interface ReformatResponse {
   generation_id: string;
   derived_document_id: string;
-  /** The generation thread — the engagement that stays in the pane. */
-  thread_id: string;
   bite_count: number;
   contribution_classes: string[];
   mostly_generated: boolean;

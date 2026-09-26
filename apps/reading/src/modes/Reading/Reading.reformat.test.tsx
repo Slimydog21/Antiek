@@ -2,10 +2,10 @@
  * Reading.reformat.test.tsx — the reformat flow (reformat-provenance
  * SPR-02), the spec's five proofs:
  *
- *   1. The island affordance: the prompt rides runSpawnFlow's pin→spin→link
- *      discipline (the island's anchor is NOT re-pinned; the reformat POST
- *      payload asserted; the link 409-keeps honestly) and the engagement
- *      STAYS in the card (no navigation);
+ *   1. The island affordance: the prompt calls the reformat route and the
+ *      engagement STAYS in the card (no navigation). A generation is not an
+ *      investigation, so the island's anchor is neither re-pinned nor linked
+ *      (LB-4a);
  *   2. ask-to-open: completion asks; CONFIRM opens exactly ONE reader
  *      window on the derived document with the reformat origin; DECLINE
  *      opens nothing;
@@ -16,7 +16,10 @@
  *      the named pending state (never a fake success); a reachable fork API
  *      receives the generation record's refs on the request body;
  *   5. the honesty header renders on the derived document; the original
- *      shows no marker.
+ *      shows no marker;
+ *   6. every failure is named (LB-4a): an unavailable model, a fork that
+ *      failed (not "pending"), an unreadable record, a snippet or probe that
+ *      didn't go through.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -147,7 +150,6 @@ function islandAnchor(): BookAnchor {
 const REFORMAT_RESULT = {
   generation_id: "gen-1",
   derived_document_id: "drv-x1",
-  thread_id: "reformat:gen-1",
   bite_count: 3,
   contribution_classes: ["author_verbatim", "llm_compressed", "llm_expanded"],
   mostly_generated: false,
@@ -202,6 +204,8 @@ interface Server {
   posts: { url: string; body: Record<string, unknown> }[];
   patches: { url: string; body: Record<string, unknown> }[];
   forkReachable: boolean;
+  /** Force one route to fail with this status (LB-4a error honesty). */
+  fail?: { match: string; status: number; detail?: string };
 }
 
 function route(server: Server) {
@@ -211,6 +215,9 @@ function route(server: Server) {
     const parsedBody = init?.body ? JSON.parse(init.body) : undefined;
     if (method === "POST") server.posts.push({ url, body: parsedBody });
     if (method === "PATCH") server.patches.push({ url, body: parsedBody });
+    if (server.fail && url.includes(server.fail.match)) {
+      return jsonResponse({ detail: server.fail.detail ?? "failed" }, server.fail.status);
+    }
 
     if (url.endsWith("/reformats") && method === "POST") {
       return jsonResponse(REFORMAT_RESULT, 201);
@@ -344,7 +351,7 @@ afterEach(() => {
 // ── Proofs 1 + 2: the island affordance + ask-to-open ──────────────────────
 
 describe("the island reformat affordance + ask-to-open", () => {
-  it("the prompt rides the pin→spin→link discipline; the engagement stays in the card (no navigation); completion asks, confirm opens ONE reader window with the reformat origin, decline opens nothing", async () => {
+  it("the prompt calls the reformat route and links nothing; the engagement stays in the card (no navigation); completion asks, confirm opens ONE reader window with the reformat origin", async () => {
     const server: Server = { posts: [], patches: [], forkReachable: false };
     route(server);
     await renderReader();
@@ -366,13 +373,11 @@ describe("the island reformat affordance + ask-to-open", () => {
     const reformatPost = server.posts.find((c) => c.url.includes("/reformats"))!;
     expect(reformatPost.body.prompt).toBe("the 20-minute version");
     expect(reformatPost.body.mode).toBe("time_window");
-    // The pin step did NOT re-pin (the island's anchor exists by
-    // construction) — zero POST /anchors.
+    // A generation is not an investigation: the island's anchor is neither
+    // re-pinned nor linked to anything.
     expect(server.posts.filter((c) => c.url.endsWith("/anchors"))).toHaveLength(0);
-    // The link 409-kept honestly (the island's thread holds the anchor).
-    await waitFor(() =>
-      expect(server.patches.some((c) => c.url.includes("/anchors/"))).toBe(true),
-    );
+    await screen.findByText(/Your reformatted version is ready/);
+    expect(server.patches.filter((c) => c.url.includes("/anchors/"))).toHaveLength(0);
     // The engagement STAYS in the right pane — never a navigation.
     expect(navigateMock).not.toHaveBeenCalled();
 
@@ -386,12 +391,12 @@ describe("the island reformat affordance + ask-to-open", () => {
     expect(state.windows[id].kind).toBe("reader");
     expect(state.windows[id].payload).toEqual({
       documentId: "drv-x1",
-      origin: { from: "reformat", id: "reformat:gen-1" },
+      origin: { from: "reformat", id: "gen-1" },
     });
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
-  it("declining the ask opens nothing", async () => {
+  it("declining the ask opens nothing, and the card keeps the way back", async () => {
     const server: Server = { posts: [], patches: [], forkReachable: false };
     route(server);
     await renderReader();
@@ -405,8 +410,30 @@ describe("the island reformat affordance + ask-to-open", () => {
     await screen.findByText(/Your reformatted version is ready/);
     fireEvent.click(screen.getByRole("button", { name: "Not now" }));
     expect(useWindows.getState().order).toHaveLength(0);
-    // The honest note — the derived document remains, reachable later.
-    await screen.findByText(/in the library whenever you want it/);
+    // Honest: a provisional derivative is not in the library, so the card
+    // keeps the only way back to it.
+    await screen.findByText(/isn't in the library while it's provisional/);
+    fireEvent.click(screen.getByRole("button", { name: "Open the reformatted version" }));
+    expect(useWindows.getState().order).toEqual([readerWindowId("drv-x1")]);
+  });
+
+  it("an unavailable reformat model is named, never a generic failure", async () => {
+    const server: Server = {
+      posts: [], patches: [], forkReachable: false,
+      fail: { match: "/reformats", status: 503, detail: "reformat_generator_unavailable" },
+    };
+    route(server);
+    await renderReader();
+    await screen.findByText("The ope");
+    fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
+    fireEvent.click(await screen.findByRole("button", { name: "Reformat this" }));
+    fireEvent.change(screen.getByLabelText("What should the reformat do?"), {
+      target: { value: "the 20-minute version" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reformat" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("The reformat model isn't available right now. Nothing was generated.");
+    expect(useWindows.getState().order).toHaveLength(0);
   });
 });
 
@@ -493,6 +520,41 @@ describe("merge later / officially fork", () => {
     await screen.findByText(/fork\/merge API pending/);
     // No fake success state.
     expect(document.querySelector("[data-reformat-fork]")!.textContent).toBe("Officially fork");
+  });
+
+  it("a fork that fails for any reason but a 404 says so — it is never shown as pending", async () => {
+    const server: Server = {
+      posts: [], patches: [], forkReachable: true,
+      fail: { match: "/forks", status: 500 },
+    };
+    route(server);
+    await renderReader("drv-x1");
+    await screen.findByText("The opening of the book.");
+    await waitFor(() => expect(document.querySelector("[data-reformat-review]")).toBeTruthy());
+    fireEvent.click(document.querySelector("[data-reformat-fork]")!);
+    const error = await waitFor(() => {
+      const el = document.querySelector("[data-reformat-action-error]");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(error.textContent).toBe("The fork failed (HTTP 500). Nothing was changed.");
+    expect(screen.queryByText(/fork\/merge API pending/)).toBeNull();
+  });
+
+  it("an unreadable reformat record says so instead of looking like a plain book", async () => {
+    const server: Server = {
+      posts: [], patches: [], forkReachable: false,
+      fail: { match: "/provenance", status: 500 },
+    };
+    route(server);
+    await renderReader("drv-x1");
+    await screen.findByText("The opening of the book.");
+    const error = await waitFor(() => {
+      const el = document.querySelector("[data-reformat-review-error]");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(error.textContent).toBe("This document's reformat record couldn't be read (HTTP 500).");
   });
 
   it("where the fork API IS reachable, the fork carries the generation record's refs", async () => {
@@ -610,5 +672,41 @@ describe("probe-to-core (SPR-03)", () => {
     // citation mandate makes a probe without spans dishonest by construction.
     expect(trace.querySelector("[data-probe-launch]")).toBeNull();
     expect(server.posts.filter((c) => c.url.endsWith("/investigations"))).toHaveLength(0);
+  });
+});
+
+describe("the trace names its own failures (LB-4a)", () => {
+  it("a snippet that can't be pulled and a probe that didn't start are both named", async () => {
+    const server: Server = { posts: [], patches: [], forkReachable: false };
+    route(server);
+    await renderReader("drv-x1");
+    await screen.findByText("The opening of the book.");
+    await waitFor(() => expect(document.querySelector("[data-reformat-review]")).toBeTruthy());
+    fireEvent.click(document.querySelector('[data-bite-trace-toggle="bite-1"]')!);
+    const panel = await waitFor(() => {
+      const el = document.querySelector('[data-bite-trace="bite-1"]');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+
+    server.fail = { match: "/passage", status: 503 };
+    fireEvent.click(panel.querySelector('[data-pull-snippet="bite-1"]')!);
+    const pullError = await waitFor(() => {
+      const el = document.querySelector("[data-bite-trace-error]");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(pullError.textContent).toBe("The core passage couldn't be pulled (HTTP 503).");
+
+    server.fail = { match: "/investigations", status: 500 };
+    fireEvent.change(screen.getByLabelText("Probe deeper from this bite"), {
+      target: { value: "what does the author mean here?" },
+    });
+    fireEvent.click(panel.querySelector('[data-probe-launch="bite-1"]')!);
+    await waitFor(() =>
+      expect(document.querySelector("[data-bite-trace-error]")!.textContent).toMatch(
+        /^The probe didn't start \(/,
+      ),
+    );
   });
 });
