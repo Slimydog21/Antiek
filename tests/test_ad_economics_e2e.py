@@ -406,3 +406,18 @@ def test_report_reconciles_and_is_reproducible(con):
         c2.close()
 
     assert _substance(r1) == _substance(r2)
+
+
+def test_safety_valve_refuses_vacuous_pass_when_optimized(monkeypatch):
+    """The safety-valve verifier must not report a gate result without its
+    required fixture. Under `python -O` a bare `assert holder is not None`
+    would vanish and the tool would emit a vacuous 'gate holds' result — the
+    exact lying-green failure mode the ship bar forbids. The guard is an
+    explicit raise so it survives optimization."""
+    from tools import verify_ad_economics as vac
+
+    monkeypatch.setattr(
+        vac.ip_holders, "list_all", lambda _con: []
+    )
+    with pytest.raises(RuntimeError, match="vacuous safety-valve result"):
+        vac.check_safety_valve(con=None, results=[])
