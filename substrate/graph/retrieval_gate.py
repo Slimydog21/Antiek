@@ -98,6 +98,22 @@ def node_owner_sql_clause(
     )
 
 
+def taken_down_chunk_exclusion_sql(*, table_alias: str = "d") -> str:
+    """Parameter-free exclusion of a document whose book asset is taken down.
+
+    ``table_alias`` is a static identifier from the caller, never a request
+    field. A missing ``book_assets`` row, ``FALSE``, or NULL does not match.
+    Callers AND this outside the content-class/owner OR.
+    """
+    if not table_alias.isidentifier():
+        raise ValueError("document alias must be a static identifier")
+    return (
+        "NOT EXISTS (SELECT 1 FROM book_assets td "
+        f"WHERE td.document_id = {table_alias}.document_id "
+        "AND td.taken_down IS TRUE)"
+    )
+
+
 def non_privileged_chunk_sql_clause(
     *,
     table_alias: str = "d",
@@ -124,13 +140,15 @@ def non_privileged_chunk_sql_clause(
         policy_tag: Retrieval policy; privileged tags bypass rights withholding.
         owner_user_id: Account allowed to retrieve owner-only classes.
     """
+    takedown = " AND " + taken_down_chunk_exclusion_sql(table_alias=table_alias)
     if policy_tag in PRIVILEGED_POLICY_TAGS:
         owner_only = sorted(PERSONAL_ONLY_CONTENT_CLASSES)
         placeholders = ",".join("?" for _ in owner_only)
         return (
             f" AND ({table_alias}.content_class IS NULL OR "
             f"{table_alias}.content_class NOT IN ({placeholders}) OR "
-            f"{table_alias}.owner_user_id = ?)",
+            f"{table_alias}.owner_user_id = ?)"
+            + takedown,
             [*owner_only, owner_user_id],
         )
     excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
@@ -138,6 +156,7 @@ def non_privileged_chunk_sql_clause(
     sql = (
         f" AND ({table_alias}.content_class IS NULL OR "
         f"{table_alias}.content_class NOT IN ({placeholders}))"
+        + takedown
     )
     return sql, excluded
 
