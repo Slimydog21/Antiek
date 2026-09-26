@@ -7,35 +7,17 @@ import { ApiError, apiFetch } from "../../lib/api";
 import { describeFailure, type DescribedFailure } from "../../shared/failure";
 
 /**
- * Substrate stats summary UI (master-spec §13.7 audit).
- *
- * Operator-facing "what does the substrate look like right now"
- * dashboard. Pulls GET /stats and renders counts across every
- * load-bearing table. Warnings (e.g. table missing on a partial
- * install) surface verbatim so the operator sees them.
+ * Substrate stats summary UI (master-spec §13.7 audit). Operator-facing
+ * "what does the substrate look like right now" dashboard: GET /stats counts
+ * across every load-bearing table. Warnings surface verbatim, and a table
+ * they name as missing renders "—" with its reason, never 0
+ * (FFX SPR-04, F-10).
  */
 
 interface StatsResponse {
   counts: Record<string, number>;
   warnings: string[];
 }
-
-/** The backend's shape for a skipped table (`get_substrate_stats`: `table {table!r} not present`). */
-const MISSING_TABLE = /^table '([^']+)' not present$/;
-
-/** Tables the backend reported as absent. They were skipped, not counted, so they have no number. */
-function missingTables(warnings: readonly string[]): ReadonlySet<string> {
-  const missing = new Set<string>();
-  for (const w of warnings) {
-    const m = MISSING_TABLE.exec(w.trim());
-    if (m) missing.add(m[1]);
-  }
-  return missing;
-}
-
-/** Caption shown under a dash: a bare dash would be its own kind of lie. */
-const NOT_PRESENT_CAPTION = "not present in this substrate";
-const NOT_REPORTED_CAPTION = "not reported";
 
 const TABLE_GROUPS: { title: string; tables: string[] }[] = [
   {
@@ -63,6 +45,23 @@ const TABLE_GROUPS: { title: string; tables: string[] }[] = [
     tables: ["deletion_requests"],
   },
 ];
+
+/** The backend's shape for a skipped table (`get_substrate_stats`: `table {table!r} not present`). */
+const MISSING_TABLE = /^table '([^']+)' not present$/;
+
+/** Tables the backend reported as absent. They were skipped, not counted, so they have no number. */
+function missingTables(warnings: readonly string[]): ReadonlySet<string> {
+  const missing = new Set<string>();
+  for (const w of warnings) {
+    const m = MISSING_TABLE.exec(w.trim());
+    if (m) missing.add(m[1]);
+  }
+  return missing;
+}
+
+/** Caption shown under a dash: a bare dash would be its own kind of lie. */
+const NOT_PRESENT_CAPTION = "not present in this substrate";
+const NOT_REPORTED_CAPTION = "not reported";
 
 export default function Stats() {
   // SPR-09 window-adaptation contract: the root fills its container (h-full —
