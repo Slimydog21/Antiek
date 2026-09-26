@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,7 +37,8 @@ CREATE TABLE IF NOT EXISTS research_artifact_versions (
   content_hash VARCHAR NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (artifact_id, version)
-)
+);
+ALTER TABLE research_artifact_versions ADD COLUMN IF NOT EXISTS source_hash VARCHAR;
 """
 
 
@@ -59,6 +61,11 @@ class ArtifactVersion:
     style_name: str
     html_path: Path
     content_hash: str
+    source_hash: str | None
+
+
+class ArtifactSourceChanged(RuntimeError):
+    """A rendered source no longer matches the artifact's ready source."""
 
 
 class ResearchArtifactStore:
@@ -179,6 +186,20 @@ class ResearchArtifactStore:
         finally:
             con.close()
 
+    def is_pending_for_owner(self, artifact_id: str, owner_user_id: str) -> bool:
+        """Distinguish an owner's in-flight export from an absent artifact."""
+        self._ensure_schema()
+        con = connect_read(self._db_path)
+        try:
+            row = con.execute(
+                "SELECT 1 FROM research_artifacts WHERE artifact_id=? "
+                "AND owner_user_id=? AND state='pending'",
+                [artifact_id, owner_user_id],
+            ).fetchone()
+            return row is not None
+        finally:
+            con.close()
+
     def add_version(
         self,
         artifact_id: str,
@@ -186,22 +207,31 @@ class ResearchArtifactStore:
         style_name: str,
         html: str,
         content_hash: str,
+        *,
+        source_hash: str,
     ) -> tuple[int, Path]:
+        if re.fullmatch(r"[0-9a-f]{64}", source_hash) is None:
+            raise ValueError("artifact version source hash must be lowercase sha256 hex")
         with FlockWriteCoordinator(self._db_path).acquire_write_context(
             "research_artifact.version"
         ) as ctx:
             ctx.execute(_DDL)
             row = ctx.execute(
-                "SELECT owner_user_id, latest_version FROM research_artifacts "
-                "WHERE artifact_id=? AND state='ready'",
+                "SELECT owner_user_id, latest_version, source_hash, state "
+                "FROM research_artifacts "
+                "WHERE artifact_id=?",
                 [artifact_id],
             ).fetchone()
             if row is None or str(row[0]) != owner_user_id:
                 raise KeyError(artifact_id)
+            current_source_hash = None if row[2] is None else str(row[2])
+            if str(row[3]) != "ready" or current_source_hash != source_hash:
+                raise ArtifactSourceChanged(artifact_id)
             version = int(row[1]) + 1
             if version > 1:
                 latest = ctx.execute(
-                    "SELECT style_name, html_path, content_hash FROM research_artifact_versions "
+                    "SELECT style_name, html_path, content_hash, source_hash "
+                    "FROM research_artifact_versions "
                     "WHERE artifact_id=? AND version=?",
                     [artifact_id, version - 1],
                 ).fetchone()
@@ -209,6 +239,8 @@ class ResearchArtifactStore:
                     latest is not None
                     and str(latest[0]) == style_name
                     and str(latest[2]) == content_hash
+                    and latest[3] is not None
+                    and str(latest[3]) == source_hash
                 ):
                     return version - 1, Path(str(latest[1]))
             html_path = artifact_version_path_for(artifact_id, version)
@@ -218,9 +250,19 @@ class ResearchArtifactStore:
             atomic_write_nofollow(html_path, html.encode("utf-8"))
             try:
                 ctx.execute(
-                    "INSERT INTO research_artifact_versions VALUES "
-                    "(?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
-                    [artifact_id, version, owner_user_id, style_name, str(html_path), content_hash],
+                    "INSERT INTO research_artifact_versions ("
+                    "artifact_id, version, owner_user_id, style_name, html_path, "
+                    "content_hash, source_hash, created_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                    [
+                        artifact_id,
+                        version,
+                        owner_user_id,
+                        style_name,
+                        str(html_path),
+                        content_hash,
+                        source_hash,
+                    ],
                 )
                 ctx.execute(
                     "UPDATE research_artifacts SET selected_style=?, latest_version=?, "
@@ -248,7 +290,8 @@ class ResearchArtifactStore:
                     return None
                 version = int(row[0])
             row = con.execute(
-                "SELECT artifact_id, version, owner_user_id, style_name, html_path, content_hash "
+                "SELECT artifact_id, version, owner_user_id, style_name, html_path, "
+                "content_hash, source_hash "
                 "FROM research_artifact_versions WHERE artifact_id=? AND version=? "
                 "AND owner_user_id=?",
                 [artifact_id, version, owner_user_id],
@@ -256,7 +299,13 @@ class ResearchArtifactStore:
             if row is None:
                 return None
             return ArtifactVersion(
-                str(row[0]), int(row[1]), str(row[2]), str(row[3]), Path(str(row[4])), str(row[5])
+                str(row[0]),
+                int(row[1]),
+                str(row[2]),
+                str(row[3]),
+                Path(str(row[4])),
+                str(row[5]),
+                None if row[6] is None else str(row[6]),
             )
         finally:
             con.close()
@@ -285,4 +334,9 @@ class ResearchArtifactStore:
             )
 
 
-__all__ = ["ArtifactRecord", "ArtifactVersion", "ResearchArtifactStore"]
+__all__ = [
+    "ArtifactRecord",
+    "ArtifactSourceChanged",
+    "ArtifactVersion",
+    "ResearchArtifactStore",
+]

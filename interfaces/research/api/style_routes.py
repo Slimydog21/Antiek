@@ -59,7 +59,7 @@ from substrate.research_artifact.paths import (
     research_artifacts_dir,
     validate_artifact_id,
 )
-from substrate.research_artifact.store import ResearchArtifactStore
+from substrate.research_artifact.store import ArtifactSourceChanged, ResearchArtifactStore
 from substrate.styles import UserStyleStore
 
 _log = logging.getLogger(__name__)
@@ -360,6 +360,8 @@ async def render_artifact(
             "X-Artifact-Version": "preview",
             "X-Content-SHA256": digest,
             "X-Source-SHA256": source_digest,
+            "X-Artifact-Current-Source-SHA256": source_digest,
+            "X-Artifact-Source-State": "current",
         },
     )
 
@@ -369,14 +371,26 @@ async def apply_artifact_style(
     artifact_id: str, request: Request, style: str | None = None
 ) -> HTMLResponse:
     """Durably apply a style; GET remains a side-effect-free preview."""
-    preview = await render_artifact(artifact_id, request, style)
     user_id = _user_id(request)
+    artifact_store = ResearchArtifactStore(_db_path())
+    try:
+        preview = await render_artifact(artifact_id, request, style)
+    except HTTPException as err:
+        if err.status_code == 404 and artifact_store.is_pending_for_owner(artifact_id, user_id):
+            raise HTTPException(status_code=409, detail="artifact_source_changed") from err
+        raise
     style_name = preview.headers["X-Artifact-Style"]
     digest = preview.headers["X-Content-SHA256"]
     html = bytes(preview.body).decode("utf-8")
-    version, _ = ResearchArtifactStore(_db_path()).add_version(
-        artifact_id, user_id, style_name, html, digest
-    )
+    try:
+        version, _ = artifact_store.add_version(
+            artifact_id, user_id, style_name, html, digest,
+            source_hash=preview.headers["X-Source-SHA256"],
+        )
+    except KeyError as err:
+        raise HTTPException(status_code=404, detail="artifact not found") from err
+    except ArtifactSourceChanged as err:
+        raise HTTPException(status_code=409, detail="artifact_source_changed") from err
     preview.headers["X-Artifact-Version"] = str(version)
     return preview
 
@@ -388,7 +402,7 @@ async def _serve_version(artifact_id: str, request: Request, version: int | None
     if stored is None:
         raise HTTPException(status_code=404, detail="artifact version not found")
     artifact = artifact_store.get(artifact_id)
-    if artifact is None or artifact.owner_user_id != user_id or artifact.source_hash is None:
+    if artifact is None or artifact.owner_user_id != user_id:
         raise HTTPException(status_code=404, detail="artifact version not found")
     try:
         raw = read_bounded_nofollow(stored.html_path, _MAX_ARTIFACT_BYTES)
@@ -399,16 +413,23 @@ async def _serve_version(artifact_id: str, request: Request, version: int | None
         raise HTTPException(status_code=413, detail=str(err)) from err
     if hashlib.sha256(raw).hexdigest() != stored.content_hash:
         raise HTTPException(status_code=422, detail="stored version hash mismatch")
-    return HTMLResponse(
-        content=html,
-        headers={
-            "X-Artifact-ID": stored.artifact_id,
-            "X-Artifact-Style": stored.style_name,
-            "X-Artifact-Version": str(stored.version),
-            "X-Content-SHA256": stored.content_hash,
-            "X-Source-SHA256": artifact.source_hash,
-        },
-    )
+    headers = {
+        "X-Artifact-ID": stored.artifact_id,
+        "X-Artifact-Style": stored.style_name,
+        "X-Artifact-Version": str(stored.version),
+        "X-Content-SHA256": stored.content_hash,
+    }
+    if stored.source_hash is not None:
+        headers["X-Source-SHA256"] = stored.source_hash
+    if artifact.source_hash is not None:
+        headers["X-Artifact-Current-Source-SHA256"] = artifact.source_hash
+    if stored.source_hash is None or artifact.source_hash is None:
+        headers["X-Artifact-Source-State"] = "unverified"
+    elif stored.source_hash == artifact.source_hash:
+        headers["X-Artifact-Source-State"] = "current"
+    else:
+        headers["X-Artifact-Source-State"] = "superseded"
+    return HTMLResponse(content=html, headers=headers)
 
 
 @style_router.get("/artifacts/{artifact_id}/versions/latest", response_class=HTMLResponse)
