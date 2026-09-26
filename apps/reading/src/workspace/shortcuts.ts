@@ -47,6 +47,7 @@ import { mothershipForPath } from "./mothershipForPath";
 import type { Mothership } from "./tabTree";
 import { tabTreeHandle } from "./tabTreeHandle";
 import { readCustomHotkeys } from "./persistence";
+import { READER_TOC_TOGGLE_EVENT } from "./readerEvents";
 import { emitProductActivate, normalizeBinding } from "../components/hotkeys/bindings";
 import {
   ACTIONS,
@@ -297,6 +298,23 @@ function tabKeySide(): "left" | "right" {
   return ws.focusedPanelId !== null && ws.dockRightIds.includes(ws.focusedPanelId) ? "right" : "left";
 }
 
+/** Writing with the outline visible: the right pane holds block tabs (C5),
+ *  the piece's own blocks, which cycle but never close. */
+function rightPaneHoldsBlocks(): boolean {
+  if (mothershipForPath(window.location.pathname, window.location.search) !== "writing") return false;
+  const ws = useWorkspace.getState();
+  return writeOutlineVisible(ws.layoutPreset, Boolean(ws.panels[WRITE_OUTLINE_PANEL_ID]));
+}
+
+/** A right-pane agent-tab action, only while the right pane holds the
+ *  companion and it is visible (an honest no-op otherwise). The store ships
+ *  with the lazy pane; when the pane is visible it is already loaded, so
+ *  this resolves from the module cache. */
+function onAgentTabs(run: (store: typeof import("./companionStore")["useCompanion"]) => void): void {
+  if (rightPaneHoldsBlocks() || !companionVisible()) return;
+  void import("./companionStore").then(({ useCompanion }) => run(useCompanion));
+}
+
 /**
  * Right-pane tab cycling. In writing mode with the outline pane visible it
  * cycles the outline's block tabs (C5); everywhere else the companion's
@@ -305,19 +323,11 @@ function tabKeySide(): "left" | "right" {
  * never a boundary.
  */
 function cycleRightPaneTab(direction: 1 | -1) {
-  if (mothershipForPath(window.location.pathname, window.location.search) === "writing") {
-    const ws = useWorkspace.getState();
-    if (writeOutlineVisible(ws.layoutPreset, Boolean(ws.panels[WRITE_OUTLINE_PANEL_ID]))) {
-      useWriteOutline.getState().cycle(direction);
-      return;
-    }
+  if (rightPaneHoldsBlocks()) {
+    useWriteOutline.getState().cycle(direction);
+    return;
   }
-  if (!companionVisible()) return;
-  // The store ships with the lazy pane; when the pane is visible it is
-  // already loaded, so this resolves from the module cache.
-  void import("./companionStore").then(({ useCompanion }) =>
-    useCompanion.getState().cycleAgentTab(direction),
-  );
+  onAgentTabs((c) => c.getState().cycleAgentTab(direction));
 }
 
 /**
@@ -346,6 +356,32 @@ export type KeyHandler = (e: KeyboardEvent) => boolean | void;
 function cycleTab(direction: 1 | -1) {
   if (tabKeySide() === "right") cycleRightPaneTab(direction);
   else tabTreeKey((t, m) => t.getState().cycleSibling(m, direction));
+}
+
+/**
+ * prefix+shift+x: close the focused pane's active tab, behind the 10 s
+ * Undo. Left: the document tab and its branches (§2a's default, prune).
+ * Right: the active agent tab (a view act; the agent is untouched). Block
+ * tabs in writing are the piece's blocks and never close: a no-op there,
+ * and never a close of the left tab instead.
+ */
+function closeTab() {
+  if (tabKeySide() === "right") onAgentTabs((c) => c.getState().closeActiveAgentTab());
+  else tabTreeKey((t, m) => t.getState().closeActiveTab(m, "prune"));
+}
+
+/** prefix+shift+t: reopen the focused pane's last closed tab (the undo
+ *  inside the hold, the most recent retired tab after it). */
+function reopenTab() {
+  if (tabKeySide() === "right") onAgentTabs((c) => c.getState().reopenLastClosedAgentTab());
+  else tabTreeKey((t, m) => t.getState().undoLastClose(m));
+}
+
+/** The reader's contents: the mounted reader answers the event by
+ *  cancelling it, so a key with no reader on screen stays the page's. */
+function toggleReaderToc(): boolean {
+  const e = new CustomEvent(READER_TOC_TOGGLE_EVENT, { cancelable: true });
+  return !window.dispatchEvent(e);
 }
 
 /** A key held for a surface that has not shipped (keymapView PENDING): it
@@ -396,10 +432,13 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     "tab.new": notBuiltYet,
     "tab.parent": () => tabTreeKey((t, m) => t.getState().goToParent(m)),
     "tab.visitChild": () => tabTreeKey((t, m) => t.getState().visitChildOfActive(m)),
-    // Close is §2a's default outcome: the tab and its branches (prune), held
-    // 10 s behind the toast's Undo. "Close only this" (lift_children) stays
-    // in the model for the close-choice affordance; it has no key.
-    "tab.close": () => tabTreeKey((t, m) => t.getState().closeActiveTab(m, "prune")),
+    // Close follows pane focus like n/p. On the left it is §2a's default
+    // outcome, the tab and its branches (prune), held 10 s behind the
+    // toast's Undo; "Close only this" (lift_children) is the tree panel's
+    // Shift+Delete and has no key.
+    "tab.close": () => closeTab(),
+    "tab.reopen": () => reopenTab(),
+    "reader.tocToggle": () => toggleReaderToc(),
     "tab.treeToggle": () => tabTreeHandle.store?.getState().toggleTreePanel(),
     "inbox.toggle": notBuiltYet,
   };

@@ -35,7 +35,9 @@ import {
   createInMemoryTabTreeAdapter,
   emptyTabTree,
   fromSnapshot,
+  lastRetired,
   rebase,
+  restoreClosed,
   setActive,
   spawnChild,
   toSnapshot,
@@ -76,10 +78,12 @@ export interface HeldClose {
 export type ActivationSource = "user" | "route";
 
 /** A user activation's request to show its tab (the strip consumes it and
- *  navigates only when the route does not already show the tab). */
+ *  navigates only when the route does not already show the tab). A null
+ *  tabId is the close of the tree's last open tab: show the mode's home, so
+ *  the screen and the strip agree (lane A B2-4). */
 export interface NavIntent {
   mothership: Mothership;
-  tabId: string;
+  tabId: string | null;
   seq: number;
   /** The history entry it was issued at (locationStamp): an intent is
    *  shown only while the operator is still there. */
@@ -146,7 +150,12 @@ interface TabTreeState {
   /** Undo one close by its id: a held close is dropped without a write; a
    *  close already written is undone through the model (numbers reclaimed). */
   undoClose: (closeId: string) => void;
-  undoLastClose: (mothership: Mothership) => void;
+  /** prefix+shift+t (lane A B2-6): the keyboard's undo for a close. Inside
+   *  the 10 s hold (or while a written close's toast still offers Undo) it
+   *  is that Undo, exactly; after it, the most recently retired tab of this
+   *  tree comes back from history with its numbers (restoreClosed). False
+   *  when there is nothing to reopen. */
+  undoLastClose: (mothership: Mothership) => boolean;
   toggleTreePanel: () => void;
   setSubtreeFocus: (tabId: string | null) => void;
   /** Test seam. */
@@ -161,6 +170,9 @@ const loads = new Map<Mothership, Promise<void>>();
 /** Saves asked for while a close was held; run when the hold resolves. */
 const deferredSaves = new Set<Mothership>();
 let holdTimer: ReturnType<typeof setTimeout> | null = null;
+/** The toast offering Undo for each close still undoable, by close_id, so a
+ *  keyboard undo takes the toast away with the close. */
+const undoToasts = new Map<string, number>();
 let navSeq = 0;
 /** Written closes still inside their toast's window, by close_id. */
 const recentCloses = new Map<string, { mothership: Mothership; token: UndoToken }>();
@@ -194,10 +206,10 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     queueSave(mothership);
   }
 
-  /** A user activation asks the strip to show the tab it left active. */
+  /** A user activation asks the strip to show the tab it left active, or,
+   *  when it left none (the last tab closed), the mode's home. */
   function requestNav(mothership: Mothership, next: TabTree): void {
-    const tabId = next.active_tab_id;
-    set({ navIntent: tabId ? { mothership, tabId, seq: ++navSeq, at: locationStamp() } : null });
+    set({ navIntent: { mothership, tabId: next.active_tab_id, seq: ++navSeq, at: locationStamp() } });
   }
 
   function queueSave(mothership: Mothership): void {
@@ -309,8 +321,12 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
         [held.mothership]: [...(s.pendingOps[held.mothership] ?? []), held.op],
       },
     }));
-    recentCloses.set(held.token.close_id, { mothership: held.mothership, token: held.token });
-    setTimeout(() => recentCloses.delete(held.token.close_id), UNDO_TTL_MS);
+    const closeId = held.token.close_id;
+    recentCloses.set(closeId, { mothership: held.mothership, token: held.token });
+    setTimeout(() => {
+      recentCloses.delete(closeId);
+      undoToasts.delete(closeId);
+    }, UNDO_TTL_MS);
     deferredSaves.add(held.mothership);
     flushDeferred();
   }
@@ -472,10 +488,17 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       if (result.tree.active_tab_id !== tree.active_tab_id) requestNav(mothership, result.tree);
       holdTimer = setTimeout(commitHeld, UNDO_TTL_MS);
       const closeId = result.undo.close_id;
-      toast.undo(message, () => get().undoClose(closeId));
+      undoToasts.set(closeId, toast.undo(message, () => get().undoClose(closeId)));
     },
 
     undoClose: (closeId) => {
+      // Whichever path undid it (the toast's button or the key), the toast's
+      // offer is spent.
+      const offer = undoToasts.get(closeId);
+      if (offer !== undefined) {
+        undoToasts.delete(closeId);
+        toast.dismiss(offer);
+      }
       const held = get().heldClose;
       if (held && held.token.close_id === closeId) {
         if (holdTimer !== null) clearTimeout(holdTimer);
@@ -510,10 +533,23 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       const held = get().heldClose;
       if (held && held.mothership === mothership) {
         get().undoClose(held.token.close_id);
-        return;
+        return true;
       }
+      const tree = get().trees[mothership];
       const last = [...recentCloses.entries()].reverse().find(([, r]) => r.mothership === mothership);
-      if (last) get().undoClose(last[0]);
+      // A written close whose toast still offers Undo: that exact Undo (it
+      // knows the tab's old place among its siblings).
+      if (last && tree && Object.hasOwn(tree.history, last[1].token.tab_id)) {
+        get().undoClose(last[0]);
+        return true;
+      }
+      if (!tree) return false;
+      const retired = lastRetired(tree);
+      if (retired === null) return false;
+      const result = restoreClosed(tree, retired);
+      if (!result.ok) return false;
+      apply(mothership, result.tree, result.op, true);
+      return true;
     },
 
     toggleTreePanel: () => set((s) => ({ treePanelOpen: !s.treePanelOpen })),
@@ -525,6 +561,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       loads.clear();
       deferredSaves.clear();
       recentCloses.clear();
+      undoToasts.clear();
       saveQueues.clear();
       resetTabTitles();
       set({

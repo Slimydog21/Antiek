@@ -31,8 +31,10 @@ export const TASK_OF: Record<ActionId, KeymapTask> = {
   "tab.parent": "panels",
   "tab.visitChild": "panels",
   "tab.close": "panels",
+  "tab.reopen": "panels",
   "tab.treeToggle": "panels",
   "inbox.toggle": "panels",
+  "reader.tocToggle": "panels",
   "door.research": "go",
   "door.read": "go",
   "door.write": "go",
@@ -53,7 +55,11 @@ export const NOTES: Partial<Record<ActionId, string>> = {
   "tab.prev": "The same pane rule as the next tab.",
   "tab.new": "Not built yet: the picker (reader, document, research, companion) will open here. Until then the key does nothing.",
   "tab.close":
-    "Closes the tab and everything branched from it; the pages it pointed at are untouched. Undo stays in the toast for 10 seconds. To close only one tab and keep its branches, use Shift+Delete on its row in the tab tree.",
+    "Acts on the focused pane. On the left it closes the tab and everything branched from it; on the right, the agent tab (the agent itself is untouched). The pages it pointed at are untouched, and Undo stays in the toast for 10 seconds. To close only one tab and keep its branches, use Shift+Delete on its row in the tab tree.",
+  "tab.reopen":
+    "Within 10 seconds of a close it undoes it. After that it brings back the most recently closed tab of the focused pane, with its number.",
+  "reader.tocToggle":
+    "When the reader's pane is too narrow to keep the contents beside the text, this opens them over the page. Esc or a chapter closes them.",
   "inbox.toggle": "Not built yet: the key is kept for the attention inbox. Until it ships the key does nothing.",
 };
 

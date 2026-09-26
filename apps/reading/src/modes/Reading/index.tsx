@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { List as ListIcon } from "lucide-react";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
@@ -14,6 +15,11 @@ import ReadingColumn from "../../components/reader/ReadingColumn";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import { useBranchTo } from "../../workspace/useBranchTo";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
+import { useViewportTier } from "../../workspace/useViewportTier";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { ESC_OVERLAY_PROPS } from "../../workspace/escapeOverlay";
+import { READER_TOC_TOGGLE_EVENT } from "../../workspace/readerEvents";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
 import ArxivFrame from "./ArxivFrame";
@@ -288,12 +294,55 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
     };
   }, [housePool, documentId]);
 
-  // A document opened from this one is a branch of its tab (a reference).
+  // The house slot is a promotion, not provenance: the book it promotes was
+  // never referenced by this one, so it opens as a ROOT tab in the tree the
+  // reader is in (a plain navigation keeps `?m`), never as a branch of kind
+  // "reference" (lane A B2-7).
+  const modeNavigate = useModeNavigate();
   const openHouse = useCallback(
-    (docId: string) =>
-      branchTo(`/read/${encodeURIComponent(docId)}`, { document_id: documentId, kind: "reference" }),
-    [branchTo, documentId],
+    (docId: string) => modeNavigate(`/read/${encodeURIComponent(docId)}`),
+    [modeNavigate],
   );
+
+  // The contents in a narrow pane (lane A B2-5). The TOC column answers to
+  // the reader's own width (container-reader); below reader-md it folds
+  // away, and this opens it over the page, in the pane: from the Contents
+  // button, or from the keymap (prefix shift+c) via the reader event.
+  const [tocOpen, setTocOpen] = useState(false);
+  useEffect(() => {
+    if (inWindow) return;
+    const onToggle = (e: Event) => {
+      e.preventDefault();
+      setTocOpen((open) => !open);
+    };
+    window.addEventListener(READER_TOC_TOGGLE_EVENT, onToggle);
+    return () => window.removeEventListener(READER_TOC_TOGGLE_EVENT, onToggle);
+  }, [inWindow]);
+  useEffect(() => {
+    if (!tocOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setTocOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [tocOpen]);
+  const jumpFromToc = useCallback(
+    (index: number) => {
+      setPageIndex(index);
+      setTocOpen(false);
+    },
+    [setPageIndex],
+  );
+
+  // The reader's own companion column duplicates the cockpit's right pane
+  // (the companion), so it steps aside while that pane is on screen: the
+  // inset preset from tier md up. It stays in the docked preset, on a phone
+  // and in a window. Hidden, not unmounted, so a preset toggle keeps it.
+  const layoutPreset = useWorkspace((s) => s.layoutPreset);
+  const tier = useViewportTier();
+  const cockpitCompanion = !inWindow && layoutPreset === "omarchy-inset" && tier !== "sm";
 
   // Tell the impression tracker which slots are showing on this page. It
   // flushes the previous page's impressions (with focused dwell) when the
@@ -399,20 +448,34 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
   return (
     <div
       data-testid="book-reader-root"
-      className={`container-reader flex ${inWindow ? "h-full bg-transparent" : "h-full bg-ice-0 dark:bg-charcoal-2"}`}
+      className={`container-reader relative flex ${inWindow ? "h-full bg-transparent" : "h-full bg-ice-0 dark:bg-charcoal-2"}`}
     >
       {/* TOC sidebar. It (and the notes column) answers to the READER's width
           (container-reader, tailwind.config.js), not the viewport: in the
           cockpit the reader lives in a pane, and the text column must keep
-          its measure when the pane is narrower than the window. */}
-      <aside className="w-64 flex-shrink-0 border-r border-rule dark:border-charcoal-1 overflow-y-auto p-3 hidden reader-md:block">
+          its measure when the pane is narrower than the window. Below
+          reader-md it folds away, and the Contents toggle opens it over the
+          page, inside the pane (lane A B2-5). */}
+      <aside
+        id={`reader-toc-${documentId}`}
+        data-reader-toc
+        data-open={tocOpen ? "true" : "false"}
+        aria-label="Contents"
+        {...(tocOpen ? ESC_OVERLAY_PROPS : {})}
+        className={
+          "w-64 flex-shrink-0 border-r border-rule dark:border-charcoal-1 overflow-y-auto p-3 " +
+          (tocOpen
+            ? "absolute inset-y-0 left-0 z-20 block bg-ice-0 dark:bg-charcoal-2 shadow-z1 dark:shadow-z1-night reader-md:static reader-md:shadow-none"
+            : "hidden reader-md:block")
+        }
+      >
         <p className="font-serif text-sm text-ink dark:text-bright mb-1 truncate">
           {book.title ?? documentId}
         </p>
         <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-3 truncate">
           {book.author ?? "Unknown author"}
         </p>
-        <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={setPageIndex} />
+        <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={jumpFromToc} />
       </aside>
 
       {/* In-book SPR-04 float-menu (SPR-07 M2). Highlighting any passage in the
@@ -441,9 +504,22 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-4 min-h-full">
           <header className="flex items-center justify-between gap-3">
-            <h1 className="text-2xl font-serif font-semibold text-ink dark:text-bright truncate">
-              {book.title ?? documentId}
-            </h1>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => setTocOpen((open) => !open)}
+                aria-expanded={tocOpen}
+                aria-controls={`reader-toc-${documentId}`}
+                aria-label="Contents"
+                title="Contents (prefix ⇧C)"
+                className="reader-md:hidden shrink-0 rounded px-1.5 py-1 text-shadow-1 dark:text-moonlight hover:bg-ice-2 dark:hover:bg-charcoal-1 hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+              >
+                <ListIcon size={16} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+              <h1 className="text-2xl font-serif font-semibold text-ink dark:text-bright truncate">
+                {book.title ?? documentId}
+              </h1>
+            </div>
             <LemonTag colour={colour} dot>
               {label}
             </LemonTag>
@@ -596,12 +672,18 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
       {/* The Read glass-box (M2) stays available while highlight chases open in
           floating workspace chrome. The page never moves (usePosition), so a
           reader can inspect a spawned chase and keep the book context intact. */}
-      <ReadingCompanion
-        documentId={documentId}
-        title={book.title}
-        readingThreadId={readingThreadId}
-        onSourceBodyChanged={refreshSourceBody}
-      />
+      <div
+        data-reader-companion-slot
+        hidden={cockpitCompanion || undefined}
+        className={cockpitCompanion ? "hidden" : "contents"}
+      >
+        <ReadingCompanion
+          documentId={documentId}
+          title={book.title}
+          readingThreadId={readingThreadId}
+          onSourceBodyChanged={refreshSourceBody}
+        />
+      </div>
 
 
       {/* M2 — the floating bookmark: a book-level MULTI-TURN talk-to-book

@@ -10,6 +10,7 @@ import RightPaneForMode from "./RightPaneForMode";
 import { DOCUMENT_PANEL_ID } from "./documentPanel";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { useWorkspace } from "./WorkspaceStore";
+import { escOverlayOpen } from "./escapeOverlay";
 import { isTextEditing } from "./shortcuts";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useViewportTier } from "./useViewportTier";
@@ -166,9 +167,12 @@ export function PanelLayout({ mainSlot }: Props) {
   // root; with focus on <body> a root-scoped handler never saw the key. It
   // exists only while a pane is fullscreen: an overlay's own key, the one
   // sanctioned exception to the one-dispatcher rule (never a global
-  // binding, never a keymap row). A key an element claimed first
-  // (defaultPrevented), pressed while typing, or pressed inside a dialog
-  // (whose own Esc closes it) stays theirs.
+  // binding, never a keymap row). One Esc reaches exactly one handler: a
+  // key an element claimed first (defaultPrevented), pressed while typing,
+  // pressed inside a dialog, or pressed while any transient overlay is open
+  // (a menu, a listbox, a modal, the FloatMenu, the tab-tree popover: see
+  // escapeOverlay.ts) stays theirs; that Esc closes the overlay and the
+  // next one restores the panes.
   useEffect(() => {
     if (!fullscreenPane) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -176,6 +180,7 @@ export function PanelLayout({ mainSlot }: Props) {
       const target = e.target instanceof Element ? e.target : null;
       if (target && isTextEditing(target)) return;
       if (target?.closest("[role='dialog'], [role='alertdialog']")) return;
+      if (escOverlayOpen()) return;
       setFullscreenPane(null);
     };
     document.addEventListener("keydown", onKeyDown);

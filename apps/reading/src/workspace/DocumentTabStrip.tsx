@@ -38,6 +38,7 @@ import { CornerDownRight, ListTree } from "lucide-react";
 import { ErrorState, LoadingState } from "../components/states";
 import { branchIntentOf } from "./branchNavigation";
 import { mothershipForPath, routeForTab, routeTabFor, tabShowsPath } from "./documentSpace";
+import { MODE_HOME } from "./mothershipForPath";
 import { syncRouteToTree } from "./routeSync";
 import { sectionIdFromRef } from "./sectionRef";
 import { SiblingStrip } from "./SiblingStrip";
@@ -102,6 +103,13 @@ function DocumentTabStripInner() {
     // agent open made before this strip loaded, then a click elsewhere).
     // Their navigation wins.
     if (navIntent.at !== locationStamp()) return;
+    // The last open tab closed: the mode's home, never the closed surface
+    // left on screen under "No open tabs".
+    if (navIntent.tabId === null) {
+      const home = MODE_HOME[navIntent.mothership];
+      if (location.pathname + location.search !== home) navigate(home);
+      return;
+    }
     // A Write section navigates to its piece (it scopes that piece in place),
     // so a section of another piece never leaves this piece on screen.
     const holder = routeTabFor(t, navIntent.tabId);
@@ -109,7 +117,7 @@ function DocumentTabStripInner() {
     if (navIntent.mothership === mothership && tabShowsPath(holder, location.pathname)) return;
     const route = routeForTab(holder);
     if (route) navigate(route);
-  }, [navIntent, mothership, location.pathname, navigate]);
+  }, [navIntent, mothership, location.pathname, location.search, navigate]);
 
   // Activation only moves the tree; the effect above does the navigating,
   // so a click, a key and the cross-pane seam take one path.
@@ -238,8 +246,20 @@ export function DocumentTabStripView({
       if (root && e.target instanceof Node && root.contains(e.target)) return;
       onToggleTree();
     };
+    // Esc closes it from any focus, not only from inside it (the panel's
+    // own rows handle their Esc and stop it there). It is the popover's
+    // Esc alone: a pane fullscreen stays until the next one (escapeOverlay).
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      onToggleTree();
+    };
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [treePanelOpen, onToggleTree]);
 
   if (status === "loading" || !tree) {
@@ -337,6 +357,7 @@ export function DocumentTabStripView({
         <div
           id="document-tab-tree"
           data-tab-tree-panel
+          data-esc-overlay=""
           className="absolute left-0 top-full z-20 mt-0.5 w-[min(24rem,calc(100vw-2rem))] rounded border border-hairline bg-ice-0 dark:bg-charcoal-2 shadow-z2 dark:shadow-z2-night overflow-hidden"
         >
           <TabTreePanel

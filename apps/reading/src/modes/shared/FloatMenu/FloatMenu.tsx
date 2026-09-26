@@ -147,6 +147,8 @@ export default function FloatMenu({
     if (!selection) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        // The Esc is the menu's alone (workspace/escapeOverlay.ts).
+        e.preventDefault();
         window.getSelection()?.removeAllRanges();
         setView({ kind: "menu" });
       }
@@ -172,6 +174,7 @@ export default function FloatMenu({
     <div
       ref={rootRef}
       data-floatmenu
+      data-esc-overlay=""
       role="menu"
       aria-label="Highlight actions"
       style={{

@@ -174,6 +174,7 @@ export type TabOp =
   | { type: "spawn"; parent_tab_id: string | null; input: SpawnInput; hier_number: string }
   | { type: "close"; close_id: string; tab_id: string; mode: CloseMode; now: string }
   | { type: "undo"; token: UndoToken }
+  | { type: "restore"; tab_id: string; close_id: string }
   | { type: "assign_public_number"; tab_id: string; public_number: number }
   | { type: "set_active"; tab_id: string | null };
 
@@ -601,6 +602,78 @@ export function undo(tree: TabTree, token: UndoToken): TabTreeResult<{ tree: Tab
   return { ok: true, tree: next, op: { type: "undo", token } };
 }
 
+/**
+ * The most recently closed tab that heads its close: the tab a close was
+ * called on (a pruned subtree's other tabs share its close and its time, and
+ * come back with it). Ties on time go to the later entry. null = nothing
+ * retired.
+ */
+export function lastRetired(tree: TabTree): string | null {
+  let best: { id: string; at: string } | null = null;
+  for (const id of Object.keys(tree.history)) {
+    const entry = tree.history[id];
+    const parent = entry.node.parent_tab_id;
+    const parentEntry = parent !== null ? closedTab(tree, parent) : undefined;
+    // A tab pruned WITH its parent comes back with the parent.
+    if (parentEntry && parentEntry.close_id === entry.close_id) continue;
+    const at = entry.node.pruned_at ?? "";
+    if (best === null || at >= best.at) best = { id, at };
+  }
+  return best?.id ?? null;
+}
+
+/**
+ * Bring a retired tab back after its undo window (contract §2.2: restore
+ * from `retired`). It is the long-lived half of undo and needs no token:
+ *  - the tab returns with the tabs its own close retired with it (a pruned
+ *    subtree), each with its own tab_id and numbers (R3-1: not reuse);
+ *  - a child that was lifted out, closed separately or reopened since stays
+ *    where it is: each restored tab keeps only restored children;
+ *  - it goes back under its recorded parent, or the nearest open ancestor,
+ *    or the roots, appended (its old neighbours may be long gone);
+ *  - it becomes the active tab: reopening is a request to see it.
+ * `closeId`, when given, must be the close that retired it (a rebase replay).
+ */
+export function restoreClosed(
+  tree: TabTree,
+  tabId: string,
+  closeId?: string,
+): TabTreeResult<{ tree: TabTree; op: TabOp }> {
+  const entry = closedTab(tree, tabId);
+  if (!entry || (closeId !== undefined && entry.close_id !== closeId)) {
+    return fail("not_closed_by_token", `tab ${tabId} is not retired${closeId ? ` by ${closeId}` : ""}`);
+  }
+  const restore: string[] = [];
+  const stack = [tabId];
+  while (stack.length > 0) {
+    const id = stack.pop() as string;
+    const rec = closedTab(tree, id);
+    if (!rec || rec.close_id !== entry.close_id || restore.includes(id)) continue;
+    restore.push(id);
+    for (const c of rec.node.child_order) stack.push(c);
+  }
+  const restoreSet = new Set(restore);
+  const nodes: Record<string, TabNode> = { ...tree.nodes };
+  const history: Record<string, ClosedTab> = {};
+  for (const id of Object.keys(tree.history)) if (!restoreSet.has(id)) history[id] = tree.history[id];
+  for (const id of restore) {
+    let node: TabNode = withoutPrunedAt(tree.history[id].node);
+    const kept = node.child_order.filter((c) => restoreSet.has(c));
+    node = { ...node, child_order: kept };
+    if (node.last_visited_child_id !== undefined && !kept.includes(node.last_visited_child_id)) {
+      node = withoutLastVisited(node);
+    }
+    nodes[id] = node;
+  }
+  const target = nearestOpenAncestor(tree, entry.node.parent_tab_id);
+  nodes[tabId] = { ...nodes[tabId], parent_tab_id: target };
+  let rootOrder = tree.root_order;
+  if (target === null) rootOrder = [...tree.root_order, tabId];
+  else nodes[target] = { ...nodes[target], child_order: [...nodes[target].child_order, tabId] };
+  const next = activate({ ...tree, nodes, root_order: rootOrder, history }, tabId);
+  return { ok: true, tree: next, op: { type: "restore", tab_id: tabId, close_id: entry.close_id } };
+}
+
 /** Focus a tab (or nothing), remembering the path to it: every ancestor's
  *  last_visited_child_id points down toward it. */
 export function setActive(tree: TabTree, tabId: string | null): TabTreeResult<{ tree: TabTree; op: TabOp }> {
@@ -684,6 +757,12 @@ export function rebase(remote: TabTree, pending: readonly TabOp[]): RebaseResult
           break;
         }
         tree = r.tree;
+        break;
+      }
+      case "restore": {
+        const r = restoreClosed(tree, op.tab_id, op.close_id);
+        if (!r.ok) dropped.push({ op, reason: r.error.code });
+        else tree = r.tree;
         break;
       }
       case "assign_public_number": {

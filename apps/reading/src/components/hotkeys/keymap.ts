@@ -86,9 +86,11 @@ export const ACTIONS = {
   "tab.new": { label: "Tab: new tab (picker)" },
   "tab.parent": { label: "Tab: up to the parent tab" },
   "tab.visitChild": { label: "Tab: down to the last-visited child tab" },
-  "tab.close": { label: "Tab: close the active tab and its branches" },
+  "tab.close": { label: "Tab: close the focused pane's active tab (on the left, with its branches)" },
+  "tab.reopen": { label: "Tab: reopen the last closed tab in the focused pane" },
   "tab.treeToggle": { label: "Tab: toggle the tab tree panel" },
   "inbox.toggle": { label: "Attention inbox" },
+  "reader.tocToggle": { label: "Reader: show or hide the contents" },
   "door.research": { label: "Research", productId: "research", route: "/" },
   "door.read": { label: "Read", productId: "read", route: "/library" },
   "door.write": { label: "Write", productId: "write", route: "/write" },
@@ -196,6 +198,15 @@ export const KEYMAP: readonly KeymapRow[] = [
   // closes the tab and its branches (§2a's default), held 10 s behind the
   // toast's Undo.
   { id: "prefix-tab-close", action: "tab.close", prefixKey: "shift+x", scope: "outside-text", origin: "D2", decision: D },
+  // The keyboard's undo for a close (browser muscle memory: ⌘⇧T). Inside the
+  // 10 s hold it undoes the close; after it, it restores the focused pane's
+  // most recently closed tab. No chord, like close.
+  { id: "prefix-tab-reopen", action: "tab.reopen", prefixKey: "shift+t", scope: "outside-text", origin: "D2", decision: D },
+
+  // ── The reader's contents (lane A B2): in a narrow cockpit pane the TOC
+  // column folds away (a container query), and this brings it back in the
+  // pane. shift+c, beside c (new tab), for "contents".
+  { id: "prefix-reader-toc", action: "reader.tocToggle", prefixKey: "shift+c", scope: "outside-text", origin: "D2", decision: D },
 
   // ── D2 attention inbox (D4): held for the inbox, a no-op until it ships ─
   { id: "prefix-inbox", action: "inbox.toggle", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },

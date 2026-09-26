@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
@@ -77,7 +77,7 @@ export default function ChaseThread({
   const [busy, setBusy] = useState(false);
   const [launchedId, setLaunchedId] = useState<string | null>(null);
   const [error, setError] = useState<{ reason: string | null } | null>(null);
-  const navigate = useNavigate();
+  const navigate = useModeNavigate();
   const { celebrating, celebrate } = useCelebrate();
 
   // Reopened with a new selection → reset the form.

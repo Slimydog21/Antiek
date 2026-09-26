@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
 
 import { cardLift } from "../../design/motion";
 import GlassSurface from "../../shell/GlassSurface";
@@ -163,7 +163,7 @@ type AttachState =
   | { kind: "failed"; reason: string | null };
 
 export default function StartResearch({ embedded = false }: { embedded?: boolean }) {
-  const navigate = useNavigate();
+  const navigate = useModeNavigate();
   const start = useStartInvestigation();
   const restoredLaunch = useMemo(readPendingOwnerLaunch, []);
   const [question, setQuestion] = useState(restoredLaunch?.question ?? "");

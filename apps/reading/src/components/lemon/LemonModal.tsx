@@ -73,7 +73,11 @@ export function LemonModal({
   useEffect(() => {
     if (!open || forceUserAction) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // The Esc is the dialog's alone (escapeOverlay.ts).
+      if (e.key === "Escape" && !e.defaultPrevented) {
+        e.preventDefault();
+        onClose();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);

@@ -81,8 +81,11 @@ keymap rows like every other key: prefix h/l (+ `ctrl+alt` twins) move pane
 focus with a ring (`ring-focus`; in `docked` they cycle dock areas via
 `cycleFocus`); prefix f fullscreens the focused pane (Esc from any focus —
 a document listener that exists only while a pane is fullscreen, never a
-keymap row; Esc in a text field or a dialog stays theirs — or the same key
-restores; right-pane fullscreen fills the cockpit);
+keymap row; Esc in a text field or a dialog stays theirs, and while any
+transient overlay is open — a menu, a listbox, a modal, the FloatMenu, the
+tab-tree popover, the reader's contents drawer — that Esc closes the overlay
+and the next one restores: one Esc, one handler, `escapeOverlay.ts` — or the
+same key restores; right-pane fullscreen fills the cockpit);
 prefix shift+i toggles the preset (no chord; `i` is the attention inbox's).
 
 ## The companion (C4, 2026-09-24)
@@ -162,7 +165,14 @@ Keys (the lane-A cockpit decision, stage 3, recorded in
 the left, the agent tabs (block tabs when writing) on the right, the left
 when neither pane is focused (`shortcuts.ts` `tabKeySide`). `u` parent, `o`
 last-visited child, `t` the tree panel, each with a `ctrl+alt` twin.
-`shift+x` closes the tab and its branches (§2a's default), prefix only.
+`shift+x` closes the focused pane's active tab behind the 10 s Undo: on the
+left the tab and its branches (§2a's default), on the right the agent tab
+(block tabs in writing never close), prefix only. `shift+t` reopens the
+focused pane's last closed tab: inside the hold it is the Undo; after it the
+most recent retired tab comes back from history with its numbers
+(`tabTree.restoreClosed`). Closing a tree's last open tab shows the mode's
+home (`MODE_HOME`). In-app navigations inside a research keep `?m` through
+one helper (`mothershipForPath.inMode`, `useModeNavigate`, `ModeLink`).
 `c` / `ctrl+alt+c` (new tab) and `i` / `ctrl+alt+i` (attention inbox) are
 held for surfaces not yet built: their handlers return "not mine" and the
 key sheet marks them "Not built yet" (`keymapView.ts` `PENDING`).

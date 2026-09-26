@@ -19,6 +19,7 @@
  */
 import { create } from "zustand";
 
+import { toast } from "../components/lemon/LemonToast";
 import { useWorkspace } from "./WorkspaceStore";
 
 export type AgentTabKind = "research-thread" | "dialogue";
@@ -56,8 +57,21 @@ function agentTabId(input: OpenAgentTabInput): string {
 }
 
 
+/** A closed agent tab, kept so it can come back where it was. */
+export interface RetiredAgentTab {
+  tab: AgentTabDescriptor;
+  index: number;
+  wasActive: boolean;
+}
+
+/** How many closed agent tabs prefix+shift+t can walk back through. */
+const RETIRED_AGENT_TABS_KEPT = 20;
+
 export interface CompanionState {
   tabs: AgentTabDescriptor[];
+  /** Closed agent tabs, most recent last (session-scoped: agent tabs are a
+   *  view, and the agents themselves outlive every close). */
+  retired: RetiredAgentTab[];
   activeTabId: string | null;
   seq: number;
   /** Open (or focus) an agent's tab. Returns the stable id. In the docked
@@ -72,12 +86,22 @@ export interface CompanionState {
   activateAgentTab: (id: string) => void;
   /** Wrap-cycling for the prefix n/p keys (all tabs, overflow included). */
   cycleAgentTab: (direction: 1 | -1) => void;
+  /** Close a tab behind the shared 10 s Undo (the × button, Delete, and
+   *  prefix+shift+x with the right pane focused). `title` is what the toast
+   *  names it (a thread's question when the caller knows it). */
+  closeAgentTabWithUndo: (id: string, title?: string) => void;
+  /** prefix+shift+x on the right pane: the active tab. False = none. */
+  closeActiveAgentTab: () => boolean;
+  /** prefix+shift+t on the right pane: the most recently closed tab that is
+   *  not open again goes back in its place, active. False = none. */
+  reopenLastClosedAgentTab: () => boolean;
   /** Test seam + preset hygiene. */
   reset: () => void;
 }
 
 export const useCompanion = create<CompanionState>()((set, get) => ({
   tabs: [],
+  retired: [],
   activeTabId: null,
   seq: 0,
 
@@ -144,5 +168,42 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
       return { activeTabId: s.tabs[next].id };
     }),
 
-  reset: () => set({ tabs: [], activeTabId: null, seq: 0 }),
+  closeAgentTabWithUndo: (id, title) => {
+    const s = get();
+    const index = s.tabs.findIndex((t) => t.id === id);
+    if (index === -1) return;
+    const tab = s.tabs[index];
+    const wasActive = s.activeTabId === id;
+    s.closeAgentTab(id);
+    set((st) => ({ retired: [...st.retired, { tab, index, wasActive }].slice(-RETIRED_AGENT_TABS_KEPT) }));
+    toast.undo(`Closed ${title ?? tab.title}. The agent itself is untouched.`, () =>
+      get().restoreAgentTab(tab, index, wasActive),
+    );
+  },
+
+  closeActiveAgentTab: () => {
+    const id = get().activeTabId;
+    if (!id) return false;
+    get().closeAgentTabWithUndo(id);
+    return true;
+  },
+
+  reopenLastClosedAgentTab: () => {
+    const open = new Set(get().tabs.map((t) => t.id));
+    const retired = get().retired;
+    // A tab reopened meanwhile (its toast's Undo, or opened again) is skipped.
+    let at = retired.length - 1;
+    while (at >= 0 && open.has(retired[at].tab.id)) at--;
+    if (at < 0) {
+      if (retired.length > 0) set({ retired: [] });
+      return false;
+    }
+    const { tab, index } = retired[at];
+    set({ retired: retired.slice(0, at) });
+    // Reopening is a request to see it, whether or not it was active.
+    get().restoreAgentTab(tab, index, true);
+    return true;
+  },
+
+  reset: () => set({ tabs: [], retired: [], activeTabId: null, seq: 0 }),
 }));

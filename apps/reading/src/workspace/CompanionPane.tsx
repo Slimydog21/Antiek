@@ -19,7 +19,6 @@
  */
 import { useEffect, useRef, useState } from "react";
 
-import { toast } from "../components/lemon/LemonToast";
 import { EmptyState } from "../components/states";
 import { useInvestigationList } from "../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../lib/api";
@@ -145,17 +144,11 @@ function ActiveAgentSurface({
 }
 
 /** Close an agent tab (a view act: the agent itself is untouched) behind
- *  the shared 10 s Undo, which puts it back in its place. */
+ *  the shared 10 s Undo, which puts it back in its place (the store's one
+ *  close path, shared with prefix+shift+x). */
 function closeAgentTabWithUndo(tab: AgentTabDescriptor, summary?: InvestigationSummary): void {
-  const s = useCompanion.getState();
-  const index = s.tabs.findIndex((t) => t.id === tab.id);
-  if (index === -1) return;
-  const wasActive = s.activeTabId === tab.id;
-  s.closeAgentTab(tab.id);
   const title = tab.kind === "research-thread" ? (summary?.question ?? tab.title) : tab.title;
-  toast.undo(`Closed ${title}. The agent itself is untouched.`, () =>
-    useCompanion.getState().restoreAgentTab(tab, index, wasActive),
-  );
+  useCompanion.getState().closeAgentTabWithUndo(tab.id, title);
 }
 
 function AgentTab({
@@ -249,6 +242,7 @@ function OverflowMenu({
       </summary>
       <div
         role="menu"
+        data-esc-overlay=""
         className="absolute right-0 top-full mt-1 z-10 min-w-[180px] rounded border border-hairline bg-ice-0 dark:bg-charcoal-2 shadow-z2 py-1"
       >
         {tabs.map((tab) => {
@@ -320,6 +314,7 @@ function NewAgentButton({
       {open ? (
         <div
           role="menu"
+          data-esc-overlay=""
           aria-label="New agent"
           className="absolute right-0 top-full mt-1 z-10 min-w-[220px] max-w-[280px] rounded border border-hairline bg-ice-0 dark:bg-charcoal-2 shadow-z2 py-1"
         >
