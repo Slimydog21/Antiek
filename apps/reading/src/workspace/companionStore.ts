@@ -44,8 +44,9 @@ export interface OpenAgentTabInput {
   documentId?: string;
 }
 
-/** The docked-preset mount: the companion is this right-dock panel. */
-export const COMPANION_PANEL_ID = "companion:main";
+import { COMPANION_PANEL_ID } from "./companionVisibility";
+
+export { COMPANION_PANEL_ID, companionVisible } from "./companionVisibility";
 
 function agentTabId(input: OpenAgentTabInput): string {
   if (input.kind === "research-thread") {
@@ -54,14 +55,6 @@ function agentTabId(input: OpenAgentTabInput): string {
   return "agent:dialogue";
 }
 
-/** Is the companion on screen? The key handlers' shared visibility rule:
- *  they no-op honestly where there is no pane (never a dead key in a
- *  surface without it). */
-export function companionVisible(): boolean {
-  const ws = useWorkspace.getState();
-  if (ws.layoutPreset === "omarchy-inset") return true;
-  return Boolean(ws.panels[COMPANION_PANEL_ID]);
-}
 
 export interface CompanionState {
   tabs: AgentTabDescriptor[];

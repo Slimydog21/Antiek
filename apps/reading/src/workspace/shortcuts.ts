@@ -41,7 +41,7 @@ import { useEffect, useRef } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
-import { companionVisible, useCompanion } from "./companionStore";
+import { companionVisible } from "./companionVisibility";
 import { readCustomHotkeys } from "./persistence";
 import { emitProductActivate, normalizeBinding } from "../components/hotkeys/bindings";
 import {
@@ -286,7 +286,11 @@ function focusPane(side: "left" | "right") {
  */
 function cycleCompanionTab(direction: 1 | -1) {
   if (!companionVisible()) return;
-  useCompanion.getState().cycleAgentTab(direction);
+  // The store ships with the lazy pane; when the pane is visible it is
+  // already loaded, so this resolves from the module cache.
+  void import("./companionStore").then(({ useCompanion }) =>
+    useCompanion.getState().cycleAgentTab(direction),
+  );
 }
 
 /** Runs an action. Returning false means "not mine after all": the key is

@@ -1,14 +1,26 @@
-import { useCallback, useEffect, useRef } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
 import { toast } from "../components/lemon/LemonToast";
 import { radius } from "../design/tokens";
-import CompanionPane from "./CompanionPane";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { useWorkspace } from "./WorkspaceStore";
 import { isTextEditing } from "./shortcuts";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useViewportTier } from "./useViewportTier";
+
+// The companion pane (agent tabs, the thought-partner client) loads on first
+// show, not with the entry chunk: most sessions open without it, and the
+// entry chunk has a hard gzip budget (npm run build:check).
+const CompanionPane = lazy(() => import("./CompanionPane"));
+
+function CompanionPaneLoading() {
+  return (
+    <div role="status" aria-live="polite" className="flex-1 min-h-0 px-3 py-2 text-xs text-ink-mute dark:text-moonlight">
+      Loading agents…
+    </div>
+  );
+}
 
 /**
  * PanelLayout — the orchestrator.
@@ -260,7 +272,9 @@ export function PanelLayout({ mainSlot }: Props) {
             style={{ width: rightPaneWidth, borderRadius: radius.lg }}
             onFocusCapture={() => setFocusedPane("right")}
           >
-            <CompanionPane />
+            <Suspense fallback={<CompanionPaneLoading />}>
+              <CompanionPane />
+            </Suspense>
             {dockRightIds.length > 0 && (
               <aside
                 className="flex flex-col shrink-0 min-w-0 max-h-[50%] border-t border-hairline"

@@ -14,7 +14,7 @@
  * apiFetch (investigation list + the one-shot thought-partner wire).
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 beforeAll(() => {
@@ -213,10 +213,11 @@ describe("agent tab semantics (companionStore)", () => {
 // ─── mounts ──────────────────────────────────────────────────────────────
 
 describe("one component, two mounts", () => {
-  it("the inset preset's right pane IS the companion", () => {
+  it("the inset preset's right pane IS the companion", async () => {
     const { container } = mountInsetLayout();
     const right = container.querySelector<HTMLElement>('[data-pane="right"]')!;
-    expect(right.querySelector("[data-companion-pane]")).toBeTruthy();
+    // The pane loads lazily (entry-chunk budget); wait for it.
+    await waitFor(() => expect(right.querySelector("[data-companion-pane]")).toBeTruthy());
     expect(right.querySelector("[data-companion-empty]")).toBeTruthy();
   });
 
@@ -306,25 +307,27 @@ describe("the companion tab keys (prefix n/p + chord twins)", () => {
     openThreadTab("inv-done");
     mountInsetLayout();
     await screen.findAllByText("What breaks on retry?");
+    // Cycling loads the store on demand (it ships with the lazy pane), so the
+    // change lands a microtask after the key.
     key(document.body, "ctrl+b");
     key(document.body, "n");
-    expect(comp().activeTabId).toBe("agent:thread:inv-live");
+    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
     key(document.body, "ctrl+b");
     key(document.body, "n");
-    expect(comp().activeTabId).toBe("agent:thread:inv-done");
+    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-done"));
     key(document.body, "ctrl+b");
     key(document.body, "p");
-    expect(comp().activeTabId).toBe("agent:thread:inv-live");
+    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
   });
 
-  it("the chord twins ctrl+alt+] / ctrl+alt+[ cycle too", () => {
+  it("the chord twins ctrl+alt+] / ctrl+alt+[ cycle too", async () => {
     openThreadTab("inv-live");
     openThreadTab("inv-done");
     mountInsetLayout();
     key(document.body, "ctrl+alt+]");
-    expect(comp().activeTabId).toBe("agent:thread:inv-live");
+    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
     key(document.body, "ctrl+alt+[");
-    expect(comp().activeTabId).toBe("agent:thread:inv-done");
+    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-done"));
   });
 
   it("in the docked preset WITHOUT the companion panel the keys are an honest no-op", () => {

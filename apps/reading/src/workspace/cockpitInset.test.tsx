@@ -15,7 +15,7 @@
  * store and the DOM, not on counting stubs.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 
 beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -49,6 +49,13 @@ import { readLayoutPreset } from "./persistence";
 import { pinPlatform, press, pressKey, unpinPlatform } from "./keymapTestKit";
 
 const { tierRef } = vi.hoisted(() => ({ tierRef: { current: "xl" as string } }));
+// The fixtures open "Notes" panels with no props; the real NotesPanel needs
+// an event stream. Once the lazy chunk resolves it would render and crash, so
+// the layout tests use a stand-in: they test panes, not notes.
+vi.mock("../components/NotesPanel", () => ({
+  default: () => <div data-testid="notes-stub">Notes</div>,
+}));
+
 vi.mock("./useViewportTier", () => ({
   useViewportTier: () => tierRef.current,
 }));
@@ -153,7 +160,7 @@ describe("the omarchy-inset preset (C2)", () => {
     expect(getByTestId("rail")).toBeTruthy();
   });
 
-  it("the right pane IS the companion (C4): always present, even with no right-dock panels", () => {
+  it("the right pane IS the companion (C4): always present, even with no right-dock panels", async () => {
     // C4 supersedes PR-1's "empty right dock collapses": the pane's identity
     // is the companion (D3), so it renders with its honest empty state. Dock
     // collapse behavior survives at the PANEL level — no right-dock aside
@@ -164,7 +171,8 @@ describe("the omarchy-inset preset (C2)", () => {
     expect(container.querySelector('[data-pane="left"]')).toBeTruthy();
     const right = container.querySelector<HTMLElement>('[data-pane="right"]')!;
     expect(right).toBeTruthy();
-    expect(right.querySelector("[data-companion-pane]")).toBeTruthy();
+    // The pane loads lazily (entry-chunk budget); wait for it.
+    await waitFor(() => expect(right.querySelector("[data-companion-pane]")).toBeTruthy());
     expect(right.querySelector("[data-companion-empty]")).toBeTruthy();
     expect(right.querySelector('[aria-label="Right dock"]')).toBeNull();
   });
