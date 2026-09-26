@@ -100,6 +100,13 @@ CREATE TABLE IF NOT EXISTS companion_seen_triggers (
   seen_at VARCHAR NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS companion_seen_triggers_by_owner (
+  event_id VARCHAR NOT NULL,
+  owner_user_id VARCHAR NOT NULL,
+  seen_at VARCHAR NOT NULL,
+  PRIMARY KEY (event_id, owner_user_id)
+);
+
 CREATE TABLE IF NOT EXISTS companion_watcher_state (
   state_key VARCHAR PRIMARY KEY,
   state_value VARCHAR NOT NULL
@@ -115,6 +122,14 @@ def init_evidence_index_schema(con: LockedConnection) -> None:
     connection (idempotent)."""
     con.execute(DDL)
     con.execute(WIRING_DDL)
+    # The legacy seen-trigger table predates owner scoping and only ever
+    # ran under the single-operator deployment, so its rows carry over
+    # attributed to the default operator — never re-triggering, never lost.
+    con.execute(
+        "INSERT INTO companion_seen_triggers_by_owner "
+        "SELECT event_id, '__operator__', seen_at "
+        "FROM companion_seen_triggers ON CONFLICT DO NOTHING"
+    )
 
 
 def evidence_index_table_exists(con: object) -> bool:
@@ -377,24 +392,37 @@ def list_receipts(
     ]
 
 
-def seen_trigger_ids(con: SqlExecutor) -> set[str]:
-    """Every trigger event id the watcher has consumed (the duplicate-
-    delivery dedupe — one event id triggers at most one rebuild)."""
+def seen_trigger_ids(con: SqlExecutor, *, owner_user_id: str) -> set[str]:
+    """Every trigger event id THIS OWNER's watcher has consumed (the
+    duplicate-delivery dedupe — one event id triggers at most one rebuild
+    per owner; the rebuild itself is owner-scoped)."""
     if not evidence_index_table_exists(con):
         return set()
-    rows = con.execute("SELECT event_id FROM companion_seen_triggers").fetchall()
+    rows = con.execute(
+        "SELECT event_id FROM companion_seen_triggers_by_owner "
+        "WHERE owner_user_id = ?",
+        [owner_user_id],
+    ).fetchall()
     return {str(r[0]) for r in rows}
 
 
-def mark_triggers_seen(con: LockedConnection, event_ids: list[str], seen_at: str) -> None:
-    """Mark trigger ids consumed — batched, one short write scope."""
+def mark_triggers_seen(
+    con: LockedConnection,
+    owner_user_id: str,
+    event_ids: list[str],
+    seen_at: str,
+) -> None:
+    """Mark trigger ids consumed FOR THIS OWNER — batched, one short write
+    scope. A second owner's watcher still sees (and rebuilds for) the same
+    event; consumption is per-owner, never global."""
     if not event_ids:
         return
     init_evidence_index_schema(con)
     con.executemany(
-        "INSERT INTO companion_seen_triggers (event_id, seen_at) VALUES (?, ?) "
+        "INSERT INTO companion_seen_triggers_by_owner "
+        "(event_id, owner_user_id, seen_at) VALUES (?, ?, ?) "
         "ON CONFLICT DO NOTHING",
-        [(eid, seen_at) for eid in event_ids],
+        [(eid, owner_user_id, seen_at) for eid in event_ids],
     )
 
 
