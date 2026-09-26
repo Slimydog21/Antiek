@@ -90,12 +90,11 @@ export default function PayoutsAudit() {
             </h1>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Persistent log of every Stripe Connect transfer the
-              substrate initiated. Per master-spec §13.7: the
-              operator can reconstruct the full transfer history from
-              this surface without touching Stripe's dashboard.
-              Pre-onboarded publisher transfers are held in escrow
-              per §9.10; platform residual is recorded but no
-              transfer fires.
+              substrate initiated. You can reconstruct the full transfer
+              history from this page without opening Stripe's dashboard.
+              Transfers to publishers who haven't claimed their account
+              yet are held in escrow; the platform's share is recorded
+              but no transfer is sent.
             </p>
           </header>
 

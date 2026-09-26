@@ -431,8 +431,7 @@ export default function Settings() {
               </ul>
             )}
             <p className="text-xs text-ink-soft dark:text-starlight font-serif italic">
-              Add your own models with the card below. Decision-tree
-              per-prompt override lands in SPR-03.
+              Add your own models with the card below.
             </p>
           </div>
         </LemonCard>
