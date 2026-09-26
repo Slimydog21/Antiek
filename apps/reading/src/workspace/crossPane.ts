@@ -12,8 +12,9 @@
  * never changes.
  */
 import { childTabId, freshTabId, mothershipForPath, rootTabId } from "./documentSpace";
+import { adoptRoute } from "./routeSync";
 import { setTabTitle } from "./tabTitles";
-import { useTabTrees } from "./tabTreeStore";
+import { locationStamp, useTabTrees } from "./tabTreeStore";
 
 export interface OpenDocumentOrigin {
   /** Where the request was born (e.g. "companion"). Metadata only. */
@@ -36,8 +37,16 @@ export interface OpenDocumentRequest {
  *  that was closed takes a fresh id, since the closed id stays in history. */
 function spawnDocumentTab(req: OpenDocumentRequest): void {
   const mothership = mothershipForPath(window.location.pathname, window.location.search);
+  const requestedAt = locationStamp();
   const store = useTabTrees.getState();
   void store.ensureMothership(mothership).then(() => {
+    // The operator navigated while the tree loaded: the tab still opens (an
+    // agent's find is never dropped) but does not take the screen from the
+    // navigation they made since (F-04).
+    const takeScreen = locationStamp() === requestedAt;
+    // The tab showing the route is the parent: adopt the route first, in
+    // case the (lazy) strip has not seeded it yet — a no-op when it has.
+    adoptRoute(mothership, window.location.pathname);
     const s = useTabTrees.getState();
     const tree = s.trees[mothership];
     if (!tree) return;
@@ -48,7 +57,7 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
     const siblings = parentId ? tree.nodes[parentId].child_order : tree.root_order;
     const open = siblings.find(shows);
     if (open) {
-      s.activateTab(mothership, open);
+      if (takeScreen) s.activateTab(mothership, open);
       return;
     }
     const base = parentId
@@ -61,7 +70,7 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
       kind: "reader",
       ref: req.documentId,
       mothership,
-      activate: true,
+      activate: takeScreen,
     });
   });
 }

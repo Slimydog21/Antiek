@@ -262,8 +262,8 @@ function cycleFocus(direction: 1 | -1) {
 /**
  * Cockpit pane focus (C3). In the omarchy-inset preset: move DOM focus to
  * the named inset pane and set its focus ring. Honest no-op when that pane
- * is not on screen — collapsed (an empty right dock renders no pane) or
- * hidden by the other pane's fullscreen: there is nowhere for focus to go,
+ * is not on screen (hidden by the other pane's fullscreen, or no cockpit
+ * mounted): there is nowhere for focus to go,
  * and pretending otherwise would focus an invisible element. In the docked
  * preset the keys are never dead: they cycle the dock areas through the
  * existing cycleFocus mechanics (left = previous, right = next).
@@ -276,7 +276,9 @@ function focusPane(side: "left" | "right") {
   }
   if (ws.fullscreenPane && ws.fullscreenPane !== side) return;
   const el = document.querySelector<HTMLElement>(`[data-pane="${side}"]`);
-  if (!el) return;
+  // A pane fullscreen hides stays mounted (PanelLayout), so "present" is
+  // not "on screen": never focus a hidden pane.
+  if (!el || el.closest("[hidden]")) return;
   ws.setFocusedPane(side);
   el.focus();
 }

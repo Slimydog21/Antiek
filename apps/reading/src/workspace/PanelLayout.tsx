@@ -68,6 +68,13 @@ const DOCK_WIDTH = 320;
  */
 const INSET_GAP = 12;
 
+/**
+ * The inset's right pane at tier md (768–1023 px, e.g. an Omarchy half
+ * screen on a 1920 px display): it narrows instead of vanishing, so the
+ * cockpit keeps its two panes wherever a dock would not fit.
+ */
+const RIGHT_PANE_MD_WIDTH = 280;
+
 export function PanelLayout({ mainSlot }: Props) {
   const dockLeftIds = useWorkspace((s) => s.dockLeftIds);
   const dockRightIds = useWorkspace((s) => s.dockRightIds);
@@ -85,10 +92,12 @@ export function PanelLayout({ mainSlot }: Props) {
   const inRouter = useInRouterContext();
   const tier = useViewportTier();
 
-  // S11 — at tier "lg" the two side docks can't both be visible; if both
-  // have panels we collapse the right one (operator can flip via kebab).
-  // At tier "md" docks disappear entirely — the panels would still render
-  // but the dock widths drop to 0 so they collapse out of view.
+  // S11 (the docked preset) — at tier "lg" the two side docks can't both be
+  // visible; if both have panels we collapse the right one (operator can
+  // flip via kebab). At tier "md" docks disappear entirely — the panels
+  // would still render but the dock widths drop to 0 so they collapse out
+  // of view. The inset preset sizes its panes below instead: its right dock
+  // lives inside the companion pane, which never collapses.
   const dockSide = (side: "left" | "right", count: number): number => {
     if (count === 0) return 0;
     // Cockpit fullscreen in the docked preset collapses every dock: the main
@@ -115,6 +124,7 @@ export function PanelLayout({ mainSlot }: Props) {
   const prevTierRef = useRef(tier);
   useEffect(() => {
     if (
+      layoutPreset === "docked" &&
       prevTierRef.current !== "lg" &&
       tier === "lg" &&
       dockLeftIds.length > 0 &&
@@ -125,7 +135,7 @@ export function PanelLayout({ mainSlot }: Props) {
       );
     }
     prevTierRef.current = tier;
-  }, [tier, dockLeftIds.length, dockRightIds.length]);
+  }, [tier, dockLeftIds.length, dockRightIds.length, layoutPreset]);
 
   // Pointer-event-based vertical resize of the bottom dock. Every hook in
   // this component runs before the tier `sm` early return below: a hook
@@ -180,15 +190,17 @@ export function PanelLayout({ mainSlot }: Props) {
     return <div className="h-full w-full overflow-auto">{mainSlot}</div>;
   }
 
+  const inset = layoutPreset === "omarchy-inset";
+
   // Fullscreen in the docked preset hides the bottom dock too (dockSide
   // already zeroes the side docks); the default state is untouched.
-  const hideBottomDock = layoutPreset === "docked" && fullscreenPane !== null;
+  const hideBottomDock = !inset && fullscreenPane !== null;
 
   // The centre column is IDENTICAL in both presets — one JSX value, so the
-  // docked DOM is byte-identical to before the preset existed and the inset
-  // preset cannot drift from it. The document tab strip (D6) mounts here
-  // once, so the inset left pane and the docked main surface share it
-  // (router-guarded: it renders nothing without a Router context).
+  // inset preset cannot drift from the docked one. The document tab strip
+  // (D6) mounts here once, so the inset left pane and the docked main
+  // surface share it (router-guarded: it renders nothing without a Router
+  // context).
   const centreColumn = (
     <div className="flex-1 min-w-0 flex flex-col">
       <Suspense fallback={inRouter ? <DocumentStripFallback /> : null}>
@@ -209,10 +221,11 @@ export function PanelLayout({ mainSlot }: Props) {
         </div>
       </main>
 
-      {/* BOTTOM DOCK */}
-      {dockBottomIds.length > 0 && !hideBottomDock && (
+      {/* BOTTOM DOCK — kept mounted while fullscreen hides it */}
+      {dockBottomIds.length > 0 && (
         <aside
-          className="flex flex-row shrink-0 border-t border-hairline bg-ice-1 dark:bg-charcoal-1 relative"
+          hidden={hideBottomDock || undefined}
+          className={`${hideBottomDock ? "hidden" : "flex"} flex-row shrink-0 border-t border-hairline bg-ice-1 dark:bg-charcoal-1 relative`}
           style={{ height: dockBottomHeight }}
           aria-label="Bottom dock"
         >
@@ -237,114 +250,143 @@ export function PanelLayout({ mainSlot }: Props) {
     </div>
   );
 
-  // ── C2: the Omarchy inset preset ────────────────────────────────────────
-  // The SAME slot structure inside an inset frame: an outer gap where the
-  // scene background shows, and two tall rounded rectangles — the primary
-  // material (left dock + main slot) on the left, the COMPANION (C4) on the
-  // right. Presentation only: dockSide()/collapse behavior, the {mainSlot}
-  // contract and every consumer are unchanged. The right pane IS the
-  // companion (D3): always present (its empty state offers "+ new agent");
-  // any right-dock panels stack beneath it, collapsing as today. NavRail is
-  // a sibling of this component in AppShell — the frame never wraps it.
-  if (layoutPreset === "omarchy-inset") {
-    const leftDockWidth = dockSide("left", dockLeftIds.length);
-    // The companion pane measures as at least one content unit (it always
-    // has content: the strip + the new-agent affordance), so the tier/lg
-    // collapse rules in dockSide still govern its width.
-    const rightPaneWidth = dockSide("right", Math.max(1, dockRightIds.length));
-    const showLeftPane = fullscreenPane !== "right";
-    // Right-pane fullscreen is fullscreen: the companion takes the whole
-    // cockpit, never its 320 px column beside an empty scene (and it shows
-    // even where the tier would collapse its column).
-    const rightFull = fullscreenPane === "right";
-    const showRightPane = rightFull || (rightPaneWidth > 0 && fullscreenPane !== "left");
-    const paneShell = (side: "left" | "right"): string =>
-      "flex flex-col min-w-0 min-h-0 overflow-hidden border border-hairline " +
-      "bg-ice-1 dark:bg-charcoal-1" +
-      (focusedPane === side ? " ring-2 ring-inset ring-focus" : "");
-    return (
-      <div
-        className="relative h-full w-full flex bg-transparent overflow-hidden"
-        style={{ padding: INSET_GAP, gap: INSET_GAP }}
-        data-layout-preset="omarchy-inset"
-      >
-        {showLeftPane && (
-          <div
-            data-pane="left"
-            tabIndex={-1}
-            aria-label="Primary pane"
-            className={`flex-1 ${paneShell("left")}`}
-            style={{ borderRadius: radius.lg }}
-            onFocusCapture={() => setFocusedPane("left")}
-          >
-            <div className="relative h-full w-full flex overflow-hidden">
-              {leftDockWidth > 0 && (
-                <aside
-                  className={`flex flex-col shrink-0 min-w-0 ${dockTransition}`}
-                  style={{ width: leftDockWidth }}
-                  aria-label="Left dock"
-                >
-                  {dockLeftIds.map((id) => (
-                    <PanelLayoutPanel key={id} id={id} />
-                  ))}
-                </aside>
-              )}
-              {centreColumn}
-            </div>
-          </div>
-        )}
-        {showRightPane && (
-          <div
-            data-pane="right"
-            tabIndex={-1}
-            aria-label="Companion pane"
-            className={`${rightFull ? "flex-1" : "shrink-0"} ${paneShell("right")}`}
-            style={rightFull ? { borderRadius: radius.lg } : { width: rightPaneWidth, borderRadius: radius.lg }}
-            onFocusCapture={() => setFocusedPane("right")}
-          >
-            <RightPaneForMode />
-            {dockRightIds.length > 0 && (
-              <aside
-                className="flex flex-col shrink-0 min-w-0 max-h-[50%] border-t border-hairline"
-                aria-label="Right dock"
-              >
-                {dockRightIds.map((id) => (
-                  <PanelLayoutPanel key={id} id={id} />
-                ))}
-              </aside>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
+  // ── ONE stable tree for both presets and every fullscreen state ─────────
+  // The route (mainSlot), the strip and every docked panel sit at the SAME
+  // position in the element tree whichever preset is on and whichever pane
+  // is fullscreen: the inset's pane shells are `display: contents` wrappers
+  // in the docked preset, and fullscreen HIDES a pane (the `hidden`
+  // attribute plus the `hidden` utility) instead of unmounting it. So a
+  // preset toggle or a fullscreen round trip never remounts the route,
+  // never loses a draft, and never drops a listener (F-17: "fullscreen that
+  // keeps both panes mounted").
+  //
+  // C2, the Omarchy inset: an outer gap where the scene background shows,
+  // and two tall rounded rectangles — the primary material (left dock +
+  // main slot) on the left, the COMPANION (C4) on the right. The right pane
+  // IS the companion (D3): always present at every tier from md up (at md
+  // it narrows rather than vanishing); right-dock panels stack beneath it.
+  // NavRail is a sibling of this component in AppShell — the frame never
+  // wraps it.
+  const leftHidden = inset && fullscreenPane === "right";
+  const rightHidden = inset && fullscreenPane === "left";
+  const rightFull = inset && fullscreenPane === "right";
+  const leftDockWidth = inset
+    ? dockLeftIds.length === 0 || tier === "md"
+      ? 0
+      : DOCK_WIDTH
+    : dockSide("left", dockLeftIds.length);
+  const rightDockWidth = dockSide("right", dockRightIds.length);
+  const rightPaneWidth = tier === "md" ? RIGHT_PANE_MD_WIDTH : DOCK_WIDTH;
+  const paneShell = (side: "left" | "right"): string =>
+    "flex flex-col min-w-0 min-h-0 overflow-hidden border border-hairline " +
+    "bg-ice-1 dark:bg-charcoal-1" +
+    (focusedPane === side ? " ring-2 ring-inset ring-focus" : "");
+  const leftDockHidden = inset && leftDockWidth === 0;
+  const rightDockHidden = inset && dockRightIds.length === 0;
 
   return (
-    <div className="relative h-full w-full flex bg-transparent overflow-hidden">{/* SPR-04: root made transparent (was bg-ice-2 dark:bg-space-2) so the z-0 living mountainscape shows through the glassy route surface; the docks below keep their opaque chrome bg for legibility. */}
-      {/* LEFT DOCK */}
-      <aside
-        className={`flex flex-col shrink-0 ${dockLeftIds.length ? "border-r border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}
-        style={{ width: dockSide("left", dockLeftIds.length) }}
-        aria-label="Left dock"
+    <div
+      className="relative h-full w-full flex bg-transparent overflow-hidden"
+      style={inset ? { padding: INSET_GAP, gap: INSET_GAP } : undefined}
+      data-layout-preset={inset ? "omarchy-inset" : undefined}
+    >{/* SPR-04: root made transparent (was bg-ice-2 dark:bg-space-2) so the z-0 living mountainscape shows through the glassy route surface; the docks below keep their opaque chrome bg for legibility. */}
+      {/* LEFT: the primary pane (inset) or a transparent wrapper (docked) */}
+      <div
+        {...(inset
+          ? {
+              "data-pane": "left",
+              role: "region",
+              "aria-label": "Primary pane",
+              tabIndex: -1,
+              style: { borderRadius: radius.lg },
+              onFocusCapture: () => setFocusedPane("left"),
+            }
+          : {})}
+        hidden={leftHidden || undefined}
+        className={inset ? (leftHidden ? "hidden" : `flex-1 ${paneShell("left")}`) : "contents"}
       >
-        {dockLeftIds.map((id) => (
-          <PanelLayoutPanel key={id} id={id} />
-        ))}
-      </aside>
+        <div className={inset ? "relative h-full w-full flex overflow-hidden" : "contents"}>
+          {/* LEFT DOCK */}
+          <aside
+            hidden={leftDockHidden || undefined}
+            className={
+              leftDockHidden
+                ? "hidden"
+                : `flex flex-col shrink-0 min-w-0 ${dockTransition}` +
+                  (inset ? "" : ` ${dockLeftIds.length ? "border-r border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1`)
+            }
+            style={{ width: leftDockWidth }}
+            aria-label="Left dock"
+          >
+            {dockLeftIds.map((id) => (
+              <PanelLayoutPanel key={id} id={id} />
+            ))}
+          </aside>
 
-      {/* CENTRE COLUMN: main + floating + bottom dock */}
-      {centreColumn}
+          {/* CENTRE COLUMN: main + floating + bottom dock */}
+          {centreColumn}
+        </div>
+      </div>
 
-      {/* RIGHT DOCK */}
-      <aside
-        className={`flex flex-col shrink-0 ${dockRightIds.length ? "border-l border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}
-        style={{ width: dockSide("right", dockRightIds.length) }}
-        aria-label="Right dock"
+      {/* RIGHT: the companion pane (inset) or a transparent wrapper (docked) */}
+      <div
+        {...(inset
+          ? {
+              "data-pane": "right",
+              role: "region",
+              "aria-label": "Companion pane",
+              tabIndex: -1,
+              // Right-pane fullscreen is fullscreen: the companion takes the
+              // whole cockpit, never its column beside an empty scene.
+              style: rightFull
+                ? { borderRadius: radius.lg }
+                : { width: rightPaneWidth, borderRadius: radius.lg },
+              onFocusCapture: () => setFocusedPane("right"),
+            }
+          : {})}
+        hidden={rightHidden || undefined}
+        className={
+          inset
+            ? rightHidden
+              ? "hidden"
+              : `${rightFull ? "flex-1" : "shrink-0"} ${paneShell("right")}`
+            : "contents"
+        }
       >
-        {dockRightIds.map((id) => (
-          <PanelLayoutPanel key={id} id={id} />
-        ))}
-      </aside>
+        {inset ? <RightPaneForMode /> : null}
+        {/* RIGHT DOCK */}
+        <aside
+          hidden={rightDockHidden || undefined}
+          className={
+            inset
+              ? rightDockHidden
+                ? "hidden"
+                : "flex flex-col shrink-0 min-w-0 max-h-[50%] border-t border-hairline"
+              : `flex flex-col shrink-0 ${dockRightIds.length ? "border-l border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`
+          }
+          style={inset ? undefined : { width: rightDockWidth }}
+          aria-label="Right dock"
+        >
+          {dockRightIds.map((id) => (
+            <PanelLayoutPanel key={id} id={id} />
+          ))}
+        </aside>
+      </div>
+
+      {/* Fullscreen is never invisible state: a chip says it is on and is
+          the pointer path back (Esc restores from any focus too). */}
+      {fullscreenPane ? (
+        <button
+          type="button"
+          data-fullscreen-chip
+          onClick={() => setFullscreenPane(null)}
+          aria-label="Exit fullscreen (Esc)"
+          title="Exit fullscreen (Esc)"
+          className="absolute right-4 top-3 z-30 rounded-full border border-hairline bg-ice-0 dark:bg-charcoal-2 px-2.5 py-0.5 text-xxs text-ink-soft dark:text-moonlight shadow-z1 dark:shadow-z1-night hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+        >
+          Fullscreen · Esc
+        </button>
+      ) : null}
     </div>
   );
 }

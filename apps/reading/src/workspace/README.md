@@ -55,13 +55,24 @@ Contract: `src/design/FEEL_CONTRACT.md` + `elevation.ts`. ResearchWorkstation ID
 `PanelLayout` has two layout presets, held on the store outside
 `WorkspaceSnapshot` (`panel.types.ts` `CockpitChrome`):
 
-- `docked` (default) — the docks as above, DOM unchanged.
+- `docked` (default) — the docks as above.
 - `omarchy-inset` — the same slot structure inside an inset frame: an outer
   gap where the scene background shows, two tall rounded rectangles
-  (`radius.lg`, `border-hairline`) — primary material (left dock + main
-  slot) left, companion (right dock) right. Presentation only: `dockSide()`
-  collapse behavior, the `{mainSlot}` contract, and the tier-`sm` early
-  return are unchanged, and an empty right dock still collapses.
+  (`radius.lg`, `border-hairline`, named regions "Primary pane" and
+  "Companion pane") — primary material (left dock + main slot) left,
+  companion (right dock beneath it) right. The companion pane is on screen
+  at every tier from md up: at md it narrows to 280 px instead of vanishing,
+  and the lg dock-collapse rule is the docked preset's alone.
+
+Both presets and every fullscreen state render ONE element tree (sweep v2
+F-17): the inset's pane shells are `display: contents` wrappers in the
+docked preset, and fullscreen HIDES a pane or dock (`hidden` attribute plus
+the `hidden` utility) instead of unmounting it, so a preset toggle or a
+fullscreen round trip never remounts the route, a draft or a docked panel.
+Fullscreen is never invisible state (F-18): a chip ("Fullscreen · Esc")
+restores it by pointer, the docked preset's prefix f with no dock open is a
+no-op, and a panel opened into a side fullscreen hides restores the layout
+(`WorkspaceStore.hiddenByFullscreen`).
 
 The preset persists via its own global blob
 (`persistence.ts` `antiek.workspace.layout-preset`, the custom-hotkeys
@@ -116,9 +127,20 @@ Stage 2 of the cockpit rescue (2026-09-26) rebuilt the strip to DESIGN-MODEL
   ref (a book's title, a research question, a piece or section heading),
   resolved lazily or registered by the surface that holds them; a raw id is
   never a label. Long numbers compact to `1…4.2` beside a label.
-- **Route adoption** (`documentSpace.adoptTabForRoute`): a route change
-  adopts an open tab that shows it before seeding a root, so a child stays a
-  child. A tab whose route belongs to another mode carries `?m=<tree>` so it
+- **Route adoption** (`documentSpace.adoptTabForRoute`, applied by
+  `routeSync.ts`): a route change adopts an open tab that shows it before
+  seeding a root, so a child stays a child. Its activations are "route"
+  activations and never navigate.
+- **Activation navigates, nothing else does** (sweep v2 F-04): a USER
+  activation (strip, keys, close/undo, the cross-pane seam) leaves a
+  `navIntent` stamped with the history entry it was issued at; the strip
+  takes it once and navigates only if the route does not already show the
+  tab and the operator has not navigated since. No effect infers navigation
+  from whichever tab is active, so a mode switch, a reload or a load never
+  hijacks the navigation that brought the operator here. The cross-pane seam
+  adopts the route before choosing a parent (an agent open that beats the
+  lazy strip still lands as a child), and an open that resolves after the
+  operator navigated opens without taking the screen. A tab whose route belongs to another mode carries `?m=<tree>` so it
   never switches trees (`mothershipForPath(pathname, search)`). A Write
   section tab activates to its own piece (`routeTabFor`).
 - **Branches from a document** (`branchNavigation.ts`, `useBranchTo.ts`,

@@ -199,7 +199,15 @@ describe("the writing mothership tree (C5 left)", () => {
     // one section. (The right outline pane keeps its own block card; that is
     // the C5 split, so the scoping is asserted on the main surface.)
     await within(main as HTMLElement).findAllByText("Body section");
-    expect(within(main as HTMLElement).queryByText("Intro section")).toBeNull();
+    // The other sections stay mounted (their editors and pending saves live
+    // through the switch, F-02) but are hidden.
+    await waitFor(() =>
+      expect(
+        within(main as HTMLElement)
+          .queryAllByText("Intro section")
+          .filter((el) => el.closest("[hidden]") === null),
+      ).toEqual([]),
+    );
     expect(within(main as HTMLElement).getAllByText("Body section").length).toBeGreaterThan(0);
     // Back to the body tab: both sections again.
     act(() => {

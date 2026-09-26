@@ -65,6 +65,37 @@ export interface HeldClose {
   op: TabOp;
 }
 
+/**
+ * Who asked for an activation. Only a USER activation (a strip click, a
+ * tab key, an opener such as the cross-pane seam) navigates; the route →
+ * tree sync ("route") follows a navigation that already happened, and
+ * never starts one. Navigation is emitted by the command, never inferred
+ * from whichever tab happens to be active (F-04: an inferring tree → route
+ * effect hijacked every navigation after a mode switch or a reload).
+ */
+export type ActivationSource = "user" | "route";
+
+/** A user activation's request to show its tab (the strip consumes it and
+ *  navigates only when the route does not already show the tab). */
+export interface NavIntent {
+  mothership: Mothership;
+  tabId: string;
+  seq: number;
+  /** The history entry it was issued at (locationStamp): an intent is
+   *  shown only while the operator is still there. */
+  at: string;
+}
+
+/** The current history entry: path, query and the router's entry key
+ *  (BrowserRouter keeps it in history.state; a router that does not leaves
+ *  the path and query to tell entries apart). */
+export function locationStamp(): string {
+  if (typeof window === "undefined") return "";
+  const state = window.history.state as { key?: unknown } | null;
+  const key = state && typeof state.key === "string" ? state.key : "";
+  return `${window.location.pathname}${window.location.search}#${key}`;
+}
+
 export interface SpawnTabResult {
   ok: boolean;
   tabId?: string;
@@ -87,6 +118,8 @@ interface TabTreeState {
   subtreeFocusId: string | null;
   /** The close inside its 10 s window (written only when it lapses). */
   heldClose: HeldClose | null;
+  /** The last user activation not yet shown (null = none pending). */
+  navIntent: NavIntent | null;
   adapter: TabTreeAdapter;
 
   setTabTreeAdapter: (adapter: TabTreeAdapter) => void;
@@ -94,8 +127,15 @@ interface TabTreeState {
    *  loadError and retryLoad tries again. */
   ensureMothership: (mothership: Mothership) => Promise<void>;
   retryLoad: (mothership: Mothership) => Promise<void>;
-  spawnTab: (mothership: Mothership, parentId: string | null, input: SpawnInput) => SpawnTabResult;
-  activateTab: (mothership: Mothership, tabId: string | null) => void;
+  spawnTab: (
+    mothership: Mothership,
+    parentId: string | null,
+    input: SpawnInput,
+    source?: ActivationSource,
+  ) => SpawnTabResult;
+  activateTab: (mothership: Mothership, tabId: string | null, source?: ActivationSource) => void;
+  /** The strip took the intent `seq` (a newer one stays pending). */
+  consumeNavIntent: (seq: number) => void;
   goToParent: (mothership: Mothership) => void;
   visitChildOfActive: (mothership: Mothership) => void;
   cycleSibling: (mothership: Mothership, direction: 1 | -1) => void;
@@ -121,6 +161,7 @@ const loads = new Map<Mothership, Promise<void>>();
 /** Saves asked for while a close was held; run when the hold resolves. */
 const deferredSaves = new Set<Mothership>();
 let holdTimer: ReturnType<typeof setTimeout> | null = null;
+let navSeq = 0;
 /** Written closes still inside their toast's window, by close_id. */
 const recentCloses = new Map<string, { mothership: Mothership; token: UndoToken }>();
 
@@ -139,6 +180,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     mothership: Mothership,
     next: TabTree,
     op: TabOp,
+    navigate = false,
   ): void {
     set((s) => ({
       trees: { ...s.trees, [mothership]: next },
@@ -147,7 +189,15 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
         [mothership]: [...(s.pendingOps[mothership] ?? []), op],
       },
     }));
+    // After the tree, so whoever reads the intent sees the tree it names.
+    if (navigate) requestNav(mothership, next);
     queueSave(mothership);
+  }
+
+  /** A user activation asks the strip to show the tab it left active. */
+  function requestNav(mothership: Mothership, next: TabTree): void {
+    const tabId = next.active_tab_id;
+    set({ navIntent: tabId ? { mothership, tabId, seq: ++navSeq, at: locationStamp() } : null });
   }
 
   function queueSave(mothership: Mothership): void {
@@ -292,6 +342,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     treePanelOpen: false,
     subtreeFocusId: null,
     heldClose: null,
+    navIntent: null,
     adapter: createInMemoryTabTreeAdapter(),
 
     setTabTreeAdapter: (adapter) => {
@@ -342,19 +393,26 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       return get().ensureMothership(mothership);
     },
 
-    spawnTab: (mothership, parentId, input) => {
+    spawnTab: (mothership, parentId, input, source = "user") => {
       const tree = get().trees[mothership] ?? emptyTabTree(mothership);
       const result = spawnChild(tree, parentId, input);
       if (!result.ok) return { ok: false, error: result.error.message };
-      apply(mothership, result.tree, result.op);
+      apply(mothership, result.tree, result.op, source === "user" && input.activate === true);
       return { ok: true, tabId: input.tab_id, hier: result.tree.nodes[input.tab_id].hier_number };
     },
 
-    activateTab: (mothership, tabId) => {
+    activateTab: (mothership, tabId, source = "user") => {
       const tree = get().trees[mothership];
       if (!tree) return;
       const result = setActive(tree, tabId);
-      if (result.ok) apply(mothership, result.tree, result.op);
+      // A user activation asks to be shown even when the tab was already
+      // active: the route may have moved on (a click on the selected tab
+      // from /library goes back to it).
+      if (result.ok) apply(mothership, result.tree, result.op, source === "user");
+    },
+
+    consumeNavIntent: (seq) => {
+      if (get().navIntent?.seq === seq) set({ navIntent: null });
     },
 
     goToParent: (mothership) => {
@@ -371,7 +429,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       const active = tree?.active_tab_id;
       if (!tree || !active) return;
       const result = visitChild(tree, active);
-      if (result.ok) apply(mothership, result.tree, result.op);
+      if (result.ok) apply(mothership, result.tree, result.op, true);
       // no_children is an honest no-op, never an error surface
     },
 
@@ -410,6 +468,8 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
         trees: { ...s.trees, [mothership]: result.tree },
         heldClose: { mothership, token: result.undo, op: result.op },
       }));
+      // Closing is a user command: show whichever tab it left active.
+      if (result.tree.active_tab_id !== tree.active_tab_id) requestNav(mothership, result.tree);
       holdTimer = setTimeout(commitHeld, UNDO_TTL_MS);
       const closeId = result.undo.close_id;
       toast.undo(message, () => get().undoClose(closeId));
@@ -426,6 +486,9 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
           heldClose: null,
           ...(result?.ok ? { trees: { ...s.trees, [held.mothership]: result.tree } } : {}),
         }));
+        if (result?.ok && tree && result.tree.active_tab_id !== tree.active_tab_id) {
+          requestNav(held.mothership, result.tree);
+        }
         // The close and its undo were never written; the other ops made in
         // the window were, just late.
         flushDeferred();
@@ -437,7 +500,9 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       const tree = get().trees[recent.mothership];
       if (!tree) return;
       const result = undo(tree, recent.token);
-      if (result.ok) apply(recent.mothership, result.tree, result.op);
+      if (result.ok) {
+        apply(recent.mothership, result.tree, result.op, result.tree.active_tab_id !== tree.active_tab_id);
+      }
       else toast.info("That close can no longer be undone: the tree changed since.");
     },
 
@@ -470,6 +535,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
         treePanelOpen: false,
         subtreeFocusId: null,
         heldClose: null,
+        navIntent: null,
         adapter: createInMemoryTabTreeAdapter(),
       });
     },

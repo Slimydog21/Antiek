@@ -81,6 +81,9 @@ function keyRaw(target: EventTarget, init: KeyboardEventInit): KeyboardEvent {
 }
 
 const ws = () => useWorkspace.getState();
+/** On screen: present with no `hidden` ancestor. Fullscreen and the
+ *  preset HIDE panes and docks, never unmount them (F-17). */
+const shown = (el: Element | null): boolean => el !== null && el.closest("[hidden]") === null;
 
 beforeEach(() => {
   pinPlatform("mac");
@@ -129,8 +132,14 @@ describe("the docked preset is the default and its DOM is unchanged", () => {
     expect(leftDock.className).toContain("bg-ice-1");
     expect(rightDock.className).toContain("border-l");
     expect(getByText("route content")).toBeTruthy();
-    // No pane wrappers: the docks are direct children of the layout root.
-    expect(leftDock.parentElement).toBe(container.querySelector("div.relative.h-full.w-full.flex"));
+    // No pane boxes: the pane wrappers the inset uses are `display:
+    // contents` here (so a preset toggle never remounts the route), so the
+    // docks lay out as direct flex children of the layout root.
+    const root = container.querySelector("div.relative.h-full.w-full.flex")!;
+    for (let el = leftDock.parentElement; el && el !== root; el = el.parentElement) {
+      expect(el.className).toBe("contents");
+    }
+    expect(root.contains(leftDock)).toBe(true);
   });
 });
 
@@ -164,7 +173,7 @@ describe("the omarchy-inset preset (C2)", () => {
     // C4 supersedes PR-1's "empty right dock collapses": the pane's identity
     // is the companion (D3), so it renders with its honest empty state. Dock
     // collapse behavior survives at the PANEL level — no right-dock aside
-    // renders without right-dock panels.
+    // shows without right-dock panels (it stays mounted, hidden).
     ws().open("Notes", {}, { mode: "docked-left", id: "p:left", title: "Left" });
     ws().setLayoutPreset("omarchy-inset");
     const { container } = mountLayout();
@@ -174,7 +183,7 @@ describe("the omarchy-inset preset (C2)", () => {
     // The pane loads lazily (entry-chunk budget); wait for it.
     await waitFor(() => expect(right.querySelector("[data-companion-pane]")).toBeTruthy());
     expect(right.querySelector("[data-companion-empty]")).toBeTruthy();
-    expect(right.querySelector('[aria-label="Right dock"]')).toBeNull();
+    expect(shown(right.querySelector('[aria-label="Right dock"]'))).toBe(false);
   });
 
   it("tier sm still early-returns the bare main slot (no hooks after the return)", () => {
@@ -293,13 +302,13 @@ describe("the fullscreen key (pane.fullscreen)", () => {
     key(document.body, "ctrl+b");
     key(document.body, "f");
     expect(ws().fullscreenPane).toBe("left");
-    expect(container.querySelector('[data-pane="left"]')).toBeTruthy();
-    expect(container.querySelector('[data-pane="right"]')).toBeNull();
+    expect(shown(container.querySelector('[data-pane="left"]'))).toBe(true);
+    expect(shown(container.querySelector('[data-pane="right"]'))).toBe(false);
 
     key(document.body, "ctrl+b");
     key(document.body, "f");
     expect(ws().fullscreenPane).toBeNull();
-    expect(container.querySelector('[data-pane="right"]')).toBeTruthy();
+    expect(shown(container.querySelector('[data-pane="right"]'))).toBe(true);
   });
 
   it("Esc restores the hidden pane (element-scoped, never a global binding)", () => {
@@ -310,7 +319,7 @@ describe("the fullscreen key (pane.fullscreen)", () => {
     const left = container.querySelector<HTMLElement>('[data-pane="left"]')!;
     keyRaw(left, { key: "Escape", code: "Escape" });
     expect(ws().fullscreenPane).toBeNull();
-    expect(container.querySelector('[data-pane="right"]')).toBeTruthy();
+    expect(shown(container.querySelector('[data-pane="right"]'))).toBe(true);
   });
 
   it("fullscreen follows the FOCUSED pane", () => {
@@ -321,8 +330,8 @@ describe("the fullscreen key (pane.fullscreen)", () => {
     key(document.body, "ctrl+b");
     key(document.body, "f");
     expect(ws().fullscreenPane).toBe("right");
-    expect(container.querySelector('[data-pane="left"]')).toBeNull();
-    expect(container.querySelector('[data-pane="right"]')).toBeTruthy();
+    expect(shown(container.querySelector('[data-pane="left"]'))).toBe(false);
+    expect(shown(container.querySelector('[data-pane="right"]'))).toBe(true);
   });
 
   it("in the docked preset, fullscreen collapses every dock and Esc restores", () => {

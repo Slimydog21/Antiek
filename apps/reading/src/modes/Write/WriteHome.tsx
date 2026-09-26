@@ -105,8 +105,10 @@ export default function WriteHome() {
   }, [deliverableId]);
 
   // The cockpit's writing tree scopes the piece view: a section tab (1.n)
-  // renders that section alone (the same Outline, one section — forensic
-  // per-section editing preserved); the body tab renders the full outline.
+  // shows that section alone (the same Outline, one section — forensic
+  // per-section editing preserved); the body tab shows the full outline.
+  // The Outline keeps every section mounted and hides the others, so a tab
+  // switch never drops an editor or its pending save (F-02).
   const activeWritingTab = useTabTrees((s) => {
     const t = s.trees.writing;
     return t?.active_tab_id ? t.nodes[t.active_tab_id] : null;
@@ -405,11 +407,8 @@ export default function WriteHome() {
           ) : (
             <Outline
               deliverableId={detail.deliverable_id}
-              sections={
-                scopedSectionId
-                  ? detail.sections.filter((sec) => sec.section_id === scopedSectionId)
-                  : detail.sections
-              }
+              sections={detail.sections}
+              scopeSectionId={scopedSectionId}
               onChanged={refresh}
               registerAddHandler={registerAddHandler}
               investigationId={detail.investigation_root_id}

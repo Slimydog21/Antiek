@@ -17,10 +17,15 @@
  *
  * Tabs are navigation state: ACTIVATING a tab navigates to its canonical
  * route (routeForTab). Two sync directions, both loop-safe:
- *   route → tree: documentSpace.adoptTabForRoute — an open tab that shows
- *     the route is adopted before a root is seeded, so a child stays a child;
- *   tree → route: an activation (strip, keys, the cross-pane seam) navigates
- *     to the tab's route unless the route already shows it.
+ *   route → tree: routeSync (documentSpace.adoptTabForRoute) — an open tab that shows
+ *     the route is adopted before a root is seeded, so a child stays a child.
+ *     Its activations are "route" activations: they follow a navigation and
+ *     never start one;
+ *   tree → route: only a USER activation (strip, keys, the cross-pane seam)
+ *     navigates, through the store's navIntent, and only when the route does
+ *     not already show the tab. Nothing is inferred from which tab happens
+ *     to be active, so a mode switch, a reload or a load never hijacks the
+ *     navigation that brought the operator here (F-04).
  *
  * Test/story seam: without a Router context the strip renders nothing (it
  * exists to navigate). DocumentTabStripView is the presentational half the
@@ -31,18 +36,9 @@ import { useInRouterContext, useLocation, useNavigate } from "react-router-dom";
 import { CornerDownRight, ListTree } from "lucide-react";
 
 import { ErrorState, LoadingState } from "../components/states";
-import { branchIntentOf, type BranchIntent } from "./branchNavigation";
-import {
-  adoptTabForRoute,
-  branchOriginOf,
-  childTabId,
-  freshTabId,
-  mothershipForPath,
-  rootTabId,
-  routeForTab,
-  routeTabFor,
-  tabShowsPath,
-} from "./documentSpace";
+import { branchIntentOf } from "./branchNavigation";
+import { mothershipForPath, routeForTab, routeTabFor, tabShowsPath } from "./documentSpace";
+import { syncRouteToTree } from "./routeSync";
 import { sectionIdFromRef } from "./sectionRef";
 import { SiblingStrip } from "./SiblingStrip";
 import { TabPathHeader } from "./TabPathHeader";
@@ -50,44 +46,10 @@ import { TabTreePanel } from "./TabTreePanel";
 import { labelForTab, type TabLabel } from "./tabLabels";
 import { DOCUMENT_PANEL_ID, domIdFor } from "./tabStripParts";
 import { requestTabTitle, titleKey, useTabTitles, type TitleEntry } from "./tabTitles";
-import { pathTo, type Mothership, type TabNode, type TabTree } from "./tabTree";
-import { useTabTrees } from "./tabTreeStore";
+import { pathTo, type TabNode, type TabTree } from "./tabTree";
+import { locationStamp, useTabTrees } from "./tabTreeStore";
 
 export { labelForTab };
-
-/** The route → tree sync, shared by the route effect and "Try again". A
- *  navigation that carries a branch intent (branchNavigation) files its
- *  surface under the tab it was triggered from. */
-async function syncRouteToTree(
-  mothership: Mothership,
-  pathname: string,
-  intent: BranchIntent | null = null,
-): Promise<void> {
-  await useTabTrees.getState().ensureMothership(mothership);
-  const store = useTabTrees.getState();
-  const tree = store.trees[mothership];
-  if (!tree) return;
-  const adoption = adoptTabForRoute(tree, pathname, intent);
-  if (adoption.action === "activate") store.activateTab(mothership, adoption.tabId);
-  else if (adoption.action === "seed") {
-    store.spawnTab(mothership, null, {
-      tab_id: freshTabId(tree, rootTabId(adoption.ref)),
-      kind: adoption.ref.kind,
-      ref: adoption.ref.ref,
-      mothership,
-      activate: true,
-    });
-  } else if (adoption.action === "branch") {
-    store.spawnTab(mothership, adoption.parentId, {
-      tab_id: freshTabId(tree, childTabId(adoption.parentId, adoption.ref.kind, adoption.ref.ref)),
-      origin: branchOriginOf(adoption.origin),
-      kind: adoption.ref.kind,
-      ref: adoption.ref.ref,
-      mothership,
-      activate: true,
-    });
-  }
-}
 
 export function labelsFor(
   tree: TabTree | null,
@@ -126,22 +88,28 @@ function DocumentTabStripInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.key, mothership]);
 
-  // tree → route: only an ACTIVATION navigates. Whatever was active when
-  // the strip mounted is not a mandate to hijack the current route.
-  const activeTab = tree?.active_tab_id ? tree.nodes[tree.active_tab_id] : null;
-  const prevActiveRef = useRef<string | null>(activeTab?.tab_id ?? null);
+  // tree → route: a USER activation's intent, taken once. An intent left
+  // behind by a newer activation, or by a tab the route sync has since moved
+  // off, shows nothing.
+  const navIntent = useTabTrees((s) => s.navIntent);
   useEffect(() => {
-    const id = activeTab?.tab_id ?? null;
-    if (id === prevActiveRef.current) return;
-    prevActiveRef.current = id;
-    if (!activeTab || !tree) return;
+    if (!navIntent) return;
+    const store = useTabTrees.getState();
+    store.consumeNavIntent(navIntent.seq);
+    const t = store.trees[navIntent.mothership];
+    if (!t || t.active_tab_id !== navIntent.tabId) return;
+    // Issued at another history entry: the operator navigated since (an
+    // agent open made before this strip loaded, then a click elsewhere).
+    // Their navigation wins.
+    if (navIntent.at !== locationStamp()) return;
     // A Write section navigates to its piece (it scopes that piece in place),
     // so a section of another piece never leaves this piece on screen.
-    const holder = routeTabFor(tree, activeTab.tab_id);
-    if (!holder || tabShowsPath(holder, location.pathname)) return;
+    const holder = routeTabFor(t, navIntent.tabId);
+    if (!holder) return;
+    if (navIntent.mothership === mothership && tabShowsPath(holder, location.pathname)) return;
     const route = routeForTab(holder);
     if (route) navigate(route);
-  }, [activeTab, tree, location.pathname, navigate]);
+  }, [navIntent, mothership, location.pathname, navigate]);
 
   // Activation only moves the tree; the effect above does the navigating,
   // so a click, a key and the cross-pane seam take one path.

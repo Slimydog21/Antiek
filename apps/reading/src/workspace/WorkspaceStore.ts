@@ -126,6 +126,20 @@ function insertForMode(
   }
 }
 
+/**
+ * Would a panel in `mode` land where fullscreen is hiding it? The docked
+ * preset's fullscreen collapses every dock; the inset's hides one pane (the
+ * right pane holds the right dock, the left pane the left and bottom docks
+ * and the floating layer). A panel the operator just asked for must show,
+ * so opening one there restores the layout instead of mounting it into a
+ * 0 px dock (F-18).
+ */
+function hiddenByFullscreen(s: CockpitChrome, mode: PanelMode): boolean {
+  if (!s.fullscreenPane || mode === "popout") return false;
+  if (s.layoutPreset === "docked") return mode !== "floating";
+  return s.fullscreenPane === "left" ? mode === "docked-right" : mode !== "docked-right";
+}
+
 export const useWorkspace = create<Store>()((set, get) => ({
   ...EMPTY_SNAPSHOT,
   // Cockpit chrome (C2): the persisted preset (default "docked" — nothing
@@ -166,6 +180,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
         floatingIds: inserted.floatingIds ?? s.floatingIds,
         zCounter: z,
         focusedPanelId: id,
+        ...(hiddenByFullscreen(s, mode) ? { fullscreenPane: null } : {}),
       };
     });
     // Existing id path: focus instead of duplicate
@@ -221,6 +236,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
         floatingIds: inserted.floatingIds ?? s.floatingIds,
         zCounter: mode === "floating" ? z : s.zCounter,
         focusedPanelId: id,
+        ...(hiddenByFullscreen(s, mode) ? { fullscreenPane: null } : {}),
       };
     }),
 
@@ -309,6 +325,15 @@ export const useWorkspace = create<Store>()((set, get) => ({
     const s = get();
     if (s.fullscreenPane) {
       set({ fullscreenPane: null });
+      return;
+    }
+    // The docked preset's fullscreen collapses the docks; with none open it
+    // would hide nothing and silently swallow the next panel (F-18), so it
+    // is an honest no-op. The inset always has two panes on screen.
+    if (
+      s.layoutPreset === "docked" &&
+      s.dockLeftIds.length + s.dockRightIds.length + s.dockBottomIds.length === 0
+    ) {
       return;
     }
     set({ fullscreenPane: s.focusedPane ?? "left" });

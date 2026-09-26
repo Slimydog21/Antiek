@@ -319,6 +319,9 @@ describe("P-C — a piece closed and reopened gets its section tabs under the ne
 describe("P-F — Esc restores fullscreen from any focus", () => {
   it.each(["omarchy-inset", "docked"] as const)("%s: Esc on body restores both panes", async (preset) => {
     ws().setLayoutPreset(preset);
+    // Docked fullscreen collapses the docks, so it needs one to hide (with
+    // none it is an honest no-op: F-18's 0 px sidecar trap).
+    if (preset === "docked") ws().open("Notes", {}, { mode: "docked-left", id: "p:left", title: "Left" });
     mount("/read/doc-9");
     await flush();
     act(() => ws().toggleFullscreenPane());
@@ -366,7 +369,8 @@ describe("P-G — right-pane fullscreen fills the cockpit", () => {
     act(() => ws().toggleFullscreenPane());
     expect(ws().fullscreenPane).toBe("right");
     const right = document.querySelector("[data-pane='right']") as HTMLElement;
-    expect(document.querySelector("[data-pane='left']")).toBeNull();
+    // Hidden, never unmounted (F-17): the route keeps its state.
+    expect(document.querySelector("[data-pane='left']")!.closest("[hidden]")).not.toBeNull();
     expect(right.style.width).toBe("");
     expect(right.className.includes("shrink-0")).toBe(false);
     expect(right.className.includes("flex-1")).toBe(true);

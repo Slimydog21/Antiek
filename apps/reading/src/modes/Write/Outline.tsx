@@ -86,6 +86,11 @@ export interface OutlineProps {
    * SPR-09 M1). It buckets the voice-to-draft VOICE_CAPTURED event (M4) and is
    * the parent of a spun sub-agent (M4). Falls back to the operator bucket. */
   investigationId?: string | null;
+  /** The cockpit's section tab (1.n): show this section alone. Every
+   * section stays MOUNTED underneath (hidden, never unmounted), so a tab
+   * switch keeps each editor, its draft and its pending save (F-02:
+   * "never losing an edit on a tab switch"). null = the whole piece. */
+  scopeSectionId?: string | null;
 }
 
 export default function Outline({
@@ -94,11 +99,19 @@ export default function Outline({
   onChanged,
   registerAddHandler,
   investigationId,
+  scopeSectionId = null,
 }: OutlineProps) {
-  // The section a tapped repository block lands in (the last section, by
-  // default — the writer is composing top-down). A null active section means
-  // "no section yet"; the tap then nudges the writer to add one.
-  const activeSectionId = sections.length ? sections[sections.length - 1].section_id : null;
+  // A scope naming no section of this piece shows the whole piece.
+  const scoped = scopeSectionId !== null && sections.some((s) => s.section_id === scopeSectionId);
+  // The section a tapped repository block lands in: the scoped section, else
+  // the last one (the writer is composing top-down). A null active section
+  // means "no section yet"; the tap then nudges the writer to add one.
+  const activeSection = scoped
+    ? sections.find((s) => s.section_id === scopeSectionId)!
+    : sections.length
+      ? sections[sections.length - 1]
+      : null;
+  const activeSectionId = activeSection?.section_id ?? null;
 
   const addTappedBlock = useCallback(
     async (hit: RepositoryHit, sectionId: string | null, blockCount: number) => {
@@ -119,8 +132,7 @@ export default function Outline({
   // Expose a tap handler bound to the active (last) section so the sibling
   // repository can place into the outline. The handler is re-registered when
   // the active section or its block count changes.
-  const activeBlockCount =
-    sections.length ? sections[sections.length - 1].block_count : 0;
+  const activeBlockCount = activeSection?.block_count ?? 0;
   useEffect(() => {
     registerAddHandler?.((hit) =>
       void addTappedBlock(hit, activeSectionId, activeBlockCount),
@@ -142,6 +154,7 @@ export default function Outline({
               deliverableId={deliverableId}
               section={s}
               sectionNumber={i + 1}
+              hidden={scoped && s.section_id !== scopeSectionId}
               onChanged={onChanged}
               investigationId={investigationId ?? "__operator__"}
             />
@@ -162,12 +175,15 @@ function SectionCard({
   deliverableId,
   section,
   sectionNumber,
+  hidden = false,
   onChanged,
   investigationId,
 }: {
   deliverableId: string;
   section: SectionResponse;
   sectionNumber: number;
+  /** Out of the cockpit's section scope: kept mounted, not shown. */
+  hidden?: boolean;
   onChanged: () => Promise<void> | void;
   investigationId: string;
 }) {
@@ -253,16 +269,24 @@ function SectionCard({
       setSaveState({ status: "pending" });
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
+        saveTimer.current = null;
         void persistProse(plainText);
       }, PROSE_SAVE_DEBOUNCE_MS);
     },
     [persistProse],
   );
 
-  // Clear a pending debounce on unmount (never fire a save after teardown).
+  // A pending debounce FLUSHES on unmount (leaving the piece, a section
+  // deleted under it): the edit is sent now rather than dropped. The save's
+  // own state updates land on an unmounted card, which React ignores.
+  const persistRef = useRef(persistProse);
+  persistRef.current = persistProse;
   useEffect(
     () => () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (!saveTimer.current) return;
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      void persistRef.current(latestProseRef.current);
     },
     [],
   );
@@ -458,6 +482,8 @@ function SectionCard({
 
   return (
     <section
+      hidden={hidden}
+      data-section-card={section.section_id}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes("application/x-antiek-block")) {
           e.preventDefault();
