@@ -183,6 +183,9 @@ function isFailureDetailObject(
  * The closed-set failure envelope in an ApiError body, or null when the body
  * does not carry one. Unlike classifyClientError, this tells a recognized
  * `unknown` envelope apart from an unparseable body.
+ *
+ * `message` is the server's own text: never render it. Show
+ * FAILURE_HEADLINES[code], as describeFailure does.
  */
 export function parseFailureEnvelope(err: ApiError): ClientFailureClassification | null {
   try {
