@@ -13,6 +13,7 @@ canonical slug.
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import threading
 from collections import Counter
@@ -25,10 +26,33 @@ import httpx
 
 from acquisition.contact import ANTIEK_CONTACT_URL
 from acquisition.urls.rights_terms import NO_TERMS, RightsTerms
-from acquisition.urls.robots import RobotsDisallowed, robots_policy_for
+from acquisition.urls.robots import RobotsDisallowed, redact_url, robots_policy_for
 
 logger = logging.getLogger("acquisition.urls.client")
 DEFAULT_TIMEOUT_S = 20.0
+
+# True while fetch() runs. httpx logs every request it sends at INFO with the
+# full URL ("HTTP Request: GET https://user:pass@host/path?token=..."), and a
+# redirect hop's or robots.txt hop's URL is one a server chose. While this is
+# set, _RedactFetchUrls rewrites that URL to redact_url()'s form, so fetch()
+# puts no credential or query into any log record; httpx's lines for every
+# other caller in the process are left as they are.
+_redacting: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "acquisition_fetch_redacting", default=False
+)
+
+
+class _RedactFetchUrls(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if _redacting.get() and isinstance(record.args, tuple):
+            record.args = tuple(
+                redact_url(str(arg)) if isinstance(arg, httpx.URL) else arg
+                for arg in record.args
+            )
+        return True
+
+
+logging.getLogger("httpx").addFilter(_RedactFetchUrls())
 
 
 class FetchPurpose(StrEnum):
@@ -169,7 +193,9 @@ def fetch(
     licence robots.txt declares for the purpose's agent is narrowed to the
     ``<content>`` scope covering the URL the fetch ended on (after
     redirects) and surfaces on ``rights_terms``; a licence with no scope
-    covering that URL surfaces as ``source="rsl_out_of_scope"``.
+    covering that URL surfaces as ``source="rsl_out_of_scope"``. While it
+    runs, httpx's own request log lines carry redacted URLs
+    (``robots.redact_url``: no userinfo, query or path parameters).
 
     HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``url`` is an ARBITRARY
     caller-supplied URL (any web/news/blog source), so it could resolve to an
@@ -258,10 +284,14 @@ def fetch(
             robots_fail_open_reason=policy.fail_open_reason if policy is not None else None,
         )
 
-    if client is not None:
-        install_arxiv_request_hook(client, throttle=canonical_arxiv_throttle())
-        return _run(client)
-    with arxiv_governed_client(
-        throttle=canonical_arxiv_throttle(), follow_redirects=follow_redirects
-    ) as c:
-        return _run(c)
+    redacting = _redacting.set(True)
+    try:
+        if client is not None:
+            install_arxiv_request_hook(client, throttle=canonical_arxiv_throttle())
+            return _run(client)
+        with arxiv_governed_client(
+            throttle=canonical_arxiv_throttle(), follow_redirects=follow_redirects
+        ) as c:
+            return _run(c)
+    finally:
+        _redacting.reset(redacting)

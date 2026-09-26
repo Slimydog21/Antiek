@@ -571,13 +571,15 @@ def test_a_robots_txt_redirect_with_credentials_never_records_them(
         page = fetch("https://a.example/page", client=client)
 
     assert page.status_code == 200
-    assert not any("b.example/x" in url for url in requested)
+    # A credentialed Location is refused before b.example is consulted
+    # (test_a_robots_txt_redirect_carrying_credentials_is_not_followed).
+    assert not any("b.example" in url for url in requested)
     reason = page.robots_fail_open_reason or ""
     assert "https://b.example/x" in reason
+    assert "credentials" in reason
     assert _leaks(reason) == []
     assert _leaks(_logged(caplog)) == []
     assert _leaks(" ".join(cached_origins())) == []
-    assert "https://b.example" in cached_origins()
 
 
 @pytest.mark.parametrize("b_robots", [(404, b""), (200, b"User-agent: *\nDisallow: /x\n")])
@@ -601,10 +603,9 @@ def test_a_page_redirect_with_credentials_never_records_them(
 
     assert refusal
     assert _leaks(refusal) == []
-    # Antiek's own records only: when b.example allows /x, the page GET is
-    # sent to the Location as given, and httpx's INFO line for that request
-    # names it. That line is the page fetch, not robots handling.
-    assert _leaks(_logged(caplog, "acquisition")) == []
+    # Every record: when b.example allows /x the page GET is sent to the
+    # Location as given, and httpx's INFO line for it is redacted too.
+    assert _leaks(_logged(caplog)) == []
     assert _leaks(" ".join(cached_origins())) == []
 
 
@@ -641,3 +642,284 @@ def test_a_licence_url_carrying_credentials_is_not_followed_or_recorded(
 )
 def test_origin_of_drops_userinfo(url: str, origin: str) -> None:
     assert acquisition.urls.robots.origin_of(url) == origin
+
+
+# --- adversarial review of 5231bd522: redaction, token caps, default ports ---
+
+
+def _all_records(caplog: pytest.LogCaptureFixture) -> str:
+    return "\n".join(record.getMessage() for record in caplog.records)
+
+
+def test_a_path_parameter_token_is_redacted_from_a_refusal_reason(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """RFC 3986 s3.3 ``;`` path parameters can carry a token as well as a
+    query can; a reason keeps each segment's path only."""
+    client, _requested = _client(
+        {("b.example", "/robots.txt"): (200, b"User-agent: *\nDisallow: /\n"),
+         ("a.example", "/page"): (200, b"<html>ok</html>")},
+        {("a.example", "/robots.txt"): "https://b.example/x;token=tok-secret/y;v=2"},
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        page = fetch("https://a.example/page", client=client)
+
+    reason = page.robots_fail_open_reason or ""
+    assert "https://b.example/x/y" in reason
+    assert "tok-secret" not in reason
+    assert "tok-secret" not in _logged(caplog, "acquisition")
+
+
+def _raising_client(
+    routes: dict[tuple[str, str], tuple[int, bytes]],
+    redirects: dict[tuple[str, str], str],
+    raising: set[tuple[str, str]],
+) -> tuple[httpx.Client, list[str]]:
+    """``_client``, except the routes in ``raising`` fail with a transport
+    error whose text names the URL, as many transports' messages do."""
+    inner, requested = _client(routes, redirects)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if (request.url.host or "", request.url.path) in raising:
+            requested.append(str(request.url))
+            raise httpx.ConnectError(f"could not connect to {request.url}", request=request)
+        return inner.send(request)
+
+    return httpx.Client(transport=httpx.MockTransport(handler)), requested
+
+
+def test_a_transport_error_naming_a_redirect_hop_is_redacted(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client, _requested = _raising_client(
+        {("a.example", "/page"): (200, b"<html>ok</html>")},
+        {("a.example", "/robots.txt"): "/moved?token=q-secret"},
+        {("a.example", "/moved")},
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        page = fetch("https://a.example/page", client=client)
+
+    reason = page.robots_fail_open_reason or ""
+    assert "ConnectError" in reason
+    assert "https://a.example/moved" in reason
+    assert _leaks(reason) == []
+    assert _leaks(_logged(caplog, "acquisition")) == []
+
+
+def test_a_licence_url_query_is_never_stored_or_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client, _requested = _raising_client(
+        {("a.example", "/robots.txt"): (
+            200, b"User-agent: *\nAllow: /\nLicense: /license.xml?token=q-secret\n",
+        ),
+         ("a.example", "/page"): (200, b"<html>ok</html>")},
+        {},
+        {("a.example", "/license.xml")},
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        page = fetch("https://a.example/page", client=client)
+
+    terms = page.rights_terms
+    assert terms.license_url == "https://a.example/license.xml"
+    assert "ConnectError" in (terms.parse_error or "")
+    assert _leaks(f"{terms.license_url} {terms.parse_error}") == []
+    assert _leaks(_logged(caplog, "acquisition")) == []
+
+
+def test_the_scope_budget_warning_redacts_the_licence_url(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(acquisition.urls.robots, "MAX_MATCH_COST", 5)
+    client, _requested = _client(
+        {("a.example", "/robots.txt"): (
+            200, b"User-agent: *\nAllow: /\nLicense: /license.xml?token=q-secret\n",
+        ),
+         ("a.example", "/license.xml"): (200, _scoped_rsl(("/*a*b*c", "free"))),
+         ("a.example", "/zzzzzzzzzz"): (200, b"<html>ok</html>")},
+        {},
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        page = fetch("https://a.example/zzzzzzzzzz", client=client)
+
+    assert "too costly" in (page.rights_terms.parse_error or "")
+    assert "character comparisons" in _logged(caplog, "acquisition")
+    assert _leaks(_logged(caplog, "acquisition")) == []
+    assert _leaks(page.rights_terms.license_url or "") == []
+    # terms_covering redacts on its own, whatever licence_url it is handed.
+    caplog.clear()
+    raw = acquisition.urls.robots.parse_rsl_licence(
+        _scoped_rsl(("/*a*b*c", "free")).decode(),
+        license_url="https://alice:probe-pass@a.example/license.xml?token=q-secret",
+    )
+    with caplog.at_level(logging.DEBUG):
+        acquisition.urls.robots.terms_covering(
+            raw, origin="https://a.example", url="https://a.example/zzzzzzzzzz"
+        )
+    assert "character comparisons" in _logged(caplog, "acquisition")
+    assert _leaks(_logged(caplog, "acquisition")) == []
+
+
+def test_robots_disallowed_keeps_no_credential_in_any_attribute() -> None:
+    client, _requested = _client(
+        {("a.example", "/robots.txt"): (200, b"User-agent: *\nAllow: /\n"),
+         ("b.example", "/robots.txt"): (200, b"User-agent: *\nDisallow: /x\n")},
+        {("a.example", "/page"): _SECRET_LOCATION},
+    )
+
+    with pytest.raises(RobotsDisallowed) as caught:
+        fetch("https://a.example/page", client=client)
+
+    exc = caught.value
+    assert exc.url == "https://b.example/x"
+    assert _leaks(f"{exc} {exc!r} {vars(exc)}") == []
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://alice:probe-pass@b.example/allowed?token=q-secret",
+        "https://b.example/allowed?token=q-secret",
+    ],
+)
+def test_no_log_record_carries_a_robots_redirect_query(
+    caplog: pytest.LogCaptureFixture, location: str,
+) -> None:
+    """Every record, httpx's own ``HTTP Request:`` INFO line included: the
+    fetcher's requests are logged with their URLs redacted."""
+    client, _requested = _client(
+        {("b.example", "/robots.txt"): (200, b"User-agent: *\nAllow: /\n"),
+         ("b.example", "/allowed"): (200, b"User-agent: *\nDisallow: /secret\n"),
+         ("a.example", "/page"): (200, b"<html>ok</html>")},
+        {("a.example", "/robots.txt"): location},
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        fetch("https://a.example/page", client=client)
+
+    assert any(record.name == "httpx" for record in caplog.records)
+    assert _leaks(_all_records(caplog)) == []
+
+
+def test_a_robots_txt_redirect_carrying_credentials_is_not_followed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Userinfo in a Location would be sent as credentials; a same-host one
+    is no longer a different origin (origin_of drops it), so it is refused
+    outright, like a credentialed License: URL."""
+    client, requested = _client(
+        {("a.example", "/elsewhere"): (200, b"User-agent: *\nDisallow: /\n"),
+         ("a.example", "/page"): (200, b"<html>ok</html>")},
+        {("a.example", "/robots.txt"): "https://alice:probe-pass@a.example/elsewhere?token=q-secret"},
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        page = fetch("https://a.example/page", client=client)
+
+    assert not any("/elsewhere" in url for url in requested)
+    reason = page.robots_fail_open_reason or ""
+    assert "credentials" in reason
+    assert _leaks(reason) == []
+    assert _leaks(_all_records(caplog)) == []
+
+
+def test_a_bare_scope_flood_across_three_purposes_stays_cached() -> None:
+    """Bare ``<content/>`` elements weigh far more parsed than their ten
+    bytes; one licence of them per purpose must not push its origin out of
+    the cache and so into re-reading robots.txt and the licence per page."""
+    from acquisition.urls.client import FetchPurpose
+
+    flood = ("<rsl>" + "<content/>" * 26_000 + "</rsl>").encode()
+    assert len(flood) <= acquisition.urls.robots.MAX_LICENSE_BYTES
+    client, requested = _client(
+        {("a.example", "/robots.txt"): (200, _LICENSED_ROBOTS),
+         ("a.example", "/license.xml"): (200, flood),
+         ("a.example", "/page"): (200, b"<html>ok</html>")},
+        {},
+    )
+    for purpose in FetchPurpose:
+        fetch("https://a.example/page", client=client, purpose=purpose)
+    requested.clear()
+
+    fetch("https://a.example/page", client=client)
+
+    assert "https://a.example" in cached_origins()
+    assert requested == ["https://a.example/page"]
+
+
+@pytest.mark.parametrize(
+    ("url", "origin"),
+    [
+        ("https://h.example:443/", "https://h.example"),
+        ("http://h.example:80/x", "http://h.example"),
+        ("http://u:p@[::1]:80/", "http://[::1]"),
+        ("https://h.example:80/", "https://h.example:80"),
+        ("https://h.example:8443/", "https://h.example:8443"),
+    ],
+)
+def test_origin_of_drops_the_scheme_default_port(url: str, origin: str) -> None:
+    """RFC 6454 s4: an origin's port is the scheme default when omitted, so
+    ``:443`` on https names the same origin as no port."""
+    assert acquisition.urls.robots.origin_of(url) == origin
+
+
+def test_a_licence_url_spelling_out_the_default_port_is_same_origin() -> None:
+    client, requested = _client(
+        {("a.example", "/robots.txt"): (
+            200, b"User-agent: *\nAllow: /\nLicense: https://a.example:443/license.xml\n",
+        ),
+         ("a.example", "/license.xml"): (200, _scoped_rsl(("/", "free"))),
+         ("a.example", "/page"): (200, b"<html>ok</html>")},
+        {},
+    )
+
+    page = fetch("https://a.example/page", client=client)
+
+    assert page.rights_terms.no_charge is True
+    assert any(url.endswith("/license.xml") for url in requested)
+
+
+@pytest.mark.parametrize(
+    ("url", "redacted"),
+    [
+        ("https://alice:pw@h.example:8443/a;k=v/b?token=q#frag", "https://h.example:8443/a/b"),
+        ("/license.xml?token=q-secret", "/license.xml"),
+        ("license.xml;token=q-secret", "license.xml"),
+        ("mailto:alice:probe-pass@b.example?token=q-secret", "mailto:"),
+        ("data:text/plain,q-secret", "data:"),
+    ],
+)
+def test_redact_url_keeps_scheme_host_port_and_path_only(url: str, redacted: str) -> None:
+    """A relative URL (a robots.txt ``License:`` value that failed to
+    resolve) has no origin to print, so its path alone is kept; an opaque
+    URI (``mailto:``, ``data:``) keeps only its scheme."""
+    assert acquisition.urls.robots.redact_url(url) == redacted
+
+
+@pytest.mark.parametrize(
+    "location",
+    ["mailto:alice:probe-pass@b.example?token=q-secret", "data:text/plain,alice:probe-pass"],
+)
+def test_an_opaque_robots_txt_redirect_is_refused_without_its_data(
+    caplog: pytest.LogCaptureFixture, location: str,
+) -> None:
+    """A ``mailto:`` or ``data:`` Location has no host, so everything after
+    the scheme is its data; the refusal names the scheme alone. (httpx
+    rejects such a Location itself, so this drives the FetchText seam.)"""
+
+    def fetch_text(url: str, _follow: bool) -> tuple[int, str, str]:
+        return 302, "", location
+
+    with caplog.at_level(logging.DEBUG):
+        policy = acquisition.urls.robots.robots_policy_for(
+            "https://a.example/page", fetch_text=fetch_text, user_agent="Antiek-Agent"
+        )
+
+    reason = policy.fail_open_reason or ""
+    assert "not an http(s) URL" in reason
+    assert _leaks(reason) == []
+    assert _leaks(_all_records(caplog)) == []

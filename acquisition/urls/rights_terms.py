@@ -20,8 +20,9 @@ licensed asset or collection (an RFC 9309 path pattern, RSL 1.0 s3.3). So
 the document is parsed into one :class:`RightsTerms` per ``<content>``
 (:class:`RslLicence`), never one blend of every element in the file. When
 several scopes cover one page they are evaluated together (s3.1.1): the
-most specific sets payment and permissions, and every covering scope's
-prohibitions stay. A page no scope covers gets
+most specific sets payment and permissions (conservatively combined on a
+tie), and every covering scope's prohibitions and licence servers stay
+(``acquisition.urls.robots.terms_covering``). A page no scope covers gets
 ``source="rsl_out_of_scope"``.
 
 This module is pure parsing: stdlib only, no I/O, no knowledge of hosts. The
@@ -42,6 +43,7 @@ because a broken licence file must not block ingest any more than a missing
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -53,6 +55,34 @@ RSL_NAMESPACE = "https://rslstandard.org/rsl"
 # Payment types that mean "no money changes hands for use": the publisher has
 # already dropped the gate. Anything else in ``payment_types`` is a price.
 NO_CHARGE_PAYMENT_TYPES: frozenset[str] = frozenset({"free", "attribution"})
+
+# RSL 1.0 s3.4.1.1: the usage vocabulary's umbrella tokens and what each one
+# covers. ``all`` is "any automated processing, including AI training and
+# search"; ``ai-all`` explicitly includes ai-train, ai-input and ai-index.
+# Every other token (and every other ``type``) covers only itself.
+USAGE_UMBRELLAS: dict[str, tuple[str, ...]] = {
+    "all": ("ai-all", "search"),
+    "ai-all": ("ai-train", "ai-input", "ai-index"),
+}
+
+# The most <content> scopes one licence may declare. Each parsed scope is a
+# record held per agent token in the policy cache and tried against every
+# page, while a bare ``<content/>`` is ten bytes, so a 256 KiB licence could
+# otherwise hold 26,000 of them and outweigh the whole cache (robots.py
+# MAX_CACHED_ROBOTS_BYTES) by itself. Real licences name a handful of scopes
+# and use wildcards for collections; one past this is recorded as unusable.
+MAX_LICENCE_SCOPES = 1024
+
+# The most characters of parsed terms (payment, permits, prohibits and
+# standard values) one licence may produce, each value charged its length
+# plus _TERM_OVERHEAD, as robots.py weighs it in the cache. Parsing can
+# produce far more than the document holds: every value in an element's text
+# becomes its own ``"<type>:<value>"`` entry, repeating the ``type``, and a
+# ``<content>`` nested in another is read again for each enclosing scope. A
+# licence past this is recorded as unusable, like one past
+# MAX_LICENCE_SCOPES; the cap equals robots.py MAX_LICENSE_BYTES.
+MAX_LICENCE_TERM_CHARS = 256 * 1024
+_TERM_OVERHEAD = 8
 
 TermsSource = Literal[
     "rsl_license_xml", "rsl_out_of_scope", "robots_license_directive", "none"
@@ -77,17 +107,18 @@ class RightsTerms:
     - ``"none"`` — no directive; nothing declared. See :data:`NO_TERMS`.
 
     ``permits`` / ``prohibits`` entries are ``"<type>:<value>"`` strings
-    (e.g. ``"usage:all"``, ``"usage:train-ai"``) — the RSL element's ``type``
-    attribute joined to its text, lower-cased. For a page, ``prohibits``
-    holds the prohibitions of every ``<content>`` scope covering it, and
-    ``permits`` the most specific covering scope's permissions minus those
-    usages (RSL 1.0 s3.1.1: the prohibition takes precedence and the usage
-    is not licensed); every other field is the most specific covering
-    scope's. ``payment_types`` are the
-    ``<payment type="...">`` values, lower-cased, in document order.
-    ``license_servers`` are the ``<content server="...">`` values: RSL
-    License Servers a client MUST obtain a licence from before access, "even
-    if the license type is ``free``" (RSL 1.0 s3.3).
+    (e.g. ``"usage:all"``, ``"usage:ai-train"``), one per value: the RSL
+    element's ``type`` attribute joined to each of the values its text lists
+    (RSL 1.0 s3.5/s3.6: separated by spaces; commas are accepted too),
+    lower-cased. How a page's terms are combined from the scopes covering it
+    is ``acquisition.urls.robots.terms_covering``'s contract; whatever the
+    combination, no usage in ``prohibits``, or covered by an umbrella token
+    in it (:data:`USAGE_UMBRELLAS`), is left in ``permits`` (RSL 1.0 s3.1.1:
+    the prohibition takes precedence and the usage is not licensed).
+    ``payment_types`` are the ``<payment type="...">`` values, lower-cased,
+    in document order. ``license_servers`` are the ``<content server="...">``
+    values: RSL License Servers a client MUST obtain a licence from before
+    access, "even if the license type is ``free``" (RSL 1.0 s3.3).
     """
 
     source: TermsSource
@@ -158,16 +189,137 @@ def _local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].lower()
 
 
-def _typed_value(el: ET.Element) -> str:
+class _TermsTooLarge(Exception):
+    """A licence's parsed terms would exceed :data:`MAX_LICENCE_TERM_CHARS`."""
+
+
+class _TermBudget:
+    """The characters of parsed terms one licence may still produce."""
+
+    __slots__ = ("remaining",)
+
+    def __init__(self, total: int) -> None:
+        self.remaining = total
+
+    def take(self, kind: str, value: str) -> str:
+        """``"<kind>:<value>"`` (``value`` alone without a kind), charged
+        before it is built."""
+        self.remaining -= len(kind) + 1 + len(value) + _TERM_OVERHEAD
+        if self.remaining < 0:
+            raise _TermsTooLarge
+        return f"{kind}:{value}" if kind else value
+
+
+def _typed_values(el: ET.Element, budget: _TermBudget) -> list[str]:
+    """One ``"<type>:<value>"`` entry per value a permits/prohibits element
+    lists (RSL 1.0 s3.5/s3.6: "separated by one or more spaces"; commas are
+    accepted as well)."""
     kind = (el.get("type") or "").strip().lower()
-    value = (el.text or "").strip().lower()
-    return f"{kind}:{value}" if kind else value
+    values = (el.text or "").replace(",", " ").lower().split()
+    return [budget.take(kind, value) for value in values]
+
+
+def _usage(entry: str) -> str | None:
+    """The usage token of a ``"usage:<token>"`` entry, else None."""
+    kind, sep, value = entry.partition(":")
+    return value if sep and kind == "usage" else None
+
+
+def _covering_umbrellas(token: str) -> set[str]:
+    """``token`` and every umbrella usage that covers it."""
+    found = {token}
+    grew = True
+    while grew:
+        wider = {u for u, children in USAGE_UMBRELLAS.items() if found & set(children)}
+        grew = not wider <= found
+        found |= wider
+    return found
+
+
+class _Terms:
+    """A set of permits or prohibits entries, read with the usage umbrellas
+    of RSL 1.0 s3.4.1.1. Built once per set, so each question about one
+    entry costs the same however many entries the set holds."""
+
+    __slots__ = ("entries", "reached")
+
+    def __init__(self, entries: tuple[str, ...]) -> None:
+        self.entries = set(entries)
+        # Every usage the set names, and every umbrella over one it names.
+        self.reached: set[str] = set()
+        for entry in self.entries:
+            token = _usage(entry)
+            if token is not None:
+                self.reached |= _covering_umbrellas(token)
+
+    def covers(self, entry: str) -> bool:
+        """Whether the set names ``entry`` itself or, for a usage, an
+        umbrella usage covering it."""
+        if entry in self.entries:
+            return True
+        token = _usage(entry)
+        return token is not None and any(
+            f"usage:{u}" in self.entries for u in _covering_umbrellas(token)
+        )
+
+    def names_part_of(self, entry: str) -> bool:
+        """Whether ``entry`` is an umbrella usage and the set names a usage
+        it covers (so ``entry`` holds for part of what it covers only)."""
+        token = _usage(entry)
+        return token in USAGE_UMBRELLAS and token in self.reached
+
+
+def _narrowed(
+    entries: tuple[str, ...], keep: Callable[[str], bool], drop: Callable[[str], bool]
+) -> tuple[str, ...]:
+    """``entries`` with each one removed when ``drop`` says so, kept whole
+    when ``keep`` says so, and otherwise, for an umbrella usage, replaced by
+    its children judged the same way (RSL 1.0 s3.4.1.1)."""
+    out: list[str] = []
+
+    def visit(entry: str) -> None:
+        if drop(entry):
+            return
+        if keep(entry):
+            out.append(entry)
+            return
+        for child in USAGE_UMBRELLAS.get(_usage(entry) or "", ()):
+            visit(f"usage:{child}")
+
+    for entry in dict.fromkeys(entries):
+        visit(entry)
+    return tuple(dict.fromkeys(out))
+
+
+def permits_without(permits: tuple[str, ...], prohibits: tuple[str, ...]) -> tuple[str, ...]:
+    """``permits`` minus every usage ``prohibits`` names or covers (RSL 1.0
+    s3.1.1: the prohibition takes precedence). A permitted umbrella of which
+    only part is prohibited is split into the children still licensed, so
+    ``usage:all`` minus ``usage:ai-train`` is ai-input, ai-index and search."""
+    banned = _Terms(prohibits)
+    return _narrowed(
+        permits,
+        keep=lambda entry: not banned.names_part_of(entry),
+        drop=banned.covers,
+    )
+
+
+def permits_in_both(first: tuple[str, ...], second: tuple[str, ...]) -> tuple[str, ...]:
+    """What ``first`` and ``second`` both permit, umbrella usages included:
+    ``usage:all`` and ``usage:search`` share only ``usage:search``."""
+    other = _Terms(second)
+    return _narrowed(
+        first,
+        keep=other.covers,
+        drop=lambda entry: not other.covers(entry) and not other.names_part_of(entry),
+    )
 
 
 def _scope_terms(
-    content: ET.Element, *, license_url: str | None
+    content: ET.Element, *, license_url: str | None, budget: _TermBudget
 ) -> RightsTerms:
-    """The terms declared inside one ``<content>`` element."""
+    """The terms declared inside one ``<content>`` element, each value
+    charged to ``budget``."""
     payment: list[str] = []
     permits: list[str] = []
     prohibits: list[str] = []
@@ -178,22 +330,22 @@ def _scope_terms(
         if name == "payment":
             kind = (el.get("type") or "").strip().lower()
             if kind:
-                payment.append(kind)
+                payment.append(budget.take("", kind))
         elif name == "permits":
-            permits.append(_typed_value(el))
+            permits.extend(_typed_values(el, budget))
         elif name == "prohibits":
-            prohibits.append(_typed_value(el))
+            prohibits.extend(_typed_values(el, budget))
         elif name == "standard":
             text = (el.text or "").strip()
             if text:
-                standards.append(text)
+                standards.append(budget.take("", text))
     # RSL 1.0 s3.7: "If omitted, the license is assumed to be free." A
     # <license> with no <payment> is a free licence, not an unknown one.
     for lic in content.iter():
         if _local_name(lic.tag) != "license":
             continue
         if not any(_local_name(d.tag) == "payment" for d in lic.iter() if d is not lic):
-            payment.append("free")
+            payment.append(budget.take("", "free"))
     return RightsTerms(
         source="rsl_license_xml",
         license_url=license_url,
@@ -217,7 +369,9 @@ def parse_rsl_licence(xml_text: str, *, license_url: str | None = None) -> RslLi
     element belong to no scope and are ignored; a ``<content>`` without a
     ``url`` is kept with ``content_url=None`` and covers no page, as does
     one with ``url=""``, which the robots.txt association gives no scope
-    (RSL 1.0 s3.3.1, s4.4).
+    (RSL 1.0 s3.3.1, s4.4). A document declaring more than
+    :data:`MAX_LICENCE_SCOPES` scopes, or whose parsed terms would exceed
+    :data:`MAX_LICENCE_TERM_CHARS`, is degraded the same way.
     """
     degraded_source: TermsSource = "robots_license_directive" if license_url else "none"
     try:
@@ -240,17 +394,34 @@ def parse_rsl_licence(xml_text: str, *, license_url: str | None = None) -> RslLi
                 parse_error=f"root element is <{_local_name(root.tag)}>, not <rsl>",
             ),
         )
-    return RslLicence(
-        license_url=license_url,
-        scopes=tuple(
-            _scope_terms(el, license_url=license_url)
-            for el in root.iter()
-            if _local_name(el.tag) == "content"
-        ),
-    )
+    contents = [el for el in root.iter() if _local_name(el.tag) == "content"]
+    too_large: str | None = None
+    scopes: tuple[RightsTerms, ...] = ()
+    if len(contents) > MAX_LICENCE_SCOPES:
+        too_large = f"licence declares {len(contents)} <content> scopes (> {MAX_LICENCE_SCOPES})"
+    else:
+        budget = _TermBudget(MAX_LICENCE_TERM_CHARS)
+        try:
+            scopes = tuple(
+                _scope_terms(el, license_url=license_url, budget=budget) for el in contents
+            )
+        except _TermsTooLarge:
+            too_large = f"licence terms exceed {MAX_LICENCE_TERM_CHARS} characters once parsed"
+    if too_large is not None:
+        return RslLicence(
+            license_url=license_url,
+            unscoped=RightsTerms(
+                source=degraded_source,
+                license_url=license_url,
+                parse_error=f"{too_large}; not parsed",
+            ),
+        )
+    return RslLicence(license_url=license_url, scopes=scopes)
 
 
 __all__ = [
+    "MAX_LICENCE_SCOPES",
+    "MAX_LICENCE_TERM_CHARS",
     "NO_CHARGE_PAYMENT_TYPES",
     "NO_LICENCE",
     "NO_TERMS",
@@ -258,5 +429,8 @@ __all__ = [
     "RightsTerms",
     "RslLicence",
     "TermsSource",
+    "USAGE_UMBRELLAS",
     "parse_rsl_licence",
+    "permits_in_both",
+    "permits_without",
 ]

@@ -202,3 +202,219 @@ def test_a_malformed_licence_answers_the_same_for_every_page() -> None:
     terms = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/anything")
     assert terms.source == "robots_license_directive"
     assert terms.parse_error
+
+
+# --- adversarial review of 5231bd522 -----------------------------------------
+
+
+def _tied(first: str, second: str) -> RightsTerms:
+    licence = parse_rsl_licence(f"<rsl>{first}{second}</rsl>", license_url=f"{_ORIGIN}/license.xml")
+    return terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/abc")
+
+
+_FREE_A = (
+    '<content url="/a*"><license><permits type="usage">search</permits>'
+    '<payment type="free"/></license></content>'
+)
+_PURCHASE_AB = (
+    '<content url="/ab"><license><prohibits type="usage">search</prohibits>'
+    '<payment type="purchase"/></license></content>'
+)
+
+
+def test_equally_specific_scopes_resolve_conservatively_in_either_order() -> None:
+    """RSL 1.0 s3.1.1: licences "MUST be interpreted conservatively". Two
+    equally specific covering scopes have no precedence over each other, so a
+    priced payment wins over a free one and only what both permit is
+    permitted, whichever comes first in the file."""
+    for first, second in ((_FREE_A, _PURCHASE_AB), (_PURCHASE_AB, _FREE_A)):
+        terms = _tied(first, second)
+        assert terms.payment_types == ("purchase",), (first, terms)
+        assert (terms.no_charge, terms.requires_payment) == (False, True)
+        assert terms.permits == ()
+        assert terms.prohibits == ("usage:search",)
+
+    wide = (
+        '<content url="/a*"><license><permits type="usage">search ai-index</permits>'
+        '<payment type="free"/></license></content>'
+    )
+    narrow = (
+        '<content url="/ab"><license><permits type="usage">search</permits>'
+        '<payment type="attribution"/></license></content>'
+    )
+    for first, second in ((wide, narrow), (narrow, wide)):
+        terms = _tied(first, second)
+        assert terms.permits == ("usage:search",)
+        assert set(terms.payment_types) == {"free", "attribution"}
+        assert terms.no_charge is True
+
+
+def test_a_permits_element_lists_space_separated_usages() -> None:
+    """RSL 1.0 s3.5/s3.6: values are "separated by one or more spaces"."""
+    terms = parse_rsl_xml(
+        '<rsl><content url="/"><license><permits type="usage">ai-train  search</permits>'
+        '<prohibits type="usage">ai-input,ai-index</prohibits></license></content></rsl>'
+    )
+
+    assert terms.permits == ("usage:ai-train", "usage:search")
+    assert terms.prohibits == ("usage:ai-input", "usage:ai-index")
+
+
+def test_an_umbrella_prohibition_removes_every_usage_it_covers() -> None:
+    """RSL 1.0 s3.4.1.1: ``ai-all`` covers ai-train, ai-input and ai-index;
+    ``all`` covers every automated use including search. A usage covered by
+    a prohibited umbrella is not licensed (s3.1.1)."""
+
+    def page(site_prohibits: str, narrow_permits: str) -> RightsTerms:
+        licence = parse_rsl_licence(
+            "<rsl>"
+            f'<content url="/"><license><prohibits type="usage">{site_prohibits}</prohibits>'
+            "</license></content>"
+            f'<content url="/n/"><license>{narrow_permits}<payment type="free"/>'
+            "</license></content></rsl>",
+            license_url=f"{_ORIGIN}/license.xml",
+        )
+        return terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/n/x")
+
+    ai_all = page(
+        "ai-all",
+        '<permits type="usage">ai-train</permits><permits type="usage">ai-train,search</permits>',
+    )
+    assert ai_all.permits == ("usage:search",)
+    assert ai_all.prohibits == ("usage:ai-all",)
+    assert page("all", '<permits type="usage">search</permits>').permits == ()
+    split = page("ai-train", '<permits type="usage">all</permits>')
+    assert set(split.permits) == {"usage:ai-input", "usage:ai-index", "usage:search"}
+
+
+def test_a_licence_server_on_any_covering_scope_still_requires_a_token() -> None:
+    """RSL 1.0 s3.3: a client "MUST obtain a license from this server ...
+    before access, even if the license type is free". A narrower free scope
+    without a server does not lift that requirement (s3.1.1, conservative)."""
+    licence = parse_rsl_licence(
+        "<rsl>"
+        '<content url="/" server="https://ls.example"><license><payment type="free"/>'
+        "</license></content>"
+        '<content url="/free/"><license><payment type="free"/></license></content>'
+        "</rsl>",
+        license_url=f"{_ORIGIN}/license.xml",
+    )
+
+    terms = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/free/x")
+    assert terms.content_url == "/free/"
+    assert terms.license_servers == ("https://ls.example",)
+    assert (terms.token_required, terms.no_charge) == (True, False)
+
+
+def test_an_unplaceable_scope_still_contributes_its_prohibitions() -> None:
+    """A ``url=""`` scope establishes no page scope under the robots.txt
+    association (RSL 1.0 s3.3.1, s4.4), so it grants nothing; but dropping
+    its ban would expand rights (s3.1.1), so every page that other scopes
+    give terms to keeps it."""
+    licence = parse_rsl_licence(
+        "<rsl>"
+        '<content url=""><license><prohibits type="usage">ai-train</prohibits></license></content>'
+        '<content url="/"><license><payment type="free"/></license></content>'
+        "</rsl>",
+        license_url=f"{_ORIGIN}/license.xml",
+    )
+
+    paid = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/paid")
+    assert paid.prohibits == ("usage:ai-train",)
+    assert paid.payment_types == ("free",)
+    only_empty = parse_rsl_licence(
+        '<rsl><content url=""><license><prohibits type="usage">ai-train</prohibits>'
+        "</license></content></rsl>",
+        license_url=f"{_ORIGIN}/license.xml",
+    )
+    unknown = terms_covering(only_empty, origin=_ORIGIN, url=f"{_ORIGIN}/paid")
+    assert (unknown.source, unknown.prohibits) == ("rsl_out_of_scope", ())
+
+
+def test_a_licence_with_too_many_content_scopes_is_not_parsed() -> None:
+    """Each scope costs memory and matching time out of proportion to its
+    bytes (a bare ``<content/>`` is ten), so a licence past
+    MAX_LICENCE_SCOPES is recorded as unusable instead of held."""
+    from acquisition.urls import rights_terms
+
+    limit = getattr(rights_terms, "MAX_LICENCE_SCOPES", 1024)
+    licence = parse_rsl_licence(
+        "<rsl>" + "<content/>" * (limit + 1) + "</rsl>", license_url=f"{_ORIGIN}/license.xml"
+    )
+
+    assert licence.scopes == ()
+    assert licence.unscoped is not None
+    assert "scopes" in (licence.unscoped.parse_error or "")
+    at_limit = parse_rsl_licence("<rsl>" + "<content/>" * limit + "</rsl>")
+    assert len(at_limit.scopes) == limit
+
+
+def test_an_equally_specific_scope_with_no_payment_keeps_the_page_from_free() -> None:
+    """A tied scope that declares no licence says nothing about payment, and
+    "unknown" combined with "free" is not "free" (RSL 1.0 s3.1.1,
+    conservative), whichever comes first in the file."""
+    bare = '<content url="/ab"></content>'
+    for first, second in ((_FREE_A, bare), (bare, _FREE_A)):
+        terms = _tied(first, second)
+        assert terms.payment_types == (), (first, terms)
+        assert (terms.no_charge, terms.requires_payment) == (False, False)
+        assert terms.permits == ()
+
+
+def test_a_licence_whose_parsed_terms_outgrow_the_budget_is_not_parsed() -> None:
+    """Splitting an element's text into one ``"<type>:<value>"`` entry per
+    value repeats the ``type`` once per value, and a nested ``<content>``
+    re-reads every element inside it, so a small document could expand into
+    far more parsed text than it holds. Past MAX_LICENCE_TERM_CHARS the
+    licence is recorded as unusable instead."""
+    from acquisition.urls import rights_terms
+
+    limit = getattr(rights_terms, "MAX_LICENCE_TERM_CHARS", 256 * 1024)
+    long_type = '<rsl><content url="/"><license><permits type="{}">{}</permits></license></content></rsl>'
+    nested_depth = 400
+    shapes = {
+        "repeated type": long_type.format("t" * 2000, "a " * 20_000),
+        "nested scopes": (
+            '<rsl>' + '<content url="/">' * nested_depth
+            + '<license><permits type="usage">' + " ".join(f"u{i}" for i in range(2000))
+            + "</permits></license>" + "</content>" * nested_depth + "</rsl>"
+        ),
+    }
+    for name, document in shapes.items():
+        assert len(document) < limit, name
+        licence = parse_rsl_licence(document, license_url=f"{_ORIGIN}/license.xml")
+        held = sum(
+            len(entry)
+            for scope in licence.scopes
+            for entry in scope.permits + scope.prohibits + scope.payment_types
+        )
+        assert held <= limit, (name, held)
+        assert licence.unscoped is not None, name
+        assert "characters" in (licence.unscoped.parse_error or ""), name
+    ordinary = parse_rsl_licence(long_type.format("usage", "search ai-index"))
+    assert ordinary.scopes[0].permits == ("usage:search", "usage:ai-index")
+
+
+def test_repeated_umbrella_permits_are_combined_in_linear_time() -> None:
+    """Every page fetch combines the covering scopes' terms, so that must not
+    cost permits x prohibits: a licence repeating ``all`` thousands of times
+    beside thousands of prohibitions is combined in milliseconds."""
+    import time
+
+    count = 7000
+    licence = parse_rsl_licence(
+        "<rsl>"
+        f'<content url="/"><license><prohibits type="usage">'
+        f'{" ".join(f"p{i}" for i in range(count))}</prohibits></license></content>'
+        f'<content url="/n/"><license><permits type="usage">{"all " * count}</permits>'
+        '<payment type="free"/></license></content></rsl>',
+        license_url=f"{_ORIGIN}/license.xml",
+    )
+    assert licence.unscoped is None
+
+    started = time.perf_counter()
+    terms = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/n/x")
+    elapsed = time.perf_counter() - started
+
+    assert terms.permits == ("usage:all",)
+    assert elapsed < 1.0, elapsed
