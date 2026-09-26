@@ -141,19 +141,43 @@ def record_reservation(
 
 
 def reserving_parent(investigation_id: str, *, events_dir: str | None = None) -> str | None:
-    """The parent that reserved ``investigation_id``, if it is reserved and has
-    not started; None otherwise."""
+    """The parent that reserved ``investigation_id``, or None if it is not
+    reserved. A reservation binds the id to its parent for good, before and
+    after the child starts, so a retry of a reserved launch resolves the same
+    parent as the launch it repeats."""
     from .events import trajectory_read
 
-    rows = trajectory_read(investigation_id, events_dir=events_dir).rows
-    started = any(r.get("action_type") == "investigation.start_requested" for r in rows)
-    if started:
-        return None
-    for row in rows:
+    for row in trajectory_read(investigation_id, events_dir=events_dir).rows:
         if row.get("action_type") == "investigation.reserved":
             payload = row.get("payload")
             parent = payload.get("parent_investigation_id") if isinstance(payload, dict) else None
             if isinstance(parent, str):
                 return parent
     return None
+
+
+class ReservationParentMismatch(BranchNotRecorded):
+    """A launch into a reserved id named a parent other than the one that
+    reserved it."""
+
+
+def launch_parent(
+    investigation_id: str,
+    requested_parent: str | None,
+    *,
+    events_dir: str | None = None,
+) -> tuple[str | None, bool]:
+    """The parent a launch into ``investigation_id`` must branch from, and
+    whether it came from a reservation. Every launch entrypoint (the API and
+    both research runners) resolves its parent here, so none can start a
+    reserved child without the reserving parent's branch: an omitted parent is
+    adopted, a different one raises ``ReservationParentMismatch``."""
+    reserved_by = reserving_parent(investigation_id, events_dir=events_dir)
+    if reserved_by is None:
+        return requested_parent, False
+    if requested_parent not in (None, reserved_by):
+        raise ReservationParentMismatch(
+            f"{investigation_id} is reserved by {reserved_by}, not {requested_parent}"
+        )
+    return reserved_by, True
 

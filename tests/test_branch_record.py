@@ -54,14 +54,16 @@ def _all_starts(events: str) -> int:
 
 
 def _assert_branched_first(parent: str, child: str, *, via: str) -> dict:
-    """The parent holds the branch, the child's first event comes after it,
-    and the child's spawned_from points back at it."""
+    """The parent holds the branch, the child's first launched event comes
+    after it, and the child's spawned_from points back at it. A reserved
+    child's reservation predates every launch by design, so it is not one."""
     branches = [r for r in _rows(parent, BRANCHED)
                 if r["payload"]["child_investigation_id"] == child]
     assert len(branches) == 1, trajectory(parent)
     branch = branches[0]
     assert branch["payload"]["via"] == via
-    child_rows = trajectory(child)
+    child_rows = [r for r in trajectory(child)
+                  if r["action_type"] != ActionType.INVESTIGATION_RESERVED.value]
     assert child_rows, "child never started"
     assert branch["emitted_at"] <= min(r["emitted_at"] for r in child_rows)
     spawned = [r for r in child_rows if r["action_type"] == SPAWNED]
@@ -340,4 +342,113 @@ def test_a_capacity_refusal_after_the_branch_abandons_it(monkeypatch):
     assert abandon["payload"]["child_investigation_id"] == "inv-cap-child"
     assert trajectory("inv-cap-child") == []
     assert _charged_ids(db) == ["inv-cap-root", "inv-twin"]
+
+
+# ── reserved ids: every entrypoint takes the reserving parent ─────────
+
+
+def test_an_identical_retry_of_a_reserved_launch_replays_it(monkeypatch):
+    # Codex round 8: once the child had started, the retry resolved no
+    # reserving parent, so its start payload differed from the stored one and
+    # an identical request answered 409. A reservation binds the id for good,
+    # so both an implicit and an explicit retry replay the first launch: the
+    # same start event, no second branch, no second charge.
+    from substrate.event_log import record_reservation
+
+    db, events = _acu_env(monkeypatch, limit=10, used=0)
+    client = _client()
+    assert client.post("/investigations", json={"question": "Root?", "investigation_id": "inv-rr-root"}).status_code == 202
+    record_reservation("inv-rr-child", "inv-rr-root", question_id="q-rr")
+    body = {"question": "Chase it", "investigation_id": "inv-rr-child"}
+    first = client.post("/investigations", json=body)
+    retry = client.post("/investigations", json=body)
+    explicit = client.post("/investigations", json={**body, "parent_investigation_id": "inv-rr-root"})
+    assert [r.status_code for r in (first, retry, explicit)] == [202, 202, 202], (retry.text, explicit.text)
+    assert first.json()["start_event_id"] == retry.json()["start_event_id"] == explicit.json()["start_event_id"]
+    assert len(_rows("inv-rr-child", START)) == 1
+    _assert_branched_first("inv-rr-root", "inv-rr-child", via="reserved_launch")
+    assert sorted(_charged_ids(db)) == ["inv-rr-child", "inv-rr-root"]
+
+
+def _runner(kind: str, events: str):
+    """A research runner of ``kind`` and a list that records whether it ran."""
+    from runtime.research_runner import BudgetManager, HostLocalRunner
+
+    ran: list[str] = []
+    if kind == "remote":
+        from runtime.remote_exec import RemoteResearchRunner
+        from tests.remote_exec_fakes import FakeProvider
+
+        prov = FakeProvider(steps=1)
+        return RemoteResearchRunner(prov, events_dir=events, seal_on_complete=False), prov.provisioned
+
+    async def loop(ctx):
+        ran.append(ctx.sub_question)
+        if False:  # pragma: no cover - an async generator that yields nothing
+            yield None
+
+    return HostLocalRunner(loop, budget=BudgetManager(), events_dir=events, seal_on_complete=False), ran
+
+
+async def _run_leaf(runner, investigation_id: str, plan):
+    handle = await runner.start(investigation_id, plan)
+    [ev async for ev in runner.stream(handle)]
+    if hasattr(runner, "join"):
+        await runner.join()
+    return runner.status(handle).state
+
+
+@pytest.mark.parametrize("kind", ["host_local", "remote"])
+async def test_a_runner_launch_into_a_reserved_id_branches_from_the_reserving_parent(events_dir, kind):
+    # Codex round 8: both runners launched a reserved id whose plan named no
+    # parent with no branch anywhere. They now resolve the parent the same
+    # way the API does and branch from the reservation's parent.
+    from runtime.research_runner import BudgetCap, ResearchPlan, RunState
+    from substrate.event_log import record_reservation
+
+    log_event("inv-rn-root", START, payload={"question": "q"})
+    record_reservation("leaf-rn", "inv-rn-root", question_id="q-rn")
+    runner, ran = _runner(kind, events_dir)
+    plan = ResearchPlan(investigation_id="leaf-rn", sub_question="sub", budget=BudgetCap(cost_usd=1.0))
+    assert await _run_leaf(runner, "leaf-rn", plan) != RunState.FAILED
+    assert ran, "the reserved leaf never ran"
+    _assert_branched_first("inv-rn-root", "leaf-rn", via="reserved_launch")
+    (spawned,) = _rows("leaf-rn", SPAWNED)
+    assert spawned["payload"]["parent_investigation_id"] == "inv-rn-root"
+
+
+@pytest.mark.parametrize("kind", ["host_local", "remote"])
+async def test_a_runner_launch_into_a_reserved_id_under_another_parent_never_runs(events_dir, kind):
+    # The launch is not this id's to make: nothing runs, no parent gains a
+    # branch, and the reserved log keeps only its reservation, so the
+    # reserving parent can still launch it.
+    from runtime.research_runner import BudgetCap, ResearchPlan, RunState
+    from substrate.event_log import record_reservation
+
+    for parent in ("inv-rm-root", "inv-rm-other"):
+        log_event(parent, START, payload={"question": "q"})
+    record_reservation("leaf-rm", "inv-rm-root", question_id="q-rm")
+    runner, ran = _runner(kind, events_dir)
+    plan = ResearchPlan(investigation_id="leaf-rm", sub_question="sub",
+                        parent_investigation_id="inv-rm-other", budget=BudgetCap(cost_usd=1.0))
+    assert await _run_leaf(runner, "leaf-rm", plan) == RunState.FAILED
+    assert ran == []
+    assert _rows("inv-rm-root", BRANCHED) == _rows("inv-rm-other", BRANCHED) == []
+    assert [r["action_type"] for r in trajectory("leaf-rm")] == [ActionType.INVESTIGATION_RESERVED.value]
+
+
+@pytest.mark.parametrize("kind", ["host_local", "remote"])
+async def test_a_runner_refuses_a_plan_for_another_investigation(events_dir, kind):
+    # The branch names the id the runner was started with; a plan for another
+    # id would run into that other log with no branch of its own.
+    from runtime.research_runner import BudgetCap, ResearchPlan, RunState
+
+    log_event("inv-pm-root", START, payload={"question": "q"})
+    runner, ran = _runner(kind, events_dir)
+    plan = ResearchPlan(investigation_id="leaf-pm-other", sub_question="sub",
+                        parent_investigation_id="inv-pm-root", budget=BudgetCap(cost_usd=1.0))
+    assert await _run_leaf(runner, "leaf-pm", plan) == RunState.FAILED
+    assert ran == []
+    assert _rows("inv-pm-root", BRANCHED) == []
+    assert trajectory("leaf-pm") == trajectory("leaf-pm-other") == []
 

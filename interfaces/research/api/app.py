@@ -80,10 +80,11 @@ from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import (  # noqa: E402
     BranchNotRecorded,
+    ReservationParentMismatch,
     abandon_branch,
     emit_typed,
+    launch_parent,
     record_branch,
-    reserving_parent,
     trajectory,
     trajectory_read,
 )
@@ -2755,11 +2756,13 @@ def create_app(
         branch_via: Literal["chase", "reserved_launch"] = "chase"
         branch_event_id: str | None = None
         if req.investigation_id is not None and operation_id is None:
-            reserved_by = reserving_parent(investigation_id)
-            if reserved_by is not None:
-                if effective_parent not in (None, reserved_by):
-                    raise HTTPException(status_code=409, detail="reservation_parent_mismatch")
-                effective_parent = reserved_by
+            # A reservation binds the id to its parent before and after the
+            # start, so an identical retry resolves the same parent and replays.
+            try:
+                effective_parent, reserved = launch_parent(investigation_id, effective_parent)
+            except ReservationParentMismatch:
+                raise HTTPException(status_code=409, detail="reservation_parent_mismatch") from None
+            if reserved:
                 branch_via = "reserved_launch"
         if effective_parent is not None:
             try:

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import logging
 import os
 import sys
@@ -44,7 +45,14 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 try:
-    from substrate.event_log import BranchNotRecorded, log_event, record_branch, seal_investigation
+    from substrate.event_log import (
+        BranchNotRecorded,
+        ReservationParentMismatch,
+        launch_parent,
+        log_event,
+        record_branch,
+        seal_investigation,
+    )
     from substrate.schemas.events import ActionType
 
     from ..research_runner.budget import BudgetManager
@@ -90,7 +98,14 @@ except ImportError:  # pragma: no cover — direct-script fallback
         Status,
         StepEvent,
     )
-    from substrate.event_log import BranchNotRecorded, log_event, record_branch, seal_investigation
+    from substrate.event_log import (
+        BranchNotRecorded,
+        ReservationParentMismatch,
+        launch_parent,
+        log_event,
+        record_branch,
+        seal_investigation,
+    )
     from substrate.schemas.events import ActionType
 
 
@@ -172,37 +187,46 @@ class RemoteResearchRunner:
         self._states[investigation_id] = st
         self.budget.register(investigation_id, plan.budget.cost_usd)
 
-        if plan.parent_investigation_id:
-            # The parent records the branch first, durably, as the last step
-            # before the leaf's first event (THREAD-CONTRACT §1.3). A leaf whose
-            # edge is not in the parent's log does not run; its own log says why.
+        # The parent records the branch first, durably, as the last step
+        # before the leaf's first event (THREAD-CONTRACT §1.3). A reserved id
+        # branches from the parent that reserved it, whatever the plan names.
+        # A leaf that cannot be branched does not run: a launch that is not
+        # this id's to make writes nothing into its log, and a branch that
+        # could not be written leaves the leaf's own log saying why.
+        if plan.investigation_id != investigation_id:
+            return await self._refuse(
+                st, investigation_id,
+                f"plan_investigation_mismatch: plan is for {plan.investigation_id}",
+            )
+        try:
+            parent, reserved = launch_parent(
+                investigation_id, plan.parent_investigation_id, events_dir=self._events_dir,
+            )
+        except ReservationParentMismatch as exc:
+            return await self._refuse(st, investigation_id, f"reservation_parent_mismatch: {exc}")
+        if parent is not None:
+            st.plan = plan = dataclasses.replace(plan, parent_investigation_id=parent)
             try:
                 branch_event_id = record_branch(
-                    plan.parent_investigation_id, investigation_id, via="cascade_leaf",
+                    parent, investigation_id,
+                    via="reserved_launch" if reserved else "cascade_leaf",
                     spawn_context=plan.sub_question, role="user_agent",
                     events_dir=self._events_dir,
                 )
             except BranchNotRecorded as exc:
-                st.state = RunState.FAILED
-                st.error = f"branch_not_recorded: {exc}"
                 log_event(
                     investigation_id, ActionType.INVESTIGATION_SPAWNED_FROM,
-                    payload={"parent_investigation_id": plan.parent_investigation_id,
+                    payload={"parent_investigation_id": parent,
                              "sub_question": plan.sub_question},
                     role="user_agent", events_dir=self._events_dir,
                 )
                 log_event(investigation_id, ActionType.INVESTIGATION_FAILED,
-                          payload={"error": st.error}, role="user_agent",
+                          payload={"error": f"branch_not_recorded: {exc}"}, role="user_agent",
                           events_dir=self._events_dir)
-                await st.queue.put(StepEvent(investigation_id, 0, "error",
-                                             text=st.error, state=RunState.FAILED))
-                await st.queue.put(StepEvent(investigation_id, 0, "done",
-                                             state=RunState.FAILED))
-                await st.queue.put(_STREAM_DONE)
-                return Handle(investigation_id)
+                return await self._refuse(st, investigation_id, f"branch_not_recorded: {exc}")
             log_event(
                 investigation_id, ActionType.INVESTIGATION_SPAWNED_FROM,
-                payload={"parent_investigation_id": plan.parent_investigation_id,
+                payload={"parent_investigation_id": parent,
                          "parent_event_id": branch_event_id,
                          "sub_question": plan.sub_question},
                 role="user_agent", events_dir=self._events_dir,
@@ -226,6 +250,16 @@ class RemoteResearchRunner:
             return Handle(investigation_id)
 
         st.task = asyncio.create_task(self._run(st))
+        return Handle(investigation_id)
+
+    async def _refuse(self, st: _RemoteState, investigation_id: str, error: str) -> Handle:
+        """End a launch that must not run: FAILED, with the reason streamed."""
+        st.state = RunState.FAILED
+        st.error = error
+        await st.queue.put(StepEvent(investigation_id, 0, "error", text=error,
+                                     state=RunState.FAILED))
+        await st.queue.put(StepEvent(investigation_id, 0, "done", state=RunState.FAILED))
+        await st.queue.put(_STREAM_DONE)
         return Handle(investigation_id)
 
     # -- the per-leaf coroutine ----------------------------------------

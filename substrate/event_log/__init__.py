@@ -17,7 +17,9 @@ from ..schemas.events import (  # re-exported from the canonical schema source
 )
 from .branches import (
     BranchNotRecorded,
+    ReservationParentMismatch,
     abandon_branch,
+    launch_parent,
     record_branch,
     record_reservation,
     reserving_parent,
@@ -71,6 +73,8 @@ __all__ = [
     "read_physical_event_page",
     "record_branch",
     "record_reservation",
+    "ReservationParentMismatch",
+    "launch_parent",
     "reserving_parent",
     "query_worker_identity",
     "seal_investigation",
