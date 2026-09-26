@@ -885,7 +885,7 @@ export default function Multimedia() {
                   value={customDuration}
                   onChange={(event) => setCustom(event.target.value)}
                   aria-label="Custom duration"
-                  className="h-8 w-20 rounded-md border border-rule bg-ice-0 px-2 text-sm text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                  className="h-8 w-20 rounded-md border border-rule bg-ice-0 px-2 text-sm text-ink transition-shadow shadow-none focus-visible:outline-none focus-visible:shadow-z1 dark:focus-visible:shadow-z1-night dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
                 />
                 <span>15-45 minutes</span>
               </label>
@@ -1151,18 +1151,7 @@ export default function Multimedia() {
                   ))}
                 </ol>
 
-                <div className="rounded-md border border-sun bg-sun/10 p-3">
-                  <p className="font-mono text-xs text-ink">Unsourced claim guard</p>
-                  {unsourcedClaims.length ? (
-                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-relaxed text-shadow-2">
-                      {unsourcedClaims.map((claim) => <li key={claim}>{claim}</li>)}
-                    </ul>
-                  ) : (
-                    <p className="mt-1 text-sm leading-relaxed text-shadow-2">
-                      {selectedRecord ? "No unsourced factual lines are recorded in this plan." : "Example only. Create a persisted plan to inspect grounding."}
-                    </p>
-                  )}
-                </div>
+                <UnsourcedClaimGuard claims={unsourcedClaims} persisted={Boolean(selectedRecord)} />
 
                 {selectedRecord && unsourcedClaims.length > 0 && (
                   <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
@@ -1668,6 +1657,29 @@ export default function Multimedia() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+/**
+ * The provenance guard under the storyboard. It sits on the storyboard panel
+ * (bg-ice-1 / dark:bg-charcoal-2), so its text carries dark: counterparts:
+ * static ink and shadow-2 were dark-on-dark at night (F-15). Exported for its
+ * Storybook story.
+ */
+export function UnsourcedClaimGuard({ claims, persisted }: { claims: readonly string[]; persisted: boolean }) {
+  return (
+    <div className="rounded-md border border-sun bg-sun/10 p-3">
+      <p className="font-mono text-xs text-ink dark:text-bright">Unsourced claim guard</p>
+      {claims.length ? (
+        <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-relaxed text-shadow-2 dark:text-starlight">
+          {claims.map((claim) => <li key={claim}>{claim}</li>)}
+        </ul>
+      ) : (
+        <p className="mt-1 text-sm leading-relaxed text-shadow-2 dark:text-starlight">
+          {persisted ? "No unsourced factual lines are recorded in this plan." : "Example only. Create a persisted plan to inspect grounding."}
+        </p>
+      )}
     </div>
   );
 }
