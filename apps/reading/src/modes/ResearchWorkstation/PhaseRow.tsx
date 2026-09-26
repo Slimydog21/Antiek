@@ -217,6 +217,10 @@ function DispatchRow({ event }: { event: Event }) {
     cost_usd?: number;
     latency_ms?: number;
   };
+  // F-12: every usage field is optional in the payload. A missing one renders
+  // "—" (never 0, never a blank), and the row says why once.
+  const known = (n: number | undefined): n is number => typeof n === "number" && Number.isFinite(n);
+  const usageMissing = ![p.input_tokens, p.output_tokens, p.cost_usd, p.latency_ms].every(known);
   return (
     <div className="text-xs font-mono text-ink-mute dark:text-moonlight flex gap-2 flex-wrap">
       <span>→</span>
@@ -224,11 +228,14 @@ function DispatchRow({ event }: { event: Event }) {
       <span>·</span>
       <span>{p.provider}/{p.model}</span>
       <span>·</span>
-      <span>in={p.input_tokens} out={p.output_tokens}</span>
+      <span>
+        in={known(p.input_tokens) ? p.input_tokens : "—"} out={known(p.output_tokens) ? p.output_tokens : "—"}
+      </span>
       <span>·</span>
-      <span>${(p.cost_usd ?? 0).toFixed(6)}</span>
+      <span>{known(p.cost_usd) ? `$${p.cost_usd.toFixed(6)}` : "$—"}</span>
       <span>·</span>
-      <span>{((p.latency_ms ?? 0) / 1000).toFixed(1)}s</span>
+      <span>{known(p.latency_ms) ? `${(p.latency_ms / 1000).toFixed(1)}s` : "—"}</span>
+      {usageMissing && <span className="italic">· usage not reported</span>}
     </div>
   );
 }
