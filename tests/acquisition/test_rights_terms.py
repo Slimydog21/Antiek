@@ -93,7 +93,7 @@ def test_each_content_element_keeps_only_its_own_terms() -> None:
     licence = parse_rsl_licence(_two_scopes(), license_url=f"{_ORIGIN}/license.xml")
 
     site, open_scope = licence.scopes
-    assert (site.content_url, site.payment_types, site.permits) == ("/", ("purchase",), ())
+    assert (site.content_url, site.payment_types, site.permits) == ("/", ("purchase",), None)
     assert site.license_servers == ()
     assert open_scope.content_url == "/open/"
     assert open_scope.payment_types == ("attribution",)
@@ -358,7 +358,8 @@ def test_an_equally_specific_scope_with_no_payment_keeps_the_page_from_free() ->
         terms = _tied(first, second)
         assert terms.payment_types == (), (first, terms)
         assert (terms.no_charge, terms.requires_payment) == (False, False)
-        assert terms.permits == ()
+        # The bare scope declares no whitelist, so the other one stands.
+        assert terms.permits == ("usage:search",)
 
 
 def test_a_licence_whose_parsed_terms_outgrow_the_budget_is_not_parsed() -> None:
@@ -386,7 +387,7 @@ def test_a_licence_whose_parsed_terms_outgrow_the_budget_is_not_parsed() -> None
         held = sum(
             len(entry)
             for scope in licence.scopes
-            for entry in scope.permits + scope.prohibits + scope.payment_types
+            for entry in (scope.permits or ()) + scope.prohibits + scope.payment_types
         )
         assert held <= limit, (name, held)
         assert licence.unscoped is not None, name
@@ -418,3 +419,91 @@ def test_repeated_umbrella_permits_are_combined_in_linear_time() -> None:
 
     assert terms.permits == ("usage:all",)
     assert elapsed < 1.0, elapsed
+
+
+# --- adversarial review of dae1d1ddd -----------------------------------------
+#
+# A scope with no <permits> element restricts use only through <prohibits>
+# (RSL 1.0 s3.5); a combination whose whitelist ends up empty permits
+# nothing. Both used to be ``permits == ()``, so the conservative answer read
+# like the unrestricted one.
+
+
+def test_no_permits_element_is_told_apart_from_an_empty_whitelist() -> None:
+    undeclared = parse_rsl_xml(
+        '<rsl><content url="/"><license><payment type="free"/></license></content></rsl>'
+    )
+    empty = parse_rsl_xml(
+        '<rsl><content url="/"><license><permits type="usage"></permits>'
+        "</license></content></rsl>"
+    )
+
+    assert undeclared.permits is None
+    assert empty.permits == ()
+
+
+_NO_PERMITS_A = '<content url="/a*"><license><payment type="free"/></license></content>'
+_SEARCH_AB = (
+    '<content url="/ab"><license><permits type="usage">search</permits>'
+    '<payment type="free"/></license></content>'
+)
+_AI_TRAIN_AB = (
+    '<content url="/ab"><license><permits type="usage">ai-train</permits>'
+    '<payment type="free"/></license></content>'
+)
+
+
+def test_a_tied_scope_without_permits_leaves_the_other_whitelist_standing() -> None:
+    """Probe case 1: equally specific scopes, one with no <permits> and one
+    permitting search. The undeclared side restricts nothing, so the page's
+    whitelist is search, in either document order; two undeclared sides stay
+    undeclared."""
+    for first, second in ((_NO_PERMITS_A, _SEARCH_AB), (_SEARCH_AB, _NO_PERMITS_A)):
+        assert _tied(first, second).permits == ("usage:search",), (first, second)
+    assert _tied(_NO_PERMITS_A, '<content url="/ab"></content>').permits is None
+
+
+def test_disjoint_tied_whitelists_permit_nothing() -> None:
+    """Probe case 2: equally specific scopes permitting ai-train and search
+    only share nothing (s3.1.1, conservative): a declared, empty whitelist,
+    not the ``None`` of a scope that set no whitelist."""
+    for first, second in ((_AI_TRAIN_AB, _SEARCH_AB.replace("/ab", "/a*")),
+                          (_SEARCH_AB.replace("/ab", "/a*"), _AI_TRAIN_AB)):
+        terms = _tied(first, second)
+        assert terms.permits == (), (first, terms)
+        assert terms.permits is not None
+
+
+def test_a_whitelist_emptied_by_a_prohibition_permits_nothing() -> None:
+    """Probe case 3: a narrow scope permits only ai-train and the site-wide
+    scope prohibits ai-train. Nothing is left to permit; a narrow scope that
+    set no whitelist keeps ``None`` and the prohibition alone restricts it."""
+
+    def page(narrow_permits: str) -> RightsTerms:
+        licence = parse_rsl_licence(
+            "<rsl>"
+            '<content url="/"><license><prohibits type="usage">ai-train</prohibits>'
+            "</license></content>"
+            f'<content url="/free/"><license>{narrow_permits}<payment type="free"/>'
+            "</license></content></rsl>",
+            license_url=f"{_ORIGIN}/license.xml",
+        )
+        return terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/free/x")
+
+    emptied = page('<permits type="usage">ai-train</permits>')
+    assert emptied.permits == ()
+    assert emptied.prohibits == ("usage:ai-train",)
+    undeclared = page("")
+    assert undeclared.permits is None
+    assert undeclared.prohibits == ("usage:ai-train",)
+
+
+def test_the_permit_combinators_treat_an_undeclared_whitelist_as_the_identity() -> None:
+    from acquisition.urls.rights_terms import permits_in_both, permits_without
+
+    search = ("usage:search",)
+    assert permits_in_both(None, search) == search
+    assert permits_in_both(search, None) == search
+    assert permits_in_both(None, None) is None
+    assert permits_without(None, ("usage:ai-train",)) is None
+    assert permits_without(("usage:ai-train",), ("usage:ai-train",)) == ()

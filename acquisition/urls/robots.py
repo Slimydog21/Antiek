@@ -491,23 +491,15 @@ def _match_target(url: str) -> str:
     return normalised
 
 
-def _scope_pattern(content_url: str, origin: str) -> str | None:
-    """The RFC 9309 path pattern an RSL ``<content url>`` covers on
-    ``origin``, or None when it covers nothing there.
+def _scope_pattern(value: str, origin: str) -> str | None:
+    """The RFC 9309 path pattern a non-empty, stripped RSL ``<content url>``
+    covers on ``origin``, or None when it names another origin.
 
     RSL 1.0 s3.3 makes the value "a path conforming to the rules defined in
     [RFC 9309], including the use of wildcards"; an absolute URL is also
     accepted when it names this origin (its path and query are the
-    pattern). An empty value covers nothing: RSL 1.0 s3.3.1 lets ``url=""``
-    name "the scope established by that association mechanism" only "when
-    ... permitted by an association mechanism", to be "interpreted only as
-    provided by" it. The HTML link and inline associations permit it
-    (s4.6.1, s4.6.2); the robots.txt ``License:`` association (s4.4), the
-    only one this module reads, does not, so it establishes no page scope
-    and certainly not the whole origin."""
-    value = content_url.strip()
-    if not value:
-        return None
+    pattern). An empty value is not a pattern at all: :func:`terms_covering`
+    handles it before calling this."""
     parts = urlsplit(value)
     if parts.scheme or parts.netloc:
         if origin_of(value) != origin:
@@ -539,12 +531,17 @@ def terms_covering(licence: RslLicence, *, origin: str, url: str) -> RightsTerms
     - Payment and permissions come from the most specific covering scope.
       Equally specific scopes have no precedence over each other, so they
       are combined conservatively, whatever their order in the file: a
-      usage is permitted only if every one of them permits it; if any of
-      them names a price, only the priced payment types are kept, and
-      otherwise, if any of them declares no payment at all, none is.
+      usage is permitted only if every one of them that declares a
+      ``<permits>`` whitelist permits it (a scope declaring none restricts
+      only through its prohibitions; ``permits`` is ``None`` when no
+      decisive scope declares one, and ``()`` when their whitelists share
+      nothing); if any of them names a price, only the priced payment types
+      are kept, and otherwise, if any of them declares no payment at all,
+      none is.
     - No usage ``prohibits`` names or covers is left in ``permits``
       (:func:`acquisition.urls.rights_terms.permits_without`, which knows
-      the usage umbrellas of s3.4.1.1). Payment is not affected: a free
+      the usage umbrellas of s3.4.1.1); a whitelist the prohibitions empty
+      becomes ``()``, licensing nothing. Payment is not affected: a free
       narrower scope stays free for the usages it still licenses.
     - ``content_url`` names the first most specific scope in document order;
       ``standard_urls`` are those of all of the most specific scopes.
@@ -565,10 +562,19 @@ def terms_covering(licence: RslLicence, *, origin: str, url: str) -> RightsTerms
     unplaced: list[RightsTerms] = []
     try:
         for scope in licence.scopes:
-            if not (scope.content_url or "").strip():
+            value = (scope.content_url or "").strip()
+            if not value:
+                # RSL 1.0 s3.3.1 lets url="" name "the scope established by
+                # that association mechanism" only "when ... permitted by an
+                # association mechanism", to be "interpreted only as provided
+                # by" it. The HTML link and inline associations permit it
+                # (s4.6.1, s4.6.2); the robots.txt License: association
+                # (s4.4), the only one this module reads, does not. So the
+                # scope covers no page (least of all the whole origin), but
+                # its restrictions still apply (see above).
                 unplaced.append(scope)
                 continue
-            pattern = _scope_pattern(scope.content_url or "", origin)
+            pattern = _scope_pattern(value, origin)
             if pattern is None:
                 continue
             compiled = _compile_rule(pattern)
@@ -810,7 +816,7 @@ def _terms_weight(terms: RightsTerms) -> int:
         weight += len(text or "")
     for values in (
         terms.payment_types,
-        terms.permits,
+        terms.permits or (),
         terms.prohibits,
         terms.standard_urls,
         terms.license_servers,

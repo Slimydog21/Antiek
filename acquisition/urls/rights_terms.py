@@ -100,7 +100,8 @@ class RightsTerms:
       in ``content_url`` covers the page; the term tuples are that scope's.
     - ``"rsl_out_of_scope"`` — the licence XML was parsed, but none of its
       ``<content>`` scopes covers the page: nothing is known about this
-      page's terms. ``license_url`` is set; the term tuples are empty.
+      page's terms. ``license_url`` is set; the term tuples are empty and
+      ``permits`` is ``None``.
     - ``"robots_license_directive"`` — the directive was present but the XML
       could not be read (unreachable, non-2xx, oversized, cross-origin, or
       malformed); ``license_url`` is set and ``parse_error`` says why.
@@ -115,6 +116,16 @@ class RightsTerms:
     combination, no usage in ``prohibits``, or covered by an umbrella token
     in it (:data:`USAGE_UMBRELLAS`), is left in ``permits`` (RSL 1.0 s3.1.1:
     the prohibition takes precedence and the usage is not licensed).
+
+    ``permits`` is ``None`` when no ``<permits>`` element was declared: RSL
+    makes the element optional (s3.5), and without one only ``prohibits``
+    restricts use. A tuple is a whitelist: an entry not in it, nor under an
+    umbrella in it, is not licensed, and ``()`` licenses nothing (an empty
+    ``<permits>``, or a combination of scopes that left nothing permitted).
+    The whitelist is read across ``type`` values as one set, which is
+    narrower than reading each type on its own and so never licenses more
+    than the publisher did (s3.1.1, conservative).
+
     ``payment_types`` are the ``<payment type="...">`` values, lower-cased,
     in document order. ``license_servers`` are the ``<content server="...">``
     values: RSL License Servers a client MUST obtain a licence from before
@@ -125,7 +136,7 @@ class RightsTerms:
     license_url: str | None = None
     content_url: str | None = None
     payment_types: tuple[str, ...] = ()
-    permits: tuple[str, ...] = ()
+    permits: tuple[str, ...] | None = None
     prohibits: tuple[str, ...] = ()
     standard_urls: tuple[str, ...] = ()
     license_servers: tuple[str, ...] = ()
@@ -291,11 +302,18 @@ def _narrowed(
     return tuple(dict.fromkeys(out))
 
 
-def permits_without(permits: tuple[str, ...], prohibits: tuple[str, ...]) -> tuple[str, ...]:
+def permits_without(
+    permits: tuple[str, ...] | None, prohibits: tuple[str, ...]
+) -> tuple[str, ...] | None:
     """``permits`` minus every usage ``prohibits`` names or covers (RSL 1.0
     s3.1.1: the prohibition takes precedence). A permitted umbrella of which
     only part is prohibited is split into the children still licensed, so
-    ``usage:all`` minus ``usage:ai-train`` is ai-input, ai-index and search."""
+    ``usage:all`` minus ``usage:ai-train`` is ai-input, ai-index and search.
+    A whitelist that loses every entry is ``()``, licensing nothing; no
+    whitelist (``None``) stays ``None``, since ``prohibits`` alone already
+    carries the restriction."""
+    if permits is None:
+        return None
     banned = _Terms(prohibits)
     return _narrowed(
         permits,
@@ -304,9 +322,17 @@ def permits_without(permits: tuple[str, ...], prohibits: tuple[str, ...]) -> tup
     )
 
 
-def permits_in_both(first: tuple[str, ...], second: tuple[str, ...]) -> tuple[str, ...]:
+def permits_in_both(
+    first: tuple[str, ...] | None, second: tuple[str, ...] | None
+) -> tuple[str, ...] | None:
     """What ``first`` and ``second`` both permit, umbrella usages included:
-    ``usage:all`` and ``usage:search`` share only ``usage:search``."""
+    ``usage:all`` and ``usage:search`` share only ``usage:search``, and
+    disjoint whitelists share ``()``, licensing nothing. ``None`` (no
+    whitelist declared) restricts nothing, so it is the identity."""
+    if first is None:
+        return second
+    if second is None:
+        return first
     other = _Terms(second)
     return _narrowed(
         first,
@@ -322,6 +348,7 @@ def _scope_terms(
     charged to ``budget``."""
     payment: list[str] = []
     permits: list[str] = []
+    permits_declared = False
     prohibits: list[str] = []
     standards: list[str] = []
     server = (content.get("server") or "").strip()
@@ -332,6 +359,7 @@ def _scope_terms(
             if kind:
                 payment.append(budget.take("", kind))
         elif name == "permits":
+            permits_declared = True
             permits.extend(_typed_values(el, budget))
         elif name == "prohibits":
             prohibits.extend(_typed_values(el, budget))
@@ -351,7 +379,7 @@ def _scope_terms(
         license_url=license_url,
         content_url=content.get("url"),
         payment_types=tuple(payment),
-        permits=tuple(permits),
+        permits=tuple(permits) if permits_declared else None,
         prohibits=tuple(prohibits),
         standard_urls=tuple(standards),
         license_servers=(server,) if server else (),
