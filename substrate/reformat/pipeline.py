@@ -322,6 +322,47 @@ def _check_research_investigation(
         raise ReformatError(f"research_investigation_not_owned: {investigation_id}")
 
 
+@dataclass(frozen=True, slots=True)
+class _SourceRead:
+    """What the gated read saw: the rights facts the derivative inherits and
+    the body it was generated from. Compared whole at the write."""
+
+    title: str | None
+    content_class: str | None
+    ip_holder_id: str | None
+    full_text: str
+
+
+def _gated_source_read(con: Any, source_document_id: str) -> _SourceRead:
+    """The source through the binding gate, as its owner. Refuses a missing
+    source, a derived source (chains are LB-4b) and a body the gate withholds."""
+    row = con.execute(
+        "SELECT title, content_class, ip_holder_id, document_type, "
+        "json_extract_string(metadata, '$.derived_from_document_id') "
+        "FROM documents WHERE document_id = ? LIMIT 1",
+        [source_document_id],
+    ).fetchone()
+    if row is None:
+        raise ReformatError(f"source document not found: {source_document_id}")
+    if row[3] == "derived" or row[4]:
+        raise ReformatError(
+            "derived_source_unsupported: a reformatted document cannot be "
+            "reformatted again until derivation chains are supported"
+        )
+    served = serve_full_text_guarded(con, source_document_id, owner=True)
+    if served.full_text is None:
+        raise ReformatError(
+            f"the source's body is not served even to its owner "
+            f"({source_document_id}) — nothing to reformat"
+        )
+    return _SourceRead(
+        title=None if row[0] is None else str(row[0]),
+        content_class=None if row[1] is None else str(row[1]),
+        ip_holder_id=None if row[2] is None else str(row[2]),
+        full_text=served.full_text,
+    )
+
+
 def _rights_basis(
     source_document_id: str, source_content_class: str | None, source_ip_holder_id: str | None
 ) -> dict[str, Any]:
@@ -381,38 +422,20 @@ def reformat_document(
     # 1. The gated read — the ONLY way source text enters the pipeline.
     rcon = connect_read(db_path)
     try:
-        source = rcon.execute(
-            "SELECT title, content_class, ip_holder_id, document_type, "
-            "json_extract_string(metadata, '$.derived_from_document_id') "
-            "FROM documents WHERE document_id = ? LIMIT 1",
-            [source_document_id],
-        ).fetchone()
-        if source is None:
-            raise ReformatError(f"source document not found: {source_document_id}")
-        if source[3] == "derived" or source[4]:
-            raise ReformatError(
-                "derived_source_unsupported: a reformatted document cannot be "
-                "reformatted again until derivation chains are supported"
-            )
-        served = serve_full_text_guarded(rcon, source_document_id, owner=True)
-        if served.full_text is None:
-            raise ReformatError(
-                f"the source's body is not served even to its owner "
-                f"({source_document_id}) — nothing to reformat"
-            )
-        if len(normalize_node_text(served.full_text)) > MAX_SOURCE_CHARS:
+        source = _gated_source_read(rcon, source_document_id)
+        if len(normalize_node_text(source.full_text)) > MAX_SOURCE_CHARS:
             raise ReformatError(
                 f"source_too_long: the source exceeds {MAX_SOURCE_CHARS} characters; "
                 "reformat a part of it instead"
             )
-        blocks = _source_blocks(rcon, source_document_id, served.full_text)
+        blocks = _source_blocks(rcon, source_document_id, source.full_text)
         if not blocks:
             raise ReformatError("the served source has no paragraph blocks")
-        source_title = None if source[0] is None else str(source[0])
-        source_content_class = None if source[1] is None else str(source[1])
-        source_ip_holder_id = None if source[2] is None else str(source[2])
     finally:
         rcon.close()
+    source_title = source.title
+    source_content_class = source.content_class
+    source_ip_holder_id = source.ip_holder_id
     rights_basis = _rights_basis(source_document_id, source_content_class, source_ip_holder_id)
 
     # 2. Generate, one bounded call per window (the dispatch path by default).
@@ -526,6 +549,23 @@ def reformat_document(
             raise ReformatError(
                 f"derived document id collision: {derived_document_id} — "
                 "nothing was written"
+            )
+        # The gate again, inside the write. No lock is held while the model
+        # generates, so the source may have been taken down or reclassified
+        # since step 1. Under the single writer a takedown either committed
+        # before this transaction (refused here) or commits after it (and its
+        # propagation finds this derivative), so no derivative is born with a
+        # class its source no longer has.
+        try:
+            current = _gated_source_read(con, source_document_id)
+        except ReformatError as e:
+            raise ReformatError(
+                f"source_changed_during_generation: {e} — nothing was written"
+            ) from e
+        if current != source:
+            raise ReformatError(
+                "source_changed_during_generation: the source's rights or text "
+                "changed while the reformat was generated — nothing was written"
             )
         from substrate.books.model import upsert_book_asset
         from substrate.graph.ops import insert_document

@@ -435,6 +435,31 @@ describe("the island reformat affordance + ask-to-open", () => {
     expect(alert.textContent).toBe("The reformat model isn't available right now. Nothing was generated.");
     expect(useWindows.getState().order).toHaveLength(0);
   });
+
+  it("a source that changed mid-generation is named, and nothing opens", async () => {
+    const server: Server = {
+      posts: [], patches: [], forkReachable: false,
+      fail: {
+        match: "/reformats",
+        status: 422,
+        detail: "source_changed_during_generation: the source's rights or text changed",
+      },
+    };
+    route(server);
+    await renderReader();
+    await screen.findByText("The ope");
+    fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
+    fireEvent.click(await screen.findByRole("button", { name: "Reformat this" }));
+    fireEvent.change(screen.getByLabelText("What should the reformat do?"), {
+      target: { value: "the 20-minute version" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reformat" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      "The source changed while it was being reformatted (a takedown or a new rights class). Nothing was saved.",
+    );
+    expect(useWindows.getState().order).toHaveLength(0);
+  });
 });
 
 // ── Proofs 3 + 5: the review surface ───────────────────────────────────────

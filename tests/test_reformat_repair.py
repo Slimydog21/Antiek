@@ -319,6 +319,62 @@ def test_a_source_reclassification_caps_the_derived_serve(env) -> None:  # noqa:
     assert capped.reason == "source_gated"
 
 
+# The gate holds at the write, not only at the read: no lock is held while the
+# model generates, so the source can be taken down or reclassified in between.
+# Before the recheck, the derivative was born with the source's old class after
+# the takedown's propagation had already run, so search still returned its
+# chunks (GLM review of #3527).
+
+
+def _change_source(db: str, change: str) -> None:
+    from substrate.books.takedown import take_down
+
+    with connect_write(db, purpose="test/mid-generation-change") as con:
+        if change == "takedown":
+            assert take_down(con, "doc-1", reason="removal demand") is True
+        elif change == "reclassification":
+            update_document_gate_columns(
+                con, "doc-1", content_class="restricted_pending_opt_in", set_content_class=True,
+            )
+        else:
+            # Still servable, so the gate alone passes it; the derivative would
+            # still be born with a holder the source no longer names.
+            update_document_gate_columns(
+                con, "doc-1", ip_holder_id="ipholder-new", set_ip_holder_id=True,
+            )
+
+
+@pytest.mark.parametrize("change", ["takedown", "reclassification", "new_holder"])
+def test_a_source_change_during_generation_writes_nothing(env, change) -> None:  # noqa: F811
+    _seed(env["db"], book=True)
+
+    def generate_while_the_source_changes(prompt, blocks, params):
+        _change_source(env["db"], change)
+        return _verbatim_generator(prompt, blocks, params)
+
+    with pytest.raises(ReformatError, match="source_changed_during_generation"):
+        _run(env, generate_fn=generate_while_the_source_changes)
+    con = connect_read(env["db"])
+    try:
+        derived = con.execute(
+            "SELECT count(*) FROM documents "
+            "WHERE json_extract_string(metadata, '$.derived_from_document_id') = 'doc-1'"
+        ).fetchone()[0]
+        chunks = con.execute(
+            "SELECT count(*) FROM chunks WHERE document_id LIKE 'drv-%'"
+        ).fetchone()[0]
+        has_records = con.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'generation_records'"
+        ).fetchone()[0]
+        records = (
+            con.execute("SELECT count(*) FROM generation_records").fetchone()[0]
+            if has_records else 0
+        )
+    finally:
+        con.close()
+    assert (derived, chunks, records) == (0, 0, 0)
+
+
 # ── (g) research ids must be real and the requester's ─────────────────────
 
 

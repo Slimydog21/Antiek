@@ -55,6 +55,9 @@ export function reformatFailureMessage(e: unknown): string {
     if (detail.startsWith("source_too_long")) {
       return "This source is too long to reformat in one go. Reformat a part of it instead.";
     }
+    if (detail.startsWith("source_changed_during_generation")) {
+      return "The source changed while it was being reformatted (a takedown or a new rights class). Nothing was saved.";
+    }
     if (detail.startsWith("derived_source_unsupported")) {
       return "A reformatted version can't be reformatted again yet. Reformat the original.";
     }
