@@ -60,11 +60,43 @@ So the accurate statements are:
 
 - ✅ "Declared typing is strict (`strict = true` in `pyproject.toml`)."
 - ✅ "CI runs `mypy --strict` against a 1684-violation baseline spanning 308 files."
-- ✅ "N files in the declared scope carry zero baselined violations." (measure N
-  before quoting it — the "745" figure has drifted and was never tied to a
-  reproduction command.)
+- ✅ "939 files in the declared scope carry zero baselined violations." (measured
+  2026-09-26 — see method below. The "745" figure is **not reproducible** and
+  should not be quoted.)
 - ❌ "mypy strict clean on 745 backend files." — sounds like a verdict, is a
   subset, and the count is not currently reproducible from a documented command.
+
+## Reproducing the clean-file count
+
+```python
+import json, os
+d = json.load(open('tools/lints/baselines/declared_mypy.json'))
+violating = {x['path'] for x in d['violations']}
+roots = ['substrate','interfaces','runtime','orchestration','tools','acquisition',
+         'processing','middleware','roles','services','infrastructure','benchmarks']
+all_py = set()
+for r in roots:
+    for dp, dns, fns in os.walk(r):
+        dns[:] = [x for x in dns if x not in ('node_modules','.venv','__pycache__','.git','tests')]
+        for f in fns:
+            if f.endswith('.py'):
+                p = os.path.join(dp, f)
+                if '/tests/' not in p and not f.startswith('test_') and not f.endswith('_test.py'):
+                    all_py.add(p)
+print('scope py files:', len(all_py))              # 1223
+print('zero baselined violations:', len(all_py - violating))  # 939
+print('files with violations:', len(violating & all_py))      # 284
+```
+
+Measured 2026-09-26: **1223 scope files, 939 clean, 284 dirty** (plus 24 baselined
+violations in files outside that walk — `violating - all_py` — mostly root-level
+scripts). The earlier "745" figure matches none of these and has no reproduction
+command behind it.
+
+Note the honest caveat: "zero baselined violations" is **not** the same as
+"mypy --strict clean with an empty baseline". It means those files currently
+report nothing the baseline needs to suppress. They could still fail a stricter
+flag set. Quote the number with that framing.
 
 ## Known exemptions
 
