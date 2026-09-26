@@ -16,19 +16,19 @@ import { useLocation, useNavigate, type NavigateOptions } from "react-router-dom
 import { inMode } from "./mothershipForPath";
 
 export function useModePath(): (to: string) => string {
-  const { search } = useLocation();
-  return useCallback((to: string) => inMode(to, search), [search]);
+  const { pathname, search } = useLocation();
+  return useCallback((to: string) => inMode(to, search, pathname), [pathname, search]);
 }
 
 export function useModeNavigate(): (to: string, options?: NavigateOptions) => void {
   const navigate = useNavigate();
-  const { search } = useLocation();
+  const { pathname, search } = useLocation();
   return useCallback(
     (to: string, options?: NavigateOptions) => {
-      const target = inMode(to, search);
+      const target = inMode(to, search, pathname);
       if (options) navigate(target, options);
       else navigate(target);
     },
-    [navigate, search],
+    [navigate, pathname, search],
   );
 }

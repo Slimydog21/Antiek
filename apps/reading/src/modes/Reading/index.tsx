@@ -520,9 +520,27 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
                 {book.title ?? documentId}
               </h1>
             </div>
-            <LemonTag colour={colour} dot>
-              {label}
-            </LemonTag>
+            <div className="flex items-center gap-2 shrink-0">
+              <LemonTag colour={colour} dot>
+                {label}
+              </LemonTag>
+              {/* M2 — the bookmark: a book-level MULTI-TURN talk-to-book
+                  conversation that persists across page navigation (session
+                  state, the usePosition precedent). Answers cite pages →
+                  jumpToPage moves the SPR-07 reader. The SPR-04 selection
+                  FloatMenu Dialogue stays one-shot; THIS is the multi-turn
+                  surface. It sits in the reader's title row, in flow, so it
+                  never covers a line of text; it was fixed to the viewport,
+                  which in a cockpit pane put it over the text and the right
+                  pane (cockpit R2-H4). Its open conversation is placed
+                  against the reader root, inside the pane. */}
+              <TalkToBook
+                documentId={documentId}
+                title={book.title}
+                initialOpen={openTalkOnLoad}
+                onJumpToPage={jumpToPage}
+              />
+            </div>
           </header>
 
           {isArxivLinkBack ? (
@@ -685,18 +703,6 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
         />
       </div>
 
-
-      {/* M2 — the floating bookmark: a book-level MULTI-TURN talk-to-book
-          conversation that persists across page navigation (session state, the
-          usePosition precedent). Answers cite pages → jumpToPage moves the
-          SPR-07 reader. The SPR-04 selection FloatMenu Dialogue stays one-shot;
-          THIS is the new multi-turn surface. */}
-      <TalkToBook
-        documentId={documentId}
-        title={book.title}
-        initialOpen={openTalkOnLoad}
-        onJumpToPage={jumpToPage}
-      />
     </div>
   );
 }

@@ -13,9 +13,11 @@
  * reach a branch at all.
  *
  * Binding spec: THREAD-CONTRACT.md rev 2 §1.6 (storage and addressing) and
- * Part 2 §2.2 (Tab); DESIGN-MODEL.md §2a; DECISIONS.md D6 (sub-branches are
- * "infinitely layered"). Invariants I1–I9 are enumerated at the top of
- * tabTree.property.test.ts.
+ * Part 2 §2.2 (Tab; rev 7 adds `side` and the `agent` origin with
+ * `opened_by`, both here; right-side agent nodes and `active: {left, right}`
+ * are staged until lane B's adapter, see README "§2.2 rev 7"); DESIGN-MODEL.md
+ * §2a; DECISIONS.md D6 (sub-branches are "infinitely layered"). Invariants
+ * I1–I9 are enumerated at the top of tabTree.property.test.ts.
  *
  * Rules this model keeps:
  *  - Pure. Every operation returns a new tree and never mutates its input.
@@ -44,12 +46,24 @@
 
 export type Mothership = "research" | "writing" | "reading";
 
-/** Branch kinds as the UI names them. */
-export type BranchKind = "footnote" | "reference" | "citation" | "island" | "research" | "manual";
+/** Branch kinds as the UI names them. `agent` (§1.6 rev 7): a document an
+ *  agent opened; it requires `opened_by` on the node (S1). */
+export type BranchKind = "footnote" | "reference" | "citation" | "island" | "research" | "manual" | "agent";
 
 /** Branch kinds on the wire. "island" is never a backend or event name
  *  (contract §1.0, R2-1): payloads say "selection". */
-export type WireBranchKind = "footnote" | "reference" | "citation" | "selection" | "research" | "manual";
+export type WireBranchKind = "footnote" | "reference" | "citation" | "selection" | "research" | "manual" | "agent";
+
+/** Which pane a node belongs to (§2.2 rev 7): left = document tabs (the
+ *  core material), right = agent tabs. */
+export type Side = "left" | "right";
+
+/** Who opened an agent-opened node (§2.2 rev 7, S1): required when the
+ *  origin kind is `agent`, never sent otherwise. */
+export interface OpenedBy {
+  thread_id: string;
+  agent_kind: string;
+}
 
 export type TabKind = "reader" | "research" | "document" | "companion" | "thread" | "flags";
 
@@ -90,6 +104,11 @@ export interface TabNode<K extends string = BranchKind> {
   ref: string;
   mothership: Mothership;
   public_number: number | null;
+  /** §2.2 rev 7: every node has a side. A child inherits its parent's; an
+   *  agent-opened document is always left. */
+  side: Side;
+  /** §2.2 rev 7 (S1): present exactly when the origin kind is `agent`. */
+  opened_by?: OpenedBy;
 }
 
 export type CloseMode = "prune" | "lift_children";
@@ -131,7 +150,10 @@ export type TabTreeErrorCode =
   | "already_numbered"
   | "not_closed_by_token"
   | "no_children"
-  | "invalid_snapshot";
+  | "invalid_snapshot"
+  /** §2.2: an `agent` origin without `opened_by` (the server's 422
+   *  tab_origin_invalid), refused before it can reach a PUT. */
+  | "tab_origin_invalid";
 
 export interface TabTreeError {
   code: TabTreeErrorCode;
@@ -149,6 +171,11 @@ export interface SpawnInput {
   /** Focus the new tab. Default true; false for a background spawn, such as
    *  an agent's autonomous branch, which must not steal focus. */
   activate?: boolean;
+  /** The pane (default: the parent's side, else left; always left for an
+   *  agent-opened document). */
+  side?: Side;
+  /** Required with an `agent` origin (§2.2 S1). */
+  opened_by?: OpenedBy;
 }
 
 /** Everything `undo` needs to put one close back. It is plain data, so it can
@@ -265,7 +292,17 @@ export function fromWireKind(kind: WireBranchKind): BranchKind {
   return kind === "selection" ? "island" : kind;
 }
 
-const WIRE_KINDS: ReadonlySet<string> = new Set(["footnote", "reference", "citation", "selection", "research", "manual"]);
+const WIRE_KINDS: ReadonlySet<string> = new Set(["footnote", "reference", "citation", "selection", "research", "manual", "agent"]);
+
+/** An `agent` origin must name who opened it, and only an agent origin may
+ *  (§2.2 S1). Null = valid. */
+function originProblem(kind: string | undefined, openedBy: OpenedBy | undefined): string | null {
+  const named = !!openedBy && typeof openedBy.thread_id === "string" && openedBy.thread_id.trim() !== ""
+    && typeof openedBy.agent_kind === "string" && openedBy.agent_kind.trim() !== "";
+  if (kind === "agent" && !named) return "an agent-opened tab needs opened_by {thread_id, agent_kind}";
+  if (kind !== "agent" && openedBy !== undefined) return "opened_by is only for an agent-opened tab";
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Construction and queries
@@ -363,6 +400,8 @@ export function spawnChild(
   if (isKnown(tree, input.tab_id)) return fail("duplicate_tab_id", `tab_id ${input.tab_id} already exists`);
   const parent = parentId === null ? undefined : openNode(tree, parentId);
   if (parentId !== null && !parent) return fail("tab_not_open", `parent ${parentId} is not open`);
+  const originBad = originProblem(input.origin?.kind, input.opened_by);
+  if (originBad) return fail("tab_origin_invalid", originBad);
 
   const index = nextIndex(tree, parentId);
   const hier = parent ? `${parent.hier_number}.${index}` : String(index);
@@ -376,6 +415,9 @@ export function spawnChild(
     ref: input.ref,
     mothership: input.mothership,
     public_number: null,
+    // An agent-opened document is always left (§2.2 rev 7).
+    side: input.origin?.kind === "agent" ? "left" : (input.side ?? parent?.side ?? "left"),
+    ...(input.opened_by ? { opened_by: { ...input.opened_by } } : {}),
   };
   const nodes: Record<string, TabNode> = { ...tree.nodes, [input.tab_id]: node };
   let next: TabTree;
@@ -794,12 +836,16 @@ export interface RetiredNumber {
   public_number: number | null;
 }
 
+/** A node on the wire. `side` is always sent; a row written before rev 7
+ *  may lack it and reads as left (every pre-rev-7 node was a document tab). */
+export type WireTabNode = Omit<TabNode<WireBranchKind>, "side"> & { side?: Side };
+
 /** The `tree` JSON on the wire: branch kinds use wire names ("selection"). */
 export interface WireTabTree {
   mothership: Mothership;
-  nodes: Record<string, TabNode<WireBranchKind>>;
+  nodes: Record<string, WireTabNode>;
   root_order: string[];
-  history: Record<string, ClosedTab<WireBranchKind>>;
+  history: Record<string, { node: WireTabNode; close_id: string }>;
   next_root_index: number;
   next_child_index: Record<string, number>;
 }
@@ -815,6 +861,11 @@ function mapOrigin<A extends string, B extends string>(node: TabNode<A>, f: (k: 
   const { branch_origin, ...rest } = node;
   if (!branch_origin) return rest as TabNode<B>;
   return { ...rest, branch_origin: { ...branch_origin, kind: f(branch_origin.kind) } };
+}
+
+/** A wire node as a model node: a legacy row without `side` reads as left. */
+function fromWireNode(node: WireTabNode): TabNode {
+  return mapOrigin({ ...node, side: node.side === "right" ? "right" : "left" }, fromWireKind);
 }
 
 export function retiredNumbers(tree: TabTree): RetiredNumber[] {
@@ -867,13 +918,18 @@ export function fromSnapshot(snapshot: TabTreeSnapshot): TabTreeResult<{ tree: T
     if (n.branch_origin && !WIRE_KINDS.has(n.branch_origin.kind)) {
       problems.push(`${n.tab_id}: unknown branch kind ${JSON.stringify(n.branch_origin.kind)}`);
     }
+    if (n.side !== undefined && n.side !== "left" && n.side !== "right") {
+      problems.push(`${n.tab_id}: unknown side ${JSON.stringify(n.side)}`);
+    }
+    const originBad = originProblem(n.branch_origin?.kind, n.opened_by);
+    if (originBad) problems.push(`${n.tab_id}: ${originBad}`);
   }
   if (problems.length > 0) return fail("invalid_snapshot", problems.join("; "));
 
   const nodes: Record<string, TabNode> = {};
-  for (const id of Object.keys(w.nodes)) nodes[id] = mapOrigin(w.nodes[id], fromWireKind);
+  for (const id of Object.keys(w.nodes)) nodes[id] = fromWireNode(w.nodes[id]);
   const history: Record<string, ClosedTab> = {};
-  for (const id of Object.keys(w.history)) history[id] = { ...w.history[id], node: mapOrigin(w.history[id].node, fromWireKind) };
+  for (const id of Object.keys(w.history)) history[id] = { ...w.history[id], node: fromWireNode(w.history[id].node) };
   const tree: TabTree = {
     mothership: w.mothership,
     nodes,

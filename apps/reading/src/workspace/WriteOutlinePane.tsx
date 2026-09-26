@@ -17,7 +17,7 @@
  * A drop whose payload is not a source document is refused in words, and
  * nothing is assigned (parseSourceDragPayload).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 
 import { EmptyState, ErrorState, LoadingState } from "../components/states";
@@ -29,6 +29,7 @@ import {
   type OutlineBlockView,
 } from "../modes/Write/writeApi";
 import { useBlockSources } from "./blockSources";
+import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
 import { useWriteOutline } from "./writeOutlineStore";
 import { SOURCE_DOCUMENT_MIME } from "./sourceDrag";
 
@@ -138,6 +139,7 @@ export default function WriteOutlinePane() {
   );
   const active = flat.find((f) => f.block.outline_block_id === activeBlockId) ?? null;
 
+
   if (!deliverableId) {
     return (
       <section aria-label="Outline" data-write-outline className="flex h-full flex-col p-3">
@@ -163,59 +165,29 @@ export default function WriteOutlinePane() {
         </div>
       ) : null}
       {status === "ready" && flat.length > 0 ? (
-      <div
-        role="tablist"
-        aria-label="Outline blocks"
-        className="flex items-center gap-1 shrink-0 overflow-x-auto border-b border-hairline px-1.5 py-1"
-      >
-        {flat.map(({ section, block }) => {
-          const assigned = assignments[block.outline_block_id] ?? [];
-          const isActive = block.outline_block_id === activeBlockId;
-          return (
-            <button
-              key={block.outline_block_id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              data-block-tab={block.outline_block_id}
-              onClick={() => setActiveBlock(block.outline_block_id)}
-              onDragOver={(e) => {
-                if (e.dataTransfer.types.includes(SOURCE_DOCUMENT_MIME)) e.preventDefault();
-              }}
-              onDrop={(e) => {
-                const raw = e.dataTransfer.getData(SOURCE_DOCUMENT_MIME);
-                if (!raw) return;
-                e.preventDefault();
-                const payload = parseSourceDragPayload(raw);
-                if (!payload) {
-                  setRefusedDrop(true);
-                  return;
-                }
-                setRefusedDrop(false);
-                assign(deliverableId, block.outline_block_id, payload);
-                setActiveBlock(block.outline_block_id);
-              }}
-              className={`flex max-w-[150px] items-center gap-1 rounded px-1.5 py-0.5 text-xs ${
-                isActive
-                  ? "bg-ice-2 text-ink dark:bg-charcoal-1 dark:text-bright"
-                  : "text-ink-soft hover:bg-ice-2 dark:text-moonlight dark:hover:bg-charcoal-1"
-              }`}
-              title={`${section.title ?? "section"} · drop a source document to assign it`}
-            >
-              <span className="truncate">{blockDisplayText(block)}</span>
-              {assigned.length > 0 ? (
-                <span className="shrink-0 font-mono text-sun-deep" aria-label={`${assigned.length} assigned sources`}>
-                  ·{assigned.length}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
+        <BlockStrip
+          flat={flat}
+          activeBlockId={activeBlockId}
+          assignments={assignments}
+          onActivate={setActiveBlock}
+          onDropSource={(blockId, payload) => {
+            if (!payload) {
+              setRefusedDrop(true);
+              return;
+            }
+            setRefusedDrop(false);
+            assign(deliverableId, blockId, payload);
+            setActiveBlock(blockId);
+          }}
+        />
       ) : null}
       {refusedDrop ? <DropRefusedNote onDismiss={() => setRefusedDrop(false)} /> : null}
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div
+        className="min-h-0 flex-1 overflow-auto"
+        id={BLOCK_PANEL_DOM_ID}
+        {...(active ? { role: "tabpanel", "aria-labelledby": blockTabDomId(active.block.outline_block_id) } : {})}
+      >
         {status === "loading" ? null : status === "failed" ? (
           <div className="p-3">
             <ErrorState
@@ -248,6 +220,224 @@ export default function WriteOutlinePane() {
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * The block tab strip. It speaks the other strips' overflow language
+ * (R2-M1): it scrolls sideways at the pane width, with edge fades on the
+ * sides it continues and a count of the blocks out of view that lists them
+ * all; and it keeps the ARIA tabs pattern (roving tabIndex, arrow / Home /
+ * End, aria-controls). Its own component so the overflow hook measures a
+ * scroller that exists from its first render.
+ */
+function BlockStrip({
+  flat,
+  activeBlockId,
+  assignments,
+  onActivate,
+  onDropSource,
+}: {
+  flat: { section: SectionResponse; block: OutlineBlockView }[];
+  activeBlockId: string | null;
+  assignments: Record<string, { document_id: string; document_title: string | null }[]>;
+  onActivate: (id: string) => void;
+  onDropSource: (blockId: string, payload: SourceDocumentDragPayload | null) => void;
+}) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const blockKey = useMemo(() => flat.map((f) => f.block.outline_block_id).join("\u0000"), [flat]);
+  const overflow = useStripOverflow(scroller, [blockKey, assignments]);
+  const hidden = overflow.hiddenBefore + overflow.hiddenAfter;
+  // The tab in the tab order (roving tabIndex): the active block, else the first.
+  const rovingId = flat.some((f) => f.block.outline_block_id === activeBlockId)
+    ? activeBlockId
+    : (flat[0]?.block.outline_block_id ?? null);
+
+  // The active block scrolls into view (a key, the menu, a drop).
+  useEffect(() => {
+    if (!activeBlockId) return;
+    document.getElementById(blockTabDomId(activeBlockId))?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [activeBlockId]);
+
+  /** Select a block and put the focus on its tab (the arrow keys, the menu). */
+  const selectAndFocus = (id: string) => {
+    onActivate(id);
+    document.getElementById(blockTabDomId(id))?.focus();
+  };
+
+  return (
+    <div data-block-strip-row className="flex items-center gap-1 shrink-0 min-w-0 border-b border-hairline px-1.5 py-1">
+      <div className="relative flex-1 min-w-0">
+        <div
+          ref={scroller}
+          role="tablist"
+          aria-label="Outline blocks"
+          aria-orientation="horizontal"
+          onWheel={scrollStripOnWheel}
+          onKeyDown={(e) => {
+            // The ARIA tabs pattern, automatic activation: a block card swaps
+            // in place, so the arrow keys select as they move.
+            if (e.ctrlKey || e.metaKey || e.altKey || flat.length === 0) return;
+            const i = Math.max(0, flat.findIndex((f) => f.block.outline_block_id === activeBlockId));
+            let next: number | null = null;
+            if (e.key === "ArrowRight") next = (i + 1) % flat.length;
+            else if (e.key === "ArrowLeft") next = (i - 1 + flat.length) % flat.length;
+            else if (e.key === "Home") next = 0;
+            else if (e.key === "End") next = flat.length - 1;
+            if (next === null) return;
+            e.preventDefault();
+            selectAndFocus(flat[next].block.outline_block_id);
+          }}
+          className="flex items-center gap-1 min-w-0 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {flat.map(({ section, block }) => {
+            const assigned = assignments[block.outline_block_id] ?? [];
+            const isActive = block.outline_block_id === activeBlockId;
+            return (
+              <button
+                key={block.outline_block_id}
+                type="button"
+                role="tab"
+                id={blockTabDomId(block.outline_block_id)}
+                aria-selected={isActive}
+                aria-controls={BLOCK_PANEL_DOM_ID}
+                tabIndex={block.outline_block_id === rovingId ? 0 : -1}
+                data-block-tab={block.outline_block_id}
+                onClick={() => onActivate(block.outline_block_id)}
+                onDragOver={(e) => {
+                  if (e.dataTransfer.types.includes(SOURCE_DOCUMENT_MIME)) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  const raw = e.dataTransfer.getData(SOURCE_DOCUMENT_MIME);
+                  if (!raw) return;
+                  e.preventDefault();
+                  onDropSource(block.outline_block_id, parseSourceDragPayload(raw));
+                }}
+                className={`flex shrink-0 max-w-[150px] items-center gap-1 rounded px-1.5 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sun ${
+                  isActive
+                    ? "bg-ice-2 text-ink dark:bg-charcoal-1 dark:text-bright"
+                    : "text-ink-soft hover:bg-ice-2 dark:text-moonlight dark:hover:bg-charcoal-1"
+                }`}
+                title={`${section.title ?? "section"} · drop a source document to assign it`}
+              >
+                <span className="truncate">{blockDisplayText(block)}</span>
+                {assigned.length > 0 ? (
+                  <span className="shrink-0 font-mono text-sun-deep" aria-label={`${assigned.length} assigned sources`}>
+                    ·{assigned.length}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        <EdgeFades overflow={overflow} />
+      </div>
+      {overflow.start || overflow.end ? (
+        <BlockOverflowMenu
+          blocks={flat.map((f) => f.block)}
+          hidden={hidden}
+          activeBlockId={activeBlockId}
+          onPick={selectAndFocus}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** The block card the tabs control. */
+const BLOCK_PANEL_DOM_ID = "write-outline-block-panel";
+
+function blockTabDomId(blockId: string): string {
+  return `blocktab-${blockId.replace(/[^A-Za-z0-9-]/g, (c) => `_${c.charCodeAt(0).toString(36)}_`)}`;
+}
+
+/**
+ * The strip's out-of-view count: a quiet "⋯ n" that opens a menu of every
+ * block (the agent strip's overflow menu, in the writing pane). Shown only
+ * while the strip overflows; Esc closes it (a transient overlay: one Esc,
+ * one handler) and returns focus to the trigger.
+ */
+function BlockOverflowMenu({
+  blocks,
+  hidden,
+  activeBlockId,
+  onPick,
+}: {
+  blocks: OutlineBlockView[];
+  hidden: number;
+  activeBlockId: string | null;
+  onPick: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    ref.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus();
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        ref={triggerRef}
+        type="button"
+        data-block-overflow
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`All blocks (${blocks.length}${hidden > 0 ? `, ${hidden} out of view` : ""})`}
+        title="All blocks"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs text-shadow-1 hover:bg-ice-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun dark:text-moonlight dark:hover:bg-charcoal-1"
+      >
+        <span aria-hidden="true">⋯</span>
+        {hidden > 0 ? <span className="font-mono text-xxs tabular-nums">{hidden}</span> : null}
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          aria-label="All blocks"
+          data-esc-overlay=""
+          className="absolute right-0 top-full z-10 mt-1 max-h-[50vh] w-[min(16rem,calc(100vw-2rem))] overflow-y-auto rounded border border-hairline bg-ice-0 py-1 shadow-z2 dark:bg-charcoal-2 dark:shadow-z2-night"
+        >
+          {blocks.map((b) => (
+            <button
+              key={b.outline_block_id}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onPick(b.outline_block_id);
+              }}
+              className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs text-ink hover:bg-ice-2 focus-visible:bg-ice-2 focus-visible:outline-none dark:text-bright dark:hover:bg-charcoal-1 dark:focus-visible:bg-charcoal-1"
+            >
+              <span className="truncate">{blockDisplayText(b)}</span>
+              {b.outline_block_id === activeBlockId ? (
+                <>
+                  <span aria-hidden="true" className="ml-auto text-shadow-1">·</span>
+                  <span className="sr-only">(active)</span>
+                </>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

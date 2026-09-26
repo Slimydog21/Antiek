@@ -4,7 +4,8 @@
  *
  * THE CONTRACT IS THE EVENT SHAPE, not the handler. As of cockpit PR 3 (D6)
  * the handler spawns a LEFT CHILD TAB under the current mothership's tab
- * tree (kind "reader", a "reference" branch origin) — the document opens in
+ * tree (kind "reader"; origin kind "agent" with `opened_by` when an agent
+ * thread opened it, §2.2 rev 7, else "reference") — the document opens in
  * the left document space via the strip's canonical-route navigation, never
  * as a window. PR 2's bridge (open/focus the reader window) is superseded;
  * any later handler (a dock lane, a split) swaps in through
@@ -30,8 +31,12 @@ function revealLeftPane(): void {
 export interface OpenDocumentOrigin {
   /** Where the request was born (e.g. "companion"). Metadata only. */
   from: string;
+  /** The agent's thread. With `agentKind`, the tab is agent-opened. */
   investigationId?: string;
   agentTabId?: string;
+  /** The opening agent's kind (§2.2 `opened_by.agent_kind`: research,
+   *  dialogue, reformat, diligence or island). */
+  agentKind?: string;
 }
 
 export interface OpenDocumentRequest {
@@ -81,9 +86,17 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
       ? childTabId(parentId, "reader", req.documentId)
       : rootTabId({ kind: "reader", ref: req.documentId });
     if (req.documentTitle) setTabTitle("reader", req.documentId, req.documentTitle);
+    // §2.2 rev 7 (S1): an agent-opened document is a LEFT node of origin
+    // kind "agent" carrying opened_by {thread_id, agent_kind}, in the
+    // current mode's tree. A request without a known agent thread (a
+    // surface that is not an agent) stays a plain "reference" branch.
+    const threadId = req.origin.investigationId?.trim();
+    const agentKind = req.origin.agentKind?.trim();
+    const agentOpened = threadId && agentKind ? { thread_id: threadId, agent_kind: agentKind } : null;
     s.spawnTab(mothership, parentId, {
       tab_id: freshTabId(tree, base),
-      origin: { document_id: req.documentId, kind: "reference" },
+      origin: { document_id: req.documentId, kind: agentOpened ? "agent" : "reference" },
+      ...(agentOpened ? { opened_by: agentOpened } : {}),
       kind: "reader",
       ref: req.documentId,
       mothership,

@@ -54,6 +54,13 @@ vi.mock("react-router-dom", async (orig) => ({
   useNavigate: () => navigateMock,
 }));
 
+// Imported statically, after the mocks above (vi.mock is hoisted): the
+// reader's module graph loads while the file is collected. It used to be a
+// dynamic import inside renderReader, so the FIRST test paid the whole load
+// inside its 5 s timeout and timed out under a loaded batch (R2-L1: 1 of 5
+// runs of `readerCockpitB2 cockpit`, "Test timed out in 5000ms" at 5393 ms).
+import BookReader from "./index";
+
 function detail(over: Partial<BookDetail> = {}): BookDetail {
   return {
     document_id: "doc-1",
@@ -94,7 +101,6 @@ function body(): FullTextResponse {
 }
 
 async function renderReader(entry = "/read/doc-1") {
-  const { default: BookReader } = await import("./index");
   const view = render(
     <MemoryRouter initialEntries={[entry]}>
       <Routes>
@@ -254,5 +260,48 @@ describe("B2-7 opening the house slot's book opens a root tab, never a provenanc
     const [to, options] = navigateMock.mock.calls[0] as [string, { state?: Record<string, unknown> } | undefined];
     expect(to).toBe("/read/doc-2?m=research");
     expect(options?.state?.tabBranch).toBeUndefined();
+  });
+});
+
+// ─── R2-H4: the Thought partner lives in the reader, not over its text ────
+//
+// Cockpit repair round 2 (critic H4). The bookmark was `fixed bottom-6
+// right-6`: fixed to the VIEWPORT, so in a cockpit pane (and at md / phone
+// widths, where one pane is the full width) it sat over the reader's text
+// and, at 1280, over the right pane. It now sits in the reader's own chrome
+// (the header row, in flow, so it can never cover a line of text), and the
+// open conversation is positioned against the reader root, inside the pane.
+// The real-browser geometry (no intersection with any text line box at
+// 1440/1280/1024/900/390) is in the stage's render probe.
+
+describe("R2-H4 the Thought partner bookmark sits in the reader's chrome", () => {
+  it("the bookmark is in the reader header, in flow, never fixed to the viewport", async () => {
+    await renderReader();
+    const bookmark = await screen.findByTestId("talk-to-book-bookmark");
+    expect(bookmark.className).not.toMatch(/(^|\s)(fixed|absolute)(\s|$)/);
+    const root = screen.getByTestId("book-reader-root");
+    const header = bookmark.closest("header");
+    expect(header).not.toBeNull();
+    expect(root.contains(header)).toBe(true);
+    // The header is the reader's title row (it holds the book's h1).
+    expect(header!.querySelector("h1")?.textContent).toBe("A Servable Book");
+  });
+
+  it("the open conversation is placed against the reader root, inside the pane", async () => {
+    await renderReader();
+    fireEvent.click(await screen.findByTestId("talk-to-book-bookmark"));
+    const panel = await screen.findByTestId("talk-to-book");
+    expect(panel.className).not.toMatch(/(^|\s)fixed(\s|$)/);
+    expect(panel.className).toMatch(/(^|\s)absolute(\s|$)/);
+    // Its containing block is the reader root (relative), not the viewport:
+    // no positioned element sits between them.
+    const root = screen.getByTestId("book-reader-root");
+    expect(root.className).toMatch(/(^|\s)relative(\s|$)/);
+    let el = panel.parentElement;
+    while (el && el !== root) {
+      expect(el.className).not.toMatch(/(^|\s)(relative|absolute|fixed|sticky)(\s|$)/);
+      el = el.parentElement;
+    }
+    expect(el).toBe(root);
   });
 });

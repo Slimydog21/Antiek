@@ -198,8 +198,12 @@ function SectionCard({
   const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
   const [genResult, setGenResult] = useState<GenerationResult | null>(null);
   const [genError, setGenError] = useState<{ reason: string | null } | null>(null);
-  // The prose loaded into the real editor (M4). null = not yet generated.
-  const [draftContent, setDraftContent] = useState<string | null>(null);
+  // The prose loaded into the real editor (M4). A section that already has
+  // saved prose opens WITH it, editable (cockpit R2-H2: the section tabs are
+  // the primary Write surface, and saved prose that only a regenerate could
+  // reach was an edit the operator could not make). null = nothing saved
+  // yet: the editor waits for Generate.
+  const [draftContent, setDraftContent] = useState<string | null>(() => savedProseHtml(section.prose_text));
   // M3: draft ↔ X-ray toggle. The X-ray reads the PERSISTED prose_provenance.
   const [view, setView] = useState<"draft" | "xray">("draft");
   // The persisted prose + provenance for the X-ray. Seeds from the section
@@ -316,6 +320,10 @@ function SectionCard({
     // The re-fetched value is server truth — reset the autosave baseline so the
     // next edit diffs against it (not a stale local snapshot).
     savedProseRef.current = section.prose_text;
+    // Prose that arrives after mount (a re-fetch) opens the editor when it
+    // has nothing yet. An editor already open keeps its own document: its
+    // edits are newer than any re-fetch, and replacing them would lose them.
+    setDraftContent((current) => current ?? savedProseHtml(section.prose_text));
   }, [section.prose_text, section.prose_provenance]);
 
   async function handleDrop(e: React.DragEvent) {
@@ -739,6 +747,12 @@ function SectionCard({
 function provenanceLabel(b: OutlineBlockView): string {
   if (b.is_user_originated || b.provenance_kind !== "graph_node") return "yours";
   return b.block_kind === "open_question" ? "question" : b.block_kind;
+}
+
+/** Saved prose as the editor's opening document, or null when the section
+ *  has none (whitespace counts as none). */
+function savedProseHtml(prose: string | null | undefined): string | null {
+  return prose && prose.trim() ? proseToEditorHtml(prose) : null;
 }
 
 /** Plain prose → editor HTML (paragraphs). Inline `[b: …]` citations the

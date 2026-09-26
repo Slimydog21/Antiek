@@ -49,6 +49,25 @@ import { COMPANION_PANEL_ID } from "./companionVisibility";
 
 export { COMPANION_PANEL_ID, companionVisible } from "./companionVisibility";
 
+/** The prefix of a book's reading thread id (`read-<documentId>`,
+ *  THREAD-CONTRACT §1.3 spin-research): a research spun from a reader hangs
+ *  under it. */
+const READING_THREAD_PREFIX = "read-";
+
+/**
+ * The document a research thread was born from, read from its provenance:
+ * a research spun from a book is a child of that book's reading thread,
+ * `read-<documentId>`. Null when the thread was not born from a document
+ * (a free question, a daemon find): the pane then offers no "open source
+ * document", never a guessed one.
+ */
+export function sourceDocumentOf(summary: { parent_investigation_id: string | null } | undefined): string | null {
+  const parent = summary?.parent_investigation_id;
+  if (!parent?.startsWith(READING_THREAD_PREFIX)) return null;
+  const documentId = parent.slice(READING_THREAD_PREFIX.length).trim();
+  return documentId || null;
+}
+
 function agentTabId(input: OpenAgentTabInput): string {
   if (input.kind === "research-thread") {
     return `agent:thread:${input.investigationId ?? ""}`;

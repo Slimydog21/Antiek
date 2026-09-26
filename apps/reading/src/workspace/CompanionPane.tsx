@@ -26,8 +26,8 @@ import { EmptyState } from "../components/states";
 import { useInvestigationList } from "../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../lib/api";
 import { AGENT_TAB_KINDS } from "./companionRegistry";
-import { useCompanion } from "./companionStore";
-import type { AgentTabDescriptor } from "./companionStore";
+import { sourceDocumentOf, useCompanion } from "./companionStore";
+import type { AgentTabDescriptor, OpenAgentTabInput } from "./companionStore";
 import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
 
 /** Past this many agents the overflow menu gets a search box: scanning a
@@ -373,7 +373,7 @@ function NewAgentButton({
   onPick,
 }: {
   investigations: InvestigationSummary[];
-  onPick: (input: { kind: "research-thread" | "dialogue"; investigationId?: string; title?: string }) => string;
+  onPick: (input: OpenAgentTabInput) => string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -433,10 +433,14 @@ function NewAgentButton({
               role="menuitem"
               className="w-full px-2 py-1 text-xs text-left text-ink dark:text-bright hover:bg-ice-2 dark:hover:bg-charcoal-1 truncate"
               onClick={() => {
+                // The thread's own source document (its provenance), so its
+                // surface can open that document as a LEFT tab in this mode.
+                const documentId = sourceDocumentOf(inv);
                 onPick({
                   kind: "research-thread",
                   investigationId: inv.investigation_id,
                   title: inv.question ?? undefined,
+                  ...(documentId ? { documentId } : {}),
                 });
                 setOpen(false);
               }}

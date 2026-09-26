@@ -21,8 +21,17 @@ describe("inMode: the one mode-preserving path helper", () => {
   it("leaves a route alone when its own mode already matches, or no mode is pinned", () => {
     expect(inMode("/read/doc-2", "?m=reading")).toBe("/read/doc-2");
     expect(inMode("/inv/child-1", "?m=research")).toBe("/inv/child-1");
+    // Neither a pinned mode nor a page path: nothing to keep.
     expect(inMode("/inv/child-1", "")).toBe("/inv/child-1");
     expect(inMode("/inv/child-1", "?talk=1")).toBe("/inv/child-1");
+  });
+
+  it("without a pinned ?m, the page's own path decides its mode (R2-H1)", () => {
+    // From a reader with no ?m, a research opens in reading, never by
+    // switching the operator into the research tree.
+    expect(inMode("/inv/child-1", "", "/read/origin-of-species")).toBe("/inv/child-1?m=reading");
+    expect(inMode("/inv/child-1", "", "/inv/parent")).toBe("/inv/child-1");
+    expect(inMode("/inv/child-1", "?m=writing", "/read/doc")).toBe("/inv/child-1?m=writing");
   });
 
   it("merges with a query the target already has, and never overrides an explicit ?m", () => {

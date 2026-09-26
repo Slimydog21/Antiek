@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { clampRectToViewport } from "../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import { useViewportTier } from "../workspace/useViewportTier";
 import {
   createMascotStage,
   EmoteView,
@@ -190,6 +191,11 @@ export function MascotStation() {
   const restGaitRef = useRef<(() => void) | null>(null);
 
   const openTree = useWorkspace((s) => s.open);
+  // The station's element changes with the layout: the inset at lg/xl puts
+  // the rail on the left (DECISIONS C2), which replaces the dock's slot. The
+  // seat effect below re-runs on either, so Brain follows at once.
+  const layoutPreset = useWorkspace((s) => s.layoutPreset);
+  const tier = useViewportTier();
   const setMode = useWorkspace((s) => s.setMode);
   const treeExists = useWorkspace((s) =>
     Boolean(s.panels[PROJECT_TREE_PANEL_ID]),
@@ -253,7 +259,7 @@ export function MascotStation() {
     const ro = new ResizeObserver(seat);
     ro.observe(dock);
     return () => ro.disconnect();
-  }, [applyPos]);
+  }, [applyPos, layoutPreset, tier]);
 
   // ── The stroll primitive (shared by directed excursions + return-home). ──
   // Walk Brain to (x,y) over `durationMs`, gait on, position eased. The SINGLE

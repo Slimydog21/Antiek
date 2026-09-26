@@ -105,7 +105,8 @@ import type { ActionId } from "../components/hotkeys/keymap";
 /** Rail axis. `bottom` (default) is the SPR-06 shell layout — a horizontal
  *  rail along the window bottom so the working region above it is full-width
  *  and symmetric (the four edges SPR-07's border needs). `left` is the
- *  original vertical rail, kept for stories + a rollback path. */
+ *  vertical rail: the Omarchy inset preset's left toolbar at lg/xl
+ *  (DECISIONS C2; AppShell picks it), and stories. */
 export type Orientation = "left" | "bottom";
 
 function I({ d, size = 18 }: { d: string; size?: number }) {
@@ -554,6 +555,12 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         >
           {moreButton}
         </nav>
+
+        {/* The mascot's station (the bottom dock's trailing slot, here at
+            the rail's foot): Brain sits in reserved chrome, never over the
+            working area. mt-auto keeps it at the bottom however tall the
+            rail is. */}
+        <span data-mascot-station aria-hidden="true" className="mt-auto mx-auto h-16 w-16 shrink-0" />
       </aside>
 
       <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />

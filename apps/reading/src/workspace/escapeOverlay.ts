@@ -13,7 +13,9 @@
  * An overlay opts in with the attribute (spread ESC_OVERLAY_PROPS on its
  * root); an aria-modal dialog is one by definition. Persistent regions that
  * happen to carry a menu/listbox/dialog role (the style rail, a floating
- * window) are not overlays and do not opt in.
+ * window) are not overlays and do not opt in, with one exception: the
+ * FOCUSED floating workspace panel owns Esc (its Esc closes it), so it opts
+ * in while focused (PanelLayoutPanel, R2-M2).
  */
 export const ESC_OVERLAY_PROPS = { "data-esc-overlay": "" } as const;
 

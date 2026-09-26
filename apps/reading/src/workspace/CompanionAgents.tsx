@@ -5,7 +5,6 @@
  * new entries without restructuring the pane.
  */
 import { useState } from "react";
-import { Link } from "react-router-dom";
 
 import AIActionFailure from "../shared/AIActionFailure";
 import LemonButton from "../components/lemon/LemonButton";
@@ -17,8 +16,9 @@ import {
 } from "../shared/researchState";
 import { thoughtPartnerOnce } from "../components/ai/thoughtPartnerOnce";
 import type { ThoughtPartnerOnceReply } from "../components/ai/thoughtPartnerOnce";
-import type { AgentTabDescriptor } from "./companionStore";
+import { sourceDocumentOf, type AgentTabDescriptor } from "./companionStore";
 import { openDocumentInLeftPane } from "./crossPane";
+import { ModeLink } from "./ModeLink";
 
 export interface AgentSurfaceProps {
   tab: AgentTabDescriptor;
@@ -42,6 +42,7 @@ export function ResearchThreadSurface({ tab, summary }: AgentSurfaceProps) {
     );
   }
   const style = researchStateStyle(summary.status);
+  const documentId = tab.documentId ?? sourceDocumentOf(summary);
   return (
     <div className="p-3 flex flex-col gap-2" data-agent-surface="research-thread">
       <div className="flex items-center gap-2">
@@ -66,24 +67,30 @@ export function ResearchThreadSurface({ tab, summary }: AgentSurfaceProps) {
             : ""}
       </p>
       <div className="flex items-center gap-3 mt-1">
-        <Link
+        {/* Opens in the operator's current mode (ModeLink → inMode): beside
+            a reader the research is /inv/<id>?m=reading, a tab in the
+            reading tree, never a switch into research (R2-H1). */}
+        <ModeLink
           to={`/inv/${encodeURIComponent(summary.investigation_id)}`}
           className="text-xs font-mono text-sun-deep underline-offset-2 hover:underline"
         >
           Open research →
-        </Link>
-        {/* The C4→C5 seam (crossPane.ts): the event shape is the contract;
-            PR 3 swaps the handler for a left-pane tab spawn. Absent when the
-            opening surface never knew the document — never a guessed target. */}
-        {tab.documentId ? (
+        </ModeLink>
+        {/* The C4→C5 seam (crossPane.ts): the agent opens its source
+            document as a LEFT tab in the current mode's tree. The document
+            is the thread's provenance (the opener's, else the thread's own
+            parent reading thread); absent, no affordance, never a guessed
+            target. */}
+        {documentId ? (
           <button
             type="button"
             className="text-xs font-mono text-sun-deep underline-offset-2 hover:underline"
             onClick={() =>
-              openDocumentInLeftPane(tab.documentId!, {
+              openDocumentInLeftPane(documentId, {
                 from: "companion",
                 investigationId: tab.investigationId,
                 agentTabId: tab.id,
+                agentKind: "research",
               })
             }
           >

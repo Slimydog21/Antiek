@@ -12,6 +12,7 @@ import { HotkeyHud } from "./components/hotkeys/HotkeyHud";
 import { PrefixChip } from "./components/hotkeys/PrefixChip";
 import { PanelLayout } from "./workspace/PanelLayout";
 import { useWorkspace } from "./workspace/WorkspaceStore";
+import { useViewportTier } from "./workspace/useViewportTier";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
@@ -98,6 +99,15 @@ export function AppShell({ children }: Props) {
   // per-investigation snapshot back to localStorage debounced at 250 ms.
   useWorkspaceHydration();
 
+  // DECISIONS C2 (operator-confirmed 2026-09-26): the Omarchy inset keeps
+  // the LEFT toolbar visible. Where the inset shows both panes (lg, xl) the
+  // rail is the vertical left rail (NavRail's `left` orientation); the
+  // docked preset keeps the SPR-06 bottom dock, and so do the one-pane tiers
+  // (md, sm), where the bottom dock is the phone design (R2-H3).
+  const layoutPreset = useWorkspace((s) => s.layoutPreset);
+  const tier = useViewportTier();
+  const railLeft = layoutPreset === "omarchy-inset" && (tier === "xl" || tier === "lg");
+
   return (
     // EDGE-RESERVATION SEAM (SPR-06 M3) — the outer frame fills the viewport
     // and reserves the four edges via `--akb-border-inset-*` (tokens.css,
@@ -147,27 +157,33 @@ export function AppShell({ children }: Props) {
           `relative` so it stacks above the absolute z-0 scene. */}
       <div className="relative h-full w-full flex flex-col">
         <Topbar />
-        <div className="relative flex-1 min-h-0 min-w-0">
-          {/* SceneChrome (SPR-04 zone 3) wraps the route view as the
-              main slot: per-workflow action bar + in-scene tabs sit
-              above the surface, while the Zustand panel workspace
-              continues to dock left/right/bottom + float around it.
-              The mode still mounts as a panel exactly as before. */}
-          <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
-          {/* SPR-09 — transparent workspace windows float over the working
-              region + scene (this container is `relative` so the layer's
-              absolute inset-0 anchors here, between Topbar and the NavRail).
-              Its inert coordinate layer remains mounted even when empty.
-              SPR-09's one-line wiring,
-              deferred to the AppShell owner so SPR-09 kept this file untouched. */}
-          <WindowsLayer />
+        {/* The working row: the inset's left rail (C2), then the region. In
+            every other layout the row holds the region alone. */}
+        <div className="relative flex-1 min-h-0 min-w-0 flex">
+          {railLeft ? <NavRail orientation="left" /> : null}
+          <div className="relative flex-1 min-h-0 min-w-0">
+            {/* SceneChrome (SPR-04 zone 3) wraps the route view as the
+                main slot: per-workflow action bar + in-scene tabs sit
+                above the surface, while the Zustand panel workspace
+                continues to dock left/right/bottom + float around it.
+                The mode still mounts as a panel exactly as before. */}
+            <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
+            {/* SPR-09 — transparent workspace windows float over the working
+                region + scene (this container is `relative` so the layer's
+                absolute inset-0 anchors here, between Topbar and the NavRail).
+                Its inert coordinate layer remains mounted even when empty.
+                SPR-09's one-line wiring,
+                deferred to the AppShell owner so SPR-09 kept this file untouched. */}
+            <WindowsLayer />
+          </div>
         </div>
 
         {/* SPR-06 M2 — navigation moved from the LEFT rail to a horizontal
             BOTTOM rail (orientation defaults to "bottom"), freeing the left
             edge so the working region above is full-width + symmetric. Four
-            doors + Search + More, all shortcuts/accent/a11y preserved. */}
-        <NavRail />
+            doors + Search + More, all shortcuts/accent/a11y preserved. The
+            inset at lg/xl takes the left rail instead (C2, above). */}
+        {railLeft ? null : <NavRail />}
       </div>
 
       {/* SPR-12 M3 — the Mascot IS the floating project home. Mounted at shell

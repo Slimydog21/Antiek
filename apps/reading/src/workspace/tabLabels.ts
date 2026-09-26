@@ -43,6 +43,7 @@ const BRANCH_NOUN: Record<BranchKind, string> = {
   island: "Island",
   research: "Research",
   manual: "Branch",
+  agent: "From an agent",
 };
 
 /** The one-word name of a tab's kind (sections read as "Section"). */

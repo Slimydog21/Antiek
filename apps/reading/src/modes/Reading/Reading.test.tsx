@@ -247,9 +247,15 @@ function makeBody(over: Partial<FullTextResponse> = {}): FullTextResponse {
   };
 }
 
+// Imported statically, after the hoisted mocks: a dynamic import inside the
+// render helpers made the FIRST test pay the reader's whole module load
+// inside its 5 s timeout, and under the full suite it timed out, then the
+// next test found the timed-out test's leftover root (cockpit R2-L1, the
+// same class as readerCockpitB2).
+import BookReader from "./index";
+
 async function renderReader(initialEntry = "/read/doc-1") {
   listBooksMock.mockResolvedValue({ books: [], count: 0 });
-  const { default: BookReader } = await import("./index");
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
@@ -261,7 +267,6 @@ async function renderReader(initialEntry = "/read/doc-1") {
 
 async function renderWindowReader(documentId: string) {
   listBooksMock.mockResolvedValue({ books: [], count: 0 });
-  const { default: BookReader } = await import("./index");
   return render(
     <MemoryRouter initialEntries={["/research"]}>
       <WindowHostProvider value={true}>

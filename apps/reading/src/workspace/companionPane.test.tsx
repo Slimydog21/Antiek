@@ -128,9 +128,9 @@ afterEach(() => {
   window.localStorage.removeItem("antiek.workspace.layout-preset");
 });
 
-function mountPane() {
+function mountPane(path = "/") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <CompanionPane />
     </MemoryRouter>,
   );
@@ -262,12 +262,14 @@ describe("the tab strip", () => {
 
   it("the active surface is the shared thread card; close removes the tab", async () => {
     openThreadTab("inv-done");
-    mountPane();
+    // Beside a reader: the research opens in the reading tree (the mode is
+    // kept, R2-H1), never by switching the operator into research.
+    mountPane("/read/origin-of-species");
     await screen.findByText("What breaks on retry?");
     expect(await screen.findByText("done")).toBeTruthy();
     expect(screen.getByText(/found by the loop/)).toBeTruthy();
     expect(screen.getByText(/\$1\.20/)).toBeTruthy();
-    expect(screen.getByText("Open research →").closest("a")!.getAttribute("href")).toBe("/inv/inv-done");
+    expect(screen.getByText("Open research →").closest("a")!.getAttribute("href")).toBe("/inv/inv-done?m=reading");
     fireEvent.click(screen.getByLabelText(/Close What breaks on retry\?/));
     expect(comp().tabs).toHaveLength(0);
     expect(document.querySelector("[data-companion-empty]")).toBeTruthy();
@@ -394,7 +396,10 @@ describe("openDocumentInLeftPane — the seam PR 3 re-handles", () => {
     const tree = useTabTrees.getState().trees[m];
     const tab = tree ? Object.values(tree.nodes).find((n) => n.kind === "reader" && n.ref === "doc-9") : undefined;
     expect(tab).toBeTruthy();
-    expect(tab!.branch_origin?.kind).toBe("reference");
+    // §2.2 rev 7 (S1): the agent's thread opened it.
+    expect(tab!.branch_origin?.kind).toBe("agent");
+    expect(tab!.opened_by).toEqual({ thread_id: "inv-live", agent_kind: "research" });
+    expect(tab!.side).toBe("left");
     expect(useWindows.getState().windows["win:reader:doc-9"]).toBeUndefined();
   });
 

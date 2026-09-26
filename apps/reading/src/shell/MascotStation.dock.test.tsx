@@ -132,3 +132,44 @@ describe("the mascot sits in the dock's reserved station", () => {
     expect(drawnAt(m)).toEqual(dropped);
   });
 });
+
+// Cockpit repair round 2 (H3): the inset preset moves the rail to the left
+// (DECISIONS C2), which REPLACES the station element: the bottom dock's slot
+// unmounts and the left rail's mounts. Brain re-seats on the new station at
+// once, not at the next window resize.
+describe("the mascot follows the station across a layout change", () => {
+  function PresetSlot() {
+    const preset = useWorkspace((s) => s.layoutPreset);
+    const rect = preset === "omarchy-inset"
+      ? { left: 4, top: 700, width: 64, height: 64 }
+      : { left: 1216, top: 736, width: 64, height: 64 };
+    return (
+      <div key={preset}>
+        <span
+          data-mascot-station
+          ref={(el) => {
+            if (el)
+              el.getBoundingClientRect = () =>
+                ({ ...rect, right: rect.left + rect.width, bottom: rect.top + rect.height, x: rect.left, y: rect.top, toJSON: () => ({}) }) as DOMRect;
+          }}
+        />
+      </div>
+    );
+  }
+
+  it("docked → inset: Brain sits on the left rail's station", () => {
+    useWorkspace.getState().setLayoutPreset("docked");
+    render(
+      <MemoryRouter>
+        <PresetSlot />
+        <MascotStation />
+      </MemoryRouter>,
+    );
+    expect(drawnAt(screen.getByTestId("brain-mascot"))).toEqual({ x: 1216, y: 736 });
+    act(() => useWorkspace.getState().setLayoutPreset("omarchy-inset"));
+    expect(drawnAt(screen.getByTestId("brain-mascot"))).toEqual({ x: 4, y: 700 });
+    act(() => useWorkspace.getState().setLayoutPreset("docked"));
+    expect(drawnAt(screen.getByTestId("brain-mascot"))).toEqual({ x: 1216, y: 736 });
+    window.localStorage.removeItem("antiek.workspace.layout-preset");
+  });
+});

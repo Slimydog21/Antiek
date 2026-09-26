@@ -42,6 +42,7 @@ import {
   type TabTreeResult,
   type TabTreeSnapshot,
   type WireBranchKind,
+  type WireTabNode,
 } from "./tabTree";
 
 const M: Mothership = "research";
@@ -390,7 +391,7 @@ describe("depth (D6: 'infinitely layered')", () => {
    *  nodes record, ~1.4 ms per spawn at 5,000 tabs), so this test starts from
    *  a snapshot, which is O(n), and then drives every traversal at depth. */
   function chainSnapshot(depth: number): TabTreeSnapshot {
-    const nodes: Record<string, TabNode<WireBranchKind>> = {};
+    const nodes: Record<string, WireTabNode> = {};
     const next_child_index: Record<string, number> = {};
     let h = "";
     for (let i = 1; i <= depth; i++) {

@@ -382,3 +382,53 @@ describe("Outline — manual /write edit persistence (SPR-02)", () => {
     expect(screen.queryByText(/^Saved\b/i)).toBeNull();
   });
 });
+
+// Cockpit repair round 2 (critic H2): a section's SAVED prose is the draft.
+// The section tabs are the primary Write surface, so a section that already
+// has prose must open in the editor with that prose, editable, without a
+// "Generate draft" that would overwrite it.
+describe("Outline — saved prose opens in the editor (cockpit R2-H2)", () => {
+  it("a section whose prose_text is saved shows it in the editor without Generate", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    const { container } = render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section({ block_count: 1, prose_text: "Saved sentence.\n\nA second saved paragraph.", prose_provenance: {} })]}
+        onChanged={vi.fn()}
+      />,
+    );
+    await screen.findByText("Capital intensity rises with scale");
+    await waitFor(() => expect(container.querySelector(".ProseMirror")).toBeTruthy());
+    const pm = container.querySelector(".ProseMirror")!;
+    expect(pm.textContent).toContain("Saved sentence.");
+    expect(pm.querySelectorAll("p")).toHaveLength(2);
+    expect(generateSectionMock).not.toHaveBeenCalled();
+  });
+
+  it("an edit to the loaded prose persists against the saved baseline", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section({ block_count: 1, prose_text: "Saved sentence.", prose_provenance: {} })]}
+        onChanged={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(editorHolder.current).toBeTruthy());
+    updateSectionProseMock.mockClear();
+    await typeInEditor(" Edited on load.");
+    await waitFor(() => expect(updateSectionProseMock).toHaveBeenCalled(), { timeout: 3000 });
+    const [, req] = updateSectionProseMock.mock.calls.at(-1)!;
+    expect((req as { prose_text: string }).prose_text).toContain("Edited on load.");
+    expect((req as { original_text?: string }).original_text).toBe("Saved sentence.");
+  });
+
+  it("a section with no saved prose still waits for Generate (no empty editor)", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    const { container } = render(
+      <Outline deliverableId="dlv-1" sections={[section({ block_count: 1 })]} onChanged={vi.fn()} />,
+    );
+    await screen.findByText("Capital intensity rises with scale");
+    expect(container.querySelector(".ProseMirror")).toBeNull();
+  });
+});

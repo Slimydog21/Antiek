@@ -200,6 +200,25 @@ Persistence is ONLY through a `TabTreeAdapter` (§1.6: never web storage) —
 the in-memory adapter makes trees session-scoped until lane B's HTTP adapter
 lands (`setTabTreeAdapter` is the seam).
 
+**THREAD-CONTRACT §2.2 rev 7: what is in, what is staged (lane A decision,
+2026-09-27).** In the model now: every node carries `side` (a child inherits
+its parent's; an agent-opened document is always left; a pre-rev-7 row
+without it reads as left), origin kind `agent` with `opened_by {thread_id,
+agent_kind}` (refused as `tab_origin_invalid` without it, in `spawnChild`
+and on load), and the snapshot carries both. An agent in the right pane
+opens its thread's source document (`companionStore.sourceDocumentOf`: the
+thread's `read-<documentId>` parent) as a left `agent` child in the current
+mode's tree (`crossPane.ts`). STAGED until lane B's HTTP adapter exists (no
+GET/PUT/allocate route is wired in this app; there is nothing to write
+right-side nodes or `active: {left, right}` to, or to read `retired[]`
+from): agent tabs as right-side nodes of the per-mode tree, `active:
+{left, right}` in the snapshot, and restore of right-pane tabs from the
+server's `retired[]`. Until then agent tabs live in `companionStore`
+(session-scoped, like the in-memory trees), and prefix+shift+t on the right
+reopens from its local retired list. The swap is one move when the adapter
+lands: agent tabs become `side: "right"` nodes spawned through the same
+`spawnChild`, and `companionStore` becomes a view over them.
+
 ## Write mode (C5, 2026-09-24)
 
 In writing mode the right pane switches from the companion to the outline
