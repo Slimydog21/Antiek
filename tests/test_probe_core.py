@@ -38,6 +38,17 @@ def api_env(tmp_path, monkeypatch):
     from substrate.graph.schema import init_database_at_path
 
     init_database_at_path(str(db))
+
+    # A research_supplemented bite must cite a real investigation (LB-4a):
+    # the fixture generator's citation is a real start event here.
+    from substrate.event_log import log_event
+
+    log_event(
+        "inv-dil-1",
+        "investigation.start_requested",
+        payload={"question": "the diligence behind the research-added bite"},
+        events_dir=str(events),
+    )
     return {"db": str(db), "events": str(events), "arts": str(arts)}
 
 

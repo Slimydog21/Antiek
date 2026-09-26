@@ -27,6 +27,7 @@ no second gating mechanism to drift out of sync.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -136,6 +137,39 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
     taken_down = bool(taken_down)
     status = servability_of(content_class, taken_down=taken_down)
 
+    # A derived document (a reformat) carries its source's words, so its
+    # source's CURRENT gate binds it too: a takedown or reclassification of
+    # the source after the derivative was written reaches it here, at serve
+    # time, never through a class copied once (LB-4a).
+    source_id = _derived_source_id(metadata)
+    if source_id is not None and status is not ServabilityStatus.TAKEN_DOWN:
+        cap = _source_chain_status(con, source_id)
+        if _rank(cap) < _rank(status):
+            if cap is ServabilityStatus.TAKEN_DOWN:
+                return ServeResult(
+                    document_id=document_id, found=True, servability=cap,
+                    servable=False, full_text=None, snippet=None,
+                    title=title, author=author, reason="source_taken_down",
+                )
+            if (
+                cap is ServabilityStatus.PERSONAL_READABLE
+                and owner
+                and content_class in PERSONAL_READABLE_CONTENT_CLASSES
+            ):
+                return ServeResult(
+                    document_id=document_id, found=True, servability=cap,
+                    servable=False, full_text=raw_text, snippet=None,
+                    title=title, author=author, reason="owner_personal_reading",
+                    content_format="html" if is_trusted_sanitized(metadata) else "text",
+                )
+            # No snippet either: a bounded snippet of the derivative would
+            # still carry the source's own words past its gate.
+            return ServeResult(
+                document_id=document_id, found=True, servability=cap,
+                servable=False, full_text=None, snippet=None,
+                title=title, author=author, reason="source_gated",
+            )
+
     if status is ServabilityStatus.TAKEN_DOWN:
         # Removal demand honoured absolutely — no body, no snippet. This wins
         # over the owner branch too: a taken-down book is unreadable by anyone.
@@ -187,6 +221,60 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
         servable=False, full_text=None, snippet=_snippet(raw_text),
         title=title, author=author, reason="gated_metadata_only",
     )
+
+
+#: How far a derivative's source chain is followed before failing closed.
+_MAX_DERIVATION_DEPTH = 8
+
+
+def _rank(status: ServabilityStatus) -> int:
+    """Lower is more restrictive: taken down, then gated, then owner-only,
+    then publicly servable."""
+    if status is ServabilityStatus.TAKEN_DOWN:
+        return 0
+    if status is ServabilityStatus.GATED_METADATA_ONLY:
+        return 1
+    if status is ServabilityStatus.PERSONAL_READABLE:
+        return 2
+    return 3
+
+
+def _derived_source_id(metadata: Any) -> str | None:
+    """The source a derived document was made from, when it records one."""
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except ValueError:
+            return None
+    if not isinstance(metadata, dict):
+        return None
+    source = metadata.get("derived_from_document_id")
+    return str(source) if source else None
+
+
+def _source_chain_status(con: Any, document_id: str, depth: int = 0) -> ServabilityStatus:
+    """The most restrictive current status along a derivative's source
+    chain. A missing source, or a chain deeper than the bound, fails closed."""
+    if depth >= _MAX_DERIVATION_DEPTH:
+        return ServabilityStatus.GATED_METADATA_ONLY
+    row = con.execute(
+        """
+        SELECT d.content_class, d.metadata, COALESCE(b.taken_down, FALSE)
+        FROM documents d
+        LEFT JOIN book_assets b ON d.document_id = b.document_id
+        WHERE d.document_id = ?
+        """,
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return ServabilityStatus.GATED_METADATA_ONLY
+    status = servability_of(row[0], taken_down=bool(row[2]))
+    parent = _derived_source_id(row[1])
+    if parent is not None:
+        upstream = _source_chain_status(con, parent, depth + 1)
+        if _rank(upstream) < _rank(status):
+            status = upstream
+    return status
 
 
 def _snippet(raw_text: str | None) -> str | None:

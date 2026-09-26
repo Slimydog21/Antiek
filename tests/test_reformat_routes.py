@@ -32,6 +32,17 @@ def api_env(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", str(arts))
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     init_database_at_path(str(db))
+
+    # A research_supplemented bite must cite a real investigation (LB-4a):
+    # the fixture generator's citation is a real start event here.
+    from substrate.event_log import log_event
+
+    log_event(
+        "inv-dil-1",
+        "investigation.start_requested",
+        payload={"question": "the diligence behind the research-added bite"},
+        events_dir=str(events),
+    )
     return {"db": str(db), "events": str(events), "arts": str(arts)}
 
 
@@ -113,7 +124,8 @@ def test_post_reformat_runs_the_pipeline(api_env, generator_override) -> None:
     assert resp.status_code == 201
     body = resp.json()
     assert body["derived_document_id"].startswith("drv-")
-    assert body["thread_id"] == f"reformat:{body['generation_id']}"
+    # A generation is not an investigation: no thread id is returned (LB-4a).
+    assert "thread_id" not in body
     assert body["contribution_classes"] == [
         "author_verbatim",
         "llm_compressed",

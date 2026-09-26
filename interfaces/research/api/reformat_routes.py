@@ -5,7 +5,9 @@ POST /books/{id}/reformats — run the pipeline (substrate/reformat/
 pipeline.py, the ONLY provenance writer) for the owner: prompt + mode → a
 generation record + the derived document. Owner-scoped per the books.py:140
 convention; the pipeline's own refusals (a gated source, an unclassable
-generation) surface as honest 422s, never fabricated output.
+generation) surface as honest 422s, never fabricated output, and a generator
+that cannot run (no dispatch route, every provider down) is a 503
+``reformat_generator_unavailable``, never a 500.
 
 GET /documents/{id}/provenance — the generation record + per-bite
 provenance for a DERIVED document (404 for a plain document — no
@@ -25,21 +27,26 @@ from pydantic import BaseModel, Field
 from interfaces.research.api.books import _reader_owner_id, _resolve_db_path
 from substrate.books.page_anchor import page_index_from_section_path
 from substrate.provenance.store import ProvenanceStore
-from substrate.reformat.pipeline import ReformatError, reformat_document
+from substrate.reformat.pipeline import (
+    ReformatError,
+    ReformatUnavailable,
+    reformat_document,
+)
 
 
 class ReformatIn(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
     mode: Literal["time_window", "themes"] = "time_window"
-    model: str | None = None
 
 
 class ReformatOut(BaseModel):
+    """The generation and its derived document. There is no thread id: a
+    generation is not an investigation, and ``reformat:<generation_id>`` is an
+    attribution bucket (THREAD-CONTRACT §1.2), never a thread. The engagement
+    as a thread of kind ``reformat`` is LB-3's."""
+
     generation_id: str
     derived_document_id: str
-    """The generation thread — the engagement that STAYS in the pane (the
-    pipeline's dispatch events carry it)."""
-    thread_id: str
     bite_count: int
     contribution_classes: list[str]
     mostly_generated: bool
@@ -120,15 +127,18 @@ def register_reformat_routes(app: FastAPI) -> None:
                 source_document_id=document_id,
                 prompt=body.prompt,
                 mode=body.mode,
-                model=body.model or "operator-default",
                 generate_fn=_self._generate_fn_override,
+                research_owner_ids=_research_owner_ids(request, owner),
             )
+        except ReformatUnavailable as e:
+            raise HTTPException(
+                status_code=503, detail="reformat_generator_unavailable"
+            ) from e
         except ReformatError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
         return ReformatOut(
             generation_id=result.generation_id,
             derived_document_id=result.derived_document_id,
-            thread_id=f"reformat:{result.generation_id}",
             bite_count=len(result.bite_ids),
             contribution_classes=result.contribution_classes,
             mostly_generated=result.mostly_generated,
@@ -224,6 +234,8 @@ def register_reformat_routes(app: FastAPI) -> None:
                 "source_title": source_title,
                 "prompt": record.prompt,
                 "model": record.model,
+                "provider": record.provider,
+                "cost_usd": record.cost_usd,
                 "params": json_loads(record.params_json),
                 "mostly_generated": record.mostly_generated,
                 "created_at": record.created_at,
@@ -313,6 +325,21 @@ def register_reformat_routes(app: FastAPI) -> None:
             start_scalar=start_scalar,
             end_scalar=end_scalar,
         )
+
+
+def _research_owner_ids(request: Request, reader_owner: str) -> set[str]:
+    """The ids a cited investigation's start event may name for this
+    requester: the reader id, plus the verified-email owner that owner-model
+    launches record (namespace Option A). A request with no verified owner
+    simply contributes nothing extra."""
+    ids = {reader_owner}
+    try:
+        from interfaces.research.api.settings_models_admin import request_owner_user_id
+
+        ids.add(request_owner_user_id(request))
+    except HTTPException:
+        pass
+    return ids
 
 
 def _table(con: Any, name: str) -> bool:

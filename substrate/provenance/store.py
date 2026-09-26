@@ -60,6 +60,13 @@ class GenerationRecordRow:
     params_json: str
     mostly_generated: bool
     created_at: str
+    #: The provider(s) that answered, comma-joined; None for an injected generator.
+    provider: str | None = None
+    #: Every DispatchCall event id behind the text (one per generation window).
+    dispatch_event_ids: tuple[str, ...] = ()
+    cost_usd: float = 0.0
+    #: JSON {core_documents, most_restrictive_class, holder_set} (§1.11a).
+    rights_basis: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +94,10 @@ def _to_generation(r: Any) -> GenerationRecordRow:
         params_json=str(r[6]),
         mostly_generated=bool(r[7]),
         created_at=str(r[8]),
+        provider=None if r[9] is None else str(r[9]),
+        dispatch_event_ids=tuple(json.loads(str(r[10]))) if r[10] else (),
+        cost_usd=float(r[11] or 0.0),
+        rights_basis=None if r[12] is None else str(r[12]),
     )
 
 
@@ -122,7 +133,8 @@ class ProvenanceStore:
         con.execute(
             "INSERT INTO generation_records (generation_id, owner_user_id, "
             "source_document_id, derived_document_id, prompt, model, "
-            "params_json, mostly_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "params_json, mostly_generated, provider, dispatch_event_ids, cost_usd, "
+            "rights_basis) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 record.generation_id,
                 record.owner_user_id,
@@ -132,6 +144,10 @@ class ProvenanceStore:
                 record.model,
                 record.params_json,
                 record.mostly_generated,
+                record.provider,
+                json.dumps(list(record.dispatch_event_ids)),
+                record.cost_usd,
+                record.rights_basis,
             ],
         )
         if bites:
@@ -165,7 +181,8 @@ class ProvenanceStore:
         row = con.execute(
             "SELECT generation_id, owner_user_id, source_document_id, "
             "derived_document_id, prompt, model, params_json, mostly_generated, "
-            "created_at FROM generation_records WHERE generation_id = ? LIMIT 1",
+            "created_at, provider, dispatch_event_ids, cost_usd, rights_basis "
+            "FROM generation_records WHERE generation_id = ? LIMIT 1",
             [generation_id],
         ).fetchone()
         return None if row is None else _to_generation(row)

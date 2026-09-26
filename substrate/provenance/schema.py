@@ -81,6 +81,16 @@ CREATE TABLE IF NOT EXISTS bite_provenance (
 
 CREATE INDEX IF NOT EXISTS idx_bite_provenance_generation
   ON bite_provenance(generation_id, ordinal);
+
+-- LB-4a: the record names the provider and model that actually answered,
+-- every DispatchCall event id, and the summed cost (it stored the literal
+-- "operator-default" before). Added idempotently for databases created from
+-- the first version of this table.
+ALTER TABLE generation_records ADD COLUMN IF NOT EXISTS provider VARCHAR;
+ALTER TABLE generation_records ADD COLUMN IF NOT EXISTS dispatch_event_ids VARCHAR;
+ALTER TABLE generation_records ADD COLUMN IF NOT EXISTS cost_usd DOUBLE DEFAULT 0;
+-- THREAD-CONTRACT §1.11a: {core_documents, most_restrictive_class, holder_set}.
+ALTER TABLE generation_records ADD COLUMN IF NOT EXISTS rights_basis VARCHAR;
 """
 
 

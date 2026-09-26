@@ -230,7 +230,10 @@ def list_book_assets(
     from substrate.constants import SERVABLE_CONTENT_CLASSES
 
     sql = _BOOK_SELECT
-    clauses: list[str] = []
+    # A provisional derivative (a reformat, document_type 'derived') opens in
+    # the reader through its book row but is never library-listed at birth;
+    # promotion is the fork path's job.
+    clauses: list[str] = ["d.document_type IS DISTINCT FROM 'derived'"]
     params: list[Any] = []
     if not include_taken_down:
         clauses.append("b.taken_down = FALSE")

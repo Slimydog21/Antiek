@@ -7,9 +7,10 @@ into deterministic paragraph blocks mapped through the unit-1 anchor-map
 (chunk-relative spans in the normalized scalar space) → generate the
 derived bites through the ONE dispatch path (substrate/dispatch's
 ``dispatch(prompt, role, …)`` — typed DispatchCall events, the operator's
-lineup, the cost ledger) → write the derived document + the generation
-record + EVERY bite's provenance in ONE bounded atomic write scope —
-provenance captured AT WRITE TIME, never reconstructed.
+lineup, the cost ledger), one bounded call per window of blocks → write the
+derived document + the generation record + EVERY bite's provenance in ONE
+bounded atomic write scope — provenance captured AT WRITE TIME, never
+reconstructed.
 
 THE BYTE-VERIFICATION: an author_verbatim bite's normalized text hash must
 EQUAL its source span's — a mismatch is REJECTED and reclassed
@@ -27,13 +28,26 @@ in-place overwrite). The generator itself is the injectable seam (the
 daemon's SpawnFn precedent — mechanics proven with a deterministic fixture
 generator; the real one rides dispatch).
 
-BORN PROVISIONAL: the derived document registers through the rights
-chokepoint (register_source_document, deny-by-default) with the parent's
-content_class inherited — a withheld source's derived asset stays
-owner-only under the same gates — and carries its lineage
-(derived_from_document_id in metadata) + the generation record. It is
-reviewable, never library-blessed at birth ("officially fork" is unit 5's
-promotion path, SPR-02's flow).
+BOUNDED (LB-4a): a source longer than ``MAX_SOURCE_CHARS`` is refused, never
+truncated; the rest is generated in windows of at most ``WINDOW_CHARS`` of
+block text, one dispatch call each, with ``MAX_OUTPUT_TOKENS`` per call. The
+record keeps the provider, model, every DispatchCall event id and the summed
+cost. No per-owner spend cap exists for this path yet (the ACU gate meters
+investigation starts, and the §1.13 daily cap is not built); that is a
+recorded gap, not a silent one.
+
+BORN PROVISIONAL, REGISTERED HONESTLY (LB-4a; THREAD-CONTRACT §1.11a): the
+derived document is the reader view of a derivation. It registers with source
+kind ``derived`` and inherits its core document's content class and IP holder,
+so author words stay attributable and a private reading stays private; its
+trust tier is the lowest, never higher than the source's, because generated
+text is never primary evidence. The generation record binds those facts as
+``rights_basis {core_documents, most_restrictive_class, holder_set}``. A source
+that is itself a derivation is refused: following a derivation chain is
+LB-4b's recursion. It gets a ``book_assets`` row so the reader opens it, and it
+stays out of the library listing while provisional. Serving it applies the
+source's CURRENT gate (``substrate.books.serve``), and a source takedown takes
+it down too (``substrate.books.takedown``).
 
 Audit events are metadata-only (counts and classes — NEVER bite text) on
 the SOURCE document's reading thread (the anchors' _audit precedent).
@@ -43,14 +57,15 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
 from runtime.db_lock import connect_read, connect_write
 from substrate.books.highlights.anchor_map import build_anchor_map
 from substrate.books.serve_guard import serve_full_text_guarded
-from substrate.event_log import log_event
+from substrate.constants import TIER_LOWEST
+from substrate.event_log import log_event, trajectory
 from substrate.feedback.domain import normalize_node_text
 from substrate.provenance.store import (
     BiteRow,
@@ -65,12 +80,31 @@ from substrate.provenance.store import (
 #: reads honestly as mostly generated.
 NOVELTY_CEILING_SHARE = 0.20
 
+#: A source longer than this (normalized served characters) is refused, never
+#: truncated: a reformat that silently drops the end of a book would misstate
+#: what it was made from.
+MAX_SOURCE_CHARS = 400_000
+#: One generation call sees at most this many characters of block text; a
+#: single block longer than this is its own window.
+WINDOW_CHARS = 16_000
+#: The output bound of one generation call.
+MAX_OUTPUT_TOKENS = 4096
+#: A window answering with more bites than this is malformed, not generous.
+MAX_BITES_PER_WINDOW = 200
+
 _WS_PARAGRAPHS = re.compile(r"\n{2,}")
+#: The event-log storage names an investigation id may take (no path parts).
+_SAFE_INVESTIGATION_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}")
 
 
 class ReformatError(RuntimeError):
     """An honest pipeline refusal (a gated source, a malformed generation,
     a bite that can't be classed honestly)."""
+
+
+class ReformatUnavailable(ReformatError):
+    """The generator could not run: no dispatch route for the role, or every
+    provider in the chain failed. Nothing was written."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,10 +142,25 @@ class GeneratedBite:
     investigation_id: str | None = None
 
 
-#: The generator seam (the daemon's SpawnFn precedent): (prompt, blocks,
-#: params) → the bites. The REAL one rides the one dispatch path; tests
+@dataclass(frozen=True, slots=True)
+class GenerationOutput:
+    """One generation call's bites plus who wrote them. The dispatch
+    generator always returns this; an injected generator may return a bare
+    bite list, in which case the record names the injected model."""
+
+    bites: list[GeneratedBite]
+    provider: str | None = None
+    model: str | None = None
+    dispatch_event_id: str | None = None
+    cost_usd: float = 0.0
+
+
+#: The generator seam (the daemon's SpawnFn precedent): (prompt, blocks of one
+#: window, params) → the bites. The REAL one rides the one dispatch path; tests
 #: inject a deterministic fixture generator.
-GenerateFn = Callable[[str, list[SourceBlock], dict[str, Any]], list[GeneratedBite]]
+GenerateFn = Callable[
+    [str, list[SourceBlock], dict[str, Any]], "list[GeneratedBite] | GenerationOutput"
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,12 +212,31 @@ def _source_blocks(con: Any, document_id: str, served_text: str) -> list[SourceB
     return out
 
 
+def _windows(blocks: list[SourceBlock]) -> list[list[SourceBlock]]:
+    """Consecutive blocks grouped so each window carries at most
+    ``WINDOW_CHARS`` of block text (a single longer block stands alone)."""
+    windows: list[list[SourceBlock]] = []
+    current: list[SourceBlock] = []
+    size = 0
+    for block in blocks:
+        if current and size + len(block.text) > WINDOW_CHARS:
+            windows.append(current)
+            current, size = [], 0
+        current.append(block)
+        size += len(block.text)
+    if current:
+        windows.append(current)
+    return windows
+
+
 def _dispatch_generate(
     prompt: str, blocks: list[SourceBlock], params: dict[str, Any]
-) -> list[GeneratedBite]:
-    """The REAL generator: ONE dispatch call (the single entry — the typed
-    DispatchCall event, the lineup, the cost ledger) with a STRICT JSON
-    contract; a malformed generation is an honest refusal, never a guess."""
+) -> GenerationOutput:
+    """The REAL generator: ONE bounded dispatch call per window (the single
+    entry — the typed DispatchCall event, the lineup, the cost ledger) with a
+    STRICT JSON contract. A malformed generation is an honest refusal, never a
+    guess; a missing route or a failed provider chain is ``ReformatUnavailable``."""
+    from substrate.dispatch.base import ProviderError
     from substrate.dispatch.router import dispatch
 
     schema_hint = (
@@ -177,15 +245,20 @@ def _dispatch_generate(
         '"investigation_id": null}]'
     )
     block_listing = "\n".join(f"[{b.index}] {b.text}" for b in blocks)
-    result = dispatch(
-        (
-            f"{prompt}\n\nSource blocks:\n{block_listing}\n\n"
-            f"Return ONLY a JSON array of derived bites in this shape: {schema_hint}"
-        ),
-        "reformat",
-        investigation_id=str(params.get("thread_id") or "reformat-pipeline"),
-        model_override=params.get("model"),
-    )
+    try:
+        result = dispatch(
+            (
+                f"{prompt}\n\nSource blocks:\n{block_listing}\n\n"
+                f"Return ONLY a JSON array of derived bites in this shape: {schema_hint}"
+            ),
+            "reformat",
+            # The generation's attribution bucket (THREAD-CONTRACT §1.2): the
+            # DispatchCall events land under it. It is never a thread id.
+            investigation_id=str(params.get("attribution_bucket") or "reformat-pipeline"),
+            max_tokens=MAX_OUTPUT_TOKENS,
+        )
+    except (KeyError, ProviderError) as e:
+        raise ReformatUnavailable(f"reformat_generator_unavailable: {e}") from e
     try:
         raw = json.loads(result.text)
     except json.JSONDecodeError as e:
@@ -215,7 +288,60 @@ def _dispatch_generate(
                 ),
             )
         )
-    return bites
+    return GenerationOutput(
+        bites=bites,
+        provider=result.provider,
+        model=result.model,
+        dispatch_event_id=result.event_id,
+        cost_usd=float(result.cost_usd),
+    )
+
+
+def _check_research_investigation(
+    investigation_id: str, owner_ids: frozenset[str], events_dir: str | None
+) -> None:
+    """A research_supplemented bite must cite an investigation that exists and
+    is the requester's. A start event that names an owner must name one of
+    ``owner_ids``; a house start that names none is accepted, because owner
+    scoping of investigations is pre-multi-user work (THREAD-CONTRACT §1.15)."""
+    if not _SAFE_INVESTIGATION_ID.fullmatch(investigation_id) or ".." in investigation_id:
+        raise ReformatError(f"research_investigation_invalid: {investigation_id!r}")
+    start = next(
+        (
+            row
+            for row in trajectory(investigation_id, events_dir=events_dir)
+            if row.get("action_type") == "investigation.start_requested"
+        ),
+        None,
+    )
+    if start is None:
+        raise ReformatError(f"research_investigation_unknown: {investigation_id}")
+    payload = start.get("payload")
+    recorded = payload.get("owner_user_id") if isinstance(payload, dict) else None
+    if recorded is not None and str(recorded) not in owner_ids:
+        raise ReformatError(f"research_investigation_not_owned: {investigation_id}")
+
+
+def _rights_basis(
+    source_document_id: str, source_content_class: str | None, source_ip_holder_id: str | None
+) -> dict[str, Any]:
+    """The derivation's rights facts (THREAD-CONTRACT §1.11a). The core set
+    is the one source: a derived source is refused upstream, so there is no
+    chain to fold."""
+    return {
+        "core_documents": [source_document_id],
+        "most_restrictive_class": source_content_class,
+        "holder_set": [source_ip_holder_id] if source_ip_holder_id else [],
+    }
+
+
+def _as_output(produced: list[GeneratedBite] | GenerationOutput) -> GenerationOutput:
+    return produced if isinstance(produced, GenerationOutput) else GenerationOutput(bites=list(produced))
+
+
+def _joined(values: Iterable[str | None]) -> str | None:
+    distinct = sorted({v for v in values if v})
+    return ",".join(distinct) if distinct else None
 
 
 def reformat_document(
@@ -225,51 +351,83 @@ def reformat_document(
     source_document_id: str,
     prompt: str,
     mode: str = "time_window",
-    model: str = "operator-default",
+    model: str = "injected-generator",
     params: dict[str, Any] | None = None,
     generate_fn: GenerateFn | None = None,
     events_dir: str | None = None,
+    research_owner_ids: Iterable[str] | None = None,
 ) -> ReformatResult:
     """Reformat one source document by prompt. THE writer of provenance.
     Never raises on the lawful refusal paths without an honest error class;
-    never touches the source document."""
+    never touches the source document.
+
+    ``model`` names an injected generator that reports no identity of its
+    own; the dispatch generator records the provider and model that actually
+    answered. ``research_owner_ids`` are the requester's ids a cited
+    investigation's start event may name (the route passes both the reader
+    id and the verified-email owner); it defaults to ``owner_user_id``."""
     if not prompt.strip():
         raise ReformatError("an empty prompt reformats nothing")
     if mode not in ("time_window", "themes"):
         raise ReformatError(f"unknown reformat mode: {mode}")
     params = dict(params or {})
     generate = generate_fn or _dispatch_generate
-    # Minted EARLY: the generation's dispatch events carry the thread id
-    # (reformat:{generation_id}) — the engagement that stays in the pane.
+    owner_ids = frozenset(research_owner_ids or ()) | {owner_user_id}
+    # Minted EARLY: the generation's dispatch events land under its
+    # attribution bucket (reformat:{generation_id}), never a thread id.
     generation_id = mint_generation_id()
-    params.setdefault("thread_id", f"reformat:{generation_id}")
+    params.setdefault("attribution_bucket", f"reformat:{generation_id}")
 
     # 1. The gated read — the ONLY way source text enters the pipeline.
     rcon = connect_read(db_path)
     try:
         source = rcon.execute(
-            "SELECT title, content_class FROM documents WHERE document_id = ? LIMIT 1",
+            "SELECT title, content_class, ip_holder_id, document_type, "
+            "json_extract_string(metadata, '$.derived_from_document_id') "
+            "FROM documents WHERE document_id = ? LIMIT 1",
             [source_document_id],
         ).fetchone()
         if source is None:
             raise ReformatError(f"source document not found: {source_document_id}")
+        if source[3] == "derived" or source[4]:
+            raise ReformatError(
+                "derived_source_unsupported: a reformatted document cannot be "
+                "reformatted again until derivation chains are supported"
+            )
         served = serve_full_text_guarded(rcon, source_document_id, owner=True)
         if served.full_text is None:
             raise ReformatError(
                 f"the source's body is not served even to its owner "
                 f"({source_document_id}) — nothing to reformat"
             )
+        if len(normalize_node_text(served.full_text)) > MAX_SOURCE_CHARS:
+            raise ReformatError(
+                f"source_too_long: the source exceeds {MAX_SOURCE_CHARS} characters; "
+                "reformat a part of it instead"
+            )
         blocks = _source_blocks(rcon, source_document_id, served.full_text)
         if not blocks:
             raise ReformatError("the served source has no paragraph blocks")
         source_title = None if source[0] is None else str(source[0])
         source_content_class = None if source[1] is None else str(source[1])
+        source_ip_holder_id = None if source[2] is None else str(source[2])
     finally:
         rcon.close()
+    rights_basis = _rights_basis(source_document_id, source_content_class, source_ip_holder_id)
 
-    # 2. Generate (the dispatch path by default). No lock held across the
-    #    LLM call — the arXiv lesson.
-    bites = generate(prompt, blocks, params)
+    # 2. Generate, one bounded call per window (the dispatch path by default).
+    #    No lock held across the LLM calls — the arXiv lesson.
+    bites: list[GeneratedBite] = []
+    outputs: list[GenerationOutput] = []
+    for window in _windows(blocks):
+        output = _as_output(generate(prompt, window, params))
+        if len(output.bites) > MAX_BITES_PER_WINDOW:
+            raise ReformatError(
+                f"a generation window returned {len(output.bites)} bites "
+                f"(the bound is {MAX_BITES_PER_WINDOW})"
+            )
+        outputs.append(output)
+        bites.extend(output.bites)
 
     # 3. Verify + class honestly, then write in ONE bounded atomic scope.
     by_index = {b.index: b for b in blocks}
@@ -279,6 +437,7 @@ def reformat_document(
     derived_paragraphs: list[str] = []
     reclassed = 0
     null_source = 0
+    checked_investigations: set[str] = set()
     for ordinal, bite in enumerate(bites):
         text = normalize_node_text(bite.text).strip()
         if not text:
@@ -320,6 +479,9 @@ def reformat_document(
                 raise ReformatError(
                     "a research_supplemented bite carries no investigation id"
                 )
+            if bite.investigation_id not in checked_investigations:
+                _check_research_investigation(bite.investigation_id, owner_ids, events_dir)
+                checked_investigations.add(bite.investigation_id)
         else:
             raise ReformatError(f"unknown contribution class: {declared!r}")
 
@@ -346,6 +508,10 @@ def reformat_document(
 
     null_share = null_source / len(out_bites)
     mostly_generated = null_share > NOVELTY_CEILING_SHARE
+    recorded_model = _joined(o.model for o in outputs) or str(params.get("model") or model)
+    recorded_provider = _joined(o.provider for o in outputs)
+    event_ids = tuple(o.dispatch_event_id for o in outputs if o.dispatch_event_id)
+    total_cost = sum(o.cost_usd for o in outputs)
 
     with connect_write(db_path, purpose="reformat/write-derived") as con, con.transaction():
         # The derived id is freshly minted; a row already carrying it is an
@@ -361,23 +527,24 @@ def reformat_document(
                 f"derived document id collision: {derived_document_id} — "
                 "nothing was written"
             )
-        # The derived document: registered through the rights chokepoint
-        # with the parent's rights posture inherited (deny-by-default).
+        from substrate.books.model import upsert_book_asset
         from substrate.graph.ops import insert_document
         from substrate.rights.register import SourceKind, register_source_document
 
         insert_document(
             con,
             document_id=derived_document_id,
-            source_tier=1,
+            source_tier=TIER_LOWEST,
             document_type="derived",
             title=f"{source_title or 'A document'} — reformatted",
             raw_text="\n\n".join(derived_paragraphs),
             content_class=source_content_class,
+            ip_holder_id=source_ip_holder_id,
             owner_user_id=owner_user_id,
             metadata={
                 "derived_from_document_id": source_document_id,
                 "generation_id": generation_id,
+                "source_content_class": source_content_class,
                 "provisional": True,
             },
             on_conflict="error",
@@ -385,9 +552,26 @@ def reformat_document(
         register_source_document(
             con,
             document_id=derived_document_id,
-            source_kind=SourceKind.USER_CONTENT,
+            source_kind=SourceKind.DERIVED,
             content_class=source_content_class,
+            ip_holder_id=source_ip_holder_id,
             run_self_check=False,
+        )
+        # The reader opens a document through its book_assets row; the
+        # listing skips it while it is provisional (substrate.books.model).
+        upsert_book_asset(
+            con,
+            document_id=derived_document_id,
+            page_count=len(out_bites),
+            pagination_scheme="chapter",
+            provenance=(
+                f"reformat generation {generation_id} of {source_document_id} "
+                f"({recorded_provider or 'injected'}/{recorded_model})"
+            ),
+            license_basis=(
+                f"derived from {source_document_id}; inherits its class "
+                f"({source_content_class}) and holder (THREAD-CONTRACT §1.11a)"
+            ),
         )
         # One chunk per bite — the derived document paginates bite-aligned.
         for i, row in enumerate(out_bites):
@@ -411,10 +595,14 @@ def reformat_document(
                 source_document_id=source_document_id,
                 derived_document_id=derived_document_id,
                 prompt=prompt,
-                model=str(params.get("model") or model),
+                model=recorded_model,
                 params_json=json.dumps({"mode": mode, **params}, sort_keys=True),
                 mostly_generated=mostly_generated,
                 created_at="",  # the DDL default stamps it
+                provider=recorded_provider,
+                dispatch_event_ids=event_ids,
+                cost_usd=total_cost,
+                rights_basis=json.dumps(rights_basis, sort_keys=True),
             ),
             bites=out_bites,
         )
