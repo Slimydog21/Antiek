@@ -262,10 +262,17 @@ def _deploy_step() -> dict:
 
 def _deploy_playbook_tasks() -> list[dict]:
     playbook = yaml.safe_load(
-        (ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy.yml").read_text()
+        (ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy_atomic.yml").read_text()
     )
-    substrate_play = next(p for p in playbook if p["name"] == "Antiek substrate — deploy update")
-    return substrate_play["tasks"]
+    substrate_play = next(p for p in playbook if p["hosts"] == "antiek_prod")
+
+    def walk(tasks: list[dict]):
+        for task in tasks:
+            yield task
+            for key in ("block", "rescue", "always"):
+                yield from walk(task.get(key, []))
+
+    return list(walk(substrate_play["pre_tasks"] + substrate_play["tasks"]))
 
 
 def test_deploy_pins_the_exact_sha_verified_by_the_gate():
@@ -277,21 +284,20 @@ def test_deploy_pins_the_exact_sha_verified_by_the_gate():
     assert step["env"]["ANTIEK_TARGET_SHA"] == "${{ needs.gate.outputs.sha }}"
     assert 'antiek_target_sha=$ANTIEK_TARGET_SHA' in step["run"]
 
-    resolve = next(
+    exact = next(
         task for task in _deploy_playbook_tasks()
-        if task["name"] == "resolve the SHA this deploy will pull"
+        if task["name"] == "require an exact 40-hex release identity"
     )
-    assert resolve["when"] == "antiek_target_sha is not defined"
-    set_target = next(
+    assert exact["ansible.builtin.assert"]["that"] == [
+        "antiek_target_sha is defined",
+        "antiek_target_sha | length == 40",
+        "antiek_target_sha is match('^[0-9a-f]{40}$')",
+    ]
+    checkout = next(
         task for task in _deploy_playbook_tasks()
-        if task["name"] == "set antiek_target_sha"
+        if task["name"] == "check out the gated SHA at its final release path"
     )
-    assert set_target["when"] == "antiek_target_sha is not defined"
-    git_pull = next(
-        task for task in _deploy_playbook_tasks()
-        if task["name"] == "git pull"
-    )
-    assert git_pull["ansible.builtin.git"]["version"] == "{{ antiek_target_sha }}"
+    assert checkout["ansible.builtin.git"]["version"] == "{{ antiek_target_sha }}"
 
 
 def _resolve_step_run(env: dict[str, str]) -> subprocess.CompletedProcess:
