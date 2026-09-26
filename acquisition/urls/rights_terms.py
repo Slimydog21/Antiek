@@ -16,12 +16,13 @@ membership, which is why this — and not a per-fetch marketplace — is the
 bridge (``docs/decisions/tollbit-rejected-2026-09-20.md``).
 
 A licence document names its scope: each ``<content url>`` element is the
-licensed asset or collection (an RFC 9309 path pattern, RSL 1.0 s3.3), and
-when several apply to one page the most specific one decides (s3.1.1). So
+licensed asset or collection (an RFC 9309 path pattern, RSL 1.0 s3.3). So
 the document is parsed into one :class:`RightsTerms` per ``<content>``
-(:class:`RslLicence`), never one blend of every element in the file, and a
-page gets the terms of the scope that covers it, or
-``source="rsl_out_of_scope"`` when none does.
+(:class:`RslLicence`), never one blend of every element in the file. When
+several scopes cover one page they are evaluated together (s3.1.1): the
+most specific sets payment and permissions, and every covering scope's
+prohibitions stay. A page no scope covers gets
+``source="rsl_out_of_scope"``.
 
 This module is pure parsing: stdlib only, no I/O, no knowledge of hosts. The
 fetch, the per-origin policy cache and the scope matching (which reuses the
@@ -77,7 +78,12 @@ class RightsTerms:
 
     ``permits`` / ``prohibits`` entries are ``"<type>:<value>"`` strings
     (e.g. ``"usage:all"``, ``"usage:train-ai"``) — the RSL element's ``type``
-    attribute joined to its text, lower-cased. ``payment_types`` are the
+    attribute joined to its text, lower-cased. For a page, ``prohibits``
+    holds the prohibitions of every ``<content>`` scope covering it, and
+    ``permits`` the most specific covering scope's permissions minus those
+    usages (RSL 1.0 s3.1.1: the prohibition takes precedence and the usage
+    is not licensed); every other field is the most specific covering
+    scope's. ``payment_types`` are the
     ``<payment type="...">`` values, lower-cased, in document order.
     ``license_servers`` are the ``<content server="...">`` values: RSL
     License Servers a client MUST obtain a licence from before access, "even
@@ -209,7 +215,9 @@ def parse_rsl_licence(xml_text: str, *, license_url: str | None = None) -> RslLi
     ``source="robots_license_directive"`` (the directive was real; the file
     was not usable) and ``parse_error`` set. Terms outside any ``<content>``
     element belong to no scope and are ignored; a ``<content>`` without a
-    ``url`` is kept with ``content_url=None`` and covers no page.
+    ``url`` is kept with ``content_url=None`` and covers no page, as does
+    one with ``url=""``, which the robots.txt association gives no scope
+    (RSL 1.0 s3.3.1, s4.4).
     """
     degraded_source: TermsSource = "robots_license_directive" if license_url else "none"
     try:

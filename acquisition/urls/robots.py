@@ -37,9 +37,9 @@ Three guarantees, in priority order:
    request per host per window, not one per page. It holds at most
    :data:`MAX_CACHED_ROBOTS_BYTES` of robots.txt and licence text, counting a
    licence when it is loaded after the policy was cached; past that, the
-   least recently used origin is dropped and re-read if it is fetched again
-   (the entry just used is never dropped, so one origin whose files alone
-   exceed the budget is still held, alone). A fetched answer (rules
+   least recently used origin is dropped and re-read if it is fetched again.
+   An origin whose files alone exceed the budget is used by the fetch that
+   read them and not cached. A fetched answer (rules
    applied, or a definitive 4xx) is held for :data:`ROBOTS_CACHE_TTL_S`, the
    24 hours RFC 9309 §2.4 allows, so a publisher who adds a ``Disallow`` is
    honoured by a long-lived API process within a day rather than at its next
@@ -53,11 +53,13 @@ origin, the licence XML is fetched lazily, once per agent token, by
 :meth:`RobotsPolicy.terms_for` and parsed into one
 :class:`acquisition.urls.rights_terms.RightsTerms` per ``<content url>``
 scope — the free machine-readable "gate already dropped" signal this lane
-exists to surface. A page gets the terms of the most specific scope whose
-``url`` pattern covers the URL the fetch ended on (RSL 1.0 s3.1.1, s3.3,
-matched with the robots.txt path matcher below), or
-``source="rsl_out_of_scope"`` when none covers it: a licence for ``/free``
-says nothing about ``/paid``. A cross-origin ``License:`` URL is recorded
+exists to surface. A page gets the terms of every scope whose ``url``
+pattern covers the URL the fetch ended on (RSL 1.0 s3.1.1, s3.3, matched
+with the robots.txt path matcher below): the most specific one's payment and
+permissions, and every covering scope's prohibitions (:func:`terms_covering`).
+When none covers it, and for an empty ``url`` (RSL 1.0 s3.3.1, s4.4), it
+gets ``source="rsl_out_of_scope"``: a licence for ``/free`` says nothing
+about ``/paid``. A cross-origin ``License:`` URL is recorded
 but NOT followed: a robots.txt must not be able to direct the fetcher at an
 arbitrary third host (the SSRF shape the acquisition layer already guards
 against elsewhere).
@@ -83,7 +85,7 @@ import string
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from urllib.parse import urljoin, urlsplit
 
 from acquisition.urls.rights_terms import (
@@ -288,7 +290,7 @@ class RobotsDisallowed(Exception):
         self.user_agent = user_agent
         self.robots_url = robots_url
         super().__init__(
-            f"{robots_url} disallows {url!r} for user agent {user_agent!r}"
+            f"{robots_url} disallows {_redacted(url)!r} for user agent {user_agent!r}"
         )
 
 
@@ -324,10 +326,10 @@ class RobotsPolicy:
     ) -> RightsTerms:
         """The RSL terms ``user_agent`` gets for ``url`` on this origin: the
         licence its selected group names, else the global one (RSL), narrowed
-        to the most specific ``<content>`` scope covering ``url``
-        (:func:`terms_covering`). The licence is fetched at most once per
-        agent token per cached policy, and the policy's cache weight is
-        brought up to date when it is; never raises."""
+        to the ``<content>`` scopes covering ``url`` (:func:`terms_covering`).
+        The licence is fetched at most once per agent token per cached
+        policy, and the policy's cache weight is brought up to date when it
+        is; never raises."""
         if not self.applied:
             return NO_TERMS
         token = user_agent.split("/", 1)[0].strip().lower()
@@ -354,9 +356,22 @@ class RobotsPolicy:
 
 def origin_of(url: str) -> str:
     """``scheme://host[:port]`` (lower-cased) — the cache key and the boundary
-    a ``License:`` URL must stay inside."""
+    a ``License:`` URL must stay inside. Userinfo is dropped: it is not part
+    of an origin (RFC 6454 s4), and a password in it must never become a
+    cache key or reach a log line."""
     parts = urlsplit(url)
-    return f"{parts.scheme.lower()}://{parts.netloc.lower()}"
+    host_port = parts.netloc.rpartition("@")[2]
+    return f"{parts.scheme.lower()}://{host_port.lower()}"
+
+
+def _redacted(url: str) -> str:
+    """``url`` as a log line or a stored reason may carry it:
+    ``scheme://host[:port]/path``, without userinfo, query or fragment,
+    which can hold credentials or tokens."""
+    try:
+        return f"{origin_of(url)}{urlsplit(url).path}"
+    except ValueError:
+        return "<unparseable URL>"
 
 
 def robots_url_for(url: str) -> str:
@@ -419,7 +434,7 @@ def robots_allows(
             "rules never checked",
             origin_of(url),
             MAX_MATCH_COST,
-            url,
+            _redacted(url),
             len(url),
         )
         return False
@@ -448,13 +463,16 @@ def _scope_pattern(content_url: str, origin: str) -> str | None:
     RSL 1.0 s3.3 makes the value "a path conforming to the rules defined in
     [RFC 9309], including the use of wildcards"; an absolute URL is also
     accepted when it names this origin (its path and query are the
-    pattern). An empty value names the scope the licence was associated
-    with (RSL 1.0 s4.6.1), which for a robots.txt ``License:`` is the whole
-    origin: the empty pattern, matching every path at the lowest
-    specificity."""
+    pattern). An empty value covers nothing: RSL 1.0 s3.3.1 lets ``url=""``
+    name "the scope established by that association mechanism" only "when
+    ... permitted by an association mechanism", to be "interpreted only as
+    provided by" it. The HTML link and inline associations permit it
+    (s4.6.1, s4.6.2); the robots.txt ``License:`` association (s4.4), the
+    only one this module reads, does not, so it establishes no page scope
+    and certainly not the whole origin."""
     value = content_url.strip()
     if not value:
-        return ""
+        return None
     parts = urlsplit(value)
     if parts.scheme or parts.netloc:
         if origin_of(value) != origin:
@@ -467,14 +485,30 @@ def _scope_pattern(content_url: str, origin: str) -> str | None:
 def terms_covering(licence: RslLicence, *, origin: str, url: str) -> RightsTerms:
     """The terms ``licence`` (declared on ``origin``) gives the page ``url``.
 
-    ``licence.unscoped`` answers for every page when set. Otherwise the
-    ``<content>`` scope with the most specific pattern that matches ``url``
-    wins (RSL 1.0 s3.1.1; specificity and matching are RFC 9309's, as for an
-    Allow/Disallow rule), the earlier one on a tie. A ``url`` on another
-    origin, or one no scope covers, gets ``source="rsl_out_of_scope"``:
-    nothing is known about that page. Matching is charged against
-    :data:`MAX_MATCH_COST` like a robots decision; a licence too costly to
-    match also answers out of scope, with a ``parse_error`` saying so."""
+    ``licence.unscoped`` answers for every page when set. Otherwise every
+    ``<content>`` scope whose pattern matches ``url`` applies (matching and
+    specificity are RFC 9309's, as for an Allow/Disallow rule), and RSL 1.0
+    s3.1.1 has a processor "evaluate all applicable licensing terms together":
+
+    - A prohibition survives from ANY covering scope, so ``prohibits`` is
+      their union. A prohibition takes precedence over a permission of the
+      same usage, and licences "MUST be interpreted conservatively to avoid
+      the unintended expansion of rights" (s3.1.1), so a narrower scope can
+      set its own price but cannot lift a site-wide ban.
+    - Payment, permissions, licence server, standards and ``content_url``
+      come from the most specific covering scope ("more specific
+      declarations ... MUST take precedence over less specific
+      declarations", s3.1.1), the earlier one on a tie.
+
+    A usage in ``prohibits`` is therefore dropped from ``permits``: when a
+    term both permits and prohibits it, "the prohibition MUST take
+    precedence and the usage MUST be treated as not licensed" (s3.1.1).
+    Payment is not affected: a free narrower scope stays free for the usages
+    it still licenses. A ``url`` on another origin, or one no scope
+    covers, gets ``source="rsl_out_of_scope"``: nothing is known about that
+    page. Matching is charged against :data:`MAX_MATCH_COST` like a robots
+    decision; a licence too costly to match also answers out of scope, with
+    a ``parse_error`` saying so."""
     if licence.unscoped is not None:
         return licence.unscoped
     out_of_scope = RightsTerms(source="rsl_out_of_scope", license_url=licence.license_url)
@@ -482,8 +516,7 @@ def terms_covering(licence: RslLicence, *, origin: str, url: str) -> RightsTerms
         return out_of_scope
     target = _match_target(url)
     budget = _MatchBudget(MAX_MATCH_COST)
-    best: RightsTerms | None = None
-    best_specificity = -1
+    covering: list[tuple[int, RightsTerms]] = []
     try:
         for scope in licence.scopes:
             if scope.content_url is None:
@@ -492,10 +525,8 @@ def terms_covering(licence: RslLicence, *, origin: str, url: str) -> RightsTerms
             if pattern is None:
                 continue
             compiled = _compile_rule(pattern)
-            if compiled.specificity > best_specificity and _rule_matches(
-                compiled, target, budget
-            ):
-                best, best_specificity = scope, compiled.specificity
+            if _rule_matches(compiled, target, budget):
+                covering.append((compiled.specificity, scope))
     except _MatchBudgetExhausted:
         logger.warning(
             "%s: licence %s needs more than %d character comparisons to scope "
@@ -503,14 +534,20 @@ def terms_covering(licence: RslLicence, *, origin: str, url: str) -> RightsTerms
             origin,
             licence.license_url,
             MAX_MATCH_COST,
-            url,
+            _redacted(url),
         )
         return RightsTerms(
             source="rsl_out_of_scope",
             license_url=licence.license_url,
             parse_error="licence scopes too costly to match against this URL",
         )
-    return best if best is not None else out_of_scope
+    if not covering:
+        return out_of_scope
+    # max() keeps the first of equal keys: the earlier scope wins a tie.
+    _specificity, decisive = max(covering, key=lambda entry: entry[0])
+    prohibits = tuple(dict.fromkeys(p for _s, scope in covering for p in scope.prohibits))
+    permits = tuple(p for p in decisive.permits if p not in prohibits)
+    return replace(decisive, permits=permits, prohibits=prohibits)
 
 
 def _remove_dot_segments(path: str) -> str:
@@ -737,38 +774,52 @@ def _policy_weight(policy: RobotsPolicy) -> int:
     return weight + sum(_licence_weight(licence) for licence in licences)
 
 
-def _evict_over_budget() -> None:
-    """Drop least recently used entries until the cache is back under
-    :data:`MAX_CACHED_ROBOTS_BYTES`, never the most recently used one. The
-    caller holds ``_cache_lock``."""
+def _admit(policy: RobotsPolicy, expiry: float) -> None:
+    """Cache ``policy`` as the most recently used entry and drop least
+    recently used ones until the cache is back under
+    :data:`MAX_CACHED_ROBOTS_BYTES`. A policy that alone weighs more than
+    the whole budget is not cached at all: the fetch that built it still
+    uses it, and the next fetch of its origin reads its files again. So no
+    entry ever exceeds the budget, and an oversized one never flushes the
+    others. The caller holds ``_cache_lock`` and has removed any previous
+    entry for the origin."""
+    weight = _policy_weight(policy)
+    if weight > MAX_CACHED_ROBOTS_BYTES:
+        logger.warning(
+            "%s: robots.txt and licence terms weigh %d, more than the whole "
+            "%d-byte policy cache; used for this fetch, not cached",
+            policy.origin,
+            weight,
+            MAX_CACHED_ROBOTS_BYTES,
+        )
+        return
+    _cache[policy.origin] = (policy, expiry, weight)
     total = sum(entry[2] for entry in _cache.values())
-    while total > MAX_CACHED_ROBOTS_BYTES and len(_cache) > 1:
+    while total > MAX_CACHED_ROBOTS_BYTES:
         total -= _cache.pop(next(iter(_cache)))[2]
 
 
 def _store(origin: str, policy: RobotsPolicy, expiry: float) -> None:
-    """Cache ``policy`` as the most recently used entry, then sweep expired
-    entries and drop least recently used ones until the cache is back under
-    :data:`MAX_CACHED_ROBOTS_BYTES`. The caller holds ``_cache_lock``."""
+    """Replace ``origin``'s entry with ``policy``, sweep expired entries, and
+    admit ``policy`` (:func:`_admit`). The caller holds ``_cache_lock``."""
     _cache.pop(origin, None)
     now = _clock()
     for stale in [key for key, entry in _cache.items() if entry[1] <= now]:
         del _cache[stale]
-    _cache[origin] = (policy, expiry, _policy_weight(policy))
-    _evict_over_budget()
+    _admit(policy, expiry)
 
 
 def _reweigh(policy: RobotsPolicy) -> None:
-    """Bring ``policy``'s cache weight up to date after a licence was loaded
-    into it, make it the most recently used entry, and evict to budget. A
-    policy no longer in the cache (evicted or replaced) is left alone."""
+    """Re-admit ``policy`` at its current weight after a licence was loaded
+    into it (:func:`_admit`), which also makes it the most recently used
+    entry, or drops it if it now outweighs the whole cache. A policy no
+    longer in the cache (evicted or replaced) is left alone."""
     with _cache_lock:
         entry = _cache.get(policy.origin)
         if entry is None or entry[0] is not policy:
             return
         del _cache[policy.origin]
-        _cache[policy.origin] = (policy, entry[1], _policy_weight(policy))
-        _evict_over_budget()
+        _admit(policy, entry[1])
 
 
 def robots_policy_for(
@@ -861,19 +912,19 @@ def _robots_redirect_refusal(
     is refused, which also bounds the nesting."""
     parts = urlsplit(target)
     if parts.scheme not in ("http", "https") or not parts.netloc:
-        return f"robots.txt redirected to {target!r}, not an http(s) URL; not followed"
+        return f"robots.txt redirected to {_redacted(target)!r}, not an http(s) URL; not followed"
     destination = origin_of(target)
     if destination == origin or parts.path == "/robots.txt":
         return None
     if destination in resolving or len(resolving) > MAX_ROBOTS_REDIRECTS:
         return (
-            f"robots.txt redirected to {target}, whose origin's robots.txt is "
+            f"robots.txt redirected to {_redacted(target)}, whose origin's robots.txt is "
             "itself being resolved; not followed"
         )
     policy = _policy_for(target, fetch_text, user_agent, resolving)
     if not policy.allows(user_agent, target):
         return (
-            f"robots.txt redirected to {target}, which {policy.robots_url} "
+            f"robots.txt redirected to {_redacted(target)}, which {policy.robots_url} "
             f"disallows for {user_agent}; not fetched"
         )
     return None
@@ -983,12 +1034,22 @@ def _load_licence(
         return NO_LICENCE
     try:
         absolute = urljoin(origin + "/", license_url)
+        if "@" in urlsplit(absolute).netloc:
+            # origin_of() drops userinfo, so the origin check below would pass
+            # a same-host URL with credentials. They are never sent, logged
+            # or stored.
+            logger.warning(
+                "%s: robots.txt License: URL carries credentials (%s); not followed",
+                origin,
+                _redacted(absolute),
+            )
+            return _unusable(_redacted(absolute), "licence URL carries credentials; not followed")
         if origin_of(absolute) != origin:
             logger.warning(
                 "%s: robots.txt License: directive points off-origin (%s); recorded, "
                 "not followed",
                 origin,
-                absolute,
+                _redacted(absolute),
             )
             return _unusable(absolute, "cross-origin licence URL not followed")
     except ValueError as exc:
@@ -997,7 +1058,7 @@ def _load_licence(
         logger.warning(
             "%s: robots.txt disallows its licence URL (%s); recorded, not fetched",
             origin,
-            absolute,
+            _redacted(absolute),
         )
         return _unusable(absolute, "licence URL is disallowed by robots.txt; not fetched")
     try:
@@ -1010,9 +1071,11 @@ def _load_licence(
         logger.warning(
             "%s: licence URL redirected off-origin to %s; recorded, not used",
             origin,
-            final_url,
+            _redacted(final_url),
         )
-        return _unusable(absolute, f"licence URL redirected off-origin to {final_url}; not used")
+        return _unusable(
+            absolute, f"licence URL redirected off-origin to {_redacted(final_url)}; not used"
+        )
     if status >= 400:
         return _unusable(absolute, f"licence returned HTTP {status}")
     size = len(text.encode("utf-8"))

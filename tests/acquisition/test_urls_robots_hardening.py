@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 
 import httpx
@@ -412,7 +413,9 @@ def _retained_chars(value: object, seen: set[int] | None = None) -> int:
 def test_the_cache_weight_counts_licence_terms_loaded_after_insertion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(acquisition.urls.robots, "MAX_CACHED_ROBOTS_BYTES", 1024)
+    """One origin's licence fits the budget, two do not: loading the next
+    origin's licence must evict the previous origin."""
+    monkeypatch.setattr(acquisition.urls.robots, "MAX_CACHED_ROBOTS_BYTES", 150_000)
     big = "x" * 100_000
     licence = (
         '<rsl><content url="/"><license>'
@@ -434,7 +437,207 @@ def test_the_cache_weight_counts_licence_terms_loaded_after_insertion(
     weight = sum(entry[2] for entry in cache.values())
     retained = sum(_retained_chars(entry[0]) for entry in cache.values())
     assert weight >= retained, f"cache_weight {weight} < {retained} characters retained"
-    assert weight <= 1024 or len(cache) == 1, (
-        f"{len(cache)} origins cached at weight {weight} over a 1024 budget"
-    )
+    assert weight <= 150_000, f"{len(cache)} origins cached at weight {weight} over a 150000 budget"
     assert cached_origins() == ("https://o2.example",)
+
+
+# --- codex r2: every covering scope, empty url, oversized entry, userinfo ---
+
+
+def test_a_site_wide_prohibition_survives_a_narrower_free_scope() -> None:
+    """RSL 1.0 s3.1.1: all applicable terms are evaluated together, and a
+    prohibition takes precedence. A narrower free scope sets the payment for
+    /free/, but it does not lift the site-wide ban on AI training."""
+    licence = (
+        b'<rsl xmlns="https://rslstandard.org/rsl">'
+        b'<content url="/"><license><prohibits type="usage">ai-train</prohibits>'
+        b'<payment type="purchase"/></license></content>'
+        b'<content url="/free/"><license><payment type="free"/></license></content>'
+        b"</rsl>"
+    )
+    client, _requested = _client(
+        {("a.example", "/robots.txt"): (200, _LICENSED_ROBOTS),
+         ("a.example", "/license.xml"): (200, licence),
+         ("a.example", "/free/essay"): (200, b"<html>free</html>"),
+         ("a.example", "/shop"): (200, b"<html>shop</html>")},
+        {},
+    )
+
+    free = fetch("https://a.example/free/essay", client=client)
+    shop = fetch("https://a.example/shop", client=client)
+
+    assert free.rights_terms.prohibits == ("usage:ai-train",)
+    assert free.rights_terms.payment_types == ("free",)
+    assert free.rights_terms.no_charge is True
+    assert free.rights_terms.content_url == "/free/"
+    assert shop.rights_terms.prohibits == ("usage:ai-train",)
+    assert shop.rights_terms.payment_types == ("purchase",)
+
+
+def test_a_robots_linked_licence_with_an_empty_content_url_grants_nothing() -> None:
+    """RSL 1.0 s3.3.1: ``url=""`` names the association's own scope only where
+    the association mechanism permits it, and the robots.txt association
+    (s4.4) does not. It must not make /paid free."""
+    licence = (
+        b'<rsl xmlns="https://rslstandard.org/rsl">'
+        b'<content url=""><license><payment type="free"/></license></content>'
+        b"</rsl>"
+    )
+    client, _requested = _client(
+        {("a.example", "/robots.txt"): (200, _LICENSED_ROBOTS),
+         ("a.example", "/license.xml"): (200, licence),
+         ("a.example", "/paid"): (200, b"<html>paid</html>")},
+        {},
+    )
+
+    paid = fetch("https://a.example/paid", client=client)
+
+    assert paid.rights_terms.no_charge is False
+    assert paid.rights_terms.payment_types == ()
+    assert paid.rights_terms.source == "rsl_out_of_scope"
+
+
+def test_a_robots_txt_heavier_than_the_whole_cache_is_used_but_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(acquisition.urls.robots, "MAX_CACHED_ROBOTS_BYTES", 1024)
+    agent = "Antiek-Agent/0.1"
+    robots_policy_for("https://small.example/", fetch_text=_serving("", []), user_agent=agent)
+    big_calls: list[str] = []
+
+    policy = robots_policy_for(
+        "https://big.example/", fetch_text=_serving(_MANY_RULES, big_calls), user_agent=agent,
+    )
+
+    assert policy.applied is True
+    assert policy.allows(agent, "https://big.example/private-3/x") is False
+    assert "https://big.example" not in cached_origins()
+    assert "https://small.example" in cached_origins()
+    robots_policy_for("https://big.example/", fetch_text=_serving(_MANY_RULES, big_calls), user_agent=agent)
+    assert big_calls == ["https://big.example/robots.txt"] * 2
+
+
+def test_a_licence_heavier_than_the_whole_cache_serves_its_fetch_but_is_not_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(acquisition.urls.robots, "MAX_CACHED_ROBOTS_BYTES", 1024)
+    licence = (
+        '<rsl><content url="/"><license>'
+        f'<permits type="usage">{"x" * 100_000}</permits>'
+        "</license></content></rsl>"
+    ).encode()
+    client, _requested = _client(
+        {("small.example", "/robots.txt"): (200, b"User-agent: *\nAllow: /\n"),
+         ("small.example", "/page"): (200, b"<html>ok</html>"),
+         ("o0.example", "/robots.txt"): (200, _LICENSED_ROBOTS),
+         ("o0.example", "/license.xml"): (200, licence),
+         ("o0.example", "/page"): (200, b"<html>ok</html>")},
+        {},
+    )
+    fetch("https://small.example/page", client=client)
+
+    page = fetch("https://o0.example/page", client=client)
+
+    assert len(page.rights_terms.permits[0]) > 100_000
+    assert "https://o0.example" not in cached_origins()
+    assert "https://small.example" in cached_origins()
+
+
+_SECRET_LOCATION = "https://alice:probe-pass@b.example/x?token=q-secret"
+
+
+def _leaks(text: str) -> list[str]:
+    return [secret for secret in ("alice", "probe-pass", "q-secret") if secret in text]
+
+
+def _logged(caplog: pytest.LogCaptureFixture, prefix: str = "") -> str:
+    return "\n".join(
+        f"{record.getMessage()} {record.args!r}"
+        for record in caplog.records
+        if record.name.startswith(prefix)
+    )
+
+
+def test_a_robots_txt_redirect_with_credentials_never_records_them(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client, requested = _client(
+        {("b.example", "/robots.txt"): (200, b"User-agent: *\nDisallow: /x\n"),
+         ("a.example", "/page"): (200, b"<html>ok</html>")},
+        {("a.example", "/robots.txt"): _SECRET_LOCATION},
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        page = fetch("https://a.example/page", client=client)
+
+    assert page.status_code == 200
+    assert not any("b.example/x" in url for url in requested)
+    reason = page.robots_fail_open_reason or ""
+    assert "https://b.example/x" in reason
+    assert _leaks(reason) == []
+    assert _leaks(_logged(caplog)) == []
+    assert _leaks(" ".join(cached_origins())) == []
+    assert "https://b.example" in cached_origins()
+
+
+@pytest.mark.parametrize("b_robots", [(404, b""), (200, b"User-agent: *\nDisallow: /x\n")])
+def test_a_page_redirect_with_credentials_never_records_them(
+    caplog: pytest.LogCaptureFixture, b_robots: tuple[int, bytes],
+) -> None:
+    client, _requested = _client(
+        {("a.example", "/robots.txt"): (200, b"User-agent: *\nAllow: /\n"),
+         ("b.example", "/robots.txt"): b_robots,
+         ("b.example", "/x"): (200, b"<html>b</html>")},
+        {("a.example", "/page"): _SECRET_LOCATION},
+    )
+
+    refusal = ""
+    with caplog.at_level(logging.DEBUG):
+        try:
+            page = fetch("https://a.example/page", client=client)
+            refusal = page.robots_fail_open_reason or ""
+        except RobotsDisallowed as exc:
+            refusal = str(exc)
+
+    assert refusal
+    assert _leaks(refusal) == []
+    # Antiek's own records only: when b.example allows /x, the page GET is
+    # sent to the Location as given, and httpx's INFO line for that request
+    # names it. That line is the page fetch, not robots handling.
+    assert _leaks(_logged(caplog, "acquisition")) == []
+    assert _leaks(" ".join(cached_origins())) == []
+
+
+def test_a_licence_url_carrying_credentials_is_not_followed_or_recorded(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client, requested = _client(
+        {("a.example", "/robots.txt"): (
+            200, b"User-agent: *\nAllow: /\nLicense: https://alice:probe-pass@a.example/license.xml\n",
+        ),
+         ("a.example", "/license.xml"): (200, _rsl()),
+         ("a.example", "/page"): (200, b"<html>ok</html>")},
+        {},
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        page = fetch("https://a.example/page", client=client)
+
+    assert not any(url.endswith("/license.xml") for url in requested)
+    assert page.rights_terms.no_charge is False
+    assert "credentials" in (page.rights_terms.parse_error or "")
+    assert _leaks(f"{page.rights_terms.license_url} {page.rights_terms.parse_error}") == []
+    assert _leaks(_logged(caplog)) == []
+
+
+@pytest.mark.parametrize(
+    ("url", "origin"),
+    [
+        ("https://u:p@h:8443/a?b", "https://h:8443"),
+        ("https://alice@H.example/x", "https://h.example"),
+        ("http://u:p@[::1]:8080/", "http://[::1]:8080"),
+        ("https://h.example/a", "https://h.example"),
+    ],
+)
+def test_origin_of_drops_userinfo(url: str, origin: str) -> None:
+    assert acquisition.urls.robots.origin_of(url) == origin

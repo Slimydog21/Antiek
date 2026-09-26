@@ -136,19 +136,64 @@ def test_an_absolute_content_url_covers_only_its_own_origin() -> None:
     assert terms_covering(same, origin=_ORIGIN, url=f"{_ORIGIN}/blog").source == "rsl_out_of_scope"
 
 
-def test_an_empty_content_url_covers_the_whole_origin_least_specifically() -> None:
-    """RSL 1.0 s4.6.1: an empty url names the scope of the association, here
-    the origin whose robots.txt declared the licence."""
+def test_an_empty_content_url_covers_nothing_in_a_robots_linked_licence() -> None:
+    """RSL 1.0 s3.3.1: ``url=""`` names "the scope established by that
+    association mechanism" only when the mechanism permits it; robots.txt
+    (s4.4) does not, so the empty scope covers no page and grants nothing."""
     licence = parse_rsl_licence(
         "<rsl>"
-        '<content url=""><license><payment type="crawl"/></license></content>'
-        '<content url="/free/"><license/></content>'
+        '<content url=""><license><payment type="free"/></license></content>'
+        '<content url="/open/"><license><payment type="attribution"/></license></content>'
         "</rsl>",
         license_url=f"{_ORIGIN}/license.xml",
     )
 
-    assert terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/a").payment_types == ("crawl",)
-    assert terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/free/a").no_charge is True
+    paid = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/paid")
+    assert (paid.source, paid.no_charge, paid.payment_types) == ("rsl_out_of_scope", False, ())
+    assert terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/open/a").payment_types == (
+        "attribution",
+    )
+
+
+def test_every_covering_scope_contributes_its_prohibitions() -> None:
+    """RSL 1.0 s3.1.1: terms are evaluated together; the most specific scope
+    sets payment and permissions, and no covering prohibition is dropped."""
+    licence = parse_rsl_licence(
+        "<rsl>"
+        '<content url="/"><license><prohibits type="usage">ai-train</prohibits>'
+        '<permits type="usage">search</permits></license></content>'
+        '<content url="/free/"><license><permits type="usage">ai-input</permits>'
+        '<prohibits type="usage">ai-index</prohibits><payment type="free"/></license></content>'
+        "</rsl>",
+        license_url=f"{_ORIGIN}/license.xml",
+    )
+
+    free = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/free/a")
+    assert free.content_url == "/free/"
+    assert free.payment_types == ("free",)
+    assert free.permits == ("usage:ai-input",)
+    assert set(free.prohibits) == {"usage:ai-train", "usage:ai-index"}
+    site = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/blog")
+    assert (site.permits, site.prohibits) == (("usage:search",), ("usage:ai-train",))
+
+
+def test_a_narrower_scope_cannot_permit_what_a_covering_scope_prohibits() -> None:
+    """RSL 1.0 s3.1.1: when a term both permits and prohibits a usage, "the
+    prohibition MUST take precedence and the usage MUST be treated as not
+    licensed", so the narrower scope's permission of it is dropped."""
+    licence = parse_rsl_licence(
+        "<rsl>"
+        '<content url="/"><license><prohibits type="usage">ai-train</prohibits>'
+        "</license></content>"
+        '<content url="/free/"><license><permits type="usage">ai-train</permits>'
+        '<permits type="usage">search</permits><payment type="free"/></license></content>'
+        "</rsl>",
+        license_url=f"{_ORIGIN}/license.xml",
+    )
+
+    free = terms_covering(licence, origin=_ORIGIN, url=f"{_ORIGIN}/free/a")
+    assert (free.permits, free.prohibits) == (("usage:search",), ("usage:ai-train",))
+    assert free.payment_types == ("free",)
 
 
 def test_a_malformed_licence_answers_the_same_for_every_page() -> None:
