@@ -142,7 +142,7 @@ const executableModel = {
 };
 
 async function choosePaidModel() {
-  fireEvent.click(screen.getByRole("combobox", { name: "Model for Ask investigation" }).querySelector("button")!);
+  fireEvent.click((await screen.findByRole("combobox", { name: "Model for Ask investigation" })).querySelector("button")!);
   fireEvent.click(await screen.findByRole("option", { name: /Paid Claude/ }));
 }
 afterEach(() => cleanup());
@@ -374,6 +374,36 @@ describe("StartResearch — owner model authority", () => {
     fireEvent.keyDown(screen.getByLabelText("Research question"), { key: "Enter", metaKey: true });
     expect(startInvestigationMock).not.toHaveBeenCalled();
     expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("blocks paid submission while inventory refresh is pending, then restores the selected route", async () => {
+    const inventory = { models: [executableModel], count: 1, stale_registered: [], source: "server" };
+    let resolveRefresh!: (value: typeof inventory) => void;
+    const refresh = new Promise<typeof inventory>((resolve) => { resolveRefresh = resolve; });
+    fetchUserModelsMock
+      .mockResolvedValueOnce(inventory)
+      .mockReturnValueOnce(refresh);
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-after-refresh" });
+
+    await renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Wait for the refreshed owner route." } });
+    fireEvent.click(screen.getByRole("button", { name: "Retry inventory" }));
+    await waitFor(() => expect(fetchUserModelsMock).toHaveBeenCalledTimes(2));
+
+    const ask = screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement;
+    expect(ask.disabled).toBe(true);
+    fireEvent.click(ask);
+    fireEvent.keyDown(screen.getByLabelText("Research question"), { key: "Enter", metaKey: true });
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(0);
+
+    resolveRefresh(inventory);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledTimes(1));
+    expect(startInvestigationMock.mock.calls[0][0].model_choice).toEqual({
+      authority: "user_model", provider_id: "user-paid", model_id: "claude-paid",
+    });
   });
 
   it("surfaces inventory failure and blocks Ask and keyboard submission without an owner", async () => {
