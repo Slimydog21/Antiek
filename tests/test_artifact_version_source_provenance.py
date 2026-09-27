@@ -292,6 +292,55 @@ def test_pending_export_cannot_adopt_surviving_legacy_file(api_env, monkeypatch)
     assert not artifact_version_path_for("source-test", 1).exists()
 
 
+def test_legacy_adoption_loses_to_source_published_after_absence_check(
+    api_env, monkeypatch,
+) -> None:
+    store = ResearchArtifactStore(api_env["db"])
+    source_a = _rendered_source("Surviving pre-ledger legacy source")
+    legacy = artifact_path_for("source-test")
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_bytes(source_a)
+    source_b = _rendered_source("New source published after absent observation")
+    source_b_hash = _sha(source_b)
+    source_b_path = artifact_source_path_for("source-test", source_b_hash)
+    client = _client()
+
+    original_check = ResearchArtifactStore.has_ledger_record
+    observed: list[bool] = []
+
+    def publish_after_absence_check(self, artifact_id):
+        absent = not original_check(self, artifact_id)
+        observed.append(absent)
+        if absent:
+            store.save_source(
+                artifact_id, "investigation-source-binding", "__operator__",
+                source_b_path, source_b,
+            )
+        return not absent
+
+    monkeypatch.setattr(
+        ResearchArtifactStore, "has_ledger_record", publish_after_absence_check,
+    )
+    response = client.post("/artifacts/source-test/render")
+
+    assert observed == [True]
+    assert response.status_code == 404
+    assert response.json() == {"detail": "artifact not found"}
+    record = store.get("source-test")
+    assert record is not None
+    assert record.source_hash == source_b_hash
+    assert record.source_path == source_b_path
+    assert source_b_path.read_bytes() == source_b
+    assert legacy.read_bytes() == source_a
+    assert record.latest_version == 0 and record.selected_style is None
+    with connect_write(api_env["db"], purpose="test/legacy-race-ready") as con:
+        assert con.execute(
+            "SELECT state FROM research_artifacts WHERE artifact_id='source-test'"
+        ).fetchone() == ("ready",)
+    assert store.get_version("source-test", "__operator__") is None
+    assert not artifact_version_path_for("source-test", 1).exists()
+
+
 def test_corrupt_saved_body_is_refused_without_rebinding(api_env) -> None:
     store = ResearchArtifactStore(api_env["db"])
     source_hash = _save(store, "source")
