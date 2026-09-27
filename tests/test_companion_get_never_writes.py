@@ -450,6 +450,28 @@ def test_rekeyed_document_never_serves_the_previous_owners_build(env) -> None:
     assert "page 42" not in _get_html(client, owner="owner-b").text
 
 
+def test_each_owner_keeps_its_own_build(env) -> None:
+    """Builds live side by side per (owner, document): B's refresh never
+    overwrites A's build, so when the document returns to A, A's GET serves
+    A's own build (never B's, never nothing)."""
+    _seed(env["db"], anchor_owner="owner-a", reading_owner="owner-a")
+    client = _client()
+    a_build = _refresh(client, owner="owner-a").json()
+    for new_owner in ("owner-b", "owner-a"):
+        with connect_write(env["db"], purpose="test/rekey") as con:
+            con.execute(
+                "UPDATE documents SET owner_user_id = ? WHERE document_id = 'doc-1'",
+                [new_owner],
+            )
+        if new_owner == "owner-b":
+            assert _refresh(client, owner="owner-b").status_code == 200
+
+    served = _get_json(client, owner="owner-a")
+    assert served.status_code == 200
+    assert served.json() == a_build
+    assert "page 42" in _get_html(client, owner="owner-a").text
+
+
 def test_another_owners_or_a_legacy_export_on_disk_is_never_served(env) -> None:
     """The persisted build is keyed by (owner, document): a build written
     for owner A (and a legacy document-only file) is never what B's GET

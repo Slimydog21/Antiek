@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
@@ -27,6 +26,16 @@ from substrate.event_log import log_event  # noqa: E402
 from tests.test_companion_routes import _seed, _write_thread  # noqa: E402
 
 OWNER = "__operator__"
+
+
+def _export_html(doc: str = "doc-1") -> str:
+    """The persisted export's HTML: the build record keyed by (owner,
+    document) that the companion GET serves."""
+    import json
+
+    from substrate.research_artifact.paths import companion_path_for
+
+    return json.loads(companion_path_for(OWNER, doc).read_text(encoding="utf-8"))["html"]
 
 
 @pytest.fixture
@@ -61,7 +70,7 @@ def test_terminal_event_triggers_rebuild_with_receipt_and_delta(env) -> None:
     _seed(env, "doc-1")
     # The baseline (a manual/API rebuild — SPR-02's path), then the EVENT.
     export_document_companion(env["db"], owner_user_id=OWNER, document_id="doc-1")
-    before = (Path(env["arts"]) / "companions" / "doc-1.html").read_text()
+    before = _export_html()
     assert "working…" in before
 
     # Nothing to consume yet → no rebuild.
@@ -80,7 +89,7 @@ def test_terminal_event_triggers_rebuild_with_receipt_and_delta(env) -> None:
 
     # The companion reflects the delta — the SPR-01 exact-delta contract,
     # now event-driven (zero hand edits).
-    after = (Path(env["arts"]) / "companions" / "doc-1.html").read_text()
+    after = _export_html()
     assert "working…" in before and "done" in after
     assert before != after
 
@@ -255,7 +264,7 @@ def test_write_scopes_are_bounded_and_never_span_the_read_pass(env, monkeypatch)
 def test_poisoned_trajectory_tombstones_its_row_and_the_rebuild_completes(env, monkeypatch) -> None:
     _seed(env, "doc-1")
     export_document_companion(env["db"], owner_user_id=OWNER, document_id="doc-1")
-    before_bytes = (Path(env["arts"]) / "companions" / "doc-1.html").read_bytes()
+    before_bytes = _export_html().encode("utf-8")
     assert before_bytes.startswith(b"<!-- generated: never authored")
 
     # Poison: the LINKED thread's trajectory read RAISES (the knowledge
@@ -298,22 +307,24 @@ def test_poisoned_trajectory_tombstones_its_row_and_the_rebuild_completes(env, m
         con.close()
 
     # The export remains a whole, lawful document (never half-written).
-    after_bytes = (Path(env["arts"]) / "companions" / "doc-1.html").read_bytes()
+    after_bytes = _export_html().encode("utf-8")
     assert after_bytes.startswith(b"<!-- generated: never authored")
     assert b"unreadable" in after_bytes  # the honest poison line
     assert b"</html>" in after_bytes
 
 
 def test_last_good_serving_when_the_rebuild_fails(env, monkeypatch) -> None:
-    """A failed rebuild never serves a half-written companion: the API
-    serves the previous export with the failure named."""
+    """A failed rebuild never serves a half-written companion: the refresh
+    POST names the failure (503, the error type only) and the GET keeps
+    serving the previous export untouched. The GET never rebuilds
+    (THREAD-CONTRACT §1.12), so the failure surfaces on the POST."""
     from fastapi.testclient import TestClient
 
     from interfaces.research.api.app import create_app
 
     _seed(env, "doc-1")
     export_document_companion(env["db"], owner_user_id=OWNER, document_id="doc-1")
-    good_bytes = (Path(env["arts"]) / "companions" / "doc-1.html").read_bytes()
+    good_bytes = _export_html().encode("utf-8")
 
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", env["arts"])
     import substrate.companions.projector as projector
@@ -323,10 +334,16 @@ def test_last_good_serving_when_the_rebuild_fails(env, monkeypatch) -> None:
 
     monkeypatch.setattr(projector, "rebuild_document_full", failing_rebuild)
     client = TestClient(create_app(register_wrestling=False))
+    failed = client.post("/documents/doc-1/companion/refresh")
+    assert failed.status_code == 503
+    assert failed.json() == {
+        "detail": "companion_rebuild_failed",
+        "error_type": "RuntimeError",
+        "has_last_build": True,
+    }
     resp = client.get("/documents/doc-1/companion")
     assert resp.status_code == 200
-    assert resp.headers["x-antiek-serving"] == "last-good"
-    assert resp.headers["x-antiek-rebuild-failed"] == "RuntimeError"
+    assert resp.headers["x-antiek-serving"] == "last-build"
     assert resp.content == good_bytes  # the previous generation, byte-exact
 
 
