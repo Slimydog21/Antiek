@@ -10,7 +10,31 @@ export const SOURCE_UPLOAD_EXTENSIONS = [
   ".odt", ".ods", ".odp", ".rtf", ".csv",
 ] as const;
 
-export type AcquisitionAttestation = "user_owned" | "personal_reading";
+/** The tokens this client may send as `acquisition_attestation`.
+ *
+ * Deliberately excludes the legacy authored token: on an API without the A-06
+ * fix it mints a publicly served class (substrate/books/servability.py maps it
+ * to platform_authored), so sending it for a private draft publishes it.
+ * `user_authored_private` is sent only when the API advertises it (see
+ * loadUploadAttestations). Backend INBOX 2026-09-27T00:40Z. */
+export type AcquisitionAttestation = "personal_reading" | "user_authored_private";
+
+/** What the user chose in the form; mapped to a wire token by attestationToken. */
+export type AttestationChoice = "personal" | "authored";
+
+export const AUTHORED_PRIVATE_TOKEN = "user_authored_private";
+
+const SENDABLE_ATTESTATIONS: ReadonlySet<string> = new Set<AcquisitionAttestation>([
+  "personal_reading",
+  AUTHORED_PRIVATE_TOKEN,
+]);
+
+/** GET /sources/upload/attestations (static; served by an A-06-capable API). */
+export interface UploadAttestationCapability {
+  accepted: string[];
+  authored_default: string | null;
+  aliases: Record<string, string>;
+}
 
 export interface SourceUploadResponse {
   document_id: string;
@@ -26,6 +50,7 @@ export type SourceUploadErrorCode =
   | "unsupported"
   | "book_ceremony"
   | "attestation_conflict"
+  | "authored_unavailable"
   | "conversion_failed"
   | "cancelled"
   | "unavailable";
@@ -53,6 +78,72 @@ function codeForStatus(status: number): SourceUploadErrorCode {
   return "unavailable";
 }
 
+/** True only when the API lists the private authored token. `authored_default`
+ * and `aliases` are deliberately ignored: they are advisory, and following an
+ * alias could lead back to the legacy public class. */
+export function authoredUploadSupported(capability: UploadAttestationCapability | null): boolean {
+  return capability !== null && capability.accepted.includes(AUTHORED_PRIVATE_TOKEN);
+}
+
+/** Map the form choice to the wire token. Authored content maps to
+ * `user_authored_private` or throws `authored_unavailable`; there is no
+ * fallback to a legacy or public class and no inferred publication consent. */
+export function attestationToken(
+  choice: AttestationChoice,
+  capability: UploadAttestationCapability | null,
+): AcquisitionAttestation {
+  if (choice === "personal") return "personal_reading";
+  if (authoredUploadSupported(capability)) return AUTHORED_PRIVATE_TOKEN;
+  throw new SourceUploadError("authored_unavailable");
+}
+
+function parseCapability(raw: unknown): UploadAttestationCapability | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (!Array.isArray(o.accepted) || !o.accepted.every((t) => typeof t === "string")) return null;
+  const aliases: Record<string, string> = {};
+  if (o.aliases && typeof o.aliases === "object") {
+    for (const [k, v] of Object.entries(o.aliases as Record<string, unknown>)) {
+      if (typeof v === "string") aliases[k] = v;
+    }
+  }
+  return {
+    accepted: o.accepted as string[],
+    authored_default: typeof o.authored_default === "string" ? o.authored_default : null,
+    aliases,
+  };
+}
+
+let attestationsPromise: Promise<UploadAttestationCapability | null> | null = null;
+
+/** Fetch the upload capability once per session. Resolves null on a 404 (an
+ * API without the route), any error, or a malformed answer; a null result is
+ * not cached, so a Retry refetches. A successful answer is reused. */
+export function loadUploadAttestations(
+  options: { refresh?: boolean } = {},
+): Promise<UploadAttestationCapability | null> {
+  if (attestationsPromise && !options.refresh) return attestationsPromise;
+  const pending = (async () => {
+    try {
+      const response = await apiFetch(`${API_BASE}/sources/upload/attestations`);
+      if (!response.ok) return null;
+      return parseCapability(await response.json());
+    } catch {
+      return null;
+    }
+  })();
+  attestationsPromise = pending;
+  void pending.then((capability) => {
+    if (capability === null && attestationsPromise === pending) attestationsPromise = null;
+  });
+  return pending;
+}
+
+/** Test seam: forget the cached capability. */
+export function resetUploadAttestationsCache(): void {
+  attestationsPromise = null;
+}
+
 /** The file name without its last extension ("notes.v2.md" -> "notes.v2").
  * Falls back to the whole name when stripping would leave nothing. */
 export function fileStem(name: string): string {
@@ -72,6 +163,10 @@ export async function uploadSource(
   signal?: AbortSignal,
   title?: string,
 ): Promise<SourceUploadResponse> {
+  // Runtime guard behind the type: nothing but a sendable token leaves here.
+  if (!SENDABLE_ATTESTATIONS.has(acquisitionAttestation)) {
+    throw new SourceUploadError("authored_unavailable");
+  }
   const validationError = validateSourceUpload(file);
   if (validationError) throw new SourceUploadError(validationError);
 

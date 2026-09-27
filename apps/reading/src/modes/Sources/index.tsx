@@ -9,11 +9,16 @@ import {
   type SourceKind,
 } from "../../lib/api";
 import {
+  attestationToken,
+  type AttestationChoice,
+  authoredUploadSupported,
   fileStem,
+  loadUploadAttestations,
   SOURCE_UPLOAD_EXTENSIONS,
   SOURCE_UPLOAD_MAX_LABEL,
   SourceUploadError,
   type SourceUploadResponse,
+  type UploadAttestationCapability,
   uploadSource,
   validateSourceUpload,
 } from "../../lib/sourceUploadApi";
@@ -112,12 +117,15 @@ export default function Sources() {
   /** Pre-filled from the file name; sent as the document title (A-04). */
   const [uploadTitle, setUploadTitle] = useState("");
   const [attested, setAttested] = useState(false);
-  /** Bartz attestation → content_class. personal_reading stays the default
-   * (owner-only); user_owned is for content Faisal authored so BookReader
-   * can serve full text + spin without the owner-full-text privilege. */
-  const [uploadAttestation, setUploadAttestation] = useState<
-    "personal_reading" | "user_owned"
-  >("personal_reading");
+  /** Bartz attestation choice. Personal reading stays the default (owner-only).
+   * "Authored" is sent as user_authored_private and is offered ONLY when the
+   * API advertises that token; the legacy authored class is served publicly on
+   * an API without A-06, so there is no fallback to it (backend INBOX
+   * 2026-09-27T00:40Z). */
+  const [uploadChoice, setUploadChoice] = useState<AttestationChoice>("personal");
+  const [capability, setCapability] = useState<UploadAttestationCapability | null>(null);
+  const [capabilityState, setCapabilityState] = useState<"checking" | "ready">("checking");
+  const authoredAvailable = authoredUploadSupported(capability);
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done">("idle");
   const [uploadResult, setUploadResult] = useState<SourceUploadResponse | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -127,12 +135,32 @@ export default function Sources() {
 
   useEffect(() => () => uploadAbortRef.current?.abort(), []);
 
+  const capabilityMounted = useRef(true);
+  useEffect(() => {
+    capabilityMounted.current = true;
+    void checkCapability(false);
+    return () => {
+      capabilityMounted.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function checkCapability(refresh: boolean) {
+    setCapabilityState("checking");
+    const next = await loadUploadAttestations({ refresh });
+    if (!capabilityMounted.current) return;
+    setCapability(next);
+    setCapabilityState("ready");
+    if (!authoredUploadSupported(next)) setUploadChoice("personal");
+  }
+
   const uploadErrorCopy: Record<string, string> = {
     too_large: `Choose a file no larger than ${SOURCE_UPLOAD_MAX_LABEL}.`,
     unsupported: "Choose a supported document type.",
     book_ceremony: "EPUB files use the book acquisition flow.",
     attestation_conflict:
       "This file is already stored under a narrower rights attestation. An upload cannot widen it.",
+    authored_unavailable: "This needs a server update. Try again later.",
     conversion_failed: "This document could not be converted.",
     cancelled: "Upload cancelled. The file was not added.",
     unavailable: "The upload service is unavailable. Try again.",
@@ -145,7 +173,7 @@ export default function Sources() {
     setUploadFile(null);
     setUploadTitle("");
     setAttested(false);
-    setUploadAttestation("personal_reading");
+    setUploadChoice("personal");
     if (!file) return;
     const validationError = validateSourceUpload(file);
     setUploadError(validationError ? uploadErrorCopy[validationError] : null);
@@ -163,7 +191,7 @@ export default function Sources() {
     try {
       const result = await uploadSource(
         uploadFile,
-        uploadAttestation,
+        attestationToken(uploadChoice, capability),
         controller.signal,
         uploadTitle,
       );
@@ -319,22 +347,42 @@ export default function Sources() {
                   <input
                     type="radio"
                     name="upload-attestation"
-                    checked={uploadAttestation === "personal_reading"}
-                    onChange={() => setUploadAttestation("personal_reading")}
+                    checked={uploadChoice === "personal"}
+                    onChange={() => setUploadChoice("personal")}
                     className="mt-0.5"
                   />
                   <span>Personal reading — I lawfully hold this copy for myself. Reader content stays owner-only.</span>
                 </label>
-                <label className="flex cursor-pointer items-start gap-3 text-sm text-ink dark:text-bright">
+                <label className={`flex items-start gap-3 text-sm text-ink dark:text-bright ${authoredAvailable ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
                   <input
                     type="radio"
                     name="upload-attestation"
-                    checked={uploadAttestation === "user_owned"}
-                    onChange={() => setUploadAttestation("user_owned")}
+                    checked={uploadChoice === "authored"}
+                    disabled={!authoredAvailable}
+                    onChange={() => setUploadChoice("authored")}
+                    aria-describedby="authored-availability"
                     className="mt-0.5"
                   />
                   <span>I authored this (notes / drafts) — open it in BookReader with full text, highlight, and spin-research.</span>
                 </label>
+                {!authoredAvailable && (
+                  <div id="authored-availability" className="ml-7 flex flex-wrap items-center gap-3 text-xs text-shadow-1 dark:text-moonlight" role="status">
+                    {capabilityState === "checking" ? (
+                      <span>Checking whether this server accepts authored uploads…</span>
+                    ) : (
+                      <>
+                        <span>This needs a server update. Try again later.</span>
+                        <button
+                          type="button"
+                          onClick={() => void checkCapability(true)}
+                          className="underline focus:outline-none focus-visible:ring-2 focus-visible:ring-sun"
+                        >
+                          Retry
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
                 <label className="flex cursor-pointer items-start gap-3 text-sm text-ink dark:text-bright">
                   <input type="checkbox" checked={attested} onChange={(event) => setAttested(event.target.checked)} className="mt-0.5" />
                   <span>I confirm the attestation above is accurate.</span>
