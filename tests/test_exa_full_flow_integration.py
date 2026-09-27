@@ -142,7 +142,7 @@ def test_spec_6_10_full_flow_discover_promote_ingest_idempotent(
     # something to work with. Monkeypatch the URL adapter's fetch()
     # rather than passing http_client through (promote_discovery
     # doesn't expose http_client today).
-    def stub_url_fetch(url, *, client=None):
+    def stub_url_fetch(url, *, client=None, purpose=None):
         from acquisition.urls.client import FetchedHtml
         # Generate ~200 words of HTML so word_count clears MIN_INGEST_WORD_COUNT.
         body = b"<html><body><h1>The Article</h1><p>" + (
@@ -262,7 +262,7 @@ def test_spec_6_10_re_promote_via_different_query_still_idempotent(
             sleep=lambda _s: None,
         )
 
-    def stub_fetch(url, *, client=None):
+    def stub_fetch(url, *, client=None, purpose=None):
         from acquisition.urls.client import FetchedHtml
         body = b"<html><body>" + b"hello world " * 100 + b"</body></html>"
         return FetchedHtml(

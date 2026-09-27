@@ -56,6 +56,17 @@ def artifact_source_path_for(artifact_id: str, content_hash: str) -> Path:
     )
 
 
+def companion_path_for(document_id: str) -> Path:
+    """The per-document companion's export path (companions SPR-02): beside
+    the research artifacts, under the same validated-id + bounded-read
+    conventions."""
+    return (
+        research_artifacts_dir()
+        / "companions"
+        / f"{validate_artifact_id(document_id)}.html"
+    )
+
+
 def read_bounded_nofollow(path: Path, limit: int) -> bytes:
     """Descriptor-bound read: reject symlinks and size before allocation.
 
@@ -107,36 +118,36 @@ def unlink_anchored(path: Path, *, missing_ok: bool = True) -> None:
 
 
 def atomic_write_nofollow(path: Path, data: bytes) -> None:
-    """Publish bytes atomically via an exclusive, fsynced sibling temp."""
+    """Publish bytes atomically via an exclusive, fsynced sibling temp.
+
+    The parent directory's descriptor is closed on every path out, and no
+    cleanup step replaces the error that caused it: closing and removing the
+    temp after a failure are best effort, the original failure is what
+    raises. A temp that fails to close is removed and never published."""
     parent_fd, name = _open_parent_dir(path, create=True)
-    temp_name = f".{name}.{secrets.token_hex(12)}.tmp"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     try:
+        temp_name = f".{name}.{secrets.token_hex(12)}.tmp"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(temp_name, flags, 0o600, dir_fd=parent_fd)
-    except BaseException:
-        os.close(parent_fd)
-        raise
-    try:
-        view = memoryview(data)
-        while view:
-            written = os.write(fd, view)
-            view = view[written:]
-        os.fsync(fd)
-    except BaseException:
-        os.close(fd)
-        with suppress(FileNotFoundError):
-            os.unlink(temp_name, dir_fd=parent_fd)
-        os.close(parent_fd)
-        raise
-    else:
-        os.close(fd)
-    try:
-        os.replace(temp_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
-        os.fsync(parent_fd)
-    except BaseException:
-        with suppress(FileNotFoundError):
-            os.unlink(temp_name, dir_fd=parent_fd)
-        raise
+        try:
+            try:
+                view = memoryview(data)
+                while view:
+                    written = os.write(fd, view)
+                    view = view[written:]
+                os.fsync(fd)
+            except BaseException:
+                with suppress(OSError):
+                    os.close(fd)
+                raise
+            # Closed outside the handler: its own error is the failure then.
+            os.close(fd)
+            os.replace(temp_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+            os.fsync(parent_fd)
+        except BaseException:
+            with suppress(OSError):
+                os.unlink(temp_name, dir_fd=parent_fd)
+            raise
     finally:
         os.close(parent_fd)
 
