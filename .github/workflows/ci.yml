@@ -28,15 +28,22 @@ on:
   workflow_dispatch:  # let the operator trigger from the Actions tab
 
 concurrency:
-  # Key every event by its exact commit SHA. A superseded PR head must never
-  # hold the newest head hostage: GitHub can leave a dependency-only rollup
-  # queued after cancelling its matrix shards, and a branch-scoped group then
-  # blocks every later push forever (#3425, runs 36227075895 and 36230596484).
-  # SHA scoping also preserves the main-branch invariant that every release
-  # candidate receives an uncanceled verdict. Re-runs of one SHA serialize
-  # without cancelling each other.
-  group: ci-${{ github.sha }}
-  cancel-in-progress: false
+  # One CI run per PR branch: a new push to a PR cancels the previous run,
+  # because only the latest head of a PR is worth testing. The hostage case
+  # this used to cause (#3425, runs 36227075895 and 36230596484: GitHub left
+  # the dependency-only rollup queued after cancelling the matrix shards, and
+  # the branch-scoped group then blocked every later push) is closed by the
+  # rollup's `if: !cancelled()` below, not by giving every superseded head a
+  # group of its own. Keying PRs by SHA with cancel-in-progress off (12:18Z,
+  # 2026-09-26) let every superseded head run to completion: with a merge
+  # train that updates heads on every main move, 25 CI runs across 15 refs
+  # sat queued behind ~10 obsolete duplicates while 3 jobs ran.
+  #
+  # main is different. Every commit on main is a release candidate — the
+  # deploy gates pull the exact SHA — so its verification must run to
+  # completion; keying main by `github.sha` gives every commit its own group.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Opt into Node 24 for JS-based actions (actions/checkout,
