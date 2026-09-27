@@ -228,6 +228,27 @@ def test_one_request_excludes_shadow_selector_even_when_enabled(
     assert selector_calls == []
 
 
+def test_quote_qualifies_the_resolved_variant_for_a_legacy_choice(
+    route, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, provider, _, _, _, _, _ = route
+    freeze = quick_ask._freeze_current_authority
+
+    def canonicalizing_freeze(**kwargs: Any):
+        choice = kwargs["choice"]
+        if choice.model_id == "deepseek-reasoner":
+            kwargs["choice"] = choice.model_copy(update={"model_id": _MODEL})
+        return freeze(**kwargs)
+
+    monkeypatch.setattr(quick_ask, "_freeze_current_authority", canonicalizing_freeze)
+    body = _body()
+    body["model_choice"]["model_id"] = "deepseek-reasoner"
+    response = client.post("/research/quick-ask/quote", json=body)
+    assert response.status_code == 200, response.json()
+    assert response.json()["model_id"] == _MODEL
+    assert provider.calls == []
+
+
 def test_settled_replay_returns_prior_receipt_without_new_send_or_false_zero_usage(route) -> None:
     client, provider, _, _, _, identity, _ = route
     body = _body()
