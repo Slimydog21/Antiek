@@ -48,9 +48,8 @@
     "seam_id": "cascade.gather.url.fetch",
     "stage": "promotion",
     "source": "acquisition/urls/client.py",
-    "function": "fetch._send",
+    "function": "fetch._run._get._send",
     "call_symbols": [
-      "client.get",
       "c.get"
     ],
     "classification": "zero_cost_external",
