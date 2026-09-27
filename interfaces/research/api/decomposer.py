@@ -152,8 +152,9 @@ def make_decomposer_handler(
     Registered against ``ActionType.DECOMPOSE_QUESTION_REQUESTED``.
 
     ``embedder`` is optional — when None, ``check_paraphrases`` falls
-    back to its lazy default (sentence-transformers). Tests pass a
-    deterministic stub.
+    back to its lazy default: the process's configured embedding provider
+    (MiniLM in production with ``ANTIEK_EMBEDDING_PROVIDER`` unset). Tests
+    pass a deterministic stub or set the hash provider.
     """
 
     async def handle_decompose_request(event: Event) -> None:
