@@ -73,7 +73,16 @@ vi.mock("./CascadeProposal", () => ({
   ),
 }));
 
-vi.mock("./QuickAsk", () => ({ default: () => <div>Quick Ask one-request form</div> }));
+vi.mock("./QuickAsk", () => ({
+  default: ({ onPaidRequestInFlight }: { onPaidRequestInFlight?: (pending: boolean) => void }) => (
+    <div>
+      <span>Quick Ask one-request form</span>
+      <input aria-label="Quick Ask operation marker" defaultValue="original-operation" />
+      <button type="button" onClick={() => onPaidRequestInFlight?.(true)}>Begin paid send</button>
+      <button type="button" onClick={() => onPaidRequestInFlight?.(false)}>Complete paid send</button>
+    </div>
+  ),
+}));
 
 import StartResearch from "./StartResearch";
 
@@ -150,6 +159,22 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     render(<MemoryRouter><StartResearch /></MemoryRouter>);
     expect(screen.getByRole("button", { name: "Deep research · multiple model calls" }).getAttribute("aria-pressed")).toBe("true");
     expect((screen.getByLabelText("Research question") as HTMLTextAreaElement).value).toBe("Resume this investigation");
+  });
+
+  it("retains the Quick Ask operation across mode switches and locks them during a paid send", () => {
+    render(<MemoryRouter><StartResearch /></MemoryRouter>);
+    const marker = screen.getByLabelText("Quick Ask operation marker");
+    const quick = screen.getByRole("button", { name: "Quick Ask · one model request" });
+    const deep = screen.getByRole("button", { name: "Deep research · multiple model calls" });
+    fireEvent.click(screen.getByRole("button", { name: "Begin paid send" }));
+    expect((deep as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(deep);
+    expect(quick.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Complete paid send" }));
+    fireEvent.click(deep);
+    expect(deep.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(quick);
+    expect(screen.getByLabelText("Quick Ask operation marker")).toBe(marker);
   });
 
   it("wraps the idle `/` home column in a LANDING-GLASS surface (SPR-03 M2 occlusion contract)", () => {

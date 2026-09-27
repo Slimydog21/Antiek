@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonSelect from "../../components/lemon/LemonSelect";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
+import { useAuth } from "../../lib/auth";
 import {
   fetchQuickAskModels, QuickAskError, quoteQuickAsk, sendQuickAsk,
   type QuickAskInput, type QuickAskModel, type QuickAskQuote, type QuickAskResult,
@@ -24,6 +25,35 @@ type Phase =
   | { kind: "answered"; result: QuickAskResult }
   | { kind: "unknown"; operationId: string }
   | { kind: "error"; message: string };
+
+const PENDING_SEND_KEY = "antiek.quick-ask.pending-send.session.v1";
+
+function pendingKey(ownerId: string): string {
+  return `${PENDING_SEND_KEY}:${encodeURIComponent(ownerId)}`;
+}
+
+function pendingSend(ownerId: string): string | null {
+  try {
+    const value = window.sessionStorage.getItem(pendingKey(ownerId));
+    return value && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value)
+      ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function preservePendingSend(ownerId: string, operationId: string): boolean {
+  try {
+    window.sessionStorage.setItem(pendingKey(ownerId), operationId);
+    return window.sessionStorage.getItem(pendingKey(ownerId)) === operationId;
+  } catch {
+    return false;
+  }
+}
+
+function clearPendingSend(ownerId: string): void {
+  try { window.sessionStorage.removeItem(pendingKey(ownerId)); } catch { /* read-only storage */ }
+}
 
 function modelOptions(models: QuickAskModel[]): ModelOption[] {
   return models.map((row) => ({
@@ -75,14 +105,21 @@ function receiptLabel(result: QuickAskResult): string {
   }
 }
 
-export default function QuickAsk() {
+function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
+  ownerId: string;
+  onPaidRequestInFlight?: (pending: boolean) => void;
+}) {
   const [question, setQuestion] = useState("");
   const [models, setModels] = useState<QuickAskModel[]>([]);
   const [modelsState, setModelsState] = useState<"loading" | "ready" | "error">("loading");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [operationId, setOperationId] = useState(() => crypto.randomUUID());
-  const [phase, setPhase] = useState<Phase>({ kind: "editing" });
+  const [phase, setPhase] = useState<Phase>(() => {
+    const previous = pendingSend(ownerId);
+    return previous ? { kind: "unknown", operationId: previous } : { kind: "editing" };
+  });
   const revision = useRef(0);
+  const mounted = useRef(false);
 
   const options = useMemo(() => modelOptions(models), [models]);
   const selected = options.find((option) => option.key === selectedKey) ?? null;
@@ -102,6 +139,14 @@ export default function QuickAsk() {
     );
     return () => { live = false; };
   }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      onPaidRequestInFlight?.(false);
+    };
+  }, [onPaidRequestInFlight]);
 
   const resetQuote = () => {
     revision.current += 1;
@@ -132,9 +177,15 @@ export default function QuickAsk() {
   const send = async (prepared: QuickAskQuote) => {
     const request = input();
     if (!request) return;
+    if (!preservePendingSend(ownerId, operationId)) {
+      setPhase({ kind: "error", message: "This browser cannot preserve the request ID. No model request was sent." });
+      return;
+    }
+    onPaidRequestInFlight?.(true);
     setPhase({ kind: "sending", quote: prepared });
     try {
       const result = await sendQuickAsk({ ...request, quote_digest: prepared.quote_digest });
+      if (mounted.current && result.usage_basis !== "charge_unknown") clearPendingSend(ownerId);
       setPhase({ kind: "answered", result });
     } catch (error) {
       if (error instanceof QuickAskError && error.reason === "charge_unknown") {
@@ -142,6 +193,8 @@ export default function QuickAsk() {
       } else {
         setPhase({ kind: "error", message: failureMessage(error) });
       }
+    } finally {
+      if (mounted.current) onPaidRequestInFlight?.(false);
     }
   };
 
@@ -191,6 +244,7 @@ export default function QuickAsk() {
             </p>
           )}
           <LemonButton variant="secondary" onClick={() => {
+            clearPendingSend(ownerId);
             setQuestion("");
             resetQuote();
           }}>
@@ -257,4 +311,18 @@ export default function QuickAsk() {
       )}
     </section>
   );
+}
+
+export default function QuickAsk({ onPaidRequestInFlight }: {
+  onPaidRequestInFlight?: (pending: boolean) => void;
+}) {
+  const { state } = useAuth();
+  if (state.status !== "authenticated") {
+    return <p role="status">Sign in to use your saved model.</p>;
+  }
+  const ownerScope = state.identity.user_id === "__operator__"
+    ? `${state.identity.user_id}:${state.identity.email?.trim().toLowerCase() ?? ""}`
+    : state.identity.user_id;
+  return <QuickAskOwner key={ownerScope} ownerId={ownerScope}
+    onPaidRequestInFlight={onPaidRequestInFlight} />;
 }

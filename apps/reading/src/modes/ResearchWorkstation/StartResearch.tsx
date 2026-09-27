@@ -167,6 +167,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const start = useStartInvestigation();
   const restoredLaunch = useMemo(readPendingOwnerLaunch, []);
   const [askMode, setAskMode] = useState<"quick" | "deep">(restoredLaunch ? "deep" : "quick");
+  const [quickAskSending, setQuickAskSending] = useState(false);
   const [question, setQuestion] = useState(restoredLaunch?.question ?? "");
   // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
   // Recorded on the investigation server-side so it's queryable after.
@@ -547,18 +548,21 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           What do you want to research?
         </h1>
         <div className="flex flex-wrap items-center justify-center gap-2 mb-5" role="group" aria-label="Research mode">
-          <button type="button" aria-pressed={askMode === "quick"}
+          <button type="button" aria-pressed={askMode === "quick"} disabled={quickAskSending}
             onClick={() => setAskMode("quick")}
             className={`px-3 py-2 rounded-hog border-edge border-sun text-xs font-mono ${askMode === "quick" ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
             Quick Ask · one model request
           </button>
-          <button type="button" aria-pressed={askMode === "deep"}
+          <button type="button" aria-pressed={askMode === "deep"} disabled={quickAskSending}
             onClick={() => setAskMode("deep")}
             className={`px-3 py-2 rounded-hog border-edge border-sun text-xs font-mono ${askMode === "deep" ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
             Deep research · multiple model calls
           </button>
         </div>
-        {askMode === "quick" ? <QuickAsk /> : <>
+        <div hidden={askMode !== "quick"}>
+          <QuickAsk onPaidRequestInFlight={setQuickAskSending} />
+        </div>
+        {askMode === "deep" && <>
         <p className="text-sm text-shadow-1 dark:text-moonlight leading-relaxed font-serif text-center mb-6">
           Deep research runs a recursive note-taking chain across your corpus,
           distills insights and open questions, and renders a cited thesis.
