@@ -383,7 +383,7 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         with connect_write(db, purpose="books/anchors/link") as con:
             outcome = HighlightsStore().set_investigation_link(
-                con, anchor_id, owner, body.investigation_id
+                con, anchor_id, owner, body.investigation_id, document_id=document_id
             )
             if outcome == "not_found":
                 raise HTTPException(status_code=404, detail="anchor_not_found")
@@ -409,10 +409,11 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         owner = _reader_owner_id(request)
         db = _resolve_db_path()
         with connect_write(db, purpose="books/anchors/delete") as con:
-            # Owner-scoped AND idempotent: deleting twice (or deleting an
-            # anchor that was never yours) is a 204, never a 404 — the only
-            # removal path reveals nothing about what exists.
-            HighlightsStore().delete(con, anchor_id, owner)
+            # Owner- and document-scoped AND idempotent: deleting twice, or
+            # deleting an anchor that is not yours or not on this document, is
+            # a 204, never a 404 — the only removal path reveals nothing about
+            # what exists.
+            HighlightsStore().delete(con, anchor_id, owner, document_id=document_id)
         return
 
     @app.get(
