@@ -1,12 +1,18 @@
 """Companion + evidence-base routes (companions SPR-02) — the surfaces.
 
-GET /documents/{id}/companion        — the rendered narrative (HTML with the
+GET /documents/{id}/companion        — the LAST BUILD of the requester's
+                                       companion of the document: the
+                                       rendered narrative (HTML with the
                                        honesty headers) or its STRUCTURED
                                        payload (?format=json) — the rail and
                                        agents render the payload, NEVER raw
                                        generated HTML (the sanctioned-
                                        rendering discipline: no innerHTML of
-                                       generated content anywhere);
+                                       generated content anywhere). It never
+                                       writes (THREAD-CONTRACT §1.12);
+POST /documents/{id}/companion/refresh — the rebuild, under the writer
+                                       lock; answers what the next GET
+                                       serves;
 GET /documents/{id}/evidence?kind=&q= — the document's index rows,
                                        STRUCTURED filters only (kind facet +
                                        substring over refs — no vector
@@ -21,19 +27,30 @@ GET /projects/{id}/companion|evidence — honestly UNAVAILABLE (501) until the
 A NEW router module (not more mass in books.py) following the unit
 conventions: register_*_routes from create_app, _reader_owner_id /
 _resolve_db_path (books.py:140+) for the owner boundary — a document whose
-owner isn't the requester is a 404, never a leak. Rebuild-on-read follows
-the anchors' reanchor-on-read precedent (book_anchor_routes.py): the write
-scope is the projector's bounded rebuild, then the read serves.
+owner isn't the requester is a 404, never a leak.
+
+The companion GET serves the persisted build and never rebuilds: the
+Reading rail calls it on every reader open, and a rebuild there took the
+single writer lock each time. Only the POST refresh rebuilds. The build is
+keyed by (owner, document), and serving re-checks the document with the
+reader's own predicate, so a taken-down or no-longer-servable document's
+build is withheld.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from interfaces.research.api.books import _reader_owner_id, _resolve_db_path
+from substrate.books.servability import (
+    ServabilityStatus,
+    is_servable_full_text,
+    servability_of,
+)
 from substrate.companions.evidence_index import (
     KINDS,
     EvidenceRow,
@@ -41,12 +58,14 @@ from substrate.companions.evidence_index import (
     resolve,
 )
 from substrate.companions.projector import (
-    document_companion_payload,
+    CompanionOwnerChanged,
     export_document_companion,
-    rebuild_document_full,
+    load_document_companion_build,
     trajectory_status_line,
 )
 from substrate.event_log import default_events_dir
+
+logger = logging.getLogger(__name__)
 
 _PROJECT_UNAVAILABLE = (
     "project_scope_unavailable: no project aggregate exists until the "
@@ -117,6 +136,72 @@ def _document_for_owner(con: Any, document_id: str, owner: str) -> None:
         raise HTTPException(status_code=404, detail="book_not_found")
 
 
+def _withheld_reason(con: Any, document_id: str) -> str | None:
+    """Whether the document's companion may be served NOW, by the reader's
+    predicate (``servability_of`` over the class and the book's
+    ``taken_down`` flag, as ``serve_full_text`` decides): "taken_down",
+    "not_servable", or None when it may be served."""
+    row = con.execute(
+        "SELECT d.content_class, COALESCE(b.taken_down, FALSE) FROM documents d "
+        "LEFT JOIN book_assets b ON b.document_id = d.document_id "
+        "WHERE d.document_id = ? LIMIT 1",
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return "not_servable"
+    status = servability_of(
+        None if row[0] is None else str(row[0]), taken_down=bool(row[1])
+    )
+    if status is ServabilityStatus.TAKEN_DOWN:
+        return "taken_down"
+    if not is_servable_full_text(status):
+        return "not_servable"
+    return None
+
+
+def _serve_last_build(
+    db: str, *, owner: str, document_id: str, format: Literal["html", "json"]
+) -> Response:
+    """Serve the requester's last persisted build, read-only.
+
+    JSON: 200 with the payload plus ``state: "built"``; 200
+    ``{document_id, state: "not_built"}`` when (owner, document) has no
+    build; 200 ``{document_id, state: "withheld", reason}`` when the
+    document is taken down or not servable now. HTML: the stored export, or
+    404 ``companion_not_built`` / ``companion_withheld``. A foreign or
+    missing document is the owner-boundary 404 first."""
+    from fastapi.responses import HTMLResponse, JSONResponse
+
+    from runtime.db_lock import connect_read
+
+    con = connect_read(db)
+    try:
+        _document_for_owner(con, document_id, owner)
+        withheld = _withheld_reason(con, document_id)
+    finally:
+        con.close()
+    build = load_document_companion_build(owner_user_id=owner, document_id=document_id)
+    if build is None:
+        if format == "json":
+            return JSONResponse({"document_id": document_id, "state": "not_built"})
+        raise HTTPException(status_code=404, detail="companion_not_built")
+    if withheld is not None:
+        if format == "json":
+            return JSONResponse(
+                {"document_id": document_id, "state": "withheld", "reason": withheld}
+            )
+        raise HTTPException(status_code=404, detail="companion_withheld")
+    headers = {
+        "x-antiek-companion-generated": "true",
+        "x-antiek-document-id": document_id,
+        "x-antiek-rebuilt-at": build.rebuilt_at,
+        "x-antiek-serving": "last-build",
+    }
+    if format == "json":
+        return JSONResponse({**build.payload, "state": "built"}, headers=headers)
+    return HTMLResponse(build.html, headers=headers)
+
+
 def register_companion_routes(app: FastAPI) -> None:
     """Mount the companion + evidence routes. One call from create_app."""
 
@@ -127,7 +212,26 @@ def register_companion_routes(app: FastAPI) -> None:
     def get_document_companion(
         document_id: str, request: Request, format: Literal["html", "json"] = "html"
     ) -> Response:
-        from fastapi.responses import HTMLResponse, JSONResponse
+        """The last build, never a rebuild (THREAD-CONTRACT §1.12: GET
+        routes never write; a refresh is a POST). Before any build the JSON
+        answer is 200 ``{"document_id", "state": "not_built"}`` (the rail
+        shows an empty state rather than an error) and the HTML answer is
+        404 ``companion_not_built``."""
+        owner = _reader_owner_id(request)
+        return _serve_last_build(
+            _resolve_db_path(), owner=owner, document_id=document_id, format=format
+        )
+
+    @app.post(
+        "/documents/{document_id}/companion/refresh",
+        tags=["companions"],
+    )
+    def refresh_document_companion(document_id: str, request: Request) -> Response:
+        """Rebuild the requester's companion of the document under the
+        writer lock and answer what the next GET serves (JSON). A failed
+        rebuild keeps the previous build and answers 503
+        ``companion_rebuild_failed`` with the error's type only."""
+        from fastapi.responses import JSONResponse
 
         from runtime.db_lock import connect_read
 
@@ -138,64 +242,34 @@ def register_companion_routes(app: FastAPI) -> None:
             _document_for_owner(con, document_id, owner)
         finally:
             con.close()
-        if format == "json":
-            # The structured payload (the sanctioned rendering input) — the
-            # stamp rides the payload AND the header. Rebuild-on-read (the
-            # anchors' reanchor-on-read precedent): the projector's bounded
-            # write scope, then the serve.
-            _html, view = rebuild_document_full(
-                db, owner_user_id=owner, document_id=document_id
+        try:
+            export_document_companion(
+                db,
+                owner_user_id=owner,
+                document_id=document_id,
+                evict_other_owners=True,
+            )
+        except CompanionOwnerChanged:
+            raise HTTPException(status_code=404, detail="book_not_found") from None
+        except Exception as e:
+            logger.warning(
+                "companion refresh failed for %s", document_id, exc_info=True
+            )
+            has_last_build = (
+                load_document_companion_build(
+                    owner_user_id=owner, document_id=document_id
+                )
+                is not None
             )
             return JSONResponse(
-                document_companion_payload(view),
-                headers={
-                    "x-antiek-companion-generated": "true",
-                    "x-antiek-document-id": document_id,
-                    "x-antiek-rebuilt-at": view.rebuilt_at,
+                {
+                    "detail": "companion_rebuild_failed",
+                    "error_type": type(e).__name__,
+                    "has_last_build": has_last_build,
                 },
+                status_code=503,
             )
-        # The HTML export lands beside the research artifacts with its
-        # honesty header (paths.py conventions). LAST-GOOD SERVING
-        # (SPR-03): a failed rebuild NEVER serves a half-written companion
-        # — the previous export is lawful to show, with the failure named
-        # in the header.
-        try:
-            html, _out_path, stamp = export_document_companion(
-                db, owner_user_id=owner, document_id=document_id
-            )
-            return HTMLResponse(
-                html,
-                headers={
-                    "x-antiek-companion-generated": "true",
-                    "x-antiek-document-id": document_id,
-                    "x-antiek-rebuilt-at": stamp,
-                },
-            )
-        except Exception as e:
-            from substrate.research_artifact.paths import (
-                companion_path_for,
-                read_bounded_nofollow,
-            )
-
-            last_good = companion_path_for(document_id)
-            if not last_good.exists():
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"companion_rebuild_failed: {type(e).__name__}",
-                ) from e
-            # The previous generation, served honestly as stale.
-            body = read_bounded_nofollow(last_good, limit=8 * 1024 * 1024).decode(
-                "utf-8"
-            )
-            return HTMLResponse(
-                body,
-                headers={
-                    "x-antiek-companion-generated": "true",
-                    "x-antiek-document-id": document_id,
-                    "x-antiek-rebuild-failed": type(e).__name__,
-                    "x-antiek-serving": "last-good",
-                },
-            )
+        return _serve_last_build(db, owner=owner, document_id=document_id, format="json")
 
     @app.get(
         "/documents/{document_id}/evidence",
