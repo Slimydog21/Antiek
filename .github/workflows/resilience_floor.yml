@@ -51,7 +51,7 @@ jobs:
       - name: Set up Python 3.11
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: "3.14"  # the version ci.yml runs; 3.11 cannot parse main (PEP 695 since July)
           cache: pip
 
       - name: Install (core + dev)
