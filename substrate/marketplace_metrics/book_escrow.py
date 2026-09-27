@@ -15,7 +15,16 @@ The two load-bearing invariants:
    never bypassed. There is deliberately no function in this module that
    can move money out.
 
-2. **Zero buyers shows $0, not invented money.** With no ad revenue, the
+2. **Ad revenue accrues only where an ad border may run.** Before any
+   ledger is touched, the session is checked against THE ad-eligibility
+   predicate (``substrate.payouts.ledger.payout_ad_eligibility``, the same
+   call over the same facts the serve guard stamps as
+   ``ServeResult.ad_eligible``). A document the reader may not mount an ad
+   border on accrues nothing, to escrow or to the author ledger, and the
+   refusal carries the predicate's own reason. The gates below (zero buyers,
+   unknown holder, the §9.10 disbursement lock) still apply after it.
+
+3. **Zero buyers shows $0, not invented money.** With no ad revenue, the
    session accrues nothing to escrow (the dollar balance is honestly $0);
    the attention-share — how many slots earned focused dwell — is tracked
    as a fairness ledger, separate from dollars. The "revolutionize
@@ -47,6 +56,7 @@ from substrate.ad_inventory.reader_impressions import (
 )
 from substrate.constants import UNATTRIBUTED_RIGHTS_BUCKET
 from substrate.event_log import emit_typed
+from substrate.payouts.ledger import payout_ad_eligibility
 from substrate.schemas.events import RevShareDecidedPayload
 
 # Matches the sibling acquisition modules' convention (explicit dotted name,
@@ -67,7 +77,12 @@ class AccrualResult:
     ``accrued_to_escrow_cents`` is what actually landed in escrow (0 for
     zero-buyer sessions and for the unattributed bucket).
     ``attention_impressions`` is the fairness-ledger count — slots that
-    earned focused dwell — tracked even when revenue is $0."""
+    earned focused dwell — tracked even when revenue is $0.
+    ``accruable`` is False only when the shared ad-eligibility predicate
+    refused the document (``reason`` is then ``not_ad_eligible:<predicate
+    reason>`` and nothing was written anywhere); True when the session was
+    admitted, whether its revenue reached escrow, the unattributed hold, or
+    was $0."""
 
     document_id: str
     ip_holder_id: str
@@ -76,6 +91,7 @@ class AccrualResult:
     attention_impressions: int
     unattributed: bool
     reason: str
+    accruable: bool
 
 
 def _resolve_ip_holder(con: Any, document_id: str) -> str | None:
@@ -109,9 +125,10 @@ def _accrue_payouts_ledger(
     impression ids) are DISTINCT events that both accrue, while a true retry of
     the SAME impressions stays a no-op on both sides.
 
-    The ledger applies the T1 gate (re-derived from the immutable license_uri),
-    the arXiv check, and the zero-revenue check itself, so this is safe to call
-    for every book session — non-arXiv / T2 / T3 / zero-revenue emit nothing.
+    Called only for a session the shared ad-eligibility predicate admitted.
+    The ledger asks that predicate again itself, then applies its own arXiv
+    scope and zero-revenue checks, so a non-arXiv / zero-revenue session
+    emits nothing here.
     It writes NO escrow. Defensive: a failure in the additive attribution layer
     must NEVER break the existing escrow accrual, so it is isolated — but the
     drop is LOGGED (never silently swallowed), because this ledger feeds
@@ -184,6 +201,11 @@ def accrue_reading_session(
     Deterministic + dedup-safe: impressions are deduped by
     ``impression_id`` before summing, so re-emitted impressions can't
     inflate the accrual (reconciliation invariant, SPR-09 M4).
+
+    Ad-eligibility first: a document the shared predicate refuses (the one
+    the serve guard consults, so the reader showed it no ad border) accrues
+    nothing to escrow or to the author ledger; ``accruable`` is False and
+    ``reason`` names the predicate's reason.
     """
     deduped = dedup_impressions(impressions)
     # Only this book's impressions count toward this book's accrual.
@@ -191,14 +213,37 @@ def accrue_reading_session(
     revenue_cents = total_revenue_cents(book_imps)
     attention = sum(1 for i in book_imps if i.counted_attention)
 
+    holder_id = _resolve_ip_holder(con, document_id)
+    unattributed = holder_id is None
+    bucket = holder_id if holder_id is not None else UNATTRIBUTED_RIGHTS_BUCKET
+
+    # SPR-10 task 6 — THE ad-eligibility predicate decides before any ledger.
+    # Serve time stamps ServeResult.ad_eligible from the same call over the
+    # same facts, so a session on a document with no ad border accrues
+    # nothing, and the refusal is the predicate's own reason rather than an
+    # escrow-only rule. Nothing below is reached for such a document.
+    decision = payout_ad_eligibility(con, document_id)
+    if decision is None or not decision.eligible:
+        return AccrualResult(
+            document_id=document_id, ip_holder_id=bucket,
+            revenue_cents=revenue_cents, accrued_to_escrow_cents=0,
+            attention_impressions=attention, unattributed=unattributed,
+            reason=(
+                f"not_ad_eligible:{decision.reason}"
+                if decision is not None
+                else "not_ad_eligible:document_not_found"
+            ),
+            accruable=False,
+        )
+
     # SPR-06 (arxiv-ingest) — additive internal author-attribution hook.
     # For a T1 arXiv paper, ALSO accrue this session's ad revenue to the
     # INTERNAL (arxiv_id, author_position) payouts ledger (an additive
     # accounting layer over the SAME revenue — both HOLD, neither disburses, so
-    # no double-count of disbursable money). The ledger re-derives the T1 tier
-    # itself and emits nothing for non-arXiv / T2 / T3 / zero-revenue, so this
-    # is safe to call unconditionally. It writes NO escrow. Wrapped so an
-    # attribution-layer failure can never break the existing escrow accrual.
+    # no double-count of disbursable money). Reached only after the predicate
+    # admitted the session; the ledger emits nothing for a non-arXiv or
+    # zero-revenue one. It writes NO escrow. Wrapped so an attribution-layer
+    # failure can never break the existing escrow accrual.
     #
     # Pass this batch's deduped impression-id set so the ledger's idempotency
     # unit is the underlying impression set — the SAME dedup principle the escrow
@@ -212,10 +257,6 @@ def accrue_reading_session(
         impression_ids=sorted(i.impression_id for i in book_imps),
     )
 
-    holder_id = _resolve_ip_holder(con, document_id)
-    unattributed = holder_id is None
-    bucket = holder_id if holder_id is not None else UNATTRIBUTED_RIGHTS_BUCKET
-
     # Zero-buyer OR unattributed → no escrow write. Track the share; show $0.
     if revenue_cents <= 0:
         return AccrualResult(
@@ -224,6 +265,7 @@ def accrue_reading_session(
             unattributed=unattributed,
             reason="zero_buyer_attention_share_only" if not unattributed
             else "zero_buyer_unattributed",
+            accruable=True,
         )
     if unattributed:
         # Real revenue but unknown holder: it stays in the flagged bucket,
@@ -234,6 +276,7 @@ def accrue_reading_session(
             revenue_cents=revenue_cents, accrued_to_escrow_cents=0,
             attention_impressions=attention, unattributed=True,
             reason="unattributed_revenue_held",
+            accruable=True,
         )
 
     # Reuse the existing rev-share split. The book's rights holder is a
@@ -286,6 +329,7 @@ def accrue_reading_session(
         revenue_cents=revenue_cents, accrued_to_escrow_cents=accrued,
         attention_impressions=attention, unattributed=False,
         reason="accrued_to_publisher_escrow",
+        accruable=True,
     )
 
 
