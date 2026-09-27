@@ -179,6 +179,11 @@ function QuickAskRecent({ refreshSignal }: { refreshSignal: number }) {
             <p className="font-serif text-xs text-emperor">This stored answer may be incomplete. No follow-up model request was made.</p>
           )}
           <p className="font-mono text-xs text-shadow-1 dark:text-moonlight">{receiptLabel(openedRecent.result)}</p>
+          {openedRecent.result.reported_usage_estimate_exceeds_quote && (
+            <p className="font-mono text-xs text-emperor" role="alert">
+              The provider-reported usage priced above the quote. The quote was an estimate; check your provider dashboard for the final charge.
+            </p>
+          )}
         </article>
       )}
     </section>

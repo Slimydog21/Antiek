@@ -73,7 +73,7 @@ describe("Quick Ask one-request boundary", () => {
         provider_id: "user-deepseek", model_id: "deepseek-flash",
         estimated_cost_usd: 0.0038, usage_basis: "prior_receipt",
         input_tokens: null, output_tokens: null, replayed: true,
-        incomplete: false, reported_usage_estimate_exceeds_quote: false,
+        incomplete: false, reported_usage_estimate_exceeds_quote: true,
       },
     }]);
     renderQuickAsk();
@@ -81,6 +81,7 @@ describe("Quick Ask one-request boundary", () => {
     fireEvent.click(await screen.findByRole("button", { name: "View stored answer" }));
     expect(screen.getByRole("article", { name: "Stored Quick Ask answer" }).textContent).toContain("A stored answer.");
     expect(screen.getByText(/no new model request was sent/i)).toBeTruthy();
+    expect(screen.getByText(/provider-reported usage priced above the quote/i)).toBeTruthy();
     expect(quote).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
