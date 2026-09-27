@@ -95,8 +95,9 @@ def test_two_queries_for_one_owner_return_different_chunk_sets(search_personal) 
 
 
 def test_two_owners_return_disjoint_chunk_sets(search_personal) -> None:
-    owner_a = search_personal({"query": "quantum bakery", "top_k": 10}, auth_context={"user_id": "owner-a"})
-    owner_b = search_personal({"query": "quantum bakery", "top_k": 10}, auth_context={"user_id": "owner-b"})
+    # Name every topic so this checks owner isolation without query-blind results.
+    owner_a = search_personal({"query": "quantum bakery garden", "top_k": 10}, auth_context={"user_id": "owner-a"})
+    owner_b = search_personal({"query": "quantum bakery garden", "top_k": 10}, auth_context={"user_id": "owner-b"})
 
     ids_a, ids_b = _chunk_ids(owner_a), _chunk_ids(owner_b)
     assert ids_a == {"chunk-a-quantum", "chunk-a-bakery", "chunk-a-garden"}
@@ -104,7 +105,81 @@ def test_two_owners_return_disjoint_chunk_sets(search_personal) -> None:
     assert ids_a.isdisjoint(ids_b)
     for chunk in json.loads(owner_a.content[0]["text"])["chunks"]:
         assert chunk["owner_user_id"] == "owner-a"
-        assert chunk["text"] in dict(_CORPUS["owner-a"]).values()
+        # §13.8.3: the owner's text is untrusted too, so it arrives enveloped.
+        opening, closing = '<antiek:content trusted="false">', "</antiek:content>"
+        assert chunk["text"].startswith(opening) and chunk["text"].endswith(closing)
+        assert chunk["text"][len(opening) : -len(closing)] in dict(_CORPUS["owner-a"]).values()
+
+
+def test_query_matching_nothing_returns_an_honest_empty(search_personal) -> None:
+    result = search_personal(
+        {"query": "zzz-no-such-term", "top_k": 10}, auth_context={"user_id": "owner-a"}
+    )
+
+    assert result.is_error is False
+    body = json.loads(result.content[0]["text"])
+    assert body["query"] == "zzz-no-such-term"
+    assert body["chunks"] == []
+    assert body["no_match"] is True
+
+
+def test_include_private_false_limits_to_the_public_partition(db_path: str) -> None:
+    embed = _BagOfWordsEmbedding()
+    with connect_write(db_path, purpose="seed-personal-partitions") as con:
+        for name, content_class in (
+            ("owned", "user_owned"),
+            ("reading", "personal_reading"),
+            ("public", "user_public_contribution"),
+        ):
+            con.execute(
+                "INSERT INTO documents (document_id, title, source_tier, document_type, "
+                "owner_user_id, content_class) VALUES (?, ?, 1, 'article', 'owner-p', ?)",
+                [f"doc-p-{name}", f"Title {name}", content_class],
+            )
+            body = f"Quantum notes in {name} partition."
+            con.execute(
+                "INSERT INTO chunks (chunk_id, document_id, chunk_index, text, "
+                "embedding, token_count) VALUES (?, ?, 0, ?, ?, 8)",
+                [f"chunk-p-{name}", f"doc-p-{name}", body, embed.encode(body)],
+            )
+    handlers, _resources = _make_handlers(db_path, embedding_model=_BagOfWordsEmbedding)
+    search_personal = handlers["search_personal"]
+    auth = {"user_id": "owner-p"}
+
+    private = search_personal(
+        {"query": "quantum", "top_k": 10, "include_private": True}, auth_context=auth
+    )
+    public = search_personal(
+        {"query": "quantum", "top_k": 10, "include_private": False}, auth_context=auth
+    )
+
+    assert _chunk_ids(private) == {"chunk-p-owned", "chunk-p-reading", "chunk-p-public"}
+    assert _chunk_ids(public) == {"chunk-p-public"}
+
+
+@pytest.mark.parametrize("top_k", [0, 51, "5", True])
+def test_top_k_out_of_bounds_is_an_error(search_personal, top_k) -> None:
+    result = search_personal(
+        {"query": "quantum", "top_k": top_k}, auth_context={"user_id": "owner-a"}
+    )
+
+    assert result.is_error is True
+    assert json.loads(result.content[0]["text"])["error"] == (
+        "top_k must be an integer between 1 and 50"
+    )
+
+
+@pytest.mark.parametrize("include_private", [0, "false", None])
+def test_include_private_requires_a_boolean(search_personal, include_private) -> None:
+    result = search_personal(
+        {"query": "quantum", "include_private": include_private},
+        auth_context={"user_id": "owner-a"},
+    )
+
+    assert result.is_error is True
+    assert json.loads(result.content[0]["text"])["error"] == (
+        "include_private must be a boolean"
+    )
 
 
 def test_missing_auth_context_is_an_error_with_zero_chunks(search_personal) -> None:

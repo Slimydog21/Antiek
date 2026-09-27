@@ -16,7 +16,7 @@ implementation see `tools/antiek_memory/`.
 | Surface | Where |
 |---|---|
 | MCP stdio server (JSON-RPC over stdin/stdout) | `tools/antiek_memory/server.py` |
-| Tool description signing | `tools/antiek_memory/signing.py` |
+| Tool description hash pin (committed manifest) | `tools/antiek_memory/signing.py` |
 | `.well-known/mcp-tools.json` manifest | `GET https://api.antiek.ai/.well-known/mcp-tools.json` |
 
 The manifest is public by design (no auth). MCP clients fetch it
@@ -136,20 +136,16 @@ All canonical tools are defined in
 - A description in researcher's-notebook voice per §5.
 - An `input_schema` JSON Schema object.
 
-To regenerate the manifest after editing a tool:
+To regenerate the manifest after editing a tool, then check it:
 
 ```bash
-./.venv/bin/python -c "
-from tools.antiek_memory.server import CANONICAL_TOOLS
-from tools.antiek_memory.signing import render_well_known_manifest
-import json
-print(json.dumps(render_well_known_manifest(CANONICAL_TOOLS), indent=2))
-"
+./.venv/bin/python -m tools.antiek_memory.signing --write
+./.venv/bin/python -m tools.antiek_memory.signing --check
 ```
 
-The HTTP endpoint computes the manifest at request time, so a
-server restart after a tool-description change is sufficient to
-make the new hashes visible.
+Review and commit the regenerated manifest. The HTTP endpoint serves the
+committed pin, so a description change is published only by a reviewed
+commit of that manifest.
 
 ---
 
@@ -158,9 +154,9 @@ make the new hashes visible.
 - **Manifest fetch fails (500/timeout):** the server isn't running or
   the Cloudflare Tunnel is down. Check `systemctl status antiek` on
   the VM.
-- **Manifest hashes mismatch in clients:** a tool description was
-  edited but the server wasn't restarted to pick up the new
-  CANONICAL_TOOLS. Restart antiek.
+- **Manifest hashes mismatch in clients:** a live description differs from
+  the committed pin. Treat it as a possible rug-pull; do not restart around
+  it. Compare `git diff` of `tools/antiek_memory/server.py` against the pin.
 - **`tools/call` rejected:** the operator's auth cookie or service
   token is missing/expired. See `infrastructure/runbooks/magic-link-auth.md`.
 
