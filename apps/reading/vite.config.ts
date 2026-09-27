@@ -9,7 +9,8 @@ import react from "@vitejs/plugin-react";
 // free port instead of racing the operator's live one — which also keeps the
 // harness off the live DuckDB writer lock (single-writer invariant: two
 // uvicorns on one graph file is exactly the conflict db_lock exists to stop).
-// An empty value counts as unset.
+// An empty value counts as unset. A whitespace-only value is NOT trimmed or
+// defaulted: it is used verbatim as the proxy target (known open item F-06).
 const API_TARGET = process.env.ANTIEK_DEV_API_TARGET || "http://127.0.0.1:8000";
 
 /**
