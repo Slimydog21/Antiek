@@ -537,7 +537,7 @@ def test_owner_checked_delete_serializes_a_concurrent_registration_update(
         def __init__(self):
             self._lock = threading.Lock()
             self._state_lock = threading.Lock()
-            self._owner: str | None = None
+            self._owner: tuple[int, str] | None = None
             self._generation = 0
             self.acquisitions: list[tuple[str, int]] = []
 
@@ -550,19 +550,23 @@ def test_owner_checked_delete_serializes_a_concurrent_registration_update(
             with self._state_lock:
                 assert self._owner is None
                 self._generation += 1
-                self._owner = name
+                self._owner = (threading.get_ident(), name)
                 self.acquisitions.append((name, self._generation))
             return self
 
         def __exit__(self, *_):
             with self._state_lock:
-                assert self._owner == threading.current_thread().name
+                assert self._owner == (
+                    threading.get_ident(), threading.current_thread().name,
+                )
                 self._owner = None
                 self._lock.release()
 
         def active_generation(self) -> int:
             with self._state_lock:
-                assert self._owner == threading.current_thread().name
+                assert self._owner == (
+                    threading.get_ident(), threading.current_thread().name,
+                )
                 return self._generation
 
     tracking_lock = TrackingLock()
@@ -571,6 +575,7 @@ def test_owner_checked_delete_serializes_a_concurrent_registration_update(
     def controlled_read():
         name = threading.current_thread().name
         generation = tracking_lock.active_generation()
+        credentials = original_read()
         read_windows.append((name, generation))
         if threading.get_ident() == delete_thread_id[0]:
             assert name == "credential-deleter"
@@ -580,7 +585,7 @@ def test_owner_checked_delete_serializes_a_concurrent_registration_update(
         else:
             assert name == "credential-updater"
             updating_read_entered.set()
-        return original_read()
+        return credentials
 
     def controlled_write(credentials):
         name = threading.current_thread().name
@@ -616,20 +621,18 @@ def test_owner_checked_delete_serializes_a_concurrent_registration_update(
     updater = threading.Thread(
         target=add_legitimate_credential, name="credential-updater", daemon=True,
     )
-    deleter.start()
     try:
+        deleter.start()
         assert deleting_read_entered.wait(timeout=3)
         updater.start()
         assert updater_attempted_lock.wait(timeout=3)
         assert not updating_read_entered.is_set()
     finally:
         release_deleting_read.set()
-        deleter.join(timeout=5)
-        if updater.ident is not None:
-            updater.join(timeout=5)
         for worker in (deleter, updater):
-            if worker.is_alive():
-                worker.join(timeout=1)
+            if worker.ident is not None:
+                worker.join(timeout=8)
+        assert all(not worker.is_alive() for worker in (deleter, updater))
 
     assert not deleter.is_alive() and not updater.is_alive()
     assert not failures

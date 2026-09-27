@@ -115,6 +115,21 @@ def test_concurrent_same_credential_registration_persists_exactly_one_record(
     monkeypatch.setattr(
         "substrate.auth.passkeys.verify_registration_response", verify_registration_response,
     )
+    import substrate.auth.passkeys as passkeys
+
+    class BoundedStoreLock:
+        def __init__(self):
+            self._lock = threading.Lock()
+
+        def __enter__(self):
+            if not self._lock.acquire(timeout=3):
+                raise TimeoutError("registration worker could not acquire the store lock")
+            return self
+
+        def __exit__(self, *_):
+            self._lock.release()
+
+    monkeypatch.setattr(passkeys, "_store_lock", BoundedStoreLock())
     ceremonies = [registration_options(binding=_binding()) for _ in range(2)]
     results: list[object] = []
     failures: list[BaseException] = []
@@ -134,16 +149,18 @@ def test_concurrent_same_credential_registration_persists_exactly_one_record(
         threading.Thread(target=register, args=(item["ceremony_id"],), daemon=True)
         for item in ceremonies
     ]
-    for thread in threads:
-        thread.start()
     try:
         for thread in threads:
-            thread.join(timeout=5)
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=8)
     finally:
         if any(thread.is_alive() for thread in threads):
             barrier.abort()
             for thread in threads:
-                thread.join(timeout=1)
+                if thread.ident is not None:
+                    thread.join(timeout=8)
+        assert all(not thread.is_alive() for thread in threads)
 
     assert all(not thread.is_alive() for thread in threads)
     assert len(results) == 1
