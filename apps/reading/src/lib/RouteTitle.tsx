@@ -112,6 +112,21 @@ export function matchRouteExactly(pathname: string): RouteMatch | null {
   return patternMatch(path);
 }
 
+/**
+ * The mode a non-routed static prefix belongs to: "/read" is no page, but it
+ * is the start of "/read/:documentId", so it is the Reader's. Used by the
+ * breadcrumbs to name (without linking) a path segment App.tsx cannot open.
+ */
+export function familyNameFor(prefix: string): string | null {
+  const segs = segmentsOf(normalize(prefix));
+  if (segs.length === 0) return null;
+  for (const p of PATTERNS) {
+    if (p.parts.length <= segs.length) continue;
+    if (segs.every((seg, i) => p.parts[i] === seg)) return p.entry.label;
+  }
+  return null;
+}
+
 /** Resolve a pathname to the product's name for the page, or null. */
 export function matchRoute(pathname: string): RouteMatch | null {
   const path = normalize(pathname);
