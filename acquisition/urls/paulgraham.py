@@ -60,7 +60,12 @@ from acquisition.urls.adapter import (  # noqa: E402
     ingest_url,
     url_doc_id,
 )
-from acquisition.urls.client import DEFAULT_USER_AGENT, FetchedHtml, fetch  # noqa: E402
+from acquisition.urls.client import (  # noqa: E402
+    FetchedHtml,
+    FetchPurpose,
+    fetch,
+    user_agent_for,
+)
 from acquisition.urls.extract import html_to_markdown  # noqa: E402
 from runtime.db_lock import connect_read  # noqa: E402
 
@@ -192,7 +197,7 @@ def load_robots(
         return rp
     if fetch_text is None:
         def fetch_text(u: str) -> str:  # pragma: no cover - real network
-            page = fetch(u)
+            page = fetch(u, purpose=FetchPurpose.INGEST)
             return page.body.decode("utf-8", errors="replace")
     try:
         rp.parse(fetch_text(PG_ROBOTS_URL).splitlines())
@@ -211,7 +216,7 @@ def load_robots(
 
 def robots_allows(rp: urllib.robotparser.RobotFileParser, url: str) -> bool:
     """True iff ``rp`` permits our User-Agent to fetch ``url``."""
-    return rp.can_fetch(DEFAULT_USER_AGENT, url)
+    return rp.can_fetch(user_agent_for(FetchPurpose.INGEST), url)
 
 
 # --- polite throttle (modeled on acquisition/arxiv/throttle.ArxivThrottle) --
@@ -494,6 +499,7 @@ def run(
                     fetched=injected,
                     min_word_count=min_word_count,
                     on_conflict="replace" if changed else "ignore",
+                    fetch_purpose=FetchPurpose.INGEST,
                 )
                 summary.fetched += 1
                 if changed:
@@ -506,6 +512,7 @@ def run(
                     embedder=embedder,
                     http_client=http_client,
                     min_word_count=min_word_count,
+                    fetch_purpose=FetchPurpose.INGEST,
                 )
                 if result.skipped_reason == "alias_resolved_to_existing_document":
                     summary.skipped_unchanged += 1
