@@ -59,6 +59,7 @@ import {
 } from "./Canvas/evidenceWindowPlacement";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
+import { describeFailure, type DescribedFailure } from "../../shared/failure";
 import { useMascotResearchReactions } from "./useMascotResearchReactions";
 import { emitMascotExperience, notifyResearchStarted } from "../../mascot";
 import { mascotResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
@@ -117,25 +118,27 @@ function Workspace() {
   const [sourcePreflight, setSourcePreflight] = useState<SourcePolicyPreflightResponse | null>(null);
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DescribedFailure | null>(null);
   const [projection, setProjection] = useState<ComposerModelProjection | null>(null);
   const [projectionError, setProjectionError] = useState<string | null>(null);
   const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
 
-  const guard = useCallback(async (fn: () => Promise<void>) => {
+  // `what` is a plain-words action ("approve the plan"); the failure renders
+  // as describeFailure's title + detail, never the raw request line.
+  const guard = useCallback(async (what: string, fn: () => Promise<void>) => {
     setBusy(true);
     setError(null);
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeFailure(e, { what }));
     } finally {
       setBusy(false);
     }
   }, []);
 
   const handleCreate = () =>
-    guard(async () => {
+    guard("propose a research plan", async () => {
       const q = problem.trim();
       if (!q) return;
       const r = await createPlan({ problem: q });
@@ -147,14 +150,14 @@ function Workspace() {
     });
 
   const handleEdit = (edit: { op: "add_child" | "remove" | "reword"; target_local_id: string; question?: string }) =>
-    guard(async () => {
+    guard("change the plan", async () => {
       if (!plan) return;
       const r = await editPlan(plan.rootNodeId, edit);
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
     });
 
   const handleApprove = () =>
-    guard(async () => {
+    guard("approve the plan", async () => {
       if (!plan) return;
       await approvePlan(plan.rootNodeId);
       const r = await getPlan(plan.rootNodeId); // refresh tree + launchable
@@ -174,7 +177,7 @@ function Workspace() {
       setProjection(r);
       setProjectionError(null);
     } catch (e) {
-      setProjectionError(e instanceof Error ? e.message : String(e));
+      setProjectionError(describeFailure(e, { what: "rank the models" }).title);
       setProjection(null);
     }
   }, []);
@@ -186,7 +189,7 @@ function Workspace() {
   }, [plan, refreshProjection]);
 
   const handleLaunch = () =>
-    guard(async () => {
+    guard("start the researches", async () => {
       if (!plan || !plan.launchable) return;
       const ownerModelChoices = modelChoice
         ? (Object.fromEntries(
@@ -217,7 +220,7 @@ function Workspace() {
     });
 
   const handleSourcePreflight = () =>
-    guard(async () => {
+    guard("check the sources", async () => {
       const r = await preflightSourcePolicy({
         source_policy: sourcePolicy,
         root_id: plan?.rootNodeId ?? null,
@@ -240,7 +243,10 @@ function Workspace() {
     <div className="flex h-full flex-col gap-4 overflow-auto p-4">
       <ComposeBar problem={problem} setProblem={setProblem} busy={busy} onCreate={handleCreate} />
       {error && (
-        <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-sm text-emperor">{error}</p>
+        <div role="alert" className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-sm text-emperor">
+          <p className="font-medium">{error.title}</p>
+          <p>{error.detail}</p>
+        </div>
       )}
       {plan && projection && (
         <ModelPicker
