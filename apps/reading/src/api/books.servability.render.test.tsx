@@ -8,7 +8,7 @@
  * directory belongs to another lane; the harness mirrors Reading.test.tsx
  * (mock at the api boundary, real components otherwise).
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -81,6 +81,14 @@ describe("cards render a personal_readable book", () => {
 });
 
 describe("BookReader renders a personal_readable upload (the A-01 journey)", () => {
+  // The Reading mode is a large module graph: its first import takes ~3 s in
+  // isolation and over 5 s under a loaded full run. Import it once in a hook
+  // with its own budget so the test's timer measures rendering, not loading.
+  let BookReader: typeof import("../modes/Reading/index").default;
+  beforeAll(async () => {
+    BookReader = (await import("../modes/Reading/index")).default;
+  }, 60_000);
+
   beforeEach(() => {
     window.sessionStorage.clear();
     getBookMock.mockReset();
@@ -124,7 +132,6 @@ describe("BookReader renders a personal_readable upload (the A-01 journey)", () 
     getBookMock.mockResolvedValue(detail);
     getFullTextMock.mockResolvedValue(body);
 
-    const { default: BookReader } = await import("../modes/Reading/index");
     render(
       <MemoryRouter initialEntries={[`/read/${personal.document_id}`]}>
         <Routes>
@@ -140,5 +147,5 @@ describe("BookReader renders a personal_readable upload (the A-01 journey)", () 
     );
     // Owner-readable: no "Preview only" banner.
     expect(screen.queryByText(/Preview only/)).toBeNull();
-  });
+  }, 20_000);
 });
