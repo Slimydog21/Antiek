@@ -10,8 +10,9 @@ Config (env-only — systemd unit reads /etc/antiek/secrets.env):
 - ``ANTIEK_DAEMON_SLEEP_SECONDS`` — scan interval (default 60).
 - ``ANTIEK_DAEMON_EXPECTED_COST_USD`` — cost-per-spawn estimate
   used for budget gating (default 0.50).
-- ``ANTIEK_DAEMON_BUDGET_USD_PER_DAY`` — §16 hard cap on total
-  spawn spend per UTC day (default 5.0).
+- ``ANTIEK_DAEMON_HOURLY_BUDGET_USD`` — §16 hard cap on total
+  spawn spend per UTC day, despite the name (default 5.0; read by
+  ``budget._resolve_daily_cap``).
 """
 
 from __future__ import annotations
