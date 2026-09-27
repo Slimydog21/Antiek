@@ -91,6 +91,14 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.INVESTIGATION_FAILED]: { line: "Couldn’t finish this research", tone: "caution" },
   [ActionType.INVESTIGATION_CHASE_HALTED]: { line: "Paused following this thread further", tone: "caution" },
   [ActionType.INVESTIGATION_SPAWNED_FROM]: { line: "Following up on a thread from an earlier research", tone: "milestone" },
+  // B0: the parent records a branch before its child starts. The branch does
+  // not assert the child ran (a capacity refusal can abandon it, and a
+  // watch-for-later branch only reserves the child), so the line says the
+  // thread was set up, not that it is being researched.
+  [ActionType.INVESTIGATION_BRANCHED]: { line: "Setting up a follow-up thread as its own research", tone: "milestone" },
+  [ActionType.INVESTIGATION_BRANCH_ABANDONED]: { line: "Couldn’t start that follow-up thread right now", tone: "caution" },
+  // Written into the reserved child's own log: nothing has run under it yet.
+  [ActionType.INVESTIGATION_RESERVED]: { line: "Saved to research later; nothing has run here yet", tone: "milestone" },
   [ActionType.PIPELINE_TERMINATED]: { line: "Stopped this research", tone: "milestone" },
 
   // ── Orientation + breaking the question down ──
