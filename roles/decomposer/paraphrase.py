@@ -9,8 +9,10 @@ The threshold defaults to
 ``substrate.constants.DECOMPOSER_PARAPHRASE_COSINE_MAX`` (0.85). The
 embedder is injected (``EmbeddingModel`` protocol from
 ``substrate/graph/search.py``); tests pass a deterministic stub.
-``_load_default_embedder`` lazily constructs a
-``SentenceTransformerEmbedding`` only when no embedder is supplied.
+``_load_default_embedder`` lazily resolves the process's configured
+embedding provider only when no embedder is supplied, and refuses (raises
+``ImportError``) rather than hash-score when that provider merely fell back to
+hashing because sentence-transformers is unavailable.
 """
 
 from __future__ import annotations
@@ -65,10 +67,24 @@ def _load_default_embedder() -> EmbeddingModel:
     embedding path uses): MiniLM in production, and whatever
     ``ANTIEK_EMBEDDING_PROVIDER`` / the lineup binding selects otherwise.
     Constructing sentence-transformers directly here ignored that setting,
-    so tests that asked for the hash embedder still loaded the model."""
-    from processing.embedding.embed import default_embedding_provider
+    so tests that asked for the hash embedder still loaded the model.
 
-    return default_embedding_provider()
+    The hash embedder is used only when it was asked for
+    (``ANTIEK_EMBEDDING_PROVIDER=hash``). When the provider fell back to
+    hashing because sentence-transformers is not importable, this raises
+    ``ImportError`` as the direct construction did, so callers such as
+    ``ParaphraseGuardRubric`` report the check as skipped instead of scoring
+    paraphrases by token hashes."""
+    from processing.embedding.embed import HashEmbedding, default_embedding_provider
+
+    provider = default_embedding_provider()
+    requested = os.environ.get("ANTIEK_EMBEDDING_PROVIDER", "").strip().lower()
+    if isinstance(provider, HashEmbedding) and requested != "hash":
+        raise ImportError(
+            "sentence-transformers is unavailable and the hash embedder was not "
+            "requested; the paraphrase check does not score by token hashes"
+        )
+    return provider
 
 
 def check_paraphrases(

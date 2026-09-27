@@ -38,3 +38,26 @@ def test_paraphrase_check_runs_on_the_configured_provider(monkeypatch):
     flags = paraphrase.check_paraphrases("what limits qubit coherence",
                                          ["what limits qubit coherence"])
     assert len(flags) == 1
+
+
+def test_an_implicit_hash_fallback_refuses_instead_of_hash_scoring(monkeypatch):
+    """sentence-transformers missing and hashing not requested: the loader
+    raises ImportError, so ParaphraseGuardRubric reports a skip rather than a
+    score computed from token hashes."""
+    monkeypatch.delenv("ANTIEK_EMBEDDING_PROVIDER", raising=False)
+    monkeypatch.setattr(embed, "default_embedding_provider", lambda: embed.HashEmbedding())
+    with pytest.raises(ImportError):
+        paraphrase._load_default_embedder()
+
+
+def test_the_rubric_skips_when_the_embedder_is_unavailable(monkeypatch):
+    from skills.verification.rubric import ParaphraseGuardRubric
+
+    monkeypatch.delenv("ANTIEK_EMBEDDING_PROVIDER", raising=False)
+    monkeypatch.setattr(embed, "default_embedding_provider", lambda: embed.HashEmbedding())
+    result = ParaphraseGuardRubric().score(
+        {"top_question": "what limits qubit coherence",
+         "sub_questions": ["what limits qubit coherence"]}
+    )
+    assert result.passed is None
+    assert "embedder unavailable" in result.details["skipped_reason"]
