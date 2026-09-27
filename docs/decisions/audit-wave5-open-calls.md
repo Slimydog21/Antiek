@@ -52,7 +52,7 @@ Since B0 (`investigation.branched`), every launch writes a durable edge into the
 Research launched earlier recorded some children only in the child's own log: cascade leaves and chase children did this through `spawned_from`. For such a parent, the logs cannot tell "had no such child" from "had a child whose only record is gone". Its dependency completeness cannot be proven, only assumed.
 
 Codex holds that a rights gate may not assume. There are two options:
-- **(a)** Withhold the synthesis excerpt of every pre-B0 parent until a reconciliation runs. `tools/backfill_branches.py` would write `investigation.branched` into each parent from every lineage record still readable, then stamp the parent reconciled. Only the excerpt is withheld; the notes and the artifact still export.
+- **(a)** Withhold the synthesis excerpt of every pre-B0 parent until a reconciliation runs. A backfill tool, not yet written, would write `investigation.branched` into each parent from every lineage record still readable, then stamp the parent reconciled. Only the excerpt is withheld; the notes and the artifact still export.
 - **(b)** Accept the residual. It needs a child's event log to have been deleted or corrupted before the backfill, and the system never deletes logs: `seal_investigation` replaces a JSONL with its Parquet snapshot but does not remove lineage.
 
 **Recommendation:** (a). Run the backfill as part of the next deploy and let it clear the withheld excerpts in one pass. The gate is the §9.0 legal surface, so an honest "withheld until reconciled" is worth a short, recoverable gap in legacy excerpts. The attestation (b) would rest on can't be verified from the product itself.
