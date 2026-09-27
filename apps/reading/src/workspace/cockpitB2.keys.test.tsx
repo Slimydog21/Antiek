@@ -642,6 +642,27 @@ describe("A1c agent-tab close focus", () => {
 
 
 describe("A1c overlay review regressions", () => {
+  it("Project above the agent overflow menu owns the first Escape", async () => {
+    tierRef.current = "md";
+    await seedCockpit();
+    const strip = screen.getByRole("tablist", { name: "Agents" });
+    Object.defineProperty(strip, "clientWidth", { configurable: true, value: 160 });
+    Object.defineProperty(strip, "scrollWidth", { configurable: true, value: 600 });
+    fireEvent.scroll(strip);
+    const trigger = screen.getByRole("button", { name: /All agents/ });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu")).toBeTruthy();
+    prefixed("b");
+    const dialog = await screen.findByRole("dialog", { name: "Project" });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    esc(document.activeElement ?? document.body);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Project" })).toBeNull());
+    expect(screen.getByRole("menu")).toBeTruthy();
+    esc(document.activeElement ?? document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it("a modal above the path menu owns Escape", async () => {
     mount("/read/doc-9", <ModalProbe />);
     await waitFor(() => expect(activeDoc()).not.toBeNull());

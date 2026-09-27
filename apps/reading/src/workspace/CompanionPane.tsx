@@ -29,6 +29,7 @@ import { AGENT_TAB_KINDS } from "./companionRegistry";
 import { sourceDocumentOf, useCompanion } from "./companionStore";
 import type { AgentTabDescriptor, OpenAgentTabInput } from "./companionStore";
 import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
+import { topModal } from "./escapeOverlay";
 
 /** Past this many agents the overflow menu gets a search box: scanning a
  *  longer list is not navigation (DESIGN-MODEL §1, the switcher's rule). */
@@ -293,7 +294,9 @@ function OverflowMenu({
     };
     // The menu's own Esc (a transient overlay: one Esc, one handler).
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (e.key !== "Escape" || e.defaultPrevented || ref.current?.closest("[hidden]")) return;
+      const modal = topModal();
+      if (modal && !modal.contains(ref.current)) return;
       e.preventDefault();
       setOpen(false);
       triggerRef.current?.focus();
