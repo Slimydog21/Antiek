@@ -619,8 +619,8 @@ def accrue_window(
     counted time (``frame_daily_dwell``), the asset's cents are scaled by
     counted/incremental (integer floor — the excess goes to house, so
     conservation stays exact), and every clamped ms + cent is recorded and
-    reported (``REASON_DWELL_CAP_CLAMPED`` surfaces in the response's clamped
-    fields; the dwell ledger row carries prior/counted/clamped so :func:`replay`
+    reported (the house line's reasons gain ``"dwell_cap_clamped"`` and the
+    response carries the clamped totals; the dwell ledger row carries prior/counted/clamped so :func:`replay`
     re-derives the clamp exactly). ``owner_user_id`` is the reader identity the
     cap scopes on ("" when unknown); ``day_bucket`` is the UTC day (defaults to
     today; injectable for tests).
@@ -642,9 +642,19 @@ def accrue_window(
     disjoint) flush mints the whole settled value again. The block is
     re-entrant: a caller already inside a transaction extends it.
     """
+    # Refuse a connection that cannot hold the one transaction BEFORE any DDL
+    # runs, rather than failing with AttributeError after ensure_tables.
+    if not callable(getattr(con, "transaction", None)):
+        raise TypeError(
+            "accrue_window needs a write connection with transaction() "
+            "(runtime.db_lock.connect_write); got one without it"
+        )
     # Outside the transaction: ensure_tables swallows DDL errors, and a
     # swallowed failure inside the block would abort the whole write
-    # (LockedConnection.transaction raises TransactionAborted).
+    # (LockedConnection.transaction raises TransactionAborted). The idempotent
+    # reload path re-enters ensure_tables inside the block through
+    # _load_window_accrual; by then every table exists, so that call is a
+    # catalog no-op and cannot fail.
     ensure_tables(con)
     with con.transaction():
         return _accrue_window_in_transaction(

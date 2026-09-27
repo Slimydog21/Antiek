@@ -442,11 +442,15 @@ every impression-revenue path to pass the composite anti-gaming verdict
 before transfer. Fix, applying the MRC IVT model (invalid traffic is
 non-billable, not merely flagged): a pre-accrual filter stage that
 excludes invalid seconds from numerator AND denominator — GIVT-class
-(known-bot UA, datacenter IP, impossible cadence: >1 batch/window,
-second_index gaps/replays, dwell>1000ms) and SIVT-class heuristics
-(implausible constant-attention signatures) — plus **per-identity
-saturation**: countable dwell per (user, asset, day) saturates at a
-published cap, so a sybil's maximum influence is bounded (the $10M
+(known-bot UA, datacenter IP, impossible cadence: second_index
+gaps/replays, dwell>1000ms) and SIVT-class heuristics (implausible
+constant-attention signatures) — plus **per-identity saturation**:
+countable dwell per (user, asset, day), metered as valid in-frame seconds
+(1000 ms each, never the client-reported dwell), saturates at a published
+cap. (As built: a ">1 batch/window" cadence rule is deliberately not
+implemented. `frame_ivt` keeps cross-window state out of scope, and the
+window mint budget relies on repeated flushes of one window being
+legitimate: each flush receives only the unminted remainder.) so a sybil's maximum influence is bounded (the $10M
 DOJ-prosecuted bot-streaming fraud is the precedent for what uncapped
 units invite). Post-hoc detection triggers recomputation/clawback of
 *escrow* (never of disbursed funds — clawback risk is one more reason

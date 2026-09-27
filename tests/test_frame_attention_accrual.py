@@ -441,3 +441,36 @@ def test_partial_write_failure_leaves_no_mint_for_the_next_flush_to_repeat(
         "SELECT COUNT(*), SUM(minted_cents) FROM frame_window_mints "
         "WHERE window_id = 'w-crash'"
     ).fetchone() == (1, 1000)
+
+
+def test_accrue_window_refuses_a_connection_without_transaction_before_any_ddl():
+    """accrue_window writes everything in one con.transaction(). A plain
+    connection must be refused up front, before ensure_tables runs any DDL,
+    rather than failing with AttributeError after the DDL (DeepSeek W5 r1 LOW 1)."""
+
+    class PlainConnection:
+        def __init__(self) -> None:
+            self.executed: list[str] = []
+
+        def execute(self, sql, *args, **kwargs):  # pragma: no cover - must not run
+            self.executed.append(sql)
+            raise AssertionError("no statement may run before the refusal")
+
+    plain = PlainConnection()
+    batch = _window("w-plain", 3, (_sample("doc-a", area=0.5, prom=0.5, dwell=900),), 300)
+    with pytest.raises(TypeError, match="transaction"):
+        accrue_window(plain, batch, asset_to_ip_holder={})
+    assert plain.executed == []
+
+
+def test_replay_refuses_a_line_with_no_valid_in_frame_seconds(con, monkeypatch):
+    """Replay has no pre-loop meter check of its own, so its per-line refusal
+    is the only guard against re-deriving an un-metered (zero-dwell) line.
+    Valid stored inputs cannot produce one, so this forces the meter to zero:
+    deleting the guard must fail this test (MiMo W5 r1 LOW)."""
+    h = ip_holders.create_pre_onboarded(con, display_name="Guard Press")
+    samples = (_sample("doc-a", area=0.6, prom=0.7, dwell=800),)
+    result = accrue_window(con, _window("w-guard", 4, samples, 400), asset_to_ip_holder={"doc-a": h})
+    monkeypatch.setattr(frame_attention_accrual, "_metered_in_frame_ms", lambda line: 0)
+    with pytest.raises(ValueError, match="no valid in-frame seconds"):
+        replay(con, result.batch_ref)
