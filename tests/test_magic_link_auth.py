@@ -681,7 +681,7 @@ def test_dev_login_disabled_returns_404(monkeypatch):
     exists on a box that hasn't opted in."""
     client = _client(monkeypatch)
     monkeypatch.delenv("ANTIEK_DEV_LOGIN_TOKEN", raising=False)
-    r = client.get(f"/auth/dev-login?token={_DEV_TOKEN}", follow_redirects=False)
+    r = client.post("/auth/dev-login", data={"token": _DEV_TOKEN}, follow_redirects=False)
     assert r.status_code == 404
     assert SESSION_COOKIE_NAME not in r.cookies
 
@@ -691,7 +691,7 @@ def test_dev_login_wrong_token_returns_404(monkeypatch):
     distinguishes "wrong token" from "feature disabled"."""
     client = _client(monkeypatch)
     monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
-    r = client.get("/auth/dev-login?token=not-the-token", follow_redirects=False)
+    r = client.post("/auth/dev-login", data={"token": "not-the-token"}, follow_redirects=False)
     assert r.status_code == 404
     assert SESSION_COOKIE_NAME not in r.cookies
 
@@ -700,7 +700,7 @@ def test_dev_login_missing_token_returns_404(monkeypatch):
     """Feature on, no token query param at all: still 404."""
     client = _client(monkeypatch)
     monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
-    r = client.get("/auth/dev-login", follow_redirects=False)
+    r = client.post("/auth/dev-login", data={}, follow_redirects=False)
     assert r.status_code == 404
 
 
@@ -711,7 +711,7 @@ def test_dev_login_requires_auth_secret(monkeypatch):
     client = _client(monkeypatch)
     monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
     monkeypatch.delenv("ANTIEK_AUTH_SECRET", raising=False)
-    r = client.get(f"/auth/dev-login?token={_DEV_TOKEN}", follow_redirects=False)
+    r = client.post("/auth/dev-login", data={"token": _DEV_TOKEN}, follow_redirects=False)
     assert r.status_code == 404
 
 
@@ -721,7 +721,7 @@ def test_dev_login_happy_path_sets_cookie_and_authorizes(monkeypatch):
     it via the existing antiek_session_cookie path — unchanged."""
     client = _client(monkeypatch)
     monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
-    r = client.get(f"/auth/dev-login?token={_DEV_TOKEN}", follow_redirects=False)
+    r = client.post("/auth/dev-login", data={"token": _DEV_TOKEN}, follow_redirects=False)
     assert r.status_code == 302
     assert SESSION_COOKIE_NAME in r.cookies
 
@@ -735,8 +735,8 @@ def test_dev_login_blocks_open_redirect(monkeypatch):
     cookie is set — same open-redirect guard as /auth/callback."""
     client = _client(monkeypatch)
     monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
-    r = client.get(
-        f"/auth/dev-login?token={_DEV_TOKEN}&next=//evil.example.com/x",
+    r = client.post(
+        "/auth/dev-login", data={"token": _DEV_TOKEN, "next": "//evil.example.com/x"},
         follow_redirects=False,
     )
     assert r.status_code == 302

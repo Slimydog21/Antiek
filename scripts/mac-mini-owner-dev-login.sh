@@ -21,16 +21,25 @@ if [ -z "${ANTIEK_AUTH_SECRET:-}" ]; then
   echo "ANTIEK_AUTH_SECRET unset — owner cookies cannot be verified" >&2
   exit 1
 fi
-URL="${API}/auth/dev-login?token=${ANTIEK_DEV_LOGIN_TOKEN}&next=${NEXT}"
-# Prefer curl+cookie jar for smoke; open for interactive browser.
+# The browser installs its own cookie by submitting the token-free form.
+# The curl cookie jar below is only for API smoke and is never a browser login.
 if [ "${ANTIEK_OWNER_LOGIN_MODE:-open}" = "curl" ]; then
   JAR="${ANTIEK_COOKIE_JAR:-/tmp/antiek-owner.cookies}"
-  curl -sS -c "$JAR" -b "$JAR" -o /dev/null -w "dev-login HTTP %{http_code} jar=$JAR\n" -L "$URL"
+  umask 077
+  if [ -e "$JAR" ]; then chmod 600 "$JAR"; fi
+  ANTIEK_DEV_LOGIN_NEXT="$NEXT" python3 -c \
+    'import os,sys,urllib.parse; sys.stdout.write(urllib.parse.urlencode({"token":os.environ["ANTIEK_DEV_LOGIN_TOKEN"],"next":os.environ["ANTIEK_DEV_LOGIN_NEXT"]}))' \
+    | curl -fsS -c "$JAR" -b "$JAR" -o /dev/null \
+        -w "dev-login HTTP %{http_code} jar=$JAR\n" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        --data-binary @- "${API}/auth/dev-login"
   curl -sS -b "$JAR" "$API/auth/me"; echo
 else
   if command -v open >/dev/null 2>&1; then
-    open "$URL"
-    echo "Opened owner login in default browser (token not printed). Then visit http://127.0.0.1:5173/"
+    NEXT_ENCODED="$(ANTIEK_DEV_LOGIN_NEXT="$NEXT" python3 -c \
+      'import os,urllib.parse; print(urllib.parse.quote(os.environ["ANTIEK_DEV_LOGIN_NEXT"], safe=""))')"
+    open "${API}/auth/dev-login?next=${NEXT_ENCODED}"
+    echo "Opened owner sign-in form. Enter the token in the browser to install its session cookie."
   else
     echo "open unavailable; run with ANTIEK_OWNER_LOGIN_MODE=curl" >&2
     exit 1
