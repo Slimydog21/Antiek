@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useContext, useEffect, useRef } from "react";
+import { Suspense, lazy, useCallback, useContext, useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 
 import { UNSAFE_LocationContext, useInRouterContext } from "react-router-dom";
@@ -16,6 +16,7 @@ import { useWorkspace } from "./WorkspaceStore";
 import { escOverlayOpen } from "./escapeOverlay";
 import { isTextEditing } from "./shortcuts";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
+import { useInsetPaneResize } from "./useInsetPaneResize";
 import { useViewportTier } from "./useViewportTier";
 import { WRITE_OUTLINE_PANEL_ID } from "./writeOutlineStore";
 
@@ -106,6 +107,15 @@ export function PanelLayout({ mainSlot }: Props) {
   // The strip renders nothing without a router, so neither does its fallback.
   const inRouter = useInRouterContext();
   const tier = useViewportTier();
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const rightPaneId = useId();
+  const paneResize = useInsetPaneResize({
+    containerRef: layoutRef,
+    enabled: layoutPreset === "omarchy-inset" && tier !== "sm" && fullscreenPane === null,
+    defaultWidth: tier === "md" ? RIGHT_PANE_MD_WIDTH : DOCK_WIDTH,
+    reservedWidth: INSET_GAP * 3,
+    primaryDockWidth: dockLeftIds.length > 0 && tier !== "md" ? DOCK_WIDTH : 0,
+  });
   const projectTreeOverlay = tier === "md" && dockLeftIds.includes("shortcuts:projecttree");
   // What the right pane holds follows the route's mothership (the outline in
   // writing, the agents elsewhere), so its name does too. Read through the
@@ -297,7 +307,7 @@ export function PanelLayout({ mainSlot }: Props) {
   const leftHidden = shownAlone === "right";
   const rightHidden = shownAlone === "left";
   const rightFull = shownAlone === "right";
-  const rightPaneWidth = tier === "md" ? RIGHT_PANE_MD_WIDTH : DOCK_WIDTH;
+  const rightPaneWidth = paneResize.width;
   const rightDockPanelIds = inset ? dockRightIds.filter((id) => !PANE_CONTENT_PANEL_IDS.has(id)) : dockRightIds;
   const leftDockWidth = inset
     ? dockLeftIds.length === 0 || tier === "md"
@@ -314,6 +324,7 @@ export function PanelLayout({ mainSlot }: Props) {
 
   return (
     <div
+      ref={layoutRef}
       className="relative h-full w-full flex bg-transparent overflow-hidden"
       style={inset ? { padding: INSET_GAP, gap: INSET_GAP } : undefined}
       data-layout-preset={inset ? "omarchy-inset" : undefined}
@@ -356,11 +367,38 @@ export function PanelLayout({ mainSlot }: Props) {
         </div>
       </div>
 
+      {inset && !fullscreenPane && (
+        <div
+          role="separator"
+          aria-label="Resize panes"
+          aria-orientation="vertical"
+          aria-description="Left and right arrows resize the panes. Home and End set the limits. Enter restores the default width."
+          aria-controls={rightPaneId}
+          aria-valuemin={paneResize.minimum}
+          aria-valuemax={paneResize.maximum}
+          aria-valuenow={rightPaneWidth}
+          aria-valuetext={`${rightPaneWidth} pixels for the ${writing ? "outline" : "agents"} pane`}
+          tabIndex={0}
+          title="Drag to resize. Arrow keys adjust; Home/End set limits; Enter resets."
+          className="absolute z-10 flex items-center justify-center cursor-col-resize touch-none select-none rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus group"
+          style={{ top: INSET_GAP, bottom: INSET_GAP, right: INSET_GAP / 2 + rightPaneWidth, width: INSET_GAP * 2 }}
+          onPointerDown={paneResize.onPointerDown}
+          onPointerMove={paneResize.onPointerMove}
+          onPointerUp={paneResize.onPointerUp}
+          onPointerCancel={paneResize.onPointerCancel}
+          onLostPointerCapture={paneResize.onLostPointerCapture}
+          onKeyDown={paneResize.onKeyDown}
+        >
+          <span aria-hidden="true" className="h-10 w-1 rounded-full bg-hairline group-hover:bg-focus group-focus-visible:bg-focus" />
+        </div>
+      )}
+
       {/* RIGHT: the companion pane (inset) or a transparent wrapper (docked) */}
       <div
         {...(inset
           ? {
               "data-pane": "right",
+              id: rightPaneId,
               role: "region",
               // Named for what it holds (B3-7): the outline in writing, the
               // agents in research and reading.
