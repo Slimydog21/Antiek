@@ -30,6 +30,9 @@ typed ``error.code``.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Concatenate, ParamSpec
+
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -37,6 +40,7 @@ from runtime.db_lock import connect_read
 from substrate.ad_inventory.advertiser_onboarding import (
     AdvertiserOnboardingError,
     AdvertiserRecord,
+    AdvertiserRegistry,
     activate_advertiser,
     approve_advertiser,
     churn_advertiser,
@@ -115,6 +119,9 @@ class AdvertiserListResponse(BaseModel):
 # ── Helpers ────────────────────────────────────────────────────────
 
 
+_P = ParamSpec("_P")
+
+
 def _resolve_db_path() -> str:
     from substrate.graph import default_db_path, ensure_initialized
 
@@ -123,7 +130,11 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _load_then_save(state_fn, **kwargs) -> AdvertiserRecord:
+def _load_then_save(  # noqa: UP047 -- runtime supports Python 3.11
+    state_fn: Callable[Concatenate[AdvertiserRegistry, _P], AdvertiserRecord],
+    *args: _P.args,
+    **kwargs: _P.kwargs,
+) -> AdvertiserRecord:
     """Round-trip pattern: load → transition → save. The
     AdvertiserRegistry is purely in-memory and lives only for this
     HTTP call. Single-writer invariant enforced by db_lock."""
@@ -132,7 +143,7 @@ def _load_then_save(state_fn, **kwargs) -> AdvertiserRecord:
     db = _resolve_db_path()
     with connect_write(db, purpose="advertisers/transition") as con:
         registry = load_registry(con)
-        record = state_fn(registry, **kwargs)
+        record = state_fn(registry, *args, **kwargs)
         save_record(con, record)
     return record
 
