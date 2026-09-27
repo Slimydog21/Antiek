@@ -298,10 +298,20 @@ class DecomposerEnvironment:
                 result.policy_id_scored = rollout.policy_id
             breakdown.append(result)
 
-        # Weighted composite. Unknown rubric_ids contribute 0.
+        # Weighted composite. Unknown rubric_ids contribute 0. A VERIFIABLE
+        # rubric that could not run (passed is None, e.g. the paraphrase guard
+        # with no embedder) is left out of both sums, the same predicate
+        # passed_all_verifiable uses below: counting its weight with a 0.0
+        # score would charge the rollout for the environment's missing
+        # dependency. Judged and outcome rubrics report passed=None with a
+        # real score on every call (RubricResult.passed is None for graded
+        # rubrics), so they always count. A rubric that failed or errored
+        # (passed is False) still counts as 0.
         total = 0.0
         used_weight = 0.0
         for br in breakdown:
+            if br.kind == VERIFIABLE and br.passed is None:
+                continue
             w = self.weights.get(br.rubric_id, 0.0)
             total += w * br.score
             used_weight += w
