@@ -16,7 +16,7 @@ import {
   type SaveResult,
   type TabTreeAdapter,
 } from "./tabTree";
-import { useTabTrees } from "./tabTreeStore";
+import { tabsSaved, useTabTrees } from "./tabTreeStore";
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
 
@@ -144,6 +144,52 @@ describe("persistenceIssue: the last save was accepted, or it says so (A2b item 
     await flush(20);
     expect(call).toBe(2);
     expect(tabs().persistenceIssue).toMatchObject({ reason: "refused", mothership: "reading" });
+  });
+
+  it("a refusal of one tree survives another tree's refusal and acceptance", async () => {
+    // Verifier finding (A2b repair 2): one shared slot let writing's 422
+    // overwrite reading's, and writing's accepted save then cleared it, so
+    // tabsSaved() said true while reading's tabs were not saved.
+    const inner = createInMemoryTabTreeAdapter();
+    const refuse: Record<string, boolean> = { reading: true, writing: true };
+    const adapter: TabTreeAdapter = {
+      ...inner,
+      save: async (p, m, s): Promise<SaveResult> =>
+        refuse[m]
+          ? { status: "invalid", reason: "tab_tree_invalid", tab_id: null, detail: `${m} refused` }
+          : inner.save(p, m, s),
+    };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await tabs().bindActiveProject(async () => "p1", () => adapter);
+    expect(tabs().tabsPersistence).toBe("server");
+    await tabs().ensureMothership("reading");
+    await tabs().ensureMothership("writing");
+    expect(tabsSaved(tabs())).toBe(true);
+
+    tabs().spawnTab("reading", null, { tab_id: "R", kind: "reader", ref: "doc-r", mothership: "reading" });
+    await flush(20);
+    tabs().spawnTab("writing", null, { tab_id: "W", kind: "reader", ref: "doc-w", mothership: "writing" });
+    await flush(20);
+    expect(tabs().persistenceIssues.reading).toMatchObject({ reason: "refused", mothership: "reading" });
+    expect(tabs().persistenceIssues.writing).toMatchObject({ reason: "refused", mothership: "writing" });
+
+    refuse.writing = false;
+    tabs().spawnTab("writing", null, { tab_id: "W2", kind: "reader", ref: "doc-w2", mothership: "writing" });
+    await flush(20);
+    expect(Object.keys((await inner.load("p1", "writing")).tree.nodes).sort()).toEqual(["W", "W2"]);
+    expect(tabs().persistenceIssues.writing).toBeNull();
+    // Reading's tabs are still not saved, and the store still says so.
+    expect(Object.keys((await inner.load("p1", "reading")).tree.nodes)).toEqual([]);
+    expect(tabs().persistenceIssues.reading).toMatchObject({ reason: "refused", mothership: "reading" });
+    expect(tabs().persistenceIssue).toMatchObject({ mothership: "reading" });
+    expect(tabsSaved(tabs())).toBe(false);
+
+    refuse.reading = false;
+    tabs().spawnTab("reading", null, { tab_id: "R2", kind: "reader", ref: "doc-r2", mothership: "reading" });
+    await flush(20);
+    expect(tabs().persistenceIssues.reading).toBeNull();
+    expect(tabs().persistenceIssue).toBeNull();
+    expect(tabsSaved(tabs())).toBe(true);
   });
 
   it("rebinding starts clean", async () => {

@@ -14,9 +14,9 @@
  * yet"; a network error is retried first (1 s, 4 s, 15 s). Every save goes
  * through one path for both adapters: snapshot + expected version, adopt the
  * server's answer (replaying ops made in flight), rebase after a 409, and
- * after a 422 log, refetch, rebase and record `persistenceIssue` (cleared by
- * the next accepted save of that tree), so "server" never claims tabs are
- * saved while the server is refusing them (`tabsSaved`).
+ * after a 422 log, refetch, rebase and record that tree's `persistenceIssues`
+ * entry (cleared only by the next accepted save of the same tree), so "server"
+ * never claims tabs are saved while the server is refusing them (`tabsSaved`).
  *
  * Tabs are NAVIGATION state (tab ≠ branch): closing or pruning a tab never
  * touches the investigation/document it pointed at. public_number stays null
@@ -70,7 +70,7 @@ export const SESSION_PROJECT_KEY = "default";
 
 /** Where the trees are saved to: "session" (in memory, gone on reload) or
  *  "server" (the active project's row, §1.6). It claims the tabs ARE saved
- *  only while `persistenceIssue` is null: see `tabsSaved`. */
+ *  only while no tree has a `persistenceIssues` entry: see `tabsSaved`. */
 export type TabsPersistence = "session" | "server";
 
 /** The last save of `mothership`'s tree was refused (a 422: Part 2 §2.2
@@ -83,10 +83,27 @@ export interface PersistenceIssue {
   mothership: Mothership;
 }
 
+/** One slot per tree: a refusal of one tree is never overwritten or cleared
+ *  by another tree's save. */
+export type PersistenceIssues = Record<Mothership, PersistenceIssue | null>;
+
+function noIssues(): PersistenceIssues {
+  return { research: null, writing: null, reading: null };
+}
+
+/** The newest outstanding issue across the trees (null when none). */
+function newestIssue(issues: PersistenceIssues): PersistenceIssue | null {
+  let newest: PersistenceIssue | null = null;
+  for (const issue of Object.values(issues)) {
+    if (issue && (newest === null || issue.at >= newest.at)) newest = issue;
+  }
+  return newest;
+}
+
 /** True when the tabs are saved on the server: bound to a project, and the
- *  last save was accepted. */
-export function tabsSaved(s: { tabsPersistence: TabsPersistence; persistenceIssue: PersistenceIssue | null }): boolean {
-  return s.tabsPersistence === "server" && s.persistenceIssue === null;
+ *  last save of EVERY tree was accepted (or none has been refused). */
+export function tabsSaved(s: { tabsPersistence: TabsPersistence; persistenceIssues: PersistenceIssues }): boolean {
+  return s.tabsPersistence === "server" && Object.values(s.persistenceIssues).every((issue) => issue === null);
 }
 
 /** GET /projects retries after a network error (A2b item 6): three, after
@@ -184,8 +201,12 @@ interface TabTreeState {
   /** The project the trees are bound to (null = session, in memory). */
   projectId: string | null;
   tabsPersistence: TabsPersistence;
-  /** Set when the last save was refused, null when it was accepted (or none
-   *  has run). The UI copy for it is not written yet; the state is exposed. */
+  /** Per tree: set when that tree's last save was refused, null when it was
+   *  accepted (or none has run). The UI copy for it is not written yet; the
+   *  state is exposed. */
+  persistenceIssues: PersistenceIssues;
+  /** Derived from `persistenceIssues`: the newest outstanding issue, null
+   *  only when every tree is clean. Kept for callers that want one flag. */
   persistenceIssue: PersistenceIssue | null;
 
   setTabTreeAdapter: (adapter: TabTreeAdapter) => void;
@@ -391,8 +412,9 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
    *  first `sentOps`) replay on the server's snapshot and stay pending. */
   function adoptSaved(mothership: Mothership, snapshot: TabTreeSnapshot, sentOps: number): void {
     const inFlight = (get().pendingOps[mothership] ?? []).slice(sentOps);
-    // Accepted: whatever an earlier refusal of this tree said no longer holds.
-    if (get().persistenceIssue?.mothership === mothership) set({ persistenceIssue: null });
+    // Accepted: whatever an earlier refusal of THIS tree said no longer holds.
+    // Another tree's refusal is its own slot and stays.
+    if (get().persistenceIssues[mothership] !== null) setIssue(mothership, null);
     adopt(mothership, snapshot, inFlight);
   }
 
@@ -471,7 +493,12 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     console.error(
       `[antiek/tabs] the server refused the tab snapshot (${result.reason}${result.tab_id ? `, tab ${result.tab_id}` : ""}), a lane-A bug: ${result.detail}`,
     );
-    set({ persistenceIssue: { reason: "refused", at: new Date().toISOString(), mothership } });
+    setIssue(mothership, { reason: "refused", at: new Date().toISOString(), mothership });
+  }
+
+  function setIssue(mothership: Mothership, issue: PersistenceIssue | null): void {
+    const persistenceIssues = { ...get().persistenceIssues, [mothership]: issue };
+    set({ persistenceIssues, persistenceIssue: newestIssue(persistenceIssues) });
   }
 
   /** The hold lapsed (or a newer close superseded it): the close joins the
@@ -529,6 +556,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     adapter: createInMemoryTabTreeAdapter(),
     projectId: null,
     tabsPersistence: "session",
+    persistenceIssues: noIssues(),
     persistenceIssue: null,
 
     setTabTreeAdapter: (adapter) => {
@@ -542,6 +570,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
         loaded: emptyLoaded(),
         loadError: noErrors(),
         pendingOps: { research: [], writing: [], reading: [] },
+        persistenceIssues: noIssues(),
         persistenceIssue: null,
       });
     },
@@ -560,6 +589,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
           adapter: makeAdapter(),
           projectId,
           tabsPersistence: "server",
+          persistenceIssues: noIssues(),
           persistenceIssue: null,
           trees: { research: null, writing: null, reading: null },
           loaded: emptyLoaded(),
@@ -789,6 +819,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
         adapter: createInMemoryTabTreeAdapter(),
         projectId: null,
         tabsPersistence: "session",
+        persistenceIssues: noIssues(),
         persistenceIssue: null,
       });
     },

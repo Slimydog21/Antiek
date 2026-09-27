@@ -203,8 +203,10 @@ through `tabTreeHttpAdapter.ts` over lane B's routes and reports
 `tabsPersistence: "server"`; a 404 on `GET /projects`, or a 200 that is not
 JSON (the SPA fallback), keeps the in-memory adapter (`"session"`: trees end
 with the page), and a network error is retried after 1 s, 4 s and 15 s first.
-A save the server refuses (422) sets `persistenceIssue` until a later save of
-that tree is accepted; `tabsSaved(state)` is true only when bound and clean.
+A save the server refuses (422) sets that tree's `persistenceIssues` entry
+until a later save of the same tree is accepted (`persistenceIssue` is the
+newest outstanding one); `tabsSaved(state)` is true only when bound and every
+tree is clean.
 `tabTreeWire.ts` maps the
 model to the §1.6 wire (history ↔ `retired[]`, island ↔ selection,
 `next_root_index` ↔ `next_child_index.root`); `setTabTreeAdapter` stays the
