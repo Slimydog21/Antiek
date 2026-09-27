@@ -132,6 +132,16 @@ describe("parse honesty", () => {
     );
   });
 
+  it("formatServability calls a personal document personal reading, not gated (F-07)", () => {
+    const personal = parseBookSummary({
+      ...work,
+      servability: "personal_readable",
+      servable_full_text: false,
+    });
+    expect(formatServability(personal)).toBe("Personal reading");
+    expect(formatServability(personal)).not.toMatch(/gated/i);
+  });
+
   it("formatServability honesty", () => {
     expect(formatServability(parseBookSummary(work))).toMatch(/servable/i);
     expect(

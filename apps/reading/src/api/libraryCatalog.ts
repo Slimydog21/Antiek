@@ -8,7 +8,7 @@
  */
 
 import { API_BASE, apiFetch } from "../lib/api";
-import { isServability, type Servability } from "./books";
+import { isServability, servabilityLabel, type Servability } from "./books";
 
 export type LibraryFilter = "servable" | "gated" | "all";
 
@@ -238,5 +238,9 @@ export async function fetchLibraryCatalog(
 export function formatServability(summary: BookSummary): string {
   if (summary.taken_down) return "taken down";
   if (summary.servable_full_text) return "servable HTML/full-text";
+  // Owner-readable, not gated: use the same copy as the badge (F-07).
+  if (summary.servability === "personal_readable") {
+    return servabilityLabel(summary.servability).label;
+  }
   return `gated (${summary.servability})`;
 }

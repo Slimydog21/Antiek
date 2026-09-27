@@ -12,11 +12,13 @@
  * docstrings already stripped, so a commented-out or documented value is not
  * counted):
  *   - servability.py: the body of `class ServabilityStatus(...)`, i.e. every
- *     indented line after the class header up to the next top-level line;
- *     members match /^\s+[A-Z][A-Z0-9_]*\s*=\s*"([a-z0-9_]+)"/m.
+ *     indented line after the class header up to the next top-level line.
+ *     Members are `NAME = 'value'` or `NAME = "value"` lines at the body's
+ *     own indentation (that of its first non-blank line), so assignments in a
+ *     nested block (a helper method) are not counted.
  *   - constants.py: the parenthesised tuple after
  *     `BOOK_SERVABILITY_STATUSES: Final[tuple[str, ...]] = (` up to the first
- *     line that is exactly `)`; values match /"([a-z0-9_]+)"/.
+ *     line that is exactly `)`; values are single- or double-quoted literals.
  * The two backend sources must agree with each other as well as with us.
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -55,7 +57,11 @@ function extractEnumValues(servabilityPy: string): string[] {
   // The class body ends at the first non-blank line with no indentation.
   const end = /^\S/m.exec(rest);
   const body = end ? rest.slice(0, end.index) : rest;
-  return [...body.matchAll(/^\s+[A-Z][A-Z0-9_]*\s*=\s*"([a-z0-9_]+)"/gm)].map((m) => m[1]);
+  // Member indentation = the first non-blank body line's leading whitespace.
+  const indent = /^([ \t]+)\S/m.exec(body)?.[1];
+  if (!indent) return [];
+  const member = new RegExp(`^${indent}[A-Z][A-Z0-9_]*\\s*=\\s*(["'])([a-z0-9_]+)\\1`, "gm");
+  return [...body.matchAll(member)].map((m) => m[2]);
 }
 
 function extractTupleValues(constantsPy: string): string[] {
@@ -65,7 +71,7 @@ function extractTupleValues(constantsPy: string): string[] {
   const rest = src.slice(start.index + start[0].length);
   const end = /^\)/m.exec(rest);
   const body = end ? rest.slice(0, end.index) : rest;
-  return [...body.matchAll(/"([a-z0-9_]+)"/g)].map((m) => m[1]);
+  return [...body.matchAll(/(["'])([a-z0-9_]+)\1/g)].map((m) => m[2]);
 }
 
 describe("servability extraction (the regexes neither over- nor under-match)", () => {
@@ -84,6 +90,42 @@ describe("servability extraction (the regexes neither over- nor under-match)", (
       "}",
     ].join("\n");
     expect(extractEnumValues(fixture)).toEqual(["public_domain", "new_value"]);
+  });
+
+  it("accepts single-quoted members as well as double-quoted ones (F-05)", () => {
+    const fixture = [
+      "class ServabilityStatus(StrEnum):",
+      "    PUBLIC_DOMAIN = 'public_domain'",
+      '    PERSONAL_READABLE = "personal_readable"',
+      "",
+      "_X = 1",
+    ].join("\n");
+    expect(extractEnumValues(fixture)).toEqual(["public_domain", "personal_readable"]);
+    const tuple = [
+      "BOOK_SERVABILITY_STATUSES: Final[tuple[str, ...]] = (",
+      "    'public_domain',",
+      '    "personal_readable",',
+      ")",
+    ].join("\n");
+    expect(extractTupleValues(tuple)).toEqual(["public_domain", "personal_readable"]);
+  });
+
+  it("counts only lines at the enum's own member indentation, not nested blocks (F-06)", () => {
+    const fixture = [
+      "class ServabilityStatus(StrEnum):",
+      '    PUBLIC_DOMAIN = "public_domain"',
+      "",
+      "    @classmethod",
+      "    def _inner(cls):",
+      '        INNER = "inner_value"',
+      "        return INNER",
+      "",
+      '    REAL_VALUE = "real_value"',
+      "",
+      "def after():",
+      '    OUTSIDE = "outside_value"',
+    ].join("\n");
+    expect(extractEnumValues(fixture)).toEqual(["public_domain", "real_value"]);
   });
 
   it("reads only the tuple body and skips commented values", () => {
