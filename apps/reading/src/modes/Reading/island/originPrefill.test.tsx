@@ -1,27 +1,29 @@
 /**
- * flagFromIsland.test.tsx — the diligence flag affordance on the unit-2
- * island outcome card (autonomous-diligence SPR-01, on the island stack):
- *
- *   - the affordance POSTs exactly ONE flag with the distilled node's id,
- *     the island's thread as source_investigation_id, and enters the queue
- *     as queued;
- *   - THE WITHHELD-SOURCE DOOR: an island on a metadata-only anchor flags a
- *     distilled node with REFS ONLY — the request body carries neither the
- *     node's text nor any withheld passage text (asserted on the body).
+ * originPrefill.test.tsx — reading-global SPR-02 proof 4: the origin
+ * context's ONE consumer. A reader window opened with
+ * { from: "research", id } prefills the island's dig-deeper affordance with
+ * that investigation as the chase parent (visible in the composer, never
+ * silent lineage metadata); a window opened WITHOUT origin — or with a
+ * WRITE origin (a deliverable id is never a chase parent) — renders the
+ * default affordance (the island's thread parents the chase). The spawn
+ * itself crosses the EXISTING startInvestigation path only (no new spawn
+ * call — asserted on the network mock surface).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 
 import type { BookDetail, FullTextResponse } from "../../../api/books";
 import type { BookAnchor } from "../../../lib/api";
 import { useWorkspace } from "../../../workspace/WorkspaceStore";
+import { WindowHostProvider } from "../../../components/windows/windowHostContext";
 import { resetReadingStateBus } from "../../../hooks/useReadingState";
 
 const {
   getBookMock,
   getFullTextMock,
   listBooksMock,
+  spinResearchMock,
   useInvestigationMock,
   postTypedEventMock,
   searchBlocksMock,
@@ -30,6 +32,7 @@ const {
   getBookMock: vi.fn(),
   getFullTextMock: vi.fn(),
   listBooksMock: vi.fn(),
+  spinResearchMock: vi.fn(),
   useInvestigationMock: vi.fn(),
   postTypedEventMock: vi.fn((_e: unknown) => Promise.resolve({ event_id: "e" })),
   searchBlocksMock: vi.fn((_q: string) => Promise.resolve({ count: 0, hits: [] })),
@@ -43,6 +46,7 @@ vi.mock("../../../api/books", async (orig) => {
     getBook: getBookMock,
     getBookFullText: getFullTextMock,
     listBooks: listBooksMock,
+    spinResearch: spinResearchMock,
   };
 });
 
@@ -63,7 +67,7 @@ vi.mock("../../../hooks/useInvestigation", () => ({
 const BODY =
   "## Page 1\n\nThe opening of the book.\n\n## Page 2\n\nThe second page.";
 
-function makeDetail(over: Partial<BookDetail> = {}): BookDetail {
+function makeDetail(): BookDetail {
   return {
     document_id: "doc-1",
     title: "A Servable Book",
@@ -78,11 +82,10 @@ function makeDetail(over: Partial<BookDetail> = {}): BookDetail {
     provenance: null,
     license_basis: null,
     toc: [{ title: "Chapter 1", page_index: 0, level: 0 }],
-    ...over,
   };
 }
 
-function makeBody(over: Partial<FullTextResponse> = {}): FullTextResponse {
+function makeBody(): FullTextResponse {
   return {
     document_id: "doc-1",
     servable: true,
@@ -96,12 +99,10 @@ function makeBody(over: Partial<FullTextResponse> = {}): FullTextResponse {
     ad_eligible: true,
     canonical_url: null,
     license: null,
-    ...over,
   };
 }
 
-/** The island anchor — metadata-only (withheld passage): no quote at rest. */
-function withheldIslandAnchor(): BookAnchor {
+function islandAnchor(): BookAnchor {
   return {
     anchor_id: "a-island",
     document_id: "doc-1",
@@ -111,11 +112,11 @@ function withheldIslandAnchor(): BookAnchor {
       node_text_sha256: "h".repeat(64),
       start_scalar: 0,
       end_scalar: 7,
-      quote: "",
+      quote: "The ope",
       prefix: "",
-      suffix: "",
+      suffix: "ning of the book.",
     },
-    servable_at_pin: false,
+    servable_at_pin: true,
     selection_text_sha256: "s".repeat(64),
     page_index_hint: 0,
     source: "floatmenu_deep_research",
@@ -127,30 +128,25 @@ function withheldIslandAnchor(): BookAnchor {
   };
 }
 
-const QUESTION_TEXT = "an open question from the thread";
-
-interface FlagServer {
-  posts: Record<string, unknown>[];
-  flags: unknown[];
+interface Server {
+  posts: { url: string; body: Record<string, unknown> }[];
 }
 
-function route(server: FlagServer) {
+function route(server: Server) {
   apiFetchMock.mockImplementation(async (input: unknown, init?: { method?: string; body?: string }) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     const parsedBody = init?.body ? JSON.parse(init.body) : undefined;
+    if (method === "POST") server.posts.push({ url, body: parsedBody });
 
-    if (url.endsWith("/diligence/flags") && method === "POST") {
-      server.posts.push(parsedBody);
-      const row = { flag_id: "dfl-1", status: "queued", ...parsedBody };
-      server.flags.push(row);
-      return jsonResponse(row, 201);
-    }
-    if (url.endsWith("/diligence/queue") && method === "GET") {
-      return jsonResponse({ flags: server.flags, count: server.flags.length });
+    if (url.endsWith("/investigations") && method === "POST") {
+      return jsonResponse(
+        { investigation_id: "inv-chase-1", status: "in_progress", start_event_id: "ev-1" },
+        201,
+      );
     }
     if (url.endsWith("/anchors") && method === "GET") {
-      const a = withheldIslandAnchor();
+      const a = islandAnchor();
       return jsonResponse({ document_id: "doc-1", anchors: [{ ...a, anchor: { ...a.anchor } }], count: 1 });
     }
     if (url.endsWith("/anchor-map")) {
@@ -167,14 +163,7 @@ function route(server: FlagServer) {
         investigation_id: "inv-thread",
         insights: [],
         questions: [
-          {
-            node_id: "q-1",
-            kind: "question",
-            text: QUESTION_TEXT,
-            refinement_count: 0,
-            escalated: false,
-            source_document_id: "doc-1",
-          },
+          { node_id: "q-1", kind: "question", text: "what remains open?", refinement_count: 0, escalated: false },
         ],
       });
     }
@@ -200,14 +189,16 @@ function jsonResponse(body: unknown, status = 200) {
   } as unknown as Response;
 }
 
-async function renderReader() {
+/** The window-mounted reader, with the origin spread into props exactly the
+ *  way the window host does (`<Renderer {...win.payload} />`). */
+async function renderWindowReaderWithOrigin(origin: { from: string; id: string } | null) {
   listBooksMock.mockResolvedValue({ books: [], count: 0 });
   const { default: BookReader } = await import("../index");
   return render(
-    <MemoryRouter initialEntries={["/read/doc-1"]}>
-      <Routes>
-        <Route path="/read/:documentId" element={<BookReader />} />
-      </Routes>
+    <MemoryRouter initialEntries={["/research"]}>
+      <WindowHostProvider value={true}>
+        <BookReader documentId="doc-1" origin={origin} />
+      </WindowHostProvider>
     </MemoryRouter>,
   );
 }
@@ -221,7 +212,7 @@ beforeEach(() => {
   getBookMock.mockReset().mockResolvedValue(makeDetail());
   getFullTextMock.mockReset().mockResolvedValue(makeBody());
   listBooksMock.mockReset().mockResolvedValue({ books: [], count: 0 });
-  // A completed thread — the island card renders the distilled outcome.
+  spinResearchMock.mockReset();
   useInvestigationMock.mockReset().mockReturnValue({
     id: "inv-thread",
     status: "completed",
@@ -243,47 +234,55 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-
-/** Await an island glyph by id so a click can never race a null node. */
-async function awaitIsland(id: string) {
-  await waitFor(() =>
-    expect(document.querySelector(`[data-island-id="${id}"]`)).toBeTruthy(),
-  );
-  return document.querySelector(`[data-island-id="${id}"]`)!;
+async function digFromTheIsland() {
+  await screen.findByText("The ope");
+  fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
+  await screen.findByText("Open research →");
+  fireEvent.click(document.querySelector("[data-island-dig-deeper]")!);
+  await screen.findByRole("button", { name: "Follow this" });
 }
 
-describe("the diligence flag on the island outcome card", () => {
-  it("flags a distilled question from a WITHHELD-source island — refs only in the request, queued on the server", async () => {
-    const server: FlagServer = { posts: [], flags: [] };
+describe("the origin prefill (the origin context's one consumer)", () => {
+  it("a research origin prefills the chase parent — visible in the composer, the existing launch path only", async () => {
+    const server: Server = { posts: [] };
     route(server);
-    await renderReader();
-    // The island mark splits the passage text node (the decorated "The ope"
-    // is its own element) — match the mark, per the islands harness.
-    await screen.findByText("The ope");
+    await renderWindowReaderWithOrigin({ from: "research", id: "inv-origin-9" });
+    await digFromTheIsland();
 
-    // Expand the island (a metadata-only anchor: the card shows POSITION,
-    // never a quote) and flag the outcome question.
-    fireEvent.click(await awaitIsland("a-island"));
-    await screen.findByText(/an open question from the thread/);
-    expect(document.querySelector("[data-island-quote]")).toBeNull();
-    expect(document.querySelector("[data-island-position]")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "flag for diligence" }));
-    fireEvent.click(screen.getByRole("button", { name: "flag" }));
+    // The prefill is VISIBLE — never silent lineage metadata.
+    expect(document.querySelector("[data-dig-origin]")!.textContent).toContain(
+      "the research you came from",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Follow this" }));
 
     await waitFor(() => expect(server.posts).toHaveLength(1));
-    const body = server.posts[0];
-    expect(body.kind).toBe("open_question");
-    expect(body.object_ref).toBe("q-1");
-    expect(body.source_investigation_id).toBe("inv-thread");
-    expect(body.source_document_id).toBe("doc-1");
-    expect(body.note).toBeNull();
-    // THE WITHHELD DOOR: neither the node's text nor any passage text rides
-    // the flag — refs only.
-    const payload = JSON.stringify(body);
-    expect(payload).not.toContain(QUESTION_TEXT);
-    expect(payload).not.toContain("The opening");
-    // The calm confirmation renders in the card.
-    await screen.findByText(/flagged — in your diligence queue/);
+    // The chase parents to the investigation the operator came from — via
+    // the EXISTING startInvestigation path (no new spawn call exists).
+    expect(server.posts[0].url).toContain("/investigations");
+    expect(server.posts[0].body.parent_investigation_id).toBe("inv-origin-9");
+  });
+
+  it("no origin → the default affordance (the island's thread parents the chase, no provenance line)", async () => {
+    const server: Server = { posts: [] };
+    route(server);
+    await renderWindowReaderWithOrigin(null);
+    await digFromTheIsland();
+
+    expect(document.querySelector("[data-dig-origin]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Follow this" }));
+    await waitFor(() => expect(server.posts).toHaveLength(1));
+    expect(server.posts[0].body.parent_investigation_id).toBe("inv-thread");
+  });
+
+  it("a WRITE origin never parents a chase (a deliverable id is not an investigation) — the default holds", async () => {
+    const server: Server = { posts: [] };
+    route(server);
+    await renderWindowReaderWithOrigin({ from: "write", id: "del-1" });
+    await digFromTheIsland();
+
+    expect(document.querySelector("[data-dig-origin]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Follow this" }));
+    await waitFor(() => expect(server.posts).toHaveLength(1));
+    expect(server.posts[0].body.parent_investigation_id).toBe("inv-thread");
   });
 });
