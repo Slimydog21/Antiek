@@ -59,8 +59,8 @@ An unknown non-NULL class fails closed, `user_authored_private` included until
 PA04. Legacy `user_owned` keeps its current behaviour (readable; OPEN until
 PA06). A gated class is readable as a reference, because citing a source that
 is not servable is allowed. This edits no rights or auth file; A06's planned
-`substrate/rights/document_visibility.py` replaces it, and informs become a
-row in A06's saved-reference ledger.
+document-visibility module (not on main yet) replaces it, and informs become
+a row in A06's saved-reference ledger.
 
 ## The `CHILD_TABLES` contract (LB-4b, LB-5)
 
@@ -143,6 +143,6 @@ dropped if the co-sign changes them.
 
 - W3 rebuilds the member table: the manifest check (A15) and the legacy rule
   (A16) must follow the new columns.
-- A06 ships `document_visibility.py`: the local predicate is replaced.
+- A06 ships its document-visibility module: the local predicate is replaced.
 - DuckDB lifts the FK-parent `UPDATE … RETURNING` limitation: A14 can check
   the touched row.
