@@ -243,6 +243,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+
+/** Await an island glyph by id so a click can never race a null node. */
+async function awaitIsland(id: string) {
+  await waitFor(() =>
+    expect(document.querySelector(`[data-island-id="${id}"]`)).toBeTruthy(),
+  );
+  return document.querySelector(`[data-island-id="${id}"]`)!;
+}
+
 describe("the diligence flag on the island outcome card", () => {
   it("flags a distilled question from a WITHHELD-source island — refs only in the request, queued on the server", async () => {
     const server: FlagServer = { posts: [], flags: [] };
@@ -254,7 +263,7 @@ describe("the diligence flag on the island outcome card", () => {
 
     // Expand the island (a metadata-only anchor: the card shows POSITION,
     // never a quote) and flag the outcome question.
-    fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
+    fireEvent.click(await awaitIsland("a-island"));
     await screen.findByText(/an open question from the thread/);
     expect(document.querySelector("[data-island-quote]")).toBeNull();
     expect(document.querySelector("[data-island-position]")).toBeTruthy();
