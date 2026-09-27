@@ -110,6 +110,7 @@ class RetrievalSubstrate(Protocol):
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
     ) -> dict[str, Any]: ...
 
 
@@ -158,6 +159,7 @@ class BruteForceSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
     ) -> dict[str, Any]:
         return search(
             self._con,
@@ -167,6 +169,7 @@ class BruteForceSubstrate:
             source_tier_max=source_tier_max,
             document_ids=document_ids,
             policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
         )
 
     def close(self) -> None:
@@ -424,22 +427,25 @@ class DuckDbVssSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
     ) -> dict[str, Any]:
         if not self.vss_active:
             # Fallback path — identical to the brute-force reference.
             return search(
                 self._con, text, model=self._model, top_k=top_k,
                 source_tier_max=source_tier_max, document_ids=document_ids,
-                policy_tag=policy_tag,
+                policy_tag=policy_tag, owner_user_id=owner_user_id,
             )
         return self._vss_query(
             text, top_k=top_k, source_tier_max=source_tier_max,
             document_ids=document_ids, policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
         )
 
     def _vss_query(
         self, text: str, *, top_k: int, source_tier_max: int | None,
         document_ids: Sequence[str] | None, policy_tag: str,
+        owner_user_id: str | None,
     ) -> dict[str, Any]:
         if top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {top_k}")
@@ -486,6 +492,7 @@ class DuckDbVssSubstrate:
         gate_sql, gate_params = non_privileged_chunk_sql_clause(
             table_alias="d",
             policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
         )
         sql += gate_sql
         params.extend(gate_params)

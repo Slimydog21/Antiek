@@ -6,8 +6,9 @@ SQL fragment. ``search()``, VSS (RG-02), and HTTP (RG-03) must import
 (RESTRICTED_CONTENT_CLASSES)`` alone.
 
 **RESTRICTED_CONTENT_CLASSES alone is never sufficient** for chunk gates:
-owner-only ``personal_reading`` must be excluded on the same non-privileged
-branch as gated-but-public ``restricted_pending_opt_in``. The union is
+owner-only ``personal_reading`` / ``user_authored_private`` and agent-only
+``research_only`` must be excluded alongside gated-but-public
+``restricted_pending_opt_in``. The union is
 ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES``.
 
 Chunk search uses a **denylist** (exclude withheld classes on public paths).
@@ -27,6 +28,8 @@ from __future__ import annotations
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
     PERSONAL_READING_CONTENT_CLASS,
+    RESEARCH_ONLY_CONTENT_CLASS,
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 )
 
 # Policy tags privileged to bypass the restricted-content gate.
@@ -39,6 +42,18 @@ PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({
     "private_research",
     "operator_only",
 })
+RESEARCH_AGENT_POLICY_TAG = "private_research"
+assert RESEARCH_AGENT_POLICY_TAG in PRIVILEGED_POLICY_TAGS
+
+
+def research_policy_tag_from_env(value: str | None) -> str:
+    """Validate the research principal before retrieval or event emission."""
+    tag = (value or "").strip() or "attribution_eligible"
+    if tag not in {"attribution_eligible", RESEARCH_AGENT_POLICY_TAG}:
+        raise ValueError(
+            "ANTIEK_RESEARCH_POLICY_TAG must be attribution_eligible or private_research"
+        )
+    return tag
 
 # Content classes that the substrate may withhold from retrieval
 # depending on policy_tag. Per master-spec §9.0 §9.10.
@@ -63,21 +78,26 @@ RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
 # monetization semantics (restricted EARNS to escrow; personal_reading earns
 # nothing), and RESTRICTED_CONTENT_CLASSES carries the documented contract that
 # it equals the write-side GATED_DEFAULT_CONTENT_CLASS. Both sets are excluded on
-# the same non-privileged branch below, so personal_reading is filtered out of
-# the public chunk-search gate while remaining retrievable on the privileged
-# (private_research / operator_only) owner path. What would reverse this choice:
+# the same non-privileged branch below. Both owner-only classes require exact
+# owner identity on a privileged path. What would reverse this choice:
 # if personal_reading ever needed distinct policy_tag gating from
 # restricted_pending_opt_in (e.g. a tag privileged for one but not the other),
 # the separate set already supports it; folding them together would not.
 PERSONAL_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
     PERSONAL_READING_CONTENT_CLASS,
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 })
 
-# The full set of content classes withheld from a non-privileged retrieval —
-# the union of the gated-but-public class and the owner-only class. Both are
-# excluded on the public branch; only the PRIVILEGED_POLICY_TAGS bypass.
+RESEARCH_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
+    RESEARCH_ONLY_CONTENT_CLASS,
+})
+
+# The full public-exclusion set. Research-only stays agent-only even when an
+# owner identity is present; operator_only cannot read it.
 _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES: frozenset[str] = (
-    RESTRICTED_CONTENT_CLASSES | PERSONAL_ONLY_CONTENT_CLASSES
+    RESTRICTED_CONTENT_CLASSES
+    | PERSONAL_ONLY_CONTENT_CLASSES
+    | RESEARCH_ONLY_CONTENT_CLASSES
 )
 
 
@@ -98,11 +118,27 @@ def node_owner_sql_clause(
     )
 
 
+def taken_down_chunk_exclusion_sql(*, table_alias: str = "d") -> str:
+    """Parameter-free exclusion of a document whose book asset is taken down.
+
+    ``table_alias`` is a static identifier from the caller, never a request
+    field. A missing ``book_assets`` row, ``FALSE``, or NULL does not match.
+    Callers AND this outside the content-class/owner OR.
+    """
+    if not table_alias.isidentifier():
+        raise ValueError("document alias must be a static identifier")
+    return (
+        "NOT EXISTS (SELECT 1 FROM book_assets td "
+        f"WHERE td.document_id = {table_alias}.document_id "
+        "AND td.taken_down IS TRUE)"
+    )
+
+
 def non_privileged_chunk_sql_clause(
     *,
     table_alias: str = "d",
     policy_tag: str = "attribution_eligible",
-    owner_user_id: str = "__operator__",
+    owner_user_id: str | None = None,
 ) -> tuple[str, list[str]]:
     """SQL fragment + bind params for the non-privileged chunk gate.
 
@@ -124,22 +160,50 @@ def non_privileged_chunk_sql_clause(
         policy_tag: Retrieval policy; privileged tags bypass rights withholding.
         owner_user_id: Account allowed to retrieve owner-only classes.
     """
+    # Import after package initialization: rights.register imports graph.ops,
+    # whose package imports search -> this module. A top-level import cycles.
+    from substrate.rights.register import VALID_CONTENT_CLASSES
+
+    known = sorted(VALID_CONTENT_CLASSES)
+    known_ph = ",".join("?" for _ in known)
+    known_sql = (
+        f" AND ({table_alias}.content_class IS NULL OR "
+        f"{table_alias}.content_class IN ({known_ph}))"
+    )
+    takedown = " AND " + taken_down_chunk_exclusion_sql(table_alias=table_alias)
     if policy_tag in PRIVILEGED_POLICY_TAGS:
         owner_only = sorted(PERSONAL_ONLY_CONTENT_CLASSES)
         placeholders = ",".join("?" for _ in owner_only)
-        return (
-            f" AND ({table_alias}.content_class IS NULL OR "
-            f"{table_alias}.content_class NOT IN ({placeholders}) OR "
-            f"{table_alias}.owner_user_id = ?)",
-            [*owner_only, owner_user_id],
+        owner_id = (
+            owner_user_id if isinstance(owner_user_id, str)
+            and owner_user_id.strip()
+            and owner_user_id == owner_user_id.strip()
+            and owner_user_id != "__operator__" else None
         )
+        owner_clause = f" OR {table_alias}.owner_user_id = ?" if owner_id is not None else ""
+        sql = (
+            f" AND ({table_alias}.content_class IS NULL OR "
+            f"{table_alias}.content_class NOT IN ({placeholders}){owner_clause})"
+        )
+        params = [*owner_only, *([owner_id] if owner_id is not None else [])]
+        if policy_tag != RESEARCH_AGENT_POLICY_TAG:
+            research_only = sorted(RESEARCH_ONLY_CONTENT_CLASSES)
+            research_ph = ",".join("?" for _ in research_only)
+            sql = (
+                f" AND ({table_alias}.content_class IS NULL OR "
+                f"{table_alias}.content_class NOT IN ({research_ph}))"
+                + sql
+            )
+            params = [*research_only, *params]
+        return known_sql + sql + takedown, [*known, *params]
     excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
     placeholders = ",".join("?" for _ in excluded)
     sql = (
         f" AND ({table_alias}.content_class IS NULL OR "
         f"{table_alias}.content_class NOT IN ({placeholders}))"
+        + takedown
     )
-    return sql, excluded
+    return known_sql + sql, [*known, *excluded]
 
 
 def non_privileged_node_provenance_clause(

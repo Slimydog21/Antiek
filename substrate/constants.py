@@ -588,6 +588,7 @@ assert "user_public_contribution" not in TURBOPUFFER_INDEX_CONTENT_CLASSES
 # reading path the books family already protects for the corpus path.
 PERSONAL_READING_CONTENT_CLASS: Final[str] = "personal_reading"
 USER_AUTHORED_PRIVATE_CONTENT_CLASS: Final[str] = "user_authored_private"
+RESEARCH_ONLY_CONTENT_CLASS: Final[str] = "research_only"
 
 # The document_type strings the third-party ingest connectors emit. A document
 # of one of these types lands personal_reading by default (the insert_document

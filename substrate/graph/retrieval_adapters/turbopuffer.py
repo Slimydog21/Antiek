@@ -579,6 +579,7 @@ class TurbopufferSubstrate:
     def query(self, text: str, *, top_k: int = 5, source_tier_max: int | None = None,
               document_ids: Sequence[str] | None = None,
               policy_tag: str = "attribution_eligible",
+              owner_user_id: str | None = None,
               allow_fallback: bool = True) -> dict[str, Any]:
         def fallback(reason: str) -> dict[str, Any]:
             if not allow_fallback:
@@ -587,7 +588,7 @@ class TurbopufferSubstrate:
             return {
                 **search(self._con, text, model=self._model, top_k=top_k,
                          source_tier_max=source_tier_max, document_ids=document_ids,
-                         policy_tag=policy_tag),
+                         policy_tag=policy_tag, owner_user_id=owner_user_id),
                 "status": "degraded — brute_force", "degraded_reason": reason,
             }
         # Privileged / gated / owner paths stay DuckDB-only (never TP index).
@@ -595,7 +596,7 @@ class TurbopufferSubstrate:
             return {
                 **search(self._con, text, model=self._model, top_k=top_k,
                          source_tier_max=source_tier_max, document_ids=document_ids,
-                         policy_tag=policy_tag),
+                         policy_tag=policy_tag, owner_user_id=owner_user_id),
                 "status": "duckdb — non_servable_policy",
             }
         if self.skipped:
@@ -624,7 +625,7 @@ class TurbopufferSubstrate:
                 return fallback("vendor returned no candidates")
             placeholders = ",".join("?" for _ in ids)
             gate_sql, gate_params = non_privileged_chunk_sql_clause(
-                table_alias="d", policy_tag=policy_tag, owner_user_id="__operator__")
+                table_alias="d", policy_tag=policy_tag, owner_user_id=owner_user_id)
             sql = (
                 "SELECT c.chunk_id,c.section_path,c.text,c.token_count,c.document_id,c.chunk_index,"
                 "d.title,d.source_tier,d.document_type,c.embedding FROM chunks c JOIN documents d "

@@ -21,6 +21,7 @@ import tempfile
 import pytest
 
 from benchmarks.retrieval_bench import HashEmbedding, row_counts, seed_graph
+from runtime.db_lock import connect_write
 from substrate.graph import retrieval_substrate as _rs
 from substrate.graph.retrieval_substrate import (
     RetrievalSubstrate,
@@ -45,6 +46,11 @@ def seeded_db():
     d = tempfile.mkdtemp(prefix="antiek-spr05-iface-")
     db = os.path.join(d, "graph.duckdb")
     counts = seed_graph(db, emb)
+    with connect_write(db, purpose="pa02-interface-owner-fixture") as con:
+        con.execute(
+            "UPDATE documents SET owner_user_id='owner-a' "
+            "WHERE document_id='doc-personal'"
+        )
     yield db, emb, counts
 
 
@@ -198,7 +204,7 @@ def test_gate_includes_personal_reading_under_operator_only(seeded_db, kind):
     sub = make_substrate(kind, db, model=emb)
     try:
         res = sub.query("quantum computing milestones", top_k=20,
-                        policy_tag="operator_only")
+                        policy_tag="operator_only", owner_user_id="owner-a")
         ids = {r["chunk_id"] for r in res["results"]}
         assert "c-personal-1" in ids, f"{kind} withheld personal_reading under operator_only"
     finally:

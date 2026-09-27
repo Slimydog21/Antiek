@@ -36,6 +36,7 @@ from substrate import ip_holders
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
     PERSONAL_READING_CONTENT_CLASS,
+    RESEARCH_ONLY_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
     USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 )
@@ -78,6 +79,7 @@ VALID_CONTENT_CLASSES: frozenset[str] = frozenset({
     "restricted_pending_opt_in",
     PERSONAL_READING_CONTENT_CLASS,  # Personal-Reading Lane SPR-01 — owner-readable, non-servable
     USER_AUTHORED_PRIVATE_CONTENT_CLASS,
+    RESEARCH_ONLY_CONTENT_CLASS,
 })
 
 
@@ -126,6 +128,7 @@ DERIVED_CONTENT_CLASS_TABLE: MappingProxyType[str, str | None] = MappingProxyTyp
     GATED_DEFAULT_CONTENT_CLASS: None,
     PERSONAL_READING_CONTENT_CLASS: None,
     USER_AUTHORED_PRIVATE_CONTENT_CLASS: None,
+    RESEARCH_ONLY_CONTENT_CLASS: None,
 })
 assert frozenset(DERIVED_CONTENT_CLASS_TABLE) == VALID_CONTENT_CLASSES, (
     "DERIVED_CONTENT_CLASS_TABLE must name every VALID_CONTENT_CLASSES member "
