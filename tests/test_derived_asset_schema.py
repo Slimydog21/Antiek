@@ -112,6 +112,11 @@ def test_fresh_and_reopen_initialization(db_path: str) -> None:
 def test_existing_pre_v16_database_is_upgraded(db_path: str) -> None:
     with connect_write(db_path, purpose="derived-asset-pre-v16-fixture") as con:
         for table in (
+            # V23 (LB-8) references the V16 revisions, and a pre-V16
+            # database predates it too.
+            "derived_asset_block_informs",
+            "derived_asset_revision_blocks",
+            "derived_asset_operations",
             "derived_asset_current_revisions",
             "derived_asset_revision_members",
             "derived_asset_revisions",

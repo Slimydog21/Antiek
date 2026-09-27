@@ -174,9 +174,8 @@ def test_t25_a_fault_at_any_step_leaves_nothing_behind(db: str, point: str) -> N
         if name == point:
             raise Boom(name)
 
-    with connect_write(db, purpose="test/fault") as con:
-        with pytest.raises(Boom), eventful_transaction(con, "write-dlv-1"):
-            _revise(con, head, checkpoint=fault)
+    with connect_write(db, purpose="test/fault") as con, pytest.raises(Boom), eventful_transaction(con, "write-dlv-1"):
+        _revise(con, head, checkpoint=fault)
     assert point in reached
     assert _state(db) == before
 
@@ -215,9 +214,8 @@ def test_t25_a_head_that_moved_after_it_was_loaded_is_refused_by_the_cas(db: str
             _revise(con, head, key="k-first")
         current = load_owned_head(con, ASSET, owner_user_id=OWNER)
     before = _state(db)
-    with connect_write(db, purpose="test/moved-2") as con:
-        with pytest.raises(RevisionMoved) as moved, eventful_transaction(con, "write-dlv-1"):
-            _revise(con, head, key="k-second")
+    with connect_write(db, purpose="test/moved-2") as con, pytest.raises(RevisionMoved) as moved, eventful_transaction(con, "write-dlv-1"):
+        _revise(con, head, key="k-second")
     assert moved.value.current_revision_id == current.revision_id
     assert _state(db) == before
 
@@ -333,6 +331,59 @@ def test_t26_other_blocks_informs_are_carried_and_the_patched_block_replaced(db:
     assert rows == [("b-1", 0, "docA"), ("b-2", 0, "docC")]
 
 
+def test_a_block_a_revise_removes_loses_its_informs(db: str) -> None:
+    """R-LB8-4: informs are carried only for blocks the new revision holds."""
+    from substrate.derived_assets.repository import ChildPatch, load_owned_head, revise
+
+    head = _seed(db)
+    with connect_write(db, purpose="test/remove-block") as con:
+        with eventful_transaction(con, "w"):
+            with_b2 = _revise(con, head, key="k-1", block_id="b-2", docs=("docC",))
+        current = load_owned_head(con, ASSET, owner_user_id=OWNER)
+        with eventful_transaction(con, "w"):
+            removed = revise(
+                con, head=current, expected_revision_id=current.revision_id, owner_user_id=OWNER,
+                idempotency_key="k-2", request_sha256=hashlib.sha256(b"k-2").hexdigest(), operation="test_remove",
+                patches={"derived_asset_revision_blocks": ChildPatch(match={"block_id": "b-2"}, rows=[])},
+                block_ids=["b-2"], build_answer=lambda revision_id: {"revision_id": revision_id},
+            )
+        blocks = con.execute(
+            "SELECT block_id FROM derived_asset_revision_blocks WHERE revision_id = ? ORDER BY block_index",
+            [removed.revision_id],
+        ).fetchall()
+        carried = con.execute(
+            "SELECT count(*) FROM derived_asset_block_informs WHERE revision_id = ?", [removed.revision_id]
+        ).fetchone()
+        kept = con.execute(
+            "SELECT document_id FROM derived_asset_block_informs WHERE revision_id = ? AND block_id = 'b-2'",
+            [with_b2.revision_id],
+        ).fetchall()
+    assert blocks == [("b-1",)]
+    assert carried == (0,)
+    assert kept == [("docC",)]
+
+
+def test_revise_refuses_to_run_outside_one_transaction(db: str) -> None:
+    head = _seed(db)
+    before = _state(db)
+    with connect_write(db, purpose="test/no-transaction") as con, pytest.raises(RuntimeError):
+        _revise(con, head)
+    assert _state(db) == before
+
+
+def test_a_patch_on_a_table_it_may_not_match_is_refused(db: str) -> None:
+    from substrate.derived_assets.repository import ChildPatch, revise
+
+    head = _seed(db, members=1)
+    with connect_write(db, purpose="test/bad-patch") as con, pytest.raises(ValueError), eventful_transaction(con, "w"):
+        revise(
+            con, head=head, expected_revision_id=head.revision_id, owner_user_id=OWNER,
+            idempotency_key="k", request_sha256=hashlib.sha256(b"k").hexdigest(), operation="informs",
+            patches={"derived_asset_revision_members": ChildPatch(match={"member_index": 0}, rows=[])},
+            block_ids=[], build_answer=lambda revision_id: {},
+        )
+
+
 # ── T27: a revise keeps the parent's bytes ──────────────────────────────────
 
 
@@ -385,23 +436,21 @@ def test_a_manifest_that_disagrees_with_its_members_refuses_the_revise(db: str) 
     with connect_write(db, purpose="test/drop-member") as con:
         con.execute("DELETE FROM derived_asset_revision_members WHERE derived_asset_id = ?", [ASSET])
     before = _state(db)
-    with connect_write(db, purpose="test/integrity") as con:
-        with pytest.raises(RevisionIntegrityError), eventful_transaction(con, "write-dlv-1"):
-            _revise(con, head)
+    with connect_write(db, purpose="test/integrity") as con, pytest.raises(RevisionIntegrityError), eventful_transaction(con, "write-dlv-1"):
+        _revise(con, head)
     assert _state(db) == before
 
 
 def test_create_refuses_a_manifest_that_disagrees_with_its_members(db: str) -> None:
     from substrate.derived_assets.repository import RevisionIntegrityError, create_revision
 
-    with connect_write(db, purpose="test/create-integrity") as con:
-        with pytest.raises(RevisionIntegrityError), con.transaction():
-            create_revision(
-                con, asset_id=ASSET, owner_user_id=OWNER, asset_kind="document", title="Doc",
-                canonical_html=BODY_HTML, manifest_json=_manifest(2), sanitizer_policy="p",
-                sanitizer_version="1", review_id="r", acknowledgement_version="operator_direct.v1",
-                blocks=["b-1"], members=_members(1),
-            )
+    with connect_write(db, purpose="test/create-integrity") as con, pytest.raises(RevisionIntegrityError), con.transaction():
+        create_revision(
+            con, asset_id=ASSET, owner_user_id=OWNER, asset_kind="document", title="Doc",
+            canonical_html=BODY_HTML, manifest_json=_manifest(2), sanitizer_policy="p",
+            sanitizer_version="1", review_id="r", acknowledgement_version="operator_direct.v1",
+            blocks=["b-1"], members=_members(1),
+        )
     assert _state(db)["derived_assets"] == 0
 
 
@@ -415,9 +464,8 @@ def test_a_legacy_member_fails_closed_until_the_legacy_rule_is_built(db: str) ->
     with connect_write(db, purpose="test/legacy-column") as con:
         con.execute("ALTER TABLE derived_asset_revision_members ADD COLUMN member_origin TEXT")
         con.execute("UPDATE derived_asset_revision_members SET member_origin = 'legacy'")
-    with connect_write(db, purpose="test/legacy") as con:
-        with pytest.raises(RevisionIntegrityError), eventful_transaction(con, "write-dlv-1"):
-            _revise(con, head)
+    with connect_write(db, purpose="test/legacy") as con, pytest.raises(RevisionIntegrityError), eventful_transaction(con, "write-dlv-1"):
+        _revise(con, head)
 
 
 # ── T28: the V23 schema ─────────────────────────────────────────────────────

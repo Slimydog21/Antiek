@@ -7692,6 +7692,9 @@ def create_app(
     # stays mergeable. Wires substrate/write + substrate/edit to HTTP.
     from interfaces.research.api.write_routes import write_router
     app.include_router(write_router)
+    # Write informs over the §1.11 revise primitive (LB-8).
+    from interfaces.research.api.derived_asset_routes import derived_asset_router
+    app.include_router(derived_asset_router)
 
     # Deep Research Workspace transport (specs/deep-research-workspace/
     # SPR-06). The cascade plan/launch/session-stream/steer/cost surface the

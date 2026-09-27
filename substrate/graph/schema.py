@@ -410,6 +410,9 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "note_taker_configurations",
     "note_taker_windows",
     "arxiv_bulk_progress",
+    "derived_asset_revision_blocks",
+    "derived_asset_block_informs",
+    "derived_asset_operations",
 )
 
 
@@ -1503,6 +1506,63 @@ CREATE TABLE IF NOT EXISTS arxiv_bulk_progress (
 """
 
 
+# V23 — the §1.11 revise primitive's per-revision tables (LB-8; THREAD-CONTRACT
+# §1.11a "Write informs (S5)"). V16 stays as it is: its table set is pinned.
+#
+# - derived_asset_revision_blocks: the block inventory of one revision, keyed
+#   by the stable Write block id. "The block is in the current revision" is a
+#   row here; deliverable HTML and V16 members carry no block ids.
+# - derived_asset_block_informs: one Write block's ordered document list at
+#   one revision. ``ordinal`` is the list position; ``anchor`` is the canonical
+#   JSON of the §1.4 anchor shape, NULL when absent. Documents are copied
+#   bindings: no foreign key reaches ``documents``.
+# - derived_asset_operations: the idempotency record and operation receipt of
+#   one committed revise. A refusal writes no row, so it never burns a key.
+#
+# Every row belongs to one immutable revision. substrate/derived_assets/
+# repository.py is the sole writer: a revise copies the parent's rows forward
+# under the new revision id, except the rows its patch replaces. Routes never
+# own DDL. docs/decisions/derived-asset-revise-primitive.md is the record.
+ANTIEK_GRAPH_SCHEMA_V23_DERIVED_ASSET_REVISE_SQL = """
+CREATE TABLE IF NOT EXISTS derived_asset_revision_blocks (
+    derived_asset_id TEXT NOT NULL,
+    revision_id      TEXT NOT NULL,
+    block_index      INTEGER NOT NULL CHECK (block_index >= 0),
+    block_id         TEXT NOT NULL CHECK (length(block_id) BETWEEN 1 AND 256),
+    PRIMARY KEY (derived_asset_id, revision_id, block_id),
+    UNIQUE (derived_asset_id, revision_id, block_index),
+    FOREIGN KEY (derived_asset_id, revision_id)
+        REFERENCES derived_asset_revisions(derived_asset_id, revision_id)
+);
+CREATE TABLE IF NOT EXISTS derived_asset_block_informs (
+    derived_asset_id TEXT NOT NULL,
+    revision_id      TEXT NOT NULL,
+    block_id         TEXT NOT NULL,
+    ordinal          INTEGER NOT NULL CHECK (ordinal >= 0 AND ordinal < 50),
+    document_id      TEXT NOT NULL CHECK (length(document_id) >= 1),
+    anchor           TEXT,
+    PRIMARY KEY (derived_asset_id, revision_id, block_id, ordinal),
+    UNIQUE (derived_asset_id, revision_id, block_id, document_id),
+    FOREIGN KEY (derived_asset_id, revision_id, block_id)
+        REFERENCES derived_asset_revision_blocks(derived_asset_id, revision_id, block_id)
+);
+CREATE TABLE IF NOT EXISTS derived_asset_operations (
+    operation_id     TEXT PRIMARY KEY,
+    owner_user_id    TEXT NOT NULL,
+    idempotency_key  TEXT NOT NULL CHECK (length(idempotency_key) BETWEEN 1 AND 256),
+    derived_asset_id TEXT NOT NULL,
+    revision_id      TEXT NOT NULL,
+    operation        TEXT NOT NULL,
+    request_sha256   TEXT NOT NULL CHECK (regexp_full_match(request_sha256, '[0-9a-f]{64}')),
+    response_json    TEXT NOT NULL,
+    created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_user_id, idempotency_key),
+    FOREIGN KEY (derived_asset_id, revision_id)
+        REFERENCES derived_asset_revisions(derived_asset_id, revision_id)
+);
+"""
+
+
 ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL = """
 CREATE TABLE IF NOT EXISTS event_consumer_events (
     consumer_name TEXT NOT NULL,
@@ -2037,6 +2097,150 @@ def _v21_reader_html_shape_is_valid(con: ReadConnection | LockedConnection) -> b
     return key_checks == _V21_READER_HTML_KEY_CHECKS
 
 
+# V23: DESCRIBE rows (type, null, key, default) and the key/CHECK constraints
+# DuckDB reports for the DDL above. The warm probe requires them exactly, so a
+# database that predates V23, or holds a wrong-shaped copy of one of its tables,
+# takes the cold path and gets the intended shape.
+_V23_REQUIRED_SHAPE: dict[str, dict[str, tuple[str, str, str | None, str | None]]] = {
+    "derived_asset_revision_blocks": {
+        "derived_asset_id": ("VARCHAR", "NO", "PRI", None),
+        "revision_id": ("VARCHAR", "NO", "PRI", None),
+        "block_index": ("INTEGER", "NO", "UNI", None),
+        "block_id": ("VARCHAR", "NO", "PRI", None),
+    },
+    "derived_asset_block_informs": {
+        "derived_asset_id": ("VARCHAR", "NO", "PRI", None),
+        "revision_id": ("VARCHAR", "NO", "PRI", None),
+        "block_id": ("VARCHAR", "NO", "PRI", None),
+        "ordinal": ("INTEGER", "NO", "PRI", None),
+        "document_id": ("VARCHAR", "NO", "UNI", None),
+        "anchor": ("VARCHAR", "YES", None, None),
+    },
+    "derived_asset_operations": {
+        "operation_id": ("VARCHAR", "NO", "PRI", None),
+        "owner_user_id": ("VARCHAR", "NO", "UNI", None),
+        "idempotency_key": ("VARCHAR", "NO", "UNI", None),
+        "derived_asset_id": ("VARCHAR", "NO", None, None),
+        "revision_id": ("VARCHAR", "NO", None, None),
+        "operation": ("VARCHAR", "NO", None, None),
+        "request_sha256": ("VARCHAR", "NO", None, None),
+        "response_json": ("VARCHAR", "NO", None, None),
+        "created_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+    },
+}
+
+_V23_KEY_CHECKS: dict[str, set[tuple[str, tuple[str, ...], str]]] = {
+    "derived_asset_revision_blocks": {
+        ("CHECK", ("block_index",), "CHECK((block_index >= 0))"),
+        ("CHECK", ("block_id",), "CHECK((length(block_id) BETWEEN 1 AND 256))"),
+        (
+            "FOREIGN KEY",
+            ("derived_asset_id", "revision_id"),
+            "FOREIGN KEY (derived_asset_id, revision_id) REFERENCES "
+            "derived_asset_revisions(derived_asset_id, revision_id)",
+        ),
+        (
+            "PRIMARY KEY",
+            ("derived_asset_id", "revision_id", "block_id"),
+            "PRIMARY KEY(derived_asset_id, revision_id, block_id)",
+        ),
+        (
+            "UNIQUE",
+            ("derived_asset_id", "revision_id", "block_index"),
+            "UNIQUE(derived_asset_id, revision_id, block_index)",
+        ),
+    },
+    "derived_asset_block_informs": {
+        ("CHECK", ("ordinal", "ordinal"), "CHECK(((ordinal >= 0) AND (ordinal < 50)))"),
+        ("CHECK", ("document_id",), "CHECK((length(document_id) >= 1))"),
+        (
+            "FOREIGN KEY",
+            ("derived_asset_id", "revision_id", "block_id"),
+            "FOREIGN KEY (derived_asset_id, revision_id, block_id) REFERENCES "
+            "derived_asset_revision_blocks(derived_asset_id, revision_id, block_id)",
+        ),
+        (
+            "PRIMARY KEY",
+            ("derived_asset_id", "revision_id", "block_id", "ordinal"),
+            "PRIMARY KEY(derived_asset_id, revision_id, block_id, ordinal)",
+        ),
+        (
+            "UNIQUE",
+            ("derived_asset_id", "revision_id", "block_id", "document_id"),
+            "UNIQUE(derived_asset_id, revision_id, block_id, document_id)",
+        ),
+    },
+    "derived_asset_operations": {
+        ("CHECK", ("idempotency_key",), "CHECK((length(idempotency_key) BETWEEN 1 AND 256))"),
+        ("CHECK", ("request_sha256",), "CHECK(regexp_full_match(request_sha256, '[0-9a-f]{64}'))"),
+        (
+            "FOREIGN KEY",
+            ("derived_asset_id", "revision_id"),
+            "FOREIGN KEY (derived_asset_id, revision_id) REFERENCES "
+            "derived_asset_revisions(derived_asset_id, revision_id)",
+        ),
+        ("PRIMARY KEY", ("operation_id",), "PRIMARY KEY(operation_id)"),
+        ("UNIQUE", ("owner_user_id", "idempotency_key"), "UNIQUE(owner_user_id, idempotency_key)"),
+    },
+}
+
+
+def _v23_table_shape_is_valid(con: ReadConnection | LockedConnection, table: str) -> bool:
+    """One V23 table exists with exactly its columns and constraints. Read-only."""
+    exists = con.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_schema='main' AND table_name=?",
+        [table],
+    ).fetchone()
+    if not exists:
+        return False
+    described = {
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in con.execute(f"DESCRIBE {table}").fetchall()
+    }
+    if described != _V23_REQUIRED_SHAPE[table]:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE schema_name='main' AND table_name=?",
+        [table],
+    ).fetchall()
+    key_checks = {
+        (row[0], tuple(row[1]), row[2])
+        for row in constraints
+        if row[0] in {"PRIMARY KEY", "FOREIGN KEY", "UNIQUE", "CHECK"}
+    }
+    return key_checks == _V23_KEY_CHECKS[table]
+
+
+def _v23_derived_asset_revise_shape_is_valid(con: ReadConnection | LockedConnection) -> bool:
+    return all(_v23_table_shape_is_valid(con, table) for table in _V23_REQUIRED_SHAPE)
+
+
+def _repair_empty_partial_v23_derived_asset_revise(con: LockedConnection) -> None:
+    """Drop an empty wrong-shaped V23 table so CREATE IF NOT EXISTS can land
+    the intended one. A populated one is never dropped. Informs reference the
+    block inventory, so an invalid inventory takes its informs with it."""
+    present = {
+        row[0]
+        for row in con.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
+        ).fetchall()
+    } & set(_V23_REQUIRED_SHAPE)
+    drop = {table for table in present if not _v23_table_shape_is_valid(con, table)}
+    if "derived_asset_revision_blocks" in drop and "derived_asset_block_informs" in present:
+        drop.add("derived_asset_block_informs")
+    if not drop:
+        return
+    for table in sorted(drop):
+        if con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]:
+            raise SchemaCorruptionError(
+                f"populated partial V23 table {table} requires explicit recovery"
+            )
+    for table in ("derived_asset_block_informs", "derived_asset_revision_blocks", "derived_asset_operations"):
+        if table in drop:
+            con.execute(f"DROP TABLE {table}")
+
+
 def _repair_empty_partial_v20_note_taker(con: LockedConnection) -> None:
     configuration_columns = {
         row[0]
@@ -2457,6 +2661,10 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V21_READER_HTML_SQL)
     _repair_empty_partial_v22_arxiv_progress(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V22_ARXIV_BULK_PROGRESS_SQL)
+    # LB-8 — the §1.11 revise primitive's block inventory, informs and
+    # operation receipts. FK-references the V16 revisions; runs after V16.
+    _repair_empty_partial_v23_derived_asset_revise(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V23_DERIVED_ASSET_REVISE_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -2563,6 +2771,7 @@ def _schema_is_present(db_path: str) -> bool:
             and _v20_note_taker_shape_is_valid(con)
             and _v21_reader_html_shape_is_valid(con)
             and _v22_arxiv_progress_shape_is_valid(con)
+            and _v23_derived_asset_revise_shape_is_valid(con)
         )
     except Exception:
         return False
