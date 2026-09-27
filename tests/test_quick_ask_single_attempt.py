@@ -202,6 +202,32 @@ def test_quote_is_free_and_confirmed_send_is_one_exact_request(route) -> None:
     assert ledger.operation(_OWNER, f"quick-ask:{body['operation_id']}").state == "settled"
 
 
+def test_one_request_excludes_shadow_selector_even_when_enabled(
+    route, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from substrate.dispatch import notdiamond_shadow
+
+    client, provider, _, _, _, _, _ = route
+    monkeypatch.setenv("ANTIEK_NOTDIAMOND_MODE", "shadow")
+    monkeypatch.setenv("ANTIEK_NOTDIAMOND_ALLOW_PROMPT_DISCLOSURE", "true")
+    selector_calls: list[object] = []
+
+    def unexpected_selector(**kwargs: object) -> None:
+        selector_calls.append(kwargs)
+        raise AssertionError("Quick Ask must not call the shadow model selector")
+
+    monkeypatch.setattr(notdiamond_shadow, "_select_with_deadline", unexpected_selector)
+    body = _body()
+    quote = _quote(client, body)
+    assert selector_calls == []
+    response = client.post(
+        "/research/quick-ask", json={**body, "quote_digest": quote["quote_digest"]},
+    )
+    assert response.status_code == 200, response.json()
+    assert len(provider.calls) == 1
+    assert selector_calls == []
+
+
 def test_settled_replay_returns_prior_receipt_without_new_send_or_false_zero_usage(route) -> None:
     client, provider, _, _, _, identity, _ = route
     body = _body()
