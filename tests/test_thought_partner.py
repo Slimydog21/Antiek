@@ -75,6 +75,11 @@ def client(monkeypatch):
         "Z_AI_API_KEY",
     ):
         monkeypatch.delenv(key_env, raising=False)
+    # Grounded-path assertions monkeypatch DuckDB search. A live TurboPuffer
+    # key or servable gate inherited from the operator shell selects the
+    # hybrid adapter instead and bypasses that deterministic seam.
+    monkeypatch.delenv("TURBOPUFFER_API_KEY", raising=False)
+    monkeypatch.delenv("ANTIEK_TURBOPUFFER_SERVABLE", raising=False)
     from interfaces.research.api.app import create_app
 
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
