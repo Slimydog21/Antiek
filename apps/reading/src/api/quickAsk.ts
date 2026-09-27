@@ -46,6 +46,10 @@ export interface QuickAskResult {
   reported_usage_estimate_exceeds_quote: boolean | null;
 }
 
+export type QuickAskRecentOperation =
+  | { status: "answered"; operation_id: string; created_at: string; result: QuickAskResult }
+  | { status: "charge_unknown"; operation_id: string; created_at: string; result: null };
+
 export type QuickAskFailure =
   | "signed_owner_required"
   | "quick_ask_model_unavailable"
@@ -83,6 +87,17 @@ function nonnegative(value: unknown): value is number {
 
 function nullableCount(value: unknown): value is number | null {
   return value === null || (Number.isInteger(value) && nonnegative(value));
+}
+
+function operationId(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(value);
+}
+
+function timestamp(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value) &&
+    Number.isFinite(Date.parse(value));
 }
 
 function parseQuote(value: unknown): QuickAskQuote {
@@ -187,6 +202,58 @@ export async function fetchQuickAskModels(): Promise<QuickAskModel[]> {
     throw new QuickAskError("quick_ask_models_unavailable");
   }
   return value.models as QuickAskModel[];
+}
+
+export async function fetchQuickAskRecent(): Promise<QuickAskRecentOperation[]> {
+  let response: Response;
+  try {
+    response = await apiFetch("/research/quick-ask/recent", { cache: "no-store" });
+  } catch {
+    throw new QuickAskError("quick_ask_unavailable");
+  }
+  if (!response.ok) throw await parseError(response, "quick_ask_unavailable");
+  let value: unknown;
+  try {
+    value = await response.json();
+  } catch {
+    throw new QuickAskError("quick_ask_unavailable");
+  }
+  if (!isRecord(value) || !Array.isArray(value.operations) || value.operations.length > 10) {
+    throw new QuickAskError("quick_ask_unavailable");
+  }
+  const rawOperations: unknown[] = value.operations;
+  const operations: QuickAskRecentOperation[] = [];
+  const seen = new Set<string>();
+  try {
+    for (const row of rawOperations) {
+      if (!isRecord(row) || !operationId(row.operation_id) ||
+          !timestamp(row.created_at) || seen.has(row.operation_id)) {
+        throw new QuickAskError("quick_ask_unavailable");
+      }
+      seen.add(row.operation_id);
+      if (row.status === "charge_unknown" && row.result === null) {
+        operations.push({
+          status: "charge_unknown", operation_id: row.operation_id,
+          created_at: row.created_at, result: null,
+        });
+      } else if (row.status === "answered") {
+        const result = parseResult(row.result);
+        if (result.operation_id !== row.operation_id || !result.replayed ||
+            (result.usage_basis !== "prior_receipt" && result.usage_basis !== "charge_unknown")) {
+          throw new QuickAskError("quick_ask_unavailable");
+        }
+        operations.push({
+          status: "answered", operation_id: row.operation_id,
+          created_at: row.created_at, result,
+        });
+      } else {
+        throw new QuickAskError("quick_ask_unavailable");
+      }
+    }
+  } catch {
+    throw new QuickAskError("quick_ask_unavailable");
+  }
+  return operations;
 }
 
 export async function quoteQuickAsk(input: QuickAskInput): Promise<QuickAskQuote> {

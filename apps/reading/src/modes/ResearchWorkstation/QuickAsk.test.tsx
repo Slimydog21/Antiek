@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-const { inventory, quote, send, authState } = vi.hoisted(() => ({
-  inventory: vi.fn(), quote: vi.fn(), send: vi.fn(),
+const { inventory, recent, quote, send, authState } = vi.hoisted(() => ({
+  inventory: vi.fn(), recent: vi.fn(), quote: vi.fn(), send: vi.fn(),
   authState: { current: { status: "authenticated", identity: { user_id: "owner-a", email: "a@example.test" } } },
 }));
 
@@ -11,7 +11,10 @@ vi.mock("../../lib/auth", () => ({ useAuth: () => ({ state: authState.current })
 
 vi.mock("../../api/quickAsk", async (original) => {
   const actual = await original<typeof import("../../api/quickAsk")>();
-  return { ...actual, fetchQuickAskModels: inventory, quoteQuickAsk: quote, sendQuickAsk: send };
+  return {
+    ...actual, fetchQuickAskModels: inventory, fetchQuickAskRecent: recent,
+    quoteQuickAsk: quote, sendQuickAsk: send,
+  };
 });
 
 import { QuickAskError } from "../../api/quickAsk";
@@ -43,8 +46,9 @@ beforeEach(() => {
   window.sessionStorage.clear();
   authState.current.identity.user_id = "owner-a";
   authState.current.identity.email = "a@example.test";
-  inventory.mockReset(); quote.mockReset(); send.mockReset();
+  inventory.mockReset(); recent.mockReset(); quote.mockReset(); send.mockReset();
   inventory.mockResolvedValue([currentModel]);
+  recent.mockResolvedValue([]);
   quote.mockResolvedValue(quoted);
   send.mockResolvedValue({
     answer: "A bounded answer.", operation_id: "quick-1", provider_id: "user-deepseek",
@@ -58,6 +62,73 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Quick Ask one-request boundary", () => {
+  it("restores a stored answer with no eligible model and makes no paid request", async () => {
+    inventory.mockResolvedValue([]);
+    const operationId = "9d4b35fb-a34a-4a4e-9977-9f822ce0bfd3";
+    recent.mockResolvedValue([{
+      operation_id: operationId, created_at: "2026-09-27T08:59:00+00:00",
+      status: "answered",
+      result: {
+        answer: "A stored answer.", operation_id: operationId,
+        provider_id: "user-deepseek", model_id: "deepseek-flash",
+        estimated_cost_usd: 0.0038, usage_basis: "prior_receipt",
+        input_tokens: null, output_tokens: null, replayed: true,
+        incomplete: false, reported_usage_estimate_exceeds_quote: false,
+      },
+    }]);
+    renderQuickAsk();
+    expect(await screen.findByText(/No current saved model is ready/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "View stored answer" }));
+    expect(screen.getByRole("article", { name: "Stored Quick Ask answer" }).textContent).toContain("A stored answer.");
+    expect(screen.getByText(/no new model request was sent/i)).toBeTruthy();
+    expect(quote).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("recovers a later stored answer without clearing a pending unknown-charge marker", async () => {
+    const operationId = "9d4b35fb-a34a-4a4e-9977-9f822ce0bfd3";
+    window.sessionStorage.setItem("antiek.quick-ask.pending-send.session.v1:owner-a", operationId);
+    recent.mockResolvedValueOnce([]).mockResolvedValueOnce([{
+      operation_id: operationId, created_at: "2026-09-27T08:59:00+00:00",
+      status: "answered",
+      result: {
+        answer: "The provider did answer.", operation_id: operationId,
+        provider_id: "user-deepseek", model_id: "deepseek-flash",
+        estimated_cost_usd: null, usage_basis: "charge_unknown",
+        input_tokens: null, output_tokens: null, replayed: true,
+        incomplete: false, reported_usage_estimate_exceeds_quote: null,
+      },
+    }]);
+    renderQuickAsk();
+    expect(await screen.findByText(/No recent request receipt is available/)).toBeTruthy();
+    expect(screen.getByText(/Charge unknown\. Check your provider dashboard/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh receipts" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View stored answer" }));
+    expect(screen.getByRole("article", { name: "Stored Quick Ask answer" }).textContent).toContain("The provider did answer.");
+    expect(screen.getByText(/Charge unknown\. Check your provider dashboard/)).toBeTruthy();
+    expect(window.sessionStorage.getItem("antiek.quick-ask.pending-send.session.v1:owner-a")).toBe(operationId);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("does not render an old owner's late receipt after the account changes", async () => {
+    let releaseOld: ((value: unknown) => void) | undefined;
+    recent.mockImplementationOnce(() => new Promise((resolve) => { releaseOld = resolve; }));
+    recent.mockResolvedValueOnce([]);
+    const view = renderQuickAsk();
+    await waitFor(() => expect(recent).toHaveBeenCalledTimes(1));
+    authState.current.identity.user_id = "owner-b";
+    view.rerender(<MemoryRouter><QuickAsk /></MemoryRouter>);
+    await waitFor(() => expect(recent).toHaveBeenCalledTimes(2));
+    releaseOld?.([{
+      operation_id: "9d4b35fb-a34a-4a4e-9977-9f822ce0bfd3",
+      created_at: "2026-09-27T08:59:00+00:00", status: "answered",
+      result: { answer: "Owner A private answer" },
+    }]);
+    expect(await screen.findByText(/No recent request receipt is available/)).toBeTruthy();
+    expect(screen.queryByText(/Owner A private answer/)).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("restores a no-blind-retry warning after navigation during an unresolved paid send", async () => {
     let rejectSend: ((reason: Error) => void) | undefined;
     send.mockImplementation(() => new Promise((_resolve, reject) => { rejectSend = reject; }));

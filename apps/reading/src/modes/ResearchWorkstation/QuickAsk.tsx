@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import LemonButton from "../../components/lemon/LemonButton";
@@ -6,8 +6,9 @@ import LemonSelect from "../../components/lemon/LemonSelect";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { useAuth } from "../../lib/auth";
 import {
-  fetchQuickAskModels, QuickAskError, quoteQuickAsk, sendQuickAsk,
-  type QuickAskInput, type QuickAskModel, type QuickAskQuote, type QuickAskResult,
+  fetchQuickAskModels, fetchQuickAskRecent, QuickAskError, quoteQuickAsk, sendQuickAsk,
+  type QuickAskInput, type QuickAskModel, type QuickAskQuote, type QuickAskRecentOperation,
+  type QuickAskResult,
 } from "../../api/quickAsk";
 import type { UserModelChoice } from "../../lib/api";
 
@@ -105,6 +106,85 @@ function receiptLabel(result: QuickAskResult): string {
   }
 }
 
+function QuickAskRecent({ refreshSignal }: { refreshSignal: number }) {
+  const [recent, setRecent] = useState<QuickAskRecentOperation[]>([]);
+  const [recentState, setRecentState] = useState<"loading" | "ready" | "error">("loading");
+  const [openedRecentId, setOpenedRecentId] = useState<string | null>(null);
+  const revision = useRef(0);
+  const openedRecent = recent.find((row) => row.operation_id === openedRecentId) ?? null;
+
+  const loadRecent = useCallback(async () => {
+    const started = ++revision.current;
+    setRecentState("loading");
+    try {
+      const operations = await fetchQuickAskRecent();
+      if (started !== revision.current) return;
+      setRecent(operations);
+      setRecentState("ready");
+    } catch {
+      if (started !== revision.current) return;
+      setRecentState("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRecent();
+    return () => { revision.current += 1; };
+  }, [loadRecent, refreshSignal]);
+
+  return (
+    <section aria-label="Recent Quick Ask receipts" className="border-t border-rule dark:border-charcoal-1 pt-4 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-serif text-base text-ink dark:text-bright">Recent requests</h3>
+        <LemonButton variant="secondary" disabled={recentState === "loading"} onClick={() => void loadRecent()}>
+          Refresh receipts
+        </LemonButton>
+      </div>
+      <p className="font-serif text-xs text-shadow-1 dark:text-moonlight">
+        Up to ten recent receipts from your account. Reading or refreshing them sends no model request.
+      </p>
+      {recentState === "loading" && <p role="status">Checking recent requests…</p>}
+      {recentState === "error" && (
+        <p role="status">Recent receipts are unavailable. This does not establish whether a pending request was charged.</p>
+      )}
+      {recentState === "ready" && recent.length === 0 && (
+        <p role="status">No recent request receipt is available. A pending request may still have reached the provider.</p>
+      )}
+      {recent.length > 0 && (
+        <ul className="space-y-2">
+          {recent.map((row) => (
+            <li key={row.operation_id} className="border border-rule dark:border-charcoal-1 p-3 space-y-1">
+              <p className="font-mono text-xs text-shadow-1 dark:text-moonlight">
+                {new Date(row.created_at).toLocaleString()} · request {row.operation_id}
+              </p>
+              {row.status === "answered" ? (
+                <LemonButton variant="secondary" onClick={() => setOpenedRecentId(
+                  openedRecentId === row.operation_id ? null : row.operation_id,
+                )}>
+                  {openedRecentId === row.operation_id ? "Hide stored answer" : "View stored answer"}
+                </LemonButton>
+              ) : (
+                <p className="font-serif text-sm text-emperor">
+                  Charge unknown; no stored answer is available. Check your provider dashboard before making another request.
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {openedRecent?.status === "answered" && (
+        <article aria-label="Stored Quick Ask answer" className="space-y-2 border-l-2 border-rule dark:border-charcoal-1 pl-3">
+          <p className="font-serif text-sm text-ink dark:text-bright whitespace-pre-wrap">{openedRecent.result.answer}</p>
+          {openedRecent.result.incomplete && (
+            <p className="font-serif text-xs text-emperor">This stored answer may be incomplete. No follow-up model request was made.</p>
+          )}
+          <p className="font-mono text-xs text-shadow-1 dark:text-moonlight">{receiptLabel(openedRecent.result)}</p>
+        </article>
+      )}
+    </section>
+  );
+}
+
 function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
   ownerId: string;
   onPaidRequestInFlight?: (pending: boolean) => void;
@@ -118,6 +198,7 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
     const previous = pendingSend(ownerId);
     return previous ? { kind: "unknown", operationId: previous } : { kind: "editing" };
   });
+  const [recentRefresh, setRecentRefresh] = useState(0);
   const revision = useRef(0);
   const mounted = useRef(false);
 
@@ -192,6 +273,7 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
       // persisted operation must stay terminal until the owner releases it.
       setPhase({ kind: "unknown", operationId });
     } finally {
+      if (mounted.current) setRecentRefresh((value) => value + 1);
       if (mounted.current) onPaidRequestInFlight?.(false);
     }
   };
@@ -309,6 +391,7 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
           )}
         </div>
       )}
+      <QuickAskRecent refreshSignal={recentRefresh} />
     </section>
   );
 }

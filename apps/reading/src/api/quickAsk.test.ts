@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("../lib/api", () => ({ apiFetch }));
 
-import { fetchQuickAskModels, QuickAskError, sendQuickAsk } from "./quickAsk";
+import { fetchQuickAskModels, fetchQuickAskRecent, QuickAskError, sendQuickAsk } from "./quickAsk";
 
 const request = {
   question: "What remains uncertain?",
@@ -26,6 +26,60 @@ function json(value: unknown, status = 200): Response {
 beforeEach(() => apiFetch.mockReset());
 
 describe("Quick Ask browser wire contract", () => {
+  it("reads an owner receipt without a model send and preserves unknown-charge truth", async () => {
+    apiFetch.mockResolvedValue(json({ operations: [
+      {
+        operation_id: request.operation_id, created_at: "2026-09-27T08:59:00+00:00",
+        status: "answered",
+        result: {
+          answer: "Stored answer", operation_id: request.operation_id,
+          provider_id: "owner-deepseek", model_id: "deepseek-flash",
+          estimated_cost_usd: null, usage_basis: "charge_unknown",
+          input_tokens: null, output_tokens: null, replayed: true,
+          incomplete: true, reported_usage_estimate_exceeds_quote: null,
+        },
+      },
+      {
+        operation_id: "45670f5f-4d04-4d6c-84f3-68d9c56dcb25",
+        created_at: "2026-09-27T08:58:00+00:00",
+        status: "charge_unknown", result: null,
+      },
+    ] }));
+    const recent = await fetchQuickAskRecent();
+    expect(recent[0]).toMatchObject({
+      status: "answered", result: { answer: "Stored answer", usage_basis: "charge_unknown", incomplete: true },
+    });
+    expect(recent[1]).toMatchObject({ status: "charge_unknown", result: null });
+    expect(apiFetch).toHaveBeenCalledOnce();
+    expect(apiFetch).toHaveBeenCalledWith("/research/quick-ask/recent", { cache: "no-store" });
+  });
+
+  it("rejects a misbound stored answer rather than showing it under another operation", async () => {
+    apiFetch.mockResolvedValue(json({ operations: [{
+      operation_id: request.operation_id, created_at: "2026-09-27T08:59:00+00:00",
+      status: "answered",
+      result: {
+        answer: "Wrong row", operation_id: "45670f5f-4d04-4d6c-84f3-68d9c56dcb25",
+        provider_id: "owner-deepseek", model_id: "deepseek-flash",
+        estimated_cost_usd: 0.0038, usage_basis: "prior_receipt",
+        input_tokens: null, output_tokens: null, replayed: true,
+        incomplete: false, reported_usage_estimate_exceeds_quote: false,
+      },
+    }] }));
+    await expect(fetchQuickAskRecent()).rejects.toMatchObject({ reason: "quick_ask_unavailable" });
+    expect(apiFetch).toHaveBeenCalledOnce();
+  });
+
+  it("rejects duplicate operation IDs instead of rendering ambiguous history rows", async () => {
+    const item = {
+      operation_id: request.operation_id, created_at: "2026-09-27T08:59:00+00:00",
+      status: "charge_unknown", result: null,
+    };
+    apiFetch.mockResolvedValue(json({ operations: [item, item] }));
+    await expect(fetchQuickAskRecent()).rejects.toMatchObject({ reason: "quick_ask_unavailable" });
+    expect(apiFetch).toHaveBeenCalledOnce();
+  });
+
   it("uses the server's owner-scoped eligible variants without a browser model allowlist", async () => {
     apiFetch.mockResolvedValue(json({
       models: [{
