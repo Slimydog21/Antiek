@@ -1,3 +1,4 @@
+import { setSectionProseOwner } from "./sectionProse";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -104,6 +105,8 @@ const BLOCK: OutlineBlockView = {
 };
 
 beforeEach(() => {
+  setSectionProseOwner(null);
+  setSectionProseOwner("writing-test-owner");
   getSectionBlocksMock.mockReset().mockResolvedValue([BLOCK]);
   updateSectionProseMock
     .mockReset()
@@ -111,7 +114,7 @@ beforeEach(() => {
   editorHolder.current = null;
   selectionHolder.current = null;
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); setSectionProseOwner(null); });
 
 const text = (c: HTMLElement) => c.querySelector(".ProseMirror")?.textContent ?? "";
 

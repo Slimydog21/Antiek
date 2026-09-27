@@ -1,3 +1,4 @@
+import { setSectionProseOwner, suspendSectionProseDispatch } from "./sectionProse";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -127,6 +128,8 @@ function block(over: Partial<OutlineBlockView> = {}): OutlineBlockView {
 }
 
 beforeEach(() => {
+  setSectionProseOwner(null);
+  setSectionProseOwner("writing-test-owner");
   getSectionBlocksMock.mockReset().mockResolvedValue([]);
   generateSectionMock.mockReset();
   placeBlockMock.mockReset().mockResolvedValue("oblk-new");
@@ -137,7 +140,7 @@ beforeEach(() => {
   postTypedEventMock.mockReset().mockResolvedValue({});
   editorHolder.current = null;
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); setSectionProseOwner(null); });
 
 describe("Outline — no id, honest generate, real editor", () => {
   it("renders a block by text + provenance, never an id", async () => {
@@ -671,6 +674,100 @@ describe("Outline — draft generation and ordered saves (A1c)", () => {
     expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
       prose_text: latestText, original_text: firstText, promote_to_graph: false,
     });
+  });
+
+  it("reopens the pending draft and orders new edits after an unmounted save", async () => {
+    const first = deferred<unknown>();
+    updateSectionProseMock.mockReturnValueOnce(first.promise);
+    const old = await mountSaved();
+    await typeInEditor(" Older edit.");
+    const oldText = editor().getText();
+    old.unmount();
+    await waitFor(() => expect(updateSectionProseMock).toHaveBeenCalledTimes(1));
+    editorHolder.current = null;
+    await mountSaved();
+    expect(editor().getText()).toBe(oldText);
+    vi.useFakeTimers();
+    await typeInEditor(" Newer edit.");
+    const newest = editor().getText();
+    await debounce();
+    expect(updateSectionProseMock).toHaveBeenCalledTimes(1);
+    await act(async () => { first.resolve({}); });
+    expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
+      prose_text: newest, original_text: oldText, promote_to_graph: false,
+    });
+    expect(editor().getText()).toBe(newest);
+  });
+
+  it("a reopened section shares generation's readonly state and receives its draft", async () => {
+    const generation = deferred<GenerationResult>();
+    generateSectionMock.mockReturnValue(generation.promise);
+    const old = await mountSaved();
+    await act(async () => { screen.getByRole("button", { name: /generate draft/i }).click(); });
+    old.unmount();
+    editorHolder.current = null;
+    const next = await mountSaved();
+    expect(editor().isEditable).toBe(false);
+    await act(async () => { generation.resolve({ status: "generated", section_id: "sec-1", prose_text: "Generated after reopening." }); });
+    await waitFor(() => expect(next.container.querySelector(".tiptap")?.textContent).toContain("Generated after reopening."));
+    expect(editor().isEditable).toBe(true);
+    expect(generateSectionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an unmounted failed edit available for retry after reopening", async () => {
+    const save = deferred<unknown>();
+    updateSectionProseMock.mockReturnValueOnce(save.promise);
+    const old = await mountSaved();
+    await typeInEditor(" Keep on error.");
+    const draft = editor().getText();
+    old.unmount();
+    await act(async () => { save.reject(new Error("offline")); });
+    editorHolder.current = null;
+    await mountSaved();
+    expect(editor().getText()).toBe(draft);
+    expect(screen.getByText(/couldn.t save/i)).toBeTruthy();
+    await act(async () => { screen.getByRole("button", { name: /retry/i }).click(); });
+    expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
+      prose_text: draft, original_text: "Saved prose.", promote_to_graph: false,
+    });
+    expect(screen.getByText(/^Saved\./)).toBeTruthy();
+  });
+
+  it("keeps the real editor draft through an auth outage and resumes after confirmed identity", async () => {
+    const old = await mountSaved();
+    await typeInEditor(" Retained offline.");
+    const draft = editor().getText();
+    act(() => { suspendSectionProseDispatch(); });
+    old.unmount();
+    editorHolder.current = null;
+    await mountSaved();
+    expect(editor().getText()).toBe(draft);
+    expect(screen.getByText(/Saving will resume after sign-in is confirmed/)).toBeTruthy();
+    expect(updateSectionProseMock).not.toHaveBeenCalled();
+    await act(async () => { setSectionProseOwner("writing-test-owner"); });
+    expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
+      prose_text: draft, original_text: "Saved prose.", promote_to_graph: false,
+    });
+  });
+
+  it("a remounted owner's editor cannot receive the previous owner's queued prose", async () => {
+    const first = deferred<unknown>();
+    updateSectionProseMock.mockReturnValueOnce(first.promise);
+    const old = await mountSaved();
+    vi.useFakeTimers();
+    await typeInEditor(" Old owner request.");
+    await debounce();
+    await typeInEditor(" Old owner queued.");
+    act(() => { setSectionProseOwner(null); });
+    old.unmount();
+    vi.useRealTimers();
+    setSectionProseOwner("new-owner");
+    editorHolder.current = null;
+    await mountSaved();
+    expect(editor().getText()).toBe("Saved prose.");
+    await act(async () => { first.resolve({}); });
+    expect(updateSectionProseMock).toHaveBeenCalledTimes(1);
+    expect(editor().getText()).toBe("Saved prose.");
   });
 
   it("waits for a save already in flight before generating even after its debounce fired", async () => {
