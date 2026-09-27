@@ -1,9 +1,10 @@
-import { Route, Routes, Navigate, Outlet } from "react-router-dom";
+import { Route, Routes, Navigate, Outlet, useLocation } from "react-router-dom";
 
 import ResearchWorkstation from "./modes/ResearchWorkstation";
 import WrestleApp from "./modes/WrestleApp";
 import Login from "./modes/Login";
 import { PanelLayout } from "./workspace/PanelLayout";
+import { AuthProvider, useAuth } from "./lib/auth";
 
 /**
  * AppLegacy — the v1 / pre-S4 chrome.
@@ -37,27 +38,38 @@ import { PanelLayout } from "./workspace/PanelLayout";
  */
 export default function AppLegacy() {
   return (
-    <div className="h-screen flex flex-col bg-ice-2 dark:bg-space-2 text-ink dark:text-bright">
-      <main className="flex-1 min-h-0 overflow-auto">
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route element={<LegacyWorkspace />}>
-            <Route path="/" element={<ResearchWorkstation />} />
-            <Route
-              path="/inv/:investigationId"
-              element={<ResearchWorkstation />}
-            />
-            <Route path="/wrestle" element={<WrestleApp />} />
-            <Route path="/wrestle/:documentId" element={<WrestleApp />} />
-          </Route>
-          <Route path="*" element={<LegacyMissingRoute />} />
-        </Routes>
-      </main>
-    </div>
+    <AuthProvider>
+      <div className="h-screen flex flex-col bg-ice-2 dark:bg-space-2 text-ink dark:text-bright">
+        <main className="flex-1 min-h-0 overflow-auto">
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route element={<LegacyWorkspace />}>
+              <Route path="/" element={<ResearchWorkstation />} />
+              <Route
+                path="/inv/:investigationId"
+                element={<ResearchWorkstation />}
+              />
+              <Route path="/wrestle" element={<WrestleApp />} />
+              <Route path="/wrestle/:documentId" element={<WrestleApp />} />
+            </Route>
+            <Route path="*" element={<LegacyMissingRoute />} />
+          </Routes>
+        </main>
+      </div>
+    </AuthProvider>
   );
 }
 
 function LegacyWorkspace() {
+  const { state } = useAuth();
+  const location = useLocation();
+  if (state.status === "loading") {
+    return <div role="status" className="p-8 text-sm font-mono">Loading…</div>;
+  }
+  if (state.status === "unauthenticated") {
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?next=${next}`} replace />;
+  }
   return <PanelLayout mainSlot={<Outlet />} />;
 }
 
