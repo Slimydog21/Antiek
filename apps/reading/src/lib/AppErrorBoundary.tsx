@@ -124,12 +124,33 @@ class RootErrorBoundary extends Component<BoundaryProps, BoundaryState> {
 }
 
 /**
+ * The reset key, read so that it can never throw. This wrapper runs OUTSIDE
+ * the class boundary, so anything that throws here would unmount the root
+ * with no recovery UI — the exact failure the boundary exists to prevent
+ * (MiMo critic F-03: a throwing pathname getter did that). A missing router
+ * context, a null location or a hostile getter all degrade to a constant
+ * key: the boundary still catches and renders its fallback; it just cannot
+ * auto-reset on navigation in that (already broken) state.
+ */
+function useResetKey(): string {
+  try {
+    // useLocation is a context read: calling it inside try keeps the hook
+    // order unconditional while containing react-router's invariant throw.
+    const location = useLocation() as { pathname?: unknown } | null | undefined;
+    const pathname = location?.pathname;
+    return typeof pathname === "string" ? pathname : "(no-pathname)";
+  } catch {
+    return "(no-router)";
+  }
+}
+
+/**
  * Mount inside BrowserRouter, around the whole app tree. Resets on pathname
  * change so a crash on /read/x does not persist after back/forward to /home.
  */
 export function AppErrorBoundary({ children }: { children: ReactNode }) {
-  const location = useLocation();
-  return <RootErrorBoundary resetKey={location?.pathname ?? ""}>{children}</RootErrorBoundary>;
+  const resetKey = useResetKey();
+  return <RootErrorBoundary resetKey={resetKey}>{children}</RootErrorBoundary>;
 }
 
 export default AppErrorBoundary;

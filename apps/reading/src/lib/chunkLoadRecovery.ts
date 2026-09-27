@@ -122,17 +122,28 @@ function onPreloadError(event: Event): void {
   lastFailure = { url };
 }
 
-let installed = false;
+/** Outstanding installs. The listener is attached once, at 0 → 1. */
+let installs = 0;
 
-/** Register the handler. Call once from main.tsx before the first render.
- *  Returns an uninstall function (used by tests). Idempotent. */
+/**
+ * Register the handler. Call from main.tsx before the first render.
+ *
+ * Idempotent and ref-counted (critic F-06): installing twice attaches ONE
+ * listener, and every call returns a real uninstaller. The listener is
+ * removed when the last outstanding install is released; calling the same
+ * uninstaller twice releases only once, so it cannot drop another caller's
+ * install.
+ */
 export function installChunkLoadRecovery(): () => void {
-  if (typeof window === "undefined" || installed) return () => {};
-  installed = true;
-  window.addEventListener("vite:preloadError", onPreloadError);
+  if (typeof window === "undefined") return () => {};
+  installs += 1;
+  if (installs === 1) window.addEventListener("vite:preloadError", onPreloadError);
+  let released = false;
   return () => {
-    window.removeEventListener("vite:preloadError", onPreloadError);
-    installed = false;
+    if (released) return;
+    released = true;
+    installs -= 1;
+    if (installs === 0) window.removeEventListener("vite:preloadError", onPreloadError);
   };
 }
 

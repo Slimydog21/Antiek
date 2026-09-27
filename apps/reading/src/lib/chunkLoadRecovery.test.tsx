@@ -98,6 +98,41 @@ describe("installChunkLoadRecovery (P-05)", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
+  it("installing twice listens once, and each uninstaller really uninstalls (critic F-06)", () => {
+    const second = installChunkLoadRecovery();
+    dispatchPreloadError(SETTINGS_URL);
+    expect(reload).toHaveBeenCalledTimes(1);
+    // Releasing the second install keeps the first one's listener.
+    second();
+    dispatchPreloadError(OTHER_URL);
+    expect(reload).toHaveBeenCalledTimes(2);
+    // Releasing the first (the real) one removes the listener.
+    uninstall();
+    window.sessionStorage.clear();
+    dispatchPreloadError("https://antiek.ai/assets/Third-Q1w2e3r4.js");
+    expect(reload).toHaveBeenCalledTimes(2);
+  });
+
+  it("the uninstaller returned by a repeat install is not a no-op when it is the last one standing", () => {
+    const second = installChunkLoadRecovery();
+    uninstall();
+    // One install still outstanding: still listening.
+    dispatchPreloadError(SETTINGS_URL);
+    expect(reload).toHaveBeenCalledTimes(1);
+    second();
+    window.sessionStorage.clear();
+    dispatchPreloadError(OTHER_URL);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("calling one uninstaller twice cannot release another install", () => {
+    const second = installChunkLoadRecovery();
+    second();
+    second();
+    dispatchPreloadError(SETTINGS_URL);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
   it("uninstall removes the listener", () => {
     uninstall();
     dispatchPreloadError(SETTINGS_URL);

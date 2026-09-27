@@ -12,6 +12,20 @@ import { useEffect } from "react";
 
 import { AppErrorBoundary } from "./AppErrorBoundary";
 
+// F-03 (MiMo critic): the wrapper's router read must not be able to take the
+// root down. `hostileLocation` swaps useLocation() for one test at a time;
+// every other test gets the real hook.
+const { routerOverride } = vi.hoisted(() => ({
+  routerOverride: { current: null as null | (() => unknown) },
+}));
+vi.mock("react-router-dom", async (orig) => {
+  const real = await orig<typeof import("react-router-dom")>();
+  return {
+    ...real,
+    useLocation: () => (routerOverride.current ? routerOverride.current() : real.useLocation()),
+  };
+});
+
 function Thrower({ when }: { when: boolean }): JSX.Element {
   if (when) throw new Error("render exploded");
   return <p>healthy page</p>;
@@ -26,6 +40,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  routerOverride.current = null;
   cleanup();
   consoleError.mockRestore();
 });
@@ -145,5 +160,67 @@ describe("AppErrorBoundary (F-01 / A-02)", () => {
     act(() => go("/notebooks"));
     act(() => go("/write"));
     expect(mounts).toBe(1);
+  });
+
+  describe("the wrapper itself cannot take the root down (critic F-03)", () => {
+    function interactive(): number {
+      return document.querySelectorAll("a[href], button").length;
+    }
+
+    it("a pathname getter that throws still renders the boundary fallback", () => {
+      routerOverride.current = () => ({
+        get pathname(): string {
+          throw new Error("pathname getter exploded");
+        },
+      });
+      render(
+        <MemoryRouter>
+          <AppErrorBoundary>
+            <Thrower when />
+          </AppErrorBoundary>
+        </MemoryRouter>,
+      );
+      expect(screen.getByText("Something broke on this page.")).toBeTruthy();
+      expect(interactive()).toBeGreaterThanOrEqual(2);
+    });
+
+    it("a pathname getter that throws does not break a healthy app", () => {
+      routerOverride.current = () => ({
+        get pathname(): string {
+          throw new Error("pathname getter exploded");
+        },
+      });
+      render(
+        <MemoryRouter>
+          <AppErrorBoundary>
+            <Thrower when={false} />
+          </AppErrorBoundary>
+        </MemoryRouter>,
+      );
+      expect(screen.getByText("healthy page")).toBeTruthy();
+    });
+
+    it("useLocation throwing (no router context) still renders the boundary fallback", () => {
+      routerOverride.current = () => {
+        throw new Error("useLocation() may be used only in the context of a <Router> component.");
+      };
+      render(
+        <AppErrorBoundary>
+          <Thrower when />
+        </AppErrorBoundary>,
+      );
+      expect(screen.getByText("Something broke on this page.")).toBeTruthy();
+      expect(interactive()).toBeGreaterThanOrEqual(2);
+    });
+
+    it("a null location still renders the boundary fallback", () => {
+      routerOverride.current = () => null;
+      render(
+        <AppErrorBoundary>
+          <Thrower when />
+        </AppErrorBoundary>,
+      );
+      expect(screen.getByText("Something broke on this page.")).toBeTruthy();
+    });
   });
 });

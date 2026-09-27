@@ -269,6 +269,43 @@ describe("P-02: a CORS-masked 401 is told apart from an outage by probing /healt
     expect(healthCalls).toBe(0);
   });
 
+  it("an inferred (CORS-masked) 401 does NOT reset the analytics identity (critic F-05)", async () => {
+    authReplies = [CORS_MASKED()];
+    healthReplies = [json(200, { status: "ok" })];
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("auth-status").textContent).toBe("unauthenticated"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(posthogReset).not.toHaveBeenCalled();
+  });
+
+  it("a real 401 still resets the analytics identity", async () => {
+    authReplies = [json(401, {})];
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("auth-status").textContent).toBe("unauthenticated"));
+    await waitFor(() => expect(posthogReset).toHaveBeenCalledTimes(1));
+  });
+
+  it("an inferred 401 followed by a real 401 on Retry resets exactly once", async () => {
+    authReplies = [CORS_MASKED(), json(401, {})];
+    healthReplies = [json(200, { status: "ok" })];
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("auth-status").textContent).toBe("unauthenticated"));
+    expect(posthogReset).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("refresh auth"));
+    await waitFor(() => expect(posthogReset).toHaveBeenCalledTimes(1));
+  });
+
+  it("sign-out always resets the analytics identity, even after an inferred 401", async () => {
+    authReplies = [CORS_MASKED()];
+    healthReplies = [json(200, { status: "ok" })];
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("auth-status").textContent).toBe("unauthenticated"));
+    fireEvent.click(screen.getByText("sign out"));
+    await waitFor(() => expect(posthogReset).toHaveBeenCalledTimes(1));
+  });
+
   it("401 on /auth/me → unauthenticated with NO /health call", async () => {
     authReplies = [json(401, {})];
     renderProvider();

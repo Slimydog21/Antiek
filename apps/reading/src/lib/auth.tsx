@@ -53,7 +53,13 @@ export type AuthUnavailableReason = "offline" | "server" | "malformed";
 export type AuthState =
   | { status: "loading" }
   | { status: "authenticated"; identity: AuthIdentity }
-  | { status: "unauthenticated" }
+  /**
+   * `inferred`: no readable /auth/me answer, but /health proved the API is
+   * up, so this is taken to be a CORS-masked 401 (P-02). It routes exactly
+   * like a real 401; it only differs in what it may erase (neither the
+   * reading-state owner nor the analytics identity).
+   */
+  | { status: "unauthenticated"; inferred?: true }
   /**
    * /auth/me could not give an identity answer: the fetch threw (offline),
    * the server answered with a transient failure (server), or a 200 body was
@@ -263,6 +269,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (identity) {
       setState({ status: "authenticated", identity });
+    } else if (answer.kind === "anonymous" && answer.inferred) {
+      setState({ status: "unauthenticated", inferred: true });
     } else {
       setState({ status: "unauthenticated" });
     }
@@ -289,8 +297,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // than a component mounted in App.tsx so the route tree stays untouched.
   useEffect(() => {
     // An outage (unavailable) is not a sign-out: never reset the analytics
-    // identity for it.
+    // identity for it. Nor for an INFERRED 401 (critic F-05): that answer is
+    // outage-shaped (the browser saw a transport failure), so it keeps the
+    // identity until a real 401 or a sign-out proves the user is gone.
     if (!posthogEnabled || state.status === "loading" || state.status === "unavailable") return;
+    if (state.status === "unauthenticated" && state.inferred) return;
     if (state.status === "authenticated") {
       const { user_id, email, auth_method } = state.identity;
       posthog.identify(
