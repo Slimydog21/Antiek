@@ -6,6 +6,7 @@ import { markSeen } from "../../workspace/seen";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import type { ResearchSourcePolicy } from "../../lib/api";
 import { parseSynthesis } from "../../lib/synthesisParser";
+import AIActionFailure from "../../shared/AIActionFailure";
 import GlassSurface from "../../shell/GlassSurface";
 import { PanelHost } from "../../workspace/PanelHost";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
@@ -17,6 +18,7 @@ import NotesPanel from "./NotesPanel";
 import PasteIngest from "./PasteIngest";
 import StartResearch from "./StartResearch";
 import SuggestedResearch from "./SuggestedResearch";
+import DiligenceRail from "./DiligenceRail";
 import ThinkingStream from "./ThinkingStream";
 import CapacitySoftWarnBanner from "../../components/CapacitySoftWarnBanner";
 
@@ -184,6 +186,18 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
       </div>
     );
   }
+  if (investigation.status === "error") {
+    return (
+      <div className="h-full flex items-center justify-center px-4">
+        <AIActionFailure
+          title="Couldn’t load this research"
+          code={investigation.loadError?.code ?? "unknown"}
+          retryable
+          onRetry={() => investigation.retry?.()}
+        />
+      </div>
+    );
+  }
   if (investigation.status === "not_found") {
     return (
       <div className="h-full flex items-center justify-center text-sm text-shadow-1 dark:text-moonlight font-serif">
@@ -267,8 +281,10 @@ function CenterContent({
             answer as threads worth chasing. Read-only to render; chasing one
             reuses SPR-04's chase gesture (onChaseQuestion → the one
             ChaseThread panel), so it launches through the same capped path —
-            no second launch mechanism, no auto-spawn. */}
+            no second launch mechanism, no auto-spawn. The diligence queue
+            rail rides beside it (autonomous-diligence SPR-01). */}
         <div className="border-t border-rule dark:border-charcoal-1">
+          <DiligenceRail />
           <SuggestedResearch
             variant="beside"
             onChase={(c) => onChaseQuestion({ text: c.text })}

@@ -7,7 +7,9 @@ import {
   ApiError,
 } from "../../lib/api";
 import type { DistilledNode } from "../../lib/api";
+import { openWindow, readerWindowId } from "../../components/windows/openWindow";
 import AIActionFailure from "../../shared/AIActionFailure";
+import FlagForDiligence from "../../shared/FlagForDiligence";
 import Thinking from "../../shared/Thinking";
 import ArtifactOutlineShelf from "./ArtifactOutlineShelf";
 
@@ -144,7 +146,7 @@ export default function DistillView({ investigationId, running, onChase }: Disti
         <Section heading="Open questions">
           <ul className="space-y-2.5">
             {questions.map((q) => (
-              <QuestionRow key={q.node_id} node={q} onChase={onChase} />
+              <QuestionRow key={q.node_id} node={q} investigationId={investigationId} onChase={onChase} />
             ))}
           </ul>
         </Section>
@@ -215,7 +217,7 @@ function InsightRow({
             {node.text}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-shadow-1 dark:text-moonlight">
-            <Grounding node={node} />
+            <Grounding node={node} investigationId={investigationId} />
             {node.refinement_count > 0 && (
               <span className="font-mono">changed {node.refinement_count === 1 ? "once" : `${node.refinement_count} times`}</span>
             )}
@@ -265,7 +267,7 @@ function InsightRow({
   );
 }
 
-function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: DistilledNode) => void }) {
+function QuestionRow({ node, investigationId, onChase }: { node: DistilledNode; investigationId: string; onChase?: (q: DistilledNode) => void }) {
   return (
     <li className="flex items-start gap-2.5">
       <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-aurora" aria-hidden="true" />
@@ -284,6 +286,7 @@ function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: Dis
               chase this
             </button>
           )}
+          <FlagForDiligence node={node} sourceInvestigationId={investigationId} />
         </div>
       </div>
     </li>
@@ -293,12 +296,41 @@ function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: Dis
 /** The named source that grounds an insight, in human terms. We show the
  *  document the insight came from; a raw id is never a label, so when only an
  *  id is on record we say "grounded in a source" rather than print the id.
- *  (SPR-04 wires the source's title via the named-source rendering.) */
-function Grounding({ node }: { node: DistilledNode }) {
+ *  (SPR-04 wires the source's title via the named-source rendering.)
+ *
+ *  Reading-global SPR-02: when the node carries a source, the line gains the
+ *  quiet "open in reader" action — the reader floats (the ONE window-eligible
+ *  surface) with the stable per-document id and the research origin context.
+ *  A node WITHOUT a source renders the same inert line as always — never a
+ *  dead affordance. */
+function Grounding({ node, investigationId }: { node: DistilledNode; investigationId: string }) {
   if (!node.source_document_id) {
     return <span className="font-mono italic">no source on record</span>;
   }
-  return <span className="font-mono">grounded in a source</span>;
+  const documentId = node.source_document_id;
+  return (
+    <>
+      <span className="font-mono">grounded in a source</span>
+      <button
+        type="button"
+        data-open-in-reader
+        onClick={() =>
+          openWindow(
+            "reader",
+            {
+              documentId,
+              origin: { from: "research", id: investigationId },
+            },
+            { id: readerWindowId(documentId) },
+          )
+        }
+        className="font-mono underline decoration-dotted underline-offset-2 transition-colors hover:text-ink dark:hover:text-bright"
+        title="Open the grounding source in the reader"
+      >
+        open in reader
+      </button>
+    </>
+  );
 }
 
 

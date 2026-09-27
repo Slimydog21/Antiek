@@ -47,4 +47,23 @@ describe("sourceUploadApi", () => {
     await expect(promise).rejects.toMatchObject({ code: "conversion_failed" } satisfies Partial<SourceUploadError>);
     await expect(promise).rejects.not.toThrow(/private\.pdf/);
   });
+
+  it("surfaces a refused re-attestation instead of the EPUB ceremony 409", async () => {
+    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({
+      detail: {
+        code: "upload_attestation_conflict",
+        document_id: "doc-upload-safe",
+        stored_content_class: "personal_reading",
+        stored_attestation: "personal_reading",
+      },
+    }), { status: 409, headers: { "Content-Type": "application/json" } }));
+    await expect(uploadSource(new File(["body"], "private.pdf"), "user_owned"))
+      .rejects.toMatchObject({ code: "attestation_conflict" } satisfies Partial<SourceUploadError>);
+
+    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({
+      detail: "EPUB goes through the authorized book-acquisition ceremony",
+    }), { status: 409, headers: { "Content-Type": "application/json" } }));
+    await expect(uploadSource(new File(["body"], "private.pdf"), "personal_reading"))
+      .rejects.toMatchObject({ code: "book_ceremony" } satisfies Partial<SourceUploadError>);
+  });
 });
