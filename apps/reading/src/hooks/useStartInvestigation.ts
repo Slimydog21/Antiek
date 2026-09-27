@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 
-import { startInvestigation } from "../lib/api";
+import { ApiError, startInvestigation } from "../lib/api";
 
 import { CapacityExhaustedError } from "../lib/capacityWarn";
 import type {
@@ -10,6 +10,22 @@ import type {
 } from "../lib/api";
 import type { Event } from "../generated/types";
 import { useEventStream } from "./useEventStream";
+
+const CONNECT_MODEL_MESSAGE =
+  "Choose a model in Settings, then try starting your research again.";
+
+function isConnectModelError(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
+  try {
+    const response: unknown = JSON.parse(error.body);
+    if (typeof response !== "object" || response === null || !("detail" in response)) {
+      return false;
+    }
+    return response.detail === "connect_model";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * useStartInvestigation — the single sanctioned path for starting a NEW
@@ -181,8 +197,11 @@ export function useStartInvestigation(): StartInvestigationState {
           setError(e.message);
           return null;
         }
-        const msg = e instanceof Error ? e.message : String(e);
-        setError(`Submit failed: ${msg}`);
+        setError(
+          isConnectModelError(e)
+            ? CONNECT_MODEL_MESSAGE
+            : "Submit failed. Please try again.",
+        );
         return null;
       } finally {
         setPosting(false);
