@@ -50,6 +50,11 @@ export interface ThreadIslandProps {
   /** The anchor's page hint (position the card shows on a metadata-only
    *  anchor, where a quote would be a leak). */
   pageIndexHint: number | null;
+  /** The reader window's origin context (reading-global SPR-02) — payload
+   *  metadata whose ONE consumer is the dig-deeper prefill. Only
+   *  investigation-bearing origins (research / evidence) can prefill a
+   *  chase parent; a write origin's id is a deliverable, never a parent. */
+  origin?: { from: string; id: string } | null;
 }
 
 /** The status-glyph vocabulary: dot class + accessible label per island
@@ -63,6 +68,7 @@ const STATUS_GLYPHS: Record<IslandStatus, { className: string; label: string; pu
   stopped: { className: "bg-[var(--state-stopped)]", label: "research stopped", pulse: false },
   budget_halted: { className: "bg-[var(--state-blocked)]", label: "research budget halted", pulse: false },
   gone: { className: "bg-transparent border border-current", label: "research record not found", pulse: false },
+  unavailable: { className: "bg-transparent border border-dashed border-current", label: "research status unavailable", pulse: false },
 };
 
 const STATUS_LINES: Record<IslandStatus, string> = {
@@ -73,6 +79,7 @@ const STATUS_LINES: Record<IslandStatus, string> = {
   stopped: "stopped",
   budget_halted: "budget halted",
   gone: "record not found",
+  unavailable: "couldn't load its status",
 };
 
 /** Map the family node's summary status to the shared research-state dot
@@ -99,6 +106,7 @@ export default function ThreadIsland({
   servable,
   passageQuote,
   pageIndexHint,
+  origin = null,
 }: ThreadIslandProps) {
   const [expanded, setExpanded] = useState(false);
   // The SPR-04 chase composer, opened inside the card: null = closed; a
@@ -158,7 +166,7 @@ export default function ThreadIsland({
   }
 
   const terminal =
-    thread.status !== "live" && thread.status !== "gone";
+    thread.status !== "live" && thread.status !== "gone" && thread.status !== "unavailable";
 
   // The chase seed (island SPR-04): the anchor quote + the parent thread's
   // question. A metadata-only anchor contributes POSITION text — never a
@@ -220,6 +228,24 @@ export default function ThreadIsland({
         <p className="text-shadow-1 dark:text-moonlight italic" data-island-gone>
           This thread's record is missing — the island can't show it. The anchor
           is untouched; only the record is gone.
+        </p>
+      ) : null}
+
+      {thread.status === "unavailable" ? (
+        <p className="text-shadow-1 dark:text-moonlight mb-2" data-island-unavailable>
+          This thread's status couldn't be read, so it may still be running.
+          {thread.retry ? (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={thread.retry}
+                className="text-sun-deep underline-offset-2 hover:underline"
+              >
+                Try again
+              </button>
+            </>
+          ) : null}
         </p>
       ) : null}
 
@@ -311,6 +337,11 @@ export default function ThreadIsland({
       {dig ? (
         <DigDeeper
           parentInvestigationId={investigationId}
+          originChaseParent={
+            origin && (origin.from === "research" || origin.from === "evidence")
+              ? origin.id
+              : null
+          }
           spawnContext={spawnContext}
           initialQuestion={dig.initialQuestion}
           reservedChildId={dig.reservedChildId}

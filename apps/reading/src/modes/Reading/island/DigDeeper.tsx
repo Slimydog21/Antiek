@@ -44,8 +44,14 @@ import AIActionFailure from "../../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../../shared/delight";
 
 export interface DigDeeperProps {
-  /** The island's thread — the chase's parent (and the deepen steer target). */
+  /** The island's thread — the chase's DEFAULT parent (and the deepen
+   *  steer target). */
   parentInvestigationId: string;
+  /** The origin prefill (reading-global SPR-02): when the reader window was
+   *  opened from a research, the chase parent PREFILLS to the investigation
+   *  the operator came from — VISIBLE in the composer (never silent lineage
+   *  metadata), and the launch still crosses the one existing path. */
+  originChaseParent?: string | null;
   /** The chase seed: the anchor quote + the parent thread's question. The
    *  §9.0 boundary is upstream — a metadata-only anchor contributes position
    *  text, never a withheld sentence. */
@@ -68,6 +74,7 @@ export interface DigDeeperProps {
 
 export default function DigDeeper({
   parentInvestigationId,
+  originChaseParent = null,
   spawnContext,
   initialQuestion,
   reservedChildId,
@@ -81,6 +88,9 @@ export default function DigDeeper({
   const [error, setError] = useState<{ reason: string | null } | null>(null);
   const [deepen, setDeepen] = useState<"idle" | "busy" | "done" | "failed">("idle");
   const { celebrating, celebrate } = useCelebrate();
+  // The chase's parent: the origin prefill when present, else the island's
+  // thread (the default affordance — unchanged when origin is absent).
+  const chaseParent = originChaseParent ?? parentInvestigationId;
 
   // The deepen gate: a resolved, LIVE owning session only. Terminal or
   // unresolvable → the option is absent (never a dead button).
@@ -99,7 +109,7 @@ export default function DigDeeper({
       const resp = await startInvestigation({
         question: q,
         context: spawnContext,
-        parent_investigation_id: parentInvestigationId,
+        parent_investigation_id: chaseParent,
         spawn_context: spawnContext,
         // Consume the reserved escalation id when the dig carries one; omit
         // it otherwise so the substrate mints a fresh child. Every dig on an
@@ -108,7 +118,7 @@ export default function DigDeeper({
         ...(reservedChildId ? { investigation_id: reservedChildId } : {}),
       });
       setLaunchedId(resp.investigation_id);
-      recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
+      recordSpawnRelationship(resp.investigation_id, chaseParent);
       onLaunched(resp.investigation_id);
       // The payoff is already in hand (the id is back); the beat just
       // decorates it — non-blocking, fires once, same hook as the
@@ -170,6 +180,14 @@ export default function DigDeeper({
       <label className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1">
         Following from this passage
       </label>
+      {originChaseParent ? (
+        <p
+          className="text-xxs font-mono text-sun-deep dark:text-sun mb-1"
+          data-dig-origin
+        >
+          chasing from the research you came from
+        </p>
+      ) : null}
       <blockquote
         data-dig-quote
         className="font-serif italic text-ink-soft dark:text-starlight border-l-edge border-sun pl-2 mb-2 line-clamp-3"

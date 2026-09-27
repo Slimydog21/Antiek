@@ -41,6 +41,52 @@ class _RecordingTalkProvider:
         return NormalizedUsage(input_tokens=0, output_tokens=0)
 
 
+def _recorded_review(
+    client: TestClient,
+    *,
+    rights_basis: str,
+    conversion_result_id: str = "bookout-safe123",
+) -> str:
+    """Record a real servable review: publish-job consults it, not the prefix."""
+    resp = client.post(
+        "/books/import/serve-gate-review",
+        json={
+            "conversion_result_id": conversion_result_id,
+            "title": "The Dream Machine",
+            "rights_basis": rights_basis,
+            "servability_decision": "servable_full_text",
+            "acknowledge_rights_reviewed": True,
+            "acknowledge_no_publication": True,
+        },
+    )
+    assert resp.status_code == 202, resp.text
+    return str(resp.json()["serve_gate_review_id"])
+
+
+def _recorded_chain(
+    client: TestClient,
+    *,
+    rights_basis: str,
+    conversion_result_id: str = "bookout-safe123",
+) -> tuple[str, str]:
+    """(serve_gate_review_id, publication_request_id) actually recorded."""
+    review_id = _recorded_review(
+        client, rights_basis=rights_basis, conversion_result_id=conversion_result_id
+    )
+    resp = client.post(
+        "/books/import/publication-request",
+        json={
+            "serve_gate_review_id": review_id,
+            "conversion_result_id": conversion_result_id,
+            "shelf_visibility": "private_library",
+            "acknowledge_publication_intent": True,
+            "acknowledge_no_ingest_or_serve": True,
+        },
+    )
+    assert resp.status_code == 202, resp.text
+    return review_id, str(resp.json()["publication_request_id"])
+
+
 def _register_talk_provider(reply: str) -> list[str]:
     from substrate.dispatch.router import register_provider, reset_provider_registry
 
@@ -558,11 +604,12 @@ def test_html_publication_request_requires_valid_ids_and_acknowledgements() -> N
 
 def test_html_publication_request_records_intent_without_ingest_or_serve() -> None:
     client = _client()
+    review_id = _recorded_review(client, rights_basis="personal_license")
 
     resp = client.post(
         "/books/import/publication-request",
         json={
-            "serve_gate_review_id": "bookserve-safe123",
+            "serve_gate_review_id": review_id,
             "conversion_result_id": "bookout-safe123",
             "document_id_hint": "book-dream-machine",
             "shelf_visibility": "private_library",
@@ -575,7 +622,7 @@ def test_html_publication_request_records_intent_without_ingest_or_serve() -> No
     body = resp.json()
     assert body["publication_request_id"].startswith("bookpub-")
     assert body["status"] == "ready_for_explicit_publish_job"
-    assert body["serve_gate_review_id"] == "bookserve-safe123"
+    assert body["serve_gate_review_id"] == review_id
     assert body["conversion_result_id"] == "bookout-safe123"
     assert body["document_id_hint"] == "book-dream-machine"
     assert body["shelf_visibility"] == "private_library"
@@ -628,17 +675,18 @@ def test_html_publish_job_requires_final_write_acknowledgements() -> None:
 
 def test_html_publish_job_writes_book_through_existing_serve_gate() -> None:
     client = _client()
+    review_id, publication_id = _recorded_chain(client, rights_basis="platform_authored")
 
     resp = client.post(
         "/books/import/publish-job",
         json={
-            "publication_request_id": "bookpub-safe123",
-            "serve_gate_review_id": "bookserve-safe123",
+            "publication_request_id": publication_id,
+            "serve_gate_review_id": review_id,
             "document_id": "book-dream-machine",
             "title": "The Dream Machine",
             "author": "M. Mitchell Waldrop",
             "html_body": "<article><h1>The Dream Machine</h1><p>Networked computing history.</p></article>",
-            "rights_basis": "personal_license",
+            "rights_basis": "platform_authored",
             "page_count": 340,
             "license_basis": "Operator-owned copy for private Antiek library.",
             "acknowledge_write_to_library": True,
@@ -705,15 +753,18 @@ def test_html_index_job_embeds_published_book_chunks_explicitly() -> None:
     sys.modules["substrate.graph.search"].SentenceTransformerEmbedding = lambda: provider
     prompts = _register_talk_provider("The passage says it is vector searchable.")
     try:
+        review_id, publication_id = _recorded_chain(
+            client, rights_basis="platform_authored", conversion_result_id="bookout-index123"
+        )
         published = client.post(
             "/books/import/publish-job",
             json={
-                "publication_request_id": "bookpub-index123",
-                "serve_gate_review_id": "bookserve-index123",
+                "publication_request_id": publication_id,
+                "serve_gate_review_id": review_id,
                 "document_id": "book-indexable",
                 "title": "Indexable Book",
                 "html_body": "<article><h1>Indexable</h1><p>Vector searchable passage.</p></article>",
-                "rights_basis": "personal_license",
+                "rights_basis": "platform_authored",
                 "license_basis": "Operator-owned copy for private Antiek library.",
                 "acknowledge_write_to_library": True,
                 "acknowledge_full_text_servable": True,
