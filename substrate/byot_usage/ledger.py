@@ -26,7 +26,7 @@ __all__ = [
     "SettlementEvidenceError",
 ]
 
-_SCHEMA_VERSION: Final = 3
+_SCHEMA_VERSION: Final = 4
 _BUSY_TIMEOUT_MS: Final = 30_000
 
 
@@ -91,6 +91,8 @@ class OperationRow:
     result_text: str | None
     created_at: str
     updated_at: str
+    request_digest: str | None
+    finish_reason: str | None
 
 
 def _now_iso() -> str:
@@ -159,13 +161,17 @@ class ByotUsageLedger:
                 " authority_digest TEXT NOT NULL, evidence_sha256 TEXT,"
                 " provider_id TEXT, model_id TEXT, dispatch_event_id TEXT, result_text TEXT,"
                 " created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
+                " request_digest TEXT, finish_reason TEXT,"
                 " PRIMARY KEY (owner_user_id, operation_id)"
                 ")"
             )
             columns = {row[1] for row in con.execute(
                 "PRAGMA table_info(byot_operation_journal)"
             ).fetchall()}
-            for name in ("provider_id", "model_id", "dispatch_event_id", "result_text"):
+            for name in (
+                "provider_id", "model_id", "dispatch_event_id", "result_text",
+                "request_digest", "finish_reason",
+            ):
                 if name not in columns:
                     con.execute(f"ALTER TABLE byot_operation_journal ADD COLUMN {name} TEXT")
             con.execute(
@@ -255,7 +261,8 @@ class ByotUsageLedger:
             row = con.execute(
                 "SELECT api_key_id, owner_user_id, operation_id, state, reserved_cents,"
                 " actual_cents, authority_digest, evidence_sha256, provider_id, model_id,"
-                " dispatch_event_id, result_text, created_at, updated_at"
+                " dispatch_event_id, result_text, created_at, updated_at,"
+                " request_digest, finish_reason"
                 " FROM byot_operation_journal WHERE owner_user_id = ? AND operation_id = ?",
                 (owner_user_id, operation_id),
             ).fetchone()
@@ -361,6 +368,8 @@ class ByotUsageLedger:
         operation_id: str,
         reserved_cents: int,
         authority_digest: str,
+        *,
+        request_digest: str | None = None,
     ) -> OperationRow:
         """Atomically reserve local ceiling headroom for one new operation.
 
@@ -372,13 +381,18 @@ class ByotUsageLedger:
             raise ValueError("operation identity fields must be non-empty")
         if reserved_cents < 0:
             raise ValueError("reserved_cents must be non-negative")
+        if request_digest is not None and (
+            len(request_digest) != 64 or any(c not in "0123456789abcdef" for c in request_digest)
+        ):
+            raise ValueError("request_digest must be a SHA-256 hex digest")
         now = _now_iso()
         con = self._connect()
         try:
             con.execute("BEGIN IMMEDIATE")
             existing = con.execute(
                 "SELECT api_key_id, state, reserved_cents, actual_cents,"
-                " authority_digest, evidence_sha256 FROM byot_operation_journal"
+                " authority_digest, evidence_sha256, request_digest"
+                " FROM byot_operation_journal"
                 " WHERE owner_user_id = ? AND operation_id = ?",
                 (owner_user_id, operation_id),
             ).fetchone()
@@ -387,6 +401,7 @@ class ByotUsageLedger:
                     existing[0] != api_key_id
                     or existing[2] != reserved_cents
                     or existing[4] != authority_digest
+                    or existing[6] != request_digest
                     or existing[1] != "prepared"
                 ):
                     raise OperationConflict("operation is not retryable")
@@ -418,10 +433,10 @@ class ByotUsageLedger:
                 con.execute(
                     "INSERT INTO byot_operation_journal"
                     " (api_key_id, owner_user_id, operation_id, state, reserved_cents,"
-                    " authority_digest, created_at, updated_at) VALUES"
-                    " (?, ?, ?, 'prepared', ?, ?, ?, ?)",
+                    " authority_digest, created_at, updated_at, request_digest) VALUES"
+                    " (?, ?, ?, 'prepared', ?, ?, ?, ?, ?)",
                     (api_key_id, owner_user_id, operation_id, reserved_cents,
-                     authority_digest, now, now),
+                     authority_digest, now, now, request_digest),
                 )
             con.commit()
         except Exception:
@@ -448,19 +463,22 @@ class ByotUsageLedger:
     def record_unknown_result(
         self, owner_user_id: str, operation_id: str, *, result_text: str,
         dispatch_event_id: str | None, provider_id: str, model_id: str,
+        finish_reason: str | None = None,
     ) -> None:
         """Keep an answer with missing usage or receipt, without settling a charge."""
         if not all((provider_id, model_id)):
             raise ValueError("unknown result facts are invalid")
+        if finish_reason not in (None, "stop", "length", "error", "tool_use"):
+            raise ValueError("unknown result finish reason is invalid")
         con = self._connect()
         try:
             con.execute("BEGIN IMMEDIATE")
             changed = con.execute(
                 "UPDATE byot_operation_journal SET state = 'unknown',"
                 " dispatch_event_id = ?, provider_id = ?, model_id = ?,"
-                " result_text = ?, updated_at = ?"
+                " result_text = ?, finish_reason = ?, updated_at = ?"
                 " WHERE owner_user_id = ? AND operation_id = ? AND state = 'sent'",
-                (dispatch_event_id, provider_id, model_id, result_text,
+                (dispatch_event_id, provider_id, model_id, result_text, finish_reason,
                  _now_iso(), owner_user_id, operation_id),
             ).rowcount
             if changed != 1:
@@ -479,23 +497,26 @@ class ByotUsageLedger:
     def record_operation_result(
         self, owner_user_id: str, operation_id: str, *, actual_cents: int,
         evidence_sha256: str, dispatch_event_id: str, provider_id: str, model_id: str,
-        result_text: str = "",
+        result_text: str = "", finish_reason: str | None = None,
     ) -> None:
         """Persist non-secret provider result facts before settlement bookkeeping."""
         if actual_cents < 0 or not all(
             (evidence_sha256, dispatch_event_id, provider_id, model_id)
         ):
             raise ValueError("result facts are invalid")
+        if finish_reason not in (None, "stop", "length", "error", "tool_use"):
+            raise ValueError("result finish reason is invalid")
         con = self._connect()
         try:
             con.execute("BEGIN IMMEDIATE")
             changed = con.execute(
                 "UPDATE byot_operation_journal SET state = 'settlement_pending',"
                 " actual_cents = ?, evidence_sha256 = ?, dispatch_event_id = ?,"
-                " provider_id = ?, model_id = ?, result_text = ?, updated_at = ?"
+                " provider_id = ?, model_id = ?, result_text = ?, finish_reason = ?,"
+                " updated_at = ?"
                 " WHERE owner_user_id = ? AND operation_id = ? AND state = 'sent'",
                 (actual_cents, evidence_sha256, dispatch_event_id, provider_id, model_id,
-                 result_text, _now_iso(), owner_user_id, operation_id),
+                 result_text, finish_reason, _now_iso(), owner_user_id, operation_id),
             ).rowcount
             if changed != 1:
                 raise OperationConflict("operation result is not recordable")

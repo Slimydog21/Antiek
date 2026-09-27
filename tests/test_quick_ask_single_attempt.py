@@ -42,6 +42,7 @@ class RecordingProvider:
         self.calls: list[dict[str, Any]] = []
         self.raw_usage: dict[str, int] = {"input_tokens": 7, "output_tokens": 11}
         self.fail = False
+        self.finish_reason = "stop"
 
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
         self.calls.append({"model": model, "prompt": prompt, "max_tokens": max_tokens})
@@ -49,7 +50,7 @@ class RecordingProvider:
             raise RuntimeError("private provider error")
         return RawProviderResponse(
             text="one answer", raw_usage=self.raw_usage,
-            finish_reason="stop", latency_ms=1, request_id="fake-one",
+            finish_reason=self.finish_reason, latency_ms=1, request_id="fake-one",
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
@@ -148,7 +149,6 @@ def test_model_inventory_uses_same_owner_and_current_price_predicate(route) -> N
         ("user-owner-model", _MODEL),
     ]
     assert provider.calls == []
-
     flash = ByotModelVariant(
         "deepseek-v4-flash", "DeepSeek V4 Flash",
         preset_box[0].models[0].rates,
@@ -174,6 +174,13 @@ def test_model_inventory_uses_same_owner_and_current_price_predicate(route) -> N
     identity["owner"] = "owner-b"
     assert client.get("/research/quick-ask/models").json() == {"models": [], "count": 0}
     assert provider.calls == []
+
+
+def test_equal_operation_ids_have_distinct_owner_event_scopes() -> None:
+    operation = uuid4()
+    assert quick_ask._event_scope("owner-a", operation) != quick_ask._event_scope(
+        "owner-b", operation,
+    )
 
 
 def test_quote_is_free_and_confirmed_send_is_one_exact_request(route) -> None:
@@ -211,6 +218,125 @@ def test_settled_replay_returns_prior_receipt_without_new_send_or_false_zero_usa
     assert foreign.status_code == 409
     assert "one answer" not in foreign.text
     assert len(provider.calls) == 1
+
+
+def test_settled_replay_survives_revoked_key_and_stale_price_without_io(
+    route, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, provider, ledger, preset_box, _, _, _ = route
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    assert client.post("/research/quick-ask", json=payload).status_code == 200
+    row = ledger.operation(_OWNER, f"quick-ask:{body['operation_id']}")
+    assert row is not None and row.request_digest is not None
+    old = preset_box[0]
+    preset_box[0] = replace(old, models=(
+        replace(old.models[0], snapshot="deepseek-v4-pro-2026-08-12"),
+    ))
+    monkeypatch.setattr(models_admin, "_credential_metadata", lambda: {})
+    replay = client.post("/research/quick-ask", json=payload)
+    assert replay.status_code == 200
+    assert replay.json()["answer"] == "one answer"
+    assert replay.json()["replayed"] is True
+    assert replay.json()["usage_basis"] == "prior_receipt"
+    assert replay.json()["input_tokens"] is None
+    assert len(provider.calls) == 1
+    preset_box[0] = replace(old, models=())
+    retired_replay = client.post("/research/quick-ask", json=payload)
+    assert retired_replay.status_code == 200
+    assert retired_replay.json()["answer"] == "one answer"
+    changed = {**payload, "question": "Different bytes"}
+    conflict = client.post("/research/quick-ask", json=changed)
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "quick_ask_operation_conflict"
+    assert "one answer" not in conflict.text
+    altered_quote = {**payload, "quote_digest": "0" * 64}
+    assert client.post("/research/quick-ask", json=altered_quote).json()["detail"] == (
+        "quick_ask_operation_conflict"
+    )
+    assert len(provider.calls) == 1
+
+
+def test_length_finish_is_incomplete_on_first_answer_and_replay(route, monkeypatch) -> None:
+    client, provider, _, _, _, _, _ = route
+    provider.finish_reason = "length"
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    first = client.post("/research/quick-ask", json=payload)
+    assert first.status_code == 200
+    assert first.json()["incomplete"] is True
+    monkeypatch.setattr(models_admin, "_credential_metadata", lambda: {})
+    replay = client.post("/research/quick-ask", json=payload)
+    assert replay.status_code == 200
+    assert replay.json()["incomplete"] is True
+    assert len(provider.calls) == 1
+
+
+def test_racing_helper_replay_uses_stored_finish_reason(route, monkeypatch) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    provider.finish_reason = "length"
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    assert client.post("/research/quick-ask", json=payload).status_code == 200
+    original_operation = ledger.operation
+    reads = 0
+
+    def hide_first_read(owner: str, operation_id: str):
+        nonlocal reads
+        reads += 1
+        return None if reads == 1 else original_operation(owner, operation_id)
+
+    monkeypatch.setattr(ledger, "operation", hide_first_read)
+    replay = client.post("/research/quick-ask", json=payload)
+    assert replay.status_code == 200
+    assert replay.json()["incomplete"] is True
+    assert replay.json()["usage_basis"] == "prior_receipt"
+    assert len(provider.calls) == 1
+
+
+def test_legacy_operation_without_request_digest_refuses_terminal_replay(route) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    body = _body()
+    quote = _quote(client, body)
+    op = f"quick-ask:{body['operation_id']}"
+    ledger.prepare_operation("user-owner-model", _OWNER, op, 1, quote["quote_digest"])
+    response = client.post(
+        "/research/quick-ask", json={**body, "quote_digest": quote["quote_digest"]},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "quick_ask_operation_conflict"
+    assert provider.calls == []
+
+
+def test_terminal_recheck_recovers_a_result_written_during_quote_failure(
+    route, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    body = _body()
+    quote = _quote(client, body)
+    payload = {**body, "quote_digest": quote["quote_digest"]}
+    parsed = quick_ask.QuickAskExecute.model_validate(payload)
+    operation_id = f"quick-ask:{body['operation_id']}"
+    request_digest = quick_ask._request_digest(_OWNER, operation_id, parsed)
+
+    def complete_then_fail_quote(*_args, **_kwargs):
+        ledger.prepare_operation(
+            "user-owner-model", _OWNER, operation_id, 1, quote["quote_digest"],
+            request_digest=request_digest,
+        )
+        ledger.mark_operation_sent(_OWNER, operation_id)
+        ledger.record_unknown_result(
+            _OWNER, operation_id, result_text="answer from first request",
+            dispatch_event_id=None, provider_id="user-owner-model", model_id=_MODEL,
+        )
+        raise RuntimeError("catalog changed while sibling completed")
+
+    monkeypatch.setattr(quick_ask, "_quote", complete_then_fail_quote)
+    replay = client.post("/research/quick-ask", json=payload)
+    assert replay.status_code == 200
+    assert replay.json()["answer"] == "answer from first request"
+    assert replay.json()["usage_basis"] == "charge_unknown"
+    assert len(provider.calls) == 0
 
 
 def test_concurrent_twins_cannot_send_twice(route) -> None:
@@ -308,6 +434,48 @@ def test_unreported_usage_and_transport_failure_keep_unknown_hold(route) -> None
     assert response.status_code == 409
     assert response.json()["detail"] == "charge_unknown"
     assert len(provider.calls) == 2
+
+
+def test_unknown_answer_replay_survives_revocation_but_no_answer_stays_unknown(
+    route, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    provider.raw_usage = {}
+    assert client.post("/research/quick-ask", json=payload).json()["answer"] == "one answer"
+    no_answer = _body()
+    failed_payload = {
+        **no_answer, "quote_digest": _quote(client, no_answer)["quote_digest"],
+    }
+    provider.fail = True
+    failure = client.post("/research/quick-ask", json=failed_payload)
+    assert failure.status_code == 409 and failure.json()["detail"] == "charge_unknown"
+    row = ledger.operation(_OWNER, f"quick-ask:{no_answer['operation_id']}")
+    assert row is not None and row.state == "unknown" and row.result_text is None
+    monkeypatch.setattr(models_admin, "_credential_metadata", lambda: {})
+    replay = client.post("/research/quick-ask", json=payload)
+    assert replay.status_code == 200
+    assert replay.json()["usage_basis"] == "charge_unknown"
+    assert replay.json()["answer"] == "one answer"
+    refused = client.post("/research/quick-ask", json=failed_payload)
+    assert refused.status_code == 409 and refused.json()["detail"] == "charge_unknown"
+    assert len(provider.calls) == 2
+
+
+def test_unknown_length_answer_stays_incomplete_on_replay(route) -> None:
+    client, provider, _, _, _, _, _ = route
+    provider.raw_usage = {}
+    provider.finish_reason = "length"
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    first = client.post("/research/quick-ask", json=payload)
+    replay = client.post("/research/quick-ask", json=payload)
+    assert first.status_code == replay.status_code == 200
+    assert first.json()["incomplete"] is True
+    assert replay.json()["incomplete"] is True
+    assert replay.json()["usage_basis"] == "charge_unknown"
+    assert len(provider.calls) == 1
 
 
 def test_answer_survives_nonfatal_local_event_failure(

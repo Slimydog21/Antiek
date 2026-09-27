@@ -24,7 +24,7 @@ from interfaces.research.api.owner_byot_dispatch import (
     dispatch_talk_to_book_byot,
 )
 from runtime.research_runner.byot_provider_catalog import get_model_variant, get_provider_preset
-from substrate.byot_usage.ledger import ByotUsageLedger
+from substrate.byot_usage.ledger import ByotUsageLedger, OperationRow
 from substrate.dispatch.router import DispatchConfig
 
 quick_ask_router = APIRouter(prefix="/research/quick-ask", tags=["ask"])
@@ -124,9 +124,97 @@ def _prompt_digest(question: str) -> str:
     return hashlib.sha256(question.encode("utf-8")).hexdigest()
 
 
+def _event_scope(owner: str, operation: UUID) -> str:
+    # Event trajectories are keyed by one string, unlike the journal's
+    # (owner, operation) primary key. Keep equal UUIDs across owners apart.
+    owner_hash = hashlib.sha256(owner.encode("utf-8")).hexdigest()[:16]
+    return f"quick-ask-{owner_hash}-{operation.hex}"
+
+
 def _ledger(request: Request) -> ByotUsageLedger:
     configured = getattr(request.app.state, "quick_ask_usage_ledger", None)
     return configured if isinstance(configured, ByotUsageLedger) else ByotUsageLedger()
+
+
+def _request_digest(owner: str, operation_id: str, body: QuickAskExecute) -> str:
+    # The V1 outbound prompt is exactly question, byte for byte. Keep only
+    # hashes of those private bytes in durable authority, never the text.
+    question_bytes = body.question.encode("utf-8")
+    prompt_bytes = body.question.encode("utf-8")
+    material = {
+        "version": "quick-ask-request-v1",
+        "owner": owner,
+        "operation_id": operation_id,
+        "question_utf8_sha256": hashlib.sha256(question_bytes).hexdigest(),
+        "question_utf8_length": len(question_bytes),
+        "outbound_prompt_utf8_sha256": hashlib.sha256(prompt_bytes).hexdigest(),
+        "outbound_prompt_utf8_length": len(prompt_bytes),
+        "model_choice": body.model_choice.model_dump(mode="json"),
+        "quote_digest": body.quote_digest,
+        "action": _ACTION,
+        "role": _ROLE,
+        "max_output_tokens": _MAX_OUTPUT_TOKENS,
+    }
+    return hashlib.sha256(
+        json.dumps(material, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    ).hexdigest()
+
+
+def _terminal_replay(
+    row: OperationRow | None, *, request_digest: str,
+    body: QuickAskExecute,
+) -> dict[str, object] | None:
+    if row is None:
+        return None
+    if row.request_digest is None or row.request_digest != request_digest:
+        raise HTTPException(status_code=409, detail="quick_ask_operation_conflict")
+    if (
+        (row.provider_id is not None and row.provider_id != body.model_choice.provider_id)
+        or (row.model_id is not None and row.model_id != body.model_choice.model_id)
+    ):
+        raise HTTPException(status_code=409, detail="quick_ask_operation_conflict")
+    if row.state == "settled" and (
+        row.result_text is not None and row.actual_cents is not None
+        and row.evidence_sha256 is not None and row.dispatch_event_id is not None
+        and row.provider_id is not None and row.model_id is not None
+    ):
+        return {
+            "answer": row.result_text,
+            "operation_id": str(body.operation_id),
+            "provider_id": row.provider_id,
+            "model_id": row.model_id,
+            # The journal rounds local cost upward to cents. This is an
+            # Antiek estimate recovered from the prior receipt, not a
+            # provider-final reconciled charge.
+            "estimated_cost_usd": float(Decimal(row.actual_cents) / 100),
+            "reported_usage_estimate_exceeds_quote": None,
+            "usage_basis": "prior_receipt",
+            "input_tokens": None,
+            "output_tokens": None,
+            "replayed": True,
+            "incomplete": row.finish_reason == "length",
+        }
+    if row.state == "unknown" and (
+        row.result_text is not None
+        and row.provider_id is not None and row.model_id is not None
+    ):
+        return {
+            "answer": row.result_text,
+            "operation_id": str(body.operation_id),
+            "provider_id": row.provider_id,
+            "model_id": row.model_id,
+            "estimated_cost_usd": None,
+            "reported_usage_estimate_exceeds_quote": None,
+            "usage_basis": "charge_unknown",
+            "input_tokens": None,
+            "output_tokens": None,
+            "replayed": True,
+            "incomplete": row.finish_reason == "length",
+        }
+    detail = "charge_unknown" if row.state in {
+        "sent", "settlement_pending", "unknown", "settled",
+    } else "quick_ask_operation_conflict"
+    raise HTTPException(status_code=409, detail=detail)
 
 
 def _quote(request: Request, owner: str, body: QuickAskInput) -> _Quote:
@@ -239,11 +327,27 @@ async def execute_quick_ask(request: Request) -> dict[str, object]:
     body = parsed
     ledger = _ledger(request)
     operation_id = f"quick-ask:{body.operation_id}"
+    request_digest = _request_digest(owner, operation_id, body)
+    prior = _terminal_replay(
+        ledger.operation(owner, operation_id), request_digest=request_digest, body=body,
+    )
+    if prior is not None:
+        return prior
     try:
         quote = _quote(request, owner, body)
     except Exception:
+        prior = _terminal_replay(
+            ledger.operation(owner, operation_id), request_digest=request_digest, body=body,
+        )
+        if prior is not None:
+            return prior
         raise HTTPException(status_code=409, detail="quick_ask_model_unavailable") from None
     if quote.authority_digest != body.quote_digest:
+        prior = _terminal_replay(
+            ledger.operation(owner, operation_id), request_digest=request_digest, body=body,
+        )
+        if prior is not None:
+            return prior
         raise HTTPException(status_code=409, detail="quick_ask_quote_changed")
     try:
         result, _ = await run_in_threadpool(
@@ -254,7 +358,7 @@ async def execute_quick_ask(request: Request) -> dict[str, object]:
             document_id=f"quick-ask:{_prompt_digest(body.question)}",
             choice=body.model_choice,
             prompt=body.question,
-            investigation_id=f"quick-ask-{body.operation_id.hex}",
+            investigation_id=_event_scope(owner, body.operation_id),
             logical_operation_id=operation_id,
             resource_authority_digest=_prompt_digest(body.question),
             config=_config(),
@@ -263,17 +367,26 @@ async def execute_quick_ask(request: Request) -> dict[str, object]:
             action=_ACTION,
             expected_authority_digest=body.quote_digest,
             require_reported_usage=True,
+            request_digest=request_digest,
         )
     except OwnerByotOutcomeUnknown:
         raise HTTPException(status_code=409, detail="charge_unknown") from None
     except OwnerByotDispatchUnavailable:
         row = ledger.operation(owner, operation_id)
-        detail = "charge_unknown" if row is not None and row.state in {
-            "sent", "settlement_pending", "unknown",
-        } else "quick_ask_operation_conflict"
+        prior = _terminal_replay(row, request_digest=request_digest, body=body)
+        if prior is not None:
+            return prior
+        detail = "quick_ask_operation_conflict"
         raise HTTPException(status_code=409, detail=detail) from None
     except Exception:
         raise HTTPException(status_code=503, detail="quick_ask_unavailable") from None
+    if result.finish_reason in {"replayed", "charge_unknown_replay"}:
+        prior = _terminal_replay(
+            ledger.operation(owner, operation_id), request_digest=request_digest, body=body,
+        )
+        if prior is not None:
+            return prior
+        raise HTTPException(status_code=409, detail="quick_ask_operation_conflict")
     replay = result.finish_reason in {"replayed", "charge_unknown_replay"}
     unknown_charge = not result.usage.reported
     return {
@@ -293,4 +406,5 @@ async def execute_quick_ask(request: Request) -> dict[str, object]:
         "input_tokens": None if replay or unknown_charge else result.usage.input_tokens,
         "output_tokens": None if replay or unknown_charge else result.usage.output_tokens,
         "replayed": replay,
+        "incomplete": result.finish_reason == "length",
     }

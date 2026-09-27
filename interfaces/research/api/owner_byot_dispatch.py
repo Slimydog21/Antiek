@@ -130,6 +130,7 @@ def dispatch_talk_to_book_byot(
     action: str = _ACTION,
     expected_authority_digest: str | None = None,
     require_reported_usage: bool = False,
+    request_digest: str | None = None,
 ) -> tuple[DispatchResult, DispatchAuthority]:
     """Revalidate, freeze, and execute exactly one owner-paid model rung.
 
@@ -193,6 +194,7 @@ def dispatch_talk_to_book_byot(
             ledger.prepare_operation(
                 rung.credential.user_model_id, request_owner_user_id,
                 logical_operation_id, rung.projected_max_cents, authority.digest(),
+                request_digest=request_digest,
             )
         except OperationConflict:
             raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
@@ -255,6 +257,7 @@ def dispatch_talk_to_book_byot(
                     request_owner_user_id, logical_operation_id,
                     result_text=result.text, dispatch_event_id=result.event_id,
                     provider_id=result.provider, model_id=result.model,
+                    finish_reason=result.finish_reason,
                 )
                 return result, authority
             if require_reported_usage and result.event_id is None:
@@ -262,6 +265,7 @@ def dispatch_talk_to_book_byot(
                     request_owner_user_id, logical_operation_id,
                     result_text=result.text, dispatch_event_id=None,
                     provider_id=result.provider, model_id=result.model,
+                    finish_reason=result.finish_reason,
                 )
                 return replace(
                     result, usage=NormalizedUsage(0, 0, reported=False),
@@ -291,6 +295,7 @@ def dispatch_talk_to_book_byot(
                 actual_cents=actual_cents, evidence_sha256=evidence,
                 dispatch_event_id=result.event_id, provider_id=result.provider,
                 model_id=result.model, result_text=result.text,
+                finish_reason=result.finish_reason,
             )
             ledger.settle_operation(
                 request_owner_user_id, logical_operation_id, actual_cents, evidence,
