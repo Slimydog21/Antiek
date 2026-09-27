@@ -5,13 +5,11 @@
 # gaps across investigations and spawns follow-on chases when budget
 # allows.
 #
-# This unit is INDEPENDENT of the main `antiek` service: the daemon
-# reads the event log but never writes to the DuckDB it reads. All
-# spawned investigations are submitted to the substrate via the
-# in-process API the same way an operator would — so the
-# single-writer invariant holds (the substrate's uvicorn is still
-# the only DuckDB writer). The daemon is a READ-side cron loop, not
-# a parallel writer.
+# This unit runs independently of the main `antiek` service. The daemon
+# reads the configured graph DB and writes diligence flag transitions
+# through `connect_write` after a spawn or skip. Those short writes use
+# the shared flock, but this process is still a source-capable writer.
+# Include it in any protected-source launch fence and owner migration.
 #
 # Budget cap per §16 ("Letting the daemon's chase budget exceed
 # $5/day by default… Cost runaway is the failure mode that turns
