@@ -131,6 +131,7 @@ def dispatch_talk_to_book_byot(
     expected_authority_digest: str | None = None,
     require_reported_usage: bool = False,
     request_digest: str | None = None,
+    quote_estimate_usd: str | None = None,
 ) -> tuple[DispatchResult, DispatchAuthority]:
     """Revalidate, freeze, and execute exactly one owner-paid model rung.
 
@@ -140,6 +141,11 @@ def dispatch_talk_to_book_byot(
     rung is not a second partner personality. Loop One callers pass their
     own role explicitly."""
     try:
+        if (
+            (request_digest is None) != (quote_estimate_usd is None)
+            or (require_reported_usage != (request_digest is not None))
+        ):
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
         authority, exact_config, frozen_route = _freeze_current_authority(
             app=app,
             request_owner_user_id=request_owner_user_id,
@@ -195,6 +201,7 @@ def dispatch_talk_to_book_byot(
                 rung.credential.user_model_id, request_owner_user_id,
                 logical_operation_id, rung.projected_max_cents, authority.digest(),
                 request_digest=request_digest,
+                quote_estimate_usd=quote_estimate_usd,
             )
         except OperationConflict:
             raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
@@ -296,6 +303,7 @@ def dispatch_talk_to_book_byot(
                 dispatch_event_id=result.event_id, provider_id=result.provider,
                 model_id=result.model, result_text=result.text,
                 finish_reason=result.finish_reason,
+                cost_usd_estimate=(str(result.cost_usd) if require_reported_usage else None),
             )
             ledger.settle_operation(
                 request_owner_user_id, logical_operation_id, actual_cents, evidence,

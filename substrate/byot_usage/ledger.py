@@ -15,6 +15,7 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final
 
@@ -26,8 +27,9 @@ __all__ = [
     "SettlementEvidenceError",
 ]
 
-_SCHEMA_VERSION: Final = 4
+_SCHEMA_VERSION: Final = 5
 _BUSY_TIMEOUT_MS: Final = 30_000
+_MAX_ESTIMATE_USD: Final = Decimal("1000000")
 
 
 def default_byot_usage_db_path() -> Path:
@@ -93,10 +95,25 @@ class OperationRow:
     updated_at: str
     request_digest: str | None
     finish_reason: str | None
+    quote_estimate_usd: str | None
+    cost_usd_estimate: str | None
 
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _validated_usd_estimate(value: str | None) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str) or not value or len(value) > 80:
+        raise ValueError("USD estimate must be a bounded decimal string")
+    try:
+        amount = Decimal(value)
+    except InvalidOperation:
+        raise ValueError("USD estimate must be a decimal string") from None
+    if not amount.is_finite() or not 0 <= amount <= _MAX_ESTIMATE_USD:
+        raise ValueError("USD estimate must be finite and within the local bound")
 
 
 class ByotUsageLedger:
@@ -162,6 +179,7 @@ class ByotUsageLedger:
                 " provider_id TEXT, model_id TEXT, dispatch_event_id TEXT, result_text TEXT,"
                 " created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
                 " request_digest TEXT, finish_reason TEXT,"
+                " quote_estimate_usd TEXT, cost_usd_estimate TEXT,"
                 " PRIMARY KEY (owner_user_id, operation_id)"
                 ")"
             )
@@ -170,7 +188,8 @@ class ByotUsageLedger:
             ).fetchall()}
             for name in (
                 "provider_id", "model_id", "dispatch_event_id", "result_text",
-                "request_digest", "finish_reason",
+                "request_digest", "finish_reason", "quote_estimate_usd",
+                "cost_usd_estimate",
             ):
                 if name not in columns:
                     con.execute(f"ALTER TABLE byot_operation_journal ADD COLUMN {name} TEXT")
@@ -262,7 +281,7 @@ class ByotUsageLedger:
                 "SELECT api_key_id, owner_user_id, operation_id, state, reserved_cents,"
                 " actual_cents, authority_digest, evidence_sha256, provider_id, model_id,"
                 " dispatch_event_id, result_text, created_at, updated_at,"
-                " request_digest, finish_reason"
+                " request_digest, finish_reason, quote_estimate_usd, cost_usd_estimate"
                 " FROM byot_operation_journal WHERE owner_user_id = ? AND operation_id = ?",
                 (owner_user_id, operation_id),
             ).fetchone()
@@ -370,6 +389,7 @@ class ByotUsageLedger:
         authority_digest: str,
         *,
         request_digest: str | None = None,
+        quote_estimate_usd: str | None = None,
     ) -> OperationRow:
         """Atomically reserve local ceiling headroom for one new operation.
 
@@ -385,13 +405,16 @@ class ByotUsageLedger:
             len(request_digest) != 64 or any(c not in "0123456789abcdef" for c in request_digest)
         ):
             raise ValueError("request_digest must be a SHA-256 hex digest")
+        if (request_digest is None) != (quote_estimate_usd is None):
+            raise ValueError("request digest and quote estimate must be bound together")
+        _validated_usd_estimate(quote_estimate_usd)
         now = _now_iso()
         con = self._connect()
         try:
             con.execute("BEGIN IMMEDIATE")
             existing = con.execute(
                 "SELECT api_key_id, state, reserved_cents, actual_cents,"
-                " authority_digest, evidence_sha256, request_digest"
+                " authority_digest, evidence_sha256, request_digest, quote_estimate_usd"
                 " FROM byot_operation_journal"
                 " WHERE owner_user_id = ? AND operation_id = ?",
                 (owner_user_id, operation_id),
@@ -402,6 +425,7 @@ class ByotUsageLedger:
                     or existing[2] != reserved_cents
                     or existing[4] != authority_digest
                     or existing[6] != request_digest
+                    or existing[7] != quote_estimate_usd
                     or existing[1] != "prepared"
                 ):
                     raise OperationConflict("operation is not retryable")
@@ -433,10 +457,11 @@ class ByotUsageLedger:
                 con.execute(
                     "INSERT INTO byot_operation_journal"
                     " (api_key_id, owner_user_id, operation_id, state, reserved_cents,"
-                    " authority_digest, created_at, updated_at, request_digest) VALUES"
-                    " (?, ?, ?, 'prepared', ?, ?, ?, ?, ?)",
+                    " authority_digest, created_at, updated_at, request_digest,"
+                    " quote_estimate_usd) VALUES"
+                    " (?, ?, ?, 'prepared', ?, ?, ?, ?, ?, ?)",
                     (api_key_id, owner_user_id, operation_id, reserved_cents,
-                     authority_digest, now, now, request_digest),
+                     authority_digest, now, now, request_digest, quote_estimate_usd),
                 )
             con.commit()
         except Exception:
@@ -468,7 +493,7 @@ class ByotUsageLedger:
         """Keep an answer with missing usage or receipt, without settling a charge."""
         if not all((provider_id, model_id)):
             raise ValueError("unknown result facts are invalid")
-        if finish_reason not in (None, "stop", "length", "error", "tool_use"):
+        if finish_reason not in (None, "stop", "length", "content_filter", "error", "tool_use"):
             raise ValueError("unknown result finish reason is invalid")
         con = self._connect()
         try:
@@ -498,25 +523,35 @@ class ByotUsageLedger:
         self, owner_user_id: str, operation_id: str, *, actual_cents: int,
         evidence_sha256: str, dispatch_event_id: str, provider_id: str, model_id: str,
         result_text: str = "", finish_reason: str | None = None,
+        cost_usd_estimate: str | None = None,
     ) -> None:
         """Persist non-secret provider result facts before settlement bookkeeping."""
         if actual_cents < 0 or not all(
             (evidence_sha256, dispatch_event_id, provider_id, model_id)
         ):
             raise ValueError("result facts are invalid")
-        if finish_reason not in (None, "stop", "length", "error", "tool_use"):
+        if finish_reason not in (None, "stop", "length", "content_filter", "error", "tool_use"):
             raise ValueError("result finish reason is invalid")
+        _validated_usd_estimate(cost_usd_estimate)
         con = self._connect()
         try:
             con.execute("BEGIN IMMEDIATE")
+            identity = con.execute(
+                "SELECT request_digest FROM byot_operation_journal"
+                " WHERE owner_user_id = ? AND operation_id = ? AND state = 'sent'",
+                (owner_user_id, operation_id),
+            ).fetchone()
+            if identity is not None and (identity[0] is None) != (cost_usd_estimate is None):
+                raise ValueError("Quick Ask result requires its precise cost estimate")
             changed = con.execute(
                 "UPDATE byot_operation_journal SET state = 'settlement_pending',"
                 " actual_cents = ?, evidence_sha256 = ?, dispatch_event_id = ?,"
                 " provider_id = ?, model_id = ?, result_text = ?, finish_reason = ?,"
-                " updated_at = ?"
+                " cost_usd_estimate = ?, updated_at = ?"
                 " WHERE owner_user_id = ? AND operation_id = ? AND state = 'sent'",
                 (actual_cents, evidence_sha256, dispatch_event_id, provider_id, model_id,
-                 result_text, finish_reason, _now_iso(), owner_user_id, operation_id),
+                 result_text, finish_reason, cost_usd_estimate,
+                 _now_iso(), owner_user_id, operation_id),
             ).rowcount
             if changed != 1:
                 raise OperationConflict("operation result is not recordable")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -210,6 +211,8 @@ def test_settled_replay_returns_prior_receipt_without_new_send_or_false_zero_usa
     assert first.status_code == replay.status_code == 200
     assert replay.json()["answer"] == first.json()["answer"]
     assert replay.json()["usage_basis"] == "prior_receipt"
+    assert first.json()["estimated_cost_usd"] == replay.json()["estimated_cost_usd"]
+    assert 0 < replay.json()["estimated_cost_usd"] < 0.01
     assert replay.json()["input_tokens"] is None
     assert replay.json()["output_tokens"] is None
     assert len(provider.calls) == 1
@@ -308,6 +311,41 @@ def test_legacy_operation_without_request_digest_refuses_terminal_replay(route) 
     assert provider.calls == []
 
 
+def test_old_settled_row_without_precise_receipt_fails_closed(route) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    first = client.post("/research/quick-ask", json=payload)
+    assert first.status_code == 200
+    with sqlite3.connect(ledger._db_path) as con:
+        con.execute(
+            "UPDATE byot_operation_journal SET quote_estimate_usd = NULL,"
+            " cost_usd_estimate = NULL WHERE owner_user_id = ? AND operation_id = ?",
+            (_OWNER, f"quick-ask:{body['operation_id']}"),
+        )
+    replay = client.post("/research/quick-ask", json=payload)
+    assert replay.status_code == 409
+    assert replay.json()["detail"] == "charge_unknown"
+    assert "one answer" not in replay.text
+    assert len(provider.calls) == 1
+
+
+def test_incomplete_helper_receipt_configuration_refuses_before_io(route) -> None:
+    _, provider, ledger, _, record_box, _, app = route
+    with pytest.raises(owner_byot_dispatch.OwnerByotDispatchUnavailable):
+        owner_byot_dispatch.dispatch_talk_to_book_byot(
+            app=app, request_owner_user_id=_OWNER, resource_owner_user_id=_OWNER,
+            document_id="quick-ask:test", choice=models_admin.UserModelChoice(
+                authority="user_model", provider_id=record_box[0].id,
+                model_id=record_box[0].model_id,
+            ),
+            prompt="question", investigation_id="quick-ask-test",
+            logical_operation_id="quick-ask:test", usage_ledger=ledger,
+            require_reported_usage=True,
+        )
+    assert provider.calls == []
+
+
 def test_terminal_recheck_recovers_a_result_written_during_quote_failure(
     route, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -323,6 +361,7 @@ def test_terminal_recheck_recovers_a_result_written_during_quote_failure(
         ledger.prepare_operation(
             "user-owner-model", _OWNER, operation_id, 1, quote["quote_digest"],
             request_digest=request_digest,
+            quote_estimate_usd=quote["estimate_usd"],
         )
         ledger.mark_operation_sent(_OWNER, operation_id)
         ledger.record_unknown_result(
@@ -404,6 +443,15 @@ def test_reported_usage_above_quote_is_disclosed_without_claiming_hard_cap(route
     row = ledger.operation(_OWNER, f"quick-ask:{body['operation_id']}")
     assert row is not None and row.state == "settled"
     assert row.actual_cents is not None and row.actual_cents > quote["reserved_cents"]
+    assert row.cost_usd_estimate == str(response.json()["estimated_cost_usd"])
+    assert row.quote_estimate_usd == quote["estimate_usd"]
+    replay = client.post(
+        "/research/quick-ask", json={**body, "quote_digest": quote["quote_digest"]},
+    )
+    assert replay.status_code == 200
+    assert replay.json()["reported_usage_estimate_exceeds_quote"] is True
+    assert replay.json()["estimated_cost_usd"] == response.json()["estimated_cost_usd"]
+    assert len(provider.calls) == 1
 
 
 def test_unreported_usage_and_transport_failure_keep_unknown_hold(route) -> None:
@@ -475,6 +523,20 @@ def test_unknown_length_answer_stays_incomplete_on_replay(route) -> None:
     assert first.json()["incomplete"] is True
     assert replay.json()["incomplete"] is True
     assert replay.json()["usage_basis"] == "charge_unknown"
+    assert len(provider.calls) == 1
+
+
+def test_content_filter_answer_stays_incomplete_on_replay(route) -> None:
+    client, provider, _, _, _, _, _ = route
+    provider.finish_reason = "content_filter"
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    first = client.post("/research/quick-ask", json=payload)
+    replay = client.post("/research/quick-ask", json=payload)
+    assert first.status_code == replay.status_code == 200
+    assert first.json()["answer"] == "one answer"
+    assert first.json()["incomplete"] is True
+    assert replay.json()["incomplete"] is True
     assert len(provider.calls) == 1
 
 

@@ -74,17 +74,60 @@ def test_v3_journal_migrates_nullable_replay_facts_and_binds_new_requests(
     ledger = ByotUsageLedger(path)
     old = ledger.operation("owner-a", "quick-ask:legacy")
     assert old is not None and old.request_digest is None and old.finish_reason is None
+    assert old.quote_estimate_usd is None and old.cost_usd_estimate is None
     with pytest.raises(OperationConflict):
         ledger.prepare_operation(
             "key-a", "owner-a", "quick-ask:legacy", 7, "a" * 64,
             request_digest="b" * 64,
+            quote_estimate_usd="0.001",
         )
     fresh = ledger.prepare_operation(
         "key-a", "owner-a", "quick-ask:new", 7, "a" * 64,
         request_digest="b" * 64,
+        quote_estimate_usd="0.001",
     )
     assert fresh.request_digest == "b" * 64
+    assert fresh.quote_estimate_usd == "0.001"
     with sqlite3.connect(path) as check:
         assert check.execute(
             "SELECT value FROM byot_usage_meta WHERE key = 'schema_version'"
-        ).fetchone() == ("4",)
+        ).fetchone() == ("5",)
+
+
+def test_v4_journal_keeps_existing_receipt_and_adds_nullable_precise_cost(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "v4-ledger.sqlite3"
+    with sqlite3.connect(path) as con:
+        con.execute(
+            "CREATE TABLE byot_usage_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        con.execute("INSERT INTO byot_usage_meta VALUES ('schema_version', '4')")
+        con.execute(
+            "CREATE TABLE byot_operation_journal ("
+            "api_key_id TEXT NOT NULL, owner_user_id TEXT NOT NULL,"
+            "operation_id TEXT NOT NULL, state TEXT NOT NULL,"
+            "reserved_cents INTEGER NOT NULL, actual_cents INTEGER,"
+            "authority_digest TEXT NOT NULL, evidence_sha256 TEXT,"
+            "provider_id TEXT, model_id TEXT, dispatch_event_id TEXT, result_text TEXT,"
+            "created_at TEXT NOT NULL, updated_at TEXT NOT NULL,"
+            "request_digest TEXT, finish_reason TEXT,"
+            "PRIMARY KEY (owner_user_id, operation_id))"
+        )
+        con.execute(
+            "INSERT INTO byot_operation_journal"
+            " (api_key_id, owner_user_id, operation_id, state, reserved_cents,"
+            " actual_cents, authority_digest, evidence_sha256, provider_id, model_id,"
+            " dispatch_event_id, result_text, created_at, updated_at,"
+            " request_digest, finish_reason) VALUES"
+            " ('key-a', 'owner-a', 'quick-ask:old', 'settled', 1, 1, ?, ?,"
+            " 'key-a', 'model-a', 'evt-a', 'saved answer', 't', 't', ?, 'length')",
+            ("a" * 64, "e" * 64, "r" * 64),
+        )
+    ledger = ByotUsageLedger(path)
+    row = ledger.operation("owner-a", "quick-ask:old")
+    assert row is not None
+    assert (row.result_text, row.request_digest, row.finish_reason) == (
+        "saved answer", "r" * 64, "length",
+    )
+    assert row.quote_estimate_usd is None and row.cost_usd_estimate is None

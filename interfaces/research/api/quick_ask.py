@@ -7,7 +7,7 @@ import json
 import re
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal, InvalidOperation
 from pathlib import Path
 from uuid import UUID
 
@@ -160,6 +160,28 @@ def _request_digest(owner: str, operation_id: str, body: QuickAskExecute) -> str
     ).hexdigest()
 
 
+def _settled_estimates(row: OperationRow) -> tuple[Decimal, Decimal] | None:
+    if (
+        row.actual_cents is None or row.cost_usd_estimate is None
+        or row.quote_estimate_usd is None
+        or len(row.cost_usd_estimate) > 80 or len(row.quote_estimate_usd) > 80
+    ):
+        return None
+    try:
+        cost = Decimal(row.cost_usd_estimate)
+        quote = Decimal(row.quote_estimate_usd)
+    except InvalidOperation:
+        return None
+    if (
+        not cost.is_finite() or not quote.is_finite()
+        or not 0 <= cost <= Decimal("1000000")
+        or not 0 <= quote <= Decimal("1000000")
+        or int((cost * 100).to_integral_value(rounding=ROUND_CEILING)) != row.actual_cents
+    ):
+        return None
+    return cost, quote
+
+
 def _terminal_replay(
     row: OperationRow | None, *, request_digest: str,
     body: QuickAskExecute,
@@ -173,26 +195,28 @@ def _terminal_replay(
         or (row.model_id is not None and row.model_id != body.model_choice.model_id)
     ):
         raise HTTPException(status_code=409, detail="quick_ask_operation_conflict")
+    settled_estimates = _settled_estimates(row) if row.state == "settled" else None
     if row.state == "settled" and (
         row.result_text is not None and row.actual_cents is not None
         and row.evidence_sha256 is not None and row.dispatch_event_id is not None
         and row.provider_id is not None and row.model_id is not None
+        and settled_estimates is not None
     ):
+        cost_estimate, quote_estimate = settled_estimates
         return {
             "answer": row.result_text,
             "operation_id": str(body.operation_id),
             "provider_id": row.provider_id,
             "model_id": row.model_id,
-            # The journal rounds local cost upward to cents. This is an
-            # Antiek estimate recovered from the prior receipt, not a
-            # provider-final reconciled charge.
-            "estimated_cost_usd": float(Decimal(row.actual_cents) / 100),
-            "reported_usage_estimate_exceeds_quote": None,
+            # The same Antiek-calculated estimate shown on the first response;
+            # actual_cents remains the rounded local budget-bookkeeping value.
+            "estimated_cost_usd": float(cost_estimate),
+            "reported_usage_estimate_exceeds_quote": cost_estimate > quote_estimate,
             "usage_basis": "prior_receipt",
             "input_tokens": None,
             "output_tokens": None,
             "replayed": True,
-            "incomplete": row.finish_reason == "length",
+            "incomplete": row.finish_reason in {"length", "content_filter"},
         }
     if row.state == "unknown" and (
         row.result_text is not None
@@ -209,7 +233,7 @@ def _terminal_replay(
             "input_tokens": None,
             "output_tokens": None,
             "replayed": True,
-            "incomplete": row.finish_reason == "length",
+            "incomplete": row.finish_reason in {"length", "content_filter"},
         }
     detail = "charge_unknown" if row.state in {
         "sent", "settlement_pending", "unknown", "settled",
@@ -368,6 +392,7 @@ async def execute_quick_ask(request: Request) -> dict[str, object]:
             expected_authority_digest=body.quote_digest,
             require_reported_usage=True,
             request_digest=request_digest,
+            quote_estimate_usd=str(quote.estimated_usd),
         )
     except OwnerByotOutcomeUnknown:
         raise HTTPException(status_code=409, detail="charge_unknown") from None
@@ -406,5 +431,5 @@ async def execute_quick_ask(request: Request) -> dict[str, object]:
         "input_tokens": None if replay or unknown_charge else result.usage.input_tokens,
         "output_tokens": None if replay or unknown_charge else result.usage.output_tokens,
         "replayed": replay,
-        "incomplete": result.finish_reason == "length",
+        "incomplete": result.finish_reason in {"length", "content_filter"},
     }
