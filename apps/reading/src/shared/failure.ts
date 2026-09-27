@@ -72,10 +72,11 @@ const RETRYABLE_STATUS: ReadonlySet<number> = new Set([0, 408, 409, 429, 500, 50
 
 /**
  * What a caller-supplied `what` may not contain. It is a filter, not a proof:
- * a phrase with a slash or backslash (paths, methods with paths, URLs), an
- * underscore (codes of any case), markup, braces, a double quote or backtick
- * (JSON and code fragments), "http", "Traceback", or a bare number from 100
- * to 599 falls back to the plain title. An apostrophe is allowed. The price is
+ * a phrase with any slash or backslash (paths, methods with paths, URLs), any
+ * underscore at all (it catches codes of any case, and also plain words such as
+ * "mark_done"), markup, braces, a double quote or backtick (JSON and code
+ * fragments), "http" or "traceback" anywhere, or a bare number from 100 to 599
+ * falls back to the plain title. An apostrophe is allowed. The price is
  * that an honest phrase like "load 500 items" also falls back, so keep `what`
  * to plain words.
  */
