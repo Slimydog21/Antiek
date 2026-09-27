@@ -221,3 +221,28 @@ describe("the authored token cannot leave without a verified capability (review 
     expect(() => uploadApi.attestationToken("authored", cap)).toThrow(uploadApi.SourceUploadError);
   });
 });
+
+describe("capability parsing reads only the response's own fields (review F-01)", () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    uploadApi.resetUploadAttestationsCache();
+  });
+
+  it("an empty body is not capable even when Object.prototype carries 'accepted'", async () => {
+    const proto = Object.prototype as unknown as Record<string, unknown>;
+    proto.accepted = ["personal_reading", "user_authored_private"];
+    proto.authored_default = "user_authored_private";
+    proto.aliases = { [LEGACY_PUBLIC_TOKEN]: "user_authored_private" };
+    try {
+      apiFetchMock.mockResolvedValueOnce(json({}));
+      const cap = await uploadApi.loadUploadAttestations();
+      expect(uploadApi.authoredUploadSupported(cap)).toBe(false);
+      expect(() => uploadApi.attestationToken("authored", cap)).toThrow(uploadApi.SourceUploadError);
+    } finally {
+      delete proto.accepted;
+      delete proto.authored_default;
+      delete proto.aliases;
+    }
+    expect(({} as Record<string, unknown>).accepted).toBeUndefined();
+  });
+});

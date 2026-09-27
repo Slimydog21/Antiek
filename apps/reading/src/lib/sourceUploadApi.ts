@@ -139,16 +139,22 @@ export function attestationToken(
 function parseCapability(raw: unknown): UploadAttestationCapability | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  if (!Array.isArray(o.accepted) || !o.accepted.every((t) => typeof t === "string")) return null;
+  // Own properties only: a field inherited through a polluted prototype must
+  // never make an empty answer look capable (review F-01).
+  const own = (key: string): unknown => (Object.hasOwn(o, key) ? o[key] : undefined);
+  const accepted = own("accepted");
+  if (!Array.isArray(accepted) || !accepted.every((t) => typeof t === "string")) return null;
+  const rawAliases = own("aliases");
   const aliases: Record<string, string> = {};
-  if (o.aliases && typeof o.aliases === "object") {
-    for (const [k, v] of Object.entries(o.aliases as Record<string, unknown>)) {
+  if (rawAliases && typeof rawAliases === "object") {
+    for (const [k, v] of Object.entries(rawAliases as Record<string, unknown>)) {
       if (typeof v === "string") aliases[k] = v;
     }
   }
+  const authoredDefault = own("authored_default");
   const capability = Object.freeze({
-    accepted: Object.freeze([...(o.accepted as string[])]),
-    authored_default: typeof o.authored_default === "string" ? o.authored_default : null,
+    accepted: Object.freeze([...(accepted as string[])]),
+    authored_default: typeof authoredDefault === "string" ? authoredDefault : null,
     aliases: Object.freeze(aliases),
   }) as unknown as UploadAttestationCapability;
   verifiedCapabilities.add(capability);
