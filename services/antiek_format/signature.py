@@ -29,13 +29,8 @@ see ``SIGNATURE_NOTES.md``.
 
 from __future__ import annotations
 
-import binascii
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import duckdb
-
 import base64
+import binascii
 import json
 import os
 import sys
@@ -50,11 +45,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 try:
-    from runtime.db_lock import connect_write
+    from runtime.db_lock import ReadConnection, connect_read, connect_write
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_write
+    from runtime.db_lock import ReadConnection, connect_read, connect_write
 
 
 # ── Canonicalisation helpers ──
@@ -216,9 +211,8 @@ CREATE TABLE IF NOT EXISTS antiek_user_keypairs (
 """
 
 
-def _connect_for_read(db_path: str) -> duckdb.DuckDBPyConnection:
-    import duckdb
-    return duckdb.connect(db_path)
+def _connect_for_read(db_path: str) -> ReadConnection:
+    return connect_read(db_path)
 
 
 def ensure_keypair(user_id: str, *, db_path: str) -> Keypair:

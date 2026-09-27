@@ -52,6 +52,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 try:
+    from runtime.db_lock import connect_read
+except ImportError:  # pragma: no cover — direct-script fallback
+    _here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from runtime.db_lock import connect_read
+
+try:
     from .native_writer import (
         _FORBIDDEN_SUBSTRATE_FIELDS,
         BLOCKS_PREFIX,
@@ -536,7 +543,7 @@ def _gather_highlights(
 
     import duckdb
     try:
-        con = duckdb.connect(db_path)
+        con = connect_read(db_path)
     except Exception:
         return []
     try:
@@ -620,7 +627,7 @@ def _gather_anchors_and_audio(
 
     import duckdb
     try:
-        con = duckdb.connect(db_path)
+        con = connect_read(db_path)
     except Exception:
         return [], {}
     anchors: list[AnchorRow] = []
