@@ -242,8 +242,6 @@ def _terminal_replay(
 
 
 def _quote(request: Request, owner: str, body: QuickAskInput) -> _Quote:
-    if body.model_choice.model_id not in _APPROVED_MODELS:
-        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
     prompt_digest = _prompt_digest(body.question)
     config = _config()
     authority, _, resolved = _freeze_current_authority(
@@ -259,6 +257,8 @@ def _quote(request: Request, owner: str, body: QuickAskInput) -> _Quote:
         role=_ROLE,
         action=_ACTION,
     )
+    if resolved.model_id not in _APPROVED_MODELS:
+        raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
     preset = get_provider_preset(resolved.record.provider_catalog_id or "")
     variant = get_model_variant(preset, resolved.model_id)
     match = _SNAPSHOT_DATE.search(variant.snapshot)
