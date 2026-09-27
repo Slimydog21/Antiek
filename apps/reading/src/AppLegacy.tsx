@@ -1,16 +1,18 @@
-import { Route, Routes, Navigate } from "react-router-dom";
+import { Route, Routes, Navigate, Outlet, useLocation } from "react-router-dom";
 
 import ResearchWorkstation from "./modes/ResearchWorkstation";
 import WrestleApp from "./modes/WrestleApp";
 import Login from "./modes/Login";
+import { PanelLayout } from "./workspace/PanelLayout";
+import { AuthProvider, useAuth } from "./lib/auth";
 
 /**
  * AppLegacy — the v1 / pre-S4 chrome.
  *
  * S12 acceptance: production build with `VITE_ANTIEK_UI=v1` renders
  * the old shell (rollback path; sprint_12_visual_regression_release.html
- * §WP-12.3). The new chrome (AppShell + NavRail + Topbar + panel
- * system) is hidden; routes render bare, without any top chrome
+ * §WP-12.3). The new chrome (AppShell + NavRail + Topbar) is hidden;
+ * critical routes retain one route-local panel layout, without top chrome
  * (HeaderBar, the pre-redesign top bar, was a deprecated no-op and is
  * now deleted — Q7 dead-UI sweep).
  *
@@ -36,22 +38,39 @@ import Login from "./modes/Login";
  */
 export default function AppLegacy() {
   return (
-    <div className="h-screen flex flex-col bg-ice-2 dark:bg-space-2 text-ink dark:text-bright">
-      <main className="flex-1 min-h-0 overflow-auto">
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<ResearchWorkstation />} />
-          <Route
-            path="/inv/:investigationId"
-            element={<ResearchWorkstation />}
-          />
-          <Route path="/wrestle" element={<WrestleApp />} />
-          <Route path="/wrestle/:documentId" element={<WrestleApp />} />
-          <Route path="*" element={<LegacyMissingRoute />} />
-        </Routes>
-      </main>
-    </div>
+    <AuthProvider>
+      <div className="h-screen flex flex-col bg-ice-2 dark:bg-space-2 text-ink dark:text-bright">
+        <main className="flex-1 min-h-0 overflow-auto">
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route element={<LegacyWorkspace />}>
+              <Route path="/" element={<ResearchWorkstation />} />
+              <Route
+                path="/inv/:investigationId"
+                element={<ResearchWorkstation />}
+              />
+              <Route path="/wrestle" element={<WrestleApp />} />
+              <Route path="/wrestle/:documentId" element={<WrestleApp />} />
+            </Route>
+            <Route path="*" element={<LegacyMissingRoute />} />
+          </Routes>
+        </main>
+      </div>
+    </AuthProvider>
   );
+}
+
+function LegacyWorkspace() {
+  const { state } = useAuth();
+  const location = useLocation();
+  if (state.status === "loading") {
+    return <div role="status" className="p-8 text-sm font-mono">Loading…</div>;
+  }
+  if (state.status === "unauthenticated") {
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?next=${next}`} replace />;
+  }
+  return <PanelLayout mainSlot={<Outlet />} />;
 }
 
 function LegacyMissingRoute() {
