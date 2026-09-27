@@ -40,6 +40,8 @@ from substrate.auth import (
     verify_session_cookie,
 )
 from substrate.auth.magic_link import MAGIC_LINK_TTL_SECONDS
+from substrate.auth.passkeys import PasskeyCredential, PasskeySubjectBinding
+from substrate.multi_user.auth import subject_owner_id
 
 _OPERATOR = "ftn208@nyu.edu"
 _OPERATOR_SECOND = "the@faisalnazer.com"
@@ -120,7 +122,20 @@ def _client(monkeypatch):
     monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
     # Existing magic-link contract tests model a device that has already
     # completed passkey onboarding. First-run redirection has its own test.
-    monkeypatch.setattr("interfaces.research.api.auth.list_credentials", lambda: [object()])
+    enrolled = PasskeyCredential(
+        credential_id="existing-operator-key",
+        public_key="existing-public-key",
+        sign_count=0,
+        transports=(),
+        device_type="single_device",
+        backed_up=False,
+        label="Existing key",
+        created_at=0,
+        binding=PasskeySubjectBinding(
+            "magic_link", _OPERATOR, subject_owner_id("magic_link", _OPERATOR),
+        ),
+    )
+    monkeypatch.setattr("interfaces.research.api.auth.list_credentials", lambda: [enrolled])
     # The in-process rate-limit windows are module-global; every client
     # gets a fresh slate so throttling tests are deterministic.
     from interfaces.research.api.auth import reset_auth_throttles

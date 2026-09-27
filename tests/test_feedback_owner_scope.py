@@ -33,7 +33,7 @@ def test_verified_magic_link_subjects_mint_distinct_durable_owners(
     monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
-    monkeypatch.setattr("interfaces.research.api.auth.list_credentials", lambda: [object()])
+    monkeypatch.setattr("interfaces.research.api.auth.list_credentials", lambda: [])
 
     client_a = _signed_client(monkeypatch, _EMAIL_A)
     client_b = _signed_client(monkeypatch, _EMAIL_B)
