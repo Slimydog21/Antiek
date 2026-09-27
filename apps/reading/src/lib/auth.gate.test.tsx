@@ -118,6 +118,14 @@ function LocationProbe() {
   return <output data-testid="location">{pathname}</output>;
 }
 
+/**
+ * The real-App tests import the whole lazy route tree and, on the P-02 path,
+ * await two mocked round-trips; under fleet load (load avg ~48) that has
+ * exceeded waitFor's 1 s default (observed 1.2-1.4 s). 5 s bounds a timing
+ * artefact without changing what is asserted.
+ */
+const APP_TREE_WAIT = { timeout: 5_000 };
+
 function renderApp(at: string) {
   return render(
     <MemoryRouter initialEntries={[at]}>
@@ -258,7 +266,7 @@ describe("P-02: a CORS-masked 401 is told apart from an outage by probing /healt
     authReplies = [CORS_MASKED()];
     healthReplies = [json(200, { status: "ok" })];
     renderApp("/settings");
-    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/login"));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/login"), APP_TREE_WAIT);
     expect(screen.queryByText(AUTH_UNAVAILABLE_COPY)).toBeNull();
   });
 
@@ -393,7 +401,7 @@ describe("through the real App route tree (RequireAuth unchanged)", () => {
   it("503 on /settings: the unavailable screen, and the URL never becomes /login", async () => {
     authReplies = [json(503, {})];
     renderApp("/settings");
-    expect(await screen.findByText(AUTH_UNAVAILABLE_COPY)).toBeTruthy();
+    expect(await screen.findByText(AUTH_UNAVAILABLE_COPY, undefined, APP_TREE_WAIT)).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe("/settings");
   });
 
@@ -401,14 +409,14 @@ describe("through the real App route tree (RequireAuth unchanged)", () => {
     authReplies = [new TypeError("Failed to fetch")];
     healthReplies = [new TypeError("Failed to fetch")];
     renderApp("/settings");
-    expect(await screen.findByText(AUTH_UNAVAILABLE_COPY)).toBeTruthy();
+    expect(await screen.findByText(AUTH_UNAVAILABLE_COPY, undefined, APP_TREE_WAIT)).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe("/settings");
   });
 
   it("401 on /settings still redirects to /login?next=", async () => {
     authReplies = [json(401, {})];
     renderApp("/settings");
-    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/login"));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/login"), APP_TREE_WAIT);
   });
 });
 
