@@ -1,12 +1,11 @@
 import { useEffect, type ReactNode } from "react";
 
-import { PanelLayout } from "./PanelLayout";
 import { useWorkspace } from "./WorkspaceStore";
 import type { PanelKind, PanelMode } from "./panel.types";
 
 /**
- * PanelHost — opt-in wrapper a route component renders to live inside
- * the workspace panel shell.
+ * PanelHost — register a route's starter panels in the workspace shell.
+ * AppShell renders the shared PanelLayout around every route.
  *
  *   export default function ResearchWorkstation() {
  *     return (
@@ -41,7 +40,6 @@ type Props = {
 export function PanelHost({ starters = [], children }: Props) {
   const open = useWorkspace((s) => s.open);
   const close = useWorkspace((s) => s.close);
-  const panels = useWorkspace((s) => s.panels);
 
   useEffect(() => {
     const openedIds: string[] = [];
@@ -71,12 +69,7 @@ export function PanelHost({ starters = [], children }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The eslint-disable above keeps the static behaviour. `panels` is
-  // pulled in for future use (and tree-shaking would drop the useEffect
-  // line; this is the harmless way to keep the dependency list visible).
-  void panels;
-
-  return <PanelLayout mainSlot={children} />;
+  return <>{children}</>;
 }
 
 export default PanelHost;
