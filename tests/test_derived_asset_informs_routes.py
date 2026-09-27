@@ -50,6 +50,11 @@ class Env:
 
 @pytest.fixture
 def env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Env]:
+    yield from make_env(monkeypatch, tmp_path)
+
+
+def make_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Env]:
+    """The fixture's body, shared with tests/test_derived_asset_informs_read.py."""
     for variable in (
         "ANTIEK_AUTH_SECRET", "ANTIEK_DEV_LOGIN_TOKEN", "ANTIEK_OPERATOR_EMAIL", "ANTIEK_OPERATOR_TOKEN",
         "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET", "ANTIEK_COOKIE_INSECURE",
@@ -96,6 +101,7 @@ def _create(env: Env, asset_id: str, *, blocks: tuple[str, ...], owner: str) -> 
             con, asset_id=asset_id, owner_user_id=owner, asset_kind="document", title="Bridge failures",
             body=body, blocks=list(blocks), members=[], idempotency_key=f"create:{asset_id}",
             request_sha256=hashlib.sha256(asset_id.encode()).hexdigest(),
+            event_log_id=asset_id.replace(":", "-"),
         )
 
 

@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 40;
+export const EVENT_SCHEMA_VERSION = 41;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -104,6 +104,7 @@ export const ActionType = {
   FEEDBACK_THREAD_RESOLVED: "feedback.thread.resolved",
   AGENT_WORK_TRANSITIONED: "agent.work.transitioned",
   ARTIFACT_FEEDBACK_REPLIED: "artifact.feedback.replied",
+  DERIVED_ASSET_REVISED: "derived_asset.revised",
   RLM_BRIDGE_DECIDED: "rlm.bridge.decided",
   QUALITY_GATE_EVALUATED: "quality_gate.evaluated",
   CROSS_GRAPH_CITATION_RECORDED: "cross_graph.citation.recorded",
@@ -1044,6 +1045,24 @@ export interface ArtifactFeedbackRepliedPayload {
   attempt_no: number;
   reply_sha256: string;
   result_kind?: "reply" | "decline" | "approval_request";
+}
+
+/**
+ * A derived asset gained a revision (THREAD-CONTRACT §1.11; rev 8.11 D1).
+ *
+ * Written through ``write_event_outbox`` inside the transaction that wrote
+ * the revision, on ``write-<deliverable_id>`` for a Write asset. It carries
+ * no document ids, so no saved reference reaches an event log.
+ * ``parent_revision_id`` is null exactly when ``operation`` is ``create``
+ * (revision 1).
+ */
+export interface DerivedAssetRevisedPayload {
+  action_type: "derived_asset.revised";
+  derived_asset_id: string;
+  revision_id: string;
+  parent_revision_id?: string | null;
+  operation: "create" | "edit" | "informs";
+  block_ids: string[];
 }
 
 /**
@@ -2895,6 +2914,7 @@ export type TypedPayload =
   | FeedbackThreadResolvedPayload
   | AgentWorkTransitionedPayload
   | ArtifactFeedbackRepliedPayload
+  | DerivedAssetRevisedPayload
   | TierAssignedPayload
   | TierOverriddenPayload
   | TierRewriteBulkPayload
@@ -3043,6 +3063,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "decompose.requested",
   "decomposer.paraphrase.flagged",
   "decomposer.regenerated",
+  "derived_asset.revised",
   "discovery.proposed",
   "discovery.selected",
   "dispatch.call",

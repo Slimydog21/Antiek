@@ -22,7 +22,9 @@ commits. A revise, in that transaction:
 6. advances the pointer with ``UPDATE … RETURNING``, bound to the head's
    revision, content hash and generation. An empty result is a moved head;
    DuckDB's rowcount is not a CAS signal;
-7. touches ``derived_assets.updated_at``.
+7. touches ``derived_assets.updated_at``;
+8. enqueues one ``derived_asset.revised`` event in ``write_event_outbox`` on
+   the caller's event log (rev 8.11 D1). The caller dispatches after commit.
 
 A raise at any step rolls all of it back, so no committed revision is ever
 unsealed. There is no DDL here and no update or delete of a revision row.
@@ -39,6 +41,8 @@ from types import MappingProxyType
 from typing import Any
 
 from runtime.db_lock import LockedConnection, ReadConnection
+from substrate.schemas.events import DerivedAssetRevisedPayload
+from substrate.write.event_outbox import build_typed_envelope, enqueue_event
 
 # The acknowledgement version of a revise the operator made directly, with no
 # merge-draft review (A2). Its ``review_id`` is the operation receipt's id.
@@ -400,6 +404,30 @@ def _record_operation(
     )
 
 
+def _enqueue_revised(
+    con: LockedConnection,
+    *,
+    operation_id: str,
+    event_log_id: str,
+    asset_id: str,
+    revision_id: str,
+    parent_revision_id: str | None,
+    operation: str,
+    block_ids: Sequence[str],
+) -> None:
+    """One ``derived_asset.revised`` outbox row in the caller's transaction,
+    keyed by the operation receipt. It names no document."""
+    payload = DerivedAssetRevisedPayload(
+        derived_asset_id=asset_id,
+        revision_id=revision_id,
+        parent_revision_id=parent_revision_id,
+        operation=operation,  # type: ignore[arg-type]  # validated by the payload's Literal
+        block_ids=list(block_ids),
+    )
+    event = build_typed_envelope(event_log_id, payload, role="creation_surface")
+    enqueue_event(con, operation_id=operation_id, aggregate_kind="derived_asset", aggregate_id=asset_id, event=event)
+
+
 def revise(
     con: LockedConnection,
     *,
@@ -412,6 +440,7 @@ def revise(
     patches: Mapping[str, ChildPatch],
     block_ids: Sequence[str],
     build_answer: Callable[[str], Mapping[str, object]],
+    event_log_id: str,
     body: RevisionBody | None = None,
     revision_metadata: Mapping[str, object] | None = None,
     checkpoint: Checkpoint | None = None,
@@ -424,8 +453,9 @@ def revise(
     the pointer moved after the head was loaded, and
     :class:`RevisionIntegrityError` when a manifest disagrees with its
     members. ``build_answer(revision_id)`` is the operation's answer, stored as
-    canonical JSON so a replay is byte-identical. ``checkpoint`` is a test seam
-    called between steps.
+    canonical JSON so a replay is byte-identical. The ``derived_asset.revised``
+    event goes to ``event_log_id``. ``checkpoint`` is a test seam called
+    between steps.
     """
     _require_transaction(con)
     check_expected(head, expected_revision_id)
@@ -513,6 +543,11 @@ def revise(
     # not a compare-and-set; the pointer above is the CAS.
     con.execute("UPDATE derived_assets SET updated_at = CURRENT_TIMESTAMP WHERE derived_asset_id = ?", [asset_id])
     _checkpoint(checkpoint, "after_asset_touch")
+    _enqueue_revised(
+        con, operation_id=operation_id, event_log_id=event_log_id, asset_id=asset_id, revision_id=revision_id,
+        parent_revision_id=head.revision_id, operation=operation, block_ids=block_ids,
+    )
+    _checkpoint(checkpoint, "after_enqueue")
     return StoredOperation(operation_id, asset_id, revision_id, operation, request_sha256, response_json)
 
 
@@ -528,13 +563,15 @@ def create_revision(
     members: Sequence[Mapping[str, object]],
     idempotency_key: str,
     request_sha256: str,
+    event_log_id: str,
     asset_metadata_json: str | None = None,
     revision_metadata: Mapping[str, object] | None = None,
     build_answer: Callable[[str], Mapping[str, object]] | None = None,
 ) -> Head:
     """Revision 1 of a new asset (§1.11 ``create``), inside the caller's
     transaction: the asset row, the revision (no parent), its block inventory
-    and members, the operation receipt, and the pointer at generation 1.
+    and members, the operation receipt, the pointer at generation 1, and the
+    ``derived_asset.revised`` create event (no parent) on ``event_log_id``.
 
     ``members`` rows are written column for column into the live member
     table, with ``member_index`` defaulting to the row's position. On main's
@@ -583,6 +620,10 @@ def create_revision(
         "INSERT INTO derived_asset_current_revisions (derived_asset_id, current_revision_id, "
         "current_content_sha256, generation) VALUES (?, ?, ?, 1)",
         [asset_id, revision_id, content_sha256],
+    )
+    _enqueue_revised(
+        con, operation_id=operation_id, event_log_id=event_log_id, asset_id=asset_id, revision_id=revision_id,
+        parent_revision_id=None, operation="create", block_ids=blocks,
     )
     return Head(asset_id, revision_id, content_sha256, 1)
 

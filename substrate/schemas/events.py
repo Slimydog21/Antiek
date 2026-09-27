@@ -224,6 +224,10 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     FEEDBACK_THREAD_RESOLVED = "feedback.thread.resolved"
     AGENT_WORK_TRANSITIONED = "agent.work.transitioned"
     ARTIFACT_FEEDBACK_REPLIED = "artifact.feedback.replied"
+    # A derived asset gained a revision (THREAD-CONTRACT §1.11, rev 8.11 D1;
+    # LB-8). Written through write_event_outbox in the revision's own
+    # transaction, on write-<deliverable_id> for Write assets.
+    DERIVED_ASSET_REVISED = "derived_asset.revised"
 
     # ── Sprint 17-30+ additions (master-spec §11.6 + §13.5 + §13.7
     #    + §13.9). Bumped EVENT_SCHEMA_VERSION accordingly when this
@@ -803,7 +807,12 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v39: Operator feedback-thread resolution becomes an immutable audit event.
 # v40: Feedback reply audit payload distinguishes reply, decline, and approval
 #     request outcomes without exposing private message text.
-EVENT_SCHEMA_VERSION: int = 40
+# v41: derived_asset.revised, one committed revision of a derived asset
+#     (THREAD-CONTRACT §1.11; rev 8.11 D1, pending co-sign; LB-8). It names the
+#     asset, the revision, its parent, the operation and the block ids, never a
+#     document id. Purely additive. Renumbers at merge: #3530 and the wave-5
+#     branch also claim 41.
+EVENT_SCHEMA_VERSION: int = 41
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1409,6 +1418,29 @@ class ArtifactFeedbackRepliedPayload(_PayloadBase):
     attempt_no: int = Field(gt=0)
     reply_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     result_kind: Literal["reply", "decline", "approval_request"] = "reply"
+
+
+class DerivedAssetRevisedPayload(_PayloadBase):
+    """A derived asset gained a revision (THREAD-CONTRACT §1.11; rev 8.11 D1).
+
+    Written through ``write_event_outbox`` inside the transaction that wrote
+    the revision, on ``write-<deliverable_id>`` for a Write asset. It carries
+    no document ids, so no saved reference reaches an event log.
+    ``parent_revision_id`` is null exactly when ``operation`` is ``create``
+    (revision 1)."""
+
+    action_type: Literal[ActionType.DERIVED_ASSET_REVISED] = ActionType.DERIVED_ASSET_REVISED
+    derived_asset_id: str = Field(min_length=1)
+    revision_id: str = Field(min_length=1)
+    parent_revision_id: str | None
+    operation: Literal["create", "edit", "informs"]
+    block_ids: list[str]
+
+    @model_validator(mode="after")
+    def _parent_iff_not_create(self) -> DerivedAssetRevisedPayload:
+        if (self.operation == "create") != (self.parent_revision_id is None):
+            raise ValueError("parent_revision_id is null exactly when operation is create")
+        return self
 
 
 # ── Middleware: source_tier (architecture_notes §4) ──────────────────
@@ -4360,7 +4392,8 @@ TypedPayload = Annotated[
     | ArtifactCommentCreatedPayload
     | FeedbackThreadResolvedPayload
     | AgentWorkTransitionedPayload
-    | ArtifactFeedbackRepliedPayload,
+    | ArtifactFeedbackRepliedPayload
+    | DerivedAssetRevisedPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -4402,6 +4435,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
         ActionType.FEEDBACK_THREAD_RESOLVED.value,
         ActionType.AGENT_WORK_TRANSITIONED.value,
         ActionType.ARTIFACT_FEEDBACK_REPLIED.value,
+        ActionType.DERIVED_ASSET_REVISED.value,
         ActionType.GRAPH_TIER_ASSIGNED.value,
         ActionType.GRAPH_TIER_OVERRIDDEN.value,
         ActionType.TIER_REWRITE_BULK.value,
@@ -4677,6 +4711,7 @@ __all__ = [
     "FeedbackThreadResolvedPayload",
     "AgentWorkTransitionedPayload",
     "ArtifactFeedbackRepliedPayload",
+    "DerivedAssetRevisedPayload",
     # Middleware: source_tier
     "TierClassificationMethod",
     "TierAdjustmentMethod",

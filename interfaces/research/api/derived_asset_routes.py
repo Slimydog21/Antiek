@@ -1,9 +1,13 @@
 """Derived-asset routes: Write informs (THREAD-CONTRACT §1.11a "Write informs (S5)").
 
 ``PUT /derived-assets/{asset_id}/blocks/{block_id}/informs`` replaces one Write
-block's ordered document list by committing one §1.11 ``revise``. The owner
-comes from middleware state (``_reader_owner_id``), never from the request.
-The answers, all top-level so the client narrows on ``reason``:
+block's ordered document list by committing one §1.11 ``revise``, then
+delivers its ``derived_asset.revised`` event to ``write-<deliverable_id>``
+after the commit. ``GET`` on the same path (rev 8.11 D2) answers the PUT's 200
+shape at the current revision, 404s exactly as the PUT, and never opens the
+writer. The owner comes from middleware state (``_reader_owner_id``), never
+from the request. The answers, all top-level so the client narrows on
+``reason``:
 
 - ``200 {revision_id, block_id, informs: [{ordinal, document_id, anchor?}]}``;
   a replay answers the first commit's exact bytes.
@@ -29,7 +33,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from interfaces.research.api.books import _reader_owner_id, _resolve_db_path
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.derived_assets import informs
 from substrate.derived_assets.repository import (
     IdempotencyConflict,
@@ -37,7 +41,9 @@ from substrate.derived_assets.repository import (
     RevisionIntegrityError,
     RevisionMoved,
     StoredOperation,
+    canonical_json,
 )
+from substrate.write.event_outbox import dispatch_pending_best_effort
 
 derived_asset_router = APIRouter(tags=["derived-assets"])
 
@@ -79,7 +85,22 @@ def _put_informs(owner: str, asset_id: str, block_id: str, raw: bytes) -> Respon
             )
         except RevisionIntegrityError:
             return JSONResponse(status_code=500, content={"detail": "revision_integrity_error"})
+        # After the commit, never inside it: a rolled-back row is never delivered.
+        log_id = informs.write_log_id(asset_id)
+        if log_id is not None:
+            dispatch_pending_best_effort(con, log_id)
     return _stored(stored)
+
+
+def _get_informs(owner: str, asset_id: str, block_id: str) -> Response:
+    con = connect_read(_resolve_db_path())
+    try:
+        answer = informs.read_block_informs(con, asset_id, block_id, owner)
+    except NotFound:
+        return _not_found()
+    finally:
+        con.close()
+    return Response(content=canonical_json(answer).encode("utf-8"), media_type="application/json")
 
 
 @derived_asset_router.put(_INFORMS_PATH)
@@ -89,3 +110,10 @@ async def put_block_informs(asset_id: str, block_id: str, request: Request) -> R
     raw = await request.body()
     # The write lock is a blocking wait; keep it off the event loop.
     return await asyncio.to_thread(_put_informs, owner, asset_id, block_id, raw)
+
+
+@derived_asset_router.get(_INFORMS_PATH)
+async def get_block_informs(asset_id: str, block_id: str, request: Request) -> Response:
+    """One Write block's informs at the current revision (rev 8.11 D2)."""
+    owner = _reader_owner_id(request)
+    return await asyncio.to_thread(_get_informs, owner, asset_id, block_id)

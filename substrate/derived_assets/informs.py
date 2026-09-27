@@ -114,6 +114,13 @@ def deliverable_of(asset_id: str) -> str | None:
     return deliverable_id if _DELIVERABLE_ID.fullmatch(deliverable_id) else None
 
 
+def write_log_id(asset_id: str) -> str | None:
+    """The event log of a Write asset, ``write-<deliverable_id>`` (rev 8.11 D1),
+    mirroring ``read-<document_id>``."""
+    deliverable_id = deliverable_of(asset_id)
+    return None if deliverable_id is None else f"write-{deliverable_id}"
+
+
 def request_sha256(asset_id: str, block_id: str, body: Mapping[str, Any]) -> str:
     """The request identity (A4): sha256 of the canonical JSON of the path and
     the body as sent. No text normalization: a retry resends the same bytes."""
@@ -278,6 +285,9 @@ def replace_block_informs(
 ) -> StoredOperation:
     """One ``revise`` whose patch replaces this block's rows; every other
     block's rows are carried forward. ``ordinal`` is the list position."""
+    event_log_id = write_log_id(head.derived_asset_id)
+    if event_log_id is None:
+        raise NotFound()
     rows = [
         {
             "block_id": block_id,
@@ -299,6 +309,7 @@ def replace_block_informs(
         patches={"derived_asset_block_informs": ChildPatch(match={"block_id": block_id}, rows=rows)},
         block_ids=[block_id],
         build_answer=lambda revision_id: informs_answer(revision_id, block_id, listed),
+        event_log_id=event_log_id,
         checkpoint=checkpoint,
     )
 
@@ -377,4 +388,5 @@ __all__ = [
     "replace_block_informs",
     "request_sha256",
     "validate_entries",
+    "write_log_id",
 ]

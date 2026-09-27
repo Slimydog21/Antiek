@@ -121,6 +121,11 @@ does not fork it (W3 spec D-W1). These are additive; informs behave as above.
    names a revise. `derived_asset.revised {derived_asset_id, revision_id,
    parent_revision_id, operation, block_ids[]}` carries no document ids, so
    no saved reference reaches an event log. It lands on `write-<deliverable_id>`.
+   `revise()` and `create_revision()` enqueue it keyed by the operation
+   receipt, and the route delivers it after commit. `parent_revision_id` is
+   null exactly when `operation` is `create`, and `operation` is one of
+   `create | edit | informs` (W3's L6). The log has no investigation
+   lifecycle marker, so `GET /investigations` never lists it.
 2. **The read (R-LB8-2, D2).** Without a GET, a reload cannot show
    persistence and the only way to learn the current revision is a 409.
 3. **Block identity (R-LB8-3, D3).** `block_id` is the stable Write block id.

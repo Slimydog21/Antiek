@@ -89,7 +89,7 @@ def _seed(db: str, *, members: int = 0, blocks: tuple[str, ...] = ("b-1", "b-2")
 
     with connect_write(db, purpose="test/seed") as con, con.transaction():
         return create_revision(
-            con, asset_id=ASSET, owner_user_id=OWNER, asset_kind="document", title="Doc",
+            con, event_log_id="write-dlv-1", asset_id=ASSET, owner_user_id=OWNER, asset_kind="document", title="Doc",
             body=_body(_manifest(members)), blocks=list(blocks), members=_members(members),
             idempotency_key="seed-create", request_sha256=hashlib.sha256(b"seed").hexdigest(),
         )
@@ -122,6 +122,7 @@ def _revise(
 
     return revise(
         con,
+        event_log_id="write-dlv-1",
         head=head,
         expected_revision_id=head.revision_id,
         owner_user_id=OWNER,
@@ -348,7 +349,7 @@ def test_a_block_a_revise_removes_loses_its_informs(db: str) -> None:
         current = load_owned_head(con, ASSET, owner_user_id=OWNER)
         with con.transaction():
             removed = revise(
-                con, head=current, expected_revision_id=current.revision_id, owner_user_id=OWNER,
+                con, event_log_id="write-dlv-1", head=current, expected_revision_id=current.revision_id, owner_user_id=OWNER,
                 idempotency_key="k-2", request_sha256=hashlib.sha256(b"k-2").hexdigest(), operation="edit",
                 patches={"derived_asset_revision_blocks": ChildPatch(match={"block_id": "b-2"}, rows=[])},
                 block_ids=["b-2"], build_answer=lambda revision_id: {"revision_id": revision_id},
@@ -383,7 +384,7 @@ def test_a_patch_on_a_table_it_may_not_match_is_refused(db: str) -> None:
     head = _seed(db, members=1)
     with connect_write(db, purpose="test/bad-patch") as con, pytest.raises(ValueError), con.transaction():
         revise(
-            con, head=head, expected_revision_id=head.revision_id, owner_user_id=OWNER,
+            con, event_log_id="write-dlv-1", head=head, expected_revision_id=head.revision_id, owner_user_id=OWNER,
             idempotency_key="k", request_sha256=hashlib.sha256(b"k").hexdigest(), operation="informs",
             patches={"derived_asset_revision_members": ChildPatch(match={"member_index": 0}, rows=[])},
             block_ids=[], build_answer=lambda revision_id: {},
@@ -414,7 +415,7 @@ def test_l1_a_body_revise_writes_new_bytes_and_the_pointer_follows(db: str) -> N
     new_html = "<article><p>Edited.</p></article>"
     with connect_write(db, purpose="test/body") as con, con.transaction():
         stored = revise(
-            con, head=head, expected_revision_id=head.revision_id, owner_user_id=OWNER, idempotency_key="k-edit",
+            con, event_log_id="write-dlv-1", head=head, expected_revision_id=head.revision_id, owner_user_id=OWNER, idempotency_key="k-edit",
             request_sha256=hashlib.sha256(b"edit").hexdigest(), operation="edit", patches={}, block_ids=["b-1"],
             build_answer=lambda revision_id: {"revision_id": revision_id}, body=_body(_manifest(1), new_html),
             revision_metadata={"route": "write.place_block"},
@@ -437,7 +438,7 @@ def test_l1_a_body_whose_manifest_disagrees_with_its_members_is_refused(db: str)
     before = _state(db)
     with connect_write(db, purpose="test/body-bad") as con, pytest.raises(RevisionIntegrityError), con.transaction():
         revise(
-            con, head=head, expected_revision_id=head.revision_id, owner_user_id=OWNER, idempotency_key="k",
+            con, event_log_id="write-dlv-1", head=head, expected_revision_id=head.revision_id, owner_user_id=OWNER, idempotency_key="k",
             request_sha256=hashlib.sha256(b"k").hexdigest(), operation="edit", patches={}, block_ids=[],
             build_answer=lambda revision_id: {}, body=_body(_manifest(2), "<article>x</article>"),
         )
@@ -450,7 +451,7 @@ def test_l1_revision_metadata_cannot_override_the_primitives_keys(db: str) -> No
     head = _seed(db)
     with connect_write(db, purpose="test/metadata") as con, pytest.raises(ValueError), con.transaction():
         revise(
-            con, head=head, expected_revision_id=head.revision_id, owner_user_id=OWNER, idempotency_key="k",
+            con, event_log_id="write-dlv-1", head=head, expected_revision_id=head.revision_id, owner_user_id=OWNER, idempotency_key="k",
             request_sha256=hashlib.sha256(b"k").hexdigest(), operation="informs", patches={}, block_ids=[],
             build_answer=lambda revision_id: {}, revision_metadata={"operation": "create"},
         )
@@ -461,7 +462,7 @@ def test_l2_create_writes_the_asset_the_receipt_and_the_pointer(db: str) -> None
 
     with connect_write(db, purpose="test/create") as con, con.transaction():
         head = create_revision(
-            con, asset_id=ASSET, owner_user_id="alice", asset_kind="document", title="Memo",
+            con, event_log_id="write-dlv-1", asset_id=ASSET, owner_user_id="alice", asset_kind="document", title="Memo",
             body=_body(_manifest(1)), blocks=["b-1", "sprose:sec-1"], members=_members(1),
             idempotency_key="k-create", request_sha256=hashlib.sha256(b"create").hexdigest(),
             asset_metadata_json='{"source":"write"}', revision_metadata={"route": "write.create", "pre_state": False},
@@ -508,7 +509,7 @@ def test_l3_the_manifest_members_array_is_what_is_counted(db: str, manifest: str
     def create() -> None:
         with connect_write(db, purpose="test/manifest") as con, con.transaction():
             create_revision(
-                con, asset_id=ASSET, owner_user_id=OWNER, asset_kind="document", title="Doc",
+                con, event_log_id="write-dlv-1", asset_id=ASSET, owner_user_id=OWNER, asset_kind="document", title="Doc",
                 body=_body(manifest), blocks=["b-1"], members=_members(1), idempotency_key="k",
                 request_sha256=hashlib.sha256(b"k").hexdigest(),
             )
@@ -532,7 +533,7 @@ def test_l4_a_removed_block_loses_its_block_bound_members_and_informs(db: str) -
     members[1]["block_id"] = "b-2"
     with connect_write(db, purpose="test/seed-bound") as con, con.transaction():
         head = create_revision(
-            con, asset_id=ASSET, owner_user_id=OWNER, asset_kind="document", title="Doc",
+            con, event_log_id="write-dlv-1", asset_id=ASSET, owner_user_id=OWNER, asset_kind="document", title="Doc",
             body=_body(_manifest(2)), blocks=["b-1", "b-2"], members=members, idempotency_key="k-create",
             request_sha256=hashlib.sha256(b"create").hexdigest(),
         )
@@ -543,7 +544,7 @@ def test_l4_a_removed_block_loses_its_block_bound_members_and_informs(db: str) -
     with connect_write(db, purpose="test/remove-b2") as con, con.transaction():
         current = load_owned_head(con, ASSET, owner_user_id=OWNER)
         removed = revise(
-            con, head=current, expected_revision_id=current.revision_id, owner_user_id=OWNER,
+            con, event_log_id="write-dlv-1", head=current, expected_revision_id=current.revision_id, owner_user_id=OWNER,
             idempotency_key="k-2", request_sha256=hashlib.sha256(b"k-2").hexdigest(), operation="edit",
             patches={"derived_asset_revision_blocks": ChildPatch(match={"block_id": "b-2"}, rows=[])},
             block_ids=["b-2"], build_answer=lambda revision_id: {"revision_id": revision_id},
@@ -573,7 +574,7 @@ def test_a_whole_table_patch_rebuilds_the_inventory(db: str) -> None:
         with con.transaction():
             current = load_owned_head(con, ASSET, owner_user_id=OWNER)
             rebuilt = revise(
-                con, head=current, expected_revision_id=current.revision_id, owner_user_id=OWNER,
+                con, event_log_id="write-dlv-1", head=current, expected_revision_id=current.revision_id, owner_user_id=OWNER,
                 idempotency_key="k-3", request_sha256=hashlib.sha256(b"k-3").hexdigest(), operation="edit",
                 patches={
                     "derived_asset_revision_blocks": ChildPatch(
@@ -653,7 +654,7 @@ def test_create_refuses_a_manifest_that_disagrees_with_its_members(db: str) -> N
 
     with connect_write(db, purpose="test/create-integrity") as con, pytest.raises(RevisionIntegrityError), con.transaction():
         create_revision(
-            con, asset_id=ASSET, owner_user_id=OWNER, asset_kind="document", title="Doc",
+            con, event_log_id="write-dlv-1", asset_id=ASSET, owner_user_id=OWNER, asset_kind="document", title="Doc",
             body=_body(_manifest(2)), blocks=["b-1"], members=_members(1), idempotency_key="k",
             request_sha256=hashlib.sha256(b"k").hexdigest(),
         )
