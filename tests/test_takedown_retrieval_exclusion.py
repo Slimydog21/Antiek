@@ -156,7 +156,7 @@ def test_public_hydration_drops_class_eligible_taken_down_rows(env):
         assert OPEN in hydrated_text
 
 
-def test_loop_one_lexical_fallback_and_context_citation_boundary(env):
+def test_loop_one_lexical_fallback_omits_taken_down_rows(env):
     model = HashEmbedding(dimension=8)
     with connect_write(env, purpose="test/takedown-lexical") as con:
         _seed_corpus(con, model)
@@ -174,14 +174,20 @@ def test_loop_one_lexical_fallback_and_context_citation_boundary(env):
         assert "chunk-null-class" not in lexical_ids
         assert "chunk-open-taken" not in lexical_ids
         assert "chunk-open" in lexical_ids
+
+
+def test_loop_one_context_omits_taken_down_body_and_citation(env):
+    model = HashEmbedding(dimension=8)
+    with connect_write(env, purpose="test/takedown-context") as con:
+        _seed_corpus(con, model)
     block = _context_block(model)
     assert not block.startswith("(corpus search unavailable")
-    assert NULL_CLASS not in block
-    assert OPEN_TAKEN not in block
-    assert "chunk-null-class" not in block
-    assert "chunk-open-taken" not in block
-    assert "> " + OPEN in block
+    assert "### chunk_id: chunk-null-class" not in block
+    assert "### chunk_id: chunk-open-taken" not in block
+    assert "> " + NULL_CLASS not in block
+    assert "> " + OPEN_TAKEN not in block
     assert "### chunk_id: chunk-open" in block
+    assert "> " + OPEN in block
 
 
 def test_privileged_search_loses_retained_chunks_after_real_takedown(env):
