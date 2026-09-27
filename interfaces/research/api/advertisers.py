@@ -31,7 +31,7 @@ typed ``error.code``.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Concatenate, ParamSpec
+from typing import Concatenate
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -119,9 +119,6 @@ class AdvertiserListResponse(BaseModel):
 # ── Helpers ────────────────────────────────────────────────────────
 
 
-_P = ParamSpec("_P")
-
-
 def _resolve_db_path() -> str:
     from substrate.graph import default_db_path, ensure_initialized
 
@@ -130,10 +127,10 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _load_then_save(  # noqa: UP047 -- runtime supports Python 3.11
-    state_fn: Callable[Concatenate[AdvertiserRegistry, _P], AdvertiserRecord],
-    *args: _P.args,
-    **kwargs: _P.kwargs,
+def _load_then_save[**P](
+    state_fn: Callable[Concatenate[AdvertiserRegistry, P], AdvertiserRecord],
+    *args: P.args,
+    **kwargs: P.kwargs,
 ) -> AdvertiserRecord:
     """Round-trip pattern: load → transition → save. The
     AdvertiserRegistry is purely in-memory and lives only for this
