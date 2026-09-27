@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from test_acu_meter import isolated_db  # noqa: F401  (fixture)
+from test_acu_meter import _derived_owner, isolated_db  # noqa: F401  (fixture)
 
 import interfaces.research.api.compute_capacity_gate as G
 from interfaces.research.api.app import create_app
@@ -26,7 +26,11 @@ from runtime.db_lock import WriteLockTimeout, connect_write
 from substrate.compute_capacity.acu_meter import record_investigation_start_acu
 from substrate.compute_capacity.store import get_capacity, set_capacity
 
-_OWNER = "__operator__"
+# The owner the gate charges for the local operator session. Since #3382
+# (namespace Option A) that is derived from the verified e-mail, not the
+# shared "__operator__" sentinel: seeding the sentinel would meter a
+# different owner and leave the hard cap unset for the one being charged.
+_OWNER = _derived_owner()
 
 
 class _SpyBus(EventBroadcaster):
