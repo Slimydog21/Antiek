@@ -75,8 +75,59 @@ const AuthCtx = createContext<AuthContextValue | null>(null);
 
 type IdentityAnswer =
   | { kind: "identity"; identity: AuthIdentity }
-  | { kind: "anonymous" }
+  /**
+   * `inferred`: /auth/me gave no readable answer, but /health proved the API
+   * is up, so the failure is taken to be a CORS-masked 401 (P-02). Treated as
+   * unauthenticated, but NOT as proof of identity: the reading-state owner is
+   * left alone (only a real 401 or a sign-out clears it).
+   */
+  | { kind: "anonymous"; inferred?: boolean }
   | { kind: "unavailable"; reason: AuthUnavailableReason };
+
+/** Upper bound on the /health reachability probe. */
+export const HEALTH_PROBE_TIMEOUT_MS = 3_000;
+
+/**
+ * P-02 workaround: is the API reachable at all?
+ *
+ * In production the SPA (antiek.ai) calls the API (api.antiek.ai)
+ * cross-origin, and the auth middleware emits its 401 on /auth/me OUTSIDE
+ * CORSMiddleware, with no access-control-allow-origin. The browser therefore
+ * rejects a logged-out visitor's /auth/me with a TypeError, exactly as it
+ * would if the API were down. /health is public and does carry CORS headers
+ * on its 200, so one probe tells the two apart: any answer below 500 means
+ * the API is up (so the /auth/me failure was a masked 401); a network error,
+ * a 5xx or no answer within HEALTH_PROBE_TIMEOUT_MS means it is not.
+ *
+ * REMOVE this probe once the backend emits CORS headers on its 401s (P-02,
+ * Astra backend INBOX): /auth/me will then answer 401 readably and this
+ * function becomes dead weight on every logged-out page load.
+ */
+async function apiIsReachable(): Promise<boolean> {
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = setTimeout(() => controller?.abort(), HEALTH_PROBE_TIMEOUT_MS);
+  try {
+    const probe = apiFetch(authUrl("/health"), { signal: controller?.signal });
+    const r = await Promise.race([
+      probe,
+      new Promise<never>((_, reject) => {
+        controller?.signal.addEventListener("abort", () => reject(new Error("health probe timed out")));
+      }),
+    ]);
+    return r.status < 500;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** A transport failure or unreadable 200 on /auth/me: masked 401 or real outage? */
+async function classifyUnreadable(reason: AuthUnavailableReason): Promise<IdentityAnswer> {
+  return (await apiIsReachable())
+    ? { kind: "anonymous", inferred: true }
+    : { kind: "unavailable", reason };
+}
 
 /**
  * Statuses that mean "the server could not answer right now", as opposed to
@@ -104,8 +155,9 @@ async function fetchIdentity(): Promise<IdentityAnswer> {
     r = await apiFetch(authUrl("/auth/me"));
   } catch {
     // fetch rejects with a TypeError when the network, DNS, TLS or CORS
-    // fails: we never reached a server that could say who we are.
-    return { kind: "unavailable", reason: "offline" };
+    // fails. In prod that includes the logged-out 401 (P-02: no CORS
+    // headers), so ask /health before calling it an outage.
+    return classifyUnreadable("offline");
   }
   if (r.status === 401) return { kind: "anonymous" };
   if (!r.ok) {
@@ -118,12 +170,12 @@ async function fetchIdentity(): Promise<IdentityAnswer> {
     body = await r.json();
   } catch {
     // e.g. an HTML error page with a 200 from a proxy (SyntaxError).
-    return { kind: "unavailable", reason: "malformed" };
+    return classifyUnreadable("malformed");
   }
   // The middleware returns auth_method "unauthenticated_local" when no auth
   // env vars are set (local dev). That is a real identity (user_id
   // "__operator__"), so dev doesn't loop through the login page.
-  if (!isIdentity(body)) return { kind: "unavailable", reason: "malformed" };
+  if (!isIdentity(body)) return classifyUnreadable("malformed");
   return { kind: "identity", identity: body };
 }
 
@@ -202,7 +254,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const identity = answer.kind === "identity" ? answer.identity : null;
-    setReadingStateOwner(identity?.user_id ?? null);
+    // An inferred (CORS-masked) 401 is not proof of a null user: leave the
+    // reading-state owner as it was, the pre-F-03 behaviour for transport
+    // failures, so pending work survives a blip that /health happened to
+    // outlive.
+    if (!(answer.kind === "anonymous" && answer.inferred)) {
+      setReadingStateOwner(identity?.user_id ?? null);
+    }
     if (identity) {
       setState({ status: "authenticated", identity });
     } else {

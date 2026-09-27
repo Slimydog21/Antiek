@@ -49,18 +49,43 @@ const IDENTITY = { user_id: "reader-a", email: "a@example.com", auth_method: "pa
 /** Queue of /auth/me replies; the last one repeats. Everything else → 404. */
 let authReplies: Reply[] = [];
 let authMeCalls = 0;
+/** Queue of /health replies (the CORS-masked-401 probe); the last one repeats. */
+let healthReplies: Reply[] = [];
+let healthCalls = 0;
+
+function next(queue: Reply[]): Reply {
+  return queue.length > 1 ? queue.shift()! : queue[0];
+}
+
+async function answer(reply: Reply | undefined, signal?: AbortSignal | null): Promise<Response> {
+  if (reply === undefined) throw new Error("test did not script this reply");
+  if (reply instanceof Error) throw reply;
+  if (typeof reply === "function") {
+    // A hung request that only an abort ends (the probe's 3 s timeout).
+    return new Promise<Response>((resolve, reject) => {
+      signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      void reply().then(resolve, reject);
+    });
+  }
+  return reply.clone();
+}
+
+/** Prod shape (P-02): the 401 on /auth/me has no CORS headers, so the browser rejects it. */
+const CORS_MASKED = () => new TypeError("Failed to fetch");
+const NEVER = () => new Promise<Response>(() => {});
 
 function stubFetch(): void {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input instanceof Request ? input.url : input);
       if (url.endsWith("/auth/me")) {
         authMeCalls += 1;
-        const reply = authReplies.length > 1 ? authReplies.shift()! : authReplies[0];
-        if (reply instanceof Error) throw reply;
-        if (typeof reply === "function") return reply();
-        return reply.clone();
+        return answer(next(authReplies), init?.signal);
+      }
+      if (url.endsWith("/health")) {
+        healthCalls += 1;
+        return answer(next(healthReplies), init?.signal);
       }
       if (url.endsWith("/auth/logout")) return new Response(null, { status: 204 });
       return json(404, { detail: "not in this test" });
@@ -105,6 +130,8 @@ function renderApp(at: string) {
 beforeEach(() => {
   authReplies = [];
   authMeCalls = 0;
+  healthReplies = [];
+  healthCalls = 0;
   setReadingStateOwner.mockClear();
   posthogIdentify.mockClear();
   posthogReset.mockClear();
@@ -124,6 +151,8 @@ describe("/auth/me failure is not an identity transition (F-03)", () => {
     expect(screen.queryByText("protected app")).toBeNull();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(setReadingStateOwner).not.toHaveBeenCalled();
+    // A real 5xx is an answer from the API: no reachability probe.
+    expect(healthCalls).toBe(0);
   });
 
   it.each([500, 502, 504, 408, 429])("%i → unavailable (a transient server answer, not an identity)", async (status) => {
@@ -132,21 +161,24 @@ describe("/auth/me failure is not an identity transition (F-03)", () => {
     expect(await screen.findByText(AUTH_UNAVAILABLE_COPY)).toBeTruthy();
   });
 
-  it("fetch TypeError (network down / CORS) → unavailable", async () => {
-    authReplies = [new TypeError("Failed to fetch")];
+  it("fetch TypeError AND /health TypeError (network really down) → unavailable", async () => {
+    authReplies = [CORS_MASKED()];
+    healthReplies = [new TypeError("Failed to fetch")];
     renderProvider();
     expect(await screen.findByText(AUTH_UNAVAILABLE_COPY)).toBeTruthy();
     expect(screen.getByText(/Check your connection/)).toBeTruthy();
   });
 
-  it("200 with a body that is not JSON (SyntaxError) → unavailable", async () => {
+  it("200 with a body that is not JSON (SyntaxError), /health 503 → unavailable", async () => {
     authReplies = [new Response("<!doctype html><html></html>", { status: 200, headers: { "content-type": "text/html" } })];
+    healthReplies = [json(503, {})];
     renderProvider();
     expect(await screen.findByText(AUTH_UNAVAILABLE_COPY)).toBeTruthy();
   });
 
-  it("200 JSON without a user_id → unavailable, never 'authenticated as undefined'", async () => {
+  it("200 JSON without a user_id, /health down → unavailable, never 'authenticated as undefined'", async () => {
     authReplies = [json(200, { email: "a@example.com" })];
+    healthReplies = [new TypeError("Failed to fetch")];
     renderProvider();
     expect(await screen.findByText(AUTH_UNAVAILABLE_COPY)).toBeTruthy();
   });
@@ -159,6 +191,92 @@ describe("/auth/me failure is not an identity transition (F-03)", () => {
   });
 });
 
+describe("P-02: a CORS-masked 401 is told apart from an outage by probing /health", () => {
+  it("TypeError on /auth/me + /health 200 → unauthenticated (the API is up; the 401 was CORS-masked)", async () => {
+    authReplies = [CORS_MASKED()];
+    healthReplies = [json(200, { status: "ok" })];
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("auth-status").textContent).toBe("unauthenticated"));
+    expect(screen.getByText("protected app")).toBeTruthy();
+    expect(screen.queryByText(AUTH_UNAVAILABLE_COPY)).toBeNull();
+    expect(healthCalls).toBe(1);
+  });
+
+  it("an INFERRED 401 does not clear the reading-state owner (only a real 401 or a sign-out does)", async () => {
+    authReplies = [CORS_MASKED()];
+    healthReplies = [json(200, { status: "ok" })];
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("auth-status").textContent).toBe("unauthenticated"));
+    expect(setReadingStateOwner).not.toHaveBeenCalled();
+  });
+
+  it("TypeError on /auth/me + /health TypeError → the unavailable screen", async () => {
+    authReplies = [CORS_MASKED()];
+    healthReplies = [new TypeError("Failed to fetch")];
+    renderProvider();
+    expect(await screen.findByText(AUTH_UNAVAILABLE_COPY)).toBeTruthy();
+    expect(healthCalls).toBe(1);
+  });
+
+  it("TypeError on /auth/me + /health 502 → unavailable", async () => {
+    authReplies = [CORS_MASKED()];
+    healthReplies = [json(502, {})];
+    renderProvider();
+    expect(await screen.findByText(AUTH_UNAVAILABLE_COPY)).toBeTruthy();
+  });
+
+  it("TypeError on /auth/me + /health that never answers → unavailable after the 3 s probe timeout", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      authReplies = [CORS_MASKED()];
+      healthReplies = [NEVER];
+      renderProvider();
+      await waitFor(() => expect(healthCalls).toBe(1));
+      expect(screen.queryByText(AUTH_UNAVAILABLE_COPY)).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(3_000);
+      });
+      expect(await screen.findByText(AUTH_UNAVAILABLE_COPY)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("probes /health exactly once per refresh", async () => {
+    authReplies = [CORS_MASKED()];
+    healthReplies = [new TypeError("Failed to fetch")];
+    renderProvider();
+    await screen.findByText(AUTH_UNAVAILABLE_COPY);
+    expect(healthCalls).toBe(1);
+    healthReplies = [json(200, {})];
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByTestId("auth-status").textContent).toBe("unauthenticated"));
+    expect(healthCalls).toBe(2);
+  });
+
+  it("through the real App: TypeError on /auth/me + /health 200 on /settings still redirects to /login", async () => {
+    authReplies = [CORS_MASKED()];
+    healthReplies = [json(200, { status: "ok" })];
+    renderApp("/settings");
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/login"));
+    expect(screen.queryByText(AUTH_UNAVAILABLE_COPY)).toBeNull();
+  });
+
+  it("503 on /auth/me → unavailable with NO /health call", async () => {
+    authReplies = [json(503, {})];
+    renderProvider();
+    await screen.findByText(AUTH_UNAVAILABLE_COPY);
+    expect(healthCalls).toBe(0);
+  });
+
+  it("401 on /auth/me → unauthenticated with NO /health call", async () => {
+    authReplies = [json(401, {})];
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("auth-status").textContent).toBe("unauthenticated"));
+    expect(healthCalls).toBe(0);
+  });
+});
+
 describe("the identity answers still mean what they meant", () => {
   it("401 → unauthenticated, children render (RequireAuth owns the /login redirect)", async () => {
     authReplies = [json(401, { detail: "no session" })];
@@ -167,6 +285,7 @@ describe("the identity answers still mean what they meant", () => {
     expect(screen.getByText("protected app")).toBeTruthy();
     expect(setReadingStateOwner).toHaveBeenCalledWith(null);
     expect(screen.queryByText(AUTH_UNAVAILABLE_COPY)).toBeNull();
+    expect(healthCalls).toBe(0);
   });
 
   it.each([403, 404])(
@@ -196,8 +315,9 @@ describe("Retry", () => {
     expect(authMeCalls).toBe(2);
   });
 
-  it("503 then Retry into another TypeError → still the unavailable screen", async () => {
+  it("503 then Retry into another TypeError (probe also fails) → still the unavailable screen", async () => {
     authReplies = [json(503, {}), new TypeError("Failed to fetch")];
+    healthReplies = [new TypeError("Failed to fetch")];
     renderProvider();
     fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
     await waitFor(() => expect(authMeCalls).toBe(2));
@@ -240,8 +360,9 @@ describe("through the real App route tree (RequireAuth unchanged)", () => {
     expect(screen.getByTestId("location").textContent).toBe("/settings");
   });
 
-  it("network TypeError on /settings: same", async () => {
+  it("network TypeError on /settings with /health also down: same", async () => {
     authReplies = [new TypeError("Failed to fetch")];
+    healthReplies = [new TypeError("Failed to fetch")];
     renderApp("/settings");
     expect(await screen.findByText(AUTH_UNAVAILABLE_COPY)).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toBe("/settings");
