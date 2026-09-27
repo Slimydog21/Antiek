@@ -21,6 +21,7 @@ import type { InvestigationSummary } from "../../lib/api";
 
 const {
   startInvestigationMock,
+  fetchUserModelsMock,
   ingestSourceMock,
   ingestVoiceNoteMock,
   transcribeAudioMock,
@@ -30,6 +31,7 @@ const {
   authState,
 } = vi.hoisted(() => ({
   startInvestigationMock: vi.fn(),
+  fetchUserModelsMock: vi.fn(),
   ingestSourceMock: vi.fn(),
   ingestVoiceNoteMock: vi.fn(),
   transcribeAudioMock: vi.fn(),
@@ -67,6 +69,8 @@ vi.mock("../../lib/api", async (orig) => {
   };
 });
 
+vi.mock("../../api/settingsModels", () => ({ fetchUserModels: fetchUserModelsMock }));
+
 vi.mock("../../hooks/useEventStream", () => ({
   useEventStream: () => ({ events: [] as Event[], status: "closed", reconnects: 0 }),
 }));
@@ -102,6 +106,14 @@ vi.mock("react-router-dom", async (orig) => {
 vi.mock("./QuickAsk", () => ({ default: () => <div>Quick Ask one-request form</div> }));
 
 import StartResearch from "./StartResearch";
+
+const executableModel = {
+  id: "user-paid", provider_kind: "anthropic", provider_catalog_id: "anthropic",
+  model_id: "claude-paid", display_name: "Paid Claude", base_url: null,
+  enabled: true, key_present: true, registered: true, route_eligible: true,
+  pricing_status: "known", hard_ceiling_eligible: true,
+  execution_status: "executable", rate_snapshot: "rates-2026-08",
+};
 
 // AMS2-SPR-03: the idle home wraps its content column in GlassSurface, which
 // reads prefers-reduced-motion via window.matchMedia — absent in jsdom. Stub it
@@ -139,6 +151,8 @@ function inv(over: Partial<InvestigationSummary> & { investigation_id: string })
 beforeEach(() => {
   installMatchMedia(false);
   startInvestigationMock.mockReset();
+  fetchUserModelsMock.mockReset();
+  fetchUserModelsMock.mockResolvedValue({ models: [executableModel], count: 1, stale_registered: [], source: "test" });
   ingestSourceMock.mockReset();
   ingestVoiceNoteMock.mockReset();
   transcribeAudioMock.mockReset();
@@ -156,13 +170,15 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-function renderHome(embedded = false) {
+async function renderHome(embedded = false) {
   const view = render(
     <MemoryRouter>
       <StartResearch embedded={embedded} />
     </MemoryRouter>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Deep research · multiple model calls" }));
+  fireEvent.click(screen.getByRole("combobox", { name: "Model for Ask investigation" }).querySelector("button")!);
+  fireEvent.click(await screen.findByRole("option", { name: /Paid Claude/ }));
   return view;
 }
 
@@ -173,7 +189,7 @@ describe("StartResearch — voice fills the prompt (SPR-05 M1)", () => {
       language: "en",
       duration_seconds: 4,
     });
-    const { rerender } = renderHome();
+    const { rerender } = await renderHome();
     // Simulate a finished recording: VoiceChaseButton transcribes on the
     // state→stopped + blob transition.
     recorderState.current = {
@@ -195,7 +211,7 @@ describe("StartResearch — voice fills the prompt (SPR-05 M1)", () => {
   it("a transcription failure surfaces an honest error and leaves the prompt untouched (no hallucinated text)", async () => {
     const { ApiError } = await import("../../lib/api");
     transcribeAudioMock.mockRejectedValue(new ApiError("no key", 503, ""));
-    const { rerender } = renderHome();
+    const { rerender } = await renderHome();
     recorderState.current = {
       ...recorderState.current,
       state: "stopped",
@@ -231,7 +247,7 @@ describe("StartResearch — attach a file/link (SPR-05 M1)", () => {
       episodes_processed: 0,
       episodes_ingested: 0,
     });
-    renderHome();
+    await renderHome();
     const link = screen.getByLabelText("Attach a link");
     fireEvent.change(link, { target: { value: "https://arxiv.org/abs/2401.00001" } });
     fireEvent.keyDown(link, { key: "Enter" });
@@ -263,7 +279,7 @@ describe("StartResearch — attach a file/link (SPR-05 M1)", () => {
       episodes_processed: 0,
       episodes_ingested: 0,
     });
-    renderHome();
+    await renderHome();
     const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
     expect(input.value).toBe(""); // empty prompt to start
     const link = screen.getByLabelText("Attach a link");
@@ -279,7 +295,7 @@ describe("StartResearch — attach a file/link (SPR-05 M1)", () => {
 
   it("does NOT overwrite a prompt the operator already typed", async () => {
     ingestVoiceNoteMock.mockResolvedValue({ title: "note", document_id: "d", chunks_written: 1 });
-    renderHome();
+    await renderHome();
     const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "My own question about the thesis" } });
     const link = screen.getByLabelText("Attach a link");
@@ -304,7 +320,7 @@ describe("StartResearch — attach a file/link (SPR-05 M1)", () => {
       episodes_processed: 0,
       episodes_ingested: 0,
     });
-    renderHome();
+    await renderHome();
     const link = screen.getByLabelText("Attach a link");
     fireEvent.change(link, { target: { value: "https://blocked.example/z" } });
     fireEvent.keyDown(link, { key: "Enter" });
@@ -317,7 +333,7 @@ describe("StartResearch — log-as-home consolidation (SPR-05 M3)", () => {
     listState.current.investigations = [
       inv({ investigation_id: "inv-past1", question: "A finished research" }),
     ];
-    renderHome(true);
+    await renderHome(true);
     // The composer (start a research) is present…
     expect(screen.getByLabelText("Research question")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Ask" })).toBeTruthy();
@@ -330,23 +346,23 @@ describe("StartResearch — log-as-home consolidation (SPR-05 M3)", () => {
     listState.current.investigations = [
       inv({ investigation_id: "inv-go", question: "Click me" }),
     ];
-    renderHome(true);
+    await renderHome(true);
     const row = (await screen.findByText("Click me")).closest("a") as HTMLAnchorElement;
     expect(row.getAttribute("href")).toBe("/inv/inv-go");
   });
 
-  it("the embedded log does NOT render a second 'Start a research' launch bar (one entry only)", () => {
+  it("the embedded log does NOT render a second 'Start a research' launch bar (one entry only)", async () => {
     listState.current.investigations = [inv({ investigation_id: "inv-x" })];
-    renderHome(true);
+    await renderHome(true);
     // The composer's Ask is the single entry; the MyResearch LaunchBar
     // ("Start a research" / "Launch several at once") is suppressed when embedded.
     expect(screen.queryByRole("button", { name: "Start a research" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Launch several at once" })).toBeNull();
   });
 
-  it("standalone (non-embedded) home shows the composer but NOT the log (composer-only)", () => {
+  it("standalone (non-embedded) home shows the composer but NOT the log (composer-only)", async () => {
     listState.current.investigations = [inv({ investigation_id: "inv-hidden", question: "Hidden in standalone" })];
-    renderHome(false);
+    await renderHome(false);
     expect(screen.getByLabelText("Research question")).toBeTruthy();
     // No embedded log section in the bare composer.
     expect(screen.queryByText("Your research")).toBeNull();
