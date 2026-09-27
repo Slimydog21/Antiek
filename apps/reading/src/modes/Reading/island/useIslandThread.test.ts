@@ -182,6 +182,15 @@ describe("useIslandThread", () => {
     expect(result.current.sessionState).toBeNull();
   });
 
+  it("a seed fetch that failed is unavailable, with the projection's retry", async () => {
+    const retry = vi.fn();
+    useInvestigationMock.mockReturnValue(projection({ status: "error", retry }));
+    const { result } = renderHook(() => useIslandThread("inv-1"));
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+    expect(result.current.retry).toBe(retry);
+    expect(getDistillationMock).not.toHaveBeenCalled();
+  });
+
   it("a missing trajectory is gone — never fabricated", async () => {
     useInvestigationMock.mockReturnValue(projection({ status: "not_found", events: [] }));
     const { result } = renderHook(() => useIslandThread("inv-1"));
