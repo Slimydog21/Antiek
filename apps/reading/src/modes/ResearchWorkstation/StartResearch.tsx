@@ -19,6 +19,7 @@ import type {
 import { fetchUserModels, type UserModelRow } from "../../api/settingsModels";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
+import QuickAsk from "./QuickAsk";
 import VoiceChaseButton from "./VoiceChaseButton";
 
 /**
@@ -164,6 +165,7 @@ type AttachState =
 export default function StartResearch({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const start = useStartInvestigation();
+  const [askMode, setAskMode] = useState<"quick" | "deep">("deep");
   const restoredLaunch = useMemo(readPendingOwnerLaunch, []);
   const [question, setQuestion] = useState(restoredLaunch?.question ?? "");
   // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
@@ -544,11 +546,23 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
         <h1 className="text-2xl font-serif text-ink dark:text-bright mb-2 text-center">
           What do you want to research?
         </h1>
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-5" role="group" aria-label="Research mode">
+          <button type="button" aria-pressed={askMode === "quick"}
+            onClick={() => setAskMode("quick")}
+            className={`px-3 py-2 rounded-hog border-edge border-sun text-xs font-mono ${askMode === "quick" ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
+            Quick Ask · one model request
+          </button>
+          <button type="button" aria-pressed={askMode === "deep"}
+            onClick={() => setAskMode("deep")}
+            className={`px-3 py-2 rounded-hog border-edge border-sun text-xs font-mono ${askMode === "deep" ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
+            Deep research · multiple model calls
+          </button>
+        </div>
+        {askMode === "quick" ? <QuickAsk /> : <>
         <p className="text-sm text-shadow-1 dark:text-moonlight leading-relaxed font-serif text-center mb-6">
-          Ask a question. The substrate runs a recursive note-taking chain
-          across your corpus, distills insights and open questions, and
-          renders a cited thesis. Highlight anything in the result to chase
-          it further.
+          Deep research runs a recursive note-taking chain across your corpus,
+          distills insights and open questions, and renders a cited thesis.
+          It can make multiple model requests before the result is ready.
         </p>
 
         <div className="flex flex-col gap-3">
@@ -827,6 +841,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             ))}
           </div>
         </div>
+        </>}
 
         {/* SPR-05 M3 — the research LOG, folded into the home. Only in the
             consolidated home (`embedded`), so a fresh `/` is the composer AND
