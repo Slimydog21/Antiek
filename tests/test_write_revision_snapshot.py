@@ -36,6 +36,7 @@ import sys
 import textwrap
 import unicodedata
 from collections.abc import Sequence
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -717,6 +718,63 @@ def test_t2_7_manifest_is_canonical_and_hashes_match_duckdb(db_path: str) -> Non
     assert duck_row is not None
     duck_manifest, duck_content = duck_row
     assert (duck_manifest, duck_content) == (snap.manifest_sha256, snap.content_sha256)
+
+
+class _BlockTextParser(HTMLParser):
+    """Independent re-reader: each data-block-id's paragraph texts, in order."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.blocks: list[tuple[str, list[str]]] = []
+        self._in_p = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        found = dict(attrs)
+        if tag == "div":
+            self.blocks.append((str(found["data-block-id"]), []))
+        elif tag == "p":
+            self._in_p = True
+            self.blocks[-1][1].append("")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "p":
+            self._in_p = False
+
+    def handle_data(self, data: str) -> None:
+        if self._in_p:
+            self.blocks[-1][1][-1] += data
+
+
+def test_t2_7_text_sha256_is_recomputable_from_the_stored_html(db_path: str) -> None:
+    ids = _seed_matrix(db_path)
+    with connect_write(db_path, purpose="test/w3-2") as con:
+        update_section_prose(
+            con, section_id="sec-b",
+            prose_text="  One & <two>.\n \t\n\n\nThree\nstill three.  \n",
+        )
+    snap = _snap(db_path, ids["deliverable_id"])
+    parser = _BlockTextParser()
+    parser.feed(snap.canonical_html)
+    parser.close()
+    from_html = {bid: "\n\n".join(ps) for bid, ps in parser.blocks}
+    manifest = {b["block_id"]: b["text_sha256"] for b in json.loads(snap.manifest_json)["blocks"]}
+    assert list(from_html) == list(manifest) == _block_ids(snap)
+    for bid, text in from_html.items():
+        assert hashlib.sha256(text.encode("utf-8")).hexdigest() == manifest[bid], bid
+    assert from_html["sprose:sec-b"] == "One & <two>.\n\nThree\nstill three."
+    assert from_html["oblk-dangling"] == ""
+
+
+def test_t2_7_whitespace_the_html_drops_changes_no_hash(db_path: str) -> None:
+    ids = _seed_matrix(db_path)
+    before = _snap(db_path, ids["deliverable_id"])
+    with connect_write(db_path, purpose="test/w3-2") as con:
+        update_section_prose(con, section_id="sec-b",
+                             prose_text="\n  I wrote this myself.\t\n\n \n")
+    after = _snap(db_path, ids["deliverable_id"])
+    assert (after.content_sha256, after.manifest_sha256) == (
+        before.content_sha256, before.manifest_sha256,
+    )
 
 
 # ---------------------------------------------------------------------------

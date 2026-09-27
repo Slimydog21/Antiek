@@ -16,6 +16,11 @@ outside the deliverable surfaced at the root; blocks by
 ``sprose:<section_id>``, present only when it has a non-empty paragraph.
 Headings and the title are structural text, not blocks.
 
+Each block's ``text`` (and so its manifest ``text_sha256``) is exactly the text
+its ``<div>`` shows: an outline block's single paragraph, or ``""`` when it
+renders none; a prose block's paragraphs joined by one blank line. Every
+``text_sha256`` can therefore be recomputed from the stored ``canonical_html``.
+
 Main's deliverable HTML path is not reused: it reads ``section_blocks``, drops
 unresolvable refs, opens its own connections, orders sections by index alone,
 bakes cite-only rights into the bytes and emits no block ids. The bytes here
@@ -65,6 +70,7 @@ WRITE_SANITIZER_POLICY: Final[str] = "antiek-write-revision-escape"
 WRITE_SANITIZER_VERSION: Final[str] = "1"
 MANIFEST_SCHEMA: Final[str] = "antiek.write_revision.v1"
 PROSE_BLOCK_PREFIX: Final[str] = "sprose:"
+PARAGRAPH_SEPARATOR: Final[str] = "\n\n"
 
 SourceKind = Literal["user", "unresolved"]
 UnresolvedReason = Literal["no_provenance", "projection_missing", "source_missing"]
@@ -429,8 +435,7 @@ def snapshot_deliverable(con: SqlReader, deliverable_id: str) -> WriteSnapshot:
         parts.append(f'<section data-section-id="{_e(sid)}" data-depth="{depth}">\n')
         parts.append(f"<h{level}>{_e(_nfc(section.title))}</h{level}>\n")
 
-        prose = _nfc(section.prose_text)
-        paragraphs = _paragraphs(prose)
+        paragraphs = _paragraphs(_nfc(section.prose_text))
         if paragraphs:
             block_id = PROSE_BLOCK_PREFIX + sid
             parts.append(
@@ -438,7 +443,11 @@ def snapshot_deliverable(con: SqlReader, deliverable_id: str) -> WriteSnapshot:
                 + "".join(f"<p>{_e(p)}</p>" for p in paragraphs)
                 + "</div>\n"
             )
-            blocks.append(SnapshotBlock(block_id, sid, "prose", None, None, prose))
+            # The block's text is what the stored bytes show: its paragraphs
+            # joined by one blank line, so text_sha256 is recomputable from
+            # canonical_html and whitespace the HTML drops changes no hash.
+            text = PARAGRAPH_SEPARATOR.join(paragraphs)
+            blocks.append(SnapshotBlock(block_id, sid, "prose", None, None, text))
             classified.append((block_id, _classify_prose(section), None))
 
         for b in blocks_by_section.get(sid, []):
@@ -676,6 +685,7 @@ def verify_canonical_html(html: str, block_ids: Sequence[str]) -> None:
 
 __all__ = [
     "MANIFEST_SCHEMA",
+    "PARAGRAPH_SEPARATOR",
     "PROSE_BLOCK_PREFIX",
     "WRITE_SANITIZER_POLICY",
     "WRITE_SANITIZER_VERSION",
