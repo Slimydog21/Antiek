@@ -1,12 +1,15 @@
-"""The owner-safe ``evidence_index`` and its receipt row (LB-9a; THREAD-CONTRACT
+"""The owner-safe evidence store and its receipt row (LB-9a; THREAD-CONTRACT
 §1.12, signed rev 8.10). T-a1 to T-a8.
 
-#3514 keyed ``evidence_index`` on ``evidence_id`` alone and minted the id with
-no owner in it, so the second owner to refresh the same document scope hit
-``Duplicate key "evidence_id: ev-…"`` (compws R2), and ``resolve`` answered
-one owner's id to anyone. These tests seed that DDL where the spec asks for
-it, prove it still collides (so the control is live), and then prove the new
-store does not.
+#3514 is live on main: ``substrate.companions.evidence_index`` keys its
+``evidence_index`` table on ``evidence_id`` alone and mints the id with no
+owner in it, so the second owner to refresh the same document scope hits
+``Duplicate key "evidence_id: ev-…"`` (compws R2, lane A's C1), and its
+``resolve`` answers one owner's id to anyone. The first test here pins that
+live defect with main's own functions. LB-9a keeps its own tables,
+``companion_document_evidence`` and ``companion_document_receipts``, beside
+#3514's and never touches them; LB-9d retires #3514's table and routes in one
+reviewed change.
 
 Every test runs against a real DuckDB file through ``connect_write``; nothing
 is mocked.
@@ -25,8 +28,9 @@ import pytest
 from runtime.db_lock import LockedConnection, connect_read, connect_write
 from substrate.companion_document.store import (
     ENTRY_KINDS,
+    EVIDENCE_TABLE,
     ID_MATERIAL_VERSION,
-    LEGACY_3514_TABLE,
+    RECEIPTS_TABLE,
     SCOPES,
     CompanionDocumentReceipt,
     EvidenceEntry,
@@ -40,24 +44,17 @@ from substrate.companion_document.store import (
     table_exists,
     upsert_receipt,
 )
+from substrate.companions import evidence_index as live_3514
 
-# #3514's DDL, verbatim from feat/companion-spr03 @ f87a4db64,
-# substrate/companions/evidence_index.py:59-73.
-DDL_3514 = """
-CREATE TABLE IF NOT EXISTS evidence_index (
-  evidence_id VARCHAR PRIMARY KEY,
-  owner_user_id VARCHAR NOT NULL,
-  scope VARCHAR NOT NULL CHECK (scope IN ('project', 'document')),
-  scope_id VARCHAR NOT NULL,
-  kind VARCHAR NOT NULL CHECK (kind IN ('claim', 'evidence', 'process')),
-  refs_json VARCHAR NOT NULL,
-  tombstone BOOLEAN NOT NULL DEFAULT FALSE,
-  rebuilt_at VARCHAR NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_evidence_index_scope
-  ON evidence_index(owner_user_id, scope, scope_id, kind);
-"""
+# #3514's tables on main (substrate/companions/evidence_index.py DDL and
+# WIRING_DDL). LB-9a must leave every one of them as it found it.
+TABLES_3514 = (
+    "evidence_index",
+    "companion_rebuild_receipts",
+    "companion_seen_triggers",
+    "companion_seen_triggers_by_owner",
+    "companion_watcher_state",
+)
 
 # The same R2 id both owners minted under #3514 (compws R2).
 R2_ID = "ev-585194df9dd251baa334b5a9"
@@ -115,9 +112,49 @@ def _receipt(
 
 def _all_rows(c: LockedConnection) -> list[tuple[str, str, str, str]]:
     rows: list[tuple[str, str, str, str]] = c.execute(
-        "SELECT owner_user_id, scope, scope_id, evidence_id FROM evidence_index ORDER BY 1, 2, 3, 4"
+        "SELECT owner_user_id, scope, scope_id, evidence_id FROM companion_document_evidence "
+        "ORDER BY 1, 2, 3, 4"
     ).fetchall()
     return rows
+
+
+def _rows_3514(owner: str, eid: str, refs: list[str]) -> list[live_3514.EvidenceRow]:
+    return [
+        live_3514.EvidenceRow(
+            evidence_id=eid,
+            owner_user_id=owner,
+            scope="document",
+            scope_id="doc-1",
+            kind="claim",
+            refs=tuple(sorted(refs)),
+            tombstone=False,
+            rebuilt_at="2026-09-27T00:00:00Z",
+        )
+    ]
+
+
+def _snapshot_3514(c: LockedConnection) -> dict[str, object]:
+    """Every column, constraint, index and row of #3514's tables, in a
+    stable order, so two snapshots compare equal only when nothing moved."""
+    snap: dict[str, object] = {}
+    for table in TABLES_3514:
+        columns = c.execute(
+            "SELECT column_name, data_type, is_nullable, column_default FROM duckdb_columns() "
+            "WHERE table_name = ? ORDER BY column_index",
+            [table],
+        ).fetchall()
+        constraints = c.execute(
+            "SELECT constraint_type, constraint_column_names, expression FROM duckdb_constraints() "
+            "WHERE table_name = ? ORDER BY constraint_index",
+            [table],
+        ).fetchall()
+        indexes = c.execute(
+            "SELECT index_name, sql FROM duckdb_indexes() WHERE table_name = ? ORDER BY index_name",
+            [table],
+        ).fetchall()
+        rows = c.execute(f"SELECT * FROM {table} ORDER BY ALL").fetchall()
+        snap[table] = (columns, constraints, indexes, rows)
+    return snap
 
 
 def _primary_key(c: LockedConnection, table: str) -> list[str]:
@@ -130,21 +167,39 @@ def _primary_key(c: LockedConnection, table: str) -> list[str]:
     return list(row[0])
 
 
-# ── The control: #3514's key really does collide (R2) ────────────────────
+# ── R2 on main: #3514's live store collides across owners ────────────────
 
 
-def test_r2_control_3514_key_collides_across_owners(con: LockedConnection) -> None:
-    """The red state, ported from the compws repro as an assertion: under
-    #3514's DDL the second owner's insert of the same id fails. If this ever
-    stops raising, the tests below that use this DDL prove nothing."""
-    con.execute(DDL_3514)
-    insert = (
-        "INSERT INTO evidence_index (evidence_id, owner_user_id, scope, scope_id, kind, refs_json, rebuilt_at) "
-        "VALUES (?, ?, 'document', 'doc-1', 'claim', '[]', 't')"
+def test_r2_live_3514_store_collides_across_owners_on_main(con: LockedConnection) -> None:
+    """The compws R2 steps, run as an assertion through main's own #3514
+    functions: owner-a and then owner-b rebuild document scope doc-1 with the
+    same claim identity and refs. #3514's id has no owner and its key is
+    ``evidence_id`` alone, so owner-b's rebuild raises, and #3514's
+    ``resolve`` answers owner-a's row to anyone holding the id.
+
+    This pins a LIVE defect (lane A's C1), not LB-9a behaviour. It is the
+    reason LB-9a's store exists, and it goes when LB-9d retires #3514's
+    table and routes. If #3514's key is fixed first, delete this test."""
+    refs = ["node:ins-bridge-1", "inv:inv-1"]
+    eid = live_3514.make_evidence_id("claim", "Bridge decks fail at the joints", refs)
+    live_3514.rebuild_scope(
+        con,
+        owner_user_id="owner-a",
+        scope="document",
+        scope_id="doc-1",
+        rows=_rows_3514("owner-a", eid, refs),
     )
-    con.execute(insert, [R2_ID, "owner-a"])
-    with pytest.raises(duckdb.ConstraintException, match=f'Duplicate key "evidence_id: {R2_ID}"'):
-        con.execute(insert, [R2_ID, "owner-b"])
+    assert _primary_key(con, "evidence_index") == ["evidence_id"]
+    with pytest.raises(duckdb.ConstraintException, match=f'Duplicate key "evidence_id: {eid}"'):
+        live_3514.rebuild_scope(
+            con,
+            owner_user_id="owner-b",
+            scope="document",
+            scope_id="doc-1",
+            rows=_rows_3514("owner-b", eid, refs),
+        )
+    leaked = live_3514.resolve(con, eid)
+    assert leaked is not None and leaked.owner_user_id == "owner-a"
 
 
 # ── T-a1 ──────────────────────────────────────────────────────────────────
@@ -270,9 +325,16 @@ def test_same_evidence_id_for_two_owners_is_admitted_by_the_key(con: LockedConne
     """T-a3: the key is (owner_user_id, evidence_id), so the R2 id stored for
     two owners is two rows, not a constraint error."""
     init_companion_document_schema(con)
-    assert _primary_key(con, "evidence_index") == ["owner_user_id", "evidence_id"]
+    assert (EVIDENCE_TABLE, RECEIPTS_TABLE) == (
+        "companion_document_evidence",
+        "companion_document_receipts",
+    )
+    assert _primary_key(con, "companion_document_evidence") == ["owner_user_id", "evidence_id"]
+    # LB-9a's init creates only its own tables; #3514's name is not ours.
+    assert not table_exists(con, "evidence_index")
     insert = (
-        "INSERT INTO evidence_index (owner_user_id, evidence_id, scope, scope_id, kind, anchor, "
+        "INSERT INTO companion_document_evidence (owner_user_id, evidence_id, scope, scope_id, "
+        "kind, anchor, "
         "thread_ids_json, doc_ids_json, pins_json, refresh_event_id) "
         "VALUES (?, ?, 'document', 'doc-1', 'claim', 'node:n1', '[]', '[]', '[]', 'rcpt-1')"
     )
@@ -298,8 +360,8 @@ def test_resolve_is_owner_scoped(con: LockedConnection) -> None:
     replace_scope(con, _receipt("owner-b"), [_entry()])
     assert resolve(con, "owner-b", row_a.evidence_id) is None
     con.execute(
-        "INSERT INTO evidence_index (owner_user_id, evidence_id, scope, scope_id, kind, anchor, "
-        "thread_ids_json, doc_ids_json, pins_json, refresh_event_id) "
+        "INSERT INTO companion_document_evidence (owner_user_id, evidence_id, scope, scope_id, kind, "
+        "anchor, thread_ids_json, doc_ids_json, pins_json, refresh_event_id) "
         "VALUES ('owner-b', ?, 'document', 'doc-7', 'claim', 'node:other', '[]', '[]', '[]', 'rcpt-x')",
         [row_a.evidence_id],
     )
@@ -404,7 +466,7 @@ def test_no_column_stores_text(con: LockedConnection) -> None:
     replace_scope(con, _receipt("owner-a"), [entry])
     found_label: list[tuple[str, str]] = []
     found_pointer: list[tuple[str, str]] = []
-    for table in ("evidence_index", "companion_document_receipts"):
+    for table in ("companion_document_evidence", "companion_document_receipts"):
         columns = [
             r[0]
             for r in con.execute(
@@ -423,7 +485,7 @@ def test_no_column_stores_text(con: LockedConnection) -> None:
                 if "ins-sentinel-node" in value:
                     found_pointer.append((table, column))
     assert found_label == []
-    assert ("evidence_index", "anchor") in found_pointer
+    assert ("companion_document_evidence", "anchor") in found_pointer
     (stored,) = read_scope(con, owner_user_id="owner-a", scope="document", scope_id="doc-1")
     assert stored.entry.text_sha256 == _sha(SENTINEL_LABEL)
 
@@ -432,76 +494,120 @@ def test_text_hash_column_refuses_text_even_through_raw_sql(con: LockedConnectio
     init_companion_document_schema(con)
     with pytest.raises(duckdb.ConstraintException):
         con.execute(
-            "INSERT INTO evidence_index (owner_user_id, evidence_id, scope, scope_id, kind, anchor, "
-            "thread_ids_json, doc_ids_json, pins_json, refresh_event_id, text_sha256) "
+            "INSERT INTO companion_document_evidence (owner_user_id, evidence_id, scope, scope_id, "
+            "kind, anchor, thread_ids_json, doc_ids_json, pins_json, refresh_event_id, text_sha256) "
             "VALUES ('owner-a', 'ev-1', 'document', 'doc-1', 'insight', 'node:n1', '[]', '[]', '[]', 'r', ?)",
             [SENTINEL_LABEL],
         )
     with pytest.raises(duckdb.ConstraintException):
         con.execute(
-            "INSERT INTO evidence_index (owner_user_id, evidence_id, scope, scope_id, kind, anchor, "
-            "thread_ids_json, doc_ids_json, pins_json, refresh_event_id) "
+            "INSERT INTO companion_document_evidence (owner_user_id, evidence_id, scope, scope_id, "
+            "kind, anchor, thread_ids_json, doc_ids_json, pins_json, refresh_event_id) "
             "VALUES ('owner-a', 'ev-1', 'document', 'doc-1', 'insight', ?, '[]', '[]', '[]', 'r')",
             [SENTINEL_LABEL],
         )
 
 
-# ── T-a8 ──────────────────────────────────────────────────────────────────
+# ── T-a8: beside #3514's live tables ─────────────────────────────────────
 
 
-def test_init_migrates_the_3514_shape_and_r2_then_passes(con: LockedConnection) -> None:
-    """T-a8: #3514's DDL is seeded (with a row), init runs, the key becomes
-    (owner_user_id, evidence_id), the old rows survive under the legacy
-    name, and T-a1's two-owner refresh then passes on that database."""
-    con.execute(DDL_3514)
-    con.execute(
-        "INSERT INTO evidence_index (evidence_id, owner_user_id, scope, scope_id, kind, refs_json, rebuilt_at) "
-        "VALUES (?, 'owner-a', 'document', 'doc-1', 'claim', '[\"node:n1\"]', 't')",
-        [R2_ID],
+def _seed_3514(c: LockedConnection) -> str:
+    """#3514's own schema and a generation of its own rows, written through
+    main's #3514 functions: a claim for owner-a on doc-1, a receipt, a seen
+    trigger and a watcher watermark."""
+    refs = ["node:n1", "inv:inv-1"]
+    eid = live_3514.make_evidence_id("claim", "Bridge decks fail at the joints", refs)
+    live_3514.init_evidence_index_schema(c)
+    live_3514.rebuild_scope(
+        c,
+        owner_user_id="owner-a",
+        scope="document",
+        scope_id="doc-1",
+        rows=_rows_3514("owner-a", eid, refs),
     )
-    assert _primary_key(con, "evidence_index") == ["evidence_id"]
+    live_3514.record_receipt(
+        c,
+        live_3514.RebuildReceipt(
+            rebuild_id="rb-1",
+            owner_user_id="owner-a",
+            scope="document",
+            scope_id="doc-1",
+            trigger_event_ids=("evt-1",),
+            rows_written=1,
+            duration_ms=3,
+            status="completed",
+            error=None,
+            rebuilt_at="2026-09-27T00:00:00Z",
+        ),
+    )
+    live_3514.mark_triggers_seen(c, "owner-a", ["evt-1"], "2026-09-27T00:00:00Z")
+    c.execute("INSERT INTO companion_seen_triggers (event_id, seen_at) VALUES ('evt-legacy', 't')")
+    live_3514.watcher_state_set(c, "diligence_watermark", "w-1")
+    return eid
+
+
+def test_lb9a_schema_coexists_with_3514_and_leaves_it_byte_identical(
+    con: LockedConnection,
+) -> None:
+    """T-a8: #3514's schema and rows are in place, as on main, where its
+    routes read and write them. LB-9a's init and two owners' refreshes of
+    the same scope run beside them; every #3514 table keeps its columns,
+    constraints, indexes and rows exactly, and #3514's own store still works
+    afterwards."""
+    eid = _seed_3514(con)
+    before = _snapshot_3514(con)
+    for table in TABLES_3514:
+        assert before[table][3], f"seed {table} so the check is live"  # type: ignore[index]
 
     init_companion_document_schema(con)
-    assert _primary_key(con, "evidence_index") == ["owner_user_id", "evidence_id"]
-    assert table_exists(con, LEGACY_3514_TABLE)
-    assert _primary_key(con, LEGACY_3514_TABLE) == ["evidence_id"]
-    assert con.execute(
-        f"SELECT evidence_id, owner_user_id FROM {LEGACY_3514_TABLE}"
-    ).fetchall() == [(R2_ID, "owner-a")]
-    assert _all_rows(con) == []
-
-    # Idempotent: a second init changes nothing.
     init_companion_document_schema(con)
-    assert _primary_key(con, "evidence_index") == ["owner_user_id", "evidence_id"]
-
     replace_scope(con, _receipt("owner-a"), [_entry()])
     replace_scope(con, _receipt("owner-b"), [_entry()])
+
+    assert _snapshot_3514(con) == before
+    assert _primary_key(con, "evidence_index") == ["evidence_id"]
+    assert _primary_key(con, "companion_document_evidence") == ["owner_user_id", "evidence_id"]
     assert [r[0] for r in _all_rows(con)] == ["owner-a", "owner-b"]
+    # #3514's store is untouched and still serves its own rows.
+    still = live_3514.resolve(con, eid)
+    assert still is not None and still.owner_user_id == "owner-a"
+    rows_3514 = live_3514.read_scope(
+        con, owner_user_id="owner-a", scope="document", scope_id="doc-1"
+    )
+    assert [r.evidence_id for r in rows_3514] == [eid]
 
 
-def test_replace_scope_on_a_3514_database_migrates_first(con: LockedConnection) -> None:
-    """The write path initialises before it writes (D17 step 2), so a first
-    refresh against a #3514 database does not collide either."""
-    con.execute(DDL_3514)
-    replace_scope(con, _receipt("owner-a"), [_entry()])
-    replace_scope(con, _receipt("owner-b"), [_entry()])
-    assert _primary_key(con, "evidence_index") == ["owner_user_id", "evidence_id"]
-    assert len(_all_rows(con)) == 2
-
-
-def test_init_refuses_an_evidence_index_of_unknown_shape(con: LockedConnection) -> None:
-    """Neither #3514's shape nor ours: refuse rather than guess."""
-    con.execute("CREATE TABLE evidence_index (evidence_id VARCHAR PRIMARY KEY, payload VARCHAR)")
-    with pytest.raises(RuntimeError, match="evidence_index"):
-        init_companion_document_schema(con)
+def test_3514_init_after_lb9a_init_leaves_lb9a_rows_alone(con: LockedConnection) -> None:
+    """The other order: LB-9a's tables first, then #3514's init and rebuild
+    (a #3514 route on first use). Both schemas stand; LB-9a's rows stay."""
+    written = replace_scope(con, _receipt("owner-a"), [_entry()])
+    _seed_3514(con)
+    assert read_scope(con, owner_user_id="owner-a", scope="document", scope_id="doc-1") == written
+    assert _primary_key(con, "companion_document_evidence") == ["owner_user_id", "evidence_id"]
     assert _primary_key(con, "evidence_index") == ["evidence_id"]
-    assert not table_exists(con, LEGACY_3514_TABLE)
 
 
-def test_read_paths_before_migration_see_nothing(db: str) -> None:
-    """A read connection never runs DDL: before any refresh, and on a
-    database still holding #3514's shape, the read helpers answer empty."""
-    with connect_write(db, purpose="test/seed-3514", keepalive_s=0) as c:
+def test_init_refuses_a_companion_document_evidence_of_unknown_shape(
+    con: LockedConnection,
+) -> None:
+    """A table under LB-9a's name that is not LB-9a's shape: refuse rather
+    than write into it."""
+    con.execute(
+        "CREATE TABLE companion_document_evidence (evidence_id VARCHAR PRIMARY KEY, payload VARCHAR)"
+    )
+    with pytest.raises(RuntimeError, match="companion_document_evidence"):
+        init_companion_document_schema(con)
+    with pytest.raises(RuntimeError, match="companion_document_evidence"):
+        replace_scope(con, _receipt("owner-a"), [_entry()])
+    assert _primary_key(con, "companion_document_evidence") == ["evidence_id"]
+    assert con.execute("SELECT COUNT(*) FROM companion_document_evidence").fetchone() == (0,)
+
+
+def test_read_paths_see_nothing_before_init_and_never_read_3514(db: str) -> None:
+    """A read connection never runs DDL: before any refresh the read helpers
+    answer empty, and with #3514's table present and holding the very id
+    asked for, LB-9a's reads still answer from LB-9a's table only."""
+    with connect_write(db, purpose="test/lb9a-read", keepalive_s=0) as c:
         c.execute("CREATE TABLE seed_marker (x INTEGER)")
     reader = connect_read(db)
     try:
@@ -513,17 +619,13 @@ def test_read_paths_before_migration_see_nothing(db: str) -> None:
         )
     finally:
         reader.close()
-    with connect_write(db, purpose="test/seed-3514", keepalive_s=0) as c:
-        c.execute(DDL_3514)
-        c.execute(
-            "INSERT INTO evidence_index (evidence_id, owner_user_id, scope, scope_id, kind, refs_json, rebuilt_at) "
-            "VALUES (?, 'owner-a', 'document', 'doc-1', 'claim', '[]', 't')",
-            [R2_ID],
-        )
+    with connect_write(db, purpose="test/lb9a-read", keepalive_s=0) as c:
+        eid = _seed_3514(c)
     reader = connect_read(db)
     try:
         assert read_scope(reader, owner_user_id="owner-a", scope="document", scope_id="doc-1") == ()
-        assert resolve(reader, "owner-a", R2_ID) is None
+        assert resolve(reader, "owner-a", eid) is None
+        assert not table_exists(reader, "companion_document_evidence")
         assert not table_exists(reader, "companion_document_receipts")
     finally:
         reader.close()
