@@ -42,7 +42,7 @@ from substrate.schemas import InvestigationStartRequestedPayload
 # shared "__operator__" sentinel: seeding the sentinel would meter a
 # different owner and leave the hard cap unset for the one being charged.
 _OPERATOR = _derived_owner()
-_START ="investigation.start_requested"
+_START = "investigation.start_requested"
 
 
 class _SpyBus(EventBroadcaster):
