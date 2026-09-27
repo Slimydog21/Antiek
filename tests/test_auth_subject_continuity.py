@@ -528,43 +528,65 @@ def test_owner_checked_delete_serializes_a_concurrent_registration_update(
     delete_result: list[bool] = []
     update_result: list[object] = []
     writes_inside_lock: list[str] = []
+    read_windows: list[tuple[str, int]] = []
+    write_windows: list[tuple[str, int]] = []
     failures: list[BaseException] = []
     delete_thread_id: list[int] = []
 
     class TrackingLock:
         def __init__(self):
             self._lock = threading.Lock()
-            self.acquisitions: list[str] = []
+            self._state_lock = threading.Lock()
+            self._owner: str | None = None
+            self._generation = 0
+            self.acquisitions: list[tuple[str, int]] = []
 
         def __enter__(self):
             name = threading.current_thread().name
             if name == "credential-updater":
                 updater_attempted_lock.set()
-            self._lock.acquire()
-            self.acquisitions.append(name)
+            if not self._lock.acquire(timeout=3):
+                raise TimeoutError(f"{name} could not acquire the credential store lock")
+            with self._state_lock:
+                assert self._owner is None
+                self._generation += 1
+                self._owner = name
+                self.acquisitions.append((name, self._generation))
             return self
 
         def __exit__(self, *_):
-            self._lock.release()
+            with self._state_lock:
+                assert self._owner == threading.current_thread().name
+                self._owner = None
+                self._lock.release()
+
+        def active_generation(self) -> int:
+            with self._state_lock:
+                assert self._owner == threading.current_thread().name
+                return self._generation
 
     tracking_lock = TrackingLock()
     monkeypatch.setattr(passkeys, "_store_lock", tracking_lock)
 
     def controlled_read():
+        name = threading.current_thread().name
+        generation = tracking_lock.active_generation()
+        read_windows.append((name, generation))
         if threading.get_ident() == delete_thread_id[0]:
-            assert tracking_lock.acquisitions[-1] == "credential-deleter"
+            assert name == "credential-deleter"
             deleting_read_entered.set()
             if not release_deleting_read.wait(timeout=3):
                 raise AssertionError("deletion read was not released")
         else:
-            assert tracking_lock.acquisitions[-1] == "credential-updater"
+            assert name == "credential-updater"
             updating_read_entered.set()
         return original_read()
 
     def controlled_write(credentials):
         name = threading.current_thread().name
-        assert tracking_lock.acquisitions[-1] == name
+        generation = tracking_lock.active_generation()
         writes_inside_lock.append(name)
+        write_windows.append((name, generation))
         return original_write(credentials)
 
     monkeypatch.setattr(passkeys, "_read_credentials_unlocked", controlled_read)
@@ -588,8 +610,12 @@ def test_owner_checked_delete_serializes_a_concurrent_registration_update(
         except BaseException as exc:
             failures.append(exc)
 
-    deleter = threading.Thread(target=delete_target, name="credential-deleter")
-    updater = threading.Thread(target=add_legitimate_credential, name="credential-updater")
+    deleter = threading.Thread(
+        target=delete_target, name="credential-deleter", daemon=True,
+    )
+    updater = threading.Thread(
+        target=add_legitimate_credential, name="credential-updater", daemon=True,
+    )
     deleter.start()
     try:
         assert deleting_read_entered.wait(timeout=3)
@@ -601,6 +627,9 @@ def test_owner_checked_delete_serializes_a_concurrent_registration_update(
         deleter.join(timeout=5)
         if updater.ident is not None:
             updater.join(timeout=5)
+        for worker in (deleter, updater):
+            if worker.is_alive():
+                worker.join(timeout=1)
 
     assert not deleter.is_alive() and not updater.is_alive()
     assert not failures
@@ -608,9 +637,15 @@ def test_owner_checked_delete_serializes_a_concurrent_registration_update(
     assert len(update_result) == 1
     assert updating_read_entered.is_set()
     assert tracking_lock.acquisitions == [
-        "credential-deleter", "credential-updater",
+        ("credential-deleter", 1), ("credential-updater", 2),
     ]
     assert writes_inside_lock == ["credential-deleter", "credential-updater"]
+    assert read_windows == [
+        ("credential-deleter", 1), ("credential-updater", 2),
+    ]
+    assert write_windows == [
+        ("credential-deleter", 1), ("credential-updater", 2),
+    ]
     payload = json.loads(store.read_text())
     assert {item["credential_id"] for item in payload["credentials"]} == {
         _b64(preserved_id), "Y29uY3VycmVudC1sZWdpdGltYXRlLXVwZGF0ZQ",

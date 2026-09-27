@@ -130,11 +130,20 @@ def test_concurrent_same_credential_registration_persists_exactly_one_record(
         except BaseException as exc:
             failures.append(exc)
 
-    threads = [threading.Thread(target=register, args=(item["ceremony_id"],)) for item in ceremonies]
+    threads = [
+        threading.Thread(target=register, args=(item["ceremony_id"],), daemon=True)
+        for item in ceremonies
+    ]
     for thread in threads:
         thread.start()
-    for thread in threads:
-        thread.join(timeout=5)
+    try:
+        for thread in threads:
+            thread.join(timeout=5)
+    finally:
+        if any(thread.is_alive() for thread in threads):
+            barrier.abort()
+            for thread in threads:
+                thread.join(timeout=1)
 
     assert all(not thread.is_alive() for thread in threads)
     assert len(results) == 1
