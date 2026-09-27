@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 
 import { enter } from "../../design/motion";
+import { topModal } from "../../workspace/escapeOverlay";
 
 /**
  * LemonModal — centered modal with backdrop, ESC-to-close, outside-click-to-close,
@@ -74,7 +75,7 @@ export function LemonModal({
     if (!open || forceUserAction) return;
     const handler = (e: KeyboardEvent) => {
       // The Esc is the dialog's alone (escapeOverlay.ts).
-      if (e.key === "Escape" && !e.defaultPrevented) {
+      if (e.key === "Escape" && !e.defaultPrevented && topModal() === dialogRef.current) {
         e.preventDefault();
         onClose();
       }
