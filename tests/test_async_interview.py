@@ -136,7 +136,13 @@ def test_a_failed_turn_write_leaves_no_answer_document(speak_env, monkeypatch):
     iid = s.interview_id
     _consent(db, iid)
 
-    def _turn_write_fails(*_a, **_k):
+    def _turn_write_fails(con, *_a, **_k):
+        # Not vacuous: the note is already written, in the transaction the
+        # turn shares, when the turn write fails.
+        stored = con.execute(
+            "SELECT count(*) FROM documents WHERE document_type = 'voice_note'"
+        ).fetchone()[0]
+        assert stored == 1
         raise RuntimeError("turn write failed")
 
     with monkeypatch.context() as m:

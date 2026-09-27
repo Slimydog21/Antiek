@@ -290,33 +290,43 @@ def test_guard_pass_then_after_write_under_one_lock(
     assert len(_loaded_events(temp_substrate["events_dir"], "inv-voice-hooks")) == 1
 
 
-def test_after_write_failure_rolls_the_note_back(temp_substrate):
+@pytest.mark.parametrize("transcript,min_words,stored", [
+    (_LONG_TRANSCRIPT, 8, True), ("two words", 8, False),
+])
+def test_after_write_failure_rolls_the_note_back(temp_substrate, transcript, min_words, stored):
     """``after_write`` shares the note's transaction, not only its lock. The
     flock gives mutual exclusion, and DuckDB autocommits every statement, so
     under one lock alone a hook that fails (Speak's answer turn) left the
-    document, chunks and nodes stored without it."""
+    document, chunks and nodes stored without it. On the too-short path the
+    hook's own writes roll back the same way."""
+    from runtime.db_lock import connect_write
     from substrate.graph import ensure_initialized
 
     ensure_initialized(temp_substrate["db_path"])
+    with connect_write(temp_substrate["db_path"], purpose="test:hook-writes") as con:
+        con.execute("CREATE TABLE hook_writes (document_id VARCHAR)")
     before = _voice_rows(temp_substrate["db_path"])
     seen: list[str] = []
 
-    def _fail_after_note(con: Any, res: Any) -> None:
-        # The note is already written, inside the transaction the hook shares.
+    def _write_then_fail(con: Any, res: Any) -> None:
         seen.append(res.document_id)
+        con.execute("INSERT INTO hook_writes VALUES (?)", [res.document_id])
+        # A stored note is already written, inside the transaction the hook shares.
         assert con.execute(
             "SELECT count(*) FROM documents WHERE document_id = ?", [res.document_id],
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == (1 if stored else 0)
         raise _Refused
 
     with pytest.raises(_Refused):
         ingest_voice_note(
-            _LONG_TRANSCRIPT, investigation_id="inv-voice-atomic",
+            transcript, investigation_id="inv-voice-atomic",
             db_path=temp_substrate["db_path"], embedder=_StubEmbedder(),
-            after_write=_fail_after_note,
+            min_word_count=min_words, after_write=_write_then_fail,
         )
     assert len(seen) == 1
     assert _voice_rows(temp_substrate["db_path"]) == before
+    with connect_write(temp_substrate["db_path"], purpose="test:hook-writes") as con:
+        assert con.execute("SELECT count(*) FROM hook_writes").fetchone()[0] == 0
 
 
 # ─────────────────────────────────────────────────────────────────────
