@@ -12,7 +12,10 @@ no sources, or one whose walk is unreadable, is ``withheld · unresolved``.
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import importlib
+import inspect
 import io
 import itertools
 import os
@@ -733,15 +736,73 @@ def test_naming_check_is_live() -> None:
     assert _bare_uses("x = 'companion-document-abc'  # a companion document\n") == []
 
 
+# What gate.py may import: the standard library it needs, the shared type, and
+# only the pure names of its sibling modules (dataclasses, literal types and
+# predicates that take no connection). Anything else is a way to read.
+_PURE_IMPORTS: dict[str, frozenset[str] | None] = {
+    "__future__": None,
+    "hashlib": None,
+    "json": None,
+    "collections.abc": None,
+    "dataclasses": None,
+    "typing": None,
+    "substrate.schemas.gated_text": None,
+    "substrate.companion_document.rights": frozenset(
+        {"DocumentRights", "is_servable", "owner_overlay_withholds"}
+    ),
+    "substrate.companion_document.store": frozenset({"EntryKind", "SourcePin"}),
+}
+_READING_BUILTINS = frozenset({"open", "exec", "eval", "compile", "__import__", "input"})
+
+
+def _impurities(source: str) -> list[str]:
+    """Every import outside the allowlist, and every call of a builtin that
+    reads or runs code, found by walking the syntax tree."""
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name not in _PURE_IMPORTS:
+                    found.append(f"import {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module not in _PURE_IMPORTS:
+                found.append(f"from {module}")
+                continue
+            allowed = _PURE_IMPORTS[module]
+            for alias in node.names:
+                if allowed is not None and alias.name not in allowed:
+                    found.append(f"from {module} import {alias.name}")
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in _READING_BUILTINS
+        ):
+            found.append(f"call {node.func.id}")
+    return found
+
+
 def test_gate_module_is_pure() -> None:
-    """The composer reads nothing: no DB, file or event import."""
-    source = Path(gate_module.__file__).read_text(encoding="utf-8")
-    for forbidden in (
-        "duckdb",
-        "connect_read",
-        "connect_write",
-        "event_log",
-        "open(",
-        "os.environ",
-    ):
-        assert forbidden not in source, forbidden
+    """The composer reads nothing: its imports are an allowlist of the
+    standard library, the shared type and pure sibling names, and it calls
+    no builtin that reads or runs code."""
+    assert _impurities(Path(gate_module.__file__).read_text(encoding="utf-8")) == []
+    # The sibling names it may import really are pure: none takes a connection.
+    for module, names in _PURE_IMPORTS.items():
+        if names is None or not module.startswith("substrate.companion_document"):
+            continue
+        loaded = importlib.import_module(module)
+        for name in names:
+            obj = getattr(loaded, name)
+            if inspect.isfunction(obj):
+                assert "con" not in inspect.signature(obj).parameters, f"{module}.{name}"
+
+
+def test_purity_check_is_live() -> None:
+    assert _impurities("from substrate.companion_document.store import read_scope\n") != []
+    assert _impurities("from substrate.companion_document.rights import document_rights\n") != []
+    assert _impurities("from pathlib import Path\n") != []
+    assert _impurities("import duckdb\n") != []
+    assert _impurities("from runtime.db_lock import connect_read\n") != []
+    assert _impurities("x = open('f')\n") != []
+    assert _impurities("import json\nfrom substrate.schemas.gated_text import GatedText\n") == []

@@ -508,6 +508,24 @@ def test_text_hash_column_refuses_text_even_through_raw_sql(con: LockedConnectio
         )
 
 
+@pytest.mark.parametrize("anchor", ["node:n1\x1fdocument", "event:e\x1f1#0"])
+def test_anchor_check_refuses_the_id_separator_through_raw_sql(
+    con: LockedConnection, anchor: str
+) -> None:
+    """The DDL backstop is as strict as ``entry_id``: the id-material
+    separator is refused inside an anchor even on a raw insert. The clean
+    anchor in the same statement lands, so the CHECK is what refuses."""
+    init_companion_document_schema(con)
+    insert = (
+        "INSERT INTO companion_document_evidence (owner_user_id, evidence_id, scope, scope_id, "
+        "kind, anchor, thread_ids_json, doc_ids_json, pins_json, refresh_event_id) "
+        "VALUES ('owner-a', ?, 'document', 'doc-1', 'insight', ?, '[]', '[]', '[]', 'r')"
+    )
+    con.execute(insert, ["ev-clean", anchor.replace("\x1f", "")])
+    with pytest.raises(duckdb.ConstraintException):
+        con.execute(insert, ["ev-sep", anchor])
+
+
 # ── T-a8: beside #3514's live tables ─────────────────────────────────────
 
 
