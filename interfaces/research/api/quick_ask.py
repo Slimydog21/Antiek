@@ -43,8 +43,8 @@ _WARNING = (
 # of these; routes stay unavailable until a fresh preset and live adapter exist.
 _APPROVED_MODELS = frozenset({
     "gpt-6-sol", "gpt-6-luna", "glm-5.3", "glm-5.3-flash", "kimi-k3",
-    "grok-4.7", "mimo-v2.6-pro", "deepseek-v4-pro", "deepseek-v4-flash",
-    "deepseek-v4-flash-nothink",
+    "grok-4.7", "mimo-v2.6-pro", "deepseek-v4-pro", "deepseek-flash",
+    "deepseek-flash-nothink",
 })
 _INVENTORY_OPERATION = UUID("00000000-0000-4000-8000-000000000000")
 

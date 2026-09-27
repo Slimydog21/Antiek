@@ -99,6 +99,8 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
+vi.mock("./QuickAsk", () => ({ default: () => <div>Quick Ask one-request form</div> }));
+
 import StartResearch from "./StartResearch";
 
 // AMS2-SPR-03: the idle home wraps its content column in GlassSurface, which
@@ -155,11 +157,13 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 function renderHome(embedded = false) {
-  return render(
+  const view = render(
     <MemoryRouter>
       <StartResearch embedded={embedded} />
     </MemoryRouter>,
   );
+  fireEvent.click(screen.getByRole("button", { name: "Deep research · multiple model calls" }));
+  return view;
 }
 
 describe("StartResearch — voice fills the prompt (SPR-05 M1)", () => {

@@ -165,8 +165,8 @@ type AttachState =
 export default function StartResearch({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const start = useStartInvestigation();
-  const [askMode, setAskMode] = useState<"quick" | "deep">("deep");
   const restoredLaunch = useMemo(readPendingOwnerLaunch, []);
+  const [askMode, setAskMode] = useState<"quick" | "deep">(restoredLaunch ? "deep" : "quick");
   const [question, setQuestion] = useState(restoredLaunch?.question ?? "");
   // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
   // Recorded on the investigation server-side so it's queryable after.

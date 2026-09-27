@@ -73,6 +73,8 @@ vi.mock("./CascadeProposal", () => ({
   ),
 }));
 
+vi.mock("./QuickAsk", () => ({ default: () => <div>Quick Ask one-request form</div> }));
+
 import StartResearch from "./StartResearch";
 
 // AMS2-SPR-03: the idle home now wraps its content column in GlassSurface
@@ -99,11 +101,13 @@ function installMatchMedia(reducedMotion = false) {
 }
 
 function renderStart() {
-  return render(
+  const view = render(
     <MemoryRouter>
       <StartResearch />
     </MemoryRouter>,
   );
+  fireEvent.click(screen.getByRole("button", { name: "Deep research · multiple model calls" }));
+  return view;
 }
 
 beforeEach(() => {
@@ -131,6 +135,23 @@ async function choosePaidModel() {
 afterEach(() => cleanup());
 
 describe("StartResearch — the start-a-research entry (M1)", () => {
+  it("opens the personal Ask on its one-request mode", () => {
+    render(<MemoryRouter><StartResearch /></MemoryRouter>);
+    expect(screen.getByRole("button", { name: "Quick Ask · one model request" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Quick Ask one-request form")).toBeTruthy();
+  });
+
+  it("keeps a Settings-returned deep launch on its original mode", () => {
+    window.sessionStorage.setItem("antiek.research.pending-owner-launch.session.v1", JSON.stringify({
+      question: "Resume this investigation",
+      operationId: "operation-1",
+      modelChoice: { authority: "user_model", provider_id: "saved-1", model_id: "model-1" },
+    }));
+    render(<MemoryRouter><StartResearch /></MemoryRouter>);
+    expect(screen.getByRole("button", { name: "Deep research · multiple model calls" }).getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByLabelText("Research question") as HTMLTextAreaElement).value).toBe("Resume this investigation");
+  });
+
   it("wraps the idle `/` home column in a LANDING-GLASS surface (SPR-03 M2 occlusion contract)", () => {
     // Audit §3 item 1: the idle `/` home is the landing-glass counterpart of the
     // dense /inv/:id IDE. Its content column rides on GlassSurface variant="glass"

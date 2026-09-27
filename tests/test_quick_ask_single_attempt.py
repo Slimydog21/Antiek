@@ -151,23 +151,23 @@ def test_model_inventory_uses_same_owner_and_current_price_predicate(route) -> N
     ]
     assert provider.calls == []
     flash = ByotModelVariant(
-        "deepseek-v4-flash", "DeepSeek V4 Flash",
+        "deepseek-flash", "DeepSeek V4.1 Flash",
         preset_box[0].models[0].rates,
         preset_box[0].models[0].snapshot.replace("v4-pro", "v4-flash"),
     )
     preset_box[0] = replace(preset_box[0], models=(*preset_box[0].models, flash))
     record_box[0] = record_box[0].model_copy(update={
-        "model_ids": [_MODEL, "deepseek-v4-flash"],
+        "model_ids": [_MODEL, "deepseek-flash"],
     })
     fingerprint = models_admin._record_fingerprint(record_box[0])
     app.state.user_model_registration_fingerprints = {record_box[0].id: fingerprint}
     provider._user_model_authority_fingerprint = fingerprint
     listed = client.get("/research/quick-ask/models")
     assert [row["model_id"] for row in listed.json()["models"]] == [
-        _MODEL, "deepseek-v4-flash",
+        _MODEL, "deepseek-flash",
     ]
 
-    stale_flash = replace(flash, snapshot="deepseek-v4-flash-2026-08-12")
+    stale_flash = replace(flash, snapshot="deepseek-flash-2026-08-12")
     preset_box[0] = replace(preset_box[0], models=(preset_box[0].models[0], stale_flash))
     assert [row["model_id"] for row in client.get(
         "/research/quick-ask/models"
