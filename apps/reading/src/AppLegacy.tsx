@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes, Navigate, Outlet, useLocation } from "react-router-dom";
 
 import ResearchWorkstation from "./modes/ResearchWorkstation";
@@ -5,6 +6,8 @@ import WrestleApp from "./modes/WrestleApp";
 import Login from "./modes/Login";
 import { PanelLayout } from "./workspace/PanelLayout";
 import { AuthProvider, useAuth } from "./lib/auth";
+
+const Settings = lazy(() => import("./modes/Settings"));
 
 /**
  * AppLegacy — the v1 / pre-S4 chrome.
@@ -19,8 +22,8 @@ import { AuthProvider, useAuth } from "./lib/auth";
  * This shell ships in the bundle for one sprint after cutover. If
  * S13 (legacy retirement) has shipped, this file should be deleted.
  *
- * Scope: only the two top-priority modes (Research + Wrestle) are
- * routed here. The fuller pre-S4 App.tsx wired every route through
+ * Scope: Research, Wrestle and the Settings needed to connect an owner
+ * model are routed here. The fuller pre-S4 App.tsx wired every route through
  * HeaderBar; we deliberately don't reconstruct the entire pre-S4
  * routing graph because:
  *
@@ -31,8 +34,8 @@ import { AuthProvider, useAuth } from "./lib/auth";
  *   (c) reconstructing every legacy mode wrapper would duplicate
  *       a lot of code that's all going away in S13 anyway
  *
- * The two routed modes (Research + Wrestle) plus Login cover the
- * critical-path operator flows: investigations and document review.
+ * Research, Wrestle, Settings and Login cover the critical-path operator
+ * flows: investigations, document review and owner model setup.
  * Everything else 404s with a clear "v1 doesn't include this route —
  * flip back to v2 to access" panel.
  */
@@ -51,6 +54,11 @@ export default function AppLegacy() {
               />
               <Route path="/wrestle" element={<WrestleApp />} />
               <Route path="/wrestle/:documentId" element={<WrestleApp />} />
+              <Route path="/settings" element={
+                <Suspense fallback={<div role="status" className="p-8 text-sm font-mono">Loading settings…</div>}>
+                  <Settings />
+                </Suspense>
+              } />
             </Route>
             <Route path="*" element={<LegacyMissingRoute />} />
           </Routes>
@@ -92,7 +100,3 @@ function LegacyMissingRoute() {
     </div>
   );
 }
-
-// Suppress unused-import warning while keeping Navigate available for
-// future legacy redirect wiring.
-void Navigate;

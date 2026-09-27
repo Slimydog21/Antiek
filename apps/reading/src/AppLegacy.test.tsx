@@ -17,6 +17,9 @@ vi.mock("./modes/ResearchWorkstation", async () => {
 vi.mock("./modes/WrestleApp", () => ({
   default: () => <p>Wrestle rollback route</p>,
 }));
+vi.mock("./modes/Settings", () => ({
+  default: () => <p>Settings rollback route</p>,
+}));
 vi.mock("./modes/Login", async () => {
   const { useLocation } = await import("react-router-dom");
   return { default: () => <p>Login route {useLocation().search}</p> };
@@ -50,6 +53,7 @@ describe("AppLegacy workspace rollback", () => {
     ["/inv/inv-1", "Research owner visual-owner"],
     ["/wrestle", "Wrestle rollback route"],
     ["/wrestle/doc-1", "Wrestle rollback route"],
+    ["/settings", "Settings rollback route"],
   ])("keeps one workspace layout around the %s critical route", async (path, content) => {
     renderRoute(path);
     await screen.findByText(content);
@@ -68,5 +72,13 @@ describe("AppLegacy workspace rollback", () => {
     const login = await screen.findByText(/Login route/);
     expect(login.textContent).toContain("next=%2Finv%2Finv-1");
     await waitFor(() => expect(screen.queryByLabelText("Left dock")).toBeNull());
+  });
+
+  it("sends unauthenticated Settings to login before offering BYOT setup", async () => {
+    authStatus = 401;
+    renderRoute("/settings");
+    const login = await screen.findByText(/Login route/);
+    expect(login.textContent).toContain("next=%2Fsettings");
+    expect(screen.queryByLabelText("Left dock")).toBeNull();
   });
 });
