@@ -168,6 +168,18 @@ _MAX_CODE_ATTEMPTS = 5
 _attempts: dict[str, _LoginAttempt] = {}
 _attempts_lock = threading.Lock()
 
+# The per-attempt cap alone is reset by the attacker: POST /auth/request
+# is open and mints a fresh attempt (fresh code, fresh counter) on demand,
+# so five guesses per attempt grinds the 10,000 space in ~2,000 requests.
+# Wrong codes are therefore also counted per EMAIL, across attempts, and
+# the budget is cleared only by a proof the attacker cannot produce: the
+# email link (/auth/callback) or a correct code. Never by time, never by a
+# new attempt. Once spent, typed codes for that address are refused (even
+# the right one); the email link and passkeys still sign in.
+_MAX_CODE_FAILURES_PER_EMAIL = 10
+_MAX_TRACKED_CODE_FAILURE_EMAILS = 1024
+_code_failures: dict[str, int] = {}  # guarded by _attempts_lock
+
 # Per-IP sliding-window throttles for the two email-surface routes.
 # In-process state is the honest deployment model here: the FastAPI
 # service is pinned to one worker by the DuckDB single-writer
@@ -180,9 +192,27 @@ _throttle_lock = threading.Lock()
 
 
 def reset_auth_throttles() -> None:
-    """Test seam: clear the in-process rate-limit windows."""
+    """Test seam: clear the in-process rate-limit windows and the
+    per-email code-failure budgets."""
     with _throttle_lock:
         _throttle.clear()
+    with _attempts_lock:
+        _code_failures.clear()
+
+
+def _record_code_failure(email: str, protected: frozenset[str]) -> None:
+    """Spend one unit of ``email``'s code budget. Caller holds _attempts_lock.
+
+    The registry is bounded, but eviction never drops an allowlisted
+    address: evicting by age would let a caller clear the operator's count
+    by spraying misses at throwaway emails.
+    """
+    if email not in _code_failures and len(_code_failures) >= _MAX_TRACKED_CODE_FAILURE_EMAILS:
+        for key in _code_failures:
+            if key not in protected:
+                del _code_failures[key]
+                break
+    _code_failures[email] = _code_failures.get(email, 0) + 1
 
 
 def _throttled(key: str, limit: int) -> bool:
@@ -527,6 +557,10 @@ def register_auth_routes(
             # between request and click. Reject without leaking which
             # case we're in.
             return _redirect_login_error(error_code="not_authorized", next_path=next)
+        # Mailbox possession proven: the attacker cannot produce this, so
+        # it (not time, not a fresh attempt) is what reopens code entry.
+        with _attempts_lock:
+            _code_failures.pop(email, None)
         cookie = mint_session_cookie(
             user_id="__operator__",
             email=email,
@@ -590,6 +624,7 @@ def register_auth_routes(
                 status_code=429,
                 detail={"code": "rate_limited", "message": "Too many unlock attempts. Wait a minute and try again."},
             )
+        allowlist = _resolve_allowlist()
         with _attempts_lock:
             pending = _attempts.get(payload.attempt_id)
             valid_secret = bool(
@@ -603,9 +638,23 @@ def register_auth_routes(
                 # the possession proof. Wrong tries are counted; the
                 # whole attempt dies after five so a 10,000-space code
                 # cannot be ground through inside its 15-minute TTL.
-                code_ok = secrets.compare_digest(payload.code, pending.device_code)
+                if _code_failures.get(pending.email, 0) >= _MAX_CODE_FAILURES_PER_EMAIL:
+                    raise HTTPException(
+                        status_code=429,
+                        detail={
+                            "code": "code_entry_locked",
+                            "message": "Too many wrong codes for this address. Sign in with the link in the email instead.",
+                        },
+                    )
+                # A non-allowlisted address never matches, so it fails
+                # exactly like a wrong code: no allowlist oracle here.
+                code_ok = (
+                    secrets.compare_digest(payload.code, pending.device_code)
+                    and pending.email in allowlist
+                )
                 if not code_ok:
                     pending.failed_code_attempts += 1
+                    _record_code_failure(pending.email, allowlist)
                     if pending.failed_code_attempts >= _MAX_CODE_ATTEMPTS:
                         del _attempts[payload.attempt_id]
                         raise HTTPException(
@@ -621,12 +670,17 @@ def register_auth_routes(
                         },
                     )
                 pending.failed_code_attempts = 0
+                _code_failures.pop(pending.email, None)
             elif not pending.approved:
                 # Two-device flow: keep waiting until the email-click
                 # device approves (POST /auth/approve).
                 return Response(status_code=202)
             if pending.claimed:
                 raise HTTPException(status_code=410, detail={"code": "login_attempt_claimed", "message": "This sign-in request was already used."})
+            if pending.email not in allowlist:
+                # Fail closed: only an allowlisted address is ever the
+                # operator, whatever path marked the attempt approved.
+                raise HTTPException(status_code=410, detail={"code": "login_attempt_expired", "message": "This sign-in request has expired."})
             pending.claimed = True
             email = pending.email
             next_path = pending.next_path
@@ -764,8 +818,15 @@ def register_auth_routes(
         # accepts the resulting session unchanged. Single-operator
         # invariant — same assumption the magic-link path already makes.
         allow = sorted(_resolve_allowlist())
-        email = allow[0] if allow else "__operator__"
-        cookie = mint_session_cookie(user_id="__operator__", email=email)
+        if not allow:
+            # The middleware admits a session cookie only for an
+            # allowlisted email, so without one this would mint a dead
+            # cookie. Refuse loudly, as passkey login does.
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "operator_email_missing", "message": "Operator email is not configured."},
+            )
+        cookie = mint_session_cookie(user_id="__operator__", email=allow[0])
         response = RedirectResponse(url=_resolve_redirect(next), status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
