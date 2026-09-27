@@ -101,6 +101,14 @@
         not path /auth/* /health /openapi.json /ops/*
     }
 
+    # Named matchers MUST sit at server scope (Caddy rejects @matchers
+    # defined inside route/handle). `@static_exists` is the "real file on
+    # disk" matcher used by the static-asset handler inside the route.
+    @static_exists file {
+        # file-matcher `root` is a path, not the root DIRECTIVE (no `*` slot).
+        root {{ frontend_dist_dir }}
+    }
+
     route {
         # 1. Browser top-level navigation → SPA, except the auth control plane.
         #    This is what lets typing /investigations/<uuid> in the
@@ -145,9 +153,6 @@
         #    fonts, /favicon.svg, /mark-*.png) → serve them as-is.
         #    `file` is the matcher, so a miss falls through rather than
         #    being papered over by an index.html fallback.
-        @static_exists file {
-            root * {{ frontend_dist_dir }}
-        }
         handle @static_exists {
             root * {{ frontend_dist_dir }}
             file_server

@@ -266,17 +266,22 @@ class HighlightsStore:
         anchor_id: str,
         owner_user_id: str,
         investigation_id: str,
+        *,
+        document_id: str,
     ) -> str:
         """The SPR-04 seam write-back: link a spawned research thread to its
         anchor. FIRST LINK WINS — an anchor owns at most one thread link, so
         a second spawn never overwrites. Returns "linked", "already_linked"
         (a different thread already holds it — the caller surfaces honestly),
-        or "not_found"."""
+        or "not_found".
+
+        The anchor is matched by document as well as owner, so a route can
+        only reach the anchors of the document in its own path."""
         init_highlights_schema(con)
         row = con.execute(
             "SELECT investigation_id FROM anchored_highlights "
-            "WHERE anchor_id = ? AND owner_user_id = ?",
-            [anchor_id, owner_user_id],
+            "WHERE anchor_id = ? AND owner_user_id = ? AND document_id = ?",
+            [anchor_id, owner_user_id, document_id],
         ).fetchone()
         if row is None:
             return "not_found"
@@ -285,27 +290,39 @@ class HighlightsStore:
             return "already_linked" if str(existing) != investigation_id else "linked"
         con.execute(
             "UPDATE anchored_highlights SET investigation_id = ?, "
-            "updated_at = CURRENT_TIMESTAMP WHERE anchor_id = ? AND owner_user_id = ?",
-            [investigation_id, anchor_id, owner_user_id],
+            "updated_at = CURRENT_TIMESTAMP "
+            "WHERE anchor_id = ? AND owner_user_id = ? AND document_id = ?",
+            [investigation_id, anchor_id, owner_user_id, document_id],
         )
         return "linked"
 
-    def delete(self, con: LockedConnection, anchor_id: str, owner_user_id: str) -> bool:
-        """The ONLY removal path — an explicit owner delete. Anything else
-        (drift, orphan) keeps the row, per the never-silently-lost invariant."""
+    def delete(
+        self,
+        con: LockedConnection,
+        anchor_id: str,
+        owner_user_id: str,
+        *,
+        document_id: str,
+    ) -> bool:
+        """The ONLY removal path — an explicit owner delete of an anchor on
+        ``document_id``. Anything else (drift, orphan) keeps the row, per the
+        never-silently-lost invariant."""
         init_highlights_schema(con)
         # Existence within the same scope is the deterministic affected-rows
         # answer (this DuckDB has no changes() and cursor rowcount is
         # unreliable for DML).
+        scope = [anchor_id, owner_user_id, document_id]
         prior = con.execute(
-            "SELECT 1 FROM anchored_highlights WHERE anchor_id = ? AND owner_user_id = ?",
-            [anchor_id, owner_user_id],
+            "SELECT 1 FROM anchored_highlights "
+            "WHERE anchor_id = ? AND owner_user_id = ? AND document_id = ?",
+            scope,
         ).fetchone()
         if prior is None:
             return False
         con.execute(
-            "DELETE FROM anchored_highlights WHERE anchor_id = ? AND owner_user_id = ?",
-            [anchor_id, owner_user_id],
+            "DELETE FROM anchored_highlights "
+            "WHERE anchor_id = ? AND owner_user_id = ? AND document_id = ?",
+            scope,
         )
         return True
 
