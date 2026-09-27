@@ -171,13 +171,15 @@ function ConnectorRow({ event }: { event: Event }) {
     paths?: unknown[];
     mapped_nodes?: unknown[];
   };
-  const np = p.paths?.length ?? 0;
-  const nn = p.mapped_nodes?.length ?? 0;
+  // A missing list is unknown, not empty: "—" plus the reason, never 0.
+  const count = (xs: unknown[] | undefined, noun: string) =>
+    Array.isArray(xs) ? `${xs.length} ${noun}${xs.length === 1 ? "" : "s"}` : `— ${noun}s`;
+  const missing = !Array.isArray(p.paths) || !Array.isArray(p.mapped_nodes);
   return (
     <Card>
       <CardHeader
         label="Cross-domain mappings"
-        detail={`${np} path${np === 1 ? "" : "s"} · ${nn} node${nn === 1 ? "" : "s"}`}
+        detail={`${count(p.paths, "path")} · ${count(p.mapped_nodes, "node")}${missing ? " · not reported" : ""}`}
       />
     </Card>
   );

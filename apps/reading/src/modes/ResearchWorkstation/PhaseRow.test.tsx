@@ -8,11 +8,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Event } from "../../generated/types";
 import PhaseRow from "./PhaseRow";
 
-function dispatch(payload: Record<string, unknown>): Event {
+function dispatch(payload: Record<string, unknown>, action_type = "dispatch.call"): Event {
   return {
     event_id: "ev-1",
     investigation_id: "inv-1",
-    action_type: "dispatch.call",
+    action_type,
     payload: payload as unknown as Event["payload"],
     param_version: "v1",
     emitted_at: "2026-09-27T00:00:00Z",
@@ -54,5 +54,29 @@ describe("PhaseRow dispatch row (F-12)", () => {
     expect(text).toContain("$0.000000");
     expect(text).toContain("1.5s");
     expect(text).not.toContain("usage not reported");
+  });
+});
+
+describe("PhaseRow connector row (F-12 class, MiMo F1)", () => {
+  it("renders a dash with 'not reported' when the payload carries neither paths nor nodes", () => {
+    const { container } = render(<PhaseRow event={dispatch({}, "connector.delivered")} />);
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/\b0 path|\b0 node/);
+    expect(text).toContain("— paths · — nodes");
+    expect(text).toContain("not reported");
+  });
+
+  it("keeps a reported count, including a real zero, and dashes only the missing one", () => {
+    const { container } = render(
+      <PhaseRow event={dispatch({ paths: [], mapped_nodes: [{}, {}] }, "connector.delivered")} />,
+    );
+    const text = container.textContent ?? "";
+    expect(text).toContain("0 paths · 2 nodes");
+    expect(text).not.toContain("not reported");
+
+    cleanup();
+    const only = render(<PhaseRow event={dispatch({ paths: [{}] }, "connector.delivered")} />);
+    expect(only.container.textContent).toContain("1 path · — nodes");
+    expect(only.container.textContent).toContain("not reported");
   });
 });
