@@ -12,7 +12,8 @@
  * setOpenDocumentHandler. Every caller speaks `openDocumentInLeftPane` and
  * never changes.
  */
-import { childTabId, freshTabId, mothershipForPath, rootTabId } from "./documentSpace";
+import { toast } from "../components/lemon/LemonToast";
+import { adoptTabForRoute, branchOriginOf, childTabId, freshTabId, mothershipForPath, rootTabId } from "./documentSpace";
 import { adoptRoute } from "./routeSync";
 import { setTabTitle } from "./tabTitles";
 import { locationStamp, useTabTrees } from "./tabTreeStore";
@@ -41,28 +42,77 @@ export interface OpenDocumentRequest {
  *  same parent ACTIVATES the open tab (never a duplicate); reopening one
  *  that was closed takes a fresh id, since the closed id stays in history. */
 function spawnDocumentTab(req: OpenDocumentRequest): void {
-  const mothership = mothershipForPath(window.location.pathname, window.location.search);
+  const pathname = window.location.pathname;
+  const mothership = mothershipForPath(pathname, window.location.search);
   const requestedAt = locationStamp();
   const store = useTabTrees.getState();
+  const contextEpoch = store.contextEpoch;
+  // When the strip has loaded, resolve the route now: the active tab can
+  // change even before ensureMothership's already-resolved promise settles.
+  adoptRoute(mothership, pathname);
+  const requestTree = useTabTrees.getState().trees[mothership];
+  const requestParent = requestTree?.active_tab_id ?? null;
+  const offerOpen = () => toast.info("A document is ready to open.", {
+    action: { label: "Open document", run: () => spawnDocumentTab(req) },
+  });
   void store.ensureMothership(mothership).then(() => {
-    // The operator navigated while the tree loaded: the tab still opens (an
-    // agent's find is never dropped) but does not take the screen from the
-    // navigation they made since (F-04).
-    const takeScreen = locationStamp() === requestedAt;
-    // The tab showing the route is the parent: adopt the route first, in
-    // case the (lazy) strip has not seeded it yet — a no-op when it has.
-    adoptRoute(mothership, window.location.pathname);
     const s = useTabTrees.getState();
-    const tree = s.trees[mothership];
-    if (!tree) return;
-    const parentId = tree.active_tab_id;
+    if (s.contextEpoch !== contextEpoch) {
+      offerOpen();
+      return;
+    }
+    const loadedTree = s.trees[mothership];
+    if (!loadedTree) {
+      offerOpen();
+      return;
+    }
+    let tree = loadedTree;
+    let parentId = requestParent;
+    const parentRemoved = parentId !== null && !Object.hasOwn(tree.nodes, parentId);
+    if (parentRemoved) parentId = null;
+    if (!requestTree) {
+      // Resolve the ORIGINAL route in the loaded tree without selecting it.
+      // A late result must not change the tab the operator has since chosen.
+      const adoption = adoptTabForRoute(tree, pathname);
+      if (adoption.action === "none") parentId = tree.active_tab_id;
+      else if (adoption.action === "activate") parentId = adoption.tabId;
+      else {
+        const base = adoption.action === "branch"
+          ? childTabId(adoption.parentId, adoption.ref.kind, adoption.ref.ref)
+          : rootTabId(adoption.ref);
+        parentId = freshTabId(tree, base);
+        const seeded = s.spawnTab(mothership, adoption.action === "branch" ? adoption.parentId : null, {
+          tab_id: parentId,
+          kind: adoption.ref.kind,
+          ref: adoption.ref.ref,
+          mothership,
+          ...(adoption.action === "branch" ? { origin: branchOriginOf(adoption.origin) } : {}),
+          activate: false,
+        }, "route");
+        if (!seeded.ok) parentId = null;
+        const seededTree = useTabTrees.getState().trees[mothership];
+        if (!seededTree) {
+          offerOpen();
+          return;
+        }
+        tree = seededTree;
+      }
+    }
+    const takeScreen = locationStamp() === requestedAt && !parentRemoved &&
+      (!requestTree || tree.active_tab_id === requestParent);
+    const notifyLateOpen = () => toast.info(`A document is ready in your ${mothership} tabs.`);
     const shows = (id: string) => tree.nodes[id].kind === "reader" && tree.nodes[id].ref === req.documentId;
     // Already the active tab: nothing to open.
-    if (parentId && shows(parentId)) return;
+    if (parentId && shows(parentId)) {
+      if (takeScreen && tree.active_tab_id !== parentId) s.activateTab(mothership, parentId);
+      else if (!takeScreen) notifyLateOpen();
+      return;
+    }
     const siblings = parentId ? tree.nodes[parentId].child_order : tree.root_order;
     const open = siblings.find(shows);
     if (open) {
       if (takeScreen) s.activateTab(mothership, open);
+      else notifyLateOpen();
       return;
     }
     const base = parentId
@@ -76,7 +126,7 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
     const threadId = req.origin.investigationId?.trim();
     const agentKind = req.origin.agentKind?.trim();
     const agentOpened = threadId && agentKind ? { thread_id: threadId, agent_kind: agentKind } : null;
-    s.spawnTab(mothership, parentId, {
+    const spawned = s.spawnTab(mothership, parentId, {
       tab_id: freshTabId(tree, base),
       origin: { document_id: req.documentId, kind: agentOpened ? "agent" : "reference" },
       ...(agentOpened ? { opened_by: agentOpened } : {}),
@@ -85,6 +135,8 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
       mothership,
       activate: takeScreen,
     });
+    if (!spawned.ok) offerOpen();
+    else if (!takeScreen) notifyLateOpen();
   });
 }
 
