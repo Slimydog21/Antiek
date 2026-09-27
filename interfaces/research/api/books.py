@@ -148,6 +148,59 @@ def _reader_owner_id(request: Request) -> str:
         return "__operator__"
     raise HTTPException(status_code=401, detail="authenticated_owner_required")
 
+
+def _private_owner_id(request: Request) -> str | None:
+    """A verified, non-fallback account identity for the new private class."""
+    state = getattr(request, "state", None)
+    user_id = getattr(state, "user_id", None)
+    auth_method = getattr(state, "auth_method", None)
+    if (
+        auth_method in _OWNER_AUTH_METHODS
+        and isinstance(user_id, str)
+        and user_id.strip()
+        and user_id.strip() != "__operator__"
+    ):
+        return user_id
+    return None
+
+
+def _admit_private_document(
+    con: Any, document_id: str, request: Request, *, owner_route: bool = True,
+    row: tuple[Any, ...] | None = None,
+    missing_ok: bool = False,
+) -> None:
+    """Hide a private document before detail, body, anchor, or ask work."""
+    from substrate.constants import USER_AUTHORED_PRIVATE_CONTENT_CLASS
+
+    if row is None:
+        row = con.execute(
+            "SELECT d.content_class, d.owner_user_id, b.pre_takedown_content_class, "
+            "COALESCE(b.taken_down,FALSE) FROM documents d "
+            "LEFT JOIN book_assets b ON d.document_id=b.document_id "
+            "WHERE d.document_id = ?",
+            [document_id],
+        ).fetchone()
+    if row is None:
+        if missing_ok:
+            return
+        raise HTTPException(status_code=404, detail="book_not_found")
+    private_authored = row[0] == USER_AUTHORED_PRIVATE_CONTENT_CLASS or (
+        len(row) >= 4 and bool(row[3])
+        and row[2] == USER_AUTHORED_PRIVATE_CONTENT_CLASS
+    )
+    if private_authored:
+        owner_id = _private_owner_id(request)
+        stored_owner = row[1]
+        if (
+            not owner_route or owner_id is None
+            or not isinstance(stored_owner, str)
+            or not stored_owner.strip()
+            or stored_owner != stored_owner.strip()
+            or stored_owner.strip() == "__operator__"
+            or owner_id != stored_owner
+        ):
+            raise HTTPException(status_code=404, detail="book_not_found")
+
 # arXiv canonical-link prefix; the serve guard stamps result.canonical_url as
 # ``https://arxiv.org/abs/<arxiv_id>`` for an arXiv doc (None otherwise), so the
 # arxiv_id is recoverable from it for the M4 serve-audit without re-reading the DB.
@@ -2012,12 +2065,20 @@ def register_book_routes(app: FastAPI) -> None:
         )
 
     @app.get("/books/{document_id}", response_model=BookDetail, tags=["books"])
-    async def get_book(document_id: str) -> BookDetail:
+    async def get_book(document_id: str, request: Request) -> BookDetail:
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            document_row = con.execute(
+                "SELECT d.content_class, d.owner_user_id, b.pre_takedown_content_class, "
+                "COALESCE(b.taken_down,FALSE) FROM documents d "
+                "LEFT JOIN book_assets b ON d.document_id=b.document_id "
+                "WHERE d.document_id = ?",
+                [document_id],
+            ).fetchone()
+            _admit_private_document(con, document_id, request, row=document_row)
             asset = get_book_asset(con, document_id)
         finally:
             con.close()
@@ -2030,12 +2091,13 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=FullTextResponse,
         tags=["books"],
     )
-    def get_book_full_text(document_id: str) -> FullTextResponse:
+    def get_book_full_text(document_id: str, request: Request) -> FullTextResponse:
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            _admit_private_document(con, document_id, request, owner_route=False)
             result = serve_full_text_guarded(con, document_id)
             result = _prefer_reader_html_body(con, document_id, result, owner=False)
         finally:
@@ -2075,7 +2137,11 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            result = serve_full_text_guarded(con, document_id, owner=True)
+            _admit_private_document(con, document_id, request)
+            result = serve_full_text_guarded(
+                con, document_id, owner=True,
+                owner_user_id=_private_owner_id(request),
+            )
             result = _prefer_reader_html_body(con, document_id, result, owner=True)
         finally:
             con.close()
@@ -2298,13 +2364,21 @@ def register_book_routes(app: FastAPI) -> None:
         try:
             asset = get_book_asset(con, document_id)
             owner_row = con.execute(
-                "SELECT owner_user_id FROM documents WHERE document_id = ?",
+                "SELECT d.owner_user_id, d.content_class, b.pre_takedown_content_class, "
+                "COALESCE(b.taken_down,FALSE) FROM documents d "
+                "LEFT JOIN book_assets b ON d.document_id=b.document_id "
+                "WHERE d.document_id = ?",
                 [document_id],
             ).fetchone()
+            if asset is None:
+                raise HTTPException(status_code=404, detail="book_not_found")
+            if owner_row is not None:
+                _admit_private_document(
+                    con, document_id, request,
+                    row=(owner_row[1], owner_row[0], owner_row[2], owner_row[3]),
+                )
         finally:
             con.close()
-        if asset is None:
-            raise HTTPException(status_code=404, detail="book_not_found")
 
         authorized_dispatch = None
         selected_choice: UserModelChoice | None = None

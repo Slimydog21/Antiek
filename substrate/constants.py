@@ -587,6 +587,7 @@ assert "user_public_contribution" not in TURBOPUFFER_INDEX_CONTENT_CLASSES
 # This is the §9.0 (Hachette / Bartz) discipline applied to the ambient-ingest
 # reading path the books family already protects for the corpus path.
 PERSONAL_READING_CONTENT_CLASS: Final[str] = "personal_reading"
+USER_AUTHORED_PRIVATE_CONTENT_CLASS: Final[str] = "user_authored_private"
 
 # The document_type strings the third-party ingest connectors emit. A document
 # of one of these types lands personal_reading by default (the insert_document
@@ -606,19 +607,20 @@ THIRD_PARTY_DOCUMENT_TYPES: Final[frozenset[str]] = frozenset({
 })
 
 # The content classes the OWNER may read in full on their personal / operator
-# path: everything publicly servable PLUS personal_reading. Defined as a strict
-# superset of SERVABLE_CONTENT_CLASSES by exactly one element so the owner read
+# path: everything publicly servable plus both owner-only classes. Defined as a strict
+# superset of SERVABLE_CONTENT_CLASSES by exactly two elements so the owner read
 # path never has to enumerate the servable set itself (and cannot drift from it).
 # This is the READ-side allowlist for the owner/privileged full-body serve — the
 # public serve path stays on SERVABLE_CONTENT_CLASSES (narrower), never this.
 PERSONAL_READABLE_CONTENT_CLASSES: Final[frozenset[str]] = (
-    SERVABLE_CONTENT_CLASSES | {PERSONAL_READING_CONTENT_CLASS}
+    SERVABLE_CONTENT_CLASSES | {PERSONAL_READING_CONTENT_CLASS, USER_AUTHORED_PRIVATE_CONTENT_CLASS}
 )
 
 # personal_reading is owner-readable but NEVER publicly servable. This module-
 # level assertion makes a future edit that adds it to the servable allowlist
 # fail loudly AT IMPORT TIME — the §9.0 serve gate is too load-bearing to let it
 # drift silently into the servable set.
+assert USER_AUTHORED_PRIVATE_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES
 assert PERSONAL_READING_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES, (
     "personal_reading must NOT be in SERVABLE_CONTENT_CLASSES — it is the "
     "owner-readable / public-non-servable lane (Personal-Reading Lane SPR-01). "
@@ -627,10 +629,10 @@ assert PERSONAL_READING_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES, (
     "personal_reading."
 )
 assert (
-    SERVABLE_CONTENT_CLASSES | {PERSONAL_READING_CONTENT_CLASS}
-) == PERSONAL_READABLE_CONTENT_CLASSES and len(PERSONAL_READABLE_CONTENT_CLASSES) == len(SERVABLE_CONTENT_CLASSES) + 1, (
+    SERVABLE_CONTENT_CLASSES | {PERSONAL_READING_CONTENT_CLASS, USER_AUTHORED_PRIVATE_CONTENT_CLASS}
+) == PERSONAL_READABLE_CONTENT_CLASSES and len(PERSONAL_READABLE_CONTENT_CLASSES) == len(SERVABLE_CONTENT_CLASSES) + 2, (
     "PERSONAL_READABLE_CONTENT_CLASSES must be SERVABLE_CONTENT_CLASSES plus "
-    "exactly personal_reading (a strict superset by one element)."
+    "exactly personal_reading and user_authored_private."
 )
 
 # source-declared open license (CC-BY / CC-BY-SA found in source metadata);
@@ -696,6 +698,7 @@ BOOK_SERVABILITY_STATUSES: Final[tuple[str, ...]] = (
     # from gated_metadata_only so the library can render it differently (the
     # owner CAN read it in full; a gated book they cannot).
     "personal_readable",
+    "private_authored",
 )
 
 # The default servability for a freshly-ingested book with no established

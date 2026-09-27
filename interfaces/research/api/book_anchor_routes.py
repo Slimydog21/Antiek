@@ -28,7 +28,9 @@ from pydantic import BaseModel, Field
 
 from interfaces.research.api.books import (
     _OWNER_READ_POLICY_TAG,
+    _admit_private_document,
     _owner_read_policy_tag,
+    _private_owner_id,
     _reader_owner_id,
     _resolve_db_path,
 )
@@ -233,6 +235,7 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         with connect_write(db, purpose="books/anchors/create") as con:
             if not _document_exists(con, document_id):
                 raise HTTPException(status_code=404, detail="book_not_found")
+            _admit_private_document(con, document_id, request)
             try:
                 if body.quote is not None:
                     if not body.quote.strip():
@@ -333,6 +336,7 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         try:
             if not _document_exists(con, document_id):
                 raise HTTPException(status_code=404, detail="book_not_found")
+            _admit_private_document(con, document_id, request)
             if not highlights_table_exists(con):
                 return AnchorListOut(document_id=document_id, anchors=[], count=0)
             rows = [
@@ -382,6 +386,12 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         owner = _reader_owner_id(request)
         db = _resolve_db_path()
         with connect_write(db, purpose="books/anchors/link") as con:
+            try:
+                _admit_private_document(con, document_id, request, missing_ok=True)
+            except HTTPException as exc:
+                if exc.status_code != 404:
+                    raise
+                raise HTTPException(status_code=404, detail="anchor_not_found") from None
             outcome = HighlightsStore().set_investigation_link(
                 con, anchor_id, owner, body.investigation_id
             )
@@ -409,6 +419,12 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         owner = _reader_owner_id(request)
         db = _resolve_db_path()
         with connect_write(db, purpose="books/anchors/delete") as con:
+            try:
+                _admit_private_document(con, document_id, request, missing_ok=True)
+            except HTTPException as exc:
+                if exc.status_code != 404:
+                    raise
+                return
             # Owner-scoped AND idempotent: deleting twice (or deleting an
             # anchor that was never yours) is a 204, never a 404 — the only
             # removal path reveals nothing about what exists.
@@ -420,13 +436,14 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         response_model=AnchorMapOut,
         tags=["books", "anchors"],
     )
-    def get_anchor_map(document_id: str) -> AnchorMapOut:
+    def get_anchor_map(document_id: str, request: Request) -> AnchorMapOut:
         from runtime.db_lock import connect_read
         from substrate.books.serve_guard import serve_full_text_guarded
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            _admit_private_document(con, document_id, request, owner_route=False)
             result = serve_full_text_guarded(con, document_id)
             if not result.found:
                 raise HTTPException(status_code=404, detail="book_not_found")
@@ -468,7 +485,11 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            result = serve_full_text_guarded(con, document_id, owner=True)
+            _admit_private_document(con, document_id, request)
+            result = serve_full_text_guarded(
+                con, document_id, owner=True,
+                owner_user_id=_private_owner_id(request),
+            )
             if not result.found:
                 raise HTTPException(status_code=404, detail="book_not_found")
             if result.full_text is None:

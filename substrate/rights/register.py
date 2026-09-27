@@ -37,6 +37,7 @@ from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
     PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 )
 from substrate.graph.ops import update_document_gate_columns
 
@@ -76,6 +77,7 @@ VALID_CONTENT_CLASSES: frozenset[str] = frozenset({
     "user_public_contribution",
     "restricted_pending_opt_in",
     PERSONAL_READING_CONTENT_CLASS,  # Personal-Reading Lane SPR-01 — owner-readable, non-servable
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 })
 
 
@@ -123,6 +125,7 @@ DERIVED_CONTENT_CLASS_TABLE: MappingProxyType[str, str | None] = MappingProxyTyp
     "source_declared_open": "source_declared_open",
     GATED_DEFAULT_CONTENT_CLASS: None,
     PERSONAL_READING_CONTENT_CLASS: None,
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS: None,
 })
 assert frozenset(DERIVED_CONTENT_CLASS_TABLE) == VALID_CONTENT_CLASSES, (
     "DERIVED_CONTENT_CLASS_TABLE must name every VALID_CONTENT_CLASSES member "

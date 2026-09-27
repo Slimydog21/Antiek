@@ -32,6 +32,7 @@ from substrate.constants import (
     PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
     THIRD_PARTY_DOCUMENT_TYPES,
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 )
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.graph.schema import init_database
@@ -109,11 +110,13 @@ def _defaulted_events(events_dir: str) -> list[dict]:
 def test_constants_personal_reading_not_servable():
     assert PERSONAL_READING_CONTENT_CLASS == "personal_reading"
     assert PERSONAL_READING_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES
-    # strict superset by exactly one element
+    # The two owner-readable classes remain outside public serving.
+    assert USER_AUTHORED_PRIVATE_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES
     assert (
-        SERVABLE_CONTENT_CLASSES | {PERSONAL_READING_CONTENT_CLASS}
+        SERVABLE_CONTENT_CLASSES
+        | {PERSONAL_READING_CONTENT_CLASS, USER_AUTHORED_PRIVATE_CONTENT_CLASS}
     ) == PERSONAL_READABLE_CONTENT_CLASSES
-    assert len(PERSONAL_READABLE_CONTENT_CLASSES) == len(SERVABLE_CONTENT_CLASSES) + 1
+    assert len(PERSONAL_READABLE_CONTENT_CLASSES) == len(SERVABLE_CONTENT_CLASSES) + 2
 
 
 def test_constants_third_party_document_types_exact():
