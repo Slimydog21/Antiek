@@ -35,6 +35,7 @@ import interfaces.research.api.companion_routes as companion_routes
 import runtime.db_lock as db_lock
 import substrate.companions.evidence_index as evidence_index
 import substrate.companions.projector as projector
+import substrate.graph as graph
 import substrate.graph.schema as graph_schema
 import substrate.research_artifact.paths as artifact_paths
 from runtime.db_lock import connect_read, connect_write
@@ -235,6 +236,11 @@ def _spy_every_writer(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     monkeypatch.setattr(db_lock, "connect_write", spy("db_lock.connect_write"))
     monkeypatch.setattr(projector, "connect_write", spy("projector.connect_write"))
     monkeypatch.setattr(graph_schema, "connect_write", spy("graph_schema.connect_write"))
+    # Schema init takes the writer lock on a cold probe; the GET never calls it.
+    monkeypatch.setattr(graph, "ensure_initialized", spy("graph.ensure_initialized"))
+    monkeypatch.setattr(
+        graph_schema, "init_database_at_path", spy("graph_schema.init_database_at_path")
+    )
     for name in ("rebuild_document_full", "export_document_companion", "rebuild_document"):
         monkeypatch.setattr(projector, name, spy(f"projector.{name}"))
         monkeypatch.setattr(companion_routes, name, spy(f"routes.{name}"), raising=False)
