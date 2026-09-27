@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
@@ -21,9 +21,13 @@ import {
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import {
+  CompanionRebuildFailedError,
   getDocumentCompanion,
+  isCompanionNotFound,
   listDocumentEvidence,
-  type CompanionPayload,
+  refreshDocumentCompanion,
+  type BuiltCompanion,
+  type CompanionResponse,
   type EvidenceRowItem,
 } from "../../api/companions";
 import Thinking from "../../shared/Thinking";
@@ -607,7 +611,7 @@ export default function ReadingCompanion({
         </section>
       ) : null}
 
-      <CompanionSection documentId={documentId} />
+      <CompanionSection key={documentId} documentId={documentId} />
 
       <div className="flex-1 min-h-0">
         {notes.length === 0 ? (
@@ -705,6 +709,53 @@ function handoffStatusLabel(summary: InvestigationSummary | undefined): string {
   }
 }
 
+type CompanionView =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "building" }
+  | { phase: "unavailable" }
+  | { phase: "load_failed" }
+  | { phase: "build_failed" }
+  | {
+      phase: "built";
+      payload: BuiltCompanion;
+      refreshing: boolean;
+      /** A refresh that failed while this companion stayed in hand. */
+      notice: "rebuild_failed" | "build_failed" | null;
+    };
+
+const COMPANION_COPY = {
+  loading: "Loading the companion…",
+  building: "Building the companion…",
+  rebuilding: "Rebuilding the companion…",
+  unavailable: "The companion isn't available for this document.",
+  loadFailed: "Couldn't load the companion.",
+  buildFailed: "Couldn't build the companion yet.",
+  rebuildFailed: "Couldn't rebuild the companion. The last version is shown.",
+} as const;
+
+function companionLine(view: CompanionView): string | null {
+  switch (view.phase) {
+    case "idle":
+      return null;
+    case "loading":
+      return COMPANION_COPY.loading;
+    case "building":
+      return COMPANION_COPY.building;
+    case "unavailable":
+      return COMPANION_COPY.unavailable;
+    case "load_failed":
+      return COMPANION_COPY.loadFailed;
+    case "build_failed":
+      return COMPANION_COPY.buildFailed;
+    case "built":
+      if (view.refreshing) return COMPANION_COPY.rebuilding;
+      if (view.notice === "rebuild_failed") return COMPANION_COPY.rebuildFailed;
+      if (view.notice === "build_failed") return COMPANION_COPY.buildFailed;
+      return null;
+  }
+}
+
 /**
  * CompanionSection — the generated document companion in the rail
  * (companions SPR-02). READ-ONLY like the whole rail: it renders the
@@ -716,122 +767,277 @@ function handoffStatusLabel(summary: InvestigationSummary | undefined): string {
  * the text — the rail never receives it). The "inspect evidence base"
  * toggle is the index's ONLY user surface: an honest debug dump for trust
  * calibration, not a browsable index UI.
+ *
+ * LAZY: a collapsed disclosure that requests nothing until first opened —
+ * every reader open used to trigger a rebuild under the single writer lock.
+ * First open reads the last build; `not_built` asks for one rebuild; Refresh
+ * is the only other write. The loaded state survives collapse and re-open;
+ * the parent keys this section by documentId, so a new document starts idle.
+ * Failure copy is chosen from the state alone — no status number, server code
+ * or error type ever renders.
  */
 function CompanionSection({ documentId }: { documentId: string }) {
-  const [state, setState] = useState<
-    | { kind: "loading" }
-    | { kind: "ready"; payload: CompanionPayload }
-    | { kind: "unavailable" }
-  >({ kind: "loading" });
+  const regionId = useId();
+  const statusId = `${regionId}-status`;
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<CompanionView>({ phase: "idle" });
   const [inspectRows, setInspectRows] = useState<EvidenceRowItem[] | null>(null);
+  // One request at a time, even across a double click inside one frame.
+  const inFlight = useRef(false);
 
-  useEffect(() => {
-    // load-on-mount; a failed/malformed read is the honest unavailable state.
-    let cancelled = false;
-    void getDocumentCompanion(documentId)
-      .then((payload) => {
-        if (!cancelled) setState({ kind: "ready", payload });
-      })
-      .catch(() => {
-        if (!cancelled) setState({ kind: "unavailable" });
+  async function exclusive(task: () => Promise<void>) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await task();
+    } finally {
+      inFlight.current = false;
+    }
+  }
+
+  function showBuilt(payload: BuiltCompanion, notice: "rebuild_failed" | null = null) {
+    setView({ phase: "built", payload, refreshing: false, notice });
+  }
+
+  async function load() {
+    setView({ phase: "loading" });
+    let answer: CompanionResponse;
+    try {
+      answer = await getDocumentCompanion(documentId);
+    } catch (err) {
+      setView(isCompanionNotFound(err) ? { phase: "unavailable" } : { phase: "load_failed" });
+      return;
+    }
+    if (answer.state === "built") showBuilt(answer);
+    else if (answer.state === "withheld") setView({ phase: "unavailable" });
+    else await rebuild(null); // not_built: ask for exactly one build
+  }
+
+  async function rebuild(inHand: BuiltCompanion | null) {
+    setView(
+      inHand
+        ? { phase: "built", payload: inHand, refreshing: true, notice: null }
+        : { phase: "building" },
+    );
+    try {
+      const answer = await refreshDocumentCompanion(documentId);
+      if (answer.state === "built") showBuilt(answer);
+      else if (answer.state === "withheld") setView({ phase: "unavailable" });
+      else await rebuildFailed(inHand, false);
+    } catch (err) {
+      if (isCompanionNotFound(err)) {
+        setView({ phase: "unavailable" });
+        return;
+      }
+      const hasLastBuild =
+        err instanceof CompanionRebuildFailedError ? err.hasLastBuild : inHand !== null;
+      await rebuildFailed(inHand, hasLastBuild);
+    }
+  }
+
+  async function rebuildFailed(inHand: BuiltCompanion | null, hasLastBuild: boolean) {
+    if (inHand) {
+      setView({
+        phase: "built",
+        payload: inHand,
+        refreshing: false,
+        notice: hasLastBuild ? "rebuild_failed" : "build_failed",
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [documentId]);
+      return;
+    }
+    if (!hasLastBuild) {
+      setView({ phase: "build_failed" });
+      return;
+    }
+    // The server kept a last build this rail never received. Read it (the GET
+    // never writes) so "the last version is shown" is true.
+    try {
+      const answer = await getDocumentCompanion(documentId);
+      if (answer.state === "built") showBuilt(answer, "rebuild_failed");
+      else if (answer.state === "withheld") setView({ phase: "unavailable" });
+      else setView({ phase: "build_failed" });
+    } catch (err) {
+      setView(isCompanionNotFound(err) ? { phase: "unavailable" } : { phase: "load_failed" });
+    }
+  }
 
-  if (state.kind === "loading") return null;
-  if (state.kind === "unavailable") return null; // the rail stands alone honestly
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && view.phase === "idle") void exclusive(load);
+  }
 
-  const { payload } = state;
+  function retry() {
+    if (view.phase === "load_failed") void exclusive(load);
+    else if (view.phase === "build_failed") void exclusive(() => rebuild(null));
+    else if (view.phase === "built") void exclusive(() => rebuild(view.payload));
+  }
+
+  const line = companionLine(view);
+  const canRetry =
+    view.phase === "load_failed" ||
+    view.phase === "build_failed" ||
+    (view.phase === "built" && !view.refreshing && view.notice !== null);
+  const payload = view.phase === "built" ? view.payload : null;
+  const refreshing = view.phase === "built" && view.refreshing;
+
   return (
     <section
       className="border-b border-rule px-4 py-3 dark:border-charcoal-1"
       aria-label="Document companion"
       data-companion-section
     >
-      <p className="mb-2 font-mono text-xxs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        aria-controls={regionId}
+        className="flex w-full items-center justify-between gap-2 text-left font-mono text-xxs uppercase tracking-wide text-shadow-1 hover:text-ink dark:text-moonlight dark:hover:text-bright"
+      >
         The companion so far
-      </p>
-      {!payload.servable && (
-        <p className="mb-1.5 font-serif text-xs italic text-ink-mute dark:text-moonlight">
-          This book's text is withheld — only its metadata shows here.
-        </p>
-      )}
-      {payload.claims.length === 0 && payload.processes.length === 0 ? (
-        <p className="font-serif text-xs italic text-ink-mute dark:text-moonlight">
-          No companion yet — it gathers as you read and research this book.
-        </p>
-      ) : (
-        <ol className="space-y-1.5" data-companion-claims>
-          {payload.claims.slice(0, 5).map((claim) => (
-            <li
-              key={claim.evidence_id}
-              data-evidence-id={claim.evidence_id}
-              className="font-serif text-xs leading-relaxed text-ink dark:text-bright"
+        <span aria-hidden="true">{open ? "−" : "+"}</span>
+      </button>
+      <div id={regionId} hidden={!open} className="mt-2">
+        <div className={`flex items-baseline justify-between gap-2 ${line ? "mb-1.5" : ""}`}>
+          <p
+            id={statusId}
+            role="status"
+            aria-live="polite"
+            className="font-serif text-xs italic text-ink-mute dark:text-moonlight"
+          >
+            {line}
+          </p>
+          {canRetry && (
+            <button
+              type="button"
+              onClick={retry}
+              className="shrink-0 font-mono text-xxs text-shadow-1 underline decoration-dotted underline-offset-2 hover:text-ink dark:text-moonlight dark:hover:text-bright"
             >
-              <span className="mr-1 font-mono text-xxs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-                {claim.kind === "insight" ? "Finding" : "Open question"} ·
-              </span>
-              {claim.text ?? <span className="italic">grounded in a withheld source</span>}
-            </li>
-          ))}
-          {payload.processes.slice(0, 4).map((process) => (
-            <li
-              key={process.evidence_id}
-              data-evidence-id={process.evidence_id}
-              className="font-mono text-xxs text-shadow-1 dark:text-moonlight"
-            >
-              {process.label} — {process.status_line}
-            </li>
-          ))}
-        </ol>
-      )}
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <p className="font-mono text-xxs text-shadow-2 dark:text-moonlight">
-          generated · rebuilt {payload.rebuilt_at.slice(0, 10)}
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            if (inspectRows !== null) {
-              setInspectRows(null);
-              return;
-            }
-            void listDocumentEvidence(documentId)
-              .then((resp) => setInspectRows(resp.rows))
-              .catch(() => setInspectRows([]));
-          }}
-          className="font-mono text-xxs text-shadow-1 underline decoration-dotted underline-offset-2 hover:text-ink dark:text-moonlight dark:hover:text-bright"
-          title="The evidence base's inspect dump — operator debug, read-only"
-        >
-          {inspectRows !== null ? "close inspect" : "inspect evidence base"}
-        </button>
-      </div>
-      {inspectRows !== null && (
-        <div
-          className="mt-2 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-xxs text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight"
-          data-companion-inspect
-          role="region"
-          aria-label="Evidence base inspect dump"
-        >
-          {inspectRows.length === 0 ? (
-            <p className="italic">No evidence rows on record.</p>
-          ) : (
-            <ul className="space-y-1">
-              {inspectRows.map((row) => (
-                <li key={row.evidence_id} data-evidence-id={row.evidence_id}>
-                  {row.kind} · {row.evidence_id}
-                  {row.tombstone ? " · tombstone" : ""}
-                  <span className="block truncate" title={row.refs.join(" · ")}>
-                    {row.refs.join(" · ")}
-                  </span>
-                </li>
-              ))}
-            </ul>
+              Retry
+            </button>
           )}
         </div>
-      )}
+        {payload && (
+          <>
+            {!payload.servable && (
+              <p className="mb-1.5 font-serif text-xs italic text-ink-mute dark:text-moonlight">
+                This book's text is withheld — only its metadata shows here.
+              </p>
+            )}
+            {payload.claims.length === 0 && payload.processes.length === 0 ? (
+              <p className="font-serif text-xs italic text-ink-mute dark:text-moonlight">
+                No companion yet — it gathers as you read and research this book.
+              </p>
+            ) : (
+              <ol className="space-y-1.5" data-companion-claims>
+                {payload.claims.slice(0, 5).map((claim) => {
+                  const label = claimKindLabel(claim.kind);
+                  return (
+                    <li
+                      key={claim.evidence_id}
+                      data-evidence-id={claim.evidence_id}
+                      className="font-serif text-xs leading-relaxed text-ink dark:text-bright"
+                    >
+                      {label && (
+                        <span className="mr-1 font-mono text-xxs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                          {label} ·
+                        </span>
+                      )}
+                      {claim.text ?? <span className="italic">grounded in a withheld source</span>}
+                    </li>
+                  );
+                })}
+                {payload.processes.slice(0, 4).map((process) => (
+                  <li
+                    key={process.evidence_id}
+                    data-evidence-id={process.evidence_id}
+                    className="font-mono text-xxs text-shadow-1 dark:text-moonlight"
+                  >
+                    {process.label} — {process.status_line}
+                  </li>
+                ))}
+              </ol>
+            )}
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="font-mono text-xxs text-shadow-2 dark:text-moonlight">
+                generated · rebuilt {payload.rebuilt_at.slice(0, 10)}
+              </p>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void exclusive(() => rebuild(payload))}
+                  disabled={refreshing}
+                  aria-describedby={refreshing ? statusId : undefined}
+                  className="font-mono text-xxs text-shadow-1 underline decoration-dotted underline-offset-2 hover:text-ink disabled:cursor-not-allowed disabled:text-ink-mute dark:text-moonlight dark:hover:text-bright dark:disabled:text-moonlight"
+                  title={refreshing ? "A rebuild is already running" : "Rebuild the companion from this book's latest notes and evidence"}
+                >
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (inspectRows !== null) {
+                      setInspectRows(null);
+                      return;
+                    }
+                    void listDocumentEvidence(documentId)
+                      .then((resp) => setInspectRows(resp.rows))
+                      .catch(() => setInspectRows([]));
+                  }}
+                  className="font-mono text-xxs text-shadow-1 underline decoration-dotted underline-offset-2 hover:text-ink dark:text-moonlight dark:hover:text-bright"
+                  title="The evidence base's inspect dump — operator debug, read-only"
+                >
+                  {inspectRows !== null ? "close inspect" : "inspect evidence base"}
+                </button>
+              </div>
+            </div>
+            {inspectRows !== null && (
+              <div
+                className="mt-2 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-xxs text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight"
+                data-companion-inspect
+                role="region"
+                aria-label="Evidence base inspect dump"
+              >
+                {inspectRows.length === 0 ? (
+                  <p className="italic">No evidence rows on record.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {inspectRows.map((row) => (
+                      <li key={row.evidence_id} data-evidence-id={row.evidence_id}>
+                        {row.kind} · {row.evidence_id}
+                        {row.tombstone ? " · tombstone" : ""}
+                        <span className="block truncate" title={row.refs.join(" · ")}>
+                          {row.refs.join(" · ")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </section>
   );
+}
+
+/**
+ * The claim row's label, by the payload's real kind. The server sends the
+ * grounded node's type (insight | question); claim and evidence are labelled
+ * if they ever arrive; an unknown kind gets no label rather than a wrong one.
+ */
+function claimKindLabel(kind: string): string | null {
+  switch (kind) {
+    case "insight":
+      return "Finding";
+    case "question":
+      return "Open question";
+    case "claim":
+      return "Claim";
+    case "evidence":
+      return "Evidence";
+    default:
+      return null;
+  }
 }
