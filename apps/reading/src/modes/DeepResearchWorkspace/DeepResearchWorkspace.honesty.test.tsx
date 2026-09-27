@@ -100,6 +100,18 @@ describe("ResearchPanel — an undefined cost is awaited too (MiMo F5)", () => {
     expect(container.textContent).toContain("cost · awaiting");
     expect(container.textContent).not.toContain("$");
   });
+
+  it.each([
+    ["NaN", Number.NaN],
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["-Infinity", Number.NEGATIVE_INFINITY],
+  ])("renders 'cost · awaiting' for %s, never '$NaN' or '$Infinity' (MiMo F8)", (_name, value) => {
+    const { container } = render(
+      <ResearchPanel research={researches[0] as never} costUsd={value} onSteer={() => {}} />,
+    );
+    expect(container.textContent).toContain("cost · awaiting");
+    expect(container.textContent).not.toMatch(/\$|NaN|Infinity/);
+  });
 });
 
 describe("DRW monitor — a missing session is terminal (A-14)", () => {

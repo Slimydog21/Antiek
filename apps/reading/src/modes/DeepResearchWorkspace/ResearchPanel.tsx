@@ -51,7 +51,7 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
       </header>
 
       <div className="flex items-center justify-between text-xs text-shadow-1 dark:text-moonlight">
-        {typeof costUsd !== "number" ? (
+        {typeof costUsd !== "number" || !Number.isFinite(costUsd) ? (
           // Same words as CostMeter's unknown state: a number the session has
           // not reported is awaited, not zero (F-11).
           <span className="uppercase tracking-[0.14em]">cost · awaiting</span>
