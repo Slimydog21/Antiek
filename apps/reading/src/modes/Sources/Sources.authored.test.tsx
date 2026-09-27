@@ -1,5 +1,5 @@
 /**
- * The "I authored this" option is gated on the API's capability route (FFX
+ * The "I wrote this" option is gated on the API's capability route (FFX
  * SPR-02, A-06 client half; backend INBOX 2026-09-27T00:40Z). It is enabled
  * ONLY when GET /sources/upload/attestations lists `user_authored_private`,
  * and then that exact token is sent. A 404, an error, or a capability without
@@ -24,7 +24,7 @@ import * as uploadApi from "../../lib/sourceUploadApi";
 
 const LEGACY_PUBLIC_TOKEN = ["user", "owned"].join("_");
 const SERVER_UPDATE_COPY = "This needs a server update. Try again later.";
-const AUTHORED_LABEL = /I authored this/;
+const AUTHORED_LABEL = /I wrote this/;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -112,6 +112,9 @@ describe("Sources authored upload is capability-gated", () => {
     );
     renderWithFile();
     await waitFor(() => expect(authoredRadio().disabled).toBe(false));
+    // The label states the privacy property the user is consenting to.
+    expect(screen.getByText("I wrote this (notes or drafts). Only you can read it. It opens in the reader with full text, highlights and research.")).toBeTruthy();
+    expect(screen.getByText(/Personal reading — .*Only you can read it\./)).toBeTruthy();
     fireEvent.click(authoredRadio());
     fireEvent.click(screen.getByLabelText(/I confirm the attestation above/));
     fireEvent.click(screen.getByRole("button", { name: "Upload and convert" }));

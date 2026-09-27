@@ -351,7 +351,7 @@ export default function Sources() {
                     onChange={() => setUploadChoice("personal")}
                     className="mt-0.5"
                   />
-                  <span>Personal reading — I lawfully hold this copy for myself. Reader content stays owner-only.</span>
+                  <span>Personal reading — I lawfully hold this copy for myself. Only you can read it.</span>
                 </label>
                 <label className={`flex items-start gap-3 text-sm text-ink dark:text-bright ${authoredAvailable ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}>
                   <input
@@ -363,7 +363,7 @@ export default function Sources() {
                     aria-describedby="authored-availability"
                     className="mt-0.5"
                   />
-                  <span>I authored this (notes / drafts) — open it in BookReader with full text, highlight, and spin-research.</span>
+                  <span>I wrote this (notes or drafts). Only you can read it. It opens in the reader with full text, highlights and research.</span>
                 </label>
                 {!authoredAvailable && (
                   <div id="authored-availability" className="ml-7 flex flex-wrap items-center gap-3 text-xs text-shadow-1 dark:text-moonlight" role="status">
