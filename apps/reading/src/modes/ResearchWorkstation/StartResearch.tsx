@@ -366,6 +366,10 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // question was deliberately not cleared on failure, so it's still there to
   // re-submit; we just refocus it.
   const onTryAgain = useCallback(() => {
+    // The prior POST already claimed this operation. A failed investigation
+    // must start a new paid run; reusing the ID replays the failed launch (or
+    // conflicts if the question was edited).
+    setOperationId(`research-${crypto.randomUUID()}`);
     reset();
     taRef.current?.focus();
   }, [reset]);

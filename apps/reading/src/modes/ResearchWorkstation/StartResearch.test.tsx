@@ -571,5 +571,14 @@ describe("StartResearch — a failed run is surfaced honestly, never a dead rout
       expect(input.value).toBe(question);
     });
     expect(navigateMock).not.toHaveBeenCalled();
+
+    const first = startInvestigationMock.mock.calls[0][0];
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledTimes(2));
+    const retried = startInvestigationMock.mock.calls[1][0];
+    expect(retried.question).toBe(first.question);
+    expect(retried.model_choice).toEqual(first.model_choice);
+    expect(retried.operation_id).not.toBe(first.operation_id);
   });
 });
