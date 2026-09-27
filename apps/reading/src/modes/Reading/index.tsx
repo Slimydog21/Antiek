@@ -76,6 +76,14 @@ export interface BookReaderProps {
   /** Window hosts inject the document identity directly; route mounts keep
    * resolving `/read/:documentId` exactly as before. */
   documentId?: string;
+  /** The reader window's origin context (reading-global SPR-02) — arrives
+   * as window payload (the host spreads it into props). Metadata only: the
+   * ONE consumer is the islands' dig-deeper prefill; ignoring it is lawful
+   * and changes nothing. */
+  origin?: { from: string; id: string } | null;
+  /** A one-shot page landing (the reformat trace jump, SPR-02): applied
+   *  once when the pages resolve, then the bus owns the position. */
+  initialPage?: number | null;
 }
 
 /** The decorations registry needs a ReadingContext; the highlight
@@ -87,7 +95,7 @@ const ANCHOR_STUB_CTX: ReadingContext = {
   substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
 };
 
-export default function BookReader({ documentId: documentIdProp }: BookReaderProps = {}) {
+export default function BookReader({ documentId: documentIdProp, origin = null, initialPage = null }: BookReaderProps = {}) {
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
   const documentId = documentIdProp ?? routeDocumentId;
   const inWindow = useInWindow();
@@ -177,6 +185,15 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
   );
   const pages = useMemo(() => paginate(normalizedBody), [normalizedBody]);
   const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
+
+  // The one-shot page landing (the reformat trace jump): applied ONCE when
+  // the pages resolve; the bus owns the position from then on.
+  const initialPageAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialPageAppliedRef.current || initialPage == null || pages.length === 0) return;
+    initialPageAppliedRef.current = true;
+    setPageIndex(initialPage);
+  }, [initialPage, pages.length, setPageIndex]);
 
   // ── Anchored highlights (anchor-first SPR-02) ─────────────────────────
   // The owner's persisted anchors (SPR-03) and the chunk anchor-map — the
@@ -293,11 +310,12 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
           : null,
         pageIndexHint:
           anchors.find((a) => a.anchor_id === island.anchorId)?.page_index_hint ?? null,
+        origin,
       }),
     );
     const plan = collectAnchoredWidgets(augmentations, ANCHOR_STUB_CTX);
     return enactWidgetLayout(plan, islandLayoutMap);
-  }, [visibleIslands, anchors, islandLayoutMap]);
+  }, [visibleIslands, anchors, islandLayoutMap, origin]);
 
   const islandRenderCtx: RenderContext = useMemo(
     () => ({
