@@ -96,7 +96,9 @@ describe("AppShell SPR-08 — the HotkeyHud is mounted + HELP_TOGGLE-driven", ()
     act(() => {
       window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
     });
-    await waitFor(() => expect(document.body.querySelector('[role="dialog"]')).toBeTruthy());
+    // The key sheet is a lazy chunk: its first import pays a cold module
+    // transform, which exceeds waitFor's 1 s default on a loaded machine.
+    await waitFor(() => expect(document.body.querySelector('[role="dialog"]')).toBeTruthy(), { timeout: 8000 });
     const dialog = document.body.querySelector('[role="dialog"]');
     expect(
       dialog,

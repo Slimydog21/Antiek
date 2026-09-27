@@ -49,23 +49,41 @@ import { COMPANION_PANEL_ID } from "./companionVisibility";
 
 export { COMPANION_PANEL_ID, companionVisible } from "./companionVisibility";
 
-/** The prefix of a book's reading thread id (`read-<documentId>`,
- *  THREAD-CONTRACT §1.3 spin-research): a research spun from a reader hangs
- *  under it. */
+/** The prefix of a book's reading thread id, `read-<documentId>`. */
 const READING_THREAD_PREFIX = "read-";
 
+/** `read-` ids that name no document: a meta-reading asset
+ *  (`read-meta-<asset>`), a reading session (`read-session-<id>`) and the
+ *  passage-research default parent (`read-spin`). A child of one of these
+ *  was not born from the document its suffix would spell. */
+const NON_DOCUMENT_READ_PREFIXES = ["read-meta-", "read-session-"] as const;
+const NON_DOCUMENT_READ_IDS: ReadonlySet<string> = new Set(["read-spin"]);
+
 /**
- * The document a research thread was born from, read from its provenance:
- * a research spun from a book is a child of that book's reading thread,
- * `read-<documentId>`. Null when the thread was not born from a document
- * (a free question, a daemon find): the pane then offers no "open source
- * document", never a guessed one.
+ * The document a thread was born from, or null when that is not known.
+ *
+ * 1. `document_id` on the summary (THREAD-CONTRACT §1.2 ThreadSummary,
+ *    from the event envelope; lane B's W1 wire) when it is set.
+ * 2. Otherwise an exact `read-<documentId>` parent: a thread hung under a
+ *    book's reading thread. The `read-` ids that name no document (above)
+ *    are refused.
+ * 3. Otherwise null, and the pane offers no "open source document", never a
+ *    guessed one.
+ *
+ * Research spun from a book (POST /books/{id}/spin-research) carries no
+ * parent today, so it reaches branch 1 only once lane B ships `document_id`.
  */
-export function sourceDocumentOf(summary: { parent_investigation_id: string | null } | undefined): string | null {
-  const parent = summary?.parent_investigation_id;
+export function sourceDocumentOf(
+  summary: { document_id?: string | null; parent_investigation_id?: string | null } | undefined,
+): string | null {
+  if (!summary) return null;
+  const direct = summary.document_id?.trim();
+  if (direct) return direct;
+  const parent = summary.parent_investigation_id?.trim();
   if (!parent?.startsWith(READING_THREAD_PREFIX)) return null;
-  const documentId = parent.slice(READING_THREAD_PREFIX.length).trim();
-  return documentId || null;
+  if (NON_DOCUMENT_READ_IDS.has(parent)) return null;
+  if (NON_DOCUMENT_READ_PREFIXES.some((p) => parent.startsWith(p))) return null;
+  return parent.slice(READING_THREAD_PREFIX.length).trim() || null;
 }
 
 function agentTabId(input: OpenAgentTabInput): string {

@@ -100,13 +100,14 @@ export function AppShell({ children }: Props) {
   useWorkspaceHydration();
 
   // DECISIONS C2 (operator-confirmed 2026-09-26): the Omarchy inset keeps
-  // the LEFT toolbar visible. Where the inset shows both panes (lg, xl) the
-  // rail is the vertical left rail (NavRail's `left` orientation); the
-  // docked preset keeps the SPR-06 bottom dock, and so do the one-pane tiers
-  // (md, sm), where the bottom dock is the phone design (R2-H3).
+  // the LEFT toolbar visible, at every tier the inset draws (xl, lg, and md,
+  // the Omarchy half screen: R3-M4). The rail is then the vertical left rail
+  // (NavRail's `left` orientation). The docked preset keeps the SPR-06
+  // bottom dock, and so does the phone tier (sm), where PanelLayout draws
+  // no inset and the bottom dock is the phone design (R2-H3).
   const layoutPreset = useWorkspace((s) => s.layoutPreset);
   const tier = useViewportTier();
-  const railLeft = layoutPreset === "omarchy-inset" && (tier === "xl" || tier === "lg");
+  const railLeft = layoutPreset === "omarchy-inset" && tier !== "sm";
 
   return (
     // EDGE-RESERVATION SEAM (SPR-06 M3) — the outer frame fills the viewport

@@ -5,9 +5,9 @@
  * layout preset inside PanelLayout that keeps the LEFT toolbar visible. The
  * shell mounted NavRail with its SPR-06 default (a 64 px bottom bar) in every
  * preset, so the inset had no left toolbar at any width. The inset now takes
- * the vertical rail at the tiers that show both panes (lg, xl); the docked
- * preset and the one-pane tiers keep the bottom dock (SPR-06, the phone
- * design). Heavy children are stubbed exactly as AppShell.spr06.test does.
+ * the vertical rail at every tier the inset draws (xl, lg, and md, the
+ * Omarchy half screen: R3-M4); the docked preset and the phone tier (sm)
+ * keep the bottom dock (SPR-06, the phone design). Heavy children are stubbed exactly as AppShell.spr06.test does.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
@@ -110,10 +110,12 @@ const rail = (c: HTMLElement) => c.querySelector<HTMLElement>("aside[aria-label=
 const before = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
 describe("C2 — the inset keeps a LEFT toolbar", () => {
-  it.each(["xl", "lg"])("omarchy-inset at tier %s: the primary navigation is a vertical rail to the left of the panes", (tier) => {
+  // md is an Omarchy half screen (960 px on a 1920 display): the inset is on
+  // there too, so the left toolbar is too (C2 has no tier exemption; R3-M4).
+  it.each(["xl", "lg", "md"])("omarchy-inset at tier %s: the primary navigation is a vertical rail to the left of the panes", (tier) => {
     tierRef.current = tier;
     useWorkspace.getState().setLayoutPreset("omarchy-inset");
-    const { container, getByTestId } = mountShell();
+    const { container, getByTestId, queryByRole } = mountShell();
     const nav = rail(container);
     expect(nav).toBeTruthy();
     // Vertical: the rail's own axis is a column, full height, a fixed width.
@@ -129,6 +131,10 @@ describe("C2 — the inset keeps a LEFT toolbar", () => {
     expect(row.className).not.toMatch(/\bflex-col\b/);
     // The mascot keeps its reserved station in the rail.
     expect(nav.querySelector("[data-mascot-station]")).toBeTruthy();
+    // In the flow beside the panes, never the phone overlay drawn over the
+    // left pane (the R3 render probe at 900 px caught exactly that).
+    expect(nav.className).not.toMatch(/\babsolute\b/);
+    expect(queryByRole("button", { name: "Close navigation" })).toBeNull();
   });
 
   it("the docked preset keeps the SPR-06 bottom dock after the working region", () => {
@@ -139,8 +145,8 @@ describe("C2 — the inset keeps a LEFT toolbar", () => {
     expect(before(getByTestId("main-region"), nav)).toBe(true);
   });
 
-  it("one-pane tiers (md) keep the bottom dock even in the inset", () => {
-    tierRef.current = "md";
+  it("the phone tier (sm) keeps the bottom dock even in the inset", () => {
+    tierRef.current = "sm";
     useWorkspace.getState().setLayoutPreset("omarchy-inset");
     const { container, getByTestId } = mountShell();
     const nav = rail(container);

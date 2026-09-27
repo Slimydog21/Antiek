@@ -271,8 +271,9 @@ describe("F-18 — fullscreen never blanks the cockpit or traps a dock", () => {
     expect(ws().focusedPane).toBe("right");
     tierRef.current = "md";
     rerender(tree());
-    // md shows one pane at a time (lane A B3-3): the focused one.
-    expect(visiblePanes()).toEqual(["right"]);
+    // md keeps both panes (DESIGN-MODEL "Pane behaviour, ratified from A1b";
+    // R3-M4 retired B3-3's one-pane md).
+    expect(visiblePanes()).toEqual(["left", "right"]);
     key(document.body, "ctrl+b");
     key(document.body, "f");
     expect(ws().fullscreenPane).toBe("right");
@@ -397,26 +398,16 @@ describe("H6 — the panes are named regions with a visible focus ring", () => {
   });
 });
 
-describe("H7 — the inset keeps both panes at lg; md shows one at a time, both mounted", () => {
-  it.each(["xl", "lg"] as const)("%s: two panes on screen", (tier) => {
+describe("H7 — the inset keeps both panes at lg and md", () => {
+  // DESIGN-MODEL "Pane behaviour, ratified from A1b (2026-09-27)": "At lg
+  // and md, the inset layout keeps both panes. At md, the right pane narrows
+  // to 280 px." (R3-M4 restores this after B3-3's one-pane md.)
+  it.each(["xl", "lg", "md"] as const)("%s: two panes on screen", (tier) => {
     openTwo();
     ws().setLayoutPreset("omarchy-inset");
     tierRef.current = tier;
     render(tree());
     expect(visiblePanes()).toEqual(["left", "right"]);
-  });
-
-  // Superseded by lane A B3-3 (a 280 px right pane at md was cramped and,
-  // on the operator's screen, out of reach): md shows the focused pane full
-  // width and keeps the other mounted, one key away. The switching itself
-  // is cockpitB3.render.test.tsx.
-  it("md: the left pane on screen, the right mounted behind it", () => {
-    openTwo();
-    ws().setLayoutPreset("omarchy-inset");
-    tierRef.current = "md";
-    render(tree());
-    expect(visiblePanes()).toEqual(["left"]);
-    expect(pane("right")).toBeTruthy();
-    expect(pane("right")!.childElementCount).toBeGreaterThan(0);
+    expect(pane("right")!.style.width).toBe(tier === "md" ? "280px" : "320px");
   });
 });

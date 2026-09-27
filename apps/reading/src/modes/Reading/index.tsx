@@ -501,8 +501,12 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
 
 
       {/* Reading column */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-4 min-h-full">
+      {/* The title row sits above the scroller, so the Thought partner
+          bookmark stays reachable mid-read (cockpit R3); only the reading
+          body scrolls. */}
+      <main className="flex-1 min-w-0 min-h-0 flex flex-col">
+        <div className="shrink-0 w-full max-w-3xl mx-auto px-6 pt-6">
+          <div className="pb-2 border-b border-hairline">
           <header className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-1.5 min-w-0">
               <button
@@ -542,148 +546,153 @@ export default function BookReader({ documentId: documentIdProp }: BookReaderPro
               />
             </div>
           </header>
+          </div>
+        </div>
+        <div data-testid="reader-scroll" className="flex-1 min-h-0 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-6 pt-2 pb-6 flex flex-col gap-4 min-h-full">
 
-          {isArxivLinkBack ? (
-            /* arXiv T2/T3 — the gated / unknown-rights tiers. Antiek hosts NO
-               body and serves NO ads here (body-serving + ad-eligibility are
-               {T1}-only, per the binding rights law). The reader renders the
-               link-back ArxivFrame (pointing at the gate-served canonical_url)
-               + the Attribution chrome, and nothing else: no ReadingColumn body,
-               no AdBorder slots, no in-book page actions. The iframe inside the
-               frame, if it loads at all, loads browser→arXiv — Antiek never
-               proxies arXiv bytes. The only thing that differs between T2 and T3
-               is the attribution label (handled inside ArxivFrame/Attribution). */
-            <ArxivFrame
-              canonicalUrl={body.canonical_url as string}
-              title={book.title}
-              author={book.author}
-              tier={body.tier as "T2" | "T3"}
-            />
-          ) : isArxivLinkUnavailable ? (
-            /* Degenerate arXiv T2/T3 with no canonical_url (defence-in-depth;
-               unreachable from the OAI persist path). Antiek hosts NO body for
-               these tiers and has no link to offer — so we render an HONEST
-               notice and nothing else: no empty ReadingColumn, no AdBorder
-               rails. This degrades the M3 contract gracefully rather than
-               falling through to an empty hosted-body view. */
-            <div
-              data-arxiv-link-unavailable
-              className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright"
-            >
-              This paper is read on arXiv, but its arXiv link isn’t available
-              right now. Try again later or search arXiv for the title above.
-            </div>
-          ) : (
-            <>
-              {!ownerReadable && (
-                <div className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
-                  {book.servability === "taken_down"
-                    ? "This title has been removed and is no longer available to read."
-                    : "Preview only — this title isn’t licensed for full reading. You’re seeing a short snippet and its metadata."}
-                </div>
-              )}
-
-              {/* Ad-border (top) — gated on `body.ad_eligible` (Read SPR-05 M4).
-                  The backend computes ad-eligibility regression-safely: arXiv →
-                  {T1}-only; non-arXiv → == servable (today's behaviour). So a
-                  non-arXiv servable book keeps its rails (unchanged), an arXiv T1
-                  gets rails, and any non-ad-eligible body shows NO rails. The fill
-                  is still the zero-buyer house PLACEHOLDER (no live ad serving /
-                  revenue math this sprint — that's SPR-06+/Phase 4, gated G2/G3). */}
-              {adEligible && (
-                <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
-              )}
-
-              {/* Page body + the in-book float-menu SCOPE (M2) + the SPR-07
-                  attribution markers (SPR-09 M3). The shared useFloatMenuSelection
-                  hook listens on `selectionchange` and opens the menu only for
-                  selections inside this <article>; ReadingColumn forwards the ref so
-                  that scope is preserved verbatim. The load-bearing addition: when
-                  the gate served full text (a SERVABLE asset), the column carries
-                  `data-akb-asset-id={documentId}` so SPR-07's shell-level
-                  useFrameAttention — which scans the working region for
-                  [data-akb-asset-id] — finally detects an in-frame IP asset and the
-                  per-second telemetry stops being all-house-seconds. §9.0: a gated /
-                  taken-down work never reaches here with a body (the snippet path
-                  below renders the notice), so a tagged column is only ever a
-                  servable asset; attribution can never accrue to withheld text. We
-                  pass no chunkId — the books read path exposes no per-chunk id for
-                  the linear body, and we never fabricate one (asset-level is
-                  correct, per the contract's cover/title-card case). For an arXiv
-                  T1 the gate served extracted hosted TEXT (no PDF blob exists —
-                  see docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
-                  through this SAME markdown column, no PDF.js. */}
-              <ReadingColumn
-                ref={articleRef}
-                assetId={ownerReadable ? documentId : null}
-                text={page?.text ?? ""}
-                contentFormat={body.content_format ?? "text"}
+            {isArxivLinkBack ? (
+              /* arXiv T2/T3 — the gated / unknown-rights tiers. Antiek hosts NO
+                 body and serves NO ads here (body-serving + ad-eligibility are
+                 {T1}-only, per the binding rights law). The reader renders the
+                 link-back ArxivFrame (pointing at the gate-served canonical_url)
+                 + the Attribution chrome, and nothing else: no ReadingColumn body,
+                 no AdBorder slots, no in-book page actions. The iframe inside the
+                 frame, if it loads at all, loads browser→arXiv — Antiek never
+                 proxies arXiv bytes. The only thing that differs between T2 and T3
+                 is the attribution label (handled inside ArxivFrame/Attribution). */
+              <ArxivFrame
+                canonicalUrl={body.canonical_url as string}
+                title={book.title}
+                author={book.author}
+                tier={body.tier as "T2" | "T3"}
               />
-
-              {/* Per-page actions: voice note + spin a deep research. */}
-              {page && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-end gap-2">
-                    <LemonButton
-                      type="button"
-                      variant="tertiary"
-                      size="sm"
-                      aria-pressed={showVoice}
-                      onClick={() => setShowVoice((v) => !v)}
-                    >
-                      {showVoice ? "Close voice note" : "＋ Voice note"}
-                    </LemonButton>
-                    <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />
+            ) : isArxivLinkUnavailable ? (
+              /* Degenerate arXiv T2/T3 with no canonical_url (defence-in-depth;
+                 unreachable from the OAI persist path). Antiek hosts NO body for
+                 these tiers and has no link to offer — so we render an HONEST
+                 notice and nothing else: no empty ReadingColumn, no AdBorder
+                 rails. This degrades the M3 contract gracefully rather than
+                 falling through to an empty hosted-body view. */
+              <div
+                data-arxiv-link-unavailable
+                className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright"
+              >
+                This paper is read on arXiv, but its arXiv link isn’t available
+                right now. Try again later or search arXiv for the title above.
+              </div>
+            ) : (
+              <>
+                {!ownerReadable && (
+                  <div className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
+                    {book.servability === "taken_down"
+                      ? "This title has been removed and is no longer available to read."
+                      : "Preview only — this title isn’t licensed for full reading. You’re seeing a short snippet and its metadata."}
                   </div>
-                  {showVoice && (
-                    <VoiceNote
-                      documentId={documentId}
-                      pageIndex={pageIndex}
-                      investigationId={readingThreadId}
-                    />
-                  )}
-                </div>
-              )}
+                )}
 
-              {/* Ad-border (bottom) — gated on `body.ad_eligible` (M4). */}
-              {adEligible && (
-                <AdBorder slotId={`${slotBase}:bottom`} position="bottom" fill={houseFill} onOpenHouse={openHouse} />
-              )}
-            </>
-          )}
+                {/* Ad-border (top) — gated on `body.ad_eligible` (Read SPR-05 M4).
+                    The backend computes ad-eligibility regression-safely: arXiv →
+                    {T1}-only; non-arXiv → == servable (today's behaviour). So a
+                    non-arXiv servable book keeps its rails (unchanged), an arXiv T1
+                    gets rails, and any non-ad-eligible body shows NO rails. The fill
+                    is still the zero-buyer house PLACEHOLDER (no live ad serving /
+                    revenue math this sprint — that's SPR-06+/Phase 4, gated G2/G3). */}
+                {adEligible && (
+                  <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
+                )}
 
-          {/* Attribution (M3) — renders on ALL branches: it tells the reader
-              where the work came from + under what license. For an arXiv doc it
-              shows the canonical "via arXiv" link + tier/license chips; for a
-              non-arXiv doc it renders nothing extra (the servability badge above
-              stays the rights cue). Reads tier/canonical/license off the gate
-              response, never a local flag. */}
-          <Attribution body={body} />
+                {/* Page body + the in-book float-menu SCOPE (M2) + the SPR-07
+                    attribution markers (SPR-09 M3). The shared useFloatMenuSelection
+                    hook listens on `selectionchange` and opens the menu only for
+                    selections inside this <article>; ReadingColumn forwards the ref so
+                    that scope is preserved verbatim. The load-bearing addition: when
+                    the gate served full text (a SERVABLE asset), the column carries
+                    `data-akb-asset-id={documentId}` so SPR-07's shell-level
+                    useFrameAttention — which scans the working region for
+                    [data-akb-asset-id] — finally detects an in-frame IP asset and the
+                    per-second telemetry stops being all-house-seconds. §9.0: a gated /
+                    taken-down work never reaches here with a body (the snippet path
+                    below renders the notice), so a tagged column is only ever a
+                    servable asset; attribution can never accrue to withheld text. We
+                    pass no chunkId — the books read path exposes no per-chunk id for
+                    the linear body, and we never fabricate one (asset-level is
+                    correct, per the contract's cover/title-card case). For an arXiv
+                    T1 the gate served extracted hosted TEXT (no PDF blob exists —
+                    see docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
+                    through this SAME markdown column, no PDF.js. */}
+                <ReadingColumn
+                  ref={articleRef}
+                  assetId={ownerReadable ? documentId : null}
+                  text={page?.text ?? ""}
+                  contentFormat={body.content_format ?? "text"}
+                />
 
-          {/* Pager — hidden on the link-back branch (no hosted pages there). */}
-          {!isArxivLinkBack && pages.length > 0 && (
-            <nav className="flex items-center justify-between border-t border-rule dark:border-charcoal-1 pt-3">
-              <LemonButton
-                size="sm"
-                type="button"
-                disabled={pageIndex <= 0}
-                onClick={() => setPageIndex(pageIndex - 1)}
-              >
-                ← Previous
-              </LemonButton>
-              <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-                {page ? `Page ${page.pageNumber}` : "—"} of {pages.length}
-              </span>
-              <LemonButton
-                size="sm"
-                type="button"
-                disabled={pageIndex >= pages.length - 1}
-                onClick={() => setPageIndex(pageIndex + 1)}
-              >
-                Next →
-              </LemonButton>
-            </nav>
-          )}
+                {/* Per-page actions: voice note + spin a deep research. */}
+                {page && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-end gap-2">
+                      <LemonButton
+                        type="button"
+                        variant="tertiary"
+                        size="sm"
+                        aria-pressed={showVoice}
+                        onClick={() => setShowVoice((v) => !v)}
+                      >
+                        {showVoice ? "Close voice note" : "＋ Voice note"}
+                      </LemonButton>
+                      <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={selection?.text ?? page.text} />
+                    </div>
+                    {showVoice && (
+                      <VoiceNote
+                        documentId={documentId}
+                        pageIndex={pageIndex}
+                        investigationId={readingThreadId}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* Ad-border (bottom) — gated on `body.ad_eligible` (M4). */}
+                {adEligible && (
+                  <AdBorder slotId={`${slotBase}:bottom`} position="bottom" fill={houseFill} onOpenHouse={openHouse} />
+                )}
+              </>
+            )}
+
+            {/* Attribution (M3) — renders on ALL branches: it tells the reader
+                where the work came from + under what license. For an arXiv doc it
+                shows the canonical "via arXiv" link + tier/license chips; for a
+                non-arXiv doc it renders nothing extra (the servability badge above
+                stays the rights cue). Reads tier/canonical/license off the gate
+                response, never a local flag. */}
+            <Attribution body={body} />
+
+            {/* Pager — hidden on the link-back branch (no hosted pages there). */}
+            {!isArxivLinkBack && pages.length > 0 && (
+              <nav className="flex items-center justify-between border-t border-rule dark:border-charcoal-1 pt-3">
+                <LemonButton
+                  size="sm"
+                  type="button"
+                  disabled={pageIndex <= 0}
+                  onClick={() => setPageIndex(pageIndex - 1)}
+                >
+                  ← Previous
+                </LemonButton>
+                <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+                  {page ? `Page ${page.pageNumber}` : "—"} of {pages.length}
+                </span>
+                <LemonButton
+                  size="sm"
+                  type="button"
+                  disabled={pageIndex >= pages.length - 1}
+                  onClick={() => setPageIndex(pageIndex + 1)}
+                >
+                  Next →
+                </LemonButton>
+              </nav>
+            )}
+          </div>
         </div>
       </main>
 

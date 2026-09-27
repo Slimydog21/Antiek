@@ -275,7 +275,11 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const tier = useViewportTier();
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const [launcherOpen, setLauncherOpen] = useState<boolean>(false);
-  const isMobile = tier === "sm" || tier === "md";
+  // The left rail is the phone overlay (absolute, behind a toggle) only at
+  // sm. At md it is the Omarchy inset's left toolbar, in the flow beside the
+  // panes (C2; R3-M4). The bottom dock never collapses, so this only
+  // decides the left rail.
+  const isMobile = tier === "sm";
   const showRail = !isMobile || !collapsed;
   const isBottom = orientation === "bottom";
   // Phone width: the bottom dock reduces to five equal keys (the four doors

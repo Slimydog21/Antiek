@@ -5,8 +5,8 @@
  *      tablist with edge fades and an overflow menu (searchable past eight),
  *      "+ new agent" outside the scroller, no sideways scroll of the pane;
  *   2  writing: a preset round trip leaves exactly one outline;
- *   3  tier md: one pane at a time, both mounted, h/l and a two-segment
- *      switcher change the visible pane;
+ *   3  tier md: (superseded in R3-M4 by DESIGN-MODEL "Pane behaviour,
+ *      ratified from A1b") both panes on screen, the right one 280 px;
  *   4  compressed hierarchical numbers stay unique along a path;
  *   5  the empty strip is as tall as a strip with tabs;
  *   7  the right pane is named for what it holds (Outline / Agents pane);
@@ -315,7 +315,12 @@ describe("B3-2 writing: a preset round trip leaves exactly one outline", () => {
   });
 });
 
-// ─── 3 tier md: one pane at a time ──────────────────────────────────────
+// ─── 3 tier md: both panes, the right one 280 px (R3-M4) ────────────────
+//
+// Stage B3-3 showed ONE pane at a time at md. The binding DESIGN-MODEL line
+// ("Pane behaviour, ratified from A1b (2026-09-27)") says: "At lg and md,
+// the inset layout keeps both panes. At md, the right pane narrows to
+// 280 px; at lg, it keeps its token width." These encode that line.
 
 let mounts = 0;
 function Stateful() {
@@ -326,42 +331,37 @@ function Stateful() {
   return <input data-testid="route-input" value={text} onChange={(e) => setText(e.target.value)} />;
 }
 
-describe("B3-3 tier md: one pane at a time, both mounted", () => {
-  function mountMd() {
-    tierRef.current = "md";
+describe("R3-M4 tier md: the inset keeps both panes, the right narrowed to 280 px", () => {
+  function mountAt(tier: string) {
+    tierRef.current = tier;
     ws().setLayoutPreset("omarchy-inset");
     mounts = 0;
     return render(<PanelLayout mainSlot={<Stateful />} />);
   }
-  const switcher = () =>
-    Array.from(document.querySelectorAll<HTMLElement>("[data-pane-switcher]")).find(isVisible) ?? null;
-  const pressed = () =>
-    Array.from(switcher()!.querySelectorAll<HTMLElement>("[data-pane-switch]"))
-      .filter((b) => b.getAttribute("aria-pressed") === "true")
-      .map((b) => b.getAttribute("data-pane-switch"));
 
-  it("shows the left pane alone, full width; the right stays mounted, hidden", () => {
-    mountMd();
-    expect(visiblePanes()).toEqual(["left"]);
-    const right = pane("right")!;
-    expect(right).toBeTruthy();
-    expect(right.hidden).toBe(true);
-    // Full width: no fixed pane width left over from the two-pane layout.
-    expect(pane("left")!.style.width).toBe("");
+  it("md: both panes on screen, the right one 280 px wide, the left flexing", () => {
+    mountAt("md");
+    expect(visiblePanes()).toEqual(["left", "right"]);
+    expect(pane("right")!.style.width).toBe("280px");
+    expect(pane("left")!.className).toMatch(/(^|\s)flex-1(\s|$)/);
+    // No one-pane machinery is left behind.
+    expect(document.querySelector("[data-pane-switcher]")).toBeNull();
+    expect(document.querySelector("[data-pane-offstage]")).toBeNull();
   });
 
-  it("a two-segment switcher in the pane header says which pane is visible", () => {
-    mountMd();
-    const s = switcher()!;
-    expect(s).toBeTruthy();
-    expect(s.querySelectorAll("[data-pane-switch]")).toHaveLength(2);
-    expect(s.textContent).toMatch(/Documents/);
-    expect(s.textContent).toMatch(/Agents/);
-    expect(pressed()).toEqual(["left"]);
+  it("md: the left dock stays 0 px", () => {
+    mountAt("md");
+    expect(document.querySelector<HTMLElement>("aside[aria-label='Left dock']")!.style.width).toBe("0px");
   });
 
-  it("prefix l shows the right pane (focused), prefix h brings the left back; nothing remounts", () => {
-    mountMd();
+  it.each(["lg", "xl"])("%s: the right pane keeps its token width (320 px)", (tier) => {
+    mountAt(tier);
+    expect(visiblePanes()).toEqual(["left", "right"]);
+    expect(pane("right")!.style.width).toBe("320px");
+  });
+
+  it("md: prefix l / prefix h move focus between the two visible panes; nothing hides or remounts", () => {
+    mountAt("md");
     const input = document.querySelector<HTMLInputElement>('[data-testid="route-input"]')!;
     act(() => {
       input.focus();
@@ -370,41 +370,33 @@ describe("B3-3 tier md: one pane at a time, both mounted", () => {
     });
     key(document.body, "ctrl+b");
     key(document.body, "l");
-    expect(visiblePanes()).toEqual(["right"]);
     expect(document.activeElement).toBe(pane("right"));
-    expect(pressed()).toEqual(["right"]);
-    // The left pane is hidden, not unmounted: the draft is still there.
-    expect(pane("left")!.hidden).toBe(true);
-    expect(document.querySelector<HTMLInputElement>('[data-testid="route-input"]')!.value).toBe("draft");
+    expect(visiblePanes()).toEqual(["left", "right"]);
     key(document.body, "ctrl+b");
     key(document.body, "h");
-    expect(visiblePanes()).toEqual(["left"]);
     expect(document.activeElement).toBe(pane("left"));
     expect(document.querySelector<HTMLInputElement>('[data-testid="route-input"]')!.value).toBe("draft");
     expect(mounts).toBe(1);
   });
 
-  it("the ctrl+alt twins switch too", () => {
-    mountMd();
-    key(document.body, "ctrl+alt+l");
-    expect(visiblePanes()).toEqual(["right"]);
-    key(document.body, "ctrl+alt+h");
-    expect(visiblePanes()).toEqual(["left"]);
-  });
-
-  it("the switcher's segments switch by pointer", () => {
-    mountMd();
-    fireEvent.click(switcher()!.querySelector<HTMLElement>("[data-pane-switch='right']")!);
-    expect(visiblePanes()).toEqual(["right"]);
-    fireEvent.click(switcher()!.querySelector<HTMLElement>("[data-pane-switch='left']")!);
-    expect(visiblePanes()).toEqual(["left"]);
-  });
-
-  it("an agent opening a document on the left brings the left pane on (its new tab takes the screen)", async () => {
-    mountMd();
+  it("md: fullscreen still shows the focused pane alone and restores both", () => {
+    mountAt("md");
     key(document.body, "ctrl+b");
     key(document.body, "l");
+    key(document.body, "ctrl+b");
+    key(document.body, "f");
     expect(visiblePanes()).toEqual(["right"]);
+    // Right-pane fullscreen takes the cockpit, not its 280 px column.
+    expect(pane("right")!.style.width).toBe("");
+    act(() => ws().setFullscreenPane(null));
+    expect(visiblePanes()).toEqual(["left", "right"]);
+    expect(pane("right")!.style.width).toBe("280px");
+  });
+
+  it("md: an agent opening a document on the left spawns the tab with the left pane already on screen", async () => {
+    mountAt("md");
+    key(document.body, "ctrl+b");
+    key(document.body, "l");
     act(() => {
       openDocumentInLeftPane("doc-9", { from: "companion" });
     });
@@ -412,18 +404,7 @@ describe("B3-3 tier md: one pane at a time, both mounted", () => {
     await act(async () => {});
     const tree = useTabTrees.getState().trees.research;
     expect(tree && Object.values(tree.nodes).some((n) => n.ref === "doc-9")).toBe(true);
-    expect(visiblePanes()).toEqual(["left"]);
-  });
-
-  it("lg and xl keep both panes side by side, with no switcher", () => {
-    for (const tier of ["lg", "xl"]) {
-      tierRef.current = tier;
-      ws().setLayoutPreset("omarchy-inset");
-      render(<PanelLayout mainSlot={<Stateful />} />);
-      expect(visiblePanes()).toEqual(["left", "right"]);
-      expect(switcher()).toBeNull();
-      cleanup();
-    }
+    expect(visiblePanes()).toEqual(["left", "right"]);
   });
 });
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Editor } from "@tiptap/react";
 
 import ModelPicker from "../../components/ModelPicker";
 import {
@@ -204,6 +205,13 @@ function SectionCard({
   // reach was an edit the operator could not make). null = nothing saved
   // yet: the editor waits for Generate.
   const [draftContent, setDraftContent] = useState<string | null>(() => savedProseHtml(section.prose_text));
+  // The editor reads its content once, when it is created. A new draft (a
+  // generate / regenerate over prose already open) bumps this revision, which
+  // keys a fresh editor on the new prose: the editor never shows text the
+  // server no longer holds (cockpit R3-H1).
+  const [draftRevision, setDraftRevision] = useState(0);
+  // The live editor, so a Cmd+K edit lands as a real transaction (R3-M5).
+  const editorRef = useRef<Editor | null>(null);
   // M3: draft ↔ X-ray toggle. The X-ray reads the PERSISTED prose_provenance.
   const [view, setView] = useState<"draft" | "xray">("draft");
   // The persisted prose + provenance for the X-ray. Seeds from the section
@@ -279,6 +287,17 @@ function SectionCard({
     },
     [persistProse],
   );
+
+  // Send an edit still waiting on the debounce now. Before a regenerate the
+  // edit is saved first, so the new draft replaces a saved edit (and a failed
+  // regenerate leaves it saved) rather than a late autosave landing on top of
+  // the new draft.
+  const flushPendingSave = useCallback(async () => {
+    if (!saveTimer.current) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    await persistProse(latestProseRef.current);
+  }, [persistProse]);
 
   // A pending debounce FLUSHES on unmount (leaving the piece, a section
   // deleted under it): the edit is sent now rather than dropped. The save's
@@ -372,12 +391,22 @@ function SectionCard({
     setGenResult(null);
     setGenError(null);
     try {
+      await flushPendingSave();
       const r = await generateSection(section.section_id);
       setGenResult(r);
       if (r.status === "generated" && r.prose_text) {
+        // A keystroke typed while the draft was generating must not autosave
+        // over it: the new draft replaces the editor's document.
+        if (saveTimer.current) {
+          clearTimeout(saveTimer.current);
+          saveTimer.current = null;
+        }
+        latestProseRef.current = r.prose_text;
         // Load the real prose into the editor (M4). Plain prose becomes
-        // editable paragraphs; the editor mounts in place of the textarea.
+        // editable paragraphs; a fresh editor is keyed on the new draft, so
+        // prose already open is replaced, not kept (R3-H1).
         setDraftContent(proseToEditorHtml(r.prose_text));
+        setDraftRevision((n) => n + 1);
         // M3: capture the PERSISTED provenance so the X-ray can read it back
         // (the server persisted it via SECTION_DRAFT_GENERATED — the link
         // exists in the graph, this is just the immediate echo).
@@ -402,6 +431,8 @@ function SectionCard({
   // rewrite / make-stronger actions, both regenerate this section from its
   // blocks via the SHIPPED generate path — never a new model path). The
   // creative_writer re-anchors per-block, so the regenerated prose stays cited.
+  const handleGenerateRef = useRef(handleGenerate);
+  handleGenerateRef.current = handleGenerate;
   const handleRegenerate = useCallback(
     async (_paragraphIndex?: number) => {
       // This sprint's generate endpoint is section-granular (creative_writer
@@ -409,10 +440,8 @@ function SectionCard({
       // regenerate that re-anchors all paragraphs; the affected paragraph is
       // necessarily refreshed. (A true single-paragraph endpoint is a named
       // follow-up — see handoff Open questions.)
-      await handleGenerate();
+      await handleGenerateRef.current();
     },
-    // handleGenerate is stable enough for this sprint's surface.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -441,15 +470,23 @@ function SectionCard({
     [handleRegenerate],
   );
 
-  // CK-5: apply the model's edited span. Splice it into the section prose,
-  // replacing the first occurrence of the current selection's text; the
-  // existing prose-autosave then persists it (the same path a manual
-  // keystroke takes), so provenance + single-writer discipline are unchanged.
+  // CK-5: apply the model's edited span AS AN EDITOR TRANSACTION over the
+  // selected text (the editor's own selection when it still holds that text,
+  // else the text's first place in a paragraph). The editor's onUpdate then
+  // captures and autosaves it exactly as it would a keystroke, so the editor,
+  // the X-ray and the server agree (R3-M5: splicing the X-ray's copy alone
+  // left the edit nowhere a reload or the next keystroke could keep it).
   const handleApplyEdit = useCallback(
     (editedText: string) => {
       const sel = selection;
       if (!sel || !sel.text) return;
-      setProseText((prev) => (prev == null ? prev : prev.replace(sel.text, editedText)));
+      const ed = editorRef.current;
+      const range = ed ? locateText(ed, sel.text) : null;
+      if (!ed || !range) {
+        toast.warn("That passage changed before the edit came back, so the edit was not applied.");
+        return;
+      }
+      ed.view.dispatch(ed.state.tr.insertText(editedText, range.from, range.to));
       window.getSelection()?.removeAllRanges();
     },
     [selection],
@@ -643,8 +680,8 @@ function SectionCard({
       )}
 
       {/* M3 X-ray view — paragraph ↔ blocks over the PERSISTED provenance.
-          Toggled with the draft; no edit loss (the editor stays mounted in the
-          draft view, the X-ray reads the persisted map). */}
+          Toggled with the draft; no edit loss (the editor stays mounted,
+          hidden, while the X-ray reads the persisted map). */}
       {view === "xray" && proseText && (
         <div className="mt-3 rounded border border-rule p-3 dark:border-charcoal-1">
           <Xray
@@ -665,8 +702,14 @@ function SectionCard({
           The bare textarea is retired; this is the editing surface. The editor
           region is the FloatMenu selection SCOPE: highlighting prose opens the
           SHARED FloatMenu with Write's rewrite actions (imported, D-3). */}
-      {draftContent != null && view === "draft" && (
-        <div className="mt-3 rounded border border-rule p-3 dark:border-charcoal-1">
+      {draftContent != null && (
+        <div
+          data-write-editor-host=""
+          // Hidden, never unmounted, during the X-ray: the editor keeps its
+          // document and its undo history across the toggle (R3-H2).
+          hidden={view === "xray"}
+          className="mt-3 rounded border border-rule p-3 dark:border-charcoal-1"
+        >
           {genResult?.status === "generated" &&
             genResult.unsupported_paragraphs &&
             genResult.unsupported_paragraphs.length > 0 && (
@@ -677,6 +720,8 @@ function SectionCard({
             )}
           <div ref={editorScopeRef}>
             <WriteEditor
+              key={draftRevision}
+              editorRef={editorRef}
               deliverableId={deliverableId}
               sectionId={section.section_id}
               initialContent={draftContent}
@@ -747,6 +792,47 @@ function SectionCard({
 function provenanceLabel(b: OutlineBlockView): string {
   if (b.is_user_originated || b.provenance_kind !== "graph_node") return "yours";
   return b.block_kind === "open_question" ? "question" : b.block_kind;
+}
+
+/** Where `text` sits in the editor: its own selection when that still holds
+ *  the text (whitespace-insensitive), else the first paragraph containing it.
+ *  Null when the text is no longer in the document. */
+function locateText(ed: Editor, text: string): { from: number; to: number } | null {
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+  const want = norm(text);
+  if (!want) return null;
+  const { from, to } = ed.state.selection;
+  if (to > from && norm(ed.state.doc.textBetween(from, to, " ")) === want) return { from, to };
+  const needle = text.trim();
+  let found: { from: number; to: number } | null = null;
+  ed.state.doc.descendants((node, pos) => {
+    if (found) return false;
+    if (!node.isTextblock) return true;
+    const at = node.textContent.indexOf(needle);
+    if (at < 0) return false;
+    const start = textblockPos(node, pos, at);
+    const end = textblockPos(node, pos, at + needle.length);
+    if (start != null && end != null) found = { from: start, to: end };
+    return false;
+  });
+  return found;
+}
+
+/** The document position of character `index` of a textblock's text. */
+function textblockPos(
+  block: Editor["state"]["doc"],
+  blockPos: number,
+  index: number,
+): number | null {
+  let seen = 0;
+  let result: number | null = null;
+  block.forEach((child, offset) => {
+    if (result != null) return;
+    const len = child.isText ? (child.text ?? "").length : child.textContent.length;
+    if (child.isText && index <= seen + len) result = blockPos + 1 + offset + (index - seen);
+    seen += len;
+  });
+  return result;
 }
 
 /** Saved prose as the editor's opening document, or null when the section

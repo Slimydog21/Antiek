@@ -44,8 +44,16 @@ beforeAll(() => {
 
 import type { InvestigationSummary } from "../lib/api";
 
-/** A research spun from a book: its parent is that book's reading thread
- *  (`read-<documentId>`, THREAD-CONTRACT §1.3 spin-research). */
+/** Fixtures name the wire field each case relies on (R3-H3; the R2 fixture
+ *  hand-set a `read-<doc>` parent no real path produces, so it proved
+ *  nothing about production):
+ *   inv-beagle   THREAD-CONTRACT §1.2 ThreadSummary `document_id` (lane B's
+ *                W1 wire, NOT shipped yet: until it is, GET /investigations
+ *                omits it and a research spun from a book has parent null,
+ *                so production does not reach this case).
+ *   inv-meta     a `read-meta-<asset>` parent, a `read-` id that names no
+ *                document: never a guessed source.
+ *   inv-free     neither: no source link. */
 const SUMMARIES: InvestigationSummary[] = [
   {
     investigation_id: "inv-beagle",
@@ -54,7 +62,17 @@ const SUMMARIES: InvestigationSummary[] = [
     started_at: "2026-09-20T10:00:00Z",
     completed_at: "2026-09-20T11:00:00Z",
     cost_usd_total: 0.5,
-    parent_investigation_id: "read-voyage-of-the-beagle",
+    parent_investigation_id: null,
+    document_id: "voyage-of-the-beagle",
+  },
+  {
+    investigation_id: "inv-meta",
+    question: "A research under a meta-reading",
+    status: "completed",
+    started_at: "2026-09-18T10:00:00Z",
+    completed_at: "2026-09-18T11:00:00Z",
+    cost_usd_total: 0.1,
+    parent_investigation_id: "read-meta-mr-abc123",
   },
   {
     investigation_id: "inv-free",
@@ -168,7 +186,9 @@ describe("H1 — from a reader, an agent opens its source as a left tab in readi
         <PanelLayout mainSlot={<p>the reader</p>} />
       </BrowserRouter>,
     );
-    await waitFor(() => expect(tabs().trees.reading?.active_tab_id ?? null).not.toBeNull());
+    // The strip that seeds the tree is a lazy chunk: the file's first mount
+    // pays its cold transform, past waitFor's 1 s default on a loaded machine.
+    await waitFor(() => expect(tabs().trees.reading?.active_tab_id ?? null).not.toBeNull(), { timeout: 8000 });
     await settle(3);
     return tabs().trees.reading!.active_tab_id!;
   }
@@ -178,7 +198,7 @@ describe("H1 — from a reader, an agent opens its source as a left tab in readi
     fireEvent.click(await screen.findByRole("menuitem", { name: question }));
   }
 
-  it("+ new agent → a research born from a book offers its source, which opens as a left child tab in the reading tree", async () => {
+  it("+ new agent → a research whose summary carries document_id (lane B W1) offers its source, which opens as a left child tab in the reading tree", async () => {
     const readerTab = await mountReaderInset();
     await pickResearch("What did the Beagle's finches show?");
     const open = await screen.findByText("Open source document →");
@@ -203,6 +223,13 @@ describe("H1 — from a reader, an agent opens its source as a left tab in readi
   it("a research with no known source document offers no source link (never a guessed one)", async () => {
     await mountReaderInset();
     await pickResearch("A question from nowhere");
+    await screen.findByText("Open research →");
+    expect(screen.queryByText("Open source document →")).toBeNull();
+  });
+
+  it("a read- parent that names no document (a meta-reading) offers no source link", async () => {
+    await mountReaderInset();
+    await pickResearch("A research under a meta-reading");
     await screen.findByText("Open research →");
     expect(screen.queryByText("Open source document →")).toBeNull();
   });
@@ -364,6 +391,41 @@ describe("M1 — the writing right pane's block strip", () => {
     expect(useWriteOutline.getState().activeBlockId).toBe("b-0");
     fireEvent.keyDown(all()[0], { key: "ArrowLeft" });
     expect(useWriteOutline.getState().activeBlockId).toBe("b-11");
+  });
+
+  // R3 (critic low): with no active block, ArrowRight skipped the first
+  // block (index -1 clamped to 0, then +1).
+  it("with no active block, ArrowRight selects the first block and ArrowLeft the last", async () => {
+    const list = await mountOutline();
+    act(() => useWriteOutline.getState().setActiveBlock(null));
+    const all = () => Array.from(list.querySelectorAll<HTMLElement>("[role='tab']"));
+    fireEvent.keyDown(list, { key: "ArrowRight" });
+    expect(useWriteOutline.getState().activeBlockId).toBe("b-0");
+    act(() => useWriteOutline.getState().setActiveBlock(null));
+    fireEvent.keyDown(list, { key: "ArrowLeft" });
+    expect(useWriteOutline.getState().activeBlockId).toBe("b-11");
+    expect(document.activeElement).toBe(all()[11]);
+  });
+
+  // R3 (critic low): the ⋯ menu is role=menu, so it takes the ARIA menu keys.
+  it("the ⋯ menu moves focus with ArrowDown / ArrowUp (wrapping), Home and End", async () => {
+    const list = await mountOutline();
+    layOut(list, 318, 106);
+    fireEvent.click(document.querySelector<HTMLElement>("[data-block-overflow]")!);
+    const menu = screen.getByRole("menu", { name: "All blocks" });
+    const items = screen.getAllByRole("menuitem");
+    await waitFor(() => expect(document.activeElement).toBe(items[0]));
+    fireEvent.keyDown(items[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(items[1], { key: "ArrowUp" });
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(items[0], { key: "ArrowUp" });
+    expect(document.activeElement).toBe(items[11]);
+    fireEvent.keyDown(items[11], { key: "Home" });
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(items[0], { key: "End" });
+    expect(document.activeElement).toBe(items[11]);
+    expect(menu.contains(document.activeElement)).toBe(true);
   });
 });
 

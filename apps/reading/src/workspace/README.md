@@ -64,13 +64,11 @@ Contract: `src/design/FEEL_CONTRACT.md` + `elevation.ts`. ResearchWorkstation ID
   (right dock beneath it) right. The docked preset's mounts of those two
   (the "Companion" and "WriteOutline" right-dock panels) never render in
   the inset's right dock: the pane IS them (stage B3-2, the outline drawn
-  twice after a preset round trip). From lg up both panes are on screen;
-  at md (768–1023 px) ONE pane shows at a time, full width — the focused
-  one, else the left — with the other hidden but mounted
-  (`data-pane-offstage`) and one key away: prefix h/l (+ `ctrl+alt`
-  twins) bring it on, and a two-segment switcher in the pane header
-  ("Documents | Agents", or "Outline") says which is visible and switches
-  by pointer (stage B3-3). The lg dock-collapse rule is the docked
+  twice after a preset round trip). From md up both panes are on screen:
+  at md (768–1023 px, an Omarchy half screen) the right pane narrows to
+  280 px and the left dock stays 0 px (DESIGN-MODEL "Pane behaviour,
+  ratified from A1b"; R3-M4 retired stage B3-3's one-pane md), and the
+  inset's vertical left toolbar stays. The lg dock-collapse rule is the docked
   preset's alone.
 
 Both tab strips scroll sideways at the pane's width and say what is out
@@ -207,8 +205,11 @@ without it reads as left), origin kind `agent` with `opened_by {thread_id,
 agent_kind}` (refused as `tab_origin_invalid` without it, in `spawnChild`
 and on load), and the snapshot carries both. An agent in the right pane
 opens its thread's source document (`companionStore.sourceDocumentOf`: the
-thread's `read-<documentId>` parent) as a left `agent` child in the current
-mode's tree (`crossPane.ts`). STAGED until lane B's HTTP adapter exists (no
+summary's `document_id`, THREAD-CONTRACT §1.2, else an exact
+`read-<documentId>` parent, never `read-meta-*`, `read-session-*` or
+`read-spin`; otherwise no link) as a left `agent` child in the current
+mode's tree (`crossPane.ts`). A research spun from a book carries no parent,
+so it gets the link only once lane B's W1 wire ships `document_id`. STAGED until lane B's HTTP adapter exists (no
 GET/PUT/allocate route is wired in this app; there is nothing to write
 right-side nodes or `active: {left, right}` to, or to read `retired[]`
 from): agent tabs as right-side nodes of the per-mode tree, `active:

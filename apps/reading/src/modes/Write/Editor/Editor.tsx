@@ -1,7 +1,7 @@
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 
 import { postTypedEvent } from "../../../lib/api";
 import type { TypedPayload } from "../../../generated/types";
@@ -51,6 +51,10 @@ export interface WriteEditorProps {
    * CreationStudio) keep persisting coarse prose_text via the existing
    * save path while the granular edit.captured stream flows underneath. */
   onContentChange?: (plainText: string) => void;
+  /** Receives the live editor (null once it is gone), so a host can apply a
+   *  change as a real transaction — captured, undoable and autosaved the way
+   *  a keystroke is — instead of beside the editor where it would be lost. */
+  editorRef?: MutableRefObject<Editor | null>;
 }
 
 export function WriteEditor({
@@ -62,6 +66,7 @@ export function WriteEditor({
   placeholder = "Write here. Drag lego blocks in from the repository, or generate a first draft.",
   className,
   onContentChange,
+  editorRef,
 }: WriteEditorProps) {
   // Snapshot of the section's blocks after the last captured update.
   const prevBlocks = useRef<EditorBlock[]>([]);
@@ -117,6 +122,14 @@ export function WriteEditor({
       onContentChange?.(ed.getText());
     },
   });
+
+  useEffect(() => {
+    if (!editorRef) return;
+    editorRef.current = editor;
+    return () => {
+      if (editorRef.current === editor) editorRef.current = null;
+    };
+  }, [editor, editorRef]);
 
   // Detect undo/redo at the keyboard layer so the next onUpdate is flagged
   // reverted. (ProseMirror's history plugin does not surface "this update

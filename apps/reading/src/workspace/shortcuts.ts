@@ -38,7 +38,6 @@
  */
 
 import { useEffect, useRef } from "react";
-import { flushSync } from "react-dom";
 import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
@@ -279,10 +278,6 @@ function focusPane(side: "left" | "right") {
   if (ws.fullscreenPane && ws.fullscreenPane !== side) return;
   const el = document.querySelector<HTMLElement>(`[data-pane="${side}"]`);
   if (!el) return;
-  // Tier md shows one pane at a time (PanelLayout): the other is offstage,
-  // one key away. Bringing it on is this key's job, so commit the swap
-  // before moving focus (a hidden pane cannot take it).
-  if (el.hasAttribute("data-pane-offstage")) flushSync(() => ws.setFocusedPane(side));
   // A pane fullscreen hides stays mounted (PanelLayout), so "present" is
   // not "on screen": never focus a hidden pane.
   if (el.closest("[hidden]")) return;

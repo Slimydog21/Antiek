@@ -432,3 +432,119 @@ describe("Outline — saved prose opens in the editor (cockpit R2-H2)", () => {
     expect(container.querySelector(".ProseMirror")).toBeNull();
   });
 });
+
+// Cockpit repair round 3 (critic R2 H1/H2): with saved prose mounting the
+// editor on load, the editor must never show text the server no longer holds.
+// A regenerate replaces the draft IN the editor, and the draft/X-ray toggle
+// never drops an edit (the stale editor text would be autosaved over it).
+describe("Outline — the editor never shows stale prose (cockpit R3)", () => {
+  function mountSaved(prose: string) {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    return render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section({ block_count: 1, prose_text: prose, prose_provenance: {} })]}
+        onChanged={vi.fn()}
+      />,
+    );
+  }
+  const editorText = (c: HTMLElement) => c.querySelector(".ProseMirror")?.textContent ?? "";
+
+  it("Generate over saved prose puts the NEW draft in the open editor", async () => {
+    generateSectionMock.mockResolvedValue({
+      status: "generated",
+      section_id: "sec-1",
+      prose_text: "Fresh generated prose.",
+    } as GenerationResult);
+    const { container } = mountSaved("Old saved prose.");
+    await screen.findByText("Capital intensity rises with scale");
+    await waitFor(() => expect(editorText(container)).toContain("Old saved prose."));
+    await userEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(editorText(container)).toContain("Fresh generated prose."));
+    expect(editorText(container)).not.toContain("Old saved prose.");
+  });
+
+  it("an edit made after a regenerate diffs against the generated draft, not the old prose", async () => {
+    generateSectionMock.mockResolvedValue({
+      status: "generated",
+      section_id: "sec-1",
+      prose_text: "Fresh generated prose.",
+    } as GenerationResult);
+    const { container } = mountSaved("Old saved prose.");
+    await screen.findByText("Capital intensity rises with scale");
+    await userEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(editorText(container)).toContain("Fresh generated prose."));
+    updateSectionProseMock.mockClear();
+    await typeInEditor(" Then edited.");
+    await waitFor(() => expect(updateSectionProseMock).toHaveBeenCalled(), { timeout: 3000 });
+    const [, req] = updateSectionProseMock.mock.calls.at(-1)!;
+    const r = req as { prose_text: string; original_text?: string };
+    expect(r.prose_text).toContain("Fresh generated prose.");
+    expect(r.prose_text).not.toContain("Old saved prose.");
+    expect(r.original_text).toBe("Fresh generated prose.");
+  });
+
+  it("an edit still waiting on the autosave debounce never lands over a regenerated draft", async () => {
+    let resolveGen: (r: GenerationResult) => void = () => {};
+    generateSectionMock.mockReturnValue(
+      new Promise<GenerationResult>((res) => {
+        resolveGen = res;
+      }),
+    );
+    const { container } = mountSaved("Old saved prose.");
+    await screen.findByText("Capital intensity rises with scale");
+    await waitFor(() => expect(editorHolder.current).toBeTruthy());
+    updateSectionProseMock.mockClear();
+    await typeInEditor(" Typed just before regenerating.");
+    await userEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(generateSectionMock).toHaveBeenCalled());
+    await act(async () => {
+      resolveGen({ status: "generated", section_id: "sec-1", prose_text: "Fresh generated prose." } as GenerationResult);
+    });
+    await waitFor(() => expect(editorText(container)).toContain("Fresh generated prose."));
+    // Past the 800 ms debounce: the pre-regenerate text may be flushed BEFORE
+    // the generate request (so a failed generate keeps it), never after.
+    await new Promise((r) => setTimeout(r, 1100));
+    const genOrder = generateSectionMock.mock.invocationCallOrder[0]!;
+    updateSectionProseMock.mock.calls.forEach(([, req], i) => {
+      if ((req as { prose_text: string }).prose_text.includes("Old saved prose.")) {
+        expect(updateSectionProseMock.mock.invocationCallOrder[i]!).toBeLessThan(genOrder);
+      }
+    });
+  });
+
+  it("an edit still waiting on the debounce is saved when the regenerate fails", async () => {
+    generateSectionMock.mockRejectedValue(new ApiError("no key", 503, ""));
+    mountSaved("Old saved prose.");
+    await screen.findByText("Capital intensity rises with scale");
+    await waitFor(() => expect(editorHolder.current).toBeTruthy());
+    updateSectionProseMock.mockClear();
+    await typeInEditor(" Kept though the draft failed.");
+    await userEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(updateSectionProseMock).toHaveBeenCalled(), { timeout: 3000 });
+    const [, req] = updateSectionProseMock.mock.calls.at(-1)!;
+    expect((req as { prose_text: string }).prose_text).toContain("Kept though the draft failed.");
+  });
+
+  it("an edit survives draft -> X-ray -> draft (the editor is not remounted)", async () => {
+    const { container } = mountSaved("Saved sentence.");
+    await waitFor(() => expect(editorHolder.current).toBeTruthy());
+    const before = editorHolder.current!.editor;
+    await typeInEditor(" Edited now.");
+    expect(editorText(container)).toContain("Edited now.");
+    await userEvent.click(screen.getByRole("button", { name: /^x-ray$/i }));
+    expect(await screen.findByTestId("xray")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: /^draft$/i }));
+    expect(editorText(container)).toContain("Edited now.");
+    expect(editorText(container)).toContain("Saved sentence.");
+    expect(editorHolder.current!.editor).toBe(before);
+  });
+
+  it("the editor is out of view while the X-ray shows", async () => {
+    const { container } = mountSaved("Saved sentence.");
+    await waitFor(() => expect(container.querySelector(".ProseMirror")).toBeTruthy());
+    await userEvent.click(screen.getByRole("button", { name: /^x-ray$/i }));
+    const host = container.querySelector(".ProseMirror")!.closest("[data-write-editor-host]") as HTMLElement | null;
+    expect(host?.hidden).toBe(true);
+  });
+});

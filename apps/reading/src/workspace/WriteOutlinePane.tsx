@@ -278,10 +278,12 @@ function BlockStrip({
             // The ARIA tabs pattern, automatic activation: a block card swaps
             // in place, so the arrow keys select as they move.
             if (e.ctrlKey || e.metaKey || e.altKey || flat.length === 0) return;
-            const i = Math.max(0, flat.findIndex((f) => f.block.outline_block_id === activeBlockId));
+            // -1 = no active block: ArrowRight lands on the first, ArrowLeft
+            // on the last.
+            const i = flat.findIndex((f) => f.block.outline_block_id === activeBlockId);
             let next: number | null = null;
             if (e.key === "ArrowRight") next = (i + 1) % flat.length;
-            else if (e.key === "ArrowLeft") next = (i - 1 + flat.length) % flat.length;
+            else if (e.key === "ArrowLeft") next = i < 0 ? flat.length - 1 : (i - 1 + flat.length) % flat.length;
             else if (e.key === "Home") next = 0;
             else if (e.key === "End") next = flat.length - 1;
             if (next === null) return;
@@ -413,6 +415,20 @@ function BlockOverflowMenu({
           role="menu"
           aria-label="All blocks"
           data-esc-overlay=""
+          onKeyDown={(e) => {
+            // The ARIA menu keys: ArrowDown / ArrowUp wrap, Home / End jump.
+            const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>("[role='menuitem']"));
+            if (items.length === 0) return;
+            const at = items.indexOf(document.activeElement as HTMLElement);
+            let next: number | null = null;
+            if (e.key === "ArrowDown") next = (at + 1) % items.length;
+            else if (e.key === "ArrowUp") next = at <= 0 ? items.length - 1 : at - 1;
+            else if (e.key === "Home") next = 0;
+            else if (e.key === "End") next = items.length - 1;
+            if (next === null) return;
+            e.preventDefault();
+            items[next].focus();
+          }}
           className="absolute right-0 top-full z-10 mt-1 max-h-[50vh] w-[min(16rem,calc(100vw-2rem))] overflow-y-auto rounded border border-hairline bg-ice-0 py-1 shadow-z2 dark:bg-charcoal-2 dark:shadow-z2-night"
         >
           {blocks.map((b) => (

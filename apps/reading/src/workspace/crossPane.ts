@@ -16,17 +16,6 @@ import { childTabId, freshTabId, mothershipForPath, rootTabId } from "./document
 import { adoptRoute } from "./routeSync";
 import { setTabTitle } from "./tabTitles";
 import { locationStamp, useTabTrees } from "./tabTreeStore";
-import { useWorkspace } from "./WorkspaceStore";
-
-/** A tab that takes the screen must be on it: where one pane shows at a
- *  time (the inset at tier md) and the left is offstage, bring it on
- *  (stage B3-3). Elsewhere the left pane is already on screen and the focus
- *  ring stays where the operator put it. */
-function revealLeftPane(): void {
-  if (document.querySelector('[data-pane="left"]')?.hasAttribute("data-pane-offstage")) {
-    useWorkspace.getState().setFocusedPane("left");
-  }
-}
 
 export interface OpenDocumentOrigin {
   /** Where the request was born (e.g. "companion"). Metadata only. */
@@ -68,18 +57,12 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
     if (!tree) return;
     const parentId = tree.active_tab_id;
     const shows = (id: string) => tree.nodes[id].kind === "reader" && tree.nodes[id].ref === req.documentId;
-    // Already the active tab: nothing to open; only make sure it is seen.
-    if (parentId && shows(parentId)) {
-      if (takeScreen) revealLeftPane();
-      return;
-    }
+    // Already the active tab: nothing to open.
+    if (parentId && shows(parentId)) return;
     const siblings = parentId ? tree.nodes[parentId].child_order : tree.root_order;
     const open = siblings.find(shows);
     if (open) {
-      if (takeScreen) {
-        s.activateTab(mothership, open);
-        revealLeftPane();
-      }
+      if (takeScreen) s.activateTab(mothership, open);
       return;
     }
     const base = parentId
@@ -102,7 +85,6 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
       mothership,
       activate: takeScreen,
     });
-    if (takeScreen) revealLeftPane();
   });
 }
 

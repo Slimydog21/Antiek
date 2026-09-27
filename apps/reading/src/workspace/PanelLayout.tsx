@@ -1,10 +1,7 @@
 import { Suspense, lazy, useCallback, useContext, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { flushSync } from "react-dom";
 
 import { UNSAFE_LocationContext, useInRouterContext } from "react-router-dom";
-
-import { ariaKeyshortcutsFor } from "../components/hotkeys/bindings";
 
 import { toast } from "../components/lemon/LemonToast";
 import { LoadingState } from "../components/states";
@@ -85,53 +82,12 @@ const INSET_GAP = 12;
 const PANE_CONTENT_PANEL_IDS: ReadonlySet<string> = new Set([COMPANION_PANEL_ID, WRITE_OUTLINE_PANEL_ID]);
 
 /**
- * The two-segment pane switcher (tier md, inset): one pane is on screen at a
- * time, and this says which, in the visible pane's header. Each segment is
- * the pointer twin of its key (prefix h / prefix l, ctrl+alt h / l).
+ * The inset's right pane at tier md (768–1023 px, an Omarchy half screen on
+ * a 1920 px display): it narrows instead of vanishing, so the cockpit keeps
+ * both panes (DESIGN-MODEL "Pane behaviour, ratified from A1b", forensic
+ * T10). From lg up it keeps its token width (DOCK_WIDTH).
  */
-function PaneSwitcher({
-  shown,
-  rightName,
-  onShow,
-}: {
-  shown: "left" | "right";
-  rightName: string;
-  onShow: (side: "left" | "right") => void;
-}) {
-  return (
-    <div className="flex shrink-0 items-center border-b border-hairline px-1.5 py-1">
-      <div
-        data-pane-switcher
-        role="group"
-        aria-label="Visible pane"
-        className="inline-flex items-center gap-0.5 rounded-md border border-hairline bg-ice-2 dark:bg-charcoal-2 p-0.5"
-      >
-        {(["left", "right"] as const).map((side) => {
-          const on = shown === side;
-          const name = side === "left" ? "Documents" : rightName;
-          return (
-            <button
-              key={side}
-              type="button"
-              data-pane-switch={side}
-              aria-pressed={on}
-              aria-keyshortcuts={ariaKeyshortcutsFor(side === "left" ? "pane.focusLeft" : "pane.focusRight")}
-              title={`${name} (prefix ${side === "left" ? "h" : "l"})`}
-              onClick={() => onShow(side)}
-              className={`rounded px-2 py-0.5 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun ${
-                on
-                  ? "bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright font-medium shadow-z1 dark:shadow-z1-night"
-                  : "text-ink-soft dark:text-moonlight hover:text-ink dark:hover:text-bright"
-              }`}
-            >
-              {name}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+const RIGHT_PANE_MD_WIDTH = 280;
 
 export function PanelLayout({ mainSlot }: Props) {
   const dockLeftIds = useWorkspace((s) => s.dockLeftIds);
@@ -330,35 +286,16 @@ export function PanelLayout({ mainSlot }: Props) {
   // C2, the Omarchy inset: an outer gap where the scene background shows,
   // and two tall rounded rectangles — the primary material (left dock +
   // main slot) on the left, the COMPANION (C4) or, in writing, the OUTLINE
-  // (C5) on the right. The right pane is always mounted at every tier from
-  // md up (at md one pane shows at a time, below); right-dock panels stack
-  // beneath it.
+  // (C5) on the right. From md up both panes are on screen (at md the
+  // right narrows to RIGHT_PANE_MD_WIDTH and the left dock stays 0 px);
+  // right-dock panels stack beneath the right pane.
   // NavRail is a sibling of this component in AppShell — the frame never
   // wraps it.
-  //
-  // Tier md (768–1023 px, an Omarchy half screen): two panes do not fit, so
-  // the inset shows ONE at a time, full width — the focused one, else the
-  // left — and the other is one key away (prefix h / l, or the switcher in
-  // the pane header). The other pane is hidden, never unmounted, like
-  // fullscreen.
-  const onePane = inset && tier === "md";
-  const shownAlone: "left" | "right" | null = inset
-    ? (fullscreenPane ?? (onePane ? (focusedPane ?? "left") : null))
-    : null;
+  const shownAlone: "left" | "right" | null = inset ? fullscreenPane : null;
   const leftHidden = shownAlone === "right";
   const rightHidden = shownAlone === "left";
   const rightFull = shownAlone === "right";
-  // Hidden by the md rule (not by fullscreen): the pane keys may bring it on.
-  const offstage = (hidden: boolean) => (onePane && !fullscreenPane && hidden ? { "data-pane-offstage": "" } : {});
-  const rightName = writing ? "Outline" : "Agents";
-  const showPane = (side: "left" | "right") => {
-    // Commit the swap first: a hidden pane cannot take focus.
-    flushSync(() => setFocusedPane(side));
-    document.querySelector<HTMLElement>(`[data-pane="${side}"]`)?.focus();
-  };
-  const switcher = onePane && !fullscreenPane ? (
-    <PaneSwitcher shown={shownAlone ?? "left"} rightName={rightName} onShow={showPane} />
-  ) : null;
+  const rightPaneWidth = tier === "md" ? RIGHT_PANE_MD_WIDTH : DOCK_WIDTH;
   const rightDockPanelIds = inset ? dockRightIds.filter((id) => !PANE_CONTENT_PANEL_IDS.has(id)) : dockRightIds;
   const leftDockWidth = inset
     ? dockLeftIds.length === 0 || tier === "md"
@@ -391,11 +328,9 @@ export function PanelLayout({ mainSlot }: Props) {
               onFocusCapture: () => setFocusedPane("left"),
             }
           : {})}
-        {...offstage(leftHidden)}
         hidden={leftHidden || undefined}
         className={inset ? (leftHidden ? "hidden" : `flex-1 ${paneShell("left")}`) : "contents"}
       >
-        {switcher}
         <div className={inset ? "relative flex-1 min-h-0 w-full flex overflow-hidden" : "contents"}>
           {/* LEFT DOCK */}
           <aside
@@ -433,11 +368,10 @@ export function PanelLayout({ mainSlot }: Props) {
               // whole cockpit, never its column beside an empty scene.
               style: rightFull
                 ? { borderRadius: radius.lg }
-                : { width: DOCK_WIDTH, borderRadius: radius.lg },
+                : { width: rightPaneWidth, borderRadius: radius.lg },
               onFocusCapture: () => setFocusedPane("right"),
             }
           : {})}
-        {...offstage(rightHidden)}
         hidden={rightHidden || undefined}
         className={
           inset
@@ -447,7 +381,6 @@ export function PanelLayout({ mainSlot }: Props) {
             : "contents"
         }
       >
-        {inset ? switcher : null}
         {inset ? <RightPaneForMode /> : null}
         {/* RIGHT DOCK */}
         <aside

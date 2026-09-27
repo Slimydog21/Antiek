@@ -287,6 +287,20 @@ describe("R2-H4 the Thought partner bookmark sits in the reader's chrome", () =>
     expect(header!.querySelector("h1")?.textContent).toBe("A Servable Book");
   });
 
+  // Cockpit R3 (critic low): in the scrolling column the header, and the
+  // bookmark with it, scrolled out of view a page into the book, so the
+  // book-level conversation was unreachable mid-read. The title row now sits
+  // above the scroller; only the reading body scrolls.
+  it("the title row with the bookmark stays out of the scrolling body", async () => {
+    await renderReader();
+    const bookmark = await screen.findByTestId("talk-to-book-bookmark");
+    const header = bookmark.closest("header")!;
+    expect(header.closest(".overflow-y-auto, .overflow-auto, .overflow-y-scroll")).toBeNull();
+    const scroller = screen.getByTestId("reader-scroll");
+    expect(scroller.className).toMatch(/(^|\s)overflow-y-auto(\s|$)/);
+    expect(scroller.contains(header)).toBe(false);
+  });
+
   it("the open conversation is placed against the reader root, inside the pane", async () => {
     await renderReader();
     fireEvent.click(await screen.findByTestId("talk-to-book-bookmark"));
