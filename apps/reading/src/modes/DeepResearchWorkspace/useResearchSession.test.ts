@@ -82,6 +82,22 @@ describe("useResearchSession — failure handling (A-14)", () => {
     expect(result.current.error).toBe("Couldn't reach this research session.");
   });
 
+  it("backoff stops growing at the 30 s cap (MiMo F6)", async () => {
+    getSessionMock.mockRejectedValue(new ApiError("x", 503, ""));
+    renderHook(() => useResearchSession("s", { intervalMs: INTERVAL }));
+    await settle();
+    // Failures 1..5 wait 1, 2, 4, 8, 16 s (31 s in all) before calls 2..6.
+    await advance(31 * INTERVAL);
+    expect(getSessionMock).toHaveBeenCalledTimes(6);
+    // The next waits would be 32 s and 64 s uncapped; the cap holds them at 30 s.
+    for (const expected of [7, 8, 9]) {
+      await advance(30_000 - 1);
+      expect(getSessionMock).toHaveBeenCalledTimes(expected - 1);
+      await advance(1);
+      expect(getSessionMock).toHaveBeenCalledTimes(expected);
+    }
+  });
+
   it("recovers to the normal interval after a transient failure clears", async () => {
     getSessionMock
       .mockRejectedValueOnce(new ApiError("x", 503, ""))
