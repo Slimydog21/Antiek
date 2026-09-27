@@ -75,4 +75,20 @@ describe("Quick Ask browser wire contract", () => {
     expect((caught as QuickAskError).reason).toBe("charge_unknown");
     expect(apiFetch).toHaveBeenCalledOnce();
   });
+
+  it("rejects a paid answer attributed to another operation without resending", async () => {
+    apiFetch.mockResolvedValue(json({
+      answer: "Wrong operation", operation_id: "45670f5f-4d04-4d6c-84f3-68d9c56dcb25",
+      provider_id: "owner-deepseek", model_id: "deepseek-v4-flash",
+      estimated_cost_usd: 0.0004,
+      usage_basis: "provider_reported_tokens_priced_locally",
+      input_tokens: 12, output_tokens: 25, replayed: false, incomplete: false,
+      reported_usage_estimate_exceeds_quote: false,
+    }));
+    let caught: unknown;
+    try { await sendQuickAsk(request); } catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(QuickAskError);
+    expect((caught as QuickAskError).reason).toBe("charge_unknown");
+    expect(apiFetch).toHaveBeenCalledOnce();
+  });
 });

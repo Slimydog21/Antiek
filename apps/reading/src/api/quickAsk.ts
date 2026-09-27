@@ -123,6 +123,19 @@ function parseResult(value: unknown): QuickAskResult {
         typeof value.reported_usage_estimate_exceeds_quote !== "boolean")) {
     throw new QuickAskError("charge_unknown");
   }
+  if (
+    (basis === "charge_unknown" &&
+      (value.estimated_cost_usd !== null || value.input_tokens !== null ||
+       value.output_tokens !== null || value.reported_usage_estimate_exceeds_quote !== null)) ||
+    (basis === "prior_receipt" &&
+      (!value.replayed || value.estimated_cost_usd === null ||
+       value.input_tokens !== null || value.output_tokens !== null)) ||
+    (basis === "provider_reported_tokens_priced_locally" &&
+      (value.replayed || value.estimated_cost_usd === null ||
+       value.input_tokens === null || value.output_tokens === null))
+  ) {
+    throw new QuickAskError("charge_unknown");
+  }
   return {
     answer: value.answer,
     operation_id: value.operation_id,
@@ -188,7 +201,12 @@ export async function quoteQuickAsk(input: QuickAskInput): Promise<QuickAskQuote
   }
   if (!response.ok) throw await parseError(response, "quick_ask_unavailable");
   const value: unknown = await response.json();
-  return parseQuote(value);
+  const quote = parseQuote(value);
+  if (quote.provider_id !== input.model_choice.provider_id ||
+      quote.model_id !== input.model_choice.model_id) {
+    throw new QuickAskError("quick_ask_unavailable");
+  }
+  return quote;
 }
 
 export async function sendQuickAsk(
@@ -208,7 +226,13 @@ export async function sendQuickAsk(
   if (!response.ok) throw await parseError(response, "charge_unknown");
   try {
     const value: unknown = await response.json();
-    return parseResult(value);
+    const result = parseResult(value);
+    if (result.operation_id !== input.operation_id ||
+        result.provider_id !== input.model_choice.provider_id ||
+        result.model_id !== input.model_choice.model_id) {
+      throw new QuickAskError("charge_unknown");
+    }
+    return result;
   } catch {
     throw new QuickAskError("charge_unknown");
   }
