@@ -17,7 +17,8 @@ The answers, all top-level so the client narrows on ``reason``:
 
 A refused request writes nothing. The route owns no DDL and no SQL: the
 revise primitive (``substrate.derived_assets``) does the work inside one
-``connect_write`` transaction.
+``connect_write`` transaction, opened with the re-entrant
+``con.transaction()``.
 """
 
 from __future__ import annotations
@@ -37,7 +38,6 @@ from substrate.derived_assets.repository import (
     RevisionMoved,
     StoredOperation,
 )
-from substrate.write.event_outbox import eventful_transaction
 
 derived_asset_router = APIRouter(tags=["derived-assets"])
 
@@ -59,7 +59,7 @@ def _put_informs(owner: str, asset_id: str, block_id: str, raw: bytes) -> Respon
         return JSONResponse(status_code=422, content={"detail": "informs_body_invalid"})
     with connect_write(_resolve_db_path(), purpose="derived-assets/informs/put") as con:
         try:
-            with eventful_transaction(con, asset_id):
+            with con.transaction():
                 stored = informs.put_block_informs(
                     con, owner_user_id=owner, asset_id=asset_id, block_id=block_id, request=request
                 )

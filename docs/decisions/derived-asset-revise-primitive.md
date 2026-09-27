@@ -45,7 +45,7 @@ cannot erase another's, and a writer holding a stale revision gets
 | A12 | Informs exist only for `write:<deliverable_id>` assets whose deliverable id is a safe event-storage id; any other asset answers the same 404 | §1.11a is "Write informs"; the event log `write-<deliverable_id>` must be a valid storage id |
 | A13 | The compare-and-set is two checks. `check_expected` compares the caller's `expected_revision_id` with the loaded head; the pointer `UPDATE` binds that head's revision, content hash and generation and must return exactly one row | Either alone can be removed and a test goes red (M1 in both halves, M17). Under the single-writer lock the second never fires in production; it refuses a head that moved after it was loaded |
 | A14 | `derived_assets.updated_at` is touched with a plain `UPDATE`, without `RETURNING` | DuckDB 1.5.4 plans `UPDATE … RETURNING` on a row other tables reference as a delete and insert and refuses it. The row is known to exist (the pointer references it); this is a timestamp, not a CAS |
-| A15 | The manifest check reads a JSON list of `{member_index, projection_id?}` and requires the member rows in the same count and order | The binding record: "validate the canonical manifest's member count/order against its materialized member rows" |
+| A15 | The manifest check reads the `members` array of a JSON object (the W3 Write manifest), or a bare JSON array (the SPR-00 shape), of `{member_index, projection_id?}`, and requires the member rows in the same count and order. It runs on the parent before a revise and on the new revision after its rows are carried | The binding record: "validate the canonical manifest's member count/order against its materialized member rows" |
 | A16 | The §1.11 legacy rule (rev 7) is not built. If the member table gains `member_origin` (the W3 rebuild) and a parent holds a `legacy` member, a revise refuses with `RevisionIntegrityError` | Carrying legacy evidence without the rule would clear the export hold. It fails closed until the rule is built |
 | A17 | `validate_commit_boundary` is not used | The informs body is not the commit envelope; the validator refuses it as unknown fields |
 
@@ -81,6 +81,38 @@ replaces. A `ChildPatch` names the columns it matches on (only those in
   one named exception: it is one operation's receipt.
 - LB-4b's fork and merge and LB-5's span ledger call `revise()` and register
   their tables; they do not write revisions themselves.
+
+## The W3 interface (L1-L5, W3 spec §6)
+
+The W3 Write revision writer is the production caller of this primitive and
+does not fork it (W3 spec D-W1). These are additive; informs behave as above.
+
+- **L1, body revise.** `revise(..., body: RevisionBody | None = None)`.
+  `None` copies the parent's bytes, hashes and manifest (informs; M20 still
+  holds). A `RevisionBody` (`canonical_html`, `manifest_json`,
+  `sanitizer_policy`, `sanitizer_version`) writes new bytes, and the pointer's
+  content hash follows them. `revision_metadata` adds keys such as `route` to
+  the revision's `metadata_json`; it may not set `operation` or `block_ids`.
+- **L2, create.** `create_revision(con, *, asset_id, owner_user_id,
+  asset_kind, title, body, blocks, members, idempotency_key, request_sha256,
+  asset_metadata_json=None, revision_metadata=None, build_answer=None)`
+  writes the asset, revision 1 (`create`, no parent), the block inventory,
+  the members, the operation receipt (`operation: create`; the revision's
+  `review_id`), and the pointer at generation 1, all in the caller's
+  transaction. Members are written column for column into the live member
+  table, so on main's V16 table only evidence rows fit; `user` and
+  `unresolved` rows need the W3 rebuild. LB-8's tests are its only callers.
+- **L3, manifest.** A15 above.
+- **L4, removed blocks.** `CHILD_TABLES` copies the block inventory first.
+  Informs, and members once the member table has a `block_id` column, are
+  carried only for blocks the new revision holds; a member whose `block_id`
+  is NULL (evidence) is carried. A `ChildPatch` with `match=None` rebuilds a
+  whole table, as a body revise does for its inventory and members.
+- **L5, transactions.** Callers open the caller's transaction with the
+  re-entrant `con.transaction()`, never a bare-`BEGIN` `eventful_transaction`
+  nested inside another, and dispatch outbox rows only after commit.
+  `revise()` and `create_revision()` refuse to run outside an explicit
+  transaction.
 
 ## Why the rev 8.11 Part D items exist (R-LB8)
 

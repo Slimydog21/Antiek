@@ -80,26 +80,23 @@ def _seed(
 ) -> tuple[str, str]:
     """Revision 1 of ``write:<deliverable_id>`` through the §1.11 create
     primitive (LB-8 gives it no production caller)."""
-    from substrate.derived_assets.repository import create_revision
-
     asset_id = f"write:{deliverable_id}"
+    return asset_id, _create(env, asset_id, blocks=blocks, owner=owner).revision_id
+
+
+def _create(env: Env, asset_id: str, *, blocks: tuple[str, ...], owner: str) -> Any:
+    from substrate.derived_assets.repository import RevisionBody, create_revision
+
+    body = RevisionBody(
+        canonical_html=BODY_HTML, manifest_json='{"members":[]}', sanitizer_policy="antiek-write",
+        sanitizer_version="1",
+    )
     with connect_write(env.db, purpose="test/seed-asset") as con, con.transaction():
-        head = create_revision(
-            con,
-            asset_id=asset_id,
-            owner_user_id=owner,
-            asset_kind="document",
-            title="Bridge failures",
-            canonical_html=BODY_HTML,
-            manifest_json="[]",
-            sanitizer_policy="antiek-write",
-            sanitizer_version="1",
-            review_id="seed-review",
-            acknowledgement_version="operator_direct.v1",
-            blocks=list(blocks),
-            members=[],
+        return create_revision(
+            con, asset_id=asset_id, owner_user_id=owner, asset_kind="document", title="Bridge failures",
+            body=body, blocks=list(blocks), members=[], idempotency_key=f"create:{asset_id}",
+            request_sha256=hashlib.sha256(asset_id.encode()).hexdigest(),
         )
-    return asset_id, head.revision_id
 
 
 def _doc(env: Env, document_id: str, content_class: str | None = "public_domain", owner: str = "__operator__") -> None:
@@ -725,15 +722,7 @@ def test_t20_a_deliverable_with_no_revision_is_404(env: Env) -> None:
 
 def test_t20_informs_are_only_for_write_assets(env: Env) -> None:
     """A derived asset outside the ``write:`` namespace has no Write blocks."""
-    from substrate.derived_assets.repository import create_revision
-
-    with connect_write(env.db, purpose="test/reformat-asset") as con, con.transaction():
-        head = create_revision(
-            con, asset_id="reformat:gen-1", owner_user_id="__operator__", asset_kind="document",
-            title="Reformat", canonical_html=BODY_HTML, manifest_json="[]", sanitizer_policy="p",
-            sanitizer_version="1", review_id="seed", acknowledgement_version="operator_direct.v1",
-            blocks=["b-1"], members=[],
-        )
+    head = _create(env, "reformat:gen-1", blocks=("b-1",), owner="__operator__")
     _docs(env, "docA")
     r = _put(env, "reformat:gen-1", "b-1", _ids("docA"), head.revision_id, "k-1")
     assert r.status_code == 404
@@ -851,7 +840,7 @@ def test_t24_one_key_in_two_threads_commits_once(env: Env) -> None:
     assert results[0].content == results[1].content
     state = _state(env)
     assert state["derived_asset_revisions"] == 2
-    assert state["derived_asset_operations"] == 1
+    assert state["derived_asset_operations"] == 2  # the seed's create receipt and one commit
 
 
 # ── T30: the edge reaches the route ────────────────────────────────────────
