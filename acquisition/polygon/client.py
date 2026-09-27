@@ -273,6 +273,7 @@ class PolygonConnector(PasteKeyConnector):
         key_file: str | None = None,
         client: httpx.Client | None = None,
         governor: VendorRateGovernor | None = None,
+        owner: str | None = None,
         state_dir: str | None = None,
         clock: Any = None,
         sleeper: Any = None,
@@ -289,7 +290,7 @@ class PolygonConnector(PasteKeyConnector):
         if governor is not None:
             self._governor = governor
         else:
-            governor_kwargs: dict[str, Any] = {"state_dir": state_dir}
+            governor_kwargs: dict[str, Any] = {"state_dir": state_dir, "owner": owner}
             if clock is not None:
                 governor_kwargs["clock"] = clock
             if sleeper is not None:

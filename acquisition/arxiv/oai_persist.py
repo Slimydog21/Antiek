@@ -47,6 +47,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from middleware.ip_holder_resolver import resolve_and_apply
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 from substrate.graph import default_db_path, ensure_initialized
@@ -149,24 +150,33 @@ def persist_oai_record(con: LockedConnection, record: ArxivOaiRecord) -> bool:
             "WHERE document_id = ?",
             [record.title, source_uri, metadata_json, document_id],
         )
-        return False
+        inserted = False
+    else:
+        con.execute(
+            "INSERT INTO documents "
+            "(document_id, source_uri, title, source_tier, document_type, "
+            " metadata, content_class) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                document_id,
+                source_uri,
+                record.title,
+                DEFAULT_ARXIV_OAI_SOURCE_TIER,
+                _OAI_DOCUMENT_TYPE,
+                metadata_json,
+                GATED_DEFAULT_CONTENT_CLASS,
+            ],
+        )
+        inserted = True
 
-    con.execute(
-        "INSERT INTO documents "
-        "(document_id, source_uri, title, source_tier, document_type, "
-        " metadata, content_class) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [
-            document_id,
-            source_uri,
-            record.title,
-            DEFAULT_ARXIV_OAI_SOURCE_TIER,
-            _OAI_DOCUMENT_TYPE,
-            metadata_json,
-            GATED_DEFAULT_CONTENT_CLASS,
-        ],
-    )
-    return True
+    # SPR-08 T1 — resolve ``ip_holder_id`` on the same locked connection, on
+    # both branches: a re-harvest of a row inserted before the resolver was
+    # wired gets its holder too. ``ip_holder_id`` is unindexed by schema design
+    # (idx_documents_ip_holder is dropped), so this plain UPDATE is safe on a
+    # row that chunks already reference. No match leaves NULL; an already
+    # attributed row is never overwritten.
+    resolve_and_apply(con, document_id=document_id, source_uri=source_uri)
+    return inserted
 
 
 def persist_oai_records(

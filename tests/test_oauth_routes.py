@@ -41,12 +41,16 @@ from interfaces.research.api.oauth_routes import (  # noqa: E402
 def _fresh_app() -> FastAPI:
     """Build a minimal app with only the OAuth router + a test middleware
     that sets request.state.user_id from the ``X-Test-Owner`` header (default
-    ``__operator__``). This mirrors how settings_models_admin falls back."""
+    ``__operator__``).  ``auth_method`` and ``user_email`` are required by
+    ``distinct_signed_owner`` (Namespace Option A): without them the owner
+    derivation fails closed and every route 401s."""
     app = FastAPI()
 
     @app.middleware("http")
     async def _set_test_owner(request: Request, call_next):
         request.state.user_id = request.headers.get("X-Test-Owner", "__operator__")
+        request.state.user_email = "operator-under-test@example.com"
+        request.state.auth_method = "antiek_session_cookie"
         return await call_next(request)
 
     register_oauth_routes(app)

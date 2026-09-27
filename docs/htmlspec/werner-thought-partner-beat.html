@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Werner thought-partner reply beat</title></head>
+<body>
+  <main>
+    <h1>Werner thought-partner reply beat</h1>
+    <p>Cold-executable contract for the workstation's shared AI sidecar.</p>
+    <section><h2>Product truth</h2><ul>
+      <li>Emit exactly one <code>thought_partner_reply_received</code> only after a 2xx response is decoded and parsed into the visible reply.</li>
+      <li>Map the event to Werner's existing authored happy pose. The pending state already owns thinking.</li>
+      <li>HTTP errors, JSON failure, request failure, stale ownership, and unmount emit nothing. A local CHALLENGE error reply is not an assistant reply.</li>
+      <li>Emit before structured action dispatch. A later action-triggered experience may legitimately supersede happy, and action failure cannot erase a visible reply's earned beat.</li>
+      <li>The assistant cannot close the canonical AI sidecar from its own reply. Other actions are isolated so one dispatch failure cannot erase the reply or suppress later valid actions.</li>
+      <li>Snapshot prompt and composed context before dispatch so action audit attribution cannot drift while the response is pending.</li>
+    </ul></section>
+    <section><h2>Collision policy</h2><p>This interaction is independent of <code>deep_research_complete</code>. Both may map to happy; latest-wins yields one visible acknowledgment. SpokenReply is downstream and currently owns no Werner playback signal.</p></section>
+    <section><h2>Acceptance</h2><ol>
+      <li>Reaction-map and signal-helper tests prove the semantic event.</li>
+      <li>AISidecar tests prove success once, notify-before-action ordering, error silence, parse-warning success, unmount silence, no late actions, and immutable prompt attribution.</li>
+      <li>Focused tests, typecheck, production build, heterogeneous refutation, hardenx, and exact-head CI pass.</li>
+    </ol></section>
+  </main>
+</body>
+</html>

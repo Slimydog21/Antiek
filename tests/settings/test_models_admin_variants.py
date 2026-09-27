@@ -38,6 +38,26 @@ from substrate.dispatch.router import reset_provider_registry
 
 _SECRET = "sk-BBBB-one-key-two-variants-secret-1234567890"
 
+_TEST_EMAIL = "operator-under-test@example.com"
+
+
+def _owner() -> str:
+    """The Option A owner this suite's verified test operator derives to."""
+    from interfaces.research.api.account_memory_identity import (
+        derive_owner_from_verified_email,
+    )
+
+    return derive_owner_from_verified_email(_TEST_EMAIL)
+
+
+def _pid(slug: str) -> str:
+    """Owner-namespaced provider id for the suite's verified test operator
+    (the same derivation tests/test_settings_models_admin.py uses)."""
+    from interfaces.research.api.settings_models_admin import _owner_id_prefix
+
+    return _owner_id_prefix(_owner()) + slug
+
+
 _TWO_VARIANTS = {
     "provider_kind": "openai_compat",
     "provider_catalog_id": "deepseek",
@@ -49,6 +69,18 @@ _TWO_VARIANTS = {
 
 def _fresh_app() -> FastAPI:
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        # One verified operator for this suite — the same seam
+        # tests/test_settings_models_admin.py uses. Option A keys rows on
+        # the derived owner from user_email; without an identity the route
+        # correctly refuses with 401.
+        request.state.user_id = "__operator__"
+        request.state.user_email = _TEST_EMAIL
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
     register_settings_budget_routes(app)
     return app
 
@@ -71,14 +103,14 @@ def client(env: Path) -> Iterator[TestClient]:
 
 
 def _choice(model_id: str) -> dict[str, str]:
-    return {"authority": "user_model", "provider_id": "user-my-deepseek", "model_id": model_id}
+    return {"authority": "user_model", "provider_id": _pid("my-deepseek"), "model_id": model_id}
 
 
 def test_one_registration_two_variants_one_record_one_credential(client: TestClient) -> None:
     created = client.post("/settings/models/user", json=_TWO_VARIANTS)
     assert created.status_code == 201, created.text
     row = created.json()
-    assert row["id"] == "user-my-deepseek"
+    assert row["id"] == _pid("my-deepseek")
     assert row["model_id"] == "deepseek-reasoner"  # primary = first listed
     assert row["model_ids"] == ["deepseek-reasoner", "deepseek-chat"]
     assert row["key_present"] is True
@@ -88,12 +120,12 @@ def test_one_registration_two_variants_one_record_one_credential(client: TestCli
 
     # Exactly ONE durable record and exactly ONE encrypted credential.
     registry = _load_registry()
-    assert list(registry) == ["user-my-deepseek"]
-    record: UserModelRecord = registry["user-my-deepseek"]
+    assert list(registry) == [_pid("my-deepseek")]
+    record: UserModelRecord = registry[_pid("my-deepseek")]
     assert record.model_ids == ["deepseek-reasoner", "deepseek-chat"]
     credentials = list_credentials()
     assert len(credentials) == 1
-    assert credentials[0].account_handle == "user-my-deepseek"
+    assert credentials[0].account_handle == _pid("my-deepseek")
     assert credentials[0].cred_id == record.cred_ref
 
     # The inventory shows ONE key row carrying TWO variants, not two rows.
@@ -106,7 +138,7 @@ def test_one_registration_two_variants_one_record_one_credential(client: TestCli
     for variant in ("deepseek-reasoner", "deepseek-chat"):
         resolved = client.post("/settings/models/user/resolve", json=_choice(variant))
         assert resolved.status_code == 200, resolved.text
-        assert resolved.json()["provider_id"] == "user-my-deepseek"
+        assert resolved.json()["provider_id"] == _pid("my-deepseek")
         assert resolved.json()["model_id"] == variant
     assert client.post("/settings/models/user/resolve", json=_choice("deepseek-v3")).status_code == 409
 
@@ -117,16 +149,16 @@ def test_each_variant_is_priced_as_itself_under_one_key(client: TestClient) -> N
     snapshots = {}
     for variant in ("deepseek-reasoner", "deepseek-chat"):
         choice = UserModelChoice(
-            authority="user_model", provider_id="user-my-deepseek", model_id=variant,
+            authority="user_model", provider_id=_pid("my-deepseek"), model_id=variant,
         )
-        route = resolve_user_model_choice(client.app, choice)
-        authority = resolve_owner_model_authority(client.app, choice, owner_user_id="__operator__")
+        route = resolve_user_model_choice(client.app, choice, owner_user_id=_owner())
+        authority = resolve_owner_model_authority(client.app, choice, owner_user_id=_owner())
         # Dispatch consumers read the CHOSEN variant off the authority, while
         # the record (and therefore the ledger key) is the same for both.
         assert authority.model_id == variant
-        assert authority.record.id == "user-my-deepseek"
+        assert authority.record.id == _pid("my-deepseek")
         assert route.model_id == variant
-        assert route.provider_id == "user-my-deepseek"
+        assert route.provider_id == _pid("my-deepseek")
         assert route.rate_snapshot == get_model_variant(preset, variant).snapshot
         snapshots[variant] = route.rate_snapshot
     # V4 Pro and V4 Flash carry different pinned pricing; one key, two prices.
@@ -135,9 +167,9 @@ def test_each_variant_is_priced_as_itself_under_one_key(client: TestClient) -> N
         resolve_owner_model_authority(
             client.app,
             UserModelChoice(
-                authority="user_model", provider_id="user-my-deepseek", model_id="deepseek-v3",
+                authority="user_model", provider_id=_pid("my-deepseek"), model_id="deepseek-v3",
             ),
-            owner_user_id="__operator__",
+            owner_user_id=_owner(),
         )
 
 
@@ -188,8 +220,8 @@ def test_pre_variant_registry_row_loads_as_single_variant(client: TestClient, en
     import json
 
     registry = json.loads(raw)
-    del registry["user-my-deepseek"]["model_ids"]
+    del registry[_pid("my-deepseek")]["model_ids"]
     path.write_text(json.dumps(registry))
 
-    record = _load_registry()["user-my-deepseek"]
+    record = _load_registry()[_pid("my-deepseek")]
     assert record.model_ids == ["deepseek-chat"]

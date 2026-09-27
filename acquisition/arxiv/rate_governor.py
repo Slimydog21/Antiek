@@ -32,7 +32,8 @@ Scope of the guarantee (honesty bar 1 — see
 
   * MECHANICAL: the >= 3s spacing + 429 ban sentinel are now enforced GLOBALLY
     across every arXiv job ON THIS HOST (any process that routes its send through
-    ``governed_request`` blocks on the same flock + shares the same JSON state),
+    ``governed_request`` blocks on the same flock + shares the same JSON state,
+    provided it resolves the same state and lock paths; see ``default_lock_path``),
     and a CI lint (``tools/lint/rate_governor_check.py``) reds a NEW direct
     arxiv.org egress that bypasses this seam.
   * OPERATIONAL, NOT MECHANICAL: "no multi-IP circumvention" cannot be enforced
@@ -171,7 +172,13 @@ def default_lock_path() -> str:
 
     All host arXiv jobs that share the same throttle state file
     (``~/.antiek/arxiv_throttle.json`` by default) also share this one lock,
-    which is what makes the gate host-global.
+    which is what makes the gate host-global. It is host-global only while
+    every arXiv process resolves the same path. ``ANTIEK_HOME`` moves the
+    default (through ``default_state_path``), which is what tests rely on for
+    isolation. A long-running process that sets ``ANTIEK_HOME`` for per-worktree
+    state must also pin ``ANTIEK_ARXIV_THROTTLE_PATH`` and this variable to the
+    shared home, as ``scripts/start-shared-duckdb-mac-mini.sh`` does. Otherwise
+    it gets a private lock and ban sentinel and ignores a ban the host armed.
     """
     env = os.environ.get("ANTIEK_ARXIV_GOVERNOR_LOCK_PATH")
     if env:
@@ -608,9 +615,11 @@ def _note_response_hop(
     lock_timeout_s: float,
     lock_poll_interval_s: float,
     lock_sleep: Callable[[float], None],
+    url: str | None = None,
 ) -> None:
     """Record one arXiv response hop's outcome (the 429 ``banned_until`` sentinel)
-    under the re-entrant governor flock — the note half of the per-hop gate."""
+    under the re-entrant governor flock — the note half of the per-hop gate.
+    ``url`` is forwarded so a ban-event line can name the host."""
     with _GovernorLock(
         lock_path,
         timeout_s=lock_timeout_s,
@@ -618,7 +627,7 @@ def _note_response_hop(
         purpose="arxiv-hook",
         sleep=lock_sleep,
     ):
-        throttle.note_response(status_code, headers)
+        throttle.note_response(status_code, headers, url=url)
 
 
 def install_arxiv_request_hook(
@@ -673,7 +682,9 @@ def install_arxiv_request_hook(
         # redirect target) records the ban sentinel. The outer
         # ``throttle.request`` also notes the FINAL response when it governed the
         # initial hop; that overlap is a harmless no-op on a non-429 and a
-        # conservative re-set on a 429.
+        # conservative re-set on a 429. The ban-event log is appended only by
+        # the note that ARMS the sentinel, so the overlap cannot log one 429
+        # twice (see ``ArxivThrottle.note_response``).
         _note_response_hop(
             eff_throttle,
             eff_lock,
@@ -682,6 +693,7 @@ def install_arxiv_request_hook(
             lock_timeout_s=lock_timeout_s,
             lock_poll_interval_s=lock_poll_interval_s,
             lock_sleep=lock_sleep,
+            url=str(response.request.url),
         )
 
     hooks = client.event_hooks

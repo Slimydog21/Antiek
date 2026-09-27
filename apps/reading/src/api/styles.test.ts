@@ -6,7 +6,7 @@ vi.mock("../lib/api", async () => {
   return { ...actual, API_BASE: "", apiFetch: apiFetchMock };
 });
 
-import { artifactVersionUrl, deleteStyle, getArtifactStatus, renderArtifact } from "./styles";
+import { artifactVersionUrl, deleteStyle, getArtifactStatus, renderArtifact, renderDocument } from "./styles";
 
 const HASH = "9".repeat(64);
 const SOURCE_HASH = "8".repeat(64);
@@ -67,5 +67,41 @@ describe("style artifact receipt contract", () => {
       }),
     );
     await expect(deleteStyle("antiek")).rejects.toThrow("cannot remove builtin");
+  });
+});
+
+describe("document render receipt contract", () => {
+  beforeEach(() => apiFetchMock.mockReset());
+
+  it("builds the documents render route and accepts an exact receipt", async () => {
+    apiFetchMock.mockResolvedValue(response({
+      "X-Document-ID": "doc one", "X-Artifact-Style": "book",
+      "X-Content-SHA256": HASH, "X-Reader-Revision": "3",
+    }));
+    await expect(renderDocument("doc one", "book")).resolves.toMatchObject({
+      documentId: "doc one", style: "book", hash: HASH, readerRevision: "3",
+    });
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/documents/doc%20one/render?style=book",
+      expect.objectContaining({ signal: undefined }),
+    );
+  });
+
+  it.each([
+    ["missing headers", { "X-Document-ID": "doc-1" }],
+    ["document mismatch", { "X-Document-ID": "other", "X-Artifact-Style": "book", "X-Content-SHA256": HASH }],
+    ["style mismatch", { "X-Document-ID": "doc-1", "X-Artifact-Style": "other", "X-Content-SHA256": HASH }],
+    ["malformed hash", { "X-Document-ID": "doc-1", "X-Artifact-Style": "book", "X-Content-SHA256": "abc" }],
+  ])("refuses %s", async (_label, headers) => {
+    apiFetchMock.mockResolvedValue(response(headers));
+    await expect(renderDocument("doc-1", "book")).rejects.toThrow("invalid or mismatched document receipt");
+  });
+
+  it("surfaces the serve gate's refusal reason verbatim", async () => {
+    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({ detail: "sanitizer_version_stale" }), {
+      status: 422, headers: { "Content-Type": "application/json" },
+    }));
+    await expect(renderDocument("doc-1", undefined)).rejects.toThrow("sanitizer_version_stale");
+    expect(apiFetchMock).toHaveBeenCalledWith("/documents/doc-1/render", expect.anything());
   });
 });

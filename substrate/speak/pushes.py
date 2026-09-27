@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from runtime.db_lock import DEFAULT_TIMEOUT_S, ReadLockTimeout
 from substrate.speak import async_interview
 from substrate.speak.invitations import INVITE_DOOR_OPEN_SQL, InviteDoorClosed
 from substrate.speak.schema import ensure_speak_schema
@@ -267,11 +268,17 @@ def list_public_opportunities(
     return scored[:limit]
 
 
-def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateReping]:
-    """Invitees still in flight; fills pending_question_count via resume()."""
+def list_private_repings_at(
+    db_path: str, *, limit: int = 50, timeout_s: float = DEFAULT_TIMEOUT_S
+) -> list[PrivateReping]:
+    """Invitees still in flight; fills pending_question_count via resume().
+
+    ``timeout_s`` bounds the write lease and the later read open."""
     from runtime.db_lock import connect_write
 
-    with connect_write(db_path, purpose="speak/pushes.list_private") as con:
+    with connect_write(
+        db_path, purpose="speak/pushes.list_private", timeout_s=timeout_s
+    ) as con:
         ensure_speak_schema(con)
         # A door an active takedown closed is not re-pingable: the link it
         # would hand out 404s, and pinging someone whose interview was
@@ -299,8 +306,12 @@ def list_private_repings_at(db_path: str, *, limit: int = 50) -> list[PrivateRep
         interview_id = r[2]
         token = r[5]
         try:
-            session = async_interview.resume(db_path, interview_id)
+            session = async_interview.resume(
+                db_path, interview_id, external_lock_timeout_s=timeout_s
+            )
             pending = len(session.pending_questions())
+        except ReadLockTimeout:
+            raise
         except Exception:
             pending = 0
         # Surface invitees who still owe answers OR are merely invited
@@ -337,17 +348,28 @@ def _closed_door_reping(interview_id: str) -> RepingResult:
     )
 
 
-def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False) -> RepingResult:
+def prepare_reping(
+    db_path: str,
+    *,
+    interview_id: str,
+    send_email: bool = False,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+) -> RepingResult:
     """Consent-scoped continuous ping: generate followups + return invite door.
 
     Skips declined interviews. Reuses ``async_interview.next_followups``.
     Optionally delivers the invite door by email via ``reping_mail``
     (AgentMail/Resend/Mock) when ``send_email`` is True, consent allows,
     and ``ANTIEK_SPEAK_REPING_EMAIL`` is set. Never emails declined invitees.
+
+    ``timeout_s`` bounds every write-lock wait here, including the one inside
+    ``next_followups`` (see ``async_interview``).
     """
     from runtime.db_lock import connect_write
 
-    with connect_write(db_path, purpose="speak/pushes.reping_gate") as con:
+    with connect_write(
+        db_path, purpose="speak/pushes.reping_gate", timeout_s=timeout_s
+    ) as con:
         ensure_speak_schema(con)
         row = con.execute(
             "SELECT i.status, s.token, "
@@ -400,6 +422,7 @@ def prepare_reping(db_path: str, *, interview_id: str, send_email: bool = False)
         # a takedown landing after the gate above still stops the ping.
         fus = async_interview.next_followups(
             db_path, interview_id=interview_id, door_token=token,
+            timeout_s=timeout_s,
         )
     except InviteDoorClosed:
         return _closed_door_reping(interview_id)

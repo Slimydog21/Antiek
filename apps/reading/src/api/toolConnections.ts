@@ -1,6 +1,6 @@
 import { API_BASE, apiFetch } from "../lib/api";
 
-export type ToolVendor = "youtube" | "x" | "polygon" | "fmp" | "edgar";
+export type ToolVendor = "youtube" | "x" | "polygon" | "fmp" | "edgar" | "fred" | "alpha_vantage";
 export type ToolConnectionStatus =
   | "unconfigured"
   | "configured_unverified"
@@ -33,9 +33,14 @@ export interface ToolConnection {
   credential_present: boolean;
   status_note: string | null;
   quota: ToolQuota;
+  /**
+   * True when a research surface actually spends this credential today.
+   * A stored key nothing reads is "connected, not yet used", not configured.
+   */
+  searchable: boolean;
 }
 
-const VENDORS = new Set<ToolVendor>(["youtube", "x", "polygon", "fmp", "edgar"]);
+const VENDORS = new Set<ToolVendor>(["youtube", "x", "polygon", "fmp", "edgar", "fred", "alpha_vantage"]);
 const STATUSES = new Set<ToolConnectionStatus>([
   "unconfigured",
   "configured_unverified",
@@ -101,13 +106,14 @@ function parseQuota(value: unknown): ToolQuota {
 function parseConnection(value: unknown): ToolConnection {
   if (!isRecord(value) || !exactKeys(value, [
     "auth", "credential_kind", "credential_present", "display_name", "docs_url",
-    "quota", "status", "status_note", "vendor",
+    "quota", "searchable", "status", "status_note", "vendor",
   ])) throw new Error("Tool settings returned an invalid connection response");
   if (typeof value.vendor !== "string" || !VENDORS.has(value.vendor as ToolVendor) ||
       typeof value.status !== "string" || !STATUSES.has(value.status as ToolConnectionStatus) ||
       (value.credential_kind !== "api_key" && value.credential_kind !== "contact") ||
       typeof value.display_name !== "string" || typeof value.auth !== "string" ||
       typeof value.docs_url !== "string" || typeof value.credential_present !== "boolean" ||
+      typeof value.searchable !== "boolean" ||
       !(value.status_note === null || typeof value.status_note === "string")) {
     throw new Error("Tool settings returned an invalid connection response");
   }

@@ -79,6 +79,10 @@ describe("BlockCard — provenance affordance (M1 / §9)", () => {
     const cite = screen.getByRole("button", { name: "read source" });
     fireEvent.click(cite);
     expect(onCiteSource).toHaveBeenCalledTimes(1);
+    expect(onCiteSource.mock.calls[0][0].node_id).toBe("i1");
+    expect(onCiteSource.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ left: expect.any(Number), top: expect.any(Number) }),
+    );
     // The raw document id must never appear as a label.
     expect(screen.queryByText("doc-1")).toBeNull();
   });

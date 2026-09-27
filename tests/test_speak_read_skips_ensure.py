@@ -35,9 +35,9 @@ def client(monkeypatch):
 
     real = sr.ensure_initialized
 
-    def wrapped(path=None):
+    def wrapped(path=None, **kwargs):
         calls.append("ensure")
-        return real(path)
+        return real(path, **kwargs)
 
     monkeypatch.setattr(sr, "ensure_initialized", wrapped)
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])

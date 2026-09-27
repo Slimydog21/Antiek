@@ -28,11 +28,17 @@ Environment="ANTIEK_ARXIV_THROTTLE_PATH={{ antiek_state_dir }}/arxiv_throttle.js
 Environment="ANTIEK_ARXIV_GOVERNOR_LOCK_PATH={{ antiek_state_dir }}/arxiv_throttle.json.governor.lock"
 Environment="ANTIEK_ARXIV_OAI_STATE_PATH={{ antiek_state_dir }}/arxiv_oai_harvest.json"
 Environment="ANTIEK_ARXIV_OAI_SYNC_PATH={{ antiek_state_dir }}/arxiv_oai_sync.json"
+# The system bundle from the ca-certificates package (setup.yml). Setting it
+# here makes runtime.ssl_bootstrap a no-op, so the box's bundle keeps priority
+# over the venv's certifi copy. Belt-and-braces on Ubuntu; the real fix is for
+# a python.org interpreter that ships no bundle at all (arxiv-missing-ssl-env).
+Environment="SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
 
 ExecStartPre=/usr/bin/mkdir -p {{ antiek_state_dir }}/reports
 # Chunked DuckDB write locks (batch/max-lock/yield) so nightly sync cannot
 # monopolize write.lock for hours (prod incident 2026-09-18).
-ExecStart={{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync incremental --bulk --persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5 --census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json
+# Disable the warm writer for this command so each yielded batch releases write.lock.
+ExecStart=/usr/bin/env ANTIEK_WRITE_KEEPALIVE_S=0 {{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync incremental --bulk --persist-batch-size 200 --max-lock-seconds 15 --lock-yield-seconds 0.5 --census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json
 ExecStartPost={{ antiek_install_dir }}/.venv/bin/python -m tools.source_census --source arxiv --db-path {{ antiek_state_dir }}/antiek.duckdb --out {{ antiek_state_dir }}/reports/source_census.json
 
 StandardOutput=journal

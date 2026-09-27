@@ -45,6 +45,7 @@ try:
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        describe_upstream_http_error,
         optional_count,
         response_contains_secret,
         usage_counts_reported,
@@ -57,6 +58,7 @@ except ImportError:  # pragma: no cover
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        describe_upstream_http_error,
         optional_count,
         response_contains_secret,
         usage_counts_reported,
@@ -72,6 +74,26 @@ _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 # call; short enough that a hung connection doesn't deadlock the
 # dispatch loop. Override via constructor.
 _DEFAULT_TIMEOUT_S = 120.0
+
+
+def _described_upstream_error(
+    resp: httpx.Response,
+    *,
+    provider: str,
+    endpoint: str,
+    secret: str,
+) -> tuple[str, str | None] | None:
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None
+    return describe_upstream_http_error(
+        payload,
+        provider=provider,
+        status_code=resp.status_code,
+        endpoint=endpoint,
+        secret=secret,
+    )
 
 
 def _extract_cached_tokens(usage: dict[str, Any]) -> int | None:
@@ -250,6 +272,22 @@ class OpenAICompatProvider:
         latency_ms = int((time.monotonic() - t_start) * 1000)
 
         if resp.status_code != 200:
+            described = _described_upstream_error(resp, provider=self.name, endpoint=url, secret=api_key)
+            if described is not None:
+                detail, upstream_type = described
+                raise ProviderError(
+                    detail,
+                    provider=self.name, model=model,
+                    latency_ms=latency_ms,
+                    retryable=resp.status_code in _RETRYABLE_STATUS,
+                    request_id=(
+                        resp.headers.get("x-request-id")
+                        if self._expose_error_body
+                        else None
+                    ),
+                    endpoint=url,
+                    upstream_type=upstream_type,
+                )
             detail = f" — {resp.text[:400]}" if self._expose_error_body else ""
             raise ProviderError(
                 f"{self.name}: HTTP {resp.status_code}{detail}",
@@ -261,6 +299,7 @@ class OpenAICompatProvider:
                     if self._expose_error_body
                     else None
                 ),
+                endpoint=url,
             )
 
         # User-configured endpoints are untrusted. They already receive the

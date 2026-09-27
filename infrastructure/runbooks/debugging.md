@@ -22,7 +22,7 @@ journalctl -u antiek -n 200 --no-pager
 |---|---|---|
 | `KeyError: 'Z_AI_API_KEY'` or `dispatch: skipped providers` | Secrets file empty or malformed | `sudoedit /etc/antiek/secrets.env`; the three keys routing actually depends on are `Z_AI_API_KEY`, `DEEPSEEK_API_KEY` and `XIAOMI_API_KEY`. Check no stray quotes or whitespace around values |
 | `[Errno 98] Address already in use` on port 8001 | A previous uvicorn didn't exit cleanly | `pkill -f uvicorn; systemctl restart antiek` |
-| `ModuleNotFoundError: No module named 'X'` | New dependency added to pyproject.toml but venv not refreshed | re-run `ansible-playbook -i inventory.ini playbooks/deploy.yml` — it refreshes the editable install |
+| `ModuleNotFoundError: No module named 'X'` | New dependency added to pyproject.toml but lock not synced | merge the lock change, then run `ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml` — it builds a frozen release venv |
 | `sqlite3.OperationalError` or DuckDB CatalogException | DB file corrupted, schema migration partial, or another writer present | Check no second uvicorn is running (`ps aux \| grep uvicorn`), then `systemctl restart antiek`. If still broken, restore from backup (`disaster-recovery.md`) |
 | `WriteLockTimeout` from `runtime/db_lock.py` | Another process holds the DuckDB write lock | The lock is a sidecar file, not the database. `cat /home/antiek/.antiek/antiek.duckdb.write.lock` names the holder's PID and purpose; `lsof` that same `.write.lock` path to see who is queued behind it. A waiter blocked on the flock has never opened the `.duckdb` file, so `lsof` on the database shows nothing while a writer is plainly stuck. The exception text quotes the right path itself. Almost always a stale uvicorn process. Kill it. |
 | Stack trace mentioning `pydantic.ValidationError` on Event payload | Schema drift — substrate code expects a different shape than what's on disk | Probably a downgrade after a schema bump. Either redeploy the newer code or restore the matching backup |
@@ -258,7 +258,7 @@ Likely culprits (in order of probability):
    restarting — a restart drops live connections for nothing:
    ```bash
    cd ~/Desktop/Antiek/infrastructure/ansible
-   ansible-playbook -i inventory.ini playbooks/deploy.yml --tags caddy --skip-tags frontend
+   ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml --tags caddy
    ```
 
 ## WebSocket connections dropping
@@ -278,19 +278,16 @@ re-render from the template:
 
 ```bash
 cd ~/Desktop/Antiek/infrastructure/ansible
-ansible-playbook -i inventory.ini playbooks/deploy.yml --tags caddy --skip-tags frontend
+ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml --tags caddy
 ```
 
-`--skip-tags frontend` is not optional here. The
-`rsync apps/reading/dist → …` task (`deploy.yml:262`) is tagged
-`[frontend, caddy]` and runs with `delete: true`, so a bare
-`--tags caddy` selects it — while the play that *builds* that bundle is
-tagged `[frontend, build]` and is not selected. What reads as "just
-re-render the Caddyfile" would then push whatever stale
-`apps/reading/dist/` happens to be sitting on your Mac over the live
-SPA and delete everything else. The Caddyfile render (`deploy.yml:318`)
-and the `caddy reload` (`:338`) carry the bare `[caddy]` tag, so the
-timeout fix still lands with the skip in place.
+This tag is safe only when the exact gated SHA already has a complete
+release and receipt under `/opt/antiek-releases`. The atomic playbook
+validates a candidate Caddyfile without changing live routing, cuts the
+public release chain first, then atomically activates and reloads the
+candidate routes before starting the candidate API. If no complete
+release exists for the target SHA, run the normal deploy instead of
+trying to apply an edge-only change.
 
 ## DuckDB queries are slow
 
@@ -368,21 +365,22 @@ sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder  # macOS
 
 ## Out of disk after a Python deps upgrade
 
-**Symptom**: `ansible-playbook deploy.yml` fails on the `pip install`
-task with disk-full errors.
+**Symptom**: `ansible-playbook deploy_atomic.yml` fails the release-root
+headroom guard before building the candidate.
 
-**Cause**: pip's build cache + the venv together grew. Most common
-when a heavy dep (sentence-transformers, torch) was added.
+**Cause**: retained immutable releases plus the database snapshot exceed
+the playbook's required 12 GB release-root headroom.
 
 **Fix**:
 ```bash
 ssh root@<vm-ip>
-sudo -u antiek /opt/antiek/.venv/bin/pip cache purge
-sudo -u antiek rm -rf /tmp/pip-*
-df -h /
+sudo -u antiek /opt/antiek/.venv/bin/pip cache purge 2>/dev/null || true
+df -h / /opt/antiek-releases
+sudo find /opt/antiek-releases -mindepth 1 -maxdepth 1 -type d -printf '%TY-%Tm-%Td %p\n' | sort
 ```
 
-Then re-run `deploy.yml`.
+Do not delete the current or immediately previous release. After freeing
+headroom, re-run `deploy_atomic.yml`.
 
 ---
 
@@ -425,7 +423,7 @@ agent knows what to expect:
   what you should do. `.github/workflows/deploy_backend.yml` deploys on
   `workflow_run`, after both `CI` and `enforce-declared-bar` report, so
   a merge to main reaches prod without anyone at a keyboard. Check what
-  CD is doing before you hand-run `deploy.yml` —
+  CD is doing before you hand-run `deploy_atomic.yml` —
   `gh run list --workflow=deploy_backend.yml -L 5` — because a manual
   deploy from your Mac racing an in-flight CD run is two writers to one
   prod box.

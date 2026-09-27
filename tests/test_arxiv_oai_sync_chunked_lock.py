@@ -8,6 +8,7 @@ a fresh lock per batch (and respects max_lock_seconds).
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import time
 
@@ -17,6 +18,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from runtime import db_lock  # noqa: E402
 from runtime.db_lock import connect_write  # noqa: E402
 from substrate.schemas.documents import ArxivOaiRecord  # noqa: E402
 from tools import arxiv_oai_sync as sync  # noqa: E402
@@ -75,6 +77,44 @@ def test_chunked_persist_acquires_lock_per_batch(tmp_path, monkeypatch):
     # 10 records / batch_size 3 → 4 flushes (3+3+3+1)
     assert len(acquires) == 4
     assert tally["inserted"] + tally["updated"] == 10
+
+
+def test_chunked_persist_yields_flock_and_rw_handle_to_competing_process(
+    tmp_path, monkeypatch
+):
+    db = str(tmp_path / "graph.duckdb")
+    from substrate.graph import ensure_initialized
+
+    ensure_initialized(db)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("ANTIEK_WRITE_KEEPALIVE_S", "30")
+    tally = {"inserted": 0, "updated": 0, "skipped_deleted": 0}
+    stream = sync._chunked_persist_tap(
+        iter([_rec(0), _rec(1)]), db, tally, batch_size=1, yield_s=0
+    )
+    assert next(stream).arxiv_id == _rec(0).arxiv_id
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import duckdb, fcntl, os, sys; "
+                "db = sys.argv[1]; "
+                "fd = os.open(db + '.write.lock', os.O_WRONLY); "
+                "fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB); "
+                "con = duckdb.connect(db); "
+                "assert con.execute('SELECT count(*) FROM documents').fetchone()[0] >= 1; "
+                "con.close(); os.close(fd)",
+                db,
+            ],
+            check=True,
+            timeout=5,
+        )
+        assert next(stream).arxiv_id == _rec(1).arxiv_id
+        assert tally["inserted"] == 2
+    finally:
+        stream.close()
+        db_lock.flush_warm_writers(db)
 
 
 def test_chunked_persist_releases_when_max_lock_seconds_elapsed(

@@ -16,6 +16,14 @@ from interfaces.research.api.settings_budget import (
 
 def _client() -> TestClient:
     app = FastAPI()
+
+    @app.middleware("http")
+    async def _test_identity(request, call_next):
+        request.state.user_id = "__operator__"
+        request.state.user_email = "operator-under-test@example.com"
+        request.state.auth_method = "antiek_session_cookie"
+        return await call_next(request)
+
     register_settings_budget_routes(app)
     return TestClient(app)
 

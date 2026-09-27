@@ -62,7 +62,7 @@ Follow `runbooks/first-deploy.md` line-by-line. Summary of the path:
     response with `registered_providers` including `zai`/`zai_reasoning`.
 
 End-to-end first time: ~45 minutes. Subsequent deploys (code changes
-only) are ~2 minutes via `ansible-playbook playbooks/deploy.yml`.
+only) are ~2 minutes via `ansible-playbook playbooks/deploy_atomic.yml`.
 
 ## Operating model
 
@@ -70,7 +70,7 @@ only) are ~2 minutes via `ansible-playbook playbooks/deploy.yml`.
 about to SSH in and edit a file, stop. Either:
 
 - The change belongs in a template (`ansible/templates/*.j2`) →
-  edit the template, commit, re-run `deploy.yml`.
+  edit the template, commit, re-run `deploy_atomic.yml`.
 - The change belongs in a playbook task (`ansible/playbooks/*.yml`)
   → edit the playbook, commit, re-run.
 - The change is genuinely one-off (e.g. unsticking a wedged process)
@@ -115,7 +115,8 @@ infrastructure/
 │   │   └── all.yml                 (non-secret variables)
 │   ├── playbooks/
 │   │   ├── setup.yml               (initial VM bring-up)
-│   │   ├── deploy.yml              (subsequent code deploys)
+│   │   ├── deploy_atomic.yml       (subsequent atomic code deploys)
+│   │   ├── deploy.yml              (compatibility import of deploy_atomic.yml)
 │   │   └── backup.yml              (manual backup trigger)
 │   └── templates/
 │       ├── antiek.service.j2       (systemd unit)
@@ -145,7 +146,7 @@ ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml
 
 # Deploy a code change
 cd ~/Desktop/Antiek/infrastructure/ansible
-ansible-playbook -i inventory.ini playbooks/deploy.yml
+ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml
 
 # Manual backup
 ansible-playbook -i inventory.ini playbooks/backup.yml

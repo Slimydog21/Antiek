@@ -39,7 +39,9 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
+
+from substrate.ban_events import append_ban_event as _append_ban_event
 
 # arXiv API terms of use: at most one request per three seconds. We space at 3.5s
 # — a deliberate 0.5s margin ABOVE the 3.0s ceiling — because clock skew, request
@@ -55,14 +57,33 @@ MIN_REQUEST_SPACING_S = 3.5
 # stranding the operator for a full day.
 DEFAULT_BAN_BACKOFF_S = 30 * 60.0
 
+# Source key stamped on ban-event log lines drawn by this throttle.
+ARXIV_BAN_SOURCE_KEY = "arxiv"
+
 
 def default_state_path() -> str:
-    """The cross-process state file. Honors ``ANTIEK_ARXIV_THROTTLE_PATH``
-    for tests / alternate homes; defaults under ~/.antiek/ alongside the
-    other Antiek runtime state."""
+    """The cross-process state file.
+
+    Precedence: ``ANTIEK_ARXIV_THROTTLE_PATH`` (non-empty) >
+    ``$ANTIEK_HOME/arxiv_throttle.json`` when ``ANTIEK_HOME`` is non-empty
+    after ``.strip()`` > ``~/.antiek/arxiv_throttle.json``. ``ANTIEK_HOME``
+    replaces the ``~/.antiek`` directory itself (it is NOT a home directory
+    to append ``.antiek`` to). Honouring ``ANTIEK_HOME`` here and in
+    ``substrate.source_throttle.default_state_path`` is one lever for both
+    sentinel files, so a half-redirected run cannot write one sentinel to
+    tmp and the other into the operator's live file.
+
+    arXiv bans the IP, so this file is host-scoped state. A long-running
+    process that sets ``ANTIEK_HOME`` for per-worktree isolation must pin
+    ``ANTIEK_ARXIV_THROTTLE_PATH`` (and the governor lock) back to the shared
+    home, as ``scripts/start-shared-duckdb-mac-mini.sh`` does.
+    """
     env = os.environ.get("ANTIEK_ARXIV_THROTTLE_PATH")
     if env:
         return env
+    home = os.environ.get("ANTIEK_HOME", "").strip()
+    if home:
+        return str(Path(home) / "arxiv_throttle.json")
     return str(Path.home() / ".antiek" / "arxiv_throttle.json")
 
 
@@ -81,6 +102,20 @@ class _ResponseLike(Protocol):
 
     @property
     def headers(self) -> Mapping[str, str]: ...
+
+
+def _response_url(resp: object) -> str | None:
+    """Return the request URL attached to ``resp``, or None.
+
+    Structurally typed so this module stays free of an httpx import.
+    ``httpx.Response.request`` RAISES ``RuntimeError`` when no request is
+    attached (test fakes do this), so catch that alongside ``AttributeError``.
+    """
+    try:
+        inner = cast("Any", resp)
+        return str(inner.request.url)
+    except (AttributeError, RuntimeError):
+        return None
 
 
 class ArxivBanned(RuntimeError):
@@ -132,8 +167,9 @@ class ArxivThrottle:
     """Process-wide throttle backed by a JSON state file.
 
     ``wait_if_needed()`` is called BEFORE each request: it raises
-    ``ArxivBanned`` if a ban is active, else sleeps until >= 3s have elapsed
-    since the last request, then records the new request time.
+    ``ArxivBanned`` if a ban is active, else clears any expired ban sentinel,
+    sleeps until >= 3s have elapsed since the last request, then records the
+    new request time.
 
     ``note_response(status, headers)`` is called AFTER each request: on a
     429 it persists a ``banned_until`` sentinel.
@@ -202,6 +238,12 @@ class ArxivThrottle:
         now = self._now()
         if now < state.banned_until:
             raise ArxivBanned(state.banned_until, now)
+        # An EXPIRED sentinel is history, not state. Left in place it outlives
+        # the ban by months (the live file carried a 2026-06-03 ban behind a
+        # same-day last_request_at), poisons every "were we banned recently?"
+        # read-out, and gets mirrored forward into the shared source_throttle
+        # sentinel on every ingest run. Clear it on the first permitted request.
+        state.banned_until = 0.0
 
         elapsed = now - state.last_request_at
         if elapsed < self._min_spacing:
@@ -212,13 +254,31 @@ class ArxivThrottle:
         self._write_state(state)
 
     def note_response(
-        self, status_code: int, headers: Mapping[str, str] | None = None
+        self,
+        status_code: int,
+        headers: Mapping[str, str] | None = None,
+        *,
+        url: str | None = None,
     ) -> None:
         """Record the outcome of a request. On 429, set ``banned_until``.
 
         ``Retry-After`` (seconds, the form arXiv/most servers emit) is
         honored when present and parseable; otherwise we fall back to the
         conservative default back-off. A non-429 status is a no-op.
+
+        ``url`` is the request URL (optional) used only to attribute the
+        ban-event log line — the sentinel write is independent of it. The
+        sentinel is written FIRST; the append never raises and cannot block
+        the sentinel.
+
+        A ban-event line is appended only when this call ARMS the sentinel,
+        that is when no ban was active before it. The production compositions
+        note one HTTP 429 several times: the per-hop response hook, the outer
+        ``governed_request``'s ``request()`` and a caller's
+        ``HTTPStatusError`` handler (``tools/ingest_arxiv._note_http_status``)
+        all see the same response. Re-arming an active ban stays a
+        conservative sentinel write, but it is not a new ban, so it logs
+        nothing and ``--ban-events`` counts bans rather than notes.
         """
         if status_code != 429:
             return
@@ -232,8 +292,17 @@ class ArxivThrottle:
                 with contextlib.suppress(ValueError, TypeError):
                     backoff = max(backoff, float(int(retry_after.strip())))
         state = self._read_state()
-        state.banned_until = self._now() + backoff
+        now = self._now()
+        newly_armed = state.banned_until <= now
+        state.banned_until = now + backoff
         self._write_state(state)
+        if newly_armed:
+            _append_ban_event(
+                source=ARXIV_BAN_SOURCE_KEY,
+                status=status_code,
+                url=url,
+                ts=now,
+            )
 
     def request(
         self,
@@ -254,5 +323,5 @@ class ArxivThrottle:
         """
         self.wait_if_needed()
         resp = send()
-        self.note_response(resp.status_code, resp.headers)
+        self.note_response(resp.status_code, resp.headers, url=_response_url(resp))
         return resp

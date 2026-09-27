@@ -116,7 +116,7 @@ export function AppShell({ children }: Props) {
       // ramp), so there is no colour jump — the shell still reads ice by day,
       // space by night, but now it can MOVE. text tokens stay on the frame so
       // any chrome that doesn't set its own colour inherits readable ink.
-      className="h-screen w-screen bg-transparent text-ink dark:text-bright overflow-hidden"
+      className="relative h-screen w-screen bg-transparent text-ink dark:text-bright overflow-hidden"
       style={{
         paddingTop: "var(--akb-border-inset-top)",
         paddingRight: "var(--akb-border-inset-right)",
@@ -152,7 +152,8 @@ export function AppShell({ children }: Props) {
           {/* SPR-09 — transparent workspace windows float over the working
               region + scene (this container is `relative` so the layer's
               absolute inset-0 anchors here, between Topbar and the NavRail).
-              Renders nothing until a window opens. SPR-09's one-line wiring,
+              Its inert coordinate layer remains mounted even when empty.
+              SPR-09's one-line wiring,
               deferred to the AppShell owner so SPR-09 kept this file untouched. */}
           <WindowsLayer />
         </div>

@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { LemonButton } from "../lemon";
-import { API_BASE } from "../../lib/api";
+import { API_BASE, getDistillation } from "../../lib/api";
+import type { DistilledNode } from "../../lib/api";
+import FlagForDiligence from "../../shared/FlagForDiligence";
 
 export interface ResearchArtifactReceiptProps {
   investigationId?: string;
@@ -122,7 +124,51 @@ export default function ResearchArtifactReceipt({
             Open research
           </LemonButton>
         )}
+
+        {/* Autonomous-diligence SPR-01: the receipt's open questions carry
+            the calm flag affordance (refs only — never the question's text
+            in the request). */}
+        {investigationId && <OpenQuestions investigationId={investigationId} />}
       </div>
     </div>
+  );
+}
+
+function OpenQuestions({ investigationId }: { investigationId: string }) {
+  const [questions, setQuestions] = useState<DistilledNode[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await getDistillation(investigationId);
+        if (!cancelled) setQuestions(res.questions);
+      } catch {
+        // A failed distill read is an honest empty section, never a crash —
+        // the receipt itself (the window's point) is unaffected.
+        if (!cancelled) setQuestions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [investigationId]);
+
+  if (questions === null || questions.length === 0) return null;
+  return (
+    <section data-receipt-questions>
+      <h3 className="mb-1.5 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        Open questions
+      </h3>
+      <ul className="space-y-1.5">
+        {questions.map((q) => (
+          <li key={q.node_id} className="text-sm font-serif leading-relaxed text-ink dark:text-bright">
+            ? {q.text}
+            <span className="ml-2 align-middle text-xs text-shadow-1 dark:text-moonlight">
+              <FlagForDiligence node={q} sourceInvestigationId={investigationId} />
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

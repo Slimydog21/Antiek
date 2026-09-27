@@ -31,6 +31,8 @@
  */
 
 import type { DistilledNode } from "../../../lib/api";
+import FlagForDiligence from "../../../shared/FlagForDiligence";
+import type { SourceAnchorRect } from "./evidenceWindowPlacement";
 
 export interface BlockCardProps {
   node: DistilledNode;
@@ -40,7 +42,11 @@ export interface BlockCardProps {
   /** Read-source / inspect-provenance affordance. Optional — when absent we
    *  still show the source's *presence* (or absence) honestly, just without a
    *  click target. */
-  onCiteSource?: (node: DistilledNode) => void;
+  onCiteSource?: (node: DistilledNode, anchor: SourceAnchorRect) => void;
+  /** The investigation the node was distilled from. Present ⇒ the calm
+   *  "flag for diligence" action renders (autonomous-diligence SPR-01);
+   *  absent ⇒ no flag affordance (never a dead one). */
+  sourceInvestigationId?: string;
 }
 
 const KIND_STYLE = {
@@ -66,7 +72,7 @@ function styleFor(kind: string) {
   return kind === "insight" ? KIND_STYLE.insight : KIND_STYLE.question;
 }
 
-export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCardProps) {
+export default function BlockCard({ node, onOpenDetail, onCiteSource, sourceInvestigationId }: BlockCardProps) {
   const s = styleFor(node.kind);
   const hasSource = Boolean(node.source_document_id?.trim());
   const clickable = Boolean(onOpenDetail);
@@ -119,7 +125,11 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
           onCiteSource ? (
             <button
               type="button"
-              onClick={() => onCiteSource(node)}
+              onClick={(event) => {
+                const { left, top, right, bottom, width, height } =
+                  event.currentTarget.getBoundingClientRect();
+                onCiteSource(node, { left, top, right, bottom, width, height });
+              }}
               className="font-mono underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
             >
               read source
@@ -134,6 +144,9 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
           <span className="font-mono">
             changed {node.refinement_count === 1 ? "once" : `${node.refinement_count} times`}
           </span>
+        )}
+        {sourceInvestigationId && (
+          <FlagForDiligence node={node} sourceInvestigationId={sourceInvestigationId} />
         )}
       </div>
     </div>

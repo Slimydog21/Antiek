@@ -17,6 +17,7 @@ import nacl.secret
 import pytest
 
 from runtime.byok.grok_oauth import (
+    XAI_TOKEN_URL,
     DeviceCodeGrant,
     GrokAuthError,
     GrokAuthFailure,
@@ -557,6 +558,51 @@ class TestFailureTaxonomy:
         with httpx.Client(transport=transport) as client, pytest.raises(GrokAuthError) as exc_info:
             refresh_grok_token("rt", client=client)
         assert exc_info.value.failure == GrokAuthFailure.TRANSIENT
+
+    def test_openai_envelope_names_provider_and_endpoint(self) -> None:
+        """A proxy-shaped body is classified with provider and token URL.
+
+        The form POST itself is well-formed. The JSON is what the upstream
+        returned, and it must not collapse to the bare type server_error.
+        """
+        seen: dict[str, str] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            seen["content_type"] = request.headers["content-type"]
+            seen["body"] = request.content.decode()
+            return httpx.Response(
+                500,
+                json={
+                    "error": {
+                        "message": "failed to read request body",
+                        "param": None,
+                        "type": "server_error",
+                    }
+                },
+            )
+
+        with (
+            httpx.Client(transport=httpx.MockTransport(handler)) as client,
+            pytest.raises(GrokAuthError) as exc_info,
+        ):
+            refresh_grok_token("rt-body", client=client)
+
+        assert seen["url"] == XAI_TOKEN_URL
+        assert seen["content_type"].startswith("application/x-www-form-urlencoded")
+        assert "grant_type=refresh_token" in seen["body"]
+        assert "refresh_token=rt-body" in seen["body"]
+        err = exc_info.value
+        text = str(err)
+        assert err.failure == GrokAuthFailure.TRANSIENT
+        assert err.terminal is False
+        assert err.endpoint == XAI_TOKEN_URL
+        assert err.upstream_type == "server_error"
+        assert text != "server_error"
+        assert "failed to read request body" in text
+        assert XAI_TOKEN_URL in text
+        assert "xai" in text
+        assert "rt-body" not in text
 
     def test_502_transient(self) -> None:
         transport = _mock_handler(

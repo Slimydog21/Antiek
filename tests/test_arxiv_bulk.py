@@ -182,6 +182,105 @@ def test_bulk_skips_malformed_lines_without_aborting():
     assert [p.arxiv_id for p in out] == ["2401.00001", "2401.00002"]
 
 
+def test_bulk_oai_binary_lines_match_text_parser_and_track_physical_offsets():
+    """Raw-line events preserve parser parity and count UTF-8/CRLF bytes."""
+    first_record = {**_RECORDS[0], "title": "A Café Δ Bulk Paper"}
+    first = json.dumps(first_record, ensure_ascii=False).encode("utf-8")
+    filtered = json.dumps(
+        {**_RECORDS[1], "update_date": "2024-01-04"}, ensure_ascii=False
+    ).encode("utf-8")
+    malformed = b"{ definitely not json\r\n"
+    body = first + b"\r\n" + filtered + b"\r\n" + malformed
+
+    expected = list(
+        bulk.iter_bulk_oai_records(
+            io.StringIO(body.decode("utf-8")),
+            since="2024-01-03",
+            until="2024-01-03",
+            category="cs.LG",
+        )
+    )
+    lines = list(
+        bulk.iter_bulk_oai_lines(
+            io.BytesIO(body),
+            since="2024-01-03",
+            until="2024-01-03",
+            category="cs.LG",
+        )
+    )
+
+    assert [line.record for line in lines if line.record is not None] == expected
+    physical_lines, eof = lines[:-1], lines[-1]
+    assert [line.end_offset for line in physical_lines] == [
+        len(first) + 2,
+        len(first) + 2 + len(filtered) + 2,
+        len(body),
+    ]
+    assert [line.record is None for line in physical_lines] == [False, True, True]
+    assert len(first.decode("utf-8")) < len(first)
+    assert eof.is_eof and eof.end_offset == len(body) and eof.line_number == 3
+
+
+def test_bulk_oai_binary_iterator_fails_closed_on_invalid_utf8():
+    valid = json.dumps(_RECORDS[0]).encode("utf-8") + b"\n"
+    events = bulk.iter_bulk_oai_lines(io.BytesIO(valid + b"\xffnot utf8\n"))
+    assert next(events).record is not None
+    with pytest.raises(UnicodeDecodeError):
+        next(events)
+
+
+def test_bulk_oai_binary_iterator_resumes_at_line_boundary_and_accepts_eof():
+    first = json.dumps(_RECORDS[0], ensure_ascii=False).encode("utf-8") + b"\n"
+    skipped = b"not-json\n"
+    final = json.dumps(_RECORDS[1], ensure_ascii=False).encode("utf-8")
+    body = first + skipped + final  # final physical line has no newline
+
+    all_events = list(bulk.iter_bulk_oai_lines(io.BytesIO(body)))
+    all_lines, eof = all_events[:-1], all_events[-1]
+    assert [line.end_offset for line in all_lines] == [
+        len(first),
+        len(first) + len(skipped),
+        len(body),
+    ]
+    assert eof.is_eof and eof.end_offset == len(body) and eof.line_number == 3
+    assert all_lines[-1].record is not None
+    resumed_events = list(
+        bulk.iter_bulk_oai_lines(io.BytesIO(body), start_offset=len(first))
+    )
+    resumed, resumed_eof = resumed_events[:-1], resumed_events[-1]
+    assert [line.record.arxiv_id for line in resumed if line.record is not None] == [
+        "2401.00002"
+    ]
+    assert resumed[-1].end_offset == len(body)
+    assert resumed_eof.is_eof and resumed_eof.end_offset == len(body)
+    eof_only = list(bulk.iter_bulk_oai_lines(io.BytesIO(body), start_offset=len(body)))
+    assert len(eof_only) == 1 and eof_only[0].is_eof
+    assert eof_only[0].end_offset == len(body) and eof_only[0].line_number == 0
+
+
+@pytest.mark.parametrize("offset", [-1, 1, 999])
+def test_bulk_oai_binary_iterator_rejects_invalid_start_offsets(offset):
+    with pytest.raises(ValueError):
+        list(bulk.iter_bulk_oai_lines(io.BytesIO(b"{}\n"), start_offset=offset))
+
+
+def test_bulk_oai_binary_iterator_advances_through_skipped_only_eof():
+    body = b"\nnot json\n[]\n"
+    events = list(bulk.iter_bulk_oai_lines(io.BytesIO(body)))
+    lines, eof = events[:-1], events[-1]
+    assert [line.record for line in lines] == [None, None, None]
+    assert eof.is_eof and eof.end_offset == len(body) and eof.line_number == 3
+
+
+def test_bulk_oai_binary_iterator_reports_empty_snapshot_eof():
+    events = list(bulk.iter_bulk_oai_lines(io.BytesIO(b"")))
+    assert len(events) == 1
+    assert events[0].is_eof
+    assert events[0].record is None
+    assert events[0].end_offset == 0
+    assert events[0].line_number == 0
+
+
 def test_bulk_path_never_calls_export_api(monkeypatch, tmp_path):
     """The export endpoint is NEVER called on the bulk path. We patch the
     export client's search/fetch_by_id + the low-level _http_get to RAISE; the

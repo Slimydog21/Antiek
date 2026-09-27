@@ -15,6 +15,13 @@ mutation in any case):
 3. **Opt-out** — the ``real_store_read`` marker is recognized so legitimate
    read-only real-store tests can opt out.
 
+The same three proofs are repeated for the arXiv half of the firewall
+(SPR-05 arXiv task 1): ``_isolate_arxiv_governor`` redirects the throttle
+state file AND the governor flock, ``_check_arxiv_isolated`` rejects the real
+paths (and a symlink alias), and ``arxiv_state_contract`` is the opt-out.
+Before task 1, six test files that passed ``state_path=`` to ``ArxivThrottle``
+still flocked the operator's real ``~/.antiek/arxiv_throttle.json.governor.lock``.
+
 Before SPR-04, a substrate-write test with no tmp home silently mutated the
 real store (the pollution source: the ``inv-1`` test edge + placeholder test
 nodes). After SPR-04 the same attempt fails loudly. The leaky variant fails;
@@ -27,9 +34,16 @@ import os
 
 import pytest
 
+from acquisition.arxiv.rate_governor import ArxivRateGovernor, default_lock_path
+from acquisition.arxiv.throttle import ArxivThrottle, default_state_path
 from runtime.db_lock import connect_write
 from substrate.graph import default_db_path
-from tests.conftest import _check_store_isolated, _real_store_path
+from tests.conftest import (
+    _check_arxiv_isolated,
+    _check_store_isolated,
+    _real_arxiv_paths,
+    _real_store_path,
+)
 
 
 def test_guard_provides_hermetic_tmp_store():
@@ -92,3 +106,71 @@ def test_real_store_read_marker_is_recognized():
     # The guard uses request.node.get_closest_marker; mirror that lookup.
     markers = {m.name for m in _marked.pytestmark}
     assert "real_store_read" in markers, markers
+
+
+# ---------------------------------------------------------------------------
+# SPR-05 arXiv task 1 — the governor-lock half of the firewall.
+# ---------------------------------------------------------------------------
+
+
+def test_arxiv_guard_redirects_both_state_and_lock(tmp_path):
+    """Wiring: under the autouse ``_isolate_arxiv_governor`` the throttle state
+    file AND the governor lock resolve into tmp, never the real ``~/.antiek``
+    paths — and a governor built with NO explicit paths (the six leaking
+    call-sites' shape) lands on the redirected lock."""
+    real_state, real_lock = _real_arxiv_paths()
+    state = os.path.realpath(default_state_path())
+    lock = os.path.realpath(default_lock_path())
+    assert state != real_state, f"throttle state not redirected: {state}"
+    assert lock != real_lock, f"governor lock not redirected: {lock}"
+    assert state.endswith("arxiv_throttle.json"), state
+    assert lock.endswith("arxiv_throttle.json.governor.lock"), lock
+
+    # A throttle that redirects ONLY its state path (what the six files did)
+    # must no longer drag the governor's lock onto the real file.
+    gov = ArxivRateGovernor(throttle=ArxivThrottle(state_path=str(tmp_path / "s.json")))
+    assert os.path.realpath(gov.lock_path) != real_lock, gov.lock_path
+
+
+def test_check_arxiv_isolated_accepts_tmp_path(tmp_path):
+    """Detection: a tmp path is accepted (no raise) — the hermetic case."""
+    real_state, real_lock = _real_arxiv_paths()
+    _check_arxiv_isolated(str(tmp_path / "arxiv_throttle.json"), real_state)
+    _check_arxiv_isolated(str(tmp_path / "arxiv_throttle.json.governor.lock"), real_lock)
+
+
+def test_check_arxiv_isolated_rejects_real_paths():
+    """Detection: the real throttle state path and the real governor lock path
+    are each rejected — the exact raise the autouse fixture produces for a test
+    that resolved to the operator's file."""
+    real_state, real_lock = _real_arxiv_paths()
+    with pytest.raises(AssertionError, match="REAL operator path"):
+        _check_arxiv_isolated(real_state, real_state, node_id="spr05-leaky-demo")
+    with pytest.raises(AssertionError, match="governor-lock leak"):
+        _check_arxiv_isolated(real_lock, real_lock, node_id="spr05-leaky-demo")
+
+
+def test_check_arxiv_isolated_rejects_symlink_alias(tmp_path):
+    """Rigor: a symlink that aliases the real lock is still caught —
+    resolve-and-compare, not string-compare."""
+    real_state, real_lock = _real_arxiv_paths()
+    alias = tmp_path / "alias.governor.lock"
+    try:
+        os.symlink(real_lock, alias)
+    except OSError as exc:  # pragma: no cover — platform cannot symlink
+        pytest.skip(f"cannot create symlink: {exc}")
+    # realpath of a dangling symlink still resolves to its target, so this
+    # holds whether or not the operator's lock file exists right now.
+    with pytest.raises(AssertionError, match="REAL operator path"):
+        _check_arxiv_isolated(str(alias), real_lock)
+
+
+def test_arxiv_state_contract_marker_is_recognized():
+    """Opt-out: ``arxiv_state_contract`` is a registered, recognizable marker
+    (the autouse guard returns early for a marked node)."""
+    @pytest.mark.arxiv_state_contract
+    def _marked():  # stand-in node carrying the marker
+        pass
+
+    markers = {m.name for m in _marked.pytestmark}
+    assert "arxiv_state_contract" in markers, markers

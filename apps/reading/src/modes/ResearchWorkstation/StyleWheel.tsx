@@ -1,13 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-  type CSSProperties,
-  type KeyboardEvent,
-  type WheelEvent,
-} from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import {
   artifactVersionUrl,
@@ -23,6 +14,7 @@ import { apiFetch } from "../../lib/api";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTag from "../../components/lemon/LemonTag";
 import ArtifactFeedbackReview from "./ArtifactFeedbackReview";
+import StyleRail from "./StyleRail";
 import "./StyleWheel.css";
 
 export interface StyleWheelProps {
@@ -106,7 +98,6 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
   const [savingFork, setSavingFork] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [railActive, setRailActive] = useState(false);
   const [draft, setDraft] = useState<StyleDraft>({
     name: "",
     label: "",
@@ -122,7 +113,6 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
    * saved before the column existed).
    */
   const [provenance, setProvenance] = useState<ForkProvenance>({});
-  const listRef = useRef<HTMLDivElement>(null);
   const previewRun = useRef(0);
   const applyRun = useRef(0);
   const applyController = useRef<AbortController | null>(null);
@@ -213,27 +203,6 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
       });
     return () => controller.abort();
   }, [artifactId, selected, status]);
-
-  const chooseAt = (index: number) => {
-    const style = styles[(index + styles.length) % styles.length];
-    if (!style) return;
-    setSelected(style.name);
-    requestAnimationFrame(() => document.getElementById(`style-${style.name}`)?.focus());
-  };
-
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (!["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    if (event.key === "Home") chooseAt(0);
-    else if (event.key === "End") chooseAt(styles.length - 1);
-    else chooseAt(index + (["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1));
-  };
-
-  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!railActive || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    event.preventDefault();
-    event.currentTarget.scrollLeft += event.deltaY;
-  };
 
   const openForkEditor = (fromName?: string) => {
     const baseName = fromName ?? selected;
@@ -413,56 +382,12 @@ export default function StyleWheel({ artifactId, investigationId, initialStyle }
           </LemonButton>
         </div>
       ) : (
-        <div
-          className="style-wheel__rail"
-          ref={listRef}
-          role="listbox"
-          aria-label="Artifact styles"
-          aria-orientation="horizontal"
-          onWheel={onWheel}
-          onMouseEnter={() => setRailActive(true)}
-          onMouseLeave={() => setRailActive(false)}
-          onFocusCapture={() => setRailActive(true)}
-          onBlurCapture={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setRailActive(false);
-          }}
-        >
-          {styles.map((style, index) => {
-            const derivedFrom = style.parent ?? provenance[style.name];
-            const derivedLabel = derivedFrom
-              ? styles.find((s) => s.name === derivedFrom)?.label ?? derivedFrom
-              : null;
-            return (
-              <button
-                id={`style-${style.name}`}
-                key={style.name}
-                type="button"
-                role="option"
-                aria-selected={style.name === selected}
-                tabIndex={style.name === selected ? 0 : -1}
-                className="style-wheel__option"
-                onClick={() => setSelected(style.name)}
-                onKeyDown={(event) => onKeyDown(event, index)}
-              >
-                <span
-                  className="style-wheel__swatch"
-                  style={
-                    {
-                      "--style-theme": "var(--sun-deep)",
-                    } as CSSProperties
-                  }
-                  aria-hidden="true"
-                />
-                <strong>{style.label}</strong>
-                <span className="style-wheel__option-meta">
-                  {style.builtin ? "Built in" : "Your fork"}
-                  {style.source_fidelity ? " · source-first" : ""}
-                  {derivedLabel ? ` · from ${derivedLabel}` : ""}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <StyleRail
+          styles={styles}
+          selected={selected}
+          onSelect={setSelected}
+          provenance={provenance}
+        />
       )}
 
       {active ? (

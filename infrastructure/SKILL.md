@@ -85,7 +85,7 @@ External constants:
 
 | Task | Command summary | Runbook |
 |---|---|---|
-| Ship a code change | `cd ansible && ansible-playbook -i inventory.ini playbooks/deploy.yml` | `runbooks/code-update.md` |
+| Ship a code change | `cd ansible && ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml` | `runbooks/code-update.md` |
 | Rotate a dispatch key (z.ai/DeepSeek/MiMo) | `sudoedit /etc/antiek/secrets.env && systemctl restart antiek` | `runbooks/secret-rotation.md` |
 | Trigger a backup manually | `cd ansible && ansible-playbook -i inventory.ini playbooks/backup.yml` | (in `runbooks/disaster-recovery.md`) |
 | Restore from backup | (multi-step — see runbook) | `runbooks/disaster-recovery.md` |
@@ -195,7 +195,7 @@ prompting situation arises:
 - **DNSSEC at the registrar.** Porkbun doesn't have DNSSEC enabled.
   Cloudflare can sign the zone, but the DS record has to be set at
   Porkbun. Security improvement to revisit.
-- **CI/CD pipeline.** None. Manual `ansible-playbook deploy.yml`.
+- **CI/CD pipeline.** None. Manual `ansible-playbook deploy_atomic.yml`.
   Correct when there are multiple committers.
 - **Metrics / alerting.** None. `journalctl` + `caddy access.log`.
   Correct when traffic justifies aggregate dashboards.

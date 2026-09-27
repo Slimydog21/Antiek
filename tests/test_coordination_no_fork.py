@@ -58,9 +58,12 @@ def test_ledger_equals_independent_quick_status_parse() -> None:
         )
 
 
-def test_all_eight_gates_present() -> None:
+def test_all_thirteen_gates_present() -> None:
     ledger = load_gate_ledger()
-    assert ledger.gate_ids() == ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
+    assert ledger.gate_ids() == tuple(f"G{i}" for i in range(1, 14))
+    assert ledger.by_id("G9").owner == "Operator + counsel"
+    assert ledger.by_id("G10").owner.startswith("Operator (BizDev")
+    assert ledger.by_id("G12").owner.startswith("Operator (per-title")
 
 
 # ── 2. Mutation of a fixture copy is reflected (no stale second copy) ─────────
@@ -180,9 +183,15 @@ def test_impact_map_grounded() -> None:
     # G6 → Research (Phase-8 enforcing + autoresearch wedges).
     assert set(ledger.by_id("G6").blocks_products()) == {Product.RESEARCH}
 
-    # G4/G5 are infra verdicts — no per-product block.
+    # G13 is infrastructure triage — no per-product block.
     assert ledger.by_id("G4").blocks_products() == ()
     assert ledger.by_id("G5").blocks_products() == ()
+    assert ledger.by_id("G13").blocks_products() == ()
+
+    # Later operator gate-actions carry the doc's product-neutral Blocks field.
+    assert "SPR-07" in ledger.by_id("G9").blocks
+    assert "Stripe Press title" in ledger.by_id("G10").blocks
+    assert "Bernays" in ledger.by_id("G12").blocks
 
 
 def test_gates_blocking_only_counts_open_gates() -> None:
@@ -201,8 +210,8 @@ def test_gates_blocking_only_counts_open_gates() -> None:
 
 def test_accuracy_snapshot_matches_canonical_states() -> None:
     """Pin the documented gate states so a parsing/rendering regression is
-    caught: G1/G4/G5 closed, G2/G3/G6 open, G7 calendar, G8 data-bound; G5 is
-    provisionally closed."""
+    caught: G1/G4/G5/G11/G13 closed, G2/G3/G6/G9/G10/G12 open, G7 calendar,
+    G8 data-bound; G5 is provisionally closed."""
     ledger = load_gate_ledger()
     expected = {
         "G1": GateStatus.CLOSED,
@@ -213,6 +222,11 @@ def test_accuracy_snapshot_matches_canonical_states() -> None:
         "G6": GateStatus.OPEN,
         "G7": GateStatus.CALENDAR,
         "G8": GateStatus.DATA_BOUND,
+        "G9": GateStatus.OPEN,
+        "G10": GateStatus.OPEN,
+        "G11": GateStatus.CLOSED,
+        "G12": GateStatus.OPEN,
+        "G13": GateStatus.CLOSED,
     }
     actual = {g.gate_id: g.status for g in ledger.gates}
     assert actual == expected, f"gate-state snapshot drifted: {actual}"
@@ -220,10 +234,35 @@ def test_accuracy_snapshot_matches_canonical_states() -> None:
     # Nuance preserved: G5 is provisionally closed (not flattened to plain closed).
     assert ledger.by_id("G5").is_provisional
     assert not ledger.by_id("G4").is_provisional
+    # Closed-but-standing is distinct from a closed gate that may be retired.
+    assert ledger.by_id("G11").is_closed
+    assert ledger.by_id("G11").requires_standing_operator_duty
+    assert not ledger.by_id("G4").requires_standing_operator_duty
     # Closure records resolve to docs/decisions/ for the closed-with-record gates.
     assert ledger.by_id("G4").closure_record == "docs/decisions/g4-lemon-ui-verdict.md"
     assert ledger.by_id("G5").closure_record is not None
     assert ledger.by_id("G5").closure_record.startswith("docs/decisions/")
+
+
+def test_parser_admits_future_gate_ids() -> None:
+    """The open G\\d+ contract admits G14 without another regex change."""
+    future = """# Operator-only gate actions
+
+| Gate | Status | What it blocks |
+|---|---|---|
+| G14 future action | ❌ open | future example |
+
+## G14 — Future action
+
+**Status:** ❌ OPEN
+**Owner:** Operator
+**Blocks:** future example
+"""
+    ledger = parse_gate_ledger(future, source_path="future-fixture")
+    quick = parse_quick_status_table(future)
+    assert ledger.gate_ids() == ("G14",)
+    assert quick == {"G14": GateStatus.OPEN}
+    assert ledger.by_id("G14").owner == "Operator"
 
 
 # ── M2 roadmap: count reconciliation + critical path + unblocked-now ─────────

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
@@ -12,8 +12,16 @@ import { apiFetch } from "../../lib/api";
  * Operator-facing list of substrate-attached documents with
  * source-tier + investigation filters. Each row links to
  * /wrestle/:documentId where the existing PDF + region-selection
- * surface lives.
+ * surface lives. A row's "Preview styles" opens the ingested document
+ * through the style wheel (`GET /documents/{id}/render?style=`), the one
+ * surface where an ingested asset is viewed as projected HTML.
  */
+
+// The preview opens on demand from a row, and `index` ships on every page
+// load under a 700 KB gz ceiling, so it loads as its own chunk.
+const DocumentStylePreview = lazy(
+  () => import("../ResearchWorkstation/DocumentStylePreview"),
+);
 
 interface DocumentRow {
   document_id: string;
@@ -36,6 +44,7 @@ export default function DocumentsIndex() {
   const [error, setError] = useState<string | null>(null);
   const [tierFilter, setTierFilter] = useState<TierFilter>("all");
   const [investigationFilter, setInvestigationFilter] = useState<string>("");
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -79,7 +88,7 @@ export default function DocumentsIndex() {
   return (
     <div className="flex flex-col h-full">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
+        <div className="max-w-4xl mx-auto px-1 sm:px-8 py-10 space-y-6">
           <header className="space-y-2">
             <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Documents
@@ -153,6 +162,7 @@ export default function DocumentsIndex() {
           {rows.length > 0 && (
             // S10 acceptance: DocumentsIndex uses LemonTable.
             <LemonTable
+              className="overflow-x-auto [&_table]:min-w-[48rem] [&_table]:table-fixed"
               rows={rows}
               rowKey={(r) => r.document_id}
               onRowClick={(r) =>
@@ -162,7 +172,7 @@ export default function DocumentsIndex() {
                 {
                   key: "title",
                   header: "Title",
-                  width: "50%",
+                  width: "40%",
                   render: (r) => (
                     <div>
                       <p className="font-serif text-ink dark:text-bright truncate">
@@ -213,8 +223,63 @@ export default function DocumentsIndex() {
                     </LemonTag>
                   ),
                 },
+                {
+                  key: "styles",
+                  header: "Styles",
+                  align: "right",
+                  width: "20%",
+                  render: (r) => (
+                    <button
+                      type="button"
+                      aria-label={previewId === r.document_id ? "Hide styles" : "Preview styles"}
+                      aria-pressed={previewId === r.document_id}
+                      onClick={(e) => {
+                        // The row itself navigates to /wrestle; this stays here.
+                        e.stopPropagation();
+                        setPreviewId((current) =>
+                          current === r.document_id ? null : r.document_id,
+                        );
+                      }}
+                      className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors whitespace-nowrap scroll-mb-20 sm:scroll-mb-0 ${
+                        previewId === r.document_id
+                          ? "bg-ink text-white"
+                          : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4"
+                      }`}
+                    >
+                      <span className="sm:hidden">
+                        {previewId === r.document_id ? "Hide" : "Styles"}
+                      </span>
+                      <span className="hidden sm:inline">
+                        {previewId === r.document_id ? "Hide styles" : "Preview styles"}
+                      </span>
+                    </button>
+                  ),
+                },
               ]}
             />
+          )}
+
+          {previewId && (
+            <section
+              aria-label="Document style preview"
+              className="border border-rule dark:border-charcoal-1 rounded-md overflow-hidden"
+            >
+              <div className="flex items-center justify-between gap-3 px-4 py-2 text-xs font-mono text-ink-mute dark:text-moonlight">
+                <span className="truncate" title={previewId}>
+                  {previewId}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewId(null)}
+                  className="underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
+                >
+                  Close preview
+                </button>
+              </div>
+              <Suspense fallback={null}>
+                <DocumentStylePreview key={previewId} documentId={previewId} />
+              </Suspense>
+            </section>
           )}
         </div>
       </main>

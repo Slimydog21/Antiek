@@ -1,11 +1,11 @@
 """Gate ledger — a typed VIEW over ``docs/operator_gate_actions.md`` (SPR-05 M1).
 
-The eight binding gates (G1-G8) that block Antiek's activation are canonical in
-one human-edited markdown file. Four product specs each re-describe the same
-gates from their own angle — Read frames G2/G3 as "disbursement blocked," Speak
-as "public publishing blocked," Write as "G8 blocks RL." Four descriptions of
-the same gates drift. This module presents them **once**, parsed from the single
-source, and pairs each gate with a per-product impact column.
+The binding gates (currently G1-G13) are canonical in one human-edited markdown
+file. Four product specs each re-describe the same gates from their own angle —
+Read frames G2/G3 as "disbursement blocked," Speak as "public publishing
+blocked," Write as "G8 blocks RL." Four descriptions of the same gates drift.
+This module presents them **once**, parsed from the single source, and pairs
+each gate with a per-product impact column.
 
 The load-bearing invariant: **the ledger is derived on read; it never stores a
 second copy of gate state and has no write path back to the markdown.** If the
@@ -110,13 +110,14 @@ class Gate:
     authoritative nuance carrier. ``status`` is the coarse enum. ``impacts`` is
     the per-product impact metadata (not gate state — see module docstring)."""
 
-    gate_id: str          # "G1".."G8"
+    gate_id: str          # "G1", "G2", ...; new gates must be added to the doc.
     title: str            # the section header title
     status: GateStatus    # coarse bucket
     status_raw: str       # verbatim status string (the nuance)
     owner: str | None     # from the **Owner:** line, if present
     blocks: str | None    # from the **Blocks:** / quick-status, if present
     closure_record: str | None  # docs/decisions/... path, if present
+    standing_duty: bool = False  # closed now, but must stay enforced later.
     impacts: tuple[GateImpact, ...] = ()
 
     @property
@@ -127,6 +128,16 @@ class Gate:
     def is_provisional(self) -> bool:
         """True when the raw status flags a provisional / re-openable closure."""
         return "provision" in self.status_raw.lower()
+
+    @property
+    def requires_standing_operator_duty(self) -> bool:
+        """True for a non-blocking gate whose discipline must never be relaxed.
+
+        G11 is the first example: it is enforced today, but every future
+        training/RL export must re-run the constraint. ``is_closed`` remains the
+        correct "does this gate block activation now?" predicate; this property
+        is the explicit "may its discipline be retired?" predicate."""
+        return self.standing_duty
 
     def blocks_products(self) -> tuple[Product, ...]:
         return tuple(i.product for i in self.impacts)
@@ -184,6 +195,14 @@ class GateLedger:
 #     no per-product block.
 #   • G6 (autoresearch Wedge 1) gates Phase-8 enforcing + autoresearch Wedges
 #     2-4, which live in the Research workflow.
+#   • G9 (arXiv researcher payouts) gates the money-moving half of the arXiv
+#     research track: identity/claim followed by KYC/payout.
+#   • G10 (Stripe Press opt-in) gates public serving of in-copyright titles.
+#   • G11 (X no-training) is a standing constraint on every future training/RL
+#     export; it is currently closed/enforced and therefore blocks nothing.
+#   • G12 (Bernays renewal) gates public serving of a lapsed-copyright title.
+#   • G13 (auth diagnostics) is an infrastructure triage closure, not a product
+#     blocker.
 #
 # This is impact metadata only — gate STATUS comes solely from the markdown.
 
@@ -215,13 +234,28 @@ _IMPACT: dict[str, tuple[GateImpact, ...]] = {
         GateImpact(Product.WRITE, "Edit-trajectory SFT / RL training blocked until the five Loop-3 criteria pass"),
         GateImpact(Product.SPEAK, "Interviewer RL training blocked until the five Loop-3 criteria pass"),
     ),
+    "G9": (
+        GateImpact(Product.RESEARCH, "arXiv researcher identity/claim and KYC/payout waves stay unbuilt until counsel clears lawful basis and KYC/tax"),
+    ),
+    "G10": (
+        GateImpact(Product.READ, "In-copyright Stripe Press titles stay non-servable until Stripe Press opts in and claims"),
+    ),
+    "G11": (
+        GateImpact(Product.WRITE, "Any future edit-trajectory training export must exclude BYOK X content"),
+        GateImpact(Product.SPEAK, "Any future interviewer-RL export must exclude BYOK X content"),
+    ),
+    "G12": (
+        GateImpact(Product.READ, "A 1927-1930 Bernays title stays non-servable until its US renewal status is checked"),
+    ),
+    "G13": (),  # Auth diagnostic matrix — infrastructure triage, closed.
 }
 
 
 # ── The parser ──────────────────────────────────────────────────────────────
 
 # A gate section header: "## G2 — Lawyer review of ..." (em dash or hyphen).
-_SECTION_RE = re.compile(r"^##\s+(G[1-8])\s+[—-]\s+(.+?)\s*$", re.MULTILINE)
+# ``G\d+`` rather than a closed range: the ledger must admit later gate actions.
+_SECTION_RE = re.compile(r"^##\s+(G\d+)\s+[—-]\s+(.+?)\s*$", re.MULTILINE)
 _STATUS_RE = re.compile(r"^\s*\*\*Status:\*\*\s*(.+?)\s*$", re.MULTILINE)
 _OWNER_RE = re.compile(r"^\s*\*\*Owner:\*\*\s*(.+?)\s*$", re.MULTILINE)
 _BLOCKS_RE = re.compile(r"^\s*\*\*Blocks:\*\*\s*(.+?)\s*$", re.MULTILINE)
@@ -288,6 +322,8 @@ def parse_gate_ledger(markdown: str, source_path: str = "(in-memory)") -> GateLe
             )
         status_raw = status_m.group(1).strip()
         status = _classify_status(status_raw)
+        status_low = status_raw.lower()
+        standing_duty = "standing" in status_low or "never relax" in status_low
 
         owner_m = _OWNER_RE.search(body)
         owner = owner_m.group(1).strip() if owner_m else None
@@ -307,6 +343,7 @@ def parse_gate_ledger(markdown: str, source_path: str = "(in-memory)") -> GateLe
                 title=title,
                 status=status,
                 status_raw=status_raw,
+                standing_duty=standing_duty,
                 owner=owner,
                 blocks=blocks,
                 closure_record=closure_record,
@@ -319,7 +356,7 @@ def parse_gate_ledger(markdown: str, source_path: str = "(in-memory)") -> GateLe
             f"no gate sections found in {source_path} — expected '## GN — ...' "
             f"headers; the canonical doc's structure changed."
         )
-    # Sort by numeric gate id so the ledger order is stable (G1..G8).
+    # Sort by numeric gate id so the ledger order is stable (G1..Gn).
     gates.sort(key=lambda g: int(g.gate_id[1:]))
     return GateLedger(gates=tuple(gates), source_path=source_path)
 
@@ -341,7 +378,7 @@ def load_gate_ledger(path: Path | None = None) -> GateLedger:
 # human-edited source (a self-comparison could not).
 
 _QUICK_ROW_RE = re.compile(
-    r"^\|\s*(G[1-8])\b[^|]*\|\s*(.+?)\s*\|", re.MULTILINE
+    r"^\|\s*(G\d+)\b[^|]*\|\s*(.+?)\s*\|", re.MULTILINE
 )
 
 

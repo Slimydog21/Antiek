@@ -15,6 +15,8 @@ Usage::
     python -m tools.arxiv_verify
     python -m tools.arxiv_verify --json
     python -m tools.arxiv_verify --db-path /path/to/antiek.duckdb
+    python -m tools.arxiv_verify --ban-events 20
+    python -m tools.arxiv_verify --ban-events 20 --json
 """
 
 from __future__ import annotations
@@ -32,19 +34,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from runtime.db_lock import connect_read
+from runtime.ssl_bootstrap import bootstrap as _ssl_bootstrap
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+# A python.org interpreter ships no CA bundle (arxiv-missing-ssl-env); point at
+# certifi unless SSL_CERT_FILE is already set (systemd / ca-certificates win).
+_ssl_bootstrap()
+
 
 # ── State path resolution (honors env vars, same convention as oai_sync) ──
 
 def _throttle_path() -> str:
-    env = os.environ.get("ANTIEK_ARXIV_THROTTLE_PATH")
-    if env:
-        return env
-    return str(Path.home() / ".antiek" / "arxiv_throttle.json")
+    """Delegates to the throttle resolver so the verifier reads the same file the throttle writes."""
+    from acquisition.arxiv.throttle import default_state_path
+
+    return default_state_path()
 
 
 def _harvest_state_path() -> str:
@@ -421,11 +428,55 @@ def build_parser() -> argparse.ArgumentParser:
         "--db-path",
         help="DuckDB path (default: ANTIEK_DUCKDB_PATH or ~/.antiek/antiek.duckdb)",
     )
+    p.add_argument(
+        "--ban-events",
+        type=int,
+        metavar="N",
+        dest="ban_events",
+        help=(
+            "print the last N ban events and exit (offline; log path: "
+            "ANTIEK_BAN_EVENT_LOG_PATH, else $ANTIEK_HOME/ban_events.jsonl, "
+            "else ~/.antiek/ban_events.jsonl)"
+        ),
+    )
     return p
 
 
+def _print_ban_events(n: int, *, as_json: bool) -> int:
+    """Print the last ``n`` ban events. Offline — never touches the network."""
+    from substrate.ban_events import default_ban_event_log_path, read_ban_events
+
+    path = default_ban_event_log_path()
+    events = read_ban_events(path, last=n)
+    if not events:
+        print(f"no ban events recorded in {path}", file=sys.stderr)
+        return 0
+    if as_json:
+        print(json.dumps(events))
+        return 0
+    for event in events:
+        raw_ts = event.get("ts")
+        ts = (
+            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(raw_ts)))
+            if isinstance(raw_ts, (int, float)) and not isinstance(raw_ts, bool)
+            else "?"
+        )
+        host = event.get("host") or "-"
+        print(
+            f"{ts} source={event.get('source', '?')} "
+            f"status={event.get('status', '?')} host={host} "
+            f"pid={event.get('pid', '?')} argv0={event.get('argv0', '?')}"
+        )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.ban_events is not None:
+        if args.ban_events < 1:
+            parser.error("--ban-events requires N >= 1")
+        return _print_ban_events(args.ban_events, as_json=bool(args.json_output))
     db = args.db_path or _default_db_path()
     verdict = run_checks(base_url=args.base_url, db_path=db)
 

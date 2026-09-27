@@ -1,25 +1,42 @@
-"""CI drift-guard: every FastAPI route prefix MUST be in the Caddy
-``@api_routes`` allowlist, or Caddy serves the SPA HTML for that path in prod
-instead of proxying to uvicorn — silently breaking the API.
+"""CI drift-guard: every path FastAPI actually serves MUST be matched by the
+Caddy ``@api_routes`` allowlist, or Caddy serves the SPA HTML for that path in
+prod instead of proxying to uvicorn — silently breaking the API.
 
 The allowlist is a hand-maintained ONE-LINE ``path`` matcher in
 ``infrastructure/ansible/templates/Caddyfile.j2`` (Caddy's tokenizer can't span
 lines). Because it's hand-maintained, it DRIFTS: it shipped missing
-``/library`` + ``/api/ad/*`` (SPR-09) and ``/books /coordination /corpus
-/meta-readings /speech`` — each a registered route the prod edge couldn't reach,
-discovered only by curling prod after deploy. This guard makes that drift a red
-CI check at the source, not a production surprise.
+``/library`` + ``/api/ad/*`` (SPR-09), ``/books /coordination /corpus
+/meta-readings /speech``, and then ``/styles`` + ``/artifacts`` — each a
+registered route the prod edge couldn't reach, discovered only by curling prod
+after deploy. This guard makes that drift a red CI check at the source, not a
+production surprise.
+
+WHERE THE ROUTE SET COMES FROM. The real routing table, via
+``create_app().openapi()`` plus the websocket routes the schema omits — NOT a
+regex over the source. The regex scanner this replaced matched
+``@app.<verb>("...")`` decorators and ``APIRouter(prefix="...")`` literals, so
+a prefix-less router (``style_router = APIRouter(tags=["styles"])`` carrying
+``@style_router.get("/styles")``) was invisible to it: the whole style wheel
+sat dead at the edge for its entire deployed life while this file stayed
+green. The same scanner mis-resolved factory-built routers
+(``thread.py: make_router()``) and nested ``include_router`` prefixes.
+``app.openapi()`` is FastAPI's own answer to "what does this app serve", so it
+is immune to all three.
 """
 
 from __future__ import annotations
 
-import glob
+import functools
 import os
 import re
 
+import pytest
+from fastapi.routing import APIWebSocketRoute
+
+from interfaces.research.api.app import create_app
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
-_API_DIR = os.path.join(_REPO, "interfaces", "research", "api")
 _CADDY = os.path.join(
     _REPO, "infrastructure", "ansible", "templates", "Caddyfile.j2"
 )
@@ -30,19 +47,17 @@ _CADDY = os.path.join(
 # a one-line reason, so the exclusion is explicit and reviewed.
 _ALLOWLIST_EXCEPTIONS: set[str] = set()
 
-# FastAPI framework routes are not declared in interfaces/research/api/*.py, so
-# the prefix scanner below cannot infer them. Keep them explicit because missing
-# one sends API tooling to the SPA HTML shell in production.
+# FastAPI framework routes are not part of the schema the app publishes about
+# itself, so the served-path enumeration below cannot see them. Keep them
+# explicit because missing one sends API tooling to the SPA HTML shell in
+# production.
 _FRAMEWORK_API_PATHS: set[str] = {"/openapi.json"}
 
-_DECORATOR = re.compile(
-    r"""@app\.(?:get|post|put|delete|patch|websocket)\(\s*["']([^"']+)["']"""
-)
-# Standalone APIRouters register top-level prefixes the @app scanner misses
-# (e.g. multimedia_router = APIRouter(prefix="/multimedia") — live prod gap).
-_ROUTER_PREFIX = re.compile(
-    r"""APIRouter\(\s*(?:[^)]*?\bprefix\s*=\s*["']([^"']+)["'])"""
-)
+# A silent collapse of the served-path set — the schema failing to build, a
+# refactor that empties the enumeration — must fail here rather than let the
+# coverage checks pass over nothing. The regex scanner it replaced saw 62
+# prefixes and ~100 decorator paths; the routing table reports 350+.
+_MIN_SERVED_PATHS = 100
 
 
 def _top_prefix(path: str) -> str:
@@ -50,20 +65,25 @@ def _top_prefix(path: str) -> str:
     return "/" + seg if seg else "/"
 
 
+@functools.lru_cache(maxsize=1)
+def _served_paths() -> tuple[str, ...]:
+    """Every path the app serves, read off the routing table itself.
+
+    ``app.openapi()`` enumerates every HTTP operation FastAPI mounted —
+    routers included without a prefix, factory-built routers, nested
+    includes — because it walks the same route objects the request router
+    does. It omits websocket endpoints, so those are read off ``app.routes``
+    directly: the edge has to proxy ``/ws/*`` too. Built once per session,
+    since constructing the app takes seconds.
+    """
+    app = create_app()
+    paths = set(app.openapi().get("paths", {}))
+    paths.update(r.path for r in app.routes if isinstance(r, APIWebSocketRoute))
+    return tuple(sorted(paths))
+
+
 def _registered_prefixes() -> set[str]:
-    out: set[str] = set()
-    for f in glob.glob(os.path.join(_API_DIR, "*.py")):
-        with open(f, encoding="utf-8") as fh:
-            src = fh.read()
-        for m in _DECORATOR.finditer(src):
-            p = _top_prefix(m.group(1))
-            if p != "/":
-                out.add(p)
-        for m in _ROUTER_PREFIX.finditer(src):
-            p = _top_prefix(m.group(1))
-            if p != "/":
-                out.add(p)
-    return out
+    return {_top_prefix(p) for p in _served_paths()} - {"/"}
 
 
 def _allowlist_prefixes() -> set[str]:
@@ -105,17 +125,30 @@ def test_caddy_allowlist_covers_framework_api_paths() -> None:
     missing = sorted(path for path in _FRAMEWORK_API_PATHS if path not in allow)
     assert not missing, (
         "Caddy @api_routes allowlist is missing FastAPI framework paths that "
-        f"are not discoverable from app decorators: {missing}. Missing paths "
-        "would return SPA HTML instead of uvicorn JSON in prod."
+        f"are not discoverable from the app's own schema: {missing}. Missing "
+        "paths would return SPA HTML instead of uvicorn JSON in prod."
     )
 
 
-def test_drift_guard_is_not_vacuous() -> None:
-    # If parsing silently broke (empty sets), the coverage test would pass
-    # vacuously. Pin both sides to be non-trivially populated so a regex/file
+def test_drift_guard_is_not_vacuous(request: pytest.FixtureRequest) -> None:
+    # If enumeration silently broke (empty sets), the coverage test would pass
+    # vacuously. Pin both sides to be non-trivially populated so a schema/file
     # regression reddens here instead of hiding the real gap.
+    served = _served_paths()
+    assert len(served) >= _MIN_SERVED_PATHS, (
+        f"only {len(served)} served paths discovered — the routing-table "
+        "enumeration collapsed, and every coverage check above it is now "
+        "comparing against nothing"
+    )
     assert len(_registered_prefixes()) >= 40
     assert len(_allowlist_prefixes()) >= 40
+    # Say the number out loud, even under -q: a run's own output should carry
+    # the evidence that the floor was measured against a populated table.
+    reporter = request.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is not None:
+        reporter.write_line(
+            f"caddy drift-guard: {len(served)} served paths discovered via app.openapi()"
+        )
 
 
 def test_browser_navigation_never_swallows_auth_callbacks() -> None:
@@ -158,19 +191,6 @@ def test_browser_navigation_never_swallows_auth_callbacks() -> None:
 # and they are cheap.
 
 
-def _registered_full_paths() -> set[str]:
-    """Every concrete route path declared in the API modules."""
-    out: set[str] = set()
-    for f in glob.glob(os.path.join(_API_DIR, "*.py")):
-        with open(f, encoding="utf-8") as fh:
-            src = fh.read()
-        for m in _DECORATOR.finditer(src):
-            path = m.group(1)
-            if path.startswith("/") and path != "/":
-                out.add(path)
-    return out
-
-
 def _allowlist_globs() -> list[str]:
     """The raw Caddy `path` tokens, unreduced."""
     with open(_CADDY, encoding="utf-8") as fh:
@@ -196,11 +216,9 @@ def _covered(route: str, globs: list[str]) -> bool:
 
 def test_every_registered_route_matches_a_full_caddy_glob() -> None:
     globs = _allowlist_globs()
-    missing = sorted(
-        r for r in _registered_full_paths() if not _covered(r, globs)
-    )
+    missing = sorted(r for r in _served_paths() if not _covered(r, globs))
     assert not missing, (
-        "these registered routes match NO glob in the Caddy @api_routes "
+        "these served routes match NO glob in the Caddy @api_routes "
         f"allowlist, so production serves them the SPA HTML shell: {missing}. "
         "Add a covering glob to infrastructure/ansible/templates/Caddyfile.j2."
     )
@@ -213,9 +231,9 @@ def test_full_glob_check_is_not_vacuous() -> None:
     dead at the edge; a coverage test that silently compares empty sets fails
     the same way.
     """
-    routes = _registered_full_paths()
+    routes = _served_paths()
     globs = _allowlist_globs()
-    assert len(routes) >= 100, f"only {len(routes)} routes parsed"
+    assert len(routes) >= _MIN_SERVED_PATHS, f"only {len(routes)} routes served"
     assert len(globs) >= 40, f"only {len(globs)} allowlist globs parsed"
     # The matcher must actually discriminate, not just return True.
     assert _covered("/health", ["/health"])
@@ -223,4 +241,10 @@ def test_full_glob_check_is_not_vacuous() -> None:
     assert not _covered("/api/notebooks/x/artifact", ["/api/ad/*"]), (
         "the matcher is collapsing prefixes again — /api/ad/* must not vouch "
         "for /api/notebooks/..."
+    )
+    # And a removed token must be detected, or the whole file proves nothing.
+    without_auth = [g for g in globs if g != "/auth/*"]
+    assert any(not _covered(r, without_auth) for r in routes), (
+        "dropping /auth/* from the allowlist left every served path covered — "
+        "the coverage check cannot detect a missing token"
     )

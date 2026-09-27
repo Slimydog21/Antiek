@@ -90,7 +90,13 @@ export default function Xray({
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
   // The trace chain for the block the user opened (chunk → document).
   const [trace, setTrace] = useState<
-    { blockId: string; documentTitle: string | null; detail: string | null } | null
+    {
+      blockId: string;
+      documentTitle: string | null;
+      documentId: string | null;
+      chunkId: string | null;
+      detail: string | null;
+    } | null
   >(null);
 
   // block reference → the set of paragraph indices that cite it (the "click a
@@ -116,20 +122,29 @@ export default function Xray({
       setSelectedParagraph(null);
       const { outlineBlockId, traceable } = blockLabel(blockId, blocks);
       if (!outlineBlockId || !traceable) {
-        setTrace({ blockId, documentTitle: null, detail: "Your own note — traces to your session, not a source." });
+        setTrace({
+          blockId, documentTitle: null, documentId: null, chunkId: null,
+          detail: "Your own note — traces to your session, not a source.",
+        });
         return;
       }
       try {
         const t = await getTraceTarget(outlineBlockId);
+        const documentId = t.full_text_allowed && t.document_id ? t.document_id : null;
         setTrace({
           blockId,
           documentTitle: t.document_title,
+          documentId,
+          chunkId: documentId && t.chunk_ids.length === 1 ? t.chunk_ids[0] : null,
           detail: t.full_text_allowed
             ? null
             : t.detail ?? "Source is gated — only its metadata is shown.",
         });
       } catch {
-        setTrace({ blockId, documentTitle: null, detail: "Couldn't reach that source right now." });
+        setTrace({
+          blockId, documentTitle: null, documentId: null, chunkId: null,
+          detail: "Couldn't reach that source right now.",
+        });
       }
     },
     [blocks],
@@ -164,7 +179,11 @@ export default function Xray({
             {(blockToParagraphs.get(selectedBlock) ?? []).map((i) => i + 1).join(", ") || "none"}
           </p>
           {trace?.blockId === selectedBlock && (
-            <p className="mt-1 text-ink-soft dark:text-starlight">
+            <p
+              {...(trace.documentId ? { "data-akb-asset-id": trace.documentId } : {})}
+              {...(trace.documentId && trace.chunkId ? { "data-akb-chunk-id": trace.chunkId } : {})}
+              className="mt-1 text-ink-soft dark:text-starlight"
+            >
               {trace.documentTitle
                 ? `Source: ${trace.documentTitle}`
                 : trace.detail ?? "Resolving source…"}

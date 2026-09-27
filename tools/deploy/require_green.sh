@@ -7,7 +7,8 @@
 #     (the manual / runbook path — ssh + ansible-playbook, or an agent session)
 #
 # Why the second caller exists: on 2026-09-22 a408d2646 reached production
-# ~6 minutes after merge while 4 of its 8 required contexts were still running.
+# ~6 minutes after merge while 4 of its 8 branch-required contexts were still
+# running.
 # Both deploy_backend runs had correctly SKIPPED. The gate guarded one caller;
 # the playbook guarded nothing. A gate must sit at the action, not at a caller.
 #
@@ -19,7 +20,7 @@
 #   4  $SHA is not main's tip or an ancestor of it                -> REFUSE
 #
 # Why exit 4 exists: green checks say a commit PASSED, not that it was
-# MERGED. A fork PR's head commit gets the same eight contexts from its PR
+# MERGED. A fork PR's head commit gets the same nine contexts from its PR
 # CI, and deploy-backend's workflow_run trigger matches on the triggering
 # run's head_branch — which, for a fork PR, is whatever the fork named its
 # branch (`main` works). Without this check that commit's own playbook would
@@ -65,8 +66,9 @@ case "$on_main" in
     ;;
 esac
 
-# The contexts main's ruleset requires. Kept as a LITERAL list so a ruleset
-# change that silently drops a context does not silently widen what may deploy.
+# The eight contexts main's ruleset requires, plus the deploy-only `pytest`
+# rollup. Kept as a LITERAL list so a ruleset change that silently drops a
+# context does not silently widen what may deploy.
 REQUIRED=(
   'tsc'
   'vitest'
@@ -76,6 +78,7 @@ REQUIRED=(
   'pytest shard 1 of 4'
   'pytest shard 2 of 4'
   'pytest shard 3 of 4'
+  'pytest'
 )
 
 # One row per check run: name, status, conclusion, started_at. A context

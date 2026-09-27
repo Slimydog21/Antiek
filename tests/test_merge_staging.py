@@ -690,6 +690,64 @@ def test_ip_holder_remap_no_duplicate_escrow_accounts(env):
     assert n_docs_for_pub == 2
 
 
+def test_ip_holder_remap_leaves_holder_column_writable(env, monkeypatch):
+    """The remap drops a legacy ``idx_documents_ip_holder`` and must not put it
+    back. With that index present, DuckDB refuses to UPDATE ``ip_holder_id`` on
+    any document that chunks reference, so a re-created index turned every
+    later holder write (the persist-path resolver, the backfill) into a
+    ConstraintException while the warm schema probe reported the file current.
+    """
+    import tools.merge_staging as merge_module
+
+    live = os.path.join(env["tmpdir"], "live.duckdb")
+    staging1 = os.path.join(env["tmpdir"], "staging1.duckdb")
+    staging2 = os.path.join(env["tmpdir"], "staging2.duckdb")
+    init_database_at_path(live)
+    _stage_books(staging1, [{"bytes": b"pub-book-3", "rights_holder_name": "MIT Press"}])
+    _stage_books(staging2, [{"bytes": b"pub-book-4", "rights_holder_name": "MIT Press"}])
+    merge_staging(live_db=live, staging_db=staging1)
+
+    con = duckdb.connect(live)
+    try:
+        # A live file from before the index was retired.
+        con.execute("CREATE INDEX idx_documents_ip_holder ON documents(ip_holder_id)")
+    finally:
+        con.close()
+
+    remaps: list[dict[str, str]] = []
+    real_remap = merge_module._remap_document_ip_holders
+
+    def recording_remap(con, remap):
+        remaps.append(dict(remap))
+        return real_remap(con, remap)
+
+    monkeypatch.setattr(merge_module, "_remap_document_ip_holders", recording_remap)
+    # The same publisher again: its staging holder id remaps onto the live one.
+    merge_staging(live_db=live, staging_db=staging2)
+    assert remaps and remaps[0], "premise: the second merge must exercise the remap"
+
+    con = duckdb.connect(live)
+    try:
+        indexes = {
+            row[0]
+            for row in con.execute(
+                "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'documents'"
+            ).fetchall()
+        }
+        chunked = con.execute(
+            "SELECT d.document_id FROM documents d "
+            "JOIN chunks c ON c.document_id = d.document_id LIMIT 1"
+        ).fetchone()
+        assert chunked is not None, "premise: a merged book has chunks referencing it"
+        con.execute(
+            "UPDATE documents SET ip_holder_id = ip_holder_id WHERE document_id = ?",
+            [chunked[0]],
+        )
+    finally:
+        con.close()
+    assert "idx_documents_ip_holder" not in indexes
+
+
 # ---------------------------------------------------------------------------
 # M3/M5 — merge is a single connect_write transaction
 # ---------------------------------------------------------------------------

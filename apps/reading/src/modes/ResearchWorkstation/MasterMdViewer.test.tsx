@@ -138,6 +138,21 @@ describe("MasterMdViewer — no static save-to-notebook in the research flow (SP
 });
 
 describe("MasterMdViewer — named-source read (M1)", () => {
+  it("tags a servable named source with its resolved document and chunk", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1", document_id: "doc-servable" }));
+    render(<MasterMdViewer synthesis={synth()} />);
+    const source = await screen.findByRole("button", { name: /from On Growth and Form/ });
+    expect(source.getAttribute("data-akb-asset-id")).toBe("doc-servable");
+    expect(source.getAttribute("data-akb-chunk-id")).toBe("c1");
+  });
+
+  it("leaves a non-servable named source untagged", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1", servable: false, servability: "restricted" }));
+    render(<MasterMdViewer synthesis={synth()} />);
+    const source = await screen.findByText(/not available to open/);
+    expect(source.parentElement?.hasAttribute("data-akb-asset-id")).toBe(false);
+  });
+
   it("renders the source as a named title + locator, never [N chunks]", async () => {
     getChunkMock.mockResolvedValue(
       chunk({ chunk_id: "c1", document_title: "On Growth and Form", section_path: "p.12" }),

@@ -129,16 +129,16 @@ def test_stale_probe_warns_when_no_alert_channel_works(tmp_path: Path) -> None:
 
 def test_setup_and_deploy_enable_both_backup_timers() -> None:
     setup = (PLAYBOOKS / "setup.yml").read_text()
-    deploy = (PLAYBOOKS / "deploy.yml").read_text()
+    deploy = (PLAYBOOKS / "deploy_atomic.yml").read_text()
     assert "name: antiek-backup.timer" in setup
     assert "antiek-backup.timer" in deploy
-    assert "name: antiek-backup-freshness.timer" in deploy
-    assert "antiek-backup-freshness-probe.sh.j2" in deploy
+    assert "/etc/systemd/system/antiek-backup-freshness.timer" in deploy
+    assert "../templates/antiek-backup-freshness-probe.sh.j2" in deploy
 
     # Deploy owns the timer lifecycle around DuckDB migration: pause before
     # the exclusive writer window, resume only after antiek is active.
-    pause = deploy.index("pause DB-writing background jobs before schema migration")
-    resume = deploy.index("resume DB-writing background jobs after substrate is live")
+    pause = deploy.index("pause every release-path consumer before cutover")
+    resume = deploy.index("resume background consumers after candidate is active")
     ready = deploy.index("wait for systemd active")
     assert pause < ready < resume
 
@@ -151,9 +151,7 @@ def test_setup_and_deploy_enable_both_backup_timers() -> None:
     assert "StateDirectory=antiek-backup" in backup_service
     assert '${STAGING_ROOT%/}/job.lock' in backup_script
 
-    assert deploy.index("re-render backup script before enabling its persistent timer") < deploy.index(
-        "remove legacy backup cron job"
-    ) < resume
+    assert deploy.index("render scripts consumed through the stable release path") < pause
 
     assert "- jq" in setup
     assert "- util-linux" in setup

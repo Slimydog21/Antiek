@@ -88,11 +88,13 @@ export {
 
 export {
   consumeLocallyStartedResearchSession,
+  notifyEvidenceSourceOpened,
   notifyPointerIdleEdge,
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
   notifyVoicePlaybackStarted,
+  notifyThoughtPartnerReplyReceived,
   type ResearchReactionPhase,
 } from "./shellExperienceSignals";
 

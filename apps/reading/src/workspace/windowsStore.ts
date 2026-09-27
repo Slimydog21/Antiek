@@ -166,7 +166,12 @@ const EMPTY: WindowsSnapshot = {
   zCounter: WINDOW_Z_BASE,
 };
 
-const DEFAULT_RECT: WindowRect = { x: 96, y: 88, width: 720, height: 520 };
+export const DEFAULT_WINDOW_RECT: Readonly<WindowRect> = {
+  x: 96,
+  y: 88,
+  width: 720,
+  height: 520,
+};
 
 function uniqueId(prefix: string): string {
   return `win:${prefix}:${Math.random().toString(36).slice(2, 10)}`;
@@ -175,7 +180,11 @@ function uniqueId(prefix: string): string {
 /** Cascade each new window down-right of the previous (elevation contract). */
 function cascadeRect(n: number): WindowRect {
   const off = cascadeOffset(n, "windows");
-  return { ...DEFAULT_RECT, x: DEFAULT_RECT.x + off.x, y: DEFAULT_RECT.y + off.y };
+  return {
+    ...DEFAULT_WINDOW_RECT,
+    x: DEFAULT_WINDOW_RECT.x + off.x,
+    y: DEFAULT_WINDOW_RECT.y + off.y,
+  };
 }
 
 export const useWindows = create<Store>()((set, get) => ({

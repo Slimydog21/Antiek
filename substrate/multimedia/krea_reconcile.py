@@ -268,7 +268,11 @@ def _apply_observation(
             updated = ctx.execute(
                 "SELECT * FROM multimedia_provider_executions WHERE execution_id=?", [execution_id]
             ).fetchone()
-            assert updated is not None
+            if updated is None:  # survives `python -O`; the transaction's
+                # own except-rollback handles the raise honestly
+                raise RuntimeError(
+                    f"execution {execution_id} vanished inside its transaction"
+                )
             result = _record(updated, signing_key=signing_key)
         except Exception:
             ctx.execute("ROLLBACK")

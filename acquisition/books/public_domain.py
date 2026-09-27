@@ -301,7 +301,10 @@ class SourceClient:
                 # against. Other 5xx are transient-only (retry-with-backoff).
                 if self._persistent is not None and resp.status_code in (429, 503):
                     self._persistent.note_response(
-                        self._source, resp.status_code, dict(resp.headers)
+                        self._source,
+                        resp.status_code,
+                        dict(resp.headers),
+                        url=str(resp.url),
                     )
                 last_exc = SourceError(
                     f"{url} returned {resp.status_code}"

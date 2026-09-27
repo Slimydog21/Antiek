@@ -123,6 +123,30 @@ def _resolve_by_author(
     return None
 
 
+def isbn_from_metadata(metadata: Any) -> str | None:
+    """Pull ``metadata.isbn`` out of a document's metadata payload.
+
+    Accepts the two shapes a persist path holds the metadata in — a dict (the
+    caller's object) or the JSON string stored in ``documents.metadata`` — and
+    returns the ISBN as a non-empty string, else ``None``. Malformed JSON and
+    non-dict payloads are treated as "no ISBN" (conservative, never raises).
+    """
+    if metadata is None:
+        return None
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except (TypeError, ValueError):
+            return None
+    if not isinstance(metadata, dict):
+        return None
+    raw = metadata.get("isbn")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
 def resolve_ip_holder(
     con: Any,
     *,
@@ -218,6 +242,7 @@ def resolve_and_apply(
 
 __all__ = [
     "apply_resolved_ip_holder",
+    "isbn_from_metadata",
     "resolve_and_apply",
     "resolve_ip_holder",
 ]

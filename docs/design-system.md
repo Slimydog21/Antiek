@@ -110,7 +110,8 @@ script into the reader.
 ## 3. The style-wheel model
 
 Backend: `interfaces/research/api/style_routes.py` + `substrate/styles/store.py`.
-Frontend: `apps/reading/src/modes/ResearchWorkstation/StyleWheel.tsx` +
+Frontend: `apps/reading/src/modes/ResearchWorkstation/StyleWheel.tsx` (artifacts),
+`DocumentStylePreview.tsx` (ingested documents), the shared rail `StyleRail.tsx`, and
 `apps/reading/src/api/styles.ts`.
 
 | Verb | Route | UX |
@@ -120,6 +121,7 @@ Frontend: `apps/reading/src/modes/ResearchWorkstation/StyleWheel.tsx` +
 | Apply | `POST /artifacts/{id}/render?style=` | Durable version + receipt (version, style, SHA-256) |
 | Create / replace fork | `POST /styles` | Fork form seeded from selected style; builtins 409 if name collides |
 | Delete fork | `DELETE /styles/{name}` | Two-step confirm; builtins 409; unknown 404 |
+| Preview a document | `GET /documents/{id}/render?style=` | Preview-only rail on the Documents index; no Apply — a document has no version chain, each pick re-projects the reader sidecar (receipt: document id, style, SHA-256, reader revision) |
 
 Rules the UI must honour:
 
@@ -128,6 +130,7 @@ Rules the UI must honour:
 3. **Preview ≠ apply.** Preview is temporary (`X-Artifact-Version: preview`). Apply creates a versioned HTML under the artifact store.
 4. **Determinism.** Restyle is pure presentation: `render(extract_island(artifact), style=X)` — no model call.
 5. **Provenance of forks.** The API persists a fork's `parent` (`user_styles.parent`, returned on `GET /styles` and accepted on `POST /styles`), so lineage survives a reload. The wheel reads `style.parent` and falls back to a session-local seed map only when the server sent no parent — a legacy fork, or an older backend. A fork with no parent either way is labelled `origin untracked` rather than given an invented one. `parent === name` is refused by the API (422), so re-saving a fork under its own slug carries its stored parent forward instead of self-referencing.
+6. **Documents are preview-only, and refusals are named.** `GET /documents/{id}/render` has no apply leg. When the reader sidecar will not release a body as HTML the API answers with the serve gate's own reason (`no_reader_html`, `sanitizer_version_stale`, `rights_denied`, `taken_down`), and the preview shows that reason in the reader's words — a stale sanitizer stamp names the operator tool that repairs it (`tools/resanitize_reader_html.py`) rather than a generic “unavailable”.
 
 ### 3.1 Wheel interaction craft
 
@@ -191,7 +194,7 @@ A structural pass and a rendered pass are different proofs.
 
 For the style wheel specifically:
 
-1. `npx vitest run src/modes/ResearchWorkstation/StyleWheel.test.tsx src/api/styles.test.ts`
+1. `npx vitest run src/modes/ResearchWorkstation/StyleWheel.test.tsx src/modes/ResearchWorkstation/DocumentStylePreview.test.tsx src/api/styles.test.ts`
 2. `npx tsc --noEmit` in `apps/reading`
 3. Manual: keyboard rail, fork → apply → receipt hash, delete confirm, reduced motion
 
@@ -199,7 +202,28 @@ Report what was not proved (geometry in a real browser, print, theme toggle unde
 
 ---
 
-## 7. Related docs
+## 7. Builtin wheel styles: a counterfactual review
+
+frontend-craft §1 asks of every visual choice whether it is derived from the subject or is
+what any generic tool would ship, and it asks for the counterfactual to be written down:
+what the surface would look like if nobody had looked at the subject. Applied to the five
+builtin styles in `services/html_projection/styles.py`:
+
+| Style | Slug | Verdict | Counterfactual, and what a subject-derived version would be |
+| --- | --- | --- | --- |
+| Antiek | `antiek` | Subject-derived | The base stylesheet is the house chrome itself: the Lemon rule and ledge language, the provenance footer, insets derived from the surface and the accent, day + night + print from one token block. Take Antiek away and this style has no reason to exist. Keep. |
+| Academic paper | `academic-paper` | Category default | Charter/Georgia, a justified 44rem column, oxblood links: the serif the word “academic” suggests, not anything measured from what Antiek’s readers actually read (arXiv HTML and preprints). A subject-derived version would take its measure, math spacing and citation-marker treatment from that corpus. Due for replacement. |
+| Book | `book` | Category default | Cream paper, old-style serif, first-line indents: the “book” every tool ships. The library’s actual holdings (Gutenberg-era scans, EPUB imports) and `design/physics-of-reading.md` are the subject; neither was consulted. Due for replacement. |
+| Blog | `blog` | Category default | Inter at 40rem with blue links is the 2020s web default, not a design. The URL-ingest corpus (Substack, personal sites) shares one trait worth keeping, a narrow measure with strong heading rhythm; a derived style would set that and nothing else. Due for replacement. |
+| Slate | `slate` | Partly subject-derived | The dark reading surface exists because long sessions are a stated use. Its palette now shares the night set’s ink, rules, accent and derived insets, with its own two-tone page (`#0f1419` body, `#171b22` sheet), pinned on at any hour. Keep; it is the house night look, not a fourth palette. |
+
+Three of the five are category defaults with a replacement direction named and none
+replaced yet. This table is the record that says so, so the wheel does not imply the set
+was designed.
+
+---
+
+## 8. Related docs
 
 - [`html-first-design-thesis.md`](./html-first-design-thesis.md) — why every artifact is HTML
 - [`craft_signature.md`](./craft_signature.md) — the performance craft signature (rubric p95)

@@ -92,6 +92,13 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
     {
         "interfaces/research/api/books.py",
         "interfaces/research/api/grounding.py",
+        # The Antiek Memory MCP ``search_personal`` handler passes
+        # ``private_research`` only after ``_authenticated_owner`` accepts an
+        # owner the SERVER stamped from its launch binding
+        # (``AntiekMemoryServer.bound_owner`` / ANTIEK_MEMORY_OWNER; a client
+        # claim naming anyone else yields no identity), and it bounds the
+        # search to ``document_ids`` whose ``owner_user_id`` is that owner.
+        "tools/antiek_memory/__main__.py",
     }
 )
 

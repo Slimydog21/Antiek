@@ -6,15 +6,15 @@ download + transcription when captions don't exist. The transcript
 fetch is read-only and unauthenticated; YouTube doesn't require an
 API key for this surface.
 
-The video metadata path uses ``yt-dlp`` for the same reason — no API
-key, no rate limit dance for one-off fetches.
+The default video metadata path uses ``yt-dlp``. When an owner has a
+connected Data API key, ``fetch_with_data_api`` uses that key for metadata.
 
 ────────────────────────────────────────────────────────────────────
 ToS RISK — read before using this connector (SPR-07)
 ────────────────────────────────────────────────────────────────────
 This connector's transcript-fetch path (``youtube-transcript-api`` over
-YouTube's unofficial ``timedtext`` endpoint) and its metadata path
-(``yt-dlp``) **violates YouTube's Terms of Service regardless of
+YouTube's unofficial ``timedtext`` endpoint) and its default metadata path
+(``yt-dlp``) **violate YouTube's Terms of Service regardless of
 personal use** — the ToS prohibit accessing content other than through
 the public interface / the official API, and personal/non-commercial
 intent does NOT cure that breach. The Personal-Reading Lane
@@ -138,6 +138,8 @@ CAPTION_KIND_HUMAN = "human"
 CAPTION_KIND_AUTO = "auto"
 CAPTION_KIND_UNKNOWN = "unknown"
 CAPTION_KIND_MISSING = "missing"
+METADATA_SOURCE_YT_DLP = "yt_dlp"
+METADATA_SOURCE_DATA_API = "youtube_data_api"
 
 
 @dataclass(frozen=True)
@@ -163,6 +165,7 @@ class YouTubeVideo:
     transcript_source: str = "unknown"  # "youtube" | "whisper" | "missing"
     watch_url: str = ""
     caption_kind: str = CAPTION_KIND_MISSING  # see CAPTION_KIND_* above
+    metadata_source: str = METADATA_SOURCE_YT_DLP
 
 
 # ---------------------------------------------------------------------------
@@ -336,4 +339,71 @@ def fetch(url_or_id: str, *, want_transcript: bool = True) -> YouTubeVideo:
         transcript_source=transcript_source,
         watch_url=f"https://www.youtube.com/watch?v={video_id}",
         caption_kind=caption_kind,
+        metadata_source=METADATA_SOURCE_YT_DLP,
+    )
+
+
+def _parse_rfc3339(value: str | None) -> datetime | None:
+    """``2026-08-12T00:00:00Z`` -> an aware UTC datetime; None if unreadable."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def fetch_with_data_api(
+    connector: Any,
+    url_or_id: str,
+    *,
+    want_transcript: bool = True,
+) -> YouTubeVideo:
+    """Build a ``YouTubeVideo`` whose METADATA comes from the owner's own key.
+
+    ``connector`` is a resolved ``runtime.connectors.youtube.YouTubeDataConnector``
+    (anything with ``video_metadata(video_id)``). Title, channel, description,
+    duration and publish date arrive through ``videos.list`` on the official
+    Data API at 1 quota unit of the owner's meter, instead of through yt-dlp.
+
+    Captions are NOT on that path. The only official caption endpoint,
+    ``captions.download``, is limited to videos on channels the caller owns,
+    so when ``want_transcript`` is set the transcript still comes from the
+    unofficial timedtext path in ``_fetch_transcript``. That remains the open
+    ToS question described in this module's docstring, and this function does
+    not cure it; it is still counted against the per-process cap for the same
+    reason, and the count happens before the metadata call so a capped request
+    spends nothing.
+    """
+    video_id = parse_video_id(url_or_id)
+    if not video_id:
+        raise ValueError(f"unrecognized YouTube URL/id: {url_or_id!r}")
+    if want_transcript:
+        # Counted BEFORE the metadata call so a capped request never spends
+        # the owner's quota unit on a video it will not ingest.
+        note_youtube_fetch()
+    meta = connector.video_metadata(video_id)
+    transcript: list[TranscriptSegment] = []
+    transcript_source = "missing"
+    caption_kind = CAPTION_KIND_MISSING
+    if want_transcript:
+        # Captions: still the unofficial timedtext scrape, the open ToS
+        # question. Only the metadata above moved to the official API.
+        transcript, caption_kind = _fetch_transcript(video_id)
+        transcript_source = "youtube" if transcript else "missing"
+    return YouTubeVideo(
+        video_id=video_id,
+        title=meta.title or "(untitled)",
+        channel=meta.channel_title,
+        duration_seconds=int(meta.duration_seconds),
+        upload_date=_parse_rfc3339(meta.published_at),
+        description=meta.description,
+        transcript=transcript,
+        transcript_source=transcript_source,
+        watch_url=f"https://www.youtube.com/watch?v={video_id}",
+        caption_kind=caption_kind,
+        metadata_source=METADATA_SOURCE_DATA_API,
     )
