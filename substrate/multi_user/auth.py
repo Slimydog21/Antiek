@@ -170,6 +170,14 @@ def ensure_auth_subjects_schema(primary_con: LockedConnection) -> None:
     if not isinstance(primary_con, LockedConnection):
         raise TypeError("ensure_auth_subjects_schema requires a LockedConnection")
     primary_con.execute(AUTH_SUBJECTS_DDL)
+    _validate_auth_subjects_schema(primary_con)
+
+
+def _validate_auth_subjects_schema(primary_con: LockedConnection) -> None:
+    """Validate the existing subject table without creating a missing one."""
+
+    if not isinstance(primary_con, LockedConnection):
+        raise TypeError("auth_subjects validation requires a LockedConnection")
     columns = tuple(
         (str(name), str(data_type), str(nullable), int(position))
         for name, data_type, nullable, position in primary_con.execute(
@@ -265,6 +273,45 @@ def mint_session_cookie(provider: str, subject: str, email: str) -> str:
         con.close()
 
 
+def mint_existing_magic_link_session(*, subject: str, expected_owner_user_id: str) -> str:
+    """Mint a passkey-authenticated session only for an existing email subject."""
+
+    provider, normalized_subject = normalize_subject("magic_link", subject)
+    owner_user_id = subject_owner_id(provider, normalized_subject)
+    if expected_owner_user_id != owner_user_id:
+        raise AuthSubjectConflict("authenticated subject conflict")
+    con = connect_write(default_db_path(), purpose="auth:mint_existing_subject_session")
+    try:
+        con.execute("BEGIN TRANSACTION")
+        _validate_auth_subjects_schema(con)
+        row = con.execute(
+            "SELECT owner_user_id FROM auth_subjects WHERE provider=? AND subject=?",
+            [provider, normalized_subject],
+        ).fetchone()
+        if row is None or str(row[0]) != owner_user_id:
+            raise AuthSubjectConflict("authenticated subject conflict")
+        now = datetime.now(UTC)
+        con.execute(
+            "UPDATE auth_subjects SET last_seen_at=? WHERE provider=? AND subject=? "
+            "AND owner_user_id=?",
+            [now, provider, normalized_subject, owner_user_id],
+        )
+        cookie = _mint_signed_session_cookie(
+            user_id=owner_user_id,
+            email=normalized_subject,
+            provider=provider,
+            subject=normalized_subject,
+        )
+        con.execute("COMMIT")
+        return cookie
+    except BaseException:
+        with contextlib.suppress(Exception):
+            con.execute("ROLLBACK")
+        raise
+    finally:
+        con.close()
+
+
 def resolve_authenticated_principal(request: Any) -> VerifiedPrincipal:
     """Verify a subject-bearing session and its durable owner relation.
 
@@ -336,6 +383,7 @@ __all__ = [
     "decode_token",
     "ensure_auth_subjects_schema",
     "mint_session_cookie",
+    "mint_existing_magic_link_session",
     "normalize_subject",
     "operator_claims",
     "resolve_authenticated_principal",

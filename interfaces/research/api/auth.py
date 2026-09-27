@@ -60,7 +60,6 @@ from substrate.auth import (
     authentication_options,
     complete_authentication,
     complete_registration,
-    delete_credential,
     get_email_provider,
     list_credentials,
     mint_magic_link_token,
@@ -70,7 +69,19 @@ from substrate.auth import (
 from substrate.auth import (
     mint_session_cookie as mint_legacy_session_cookie,
 )
-from substrate.multi_user.auth import mint_session_cookie
+from substrate.auth.passkeys import (
+    PasskeyCredential,
+    PasskeySubjectBinding,
+    delete_bound_credential,
+)
+from substrate.multi_user.auth import (
+    AuthError,
+    VerifiedPrincipal,
+    mint_existing_magic_link_session,
+    mint_session_cookie,
+    resolve_authenticated_principal,
+    subject_owner_id,
+)
 
 from .operator_allowlist import operator_allowlist_from_env
 
@@ -466,6 +477,41 @@ def register_auth_routes(
     def _resolve_allowlist() -> frozenset[str]:
         return _allowlist() | extra
 
+    def _bound_allowed_credentials() -> list[PasskeyCredential]:
+        allowed = _resolve_allowlist()
+        return [
+            item for item in list_credentials()
+            if item.binding is not None and item.binding.subject in allowed
+        ]
+
+    def _owner_has_passkey(owner_user_id: str) -> bool:
+        return any(
+            item.binding is not None and item.binding.owner_user_id == owner_user_id
+            for item in _bound_allowed_credentials()
+        )
+
+    def _fresh_passkey_principal(request: Request) -> VerifiedPrincipal:
+        try:
+            principal = resolve_authenticated_principal(request)
+        except AuthError as exc:
+            raise HTTPException(status_code=403, detail="verified_principal_required") from exc
+        state = request.state
+        if (
+            principal.provider != "magic_link"
+            or principal.subject not in _resolve_allowlist()
+            or getattr(state, "verified_principal", None) != principal
+            or getattr(state, "user_id", None) != principal.owner_user_id
+        ):
+            raise HTTPException(status_code=403, detail="verified_principal_required")
+        return principal
+
+    def _passkey_binding(principal: VerifiedPrincipal) -> PasskeySubjectBinding:
+        return PasskeySubjectBinding(
+            provider="magic_link",
+            subject=principal.subject,
+            owner_user_id=principal.owner_user_id,
+        )
+
     @app.post(
         "/auth/request",
         response_model=AuthRequestResponse,
@@ -547,7 +593,7 @@ def register_auth_routes(
                 redirect_url = _resolve_redirect(
                     f"/login?{urlencode({'approve': attempt, 'code': device_code})}"
                 )
-        elif not list_credentials():
+        elif not _owner_has_passkey(subject_owner_id("magic_link", email)):
             safe_next = next if _is_safe_relative(next) else "/"
             redirect_url = _resolve_redirect(
                 f"/login?{urlencode({'setup': 'passkey', 'next': safe_next})}"
@@ -632,7 +678,7 @@ def register_auth_routes(
             next_path = pending.next_path
         cookie = mint_session_cookie("magic_link", email, email)
         response = Response(
-            content=json.dumps({"authenticated": True, "setup_passkey": not bool(list_credentials()), "next": next_path}),
+            content=json.dumps({"authenticated": True, "setup_passkey": not _owner_has_passkey(subject_owner_id("magic_link", email)), "next": next_path}),
             media_type="application/json",
         )
         response.set_cookie(
@@ -649,19 +695,26 @@ def register_auth_routes(
         tags=["auth"],
     )
     async def auth_passkey_status(request: Request) -> PasskeyStatusResponse:
-        credentials = list_credentials()
-        # A logged-out browser only needs the branch bit to choose its primary
-        # action.  Credential counts are account metadata, so return them only
-        # to an established session.
-        authenticated = bool(getattr(request.state, "user_id", None))
+        credentials = _bound_allowed_credentials()
+        count: int | None = None
+        try:
+            principal = resolve_authenticated_principal(request)
+        except AuthError:
+            principal = None
+        if principal is not None and principal.subject in _resolve_allowlist():
+            count = sum(
+                item.binding is not None
+                and item.binding.owner_user_id == principal.owner_user_id
+                for item in credentials
+            )
         return PasskeyStatusResponse(
             available=bool(credentials),
-            count=len(credentials) if authenticated else None,
+            count=count,
         )
 
     @app.post("/auth/passkey/login/options", tags=["auth"])
     async def auth_passkey_login_options() -> dict[str, Any]:
-        if not list_credentials():
+        if not _bound_allowed_credentials():
             raise HTTPException(
                 status_code=404,
                 detail={"code": "passkey_not_configured", "message": "No passkey is set up yet."},
@@ -671,7 +724,7 @@ def register_auth_routes(
     @app.post("/auth/passkey/login/verify", tags=["auth"])
     async def auth_passkey_login_verify(payload: PasskeyCeremonyPayload) -> Response:
         try:
-            complete_authentication(
+            verified = complete_authentication(
                 ceremony_id=payload.ceremony_id,
                 credential=payload.credential,
             )
@@ -680,13 +733,27 @@ def register_auth_routes(
                 status_code=400,
                 detail={"code": "passkey_verification_failed", "message": str(exc)},
             ) from exc
-        allow = sorted(_resolve_allowlist())
-        if not allow:
+        if not _resolve_allowlist():
             raise HTTPException(
                 status_code=503,
                 detail={"code": "operator_email_missing", "message": "Operator email is not configured."},
             )
-        cookie = mint_session_cookie("passkey", allow[0], allow[0])
+        binding = verified.binding
+        if binding is None or binding.subject not in _resolve_allowlist():
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "passkey_verification_failed", "message": "This passkey account is unavailable."},
+            )
+        try:
+            cookie = mint_existing_magic_link_session(
+                subject=binding.subject,
+                expected_owner_user_id=binding.owner_user_id,
+            )
+        except AuthError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "passkey_verification_failed", "message": "This passkey account is unavailable."},
+            ) from exc
         response = Response(status_code=204)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
@@ -698,19 +765,20 @@ def register_auth_routes(
 
     @app.post("/auth/passkey/register/options", tags=["auth"])
     async def auth_passkey_register_options(request: Request) -> dict[str, Any]:
-        email = getattr(request.state, "user_email", None)
-        if not email:
-            allow = sorted(_resolve_allowlist())
-            email = allow[0] if allow else "operator@antiek.ai"
-        return registration_options(email=email)
+        principal = _fresh_passkey_principal(request)
+        return registration_options(binding=_passkey_binding(principal))
 
     @app.post("/auth/passkey/register/verify", tags=["auth"])
-    async def auth_passkey_register_verify(payload: PasskeyRegistrationPayload) -> dict[str, Any]:
+    async def auth_passkey_register_verify(
+        payload: PasskeyRegistrationPayload, request: Request,
+    ) -> dict[str, Any]:
+        principal = _fresh_passkey_principal(request)
         try:
             credential = complete_registration(
                 ceremony_id=payload.ceremony_id,
                 credential=payload.credential,
                 label=payload.label,
+                binding=_passkey_binding(principal),
             )
         except PasskeyError as exc:
             raise HTTPException(
@@ -724,7 +792,8 @@ def register_auth_routes(
         }
 
     @app.get("/auth/passkeys", tags=["auth"])
-    async def auth_passkeys() -> dict[str, Any]:
+    async def auth_passkeys(request: Request) -> dict[str, Any]:
+        principal = _fresh_passkey_principal(request)
         return {
             "passkeys": [
                 {
@@ -735,12 +804,15 @@ def register_auth_routes(
                     "last_used_at": item.last_used_at,
                 }
                 for item in list_credentials()
+                if item.binding is not None
+                and item.binding.owner_user_id == principal.owner_user_id
             ]
         }
 
     @app.delete("/auth/passkeys/{credential_id}", status_code=204, tags=["auth"])
-    async def auth_passkey_delete(credential_id: str) -> Response:
-        if not delete_credential(credential_id):
+    async def auth_passkey_delete(credential_id: str, request: Request) -> Response:
+        principal = _fresh_passkey_principal(request)
+        if not delete_bound_credential(credential_id, principal.owner_user_id):
             raise HTTPException(status_code=404, detail="Passkey not found")
         return Response(status_code=204)
 

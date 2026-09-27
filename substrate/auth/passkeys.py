@@ -1,12 +1,10 @@
-"""Passkey ceremonies and the single-operator credential store.
+"""Passkey ceremonies and account-bound public credentials.
 
-Antiek is deliberately single-operator until G7.  This module keeps the
-WebAuthn boundary equally small: discoverable credentials for one operator,
+This module keeps the WebAuthn boundary small: discoverable credentials,
 short-lived one-shot challenges in process memory, and an atomic JSON store
-outside the repository.  The FastAPI service is already constrained to one
-worker by the DuckDB single-writer invariant, so a process-local challenge
-registry is the honest deployment model (a restart merely asks the operator
-to touch Face ID / Touch ID again).
+outside the repository. The FastAPI service is constrained to one worker by
+the DuckDB single-writer invariant, so a restart merely requires a new
+challenge.
 
 Credential private keys never reach Antiek.  The store contains only public
 keys, counters, transports, and operator-chosen labels.  Registration is
@@ -22,7 +20,7 @@ import os
 import secrets
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -42,12 +40,18 @@ from webauthn.helpers.structs import (
 )
 
 PASSKEY_CHALLENGE_TTL_SECONDS = 5 * 60
-_STORE_VERSION = 1
-_OPERATOR_USER_ID = b"antiek-single-operator"
+_STORE_VERSION = 2
 
 
 class PasskeyError(Exception):
     """A closed, user-safe passkey failure."""
+
+
+@dataclass(frozen=True)
+class PasskeySubjectBinding:
+    provider: str
+    subject: str
+    owner_user_id: str
 
 
 @dataclass(frozen=True)
@@ -61,6 +65,7 @@ class PasskeyCredential:
     label: str
     created_at: int
     last_used_at: int | None = None
+    binding: PasskeySubjectBinding | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +73,7 @@ class _Ceremony:
     kind: Literal["registration", "authentication"]
     challenge: bytes
     expires_at: float
+    binding: PasskeySubjectBinding | None = None
 
 
 _ceremonies: dict[str, _Ceremony] = {}
@@ -90,29 +96,94 @@ def passkey_store_path() -> Path:
     return Path.home() / ".antiek" / "auth" / "passkeys.json"
 
 
+def _validated_binding(binding: PasskeySubjectBinding) -> PasskeySubjectBinding:
+    # A top-level import cycles: substrate.auth.__init__ imports this module
+    # while multi_user.auth imports substrate.auth.magic_link.
+    from substrate.multi_user.auth import AuthError, normalize_subject, subject_owner_id
+
+    if not isinstance(binding, PasskeySubjectBinding):
+        raise PasskeyError("The passkey account binding is invalid.")
+    try:
+        provider, subject = normalize_subject(binding.provider, binding.subject)
+        owner = subject_owner_id(provider, subject)
+    except (AuthError, AttributeError, TypeError) as exc:
+        raise PasskeyError("The passkey account binding is invalid.") from exc
+    if (
+        provider != "magic_link"
+        or provider != binding.provider
+        or subject != binding.subject
+        or owner != binding.owner_user_id
+    ):
+        raise PasskeyError("The passkey account binding is invalid.")
+    return binding
+
+
 def _read_credentials_unlocked() -> list[PasskeyCredential]:
     path = passkey_store_path()
-    if not path.exists():
-        return []
     try:
+        if not path.exists():
+            return []
         payload = json.loads(path.read_text(encoding="utf-8"))
-        if payload.get("version") != _STORE_VERSION:
+        if not isinstance(payload, dict):
+            raise ValueError("invalid passkey store")
+        version = payload.get("version")
+        if type(version) is not int or version not in (1, _STORE_VERSION):
             raise PasskeyError("The passkey store version is not supported.")
-        return [
-            PasskeyCredential(
-                credential_id=item["credential_id"],
-                public_key=item["public_key"],
-                sign_count=int(item["sign_count"]),
-                transports=tuple(item.get("transports", ())),
+        items = payload.get("credentials")
+        if not isinstance(items, list):
+            raise ValueError("invalid passkey credentials")
+        credentials: list[PasskeyCredential] = []
+        seen: set[str] = set()
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("invalid passkey credential")
+            credential_id = item["credential_id"]
+            public_key = item["public_key"]
+            sign_count = item["sign_count"]
+            created_at = item["created_at"]
+            transports = item.get("transports", [])
+            last_used_at = item.get("last_used_at")
+            if (
+                not isinstance(credential_id, str) or not credential_id
+                or credential_id in seen
+                or not isinstance(public_key, str) or not public_key
+                or type(sign_count) is not int or sign_count < 0
+                or type(created_at) is not int or created_at < 0
+                or not isinstance(transports, list)
+                or not all(isinstance(value, str) for value in transports)
+                or (last_used_at is not None and type(last_used_at) is not int)
+                or not isinstance(item.get("device_type", "unknown"), str)
+                or not isinstance(item.get("backed_up", False), bool)
+                or not isinstance(item.get("label", "Passkey"), str)
+            ):
+                raise ValueError("invalid passkey credential")
+            seen.add(credential_id)
+            binding: PasskeySubjectBinding | None = None
+            if version == 1:
+                if "binding" in item:
+                    raise ValueError("v1 passkey cannot attest a binding")
+            else:
+                raw_binding = item["binding"]
+                if raw_binding is not None:
+                    if not isinstance(raw_binding, dict) or set(raw_binding) != {
+                        "provider", "subject", "owner_user_id",
+                    }:
+                        raise ValueError("invalid passkey binding")
+                    binding = _validated_binding(PasskeySubjectBinding(**raw_binding))
+            credentials.append(PasskeyCredential(
+                credential_id=credential_id,
+                public_key=public_key,
+                sign_count=sign_count,
+                transports=tuple(transports),
                 device_type=item.get("device_type", "unknown"),
-                backed_up=bool(item.get("backed_up", False)),
+                backed_up=item.get("backed_up", False),
                 label=item.get("label", "Passkey"),
-                created_at=int(item["created_at"]),
-                last_used_at=item.get("last_used_at"),
-            )
-            for item in payload.get("credentials", [])
-        ]
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                created_at=created_at,
+                last_used_at=last_used_at,
+                binding=binding,
+            ))
+        return credentials
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError, UnicodeError, OSError) as exc:
         raise PasskeyError("The passkey store is unreadable.") from exc
 
 
@@ -129,6 +200,20 @@ def delete_credential(credential_id: str) -> bool:
         if len(remaining) == len(credentials):
             return False
         _write_credentials_unlocked(remaining)
+        return True
+
+
+def delete_bound_credential(credential_id: str, owner_user_id: str) -> bool:
+    """Authorize and delete one bound credential in the same store lock."""
+
+    with _store_lock:
+        credentials = _read_credentials_unlocked()
+        match = next((item for item in credentials if item.credential_id == credential_id), None)
+        if match is None or match.binding is None or match.binding.owner_user_id != owner_user_id:
+            return False
+        _write_credentials_unlocked([
+            item for item in credentials if item.credential_id != credential_id
+        ])
         return True
 
 
@@ -159,7 +244,10 @@ def _write_credentials_unlocked(credentials: list[PasskeyCredential]) -> None:
         temp.unlink(missing_ok=True)
 
 
-def _put_ceremony(kind: Literal["registration", "authentication"], challenge: bytes) -> str:
+def _put_ceremony(
+    kind: Literal["registration", "authentication"], challenge: bytes,
+    *, binding: PasskeySubjectBinding | None = None,
+) -> str:
     ceremony_id = secrets.token_urlsafe(24)
     now = time.monotonic()
     with _ceremony_lock:
@@ -173,16 +261,19 @@ def _put_ceremony(kind: Literal["registration", "authentication"], challenge: by
             kind=kind,
             challenge=challenge,
             expires_at=now + PASSKEY_CHALLENGE_TTL_SECONDS,
+            binding=binding,
         )
     return ceremony_id
 
 
-def _consume_ceremony(ceremony_id: str, kind: Literal["registration", "authentication"]) -> bytes:
+def _consume_ceremony(
+    ceremony_id: str, kind: Literal["registration", "authentication"],
+) -> _Ceremony:
     with _ceremony_lock:
         ceremony = _ceremonies.pop(ceremony_id, None)
     if ceremony is None or ceremony.kind != kind or ceremony.expires_at <= time.monotonic():
         raise PasskeyError("This unlock request expired. Try again.")
-    return ceremony.challenge
+    return ceremony
 
 
 def _rp_id() -> str:
@@ -219,14 +310,18 @@ def _descriptors(credentials: list[PasskeyCredential]) -> list[PublicKeyCredenti
     return descriptors
 
 
-def registration_options(*, email: str) -> dict[str, Any]:
-    credentials = list_credentials()
+def registration_options(*, binding: PasskeySubjectBinding) -> dict[str, Any]:
+    _validated_binding(binding)
+    credentials = [
+        item for item in list_credentials()
+        if item.binding is not None and item.binding.owner_user_id == binding.owner_user_id
+    ]
     options = generate_registration_options(
         rp_id=_rp_id(),
         rp_name="Antiek",
-        user_id=_OPERATOR_USER_ID,
-        user_name=email,
-        user_display_name="Antiek operator",
+        user_id=binding.owner_user_id.encode("ascii"),
+        user_name=binding.subject,
+        user_display_name=binding.subject,
         timeout=PASSKEY_CHALLENGE_TTL_SECONDS * 1000,
         exclude_credentials=_descriptors(credentials),
         authenticator_selection=AuthenticatorSelectionCriteria(
@@ -236,16 +331,24 @@ def registration_options(*, email: str) -> dict[str, Any]:
         ),
     )
     body = cast(dict[str, Any], json.loads(options_to_json(options)))
-    body["ceremony_id"] = _put_ceremony("registration", options.challenge)
+    body["ceremony_id"] = _put_ceremony(
+        "registration", options.challenge, binding=binding,
+    )
     return body
 
 
-def complete_registration(*, ceremony_id: str, credential: dict[str, Any], label: str) -> PasskeyCredential:
-    challenge = _consume_ceremony(ceremony_id, "registration")
+def complete_registration(
+    *, ceremony_id: str, credential: dict[str, Any], label: str,
+    binding: PasskeySubjectBinding,
+) -> PasskeyCredential:
+    ceremony = _consume_ceremony(ceremony_id, "registration")
+    _validated_binding(binding)
+    if ceremony.binding != binding:
+        raise PasskeyError("The passkey account changed. Start registration again.")
     try:
         verified = verify_registration_response(
             credential=credential,
-            expected_challenge=challenge,
+            expected_challenge=ceremony.challenge,
             expected_rp_id=_rp_id(),
             expected_origin=_origins(),
             require_user_verification=True,
@@ -265,10 +368,12 @@ def complete_registration(*, ceremony_id: str, credential: dict[str, Any], label
         backed_up=verified.credential_backed_up,
         label=label.strip()[:80] or "Passkey",
         created_at=now,
+        binding=binding,
     )
     with _store_lock:
         existing = _read_credentials_unlocked()
-        existing = [item for item in existing if item.credential_id != record.credential_id]
+        if any(item.credential_id == record.credential_id for item in existing):
+            raise PasskeyError("This passkey is already registered.")
         existing.append(record)
         _write_credentials_unlocked(existing)
     return record
@@ -290,7 +395,7 @@ def authentication_options() -> dict[str, Any]:
 
 
 def complete_authentication(*, ceremony_id: str, credential: dict[str, Any]) -> PasskeyCredential:
-    challenge = _consume_ceremony(ceremony_id, "authentication")
+    ceremony = _consume_ceremony(ceremony_id, "authentication")
     credential_id = credential.get("id")
     if not isinstance(credential_id, str) or not credential_id:
         raise PasskeyError("That passkey response was incomplete.")
@@ -299,10 +404,13 @@ def complete_authentication(*, ceremony_id: str, credential: dict[str, Any]) -> 
         match = next((item for item in credentials if item.credential_id == credential_id), None)
         if match is None:
             raise PasskeyError("This passkey is not registered with Antiek.")
+        if match.binding is None:
+            raise PasskeyError("This passkey needs to be enrolled again.")
+        _validated_binding(match.binding)
         try:
             verified = verify_authentication_response(
                 credential=credential,
-                expected_challenge=challenge,
+                expected_challenge=ceremony.challenge,
                 expected_rp_id=_rp_id(),
                 expected_origin=_origins(),
                 credential_public_key=_unb64(match.public_key),
@@ -311,14 +419,12 @@ def complete_authentication(*, ceremony_id: str, credential: dict[str, Any]) -> 
             )
         except Exception as exc:
             raise PasskeyError("Antiek could not verify that passkey. Try again.") from exc
-        updated = PasskeyCredential(
-            **{
-                **asdict(match),
-                "sign_count": verified.new_sign_count,
-                "device_type": str(verified.credential_device_type.value),
-                "backed_up": verified.credential_backed_up,
-                "last_used_at": int(time.time()),
-            }
+        updated = replace(
+            match,
+            sign_count=verified.new_sign_count,
+            device_type=str(verified.credential_device_type.value),
+            backed_up=verified.credential_backed_up,
+            last_used_at=int(time.time()),
         )
         credentials = [updated if item.credential_id == match.credential_id else item for item in credentials]
         _write_credentials_unlocked(credentials)
