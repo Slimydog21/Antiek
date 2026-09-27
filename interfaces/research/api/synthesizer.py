@@ -61,6 +61,7 @@ from middleware.constraint_check import (  # noqa: E402
 from roles.synthesizer import (  # noqa: E402
     SynthesizerValidationError,
     ThesisResult,
+    build_repair_prefix,
     build_revision_prefix,
     parse_synthesizer_response,
     render_full_prompt,
@@ -463,16 +464,10 @@ def _dispatch_and_parse(
     # (empty falsification_conditions, missing keys, wrong recommendation
     # vocabulary) recover on a single retry once the model sees its
     # own mistake described.
-    repair_prefix = (
-        "Your previous response failed the substrate's structural "
-        "contract with the following error:\n\n"
-        f"    {first_error!s}\n\n"
-        "This is your one and only chance to fix it. Produce a "
-        "response that satisfies the contract above. Pay particular "
-        "attention to the substrate's non-negotiable constraints in "
-        "the system prompt — they are not stylistic preferences.\n\n"
-        "----\n\n"
-    )
+    # The error can quote the response verbatim (a 10,000-digit
+    # recommendation comes back in full), so the prefix is clipped to the
+    # bound its callers reserved room for (``REPAIR_PREFIX_MAX_BYTES``).
+    repair_prefix = build_repair_prefix(str(first_error))
     if rerender_with_prefix is not None:
         retry_prompt = rerender_with_prefix(repair_prefix)
     else:
