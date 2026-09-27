@@ -9,6 +9,7 @@ registration routes, and session issuance only after verification.
 from __future__ import annotations
 
 import json
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -90,6 +91,58 @@ def test_registration_persists_public_credential_and_consumes_challenge(monkeypa
             label="Replay",
             binding=_binding(),
         )
+
+
+def test_concurrent_same_credential_registration_persists_exactly_one_record(
+    monkeypatch, tmp_path,
+):
+    """Mock-verifier persistence race; WebAuthn proof is covered by route journeys."""
+    monkeypatch.setenv("ANTIEK_PASSKEY_STORE", str(tmp_path / "passkeys.json"))
+    monkeypatch.setenv("ANTIEK_WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setenv("ANTIEK_WEBAUTHN_ORIGINS", "http://localhost:5173")
+    barrier = threading.Barrier(2)
+
+    def verify_registration_response(**_):
+        barrier.wait(timeout=3)
+        return SimpleNamespace(
+            credential_id=b"one-shared-synthetic-id",
+            credential_public_key=b"synthetic-public-key",
+            sign_count=0,
+            credential_device_type=SimpleNamespace(value="single_device"),
+            credential_backed_up=False,
+        )
+
+    monkeypatch.setattr(
+        "substrate.auth.passkeys.verify_registration_response", verify_registration_response,
+    )
+    ceremonies = [registration_options(binding=_binding()) for _ in range(2)]
+    results: list[object] = []
+    failures: list[BaseException] = []
+
+    def register(ceremony_id: str) -> None:
+        try:
+            results.append(complete_registration(
+                ceremony_id=ceremony_id,
+                credential={"response": {"transports": ["internal"]}},
+                label="Synthetic key",
+                binding=_binding(),
+            ))
+        except BaseException as exc:
+            failures.append(exc)
+
+    threads = [threading.Thread(target=register, args=(item["ceremony_id"],)) for item in ceremonies]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(results) == 1
+    assert len(failures) == 1 and isinstance(failures[0], PasskeyError)
+    payload = json.loads((tmp_path / "passkeys.json").read_text())
+    assert payload["version"] == 2
+    assert len(payload["credentials"]) == 1
+    assert payload["credentials"][0]["credential_id"] == "b25lLXNoYXJlZC1zeW50aGV0aWMtaWQ"
 
 
 def test_logged_out_passkey_login_issues_session_only_after_verification(monkeypatch, tmp_path):

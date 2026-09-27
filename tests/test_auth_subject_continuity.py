@@ -6,9 +6,12 @@ import base64
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
+import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import cbor2
 import duckdb
@@ -23,7 +26,10 @@ from substrate.auth.magic_link import mint_session_cookie as mint_raw_cookie
 from substrate.auth.passkeys import (
     PasskeyError,
     PasskeySubjectBinding,
+    complete_registration,
+    delete_bound_credential,
     list_credentials,
+    registration_options,
 )
 from substrate.multi_user.auth import AuthError, subject_owner_id
 
@@ -450,7 +456,165 @@ def test_counter_write_failure_keeps_session_closed_and_nested_binding_typed(
         )
     assert store.read_bytes() == before
     assert client.get("/auth/me").status_code != 200
+    assert "ANTIEK_SESSION" not in client.cookies
     assert isinstance(list_credentials()[0].binding, PasskeySubjectBinding)
+
+
+def test_counter_directory_fsync_failure_returns_no_session_and_allows_replaced_counter(
+    auth_env, monkeypatch,
+):
+    _db, store = auth_env
+    client = _app_client()
+    _email_login(client, ALICE)
+    credential_id, key, _ = _register(client, "directory-fsync-failure")
+    assert client.post("/auth/logout").status_code == 204
+    before = json.loads(store.read_text())
+    real_fsync = os.fsync
+
+    def fail_directory_fsync(fd: int) -> None:
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError("synthetic post-replace directory fsync failure")
+        real_fsync(fd)
+
+    monkeypatch.setattr("substrate.auth.passkeys.os.fsync", fail_directory_fsync)
+    options = client.post("/auth/passkey/login/options").json()
+    with pytest.raises(OSError, match="post-replace directory fsync failure"):
+        client.post(
+            "/auth/passkey/login/verify",
+            json={
+                "ceremony_id": options["ceremony_id"],
+                "credential": _assertion(options, credential_id, key),
+            },
+        )
+    after = json.loads(store.read_text())
+    assert after["credentials"][0]["sign_count"] == 1
+    assert before["credentials"][0]["sign_count"] == 0
+    assert client.get("/auth/me").status_code != 200
+    assert "ANTIEK_SESSION" not in client.cookies
+    assert isinstance(list_credentials()[0].binding, PasskeySubjectBinding)
+
+
+def test_owner_checked_delete_serializes_a_concurrent_registration_update(
+    auth_env, monkeypatch,
+):
+    _db, store = auth_env
+    client = _app_client()
+    _email_login(client, ALICE)
+    deleting_id, _key, _ = _register(client, "delete-target")
+    preserved_id, _key, _ = _register(client, "preserved")
+    binding = PasskeySubjectBinding("magic_link", ALICE, subject_owner_id("magic_link", ALICE))
+    options = registration_options(binding=binding)
+
+    def verified_registration(**_):
+        return SimpleNamespace(
+            credential_id=b"concurrent-legitimate-update",
+            credential_public_key=b"synthetic-public-key",
+            sign_count=0,
+            credential_device_type=SimpleNamespace(value="single_device"),
+            credential_backed_up=False,
+        )
+
+    monkeypatch.setattr(
+        "substrate.auth.passkeys.verify_registration_response", verified_registration,
+    )
+    import substrate.auth.passkeys as passkeys
+
+    original_read = passkeys._read_credentials_unlocked
+    original_write = passkeys._write_credentials_unlocked
+    deleting_read_entered = threading.Event()
+    release_deleting_read = threading.Event()
+    updater_attempted_lock = threading.Event()
+    updating_read_entered = threading.Event()
+    delete_result: list[bool] = []
+    update_result: list[object] = []
+    writes_inside_lock: list[str] = []
+    failures: list[BaseException] = []
+    delete_thread_id: list[int] = []
+
+    class TrackingLock:
+        def __init__(self):
+            self._lock = threading.Lock()
+            self.acquisitions: list[str] = []
+
+        def __enter__(self):
+            name = threading.current_thread().name
+            if name == "credential-updater":
+                updater_attempted_lock.set()
+            self._lock.acquire()
+            self.acquisitions.append(name)
+            return self
+
+        def __exit__(self, *_):
+            self._lock.release()
+
+    tracking_lock = TrackingLock()
+    monkeypatch.setattr(passkeys, "_store_lock", tracking_lock)
+
+    def controlled_read():
+        if threading.get_ident() == delete_thread_id[0]:
+            assert tracking_lock.acquisitions[-1] == "credential-deleter"
+            deleting_read_entered.set()
+            if not release_deleting_read.wait(timeout=3):
+                raise AssertionError("deletion read was not released")
+        else:
+            assert tracking_lock.acquisitions[-1] == "credential-updater"
+            updating_read_entered.set()
+        return original_read()
+
+    def controlled_write(credentials):
+        name = threading.current_thread().name
+        assert tracking_lock.acquisitions[-1] == name
+        writes_inside_lock.append(name)
+        return original_write(credentials)
+
+    monkeypatch.setattr(passkeys, "_read_credentials_unlocked", controlled_read)
+    monkeypatch.setattr(passkeys, "_write_credentials_unlocked", controlled_write)
+
+    def delete_target():
+        delete_thread_id.append(threading.get_ident())
+        try:
+            delete_result.append(delete_bound_credential(_b64(deleting_id), binding.owner_user_id))
+        except BaseException as exc:
+            failures.append(exc)
+
+    def add_legitimate_credential():
+        try:
+            update_result.append(complete_registration(
+                ceremony_id=options["ceremony_id"],
+                credential={"response": {"transports": ["internal"]}},
+                label="Concurrent update",
+                binding=binding,
+            ))
+        except BaseException as exc:
+            failures.append(exc)
+
+    deleter = threading.Thread(target=delete_target, name="credential-deleter")
+    updater = threading.Thread(target=add_legitimate_credential, name="credential-updater")
+    deleter.start()
+    try:
+        assert deleting_read_entered.wait(timeout=3)
+        updater.start()
+        assert updater_attempted_lock.wait(timeout=3)
+        assert not updating_read_entered.is_set()
+    finally:
+        release_deleting_read.set()
+        deleter.join(timeout=5)
+        if updater.ident is not None:
+            updater.join(timeout=5)
+
+    assert not deleter.is_alive() and not updater.is_alive()
+    assert not failures
+    assert delete_result == [True]
+    assert len(update_result) == 1
+    assert updating_read_entered.is_set()
+    assert tracking_lock.acquisitions == [
+        "credential-deleter", "credential-updater",
+    ]
+    assert writes_inside_lock == ["credential-deleter", "credential-updater"]
+    payload = json.loads(store.read_text())
+    assert {item["credential_id"] for item in payload["credentials"]} == {
+        _b64(preserved_id), "Y29uY3VycmVudC1sZWdpdGltYXRlLXVwZGF0ZQ",
+    }
 
 
 def test_registration_pre_replace_failure_preserves_existing_store(auth_env, monkeypatch):
@@ -525,6 +689,10 @@ def test_binding_import_orders_execute_canonical_validation(auth_env, tmp_path, 
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "PYTHONPATH": str(root),
         "HOME": str(tmp_path),
+        "ANTIEK_DUCKDB_PATH": str(tmp_path / "subjects.duckdb"),
+        "ANTIEK_RESEARCH_EVENTS_DIR": str(tmp_path / "events"),
+        "ANTIEK_HOME": str(tmp_path / "antiek-home"),
+        "ANTIEK_EMAIL_PROVIDER": "mock",
         "ANTIEK_PASSKEY_STORE": str(tmp_path / "passkeys.json"),
         "ANTIEK_WEBAUTHN_RP_ID": RP,
         "ANTIEK_WEBAUTHN_ORIGINS": ORIGIN,
