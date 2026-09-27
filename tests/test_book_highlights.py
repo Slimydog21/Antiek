@@ -528,7 +528,7 @@ def test_owner_scoped_delete_is_the_only_removal(env) -> None:
     _seed_document(db, chunks=[("c-1", CHUNK_TEXT, None)])
     anchor_id = _pin(db, quote="gamma delta", prefix="Alpha beta ", suffix=" epsilon")
     with connect_write(db, purpose="test/delete-wrong-owner") as con:
-        assert HighlightsStore().delete(con, anchor_id, "someone-else") is False
+        assert HighlightsStore().delete(con, anchor_id, "someone-else", document_id=DOC) is False
     with connect_write(db, purpose="test/delete-owner") as con:
-        assert HighlightsStore().delete(con, anchor_id, "owner-1") is True
+        assert HighlightsStore().delete(con, anchor_id, "owner-1", document_id=DOC) is True
         assert HighlightsStore().get(con, anchor_id) is None

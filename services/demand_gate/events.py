@@ -17,6 +17,8 @@ events through the builders here so the gate is unbypassable.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 # The four measurement events + the round-trip detector's event + the two
 # admissible third-party/agent signals the analysis counts.
 EXPORT_OFFERED = "demand_gate.export_offered"
@@ -50,6 +52,9 @@ _ALLOWED_FIELDS = frozenset(
         "content_hash",
         "tool",
         "agent",
+        "exported_by",  # exporter ids (criterion 1: exported by a non-operator)
+        "emitted_at",  # ISO-8601 timestamp; the verdict filters to the window
+        "evidence_ref",  # link/id attesting a hand-documented observation
     }
 )
 
@@ -79,12 +84,23 @@ def assert_no_content(event: dict) -> None:
         )
 
 
-def build_export_offered(user_id: str, surface: str, formats: tuple[str, ...]) -> dict:
+def _now(emitted_at: datetime | None) -> str:
+    return (emitted_at or datetime.now(UTC)).isoformat()
+
+
+def build_export_offered(
+    user_id: str,
+    surface: str,
+    formats: tuple[str, ...],
+    *,
+    emitted_at: datetime | None = None,
+) -> dict:
     e = {
         "action_type": EXPORT_OFFERED,
         "user_id": user_id,
         "surface": surface,
         "formats": list(formats),
+        "emitted_at": _now(emitted_at),
     }
     assert_no_content(e)
     return e
@@ -108,15 +124,27 @@ def build_share_link_taken(user_id: str, surface: str) -> dict:
 
 
 def build_re_import_detected(
-    document_id: str, classification: str, content_hash: str, user_id: str | None = None
+    document_id: str,
+    classification: str,
+    content_hash: str,
+    user_id: str | None = None,
+    *,
+    exported_by: tuple[str, ...] = (),
+    emitted_at: datetime | None = None,
 ) -> dict:
     e = {
         "action_type": RE_IMPORT_DETECTED,
         "document_id": document_id,
         "classification": classification,
         "content_hash": content_hash,
+        "exported_by": list(exported_by),
+        "emitted_at": _now(emitted_at),
     }
     if user_id is not None:
+        # A blank actor is not "someone": refuse it here rather than emit an
+        # event whose actor merely differs from the operator's id.
+        if not user_id.strip():
+            raise ValueError("re-import actor must be a non-blank user id")
         e["user_id"] = user_id
     assert_no_content(e)
     return e

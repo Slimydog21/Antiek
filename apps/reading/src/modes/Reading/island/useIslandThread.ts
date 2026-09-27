@@ -63,6 +63,9 @@ export interface IslandThreadState {
    *  dig-deeper launch so the new chase appears in the family view
    *  immediately, without a reload. */
   refetchFamily: () => void;
+  /** Re-read the thread when its status is unavailable (the projection's
+   *  own seed-fetch retry); null when the projection offers none. */
+  retry: (() => void) | null;
 }
 
 export function useIslandThread(investigationId: string | null): IslandThreadState {
@@ -170,5 +173,6 @@ export function useIslandThread(investigationId: string | null): IslandThreadSta
     outcome,
     sessionState,
     refetchFamily,
+    retry: projection.retry ?? null,
   };
 }

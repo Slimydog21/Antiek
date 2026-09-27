@@ -33,10 +33,21 @@ ad-eligible. This predicate is the single gate the per-second ad border
 (constants Section J) and the SPR-09 accrual ledger consult — they never
 re-derive ad-eligibility from the license, only from the tier, so there is one
 place this rule lives (defensibility bar 5).
+
+That ONE rule now has ONE extension: a document with no licence tier carries
+no licence signal and is decided by whether its body is publicly servable.
+``substrate.books.serve_guard`` and the payout-side settlements
+(``substrate.payouts.ledger`` and ``substrate.marketplace_metrics.book_escrow``)
+all call ``ad_eligibility()`` — serve-time and payout-time cannot re-derive it
+apart.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+from substrate.rights.arxiv_tiers import resolve_tier
 from substrate.schemas.documents import RightsTier
 
 # The ad-eligible tiers. T1 only. A frozenset (not an ``== T1`` literal in the
@@ -57,4 +68,90 @@ def ads_allowed(tier: RightsTier) -> bool:
     return tier in _AD_ELIGIBLE_TIERS
 
 
-__all__ = ["ads_allowed"]
+@dataclass(frozen=True)
+class AdEligibility:
+    """One ad-eligibility decision: whether ads may run on (and ad revenue
+    accrue for) a document, the licence tier it was decided on (``None`` when
+    the document carries no licence signal), and a machine-readable reason."""
+
+    eligible: bool
+    tier: RightsTier | None
+    reason: str
+
+
+def licence_tier_of(metadata: Mapping[str, object]) -> RightsTier | None:
+    """The licence tier a document's ad-eligibility is decided on, derived
+    ONCE from its parsed ``documents.metadata`` for both the serve guard and
+    the payouts ledger.
+
+    - a "license_uri" key present -> resolve_tier(value if it is a str else
+      None) (blank/None resolves to T3, deny-by-default);
+    - no "license_uri" key but a non-empty str "arxiv_id" ->
+      resolve_tier(None), i.e. T3: an arXiv paper whose immutable licence was
+      never recorded is not ad-eligible. content_class is never read as a
+      licence (SPR-02 anti-laundering: a stored class or rights_tier cannot
+      launder revenue);
+    - neither -> None: the document carries no licence signal (a book, a web
+      page, a capture) and is decided by body servability.
+    """
+    if "license_uri" in metadata:
+        value = metadata["license_uri"]
+        return resolve_tier(value if isinstance(value, str) else None)
+    arxiv_id = metadata.get("arxiv_id")
+    if isinstance(arxiv_id, str) and arxiv_id:
+        return resolve_tier(None)
+    return None
+
+
+def ad_eligibility(tier: RightsTier | None, *, servable: bool | None) -> AdEligibility:
+    """THE ad-eligibility predicate.
+
+    ``serve_guard.serve_full_text_guarded`` stamps
+    ``ServeResult.ad_eligible`` from it (the reader mounts its ad border only
+    when it is True), and both payout-side settlements of a reader's ad fill
+    ask it FIRST, through ``payouts.ledger.payout_ad_eligibility``:
+    ``marketplace_metrics.book_escrow.accrue_reading_session`` (the rights
+    holder's escrow, for every document kind) and
+    ``payouts.ledger.accrue_paper_read`` (the per-author arXiv ledger it
+    feeds). A refusal carries this predicate's reason; the settlements' own
+    gates (arXiv scope, zero revenue, unknown holder, the §9.10 disbursement
+    lock at ``claimed``) apply only after it. So a settled fill accrues on a
+    document exactly when the reader could show it an ad border, for every
+    ``SourceKind`` (tests/rights/test_ad_eligibility_agreement.py).
+
+    Scope, stated so it is not over-read: ``accrue_reading_session`` has no
+    production caller today (the client-priced impressions endpoint returns
+    410). The live per-second frame path
+    (``ad_inventory.frame_attention_accrual.accrue_window``) splits a window's
+    settled value across every asset in frame by a different, deliberately
+    wider earn gate, ``ad_inventory.attribution.monetization_eligible``
+    (content_class only; see the "TWO DISTINCT EARN GATES" note there). It is
+    not routed through this predicate.
+
+    - A licence tier decides on its own: eligible iff ``ads_allowed(tier)``
+      (T1 only). servability is not consulted (a T1 paper is ad-eligible even
+      while its body is gated; a T2/T3 paper never is).
+    - With no licence tier the document is a book, page or capture: eligible
+      iff its body is publicly servable. That covers
+      ``SourceKind.LICENSED_PUBLISHER``: a §9.10 opt-in
+      (``content_class opt_in_licensed``) is the commercial grant, so an
+      opted-in book is ad-eligible; a gated pre-onboarded book is not (its
+      escrow accrues through attribution, not the reader's ad border).
+
+    ``servable`` must be given when tier is None; it is ignored otherwise.
+    """
+    if tier is not None:
+        if ads_allowed(tier):
+            return AdEligibility(True, tier, f"tier_ad_eligible:{tier.value}")
+        return AdEligibility(False, tier, f"tier_not_ad_eligible:{tier.value}")
+    if servable is None:
+        raise ValueError(
+            "a document with no licence tier is decided by body servability; "
+            "pass servable="
+        )
+    if servable:
+        return AdEligibility(True, None, "servable_body")
+    return AdEligibility(False, None, "body_not_servable")
+
+
+__all__ = ["AdEligibility", "ad_eligibility", "ads_allowed", "licence_tier_of"]
