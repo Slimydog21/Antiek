@@ -40,6 +40,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
+from substrate.books.servability import ServabilityStatus
 from substrate.books.serve import ServeResult
 from substrate.research_bridge.ingest import (
     CHUNK_TARGET_CHARS,
@@ -300,7 +301,7 @@ class BookSummary(BaseModel):
     document_id: str
     title: str | None
     author: str | None
-    servability: str
+    servability: ServabilityStatus
     servable_full_text: bool
     page_count: int
     cover_uri: str | None
@@ -313,7 +314,7 @@ class BookSummary(BaseModel):
             document_id=a.document_id,
             title=a.title,
             author=a.author,
-            servability=a.servability.value,
+            servability=a.servability,
             servable_full_text=a.servable_full_text,
             page_count=a.page_count,
             cover_uri=a.cover_uri,
@@ -363,7 +364,7 @@ class BookImportResponse(BaseModel):
     was_new: bool
     chunk_count: int
     content_class: str | None
-    servability: str
+    servability: ServabilityStatus
     title: str | None
     source_format: Literal["epub"] = "epub"
     content_format: Literal["html"] = "html"
@@ -631,7 +632,7 @@ class BookHtmlPublishJobOut(BaseModel):
     author: str | None
     import_target: Literal["antiek_html"]
     content_class: str
-    servability: str
+    servability: ServabilityStatus
     servable_full_text: bool
     document_inserted: bool
     book_asset_registered: bool
@@ -975,7 +976,7 @@ class SpinResearchResponse(BaseModel):
     document_id: str
     page_index: int
     gated: bool
-    servability: str
+    servability: ServabilityStatus
     seed_preview: str
     artifact_path: str | None = None
     twin_notes_path: str | None = None
@@ -1006,7 +1007,7 @@ class RecordImpressionsResponse(BaseModel):
 class FullTextResponse(BaseModel):
     document_id: str
     servable: bool
-    servability: str | None
+    servability: ServabilityStatus | None
     full_text: str | None
     snippet: str | None
     title: str | None
@@ -1076,7 +1077,7 @@ def _full_text_response(result: ServeResult) -> FullTextResponse:
     return FullTextResponse(
         document_id=result.document_id,
         servable=result.servable,
-        servability=result.servability.value if result.servability else None,
+        servability=result.servability,
         full_text=result.full_text,
         snippet=result.snippet,
         title=result.title,
@@ -1900,7 +1901,7 @@ def register_book_routes(app: FastAPI) -> None:
             author=req.author.strip() if req.author else None,
             import_target="antiek_html",
             content_class=content_class,
-            servability=asset.servability.value,
+            servability=asset.servability,
             servable_full_text=asset.servable_full_text,
             document_inserted=True,
             book_asset_registered=True,
@@ -2141,7 +2142,7 @@ def register_book_routes(app: FastAPI) -> None:
             was_new=published.was_new,
             chunk_count=published.chunk_count,
             content_class=published.content_class,
-            servability=published.servability,
+            servability=ServabilityStatus(published.servability),
             title=published.title,
         )
 
@@ -2386,7 +2387,7 @@ def register_book_routes(app: FastAPI) -> None:
             document_id=document_id,
             page_index=req.page_index,
             gated=seed.gated,
-            servability=seed.servability,
+            servability=ServabilityStatus(seed.servability),
             seed_preview=seed.seed_text[:240] + ("…" if len(seed.seed_text) > 240 else ""),
             artifact_path=artifact_path,
             twin_notes_path=twin_notes_path,
