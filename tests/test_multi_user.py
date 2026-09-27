@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
+import duckdb
 import pytest
 
 from runtime.db_lock import connect_write
+from substrate.auth.magic_link import verify_session_cookie
 from substrate.multi_user import (
     AuthError,
     GraphRouter,
@@ -21,7 +25,14 @@ from substrate.multi_user import (
     resolve_shared_substrate,
     validate_partition,
 )
-from substrate.multi_user.auth import operator_claims
+from substrate.multi_user import auth as auth_subject
+from substrate.multi_user.auth import (
+    AuthSchemaMigrationError,
+    ensure_auth_subjects_schema,
+    mint_session_cookie,
+    operator_claims,
+    subject_owner_id,
+)
 
 # ── Auth tests ───────────────────────────────────────────────────────
 
@@ -67,6 +78,68 @@ def test_decode_token_rejects_empty():
     provider = MockAuthProvider(tokens={})
     with pytest.raises(AuthError):
         decode_token(provider, "")
+
+
+def test_auth_subject_schema_is_idempotent_and_exact(tmp_path):
+    db_path = str(tmp_path / "subjects.duckdb")
+    con = connect_write(db_path, purpose="auth_subject_schema_test")
+    try:
+        ensure_auth_subjects_schema(con)
+        ensure_auth_subjects_schema(con)
+        assert con.execute("SELECT count(*) FROM auth_subjects").fetchone() == (0,)
+    finally:
+        con.close()
+
+    raw = duckdb.connect(str(tmp_path / "drifted.duckdb"))
+    raw.execute("CREATE TABLE auth_subjects(provider VARCHAR)")
+    raw.close()
+    drifted = connect_write(str(tmp_path / "drifted.duckdb"), purpose="auth_drift_test")
+    try:
+        with pytest.raises(AuthSchemaMigrationError, match="auth_schema_migration_required"):
+            ensure_auth_subjects_schema(drifted)
+    finally:
+        drifted.close()
+
+
+def test_concurrent_subject_mints_converge_to_one_owner(monkeypatch, tmp_path):
+    db_path = str(tmp_path / "concurrent.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "subject-secret-" + "x" * 48)
+    email = "Same.Subject@Example.Test"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        cookies = list(pool.map(lambda _: mint_session_cookie("magic_link", email, email), range(2)))
+
+    owners = {verify_session_cookie(cookie).user_id for cookie in cookies}
+    assert owners == {subject_owner_id("magic_link", email)}
+    with duckdb.connect(db_path, read_only=True) as con:
+        assert con.execute(
+            "SELECT provider,subject,owner_user_id,count(*) FROM auth_subjects "
+            "GROUP BY ALL"
+        ).fetchall() == [
+            ("magic_link", email.lower(), subject_owner_id("magic_link", email), 1)
+        ]
+
+
+def test_failed_cookie_mint_does_not_leave_partial_subject(monkeypatch, tmp_path):
+    db_path = str(tmp_path / "mint-failure.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "subject-secret-" + "y" * 48)
+
+    def fail_mint(**_kwargs):
+        raise RuntimeError("simulated cookie mint crash")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(auth_subject, "_mint_signed_session_cookie", fail_mint)
+        with pytest.raises(RuntimeError, match="simulated cookie mint crash"):
+            mint_session_cookie("magic_link", "owner@example.test", "owner@example.test")
+
+    cookie = mint_session_cookie("magic_link", "owner@example.test", "owner@example.test")
+    assert verify_session_cookie(cookie).user_id == subject_owner_id(
+        "magic_link", "owner@example.test"
+    )
+    with duckdb.connect(db_path, read_only=True) as con:
+        assert con.execute("SELECT count(*) FROM auth_subjects").fetchone() == (1,)
 
 
 # ── Graph routing tests ──────────────────────────────────────────────

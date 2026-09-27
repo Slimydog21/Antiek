@@ -47,6 +47,12 @@ _MULTI_OPERATOR_ENV = f"{_OPERATOR},{_OPERATOR_SECOND}"
 _SECRET = "test-secret-" + "x" * 48
 
 
+@pytest.fixture(autouse=True)
+def _isolated_primary_db(monkeypatch, tmp_path):
+    """Subject-backed login tests must never touch the operator's real DB."""
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "auth.duckdb"))
+
+
 # ── Substrate primitives ─────────────────────────────────────────────
 
 
@@ -717,8 +723,9 @@ def test_dev_login_requires_auth_secret(monkeypatch):
 
 def test_dev_login_happy_path_sets_cookie_and_authorizes(monkeypatch):
     """Correct token: 302 + session cookie, and the cookie carries the
-    operator identity so the middleware-protected /auth/whoami accepts
-    it via the existing antiek_session_cookie path — unchanged."""
+    local operator identity so the middleware-protected /auth/whoami
+    accepts it through the legacy-session compatibility path. It is not a
+    VerifiedPrincipal and cannot authorize D2 owner routes."""
     client = _client(monkeypatch)
     monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
     r = client.get(f"/auth/dev-login?token={_DEV_TOKEN}", follow_redirects=False)
