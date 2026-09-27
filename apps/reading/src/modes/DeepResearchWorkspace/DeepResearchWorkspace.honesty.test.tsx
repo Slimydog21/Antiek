@@ -28,6 +28,7 @@ vi.mock("./useMascotResearchReactions", () => ({
 }));
 
 import { Monitor } from ".";
+import ResearchPanel from "./ResearchPanel";
 
 const researches = [
   { investigation_id: "inv-aaaaaaaaaaaa", sub_question: "First question", state: "running" },
@@ -84,6 +85,20 @@ describe("DRW monitor — cost honesty (F-11)", () => {
     expect(first.textContent).toContain("$0.1234");
     expect(second.textContent).toContain("cost · awaiting");
     expect(second.textContent).not.toContain("$0.0000");
+  });
+});
+
+describe("ResearchPanel — an undefined cost is awaited too (MiMo F5)", () => {
+  it("renders 'cost · awaiting' for undefined instead of throwing on toFixed", () => {
+    const { container } = render(
+      <ResearchPanel
+        research={researches[0] as never}
+        costUsd={undefined as unknown as null}
+        onSteer={() => {}}
+      />,
+    );
+    expect(container.textContent).toContain("cost · awaiting");
+    expect(container.textContent).not.toContain("$");
   });
 });
 
