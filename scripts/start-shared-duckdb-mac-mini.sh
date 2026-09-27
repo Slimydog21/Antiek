@@ -24,13 +24,8 @@ if lsof -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
   kill $(lsof -t -iTCP:8000 -sTCP:LISTEN) 2>/dev/null || true
   sleep 1
 fi
-# Clear stale duckdb write lock if holder is dead
-if [ -f "$SHARED_DB.write.lock" ]; then
-  LOCK_PID=$(awk "{print \$1}" "$SHARED_DB.write.lock" 2>/dev/null || true)
-  if [ -n "${LOCK_PID:-}" ] && ! kill -0 "$LOCK_PID" 2>/dev/null; then
-    rm -f "$SHARED_DB.write.lock"
-  fi
-fi
+# Keep the permanent write-lock sidecar inode. The kernel releases flock when
+# its holder exits; deleting a file based on its text stamp can split locks.
 
 # Bootstrap shared TurboPuffer shadow from a prior worktree copy if needed.
 WT_TPUF="$WT/.antiek/turbopuffer-shadow"
