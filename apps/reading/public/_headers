@@ -12,6 +12,12 @@
 # This file and infrastructure/ansible/templates/Caddyfile.j2 now state the
 # same policy on both surfaces. Cloudflare Pages copies this file from the
 # build output (apps/reading/public/ → dist/) and applies it at the edge.
+#
+# Full resource CSP (2026-09-27). The string is kept byte-identical to
+# the Content-Security-Policy value in
+# infrastructure/ansible/templates/Caddyfile.j2 (tests/test_caddy_csp.py
+# asserts that) so the two hosts cannot drift; the annotated rationale
+# for every source lives there.
 
 /*
   X-Content-Type-Options: nosniff
@@ -19,7 +25,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: frame-ancestors 'self'
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' https://*.posthog.com https://*.i.posthog.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.antiek.ai wss://api.antiek.ai https://*.posthog.com https://*.i.posthog.com; media-src 'self' blob:; worker-src 'self'; frame-src 'self' blob:
 
 # Hashed Vite bundles are content-addressed; immutable caching is safe.
 /assets/*
