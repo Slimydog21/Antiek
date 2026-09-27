@@ -717,9 +717,10 @@ async def get_interview(interview_id: str) -> dict:
 
 @speak_router.post("/interviews/{interview_id}/answers", status_code=201)
 async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict:
-    # Two-hop write: submit_answer opens connect_write itself (three times:
-    # consent check, voice-note ingest, answer turn), out of _write's reach
-    # and the one-hop lint's, so the bound is passed explicitly.
+    # Two-hop write: submit_answer opens connect_write itself (twice: the
+    # consent check, then the voice-note ingest, whose after_write hook
+    # writes the answer turn in the same lock and transaction), out of
+    # _write's reach and the one-hop lint's, so the bound is passed explicitly.
     def _sync() -> Any:
         with _translate():
             return submit_answer(

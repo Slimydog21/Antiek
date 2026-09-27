@@ -143,10 +143,11 @@ def ingest_voice_note(
     raises, the note leaves no event, document, chunk or node. A caller
     whose permission to write can be revoked between its own check and
     this lock (Speak's invite door, closed by a takedown) passes its check
-    here. ``after_write(con, result)`` runs under the same lock once the
-    note is written, so the caller's bookkeeping lands with the note or
-    not at all. With either hook the lock is taken even for a note too
-    short to store.
+    here. ``after_write(con, result)`` runs under the same lock and in the
+    same DuckDB transaction as the note's writes, so the caller's
+    bookkeeping lands with the note or not at all: if it raises, the
+    document, chunks and nodes roll back with it. With either hook the lock
+    is taken even for a note too short to store.
 
     ``timeout_s`` bounds the write-lock wait, on the too-short path's lock
     as well as the stored path's. An HTTP caller passes its own bounded
@@ -212,10 +213,11 @@ def ingest_voice_note(
                 event_id = _emit_loaded()
             skipped = _skipped(event_id)
             if after_write is not None:
-                after_write(con, skipped)
+                with con.transaction():
+                    after_write(con, skipped)
         return skipped
 
-    ensure_initialized(resolved_db_path)
+    ensure_initialized(resolved_db_path, timeout_s=timeout_s)
 
     chunks: list[Chunk] = chunk_markdown(full_text)
     chunk_ids: list[str] = []
@@ -229,80 +231,86 @@ def ingest_voice_note(
         if write_guard is not None:
             write_guard(con)
             event_id = _emit_loaded()
-        insert_document(
-            con,
-            document_id=document_id,
-            source_tier=int(source_tier),
-            document_type="voice_note",
-            source_uri=None,
-            title=auto_title,
-            author=operator_id,
-            published_at=when,
-            investigation_id=investigation_id,
-            raw_text=full_text,
-            metadata={
-                "operator_id": operator_id,
-                "duration_seconds": duration_seconds,
-                "language": language,
-                "transcription_source": "whisper",
-                "recorded_at": when.isoformat(),
-            },
-            on_conflict="ignore",
-        )
-        register_source_document(
-            con,
-            document_id=document_id,
-            source_kind=SourceKind.USER_CONTENT,
-        )
-        for i, chunk in enumerate(chunks):
-            chunk_id = insert_chunk(
+        # The flock gives mutual exclusion, not atomicity: DuckDB autocommits
+        # each statement (see LockedConnection.transaction). One transaction
+        # makes the note and whatever after_write adds (Speak's answer turn)
+        # commit together or roll back together. The JSONL event log is
+        # outside it.
+        with con.transaction():
+            insert_document(
                 con,
                 document_id=document_id,
-                chunk_index=i,
-                text=chunk.text,
-                section_path=chunk.section or None,
-                embedding=emb.encode(chunk.text),
-                embedding_provider=emb,
-                token_count=chunk.token_count,
-            )
-            chunk_ids.append(chunk_id)
-            chunks_written += 1
-
-            label = chunk.text.strip().splitlines()[0] if chunk.text.strip() else ""
-            if len(label) > _NODE_LABEL_MAX:
-                label = label[: _NODE_LABEL_MAX - 1] + "…"
-            if not label:
-                label = f"voice-note#{i}"
-            node_id = insert_node(
-                con,
-                canonical_label=label,
-                node_type="entity",
-                graph_scope="cross_domain",
+                source_tier=int(source_tier),
+                document_type="voice_note",
+                source_uri=None,
+                title=auto_title,
+                author=operator_id,
+                published_at=when,
                 investigation_id=investigation_id,
-                embedding=emb.encode(label),
+                raw_text=full_text,
                 metadata={
-                    "source": "voice_note",
                     "operator_id": operator_id,
-                    "chunk_id": chunk_id,
-                    "section": chunk.section,
+                    "duration_seconds": duration_seconds,
+                    "language": language,
+                    "transcription_source": "whisper",
+                    "recorded_at": when.isoformat(),
                 },
-                parent_event_id=event_id,
                 on_conflict="ignore",
             )
-            node_ids.append(node_id)
+            register_source_document(
+                con,
+                document_id=document_id,
+                source_kind=SourceKind.USER_CONTENT,
+            )
+            for i, chunk in enumerate(chunks):
+                chunk_id = insert_chunk(
+                    con,
+                    document_id=document_id,
+                    chunk_index=i,
+                    text=chunk.text,
+                    section_path=chunk.section or None,
+                    embedding=emb.encode(chunk.text),
+                    embedding_provider=emb,
+                    token_count=chunk.token_count,
+                )
+                chunk_ids.append(chunk_id)
+                chunks_written += 1
 
-        result = IngestVoiceNoteResult(
-            document_id=document_id,
-            chunk_ids=chunk_ids,
-            node_ids=node_ids,
-            document_loaded_event_id=event_id,
-            chunks_written=chunks_written,
-            title=auto_title,
-            transcript_text=transcript,
-            duration_seconds=duration_seconds,
-        )
-        if after_write is not None:
-            after_write(con, result)
+                label = chunk.text.strip().splitlines()[0] if chunk.text.strip() else ""
+                if len(label) > _NODE_LABEL_MAX:
+                    label = label[: _NODE_LABEL_MAX - 1] + "…"
+                if not label:
+                    label = f"voice-note#{i}"
+                node_id = insert_node(
+                    con,
+                    canonical_label=label,
+                    node_type="entity",
+                    graph_scope="cross_domain",
+                    investigation_id=investigation_id,
+                    embedding=emb.encode(label),
+                    metadata={
+                        "source": "voice_note",
+                        "operator_id": operator_id,
+                        "chunk_id": chunk_id,
+                        "section": chunk.section,
+                    },
+                    parent_event_id=event_id,
+                    on_conflict="ignore",
+                )
+                node_ids.append(node_id)
+
+            result = IngestVoiceNoteResult(
+                document_id=document_id,
+                chunk_ids=chunk_ids,
+                node_ids=node_ids,
+                document_loaded_event_id=event_id,
+                chunks_written=chunks_written,
+                title=auto_title,
+                transcript_text=transcript,
+                duration_seconds=duration_seconds,
+            )
+            if after_write is not None:
+                after_write(con, result)
     return result
 
 

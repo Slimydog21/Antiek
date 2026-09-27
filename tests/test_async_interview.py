@@ -126,6 +126,33 @@ def test_voice_note_anchored_to_interview_and_question(speak_env):
     assert answer_turns[0]["document_id"] == res.document_id
 
 
+def test_a_failed_turn_write_leaves_no_answer_document(speak_env, monkeypatch):
+    """The answer lands whole or not at all. The turn is written in the
+    ingest's after_write, in the note's own DuckDB transaction; one lock
+    alone would not do it, since DuckDB autocommits each statement and a
+    failing turn write would leave the voice note stored with no turn."""
+    db, proj = speak_env["db_path"], speak_env["project_id"]
+    s = ai.start_async_interview(db, project_id=proj, interview_guide=GUIDE)
+    iid = s.interview_id
+    _consent(db, iid)
+
+    def _turn_write_fails(*_a, **_k):
+        raise RuntimeError("turn write failed")
+
+    with monkeypatch.context() as m:
+        m.setattr(ai, "_save_turns", _turn_write_fails)
+        with pytest.raises(RuntimeError, match="turn write failed"):
+            ai.submit_answer(db, interview_id=iid, question_id="q1",
+                             transcript="He built furniture by hand for forty years in that workshop.",
+                             embedder=StubEmbedding())
+    with connect_write(db, purpose="verify") as con:
+        docs = con.execute(
+            "SELECT count(*) FROM documents WHERE document_type = 'voice_note'"
+        ).fetchone()[0]
+    assert docs == 0
+    assert not [t for t in ai.resume(db, iid).turns if t.get("role") == "informant"]
+
+
 def test_transcribe_reuses_transcriber(speak_env):
     text = ai.transcribe(b"\x00\x01", filename="note.wav", transcriber=StubTranscriber("hello world"))
     assert text == "hello world"

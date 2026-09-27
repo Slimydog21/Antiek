@@ -317,7 +317,8 @@ def submit_answer(
     ``ConsentRequired`` otherwise.
 
     The voice-note ingest and the answer turn are written under ONE lock
-    (the ingest's), so an answer lands whole or not at all.
+    and in ONE DuckDB transaction (the ingest's; the turn is its
+    ``after_write``), so an answer lands whole or not at all.
 
     ``door_token`` is the invite token of an invitee-driven answer. When
     given, the door is checked with the consent gate and again under the

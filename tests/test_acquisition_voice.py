@@ -11,6 +11,7 @@ import os
 import sys
 import tempfile
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -287,6 +288,35 @@ def test_guard_pass_then_after_write_under_one_lock(
     assert bool(r.chunk_ids) is chunks
     assert (r.skipped_reason is None) is chunks
     assert len(_loaded_events(temp_substrate["events_dir"], "inv-voice-hooks")) == 1
+
+
+def test_after_write_failure_rolls_the_note_back(temp_substrate):
+    """``after_write`` shares the note's transaction, not only its lock. The
+    flock gives mutual exclusion, and DuckDB autocommits every statement, so
+    under one lock alone a hook that fails (Speak's answer turn) left the
+    document, chunks and nodes stored without it."""
+    from substrate.graph import ensure_initialized
+
+    ensure_initialized(temp_substrate["db_path"])
+    before = _voice_rows(temp_substrate["db_path"])
+    seen: list[str] = []
+
+    def _fail_after_note(con: Any, res: Any) -> None:
+        # The note is already written, inside the transaction the hook shares.
+        seen.append(res.document_id)
+        assert con.execute(
+            "SELECT count(*) FROM documents WHERE document_id = ?", [res.document_id],
+        ).fetchone()[0] == 1
+        raise _Refused
+
+    with pytest.raises(_Refused):
+        ingest_voice_note(
+            _LONG_TRANSCRIPT, investigation_id="inv-voice-atomic",
+            db_path=temp_substrate["db_path"], embedder=_StubEmbedder(),
+            after_write=_fail_after_note,
+        )
+    assert len(seen) == 1
+    assert _voice_rows(temp_substrate["db_path"]) == before
 
 
 # ─────────────────────────────────────────────────────────────────────
