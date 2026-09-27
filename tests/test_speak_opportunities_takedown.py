@@ -1,11 +1,11 @@
 """Public opportunities honour takedowns (LB-34).
 
 GET /speak/opportunities is open to logged-out visitors and lists every
-will_be_public project with its title and subject. A subject who demanded
-removal (an active ``subject`` takedown) must stop being advertised there
-and in the operator's /speak/pushes, and an interview under an active
-takedown must stop counting as a voice: the count would otherwise still
-reveal the withdrawn testimony. Reversing the takedown restores both.
+will_be_public project with its title and subject. An active takedown means
+stop publishing, whatever its target: the publish gate refuses a project under
+any active takedown, and /speak/feed hides the same projects. So a project
+with any active takedown (subject, interview or claim) is not advertised here
+or in the operator's /speak/pushes, and reversing the takedown restores it.
 """
 
 from __future__ import annotations
@@ -77,20 +77,37 @@ def test_a_taken_down_subject_is_no_longer_advertised(env):
     assert set(_listed(c)) == {kept, removed}
 
 
-def test_a_claim_takedown_does_not_hide_the_project(env):
+@pytest.mark.parametrize("target_kind", ["interview", "claim"])
+def test_any_active_takedown_hides_the_project(env, target_kind):
+    """Not only a subject takedown: an interview or a claim takedown also stops
+    publication, as the publish gate and /speak/feed already rule."""
     c = env["client"]
-    pid = _public_project(c, "Harbour memories", "Aunt Rosa")
-    c.post(f"/speak/projects/{pid}/takedowns", json={"target_kind": "claim", "target_id": "clm-1"})
-    assert pid in _listed(c)
+    kept = _public_project(c, "Harbour memories", "Aunt Rosa")
+    pid = _public_project(c, "Uncle Theo's war", "Uncle Theo")
+    invite = c.post(f"/speak/projects/{pid}/invites", json={"informant_email": "a@x.com"}).json()
+    target_id = invite["interview_id"] if target_kind == "interview" else "clm-1"
+    t = c.post(f"/speak/projects/{pid}/takedowns", json={"target_kind": target_kind, "target_id": target_id})
+    assert t.status_code == 201, t.text
 
+    assert set(_listed(c)) == {kept}
+    assert _pushed(c) == {kept}
 
-def test_a_taken_down_interview_is_not_counted_as_a_voice(env):
-    c = env["client"]
-    pid = _public_project(c, "Harbour memories", "Aunt Rosa")
-    first = c.post(f"/speak/projects/{pid}/invites", json={"informant_email": "a@x.com"}).json()
-    c.post(f"/speak/projects/{pid}/invites", json={"informant_email": "b@x.com"})
-    assert _listed(c)[pid]["voice_count"] == 2
-
-    c.post(f"/speak/projects/{pid}/takedowns",
-           json={"target_kind": "interview", "target_id": first["interview_id"]})
+    with connect_write(env["db"], purpose="test/reverse-takedown") as con:
+        takedown_mod.reverse_takedown(con, takedown_id=t.json()["takedown_id"], project_id=pid)
+    assert set(_listed(c)) == {kept, pid}
     assert _listed(c)[pid]["voice_count"] == 1
+
+
+def test_opportunities_and_feed_hide_the_same_projects(env):
+    """The two unauthenticated lists agree: one predicate, one answer."""
+    c = env["client"]
+    ids = [_public_project(c, f"Project {k}", f"Subject {k}") for k in "abc"]
+    c.post(f"/speak/projects/{ids[0]}/takedowns", json={"target_kind": "subject", "target_id": "Subject a"})
+    c.post(f"/speak/projects/{ids[1]}/takedowns", json={"target_kind": "claim", "target_id": "clm-9"})
+    feed = c.get("/speak/feed")
+    assert feed.status_code == 200, feed.text
+    body = feed.json()
+    rows = body if isinstance(body, list) else next(v for v in body.values() if isinstance(v, list))
+    feed_ids = {r["project_id"] for r in rows}
+    assert set(_listed(c)) == {ids[2]}
+    assert feed_ids & set(ids) == {ids[2]}

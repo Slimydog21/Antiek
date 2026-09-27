@@ -213,22 +213,18 @@ def list_public_opportunities(
     """
     if ensure:
         ensure_speak_schema(con)
-    # Takedowns are honoured here because this list is served to logged-out
-    # visitors: a project whose subject demanded removal is not advertised,
-    # and an interview under takedown is not counted, since even the count
-    # would still reveal the withdrawn testimony. A claim takedown leaves
-    # the project listed; the claim is never part of this list.
+    # An active takedown means STOP PUBLISHING, whatever its target. This list
+    # is served to logged-out visitors with each project's title and subject,
+    # so it agrees with the gate that governs publication
+    # (substrate/speak/publish_gate.py refuses to publish under any active
+    # takedown) and with /speak/feed, which hides the same projects with the
+    # same predicate. A finer per-target rule needs a signed rights clause.
     rows = con.execute(
         """
         SELECT p.project_id, ip.title, p.subject_ref,
                (SELECT COUNT(*) FROM interviews i
                 WHERE i.project_id = p.project_id
-                  AND i.status NOT IN ('declined')
-                  AND NOT EXISTS (
-                      SELECT 1 FROM speak_takedowns t
-                      WHERE t.project_id = p.project_id AND t.status = 'active'
-                        AND t.target_kind = 'interview' AND t.target_id = i.interview_id
-                  )) AS voice_count,
+                  AND i.status NOT IN ('declined')) AS voice_count,
                p.created_at
         FROM speak_projects p
         JOIN interview_projects ip ON ip.project_id = p.project_id
@@ -236,7 +232,6 @@ def list_public_opportunities(
           AND NOT EXISTS (
               SELECT 1 FROM speak_takedowns t
               WHERE t.project_id = p.project_id AND t.status = 'active'
-                AND t.target_kind = 'subject'
           )
         """
     ).fetchall()
