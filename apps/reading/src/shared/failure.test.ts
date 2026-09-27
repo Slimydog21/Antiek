@@ -157,4 +157,12 @@ describe("describeFailure", () => {
       "Couldn't load the author's notes.",
     );
   });
+
+  it("parseFailureEnvelope never hands back the server's own message", async () => {
+    const { parseFailureEnvelope } = await import("../lib/api");
+    const body = JSON.stringify({ detail: { code: "timeout", message: "GET /x HTTP 504 internal_thing", retryable: true } });
+    const envelope = parseFailureEnvelope(new ApiError("x", 504, body));
+    expect(envelope).toEqual({ code: "timeout", retryable: true });
+    expect(JSON.stringify(envelope)).not.toContain("internal_thing");
+  });
 });
