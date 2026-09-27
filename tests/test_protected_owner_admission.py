@@ -54,14 +54,16 @@ def test_child_survives_parent_close_and_close_is_idempotent():
     owner, _, opened, closed = fixture()
     parent = admit(owner)
     child = parent.child()
-    handle = child.use()
+    with child.use() as handle:
+        assert handle is opened[0]
     parent.close()
     parent.close()
     assert owner.borrowers == 1
     assert owner.physical_handles == 1
-    assert child.use() is handle
-    with pytest.raises(LeaseExpired):
-        parent.use()
+    with child.use() as borrowed:
+        assert borrowed is handle
+    with pytest.raises(LeaseExpired), parent.use():
+        pass
     child.close()
     child.close()
     assert owner.borrowers == owner.physical_handles == 0
@@ -72,13 +74,15 @@ def test_warm_handle_counts_and_is_reused_then_expires():
     now = [100.0]
     owner, _, opened, closed = fixture(warm_seconds=10, clock=lambda: now[0])
     first = owner.admit(generation=owner.identity.generation_uuid, deadline=200)
-    handle = first.use()
+    with first.use() as handle:
+        assert handle is opened[0]
     first.close()
     assert owner.physical_handles == 1
-    with pytest.raises(LeaseExpired):
-        first.use()
+    with pytest.raises(LeaseExpired), first.use():
+        pass
     second = owner.admit(generation=owner.identity.generation_uuid, deadline=200)
-    assert second.use() is handle
+    with second.use() as borrowed:
+        assert borrowed is handle
     second.close()
     now[0] = 111.0
     assert owner.physical_handles == 0
@@ -96,7 +100,8 @@ def test_waiter_handoff_does_not_wait_for_warm_expiry_and_child_blocks_transfer(
 
     def wait_for_handle():
         next_lease = admit(owner)
-        result.append(next_lease.use())
+        with next_lease.use() as handle:
+            result.append(handle)
         next_lease.close()
         got.set()
 
@@ -123,7 +128,8 @@ def test_freeze_blocks_admission_and_drain_waits_for_promised_child():
     with pytest.raises(AdmissionError, match="owner refused") as refused:
         owner.freeze()
     assert type(refused.value) is AdmissionError
-    assert child.use() is opened[0]
+    with child.use() as handle:
+        assert handle is opened[0]
     assert closed == []
     child.close()
     assert closed == opened
@@ -150,8 +156,8 @@ def test_deadline_and_disconnect_reclaim_children_exactly_once():
     while owner.physical_handles and time.monotonic() < limit:
         time.sleep(0.005)
     assert closed == opened
-    with pytest.raises(LeaseExpired):
-        child.use()
+    with pytest.raises(LeaseExpired), child.use():
+        pass
     parent.close()
     child.close()
     parent.disconnect()
@@ -161,8 +167,115 @@ def test_deadline_and_disconnect_reclaim_children_exactly_once():
     second.disconnect()
     second.disconnect()
     assert len(closed) == 2
-    with pytest.raises(LeaseExpired):
-        second_child.use()
+    with pytest.raises(LeaseExpired), second_child.use():
+        pass
+
+
+@pytest.mark.parametrize("warm_seconds", [0, 20])
+def test_deadline_during_operation_defers_close_and_warm_reuse(warm_seconds):
+    identity = SourceIdentity(uuid4(), 1, 2)
+    now = [100.0]
+    entered = threading.Event()
+    release = threading.Event()
+    closed: list[object] = []
+    opened: list[object] = []
+    acquired = threading.Event()
+    next_handles: list[object] = []
+
+    class Handle:
+        def execute(self):
+            entered.set()
+            assert release.wait(1)
+
+    def open_handle():
+        handle = Handle()
+        opened.append(handle)
+        return handle
+
+    def close_handle(handle):
+        assert release.is_set(), "physical close raced with execute"
+        closed.append(handle)
+
+    owner = OwnerAdmission(
+        identity,
+        current_identity=lambda: identity,
+        open_handle=open_handle,
+        close_handle=close_handle,
+        warm_seconds=warm_seconds,
+        clock=lambda: now[0],
+    )
+    lease = owner.admit(generation=identity.generation_uuid, deadline=101.0)
+
+    def execute():
+        with lease.use() as handle:
+            handle.execute()
+
+    thread = threading.Thread(target=execute)
+    thread.start()
+    assert entered.wait(1)
+    assert owner.borrowers == 2
+    now[0] = 102.0
+    lease._timer.function()
+    assert owner.borrowers == 1
+    assert owner.physical_handles == 1
+    assert closed == []
+
+    def next_admission():
+        next_lease = owner.admit(generation=identity.generation_uuid, deadline=200.0)
+        with next_lease.use() as handle:
+            next_handles.append(handle)
+        next_lease.close()
+        acquired.set()
+
+    waiter = threading.Thread(target=next_admission)
+    waiter.start()
+    assert not acquired.wait(0.05)
+    release.set()
+    thread.join(1)
+    assert not thread.is_alive()
+    assert acquired.wait(1)
+    waiter.join(1)
+    assert not waiter.is_alive()
+    assert owner.borrowers == 0
+    if warm_seconds:
+        assert next_handles == [opened[0]]
+        assert closed == []
+        owner.freeze()
+        assert closed == opened
+    else:
+        assert len(opened) == len(closed) == 2
+        assert next_handles == [opened[1]]
+
+
+def test_disconnect_during_child_operation_defers_physical_close():
+    owner, _, opened, closed = fixture()
+    parent = admit(owner)
+    child = parent.child()
+    with child.use() as handle:
+        assert owner.borrowers == 3
+        parent.disconnect()
+        assert owner.borrowers == 1
+        assert owner.physical_handles == 1
+        assert closed == []
+        assert handle is opened[0]
+    assert closed == opened
+    assert owner.borrowers == 0
+
+
+def test_nested_operation_exception_releases_each_scope_once():
+    owner, _, opened, closed = fixture()
+    parent = admit(owner)
+    child = parent.child()
+    with parent.use() as handle:
+        with pytest.raises(ValueError), child.use() as child_handle:
+            assert child_handle is handle
+            parent.disconnect()
+            assert owner.borrowers == 2
+            raise ValueError("disposable operation failed")
+        assert owner.borrowers == 1
+        assert closed == []
+    assert closed == opened
+    assert owner.borrowers == owner.physical_handles == 0
 
 
 def test_stale_generation_and_source_replacement_refuse():
@@ -172,8 +285,8 @@ def test_stale_generation_and_source_replacement_refuse():
     lease = admit(owner)
     child = lease.child()
     current[0] = SourceIdentity(owner.identity.generation_uuid, 11, 23)
-    with pytest.raises(SourceChanged):
-        child.use()
+    with pytest.raises(SourceChanged), child.use():
+        pass
     with pytest.raises(SourceChanged):
         owner.freeze()
     assert owner.state is OwnerState.REFUSED
@@ -555,8 +668,8 @@ def test_deadline_callback_at_publication_cannot_strand_handle(monkeypatch):
 
     monkeypatch.setattr(protected_owner.threading.Timer, "start", fire_before_start_returns)
     lease = admit(owner)
-    with pytest.raises(LeaseExpired):
-        lease.use()
+    with pytest.raises(LeaseExpired), lease.use():
+        pass
     assert owner.borrowers == owner.physical_handles == 0
     assert closed == opened
 

@@ -2,8 +2,8 @@
 
 This module neither opens a database nor implements capture. The caller supplies
 an opaque handle factory and a source identity probe; no path or SQL is accepted.
-``use()`` returns a fake/raw handle only inside a future trusted owner. A handle
-must never cross an application RPC boundary.
+``use()`` scopes access to a fake/raw handle inside a future trusted owner. A
+handle must never cross an application RPC boundary or outlive that scope.
 """
 
 from __future__ import annotations
@@ -11,7 +11,8 @@ from __future__ import annotations
 import math
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from typing import Generic, TypeVar
@@ -108,7 +109,9 @@ class OwnerAdmission(Generic[Handle]):  # noqa: UP046 - Python 3.11 syntax
     @property
     def borrowers(self) -> int:
         with self._condition:
-            return self._active._borrowers if self._active is not None else 0
+            if self._active is None:
+                return 0
+            return self._active._borrowers + self._active._inflight
 
     def _check_identity(self) -> None:
         if self._identity_lost:
@@ -240,7 +243,7 @@ class OwnerAdmission(Generic[Handle]):  # noqa: UP046 - Python 3.11 syntax
                 raise
 
     def _released(self, lease: Lease[Handle]) -> None:
-        if self._active is not lease or lease._borrowers:
+        if self._active is not lease or lease._borrowers or lease._inflight:
             return
         self._active = None
         lease._timer.cancel()
@@ -311,6 +314,7 @@ class Lease(Generic[Handle]):  # noqa: UP046 - Python 3.11 syntax
         self.generation = generation
         self.deadline = deadline
         self._borrowers = 1
+        self._inflight = 0
         self._closed = False
         self._children: set[ChildLease[Handle]] = set()
         self._timer = threading.Timer(max(0.0, deadline - owner._clock()), self.disconnect)
@@ -329,9 +333,17 @@ class Lease(Generic[Handle]):  # noqa: UP046 - Python 3.11 syntax
         assert owner._handle is not None
         return owner._handle
 
-    def use(self) -> Handle:
+    @contextmanager
+    def use(self) -> Iterator[Handle]:
         with self._owner._condition:
-            return self._check()
+            handle = self._check()
+            self._inflight += 1
+        try:
+            yield handle
+        finally:
+            with self._owner._condition:
+                self._inflight -= 1
+                self._owner._released(self)
 
     def child(self) -> ChildLease[Handle]:
         with self._owner._condition:
@@ -361,7 +373,8 @@ class Lease(Generic[Handle]):  # noqa: UP046 - Python 3.11 syntax
             self._disconnect_locked()
 
     def __enter__(self) -> Lease[Handle]:
-        self.use()
+        with self._owner._condition:
+            self._check()
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -373,7 +386,8 @@ class ChildLease(Generic[Handle]):  # noqa: UP046 - Python 3.11 syntax
         self._parent = parent
         self._closed = False
 
-    def use(self) -> Handle:
+    @contextmanager
+    def use(self) -> Iterator[Handle]:
         parent = self._parent
         with parent._owner._condition:
             if self._closed:
@@ -387,7 +401,14 @@ class ChildLease(Generic[Handle]):  # noqa: UP046 - Python 3.11 syntax
             if parent._owner._active is not parent:
                 raise LeaseExpired("child is stale")
             assert parent._owner._handle is not None
-            return parent._owner._handle
+            handle = parent._owner._handle
+            parent._inflight += 1
+        try:
+            yield handle
+        finally:
+            with parent._owner._condition:
+                parent._inflight -= 1
+                parent._owner._released(parent)
 
     def close(self) -> None:
         parent = self._parent
@@ -399,7 +420,8 @@ class ChildLease(Generic[Handle]):  # noqa: UP046 - Python 3.11 syntax
                 parent._owner._released(parent)
 
     def __enter__(self) -> ChildLease[Handle]:
-        self.use()
+        with self.use():
+            pass
         return self
 
     def __exit__(self, *_: object) -> None:
