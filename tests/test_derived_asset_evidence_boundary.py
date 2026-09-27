@@ -10,7 +10,10 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from substrate.graph.schema import ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL
+from substrate.graph.schema import (
+    ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL,
+    ANTIEK_GRAPH_SCHEMA_V23_DERIVED_ASSET_REVISE_SQL,
+)
 from substrate.write.derived_asset_boundary import (
     LEGACY_SOURCE_MERGE_FIELDS,
     LegacySourceMergeContractRejected,
@@ -20,7 +23,11 @@ from substrate.write.derived_asset_boundary import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-OWNED_RUNTIME = (ROOT / "substrate/graph/schema.py",)
+OWNED_RUNTIME = (
+    ROOT / "substrate/graph/schema.py",
+    ROOT / "substrate/derived_assets/repository.py",
+    ROOT / "substrate/derived_assets/informs.py",
+)
 def test_schema_creates_only_owned_derived_asset_tables() -> None:
     created = set(
         re.findall(
@@ -139,6 +146,16 @@ def test_boundary_names_inputs_without_foreign_write_authority() -> None:
     # referenced or cascaded: these are copied immutable bindings.
     assert "projection_id" in sql
     assert "source_document_id" in sql
+    assert "references documents" not in sql
+    assert "references html_projections" not in sql
+    assert "on delete cascade" not in sql
+
+
+def test_revise_schema_binds_inputs_without_foreign_write_authority() -> None:
+    sql = ANTIEK_GRAPH_SCHEMA_V23_DERIVED_ASSET_REVISE_SQL.lower()
+    # Informs name documents as copied bindings: no foreign key or cascade
+    # reaches the evidence tables from the revise primitive's tables.
+    assert "document_id" in sql
     assert "references documents" not in sql
     assert "references html_projections" not in sql
     assert "on delete cascade" not in sql
