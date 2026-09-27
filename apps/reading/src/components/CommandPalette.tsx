@@ -510,26 +510,21 @@ export default function CommandPalette() {
   }, []);
 
   useEffect(() => {
-    // S8: the workspace shortcuts module (src/workspace/shortcuts.ts)
-    // owns the ⌘K binding now and dispatches "antiek:palette:toggle"
-    // so the NavRail Search button click + the keyboard handler both
-    // reach the same code path. We also keep an in-component ⌘K
-    // fallback so the palette still works when AppShell isn't the
-    // ancestor (e.g. in Storybook stories rendered without AppShell).
+    // The shell's keymap dispatcher (workspace/shortcuts.ts, table in
+    // components/hotkeys/keymap.ts) is the ONE owner of ⌘K / ⌘⇧P / prefix+g:
+    // it dispatches "antiek:palette:toggle", as the NavRail Search button
+    // does. The palette used to toggle on ⌘K itself as well, so ⌘K from the
+    // page body flipped it twice and nothing opened (MS-01 F1). Stories
+    // rendered without AppShell open it by dispatching the same event.
     const onToggle = () => setOpen((v) => !v);
     window.addEventListener(
       "antiek:palette:toggle" as keyof WindowEventMap,
       onToggle as EventListener,
     );
 
+    // Escape closes the open palette. Scoped to the open overlay; it claims
+    // no global combo.
     const handler = (e: KeyboardEvent) => {
-      const isToggle =
-        (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
-      if (isToggle) {
-        e.preventDefault();
-        setOpen((v) => !v);
-        return;
-      }
       if (e.key === "Escape" && open) {
         e.preventDefault();
         setOpen(false);
@@ -776,6 +771,7 @@ export default function CommandPalette() {
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
+      data-keymap-owner="palette.toggle"
     >
       <div
         className="w-[640px] max-w-[90vw] bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-lg shadow-2xl overflow-hidden"

@@ -318,7 +318,7 @@ export default function ReadingCompanion({
 
   return (
     <aside
-      className="w-80 flex-shrink-0 border-l border-rule dark:border-charcoal-1 overflow-y-auto bg-ice-1 dark:bg-charcoal-2 hidden lg:flex lg:flex-col"
+      className="w-80 flex-shrink-0 border-l border-rule dark:border-charcoal-1 overflow-y-auto bg-ice-1 dark:bg-charcoal-2 hidden reader-lg:flex reader-lg:flex-col"
       aria-label="Reading companion"
       data-document-id={documentId}
     >

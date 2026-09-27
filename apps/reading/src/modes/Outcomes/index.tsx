@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../../lib/api";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 import { PanelHost } from "../../workspace/PanelHost";
+import { LoadingState } from "../../components/states";
 
 /**
  * Outcomes surface (master-spec §13.8 + Phase 8 input).
@@ -202,7 +203,7 @@ export default function Outcomes() {
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
             <h2 className="text-base font-serif text-ink dark:text-bright">History</h2>
             {loading ? (
-              <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+              <LoadingState variant="inline" label="Opening the outcome history" />
             ) : outcomes.length === 0 ? (
               <p className="text-sm text-shadow-1 dark:text-moonlight italic">
                 No outcomes recorded yet for this synthesis.

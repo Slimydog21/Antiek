@@ -1,7 +1,9 @@
 import WorkflowArt from "../../brand/WorkflowArt";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { getBook } from "../../api/books";
 import LemonButton from "../../components/lemon/LemonButton";
 import PdfViewer from "../../components/PdfViewer";
 import type { DocumentLoadedPayload } from "../../generated/types";
@@ -57,6 +59,34 @@ export default function WrestleApp() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const { events, status, reconnects } = useEventStream(investigationId);
+
+  // /wrestle/:documentId is linked from Documents, the command palette, the
+  // citation modal and the project tree. Wrestle only opens PDF bytes chosen
+  // from the reader's computer (no endpoint serves a stored PDF by id), so a
+  // deep link must say what the id is and where it can be read, instead of
+  // landing on the generic "Load a PDF" page.
+  const [linked, setLinked] = useState<LinkedDocument>(
+    initialDocumentId ? { kind: "loading" } : { kind: "none" },
+  );
+  const [lookupToken, setLookupToken] = useState(0);
+  useEffect(() => {
+    if (!initialDocumentId) return;
+    let cancelled = false;
+    setLinked({ kind: "loading" });
+    getBook(initialDocumentId).then(
+      (book) => {
+        if (!cancelled) setLinked({ kind: "book", title: book.title });
+      },
+      (err: unknown) => {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : String(err);
+        setLinked(message === "book_not_found" ? { kind: "not_stored" } : { kind: "error" });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [initialDocumentId, lookupToken]);
 
   const onFileSelected = useCallback(
     async (file: File) => {
@@ -146,40 +176,124 @@ export default function WrestleApp() {
         <EmptyState
           onFileSelected={onFileSelected}
           loadError={loadError}
+          linked={linked}
+          linkedDocumentId={initialDocumentId}
+          onRetryLookup={() => setLookupToken((n) => n + 1)}
         />
       )}
     </PanelHost>
   );
 }
 
+type LinkedDocument =
+  | { kind: "none" }
+  | { kind: "loading" }
+  | { kind: "book"; title: string | null }
+  | { kind: "not_stored" }
+  | { kind: "error" };
+
 function EmptyState({
   onFileSelected,
   loadError,
+  linked,
+  linkedDocumentId,
+  onRetryLookup,
 }: {
   onFileSelected: (file: File) => void;
   loadError: string | null;
+  linked: LinkedDocument;
+  linkedDocumentId: string | null;
+  onRetryLookup: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  return (
-    <div className="h-full flex items-center justify-center bg-ice-2 dark:bg-space-2">
-      <div className="max-w-md text-center px-6 text-ink dark:text-bright">
-        <span className="flex items-center gap-3"><WorkflowArt workflow="wrestler" size={52} className="shrink-0" /><h1 className="text-2xl font-serif mb-3">Load a PDF to wrestle.</h1></span>
-        <p className="text-sm text-shadow-1 dark:text-moonlight font-serif leading-relaxed mb-5">
-          Drop the PDF. Highlight any passage to capture it as a region.
-          The trajectory feed will appear as a docked panel; cross-document
-          bridges appear on the right.
-        </p>
-        {/* Real focusable button that delegates to the input — the previous
-            label-wrapped tabIndex={-1} button + hidden input was unreachable
-            by keyboard and screen reader (ui-audit 15-modes-f). */}
+  const navigate = useNavigate();
+  const choosePdf = () => fileInputRef.current?.click();
+
+  let heading = "Load a PDF to wrestle.";
+  let body: ReactNode =
+    "Drop the PDF. Highlight any passage to capture it as a region. The " +
+    "trajectory feed will appear as a docked panel; cross-document bridges " +
+    "appear on the right.";
+  let actions: ReactNode = (
+    <LemonButton variant="primary" size="lg" type="button" onClick={choosePdf}>
+      Choose PDF…
+    </LemonButton>
+  );
+  if (linked.kind === "loading") {
+    heading = "Looking up this document…";
+    body = null;
+    actions = null;
+  } else if (linked.kind === "book" && linkedDocumentId) {
+    heading = linked.title ?? "This book is in your library.";
+    body =
+      (linked.title ? "This book is in your library. " : "") +
+      "Read it in the Reader, or choose its PDF from your computer to " +
+      "wrestle with it here.";
+    actions = (
+      <>
         <LemonButton
           variant="primary"
           size="lg"
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => navigate(`/read/${encodeURIComponent(linkedDocumentId)}`)}
         >
+          Open in the Reader
+        </LemonButton>
+        <LemonButton variant="secondary" size="lg" type="button" onClick={choosePdf}>
+          Choose its PDF…
+        </LemonButton>
+      </>
+    );
+  } else if (linked.kind === "not_stored") {
+    heading = "There's no PDF stored for this document.";
+    body =
+      "Wrestle works on a PDF you choose from your computer. Choose this " +
+      "document's PDF to wrestle with it, or go back to your documents.";
+    actions = (
+      <>
+        <LemonButton variant="primary" size="lg" type="button" onClick={choosePdf}>
+          Choose its PDF…
+        </LemonButton>
+        <Link to="/documents" className="text-sm underline underline-offset-2">
+          Back to documents
+        </Link>
+      </>
+    );
+  } else if (linked.kind === "error") {
+    heading = "Couldn't look up this document.";
+    body =
+      "The server didn't answer. Try again, or choose the PDF from your " +
+      "computer to wrestle with it now.";
+    actions = (
+      <>
+        <LemonButton variant="primary" size="lg" type="button" onClick={onRetryLookup}>
+          Try again
+        </LemonButton>
+        <LemonButton variant="secondary" size="lg" type="button" onClick={choosePdf}>
           Choose PDF…
         </LemonButton>
+      </>
+    );
+  }
+
+  return (
+    <div className="h-full flex items-center justify-center bg-ice-2 dark:bg-space-2">
+      <div
+        className="max-w-md text-center px-6 text-ink dark:text-bright"
+        role={linked.kind === "loading" ? "status" : undefined}
+      >
+        <span className="flex items-center gap-3"><WorkflowArt workflow="wrestler" size={52} className="shrink-0" /><h1 className="text-2xl font-serif mb-3">{heading}</h1></span>
+        {body && (
+          <p className="text-sm text-shadow-1 dark:text-moonlight font-serif leading-relaxed mb-5">
+            {body}
+          </p>
+        )}
+        {/* Real focusable buttons that delegate to the input — the previous
+            label-wrapped tabIndex={-1} button + hidden input was unreachable
+            by keyboard and screen reader (ui-audit 15-modes-f). */}
+        {actions && (
+          <div className="flex flex-wrap items-center justify-center gap-3">{actions}</div>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -193,7 +307,9 @@ function EmptyState({
           }}
         />
         {loadError && (
-          <div className="text-xs font-mono text-emperor mt-4">{loadError}</div>
+          <p role="alert" className="text-sm text-emperor mt-4">
+            Couldn't open that PDF: {loadError}
+          </p>
         )}
         {/* No investigation id is rendered — the house no-id posture (Speak,
             Write). The id stays in console.info for debugging. */}
