@@ -213,7 +213,7 @@ class TestGap6_UrlAlias:
         # Stub the fetcher so we can count calls.
         call_count = {"n": 0}
 
-        def stub_fetch(url, *, client=None):
+        def stub_fetch(url, *, client=None, purpose=None):
             call_count["n"] += 1
             body = b"<html><body>" + b"hello world " * 50 + b"</body></html>"
             return FetchedHtml(

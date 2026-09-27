@@ -394,15 +394,33 @@ def test_grant_flip_servable_gated_servable_same_work(temp_db):
 # ---------------------------------------------------------------------------
 
 
+def _escrow(db_path: str, ip_holder_id: str) -> Decimal:
+    from runtime.db_lock import connect_write
+    from substrate import ip_holders
+
+    with connect_write(db_path, purpose="test:escrow") as con:
+        holder = ip_holders.get(con, ip_holder_id)
+    assert holder is not None
+    return holder.escrow_balance_usd
+
+
 def test_resubmission_is_idempotent_no_duplicates(temp_db):
     """Running the same manifest twice yields the same document + holder
-    counts (no duplicate documents, no duplicate holder)."""
+    counts (no duplicate documents, no duplicate holder) AND the same escrow
+    balance: the intake seed is once per (holder, work), not once per run."""
     from runtime.db_lock import connect_write
     from substrate import ip_holders
 
     m = _manifest_dict(grant=True)
-    intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
-    intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+    first = intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+    seeded = _escrow(temp_db, first.summary.ip_holder_id)
+    second = intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+
+    assert first.summary.escrow_accrued is True
+    assert seeded > Decimal("0")
+    # The re-run deduplicates the document, so it must not seed escrow again.
+    assert _escrow(temp_db, first.summary.ip_holder_id) == seeded
+    assert second.summary.escrow_accrued is False
 
     con = duckdb.connect(temp_db)
     try:
@@ -416,6 +434,118 @@ def test_resubmission_is_idempotent_no_duplicates(temp_db):
     assert n_docs == 1
     assert n_assets == 1
     assert n_holders == 1
+
+
+def test_grant_flips_seed_escrow_once_per_work(temp_db):
+    """The seed is keyed on the work, not on the run or on first sight of the
+    document: a work first ingested GATED seeds nothing, seeds once when its
+    grant arrives, and a withdraw + re-grant cycle never seeds it again."""
+    gated = _manifest_dict(grant=False)
+    granted = _manifest_dict(grant=True)
+
+    r0 = intake_manifest(parse_manifest(gated), db_path=temp_db, embedder=_StubEmbedder())
+    holder_id = r0.summary.ip_holder_id
+    assert _escrow(temp_db, holder_id) == Decimal("0")
+
+    r1 = intake_manifest(parse_manifest(granted), db_path=temp_db, embedder=_StubEmbedder())
+    assert r1.summary.escrow_accrued is True
+    assert r1.outcomes[0].document_id == r0.outcomes[0].document_id
+    seeded = _escrow(temp_db, holder_id)
+    assert seeded == Decimal("0.01")
+
+    intake_manifest(parse_manifest(gated), db_path=temp_db, embedder=_StubEmbedder())
+    r3 = intake_manifest(parse_manifest(granted), db_path=temp_db, embedder=_StubEmbedder())
+    assert _escrow(temp_db, holder_id) == seeded
+    assert r3.summary.escrow_accrued is False
+
+
+def test_staging_merge_carries_seed_key_with_new_holder_escrow(temp_db, tmp_path):
+    """Staging ingest, merge into live, then a direct live ingest of the same
+    manifest. The merge copies the new holder's staged escrow (seed included),
+    so it has to copy the seed key too, or the direct run seeds the work again."""
+    from runtime.staging_db import prepare_staging_db
+    from tools.merge_staging import merge_staging
+
+    staging = prepare_staging_db(str(tmp_path / "staging.duckdb"))
+    m = _manifest_dict(grant=True)
+
+    staged = intake_manifest(parse_manifest(m), db_path=staging, embedder=_StubEmbedder())
+    assert staged.summary.escrow_accrued is True
+    merge_staging(live_db=temp_db, staging_db=staging)
+    holder_id = staged.summary.ip_holder_id
+    assert _escrow(temp_db, holder_id) == Decimal("0.01")
+
+    direct = intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+    assert direct.summary.ip_holder_id == holder_id
+    assert direct.summary.escrow_accrued is False
+    assert _escrow(temp_db, holder_id) == Decimal("0.01")
+
+
+def test_staging_merge_leaves_seed_to_live_for_existing_holder(temp_db, tmp_path):
+    """A holder that already existed live keeps its live balance through the
+    merge, so the staged seed never reached live escrow. Its staged seed key
+    must stay behind, and the first live ingest of the work seeds it once."""
+    from runtime.staging_db import prepare_staging_db
+    from tools.merge_staging import merge_staging
+
+    gated = intake_manifest(
+        parse_manifest(_manifest_dict(grant=False)), db_path=temp_db,
+        embedder=_StubEmbedder(),
+    )
+    holder_id = gated.summary.ip_holder_id
+    staging = prepare_staging_db(str(tmp_path / "staging.duckdb"))
+    m = _manifest_dict(grant=True)
+    intake_manifest(parse_manifest(m), db_path=staging, embedder=_StubEmbedder())
+    merge_staging(live_db=temp_db, staging_db=staging)
+    assert _escrow(temp_db, holder_id) == Decimal("0")
+
+    direct = intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+    assert direct.summary.escrow_accrued is True
+    assert _escrow(temp_db, holder_id) == Decimal("0.01")
+    again = intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())
+    assert again.summary.escrow_accrued is False
+    assert _escrow(temp_db, holder_id) == Decimal("0.01")
+
+
+def _second_work(m: dict) -> dict:
+    """The same publisher with a different work (a new document)."""
+    m2 = copy.deepcopy(m)
+    w = m2["works"][0]
+    w.update(title="A Second Work", isbn="978-0-262-99999-0",
+             doi="10.7551/mitpress/00010.001.0001",
+             body_text=_BODY + " second distinct body")
+    return m2
+
+
+def test_staging_merge_credits_a_new_works_seed_to_an_existing_holder(temp_db, tmp_path):
+    """Codex critic on #3415 (merge_staging.py:423): a holder that already
+    exists live, and a NEW licensed work that arrives only through the merge.
+    The merge is how that document reaches live, so no later live ingest will
+    seed it: the staged seed must be credited by the merge, once."""
+    from runtime.staging_db import prepare_staging_db
+    from tools.merge_staging import merge_staging
+
+    live = intake_manifest(parse_manifest(_manifest_dict(grant=True)), db_path=temp_db,
+                           embedder=_StubEmbedder())
+    holder_id = live.summary.ip_holder_id
+    assert _escrow(temp_db, holder_id) == Decimal("0.01")
+
+    staging = prepare_staging_db(str(tmp_path / "staging.duckdb"))
+    m2 = _second_work(_manifest_dict(grant=True))
+    staged = intake_manifest(parse_manifest(m2), db_path=staging, embedder=_StubEmbedder())
+    assert staged.summary.escrow_accrued is True
+
+    merge_staging(live_db=temp_db, staging_db=staging)
+    assert _escrow(temp_db, holder_id) == Decimal("0.02")
+
+    # Idempotent: a second merge of the same staging DB credits nothing more.
+    merge_staging(live_db=temp_db, staging_db=staging)
+    assert _escrow(temp_db, holder_id) == Decimal("0.02")
+
+    # And the carried key stops a later direct ingest of the work re-seeding it.
+    direct = intake_manifest(parse_manifest(m2), db_path=temp_db, embedder=_StubEmbedder())
+    assert direct.summary.escrow_accrued is False
+    assert _escrow(temp_db, holder_id) == Decimal("0.02")
 
 
 def test_resubmission_adding_one_work_adds_exactly_one_document(temp_db):

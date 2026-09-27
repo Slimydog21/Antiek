@@ -224,6 +224,7 @@ def list_memory(
     valid_at: datetime | None = None,
     limit: int | None = None,
     salient_tokens: Sequence[str] | None = None,
+    exclude_provenance: tuple[str, str] | None = None,
 ) -> list[MemoryItem]:
     """List memory for exactly one owner, newest-valid first.
 
@@ -239,6 +240,9 @@ def list_memory(
     ``limit`` the returned set is unchanged — and a substring match is a
     superset of whole-token overlap, so a row that ranks lexically in Python is
     never ordered behind one that does not.
+
+    ``exclude_provenance`` omits one exact ``(source, extractor)`` pair before
+    ordering and limiting. Account-memory list/export callers leave it unset.
     """
     _assert_locked(con)
     owner = _required_text(owner_user_id, "owner_user_id")
@@ -255,6 +259,18 @@ def list_memory(
     if predicate is not None:
         conditions.append("e.relation = ?")
         params.append(_required_text(predicate, "predicate"))
+    if exclude_provenance is not None:
+        source, extractor = exclude_provenance
+        conditions.append(
+            "NOT (coalesce(json_extract_string(m.metadata, '$.provenance.source'), '') = ? "
+            "AND coalesce(json_extract_string(m.metadata, '$.provenance.extractor'), '') = ?)"
+        )
+        params.extend(
+            [
+                _required_text(source, "excluded provenance source"),
+                _required_text(extractor, "excluded provenance extractor"),
+            ]
+        )
     if valid_at is not None:
         point = _naive_utc(valid_at)
         conditions.extend(["e.valid_from <= ?", "(e.valid_until IS NULL OR e.valid_until > ?)"])
