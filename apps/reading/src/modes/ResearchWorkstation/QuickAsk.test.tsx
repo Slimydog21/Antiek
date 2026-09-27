@@ -177,8 +177,26 @@ describe("Quick Ask one-request boundary", () => {
     expect(send).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "Send one request" })).toBeNull();
     expect(window.sessionStorage.getItem("antiek.quick-ask.pending-send.session.v1:owner-a")).toBe(send.mock.calls[0][0].operation_id);
-    fireEvent.click(screen.getByRole("button", { name: "New question" }));
+    fireEvent.click(screen.getByRole("button", { name: "I checked my provider · new question" }));
     expect(window.sessionStorage.getItem("antiek.quick-ask.pending-send.session.v1:owner-a")).toBeNull();
+  });
+
+  it("holds a server 503 after Send instead of making an editable second attempt", async () => {
+    send.mockRejectedValue(new QuickAskError("quick_ask_unavailable"));
+    renderQuickAsk();
+    await selectFlash();
+    fireEvent.change(screen.getByLabelText("Quick Ask question"), {
+      target: { value: "Did the provider answer?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review estimate" }));
+    await screen.findByText(/Estimated request cost/);
+    fireEvent.click(screen.getByRole("button", { name: "Send one request" }));
+    const operationId = send.mock.calls[0][0].operation_id;
+    expect(await screen.findByText(/Charge unknown\. Check your provider dashboard/)).toBeTruthy();
+    expect(screen.queryByLabelText("Quick Ask question")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send one request" })).toBeNull();
+    expect(window.sessionStorage.getItem("antiek.quick-ask.pending-send.session.v1:owner-a")).toBe(operationId);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   it("labels a length-limited answer incomplete without a follow-up request", async () => {

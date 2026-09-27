@@ -187,12 +187,10 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
       const result = await sendQuickAsk({ ...request, quote_digest: prepared.quote_digest });
       if (mounted.current && result.usage_basis !== "charge_unknown") clearPendingSend(ownerId);
       setPhase({ kind: "answered", result });
-    } catch (error) {
-      if (error instanceof QuickAskError && error.reason === "charge_unknown") {
-        setPhase({ kind: "unknown", operationId });
-      } else {
-        setPhase({ kind: "error", message: failureMessage(error) });
-      }
+    } catch {
+      // After POST, even a structured 503 can follow provider I/O. The
+      // persisted operation must stay terminal until the owner releases it.
+      setPhase({ kind: "unknown", operationId });
     } finally {
       if (mounted.current) onPaidRequestInFlight?.(false);
     }
@@ -248,7 +246,9 @@ function QuickAskOwner({ ownerId, onPaidRequestInFlight }: {
             setQuestion("");
             resetQuote();
           }}>
-            New question
+            {phase.kind === "unknown" ||
+            (phase.kind === "answered" && phase.result.usage_basis === "charge_unknown")
+              ? "I checked my provider · new question" : "New question"}
           </LemonButton>
         </div>
       ) : (
