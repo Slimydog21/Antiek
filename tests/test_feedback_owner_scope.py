@@ -5,6 +5,7 @@ from __future__ import annotations
 import duckdb
 from fastapi.testclient import TestClient
 
+from interfaces.research.api.account_memory_identity import derive_owner_from_verified_email
 from interfaces.research.api.app import create_app
 from substrate.auth import mint_magic_link_token
 
@@ -42,8 +43,8 @@ def test_verified_magic_link_subjects_mint_distinct_durable_owners(
     assert me_a.status_code == me_b.status_code == 200
     owner_a = me_a.json()["user_id"]
     owner_b = me_b.json()["user_id"]
-    assert owner_a.startswith("user:magic_link:")
-    assert owner_b.startswith("user:magic_link:")
+    assert owner_a == derive_owner_from_verified_email(_EMAIL_A)
+    assert owner_b == derive_owner_from_verified_email(_EMAIL_B)
     assert owner_a != owner_b
 
     with duckdb.connect(str(db_path), read_only=True) as con:

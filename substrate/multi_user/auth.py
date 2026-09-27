@@ -25,6 +25,7 @@ from substrate.auth.magic_link import (
     mint_session_cookie as _mint_signed_session_cookie,
 )
 from substrate.graph import default_db_path
+from substrate.owner_identity import derive_owner_from_verified_email
 
 _PROVIDER_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 _SUBJECT_RE = re.compile(r"^[\x20-\x7e]{1,256}$")
@@ -154,6 +155,11 @@ def subject_owner_id(provider: str, subject: str) -> str:
     """Derive the only legal owner ID for a verified provider subject."""
 
     normalized_provider, normalized_subject = normalize_subject(provider, subject)
+    if normalized_provider == "magic_link":
+        owner_user_id = derive_owner_from_verified_email(normalized_subject)
+        if owner_user_id is None:
+            raise AuthError("invalid authenticated subject")
+        return owner_user_id
     digest = hashlib.sha256(normalized_subject.encode("ascii")).hexdigest()[:32]
     return f"user:{normalized_provider}:{digest}"
 
