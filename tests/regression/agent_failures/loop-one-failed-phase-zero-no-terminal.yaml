@@ -40,11 +40,24 @@ actual_failure: |
   investigation.completed row.
 
 harness_check_that_now_catches: |
-  GAP
+  orchestration/loop_one/orchestrator.py now reports phase=1 at both owner-model
+  refusals and, in the phase loop, sets ctx.failed_phase to the 1-based position
+  of the phase that returned False when the phase left it unset, so the payload
+  always validates and the chase gate still sees a failed run.
+  tests/test_loop_one_failed_terminal.py drives the real start handler against
+  a temp event log, awaits the loop_one:<id> task, and asserts exactly one
+  investigation.failed row with the expected phase, no exception on the task,
+  and no chase child after a silent phase-7 failure.
 
-fix_commit: GAP
+fix_commit: LB-3a0
 
 notes: |
-  LB-3a0. The fix changes only orchestration/loop_one/orchestrator.py; the
-  schema keeps phase ge=1. The regression tests will live in
-  tests/test_loop_one_failed_terminal.py.
+  LB-3a0. fix_commit names the commit "fix(loop-one): a failed run writes its
+  terminal (LB-3a0)" on branch fix/lb3a0-failed-terminal-20260927, which
+  directly follows the commit that filed this fixture as a GAP. The schema
+  keeps phase ge=1. Hand mutations (restoring phase=0 at either owner-model
+  site, `ctx.failed_phase or 0`, a 0-based loop position, dropping the
+  failed_phase assignment, overwriting a phase's own failed_phase) each turn
+  at least one test in that file red. Out of scope here: an exception other
+  than OwnerByotDispatchUnavailable escaping _run_investigation still ends the
+  detached task without a terminal row.
