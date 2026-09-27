@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS companion_document_evidence (
   scope_id VARCHAR NOT NULL,
   kind VARCHAR NOT NULL CHECK (kind IN ('claim', 'open_question', 'insight')),
   anchor VARCHAR NOT NULL CHECK (
-    regexp_full_match(anchor, '(node:[^\\s#]{1,256})|(event:[^\\s#]{1,256}#[0-9]{1,6})')
+    regexp_full_match(anchor, '(node:[^\\s\\x1f#]{1,256})|(event:[^\\s\\x1f#]{1,256}#[0-9]{1,6})')
   ),
   thread_ids_json VARCHAR NOT NULL,
   doc_ids_json VARCHAR NOT NULL,
