@@ -20,7 +20,10 @@ from substrate.write.derived_asset_boundary import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-OWNED_RUNTIME = (ROOT / "substrate/graph/schema.py",)
+OWNED_RUNTIME = (
+    ROOT / "substrate/graph/schema.py",
+    ROOT / "substrate/write/revision_snapshot.py",
+)
 def test_schema_creates_only_owned_derived_asset_tables() -> None:
     created = set(
         re.findall(

@@ -303,21 +303,34 @@ def test_t2_1_heading_level_caps_at_h6(db_path: str) -> None:
 
 
 def _seed_ordering(db_path: str) -> str:
-    # Ties are inserted in REVERSE id order so a sort on the first key alone
-    # (M2.1) falls back to insertion order and is observably wrong.
+    # Every tie group appears twice: once inserted in id order, once in reverse
+    # id order. A tie-break by insertion order fails the reversed groups and a
+    # tie-break by reverse insertion order fails the forward ones, so only an
+    # order by the id itself (M2.1's missing second key) passes.
     with connect_write(db_path, purpose="test/w3-2") as con:
         insert_deliverable(con, title="Order", deliverable_kind="research_memo",
                            deliverable_id="dlv-o")
+        # Root tie at section_index 0, reversed.
         insert_section(con, deliverable_id="dlv-o", section_index=0, title="Z",
                        section_id="sec-z")
         insert_section(con, deliverable_id="dlv-o", section_index=0, title="A",
                        section_id="sec-a")
         insert_section(con, deliverable_id="dlv-o", section_index=-1, title="First",
                        section_id="sec-first")
+        # Root tie at section_index 7, forward.
+        insert_section(con, deliverable_id="dlv-o", section_index=7, title="M",
+                       section_id="sec-m")
+        insert_section(con, deliverable_id="dlv-o", section_index=7, title="N",
+                       section_id="sec-n")
+        # Child tie under sec-a, reversed; child tie under sec-z, forward.
         insert_section(con, deliverable_id="dlv-o", section_index=0, title="A.2",
                        section_id="sec-a2", parent_section_id="sec-a")
         insert_section(con, deliverable_id="dlv-o", section_index=0, title="A.1",
                        section_id="sec-a1", parent_section_id="sec-a")
+        insert_section(con, deliverable_id="dlv-o", section_index=0, title="Z.1",
+                       section_id="sec-z1", parent_section_id="sec-z")
+        insert_section(con, deliverable_id="dlv-o", section_index=0, title="Z.2",
+                       section_id="sec-z2", parent_section_id="sec-z")
         # A parent outside this deliverable surfaces the section at the root,
         # exactly as build_outline_tree does.
         insert_deliverable(con, title="Elsewhere", deliverable_kind="research_memo",
@@ -326,11 +339,12 @@ def _seed_ordering(db_path: str) -> str:
                        title="Elsewhere", section_id="sec-elsewhere")
         insert_section(con, deliverable_id="dlv-o", section_index=5, title="Orphan",
                        section_id="sec-orphan", parent_section_id="sec-elsewhere")
+        # Block tie in sec-a, reversed; block tie in sec-a1, forward.
         for obid in ("oblk-c", "oblk-b", "oblk-a"):
             _user_block(con, obid, "sec-a", 3, f"text {obid}")
         _user_block(con, "oblk-0", "sec-a", 1, "text oblk-0")
-        _user_block(con, "oblk-z1", "sec-a1", 0, "in a1")
-        _user_block(con, "oblk-z0", "sec-a1", 0, "in a1 too")
+        _user_block(con, "oblk-z0", "sec-a1", 0, "in a1")
+        _user_block(con, "oblk-z1", "sec-a1", 0, "in a1 too")
     return "dlv-o"
 
 
@@ -343,7 +357,8 @@ def test_t2_2_ties_order_by_id_and_inventory_matches_build_outline_tree(db_path:
         section_order.append((b.group(1), int(b.group(2))))
     assert section_order == [
         ("sec-first", 0), ("sec-a", 0), ("sec-a1", 1), ("sec-a2", 1),
-        ("sec-z", 0), ("sec-orphan", 0),
+        ("sec-z", 0), ("sec-z1", 1), ("sec-z2", 1), ("sec-orphan", 0),
+        ("sec-m", 0), ("sec-n", 0),
     ]
     assert _block_ids(snap) == ["oblk-0", "oblk-a", "oblk-b", "oblk-c", "oblk-z0", "oblk-z1"]
 
@@ -367,10 +382,12 @@ def test_t2_2_ties_order_by_id_and_inventory_matches_build_outline_tree(db_path:
     assert editor_order == _block_ids(snap)
 
 
-def test_t2_2_bytes_identical_across_calls_and_fresh_subprocesses(db_path: str) -> None:
-    ids = _seed_matrix(db_path)
-    did = _seed_ordering(db_path)
-    for deliverable_id in (ids["deliverable_id"], did):
+@pytest.mark.parametrize("seed", ["matrix", "ordering"])
+def test_t2_2_bytes_identical_across_calls_and_fresh_subprocesses(
+    db_path: str, seed: str,
+) -> None:
+    did = _seed_matrix(db_path)["deliverable_id"] if seed == "matrix" else _seed_ordering(db_path)
+    for deliverable_id in (did,):
         first = _snap(db_path, deliverable_id)
         second = _snap(db_path, deliverable_id)
         assert first == second
@@ -692,11 +709,13 @@ def test_t2_7_manifest_is_canonical_and_hashes_match_duckdb(db_path: str) -> Non
     assert snap.content_sha256 == hashlib.sha256(snap.canonical_html.encode("utf-8")).hexdigest()
     mem = duckdb.connect(":memory:")
     try:
-        duck_manifest, duck_content = mem.execute(
+        duck_row = mem.execute(
             "SELECT sha256(?), sha256(?)", [snap.manifest_json, snap.canonical_html],
         ).fetchone()
     finally:
         mem.close()
+    assert duck_row is not None
+    duck_manifest, duck_content = duck_row
     assert (duck_manifest, duck_content) == (snap.manifest_sha256, snap.content_sha256)
 
 
@@ -774,14 +793,14 @@ def test_t2_8_reads_never_write(db_path: str, monkeypatch: pytest.MonkeyPatch) -
 def test_t2_8_snapshot_inside_a_write_transaction_leaves_it_committable(db_path: str) -> None:
     # W3-3 snapshots inside its write transaction. A read that raised there
     # (for example probing a missing attribution table) would abort the whole
-    # transaction; LockedConnection.transaction() would then refuse to commit.
+    # transaction, even if the probe caught the error; LockedConnection.transaction()
+    # would then raise TransactionAborted on exit instead of committing.
     ids = _seed_matrix(db_path)
-    with connect_write(db_path, purpose="test/w3-2") as con:
-        with con.transaction():
-            _user_block(con, "oblk-in-txn", "sec-b", 7, "placed in the txn")
-            snap = snapshot_deliverable(con, ids["deliverable_id"])
-            assert "oblk-in-txn" in _block_ids(snap)  # sees its own txn's write
-            _user_block(con, "oblk-after-snapshot", "sec-b", 8, "still writable")
+    with connect_write(db_path, purpose="test/w3-2") as con, con.transaction():
+        _user_block(con, "oblk-in-txn", "sec-b", 7, "placed in the txn")
+        snap = snapshot_deliverable(con, ids["deliverable_id"])
+        assert "oblk-in-txn" in _block_ids(snap)  # sees its own txn's write
+        _user_block(con, "oblk-after-snapshot", "sec-b", 8, "still writable")
     after = _snap(db_path, ids["deliverable_id"])
     assert {"oblk-in-txn", "oblk-after-snapshot"} <= set(_block_ids(after))
 
