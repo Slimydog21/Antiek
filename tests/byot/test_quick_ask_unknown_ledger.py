@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -131,3 +132,57 @@ def test_v4_journal_keeps_existing_receipt_and_adds_nullable_precise_cost(
         "saved answer", "r" * 64, "length",
     )
     assert row.quote_estimate_usd is None and row.cost_usd_estimate is None
+
+
+def test_recent_quick_ask_read_is_owner_scoped_bound_and_fixed_at_ten(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "usage.sqlite3"
+    ledger = ByotUsageLedger(path)
+    ids = [str(uuid4()) for _ in range(12)]
+    for operation_id in ids:
+        ledger.prepare_operation(
+            "key-a", "owner-a", f"quick-ask:{operation_id}", 1,
+            "a" * 64, request_digest="b" * 64, quote_estimate_usd="0.01",
+        )
+        ledger.mark_operation_sent("owner-a", f"quick-ask:{operation_id}")
+    legacy = str(uuid4())
+    prepared = str(uuid4())
+    foreign = str(uuid4())
+    ledger.prepare_operation(
+        "key-a", "owner-a", f"quick-ask:{legacy}", 1, "a" * 64,
+    )
+    ledger.mark_operation_sent("owner-a", f"quick-ask:{legacy}")
+    ledger.prepare_operation(
+        "key-a", "owner-a", f"quick-ask:{prepared}", 1,
+        "a" * 64, request_digest="b" * 64, quote_estimate_usd="0.01",
+    )
+    ledger.prepare_operation(
+        "key-b", "owner-b", f"quick-ask:{foreign}", 1,
+        "a" * 64, request_digest="b" * 64, quote_estimate_usd="0.01",
+    )
+    ledger.mark_operation_sent("owner-b", f"quick-ask:{foreign}")
+    with sqlite3.connect(path) as con:
+        con.execute(
+            "UPDATE byot_operation_journal SET request_digest = ?"
+            " WHERE owner_user_id = ? AND operation_id = ?",
+            ("b" * 64, "owner-a", f"quick-ask:{legacy}"),
+        )
+        for index, operation_id in enumerate(ids):
+            con.execute(
+                "UPDATE byot_operation_journal SET created_at = ?"
+                " WHERE owner_user_id = ? AND operation_id = ?",
+                (f"2026-09-27T00:00:{index:02d}+00:00", "owner-a",
+                 f"quick-ask:{operation_id}"),
+            )
+    rows = ByotUsageLedger(path, create=False).recent_quick_ask_operations("owner-a")
+    assert [row.operation_id for row in rows] == [
+        f"quick-ask:{operation_id}" for operation_id in reversed(ids[2:])
+    ]
+    assert len(rows) == 10
+    assert all(row.owner_user_id == "owner-a" for row in rows)
+    assert [row.operation_id for row in ledger.recent_quick_ask_operations("owner-b")] == [
+        f"quick-ask:{foreign}",
+    ]
+    with pytest.raises(ValueError):
+        ledger.recent_quick_ask_operations("")

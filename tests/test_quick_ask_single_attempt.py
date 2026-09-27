@@ -659,3 +659,178 @@ def test_paid_endpoint_refuses_simple_form_content_type(route) -> None:
     assert response.status_code == 415
     assert response.json()["detail"] == "quick_ask_json_required"
     assert provider.calls == []
+
+
+def test_recent_receipts_recover_answers_without_model_or_provider_io(
+    route, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, provider, ledger, _, _, identity, _ = route
+    settled = _body(question="private settled question")
+    settled_payload = {
+        **settled, "quote_digest": _quote(client, settled)["quote_digest"],
+    }
+    provider.finish_reason = "length"
+    provider.raw_usage = {"input_tokens": 100_000, "output_tokens": 10}
+    first = client.post("/research/quick-ask", json=settled_payload)
+    assert first.status_code == 200 and first.json()[
+        "reported_usage_estimate_exceeds_quote"
+    ] is True
+    unknown = _body(question="private unknown question")
+    unknown_payload = {
+        **unknown, "quote_digest": _quote(client, unknown)["quote_digest"],
+    }
+    provider.raw_usage = {}
+    second = client.post("/research/quick-ask", json=unknown_payload)
+    assert second.status_code == 200 and second.json()["usage_basis"] == "charge_unknown"
+    sent_id = str(uuid4())
+    pending_id = str(uuid4())
+    prepared_id = str(uuid4())
+    for operation_id in (sent_id, pending_id, prepared_id):
+        ledger.prepare_operation(
+            "user-owner-model", _OWNER, f"quick-ask:{operation_id}", 1,
+            "a" * 64, request_digest="b" * 64, quote_estimate_usd="0.001",
+        )
+    ledger.mark_operation_sent(_OWNER, f"quick-ask:{sent_id}")
+    ledger.mark_operation_sent(_OWNER, f"quick-ask:{pending_id}")
+    ledger.record_operation_result(
+        _OWNER, f"quick-ask:{pending_id}", actual_cents=1,
+        evidence_sha256="e" * 64, dispatch_event_id="event-pending",
+        provider_id="user-owner-model", model_id=_MODEL,
+        result_text="pending answer must stay hidden", cost_usd_estimate="0.001",
+    )
+    # Equal UUIDs in distinct owner partitions must remain distinct.
+    ledger.prepare_operation(
+        "foreign-key", "owner-b", f"quick-ask:{settled['operation_id']}", 1,
+        "c" * 64, request_digest="d" * 64, quote_estimate_usd="0.001",
+    )
+    ledger.mark_operation_sent("owner-b", f"quick-ask:{settled['operation_id']}")
+    before = {
+        operation_id: ledger.operation(_OWNER, f"quick-ask:{operation_id}")
+        for operation_id in (settled["operation_id"], unknown["operation_id"], sent_id,
+                             pending_id, prepared_id)
+    }
+    held_before = ledger.key_usage("user-owner-model", _OWNER)
+    assert held_before is not None
+
+    def unexpected(*args: object, **kwargs: object) -> None:
+        raise AssertionError("receipt recovery must not resolve or call a model")
+
+    monkeypatch.setattr(quick_ask, "_quote", unexpected)
+    monkeypatch.setattr(quick_ask, "dispatch_talk_to_book_byot", unexpected)
+    monkeypatch.setattr(models_admin, "_load_registry", unexpected)
+    monkeypatch.setattr(models_admin, "_credential_metadata", unexpected)
+    response = client.get("/research/quick-ask/recent")
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "private, no-store"
+    operations = response.json()["operations"]
+    by_id = {item["operation_id"]: item for item in operations}
+    assert set(by_id) == {settled["operation_id"], unknown["operation_id"],
+                          sent_id, pending_id}
+    assert [item["created_at"] for item in operations] == sorted(
+        (item["created_at"] for item in operations), reverse=True,
+    )
+    recovered = by_id[settled["operation_id"]]
+    assert recovered["status"] == "answered"
+    assert recovered["result"] == {
+        **first.json(), "usage_basis": "prior_receipt", "input_tokens": None,
+        "output_tokens": None, "replayed": True,
+    }
+    assert by_id[unknown["operation_id"]]["status"] == "answered"
+    assert by_id[unknown["operation_id"]]["result"]["usage_basis"] == "charge_unknown"
+    assert by_id[unknown["operation_id"]]["result"]["estimated_cost_usd"] is None
+    for operation_id in (sent_id, pending_id):
+        assert by_id[operation_id]["status"] == "charge_unknown"
+        assert by_id[operation_id]["result"] is None
+    assert "private settled question" not in response.text
+    assert "private unknown question" not in response.text
+    assert "pending answer must stay hidden" not in response.text
+    assert "event-pending" not in response.text
+    for row in before.values():
+        assert row is not None
+        assert row.authority_digest not in response.text
+        assert row.request_digest not in response.text
+    assert "foreign-key" not in response.text
+    assert len(provider.calls) == 2
+    assert before == {
+        operation_id: ledger.operation(_OWNER, f"quick-ask:{operation_id}")
+        for operation_id in before
+    }
+    assert ledger.key_usage("user-owner-model", _OWNER) == held_before
+
+    identity["owner"] = "owner-b"
+    other = client.get("/research/quick-ask/recent")
+    assert other.status_code == 200
+    assert other.json()["operations"] == [{
+        "operation_id": settled["operation_id"],
+        "created_at": ledger.operation(
+            "owner-b", f"quick-ask:{settled['operation_id']}"
+        ).created_at,
+        "status": "charge_unknown",
+        "result": None,
+    }]
+    assert "one answer" not in other.text
+    identity["method"] = "unauthenticated_local"
+    assert client.get("/research/quick-ask/recent").status_code == 401
+
+
+def test_recent_receipts_reject_caller_owner_override(route) -> None:
+    client, provider, _, _, _, _, _ = route
+    response = client.get("/research/quick-ask/recent?owner_user_id=owner-b")
+    assert response.status_code == 400
+    assert provider.calls == []
+
+
+def test_recent_receipts_fail_closed_on_malformed_historical_rows(route) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    assert client.post("/research/quick-ask", json=payload).status_code == 200
+    malformed_id = str(uuid4())
+    ledger.prepare_operation(
+        "user-owner-model", _OWNER, f"quick-ask:{malformed_id}", 1,
+        "a" * 64, request_digest="b" * 64, quote_estimate_usd="0.01",
+    )
+    ledger.mark_operation_sent(_OWNER, f"quick-ask:{malformed_id}")
+    ledger.prepare_operation(
+        "user-owner-model", _OWNER, "quick-ask:not-a-uuid", 1,
+        "a" * 64, request_digest="b" * 64, quote_estimate_usd="0.01",
+    )
+    ledger.mark_operation_sent(_OWNER, "quick-ask:not-a-uuid")
+    with sqlite3.connect(ledger._db_path) as con:
+        con.execute(
+            "UPDATE byot_operation_journal SET cost_usd_estimate = 'NaN'"
+            " WHERE owner_user_id = ? AND operation_id = ?",
+            (_OWNER, f"quick-ask:{body['operation_id']}"),
+        )
+        con.execute(
+            "UPDATE byot_operation_journal SET created_at = 'not a date'"
+            " WHERE owner_user_id = ? AND operation_id = ?",
+            (_OWNER, f"quick-ask:{malformed_id}"),
+        )
+    response = client.get("/research/quick-ask/recent")
+    assert response.status_code == 200, response.text
+    assert response.json() == {"operations": [{
+        "operation_id": body["operation_id"],
+        "created_at": ledger.operation(
+            _OWNER, f"quick-ask:{body['operation_id']}"
+        ).created_at,
+        "status": "charge_unknown",
+        "result": None,
+    }]}
+    assert "one answer" not in response.text
+    assert len(provider.calls) == 1
+
+
+def test_recent_receipts_do_not_create_missing_ledger(
+    route, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    client, provider, _, _, _, _, app = route
+    del app.state.quick_ask_usage_ledger
+    missing_path = tmp_path / "missing.sqlite3"
+    monkeypatch.setenv("ANTIEK_BYOT_USAGE_DB", str(missing_path))
+    response = client.get("/research/quick-ask/recent")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "quick_ask_receipts_unavailable"}
+    assert response.headers["cache-control"] == "private, no-store"
+    assert not missing_path.exists()
+    assert provider.calls == []

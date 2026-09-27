@@ -5,13 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sqlite3
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_CEILING, Decimal, InvalidOperation
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from starlette.concurrency import run_in_threadpool
 
@@ -34,6 +35,7 @@ _ROLE = "thought_partner"
 _MAX_OUTPUT_TOKENS = 1024
 _MAX_BODY_BYTES = 16_384
 _PRICE_MAX_AGE = timedelta(days=30)
+_RECENT_CACHE_CONTROL = "private, no-store"
 _SNAPSHOT_DATE = re.compile(r"(?<!\d)(20\d\d-\d\d-\d\d)(?!\d)")
 _WARNING = (
     "Estimate, not a provider cap. A network failure after sending may leave "
@@ -131,9 +133,11 @@ def _event_scope(owner: str, operation: UUID) -> str:
     return f"quick-ask-{owner_hash}-{operation.hex}"
 
 
-def _ledger(request: Request) -> ByotUsageLedger:
+def _ledger(request: Request, *, read_only: bool = False) -> ByotUsageLedger:
     configured = getattr(request.app.state, "quick_ask_usage_ledger", None)
-    return configured if isinstance(configured, ByotUsageLedger) else ByotUsageLedger()
+    return configured if isinstance(configured, ByotUsageLedger) else ByotUsageLedger(
+        create=not read_only,
+    )
 
 
 def _request_digest(owner: str, operation_id: str, body: QuickAskExecute) -> str:
@@ -162,8 +166,9 @@ def _request_digest(owner: str, operation_id: str, body: QuickAskExecute) -> str
 
 def _settled_estimates(row: OperationRow) -> tuple[Decimal, Decimal] | None:
     if (
-        row.actual_cents is None or row.cost_usd_estimate is None
-        or row.quote_estimate_usd is None
+        not isinstance(row.actual_cents, int)
+        or not isinstance(row.cost_usd_estimate, str)
+        or not isinstance(row.quote_estimate_usd, str)
         or len(row.cost_usd_estimate) > 80 or len(row.quote_estimate_usd) > 80
     ):
         return None
@@ -239,6 +244,52 @@ def _terminal_replay(
         "sent", "settlement_pending", "unknown", "settled",
     } else "quick_ask_operation_conflict"
     raise HTTPException(status_code=409, detail=detail)
+
+
+def _recent_receipt(row: OperationRow, operation_id: str) -> dict[str, object] | None:
+    if (
+        not isinstance(row.result_text, str) or not row.result_text
+        or not isinstance(row.provider_id, str) or not row.provider_id
+        or not isinstance(row.model_id, str) or not row.model_id
+    ):
+        return None
+    if row.state == "unknown":
+        return {
+            "answer": row.result_text,
+            "operation_id": operation_id,
+            "provider_id": row.provider_id,
+            "model_id": row.model_id,
+            "estimated_cost_usd": None,
+            "reported_usage_estimate_exceeds_quote": None,
+            "usage_basis": "charge_unknown",
+            "input_tokens": None,
+            "output_tokens": None,
+            "replayed": True,
+            "incomplete": row.finish_reason in {"length", "content_filter"},
+        }
+    if (
+        row.state != "settled"
+        or not isinstance(row.evidence_sha256, str) or not row.evidence_sha256
+        or not isinstance(row.dispatch_event_id, str) or not row.dispatch_event_id
+    ):
+        return None
+    estimates = _settled_estimates(row)
+    if estimates is None:
+        return None
+    cost_estimate, quote_estimate = estimates
+    return {
+        "answer": row.result_text,
+        "operation_id": operation_id,
+        "provider_id": row.provider_id,
+        "model_id": row.model_id,
+        "estimated_cost_usd": float(cost_estimate),
+        "reported_usage_estimate_exceeds_quote": cost_estimate > quote_estimate,
+        "usage_basis": "prior_receipt",
+        "input_tokens": None,
+        "output_tokens": None,
+        "replayed": True,
+        "incomplete": row.finish_reason in {"length", "content_filter"},
+    }
 
 
 def _quote(request: Request, owner: str, body: QuickAskInput) -> _Quote:
@@ -320,6 +371,55 @@ async def list_quick_ask_models(request: Request) -> dict[str, object]:
                 "price_source": quote.price_source,
             })
     return {"models": rows, "count": len(rows)}
+
+
+@quick_ask_router.get("/recent")
+async def recent_quick_ask(request: Request, response: Response) -> dict[str, object]:
+    try:
+        owner = _owner(request)
+    except HTTPException:
+        raise HTTPException(
+            status_code=401, detail="signed_owner_required",
+            headers={"Cache-Control": _RECENT_CACHE_CONTROL},
+        ) from None
+    if request.query_params:
+        raise HTTPException(
+            status_code=400, detail="quick_ask_request_invalid",
+            headers={"Cache-Control": _RECENT_CACHE_CONTROL},
+        )
+    response.headers["Cache-Control"] = _RECENT_CACHE_CONTROL
+    try:
+        rows = await run_in_threadpool(
+            _ledger(request, read_only=True).recent_quick_ask_operations, owner,
+        )
+    except sqlite3.Error:
+        raise HTTPException(
+            status_code=503, detail="quick_ask_receipts_unavailable",
+            headers={"Cache-Control": _RECENT_CACHE_CONTROL},
+        ) from None
+    operations: list[dict[str, object]] = []
+    for row in rows:
+        if not isinstance(row.operation_id, str) or not row.operation_id.startswith(
+            "quick-ask:"
+        ):
+            continue
+        operation_id = row.operation_id.removeprefix("quick-ask:")
+        try:
+            if str(UUID(operation_id)) != operation_id:
+                continue
+            created_at = datetime.fromisoformat(row.created_at)
+            if created_at.tzinfo is None:
+                continue
+        except (TypeError, ValueError):
+            continue
+        result = _recent_receipt(row, operation_id)
+        operations.append({
+            "operation_id": operation_id,
+            "created_at": row.created_at,
+            "status": "answered" if result is not None else "charge_unknown",
+            "result": result,
+        })
+    return {"operations": operations}
 
 
 @quick_ask_router.post("/quote")

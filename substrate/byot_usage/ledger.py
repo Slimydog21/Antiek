@@ -128,10 +128,12 @@ class ByotUsageLedger:
         db_path: str | Path | None = None,
         *,
         busy_timeout_ms: int = _BUSY_TIMEOUT_MS,
+        create: bool = True,
     ) -> None:
         self._db_path = str(db_path) if db_path else str(default_byot_usage_db_path())
         self._busy_timeout_ms = busy_timeout_ms
-        self._ensure_schema()
+        if create:
+            self._ensure_schema()
 
     # ------------------------------------------------------------------
     # Schema bootstrap
@@ -288,6 +290,31 @@ class ByotUsageLedger:
         finally:
             con.close()
         return OperationRow(*row) if row is not None else None
+
+    def recent_quick_ask_operations(self, owner_user_id: str) -> list[OperationRow]:
+        """Read at most ten sent, request-bound Quick Ask rows for one owner."""
+        if not owner_user_id:
+            raise ValueError("owner_user_id must be non-empty")
+        con = sqlite3.connect(f"{Path(self._db_path).resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            con.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
+            rows = con.execute(
+                "SELECT api_key_id, owner_user_id, operation_id, state, reserved_cents,"
+                " actual_cents, authority_digest, evidence_sha256, provider_id, model_id,"
+                " dispatch_event_id, result_text, created_at, updated_at,"
+                " request_digest, finish_reason, quote_estimate_usd, cost_usd_estimate"
+                " FROM byot_operation_journal WHERE owner_user_id = ?"
+                " AND operation_id LIKE 'quick-ask:%'"
+                " AND state IN ('sent', 'settlement_pending', 'unknown', 'settled')"
+                " AND length(request_digest) = 64"
+                " AND request_digest NOT GLOB '*[^0-9a-f]*'"
+                " AND quote_estimate_usd IS NOT NULL"
+                " ORDER BY created_at DESC, operation_id DESC LIMIT 10",
+                (owner_user_id,),
+            ).fetchall()
+        finally:
+            con.close()
+        return [OperationRow(*row) for row in rows]
 
     def snapshot(self, owner_user_id: str) -> list[KeyUsageRow]:
         """Return usage rows for all keys owned by ``owner_user_id``."""
