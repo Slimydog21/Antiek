@@ -821,6 +821,49 @@ def test_recent_receipts_fail_closed_on_malformed_historical_rows(route) -> None
     assert len(provider.calls) == 1
 
 
+def test_recent_receipts_page_past_newer_malformed_rows(route, monkeypatch) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    first = client.post("/research/quick-ask", json=payload)
+    assert first.status_code == 200
+    with sqlite3.connect(ledger._db_path) as con:
+        con.execute(
+            "UPDATE byot_operation_journal SET created_at = ?"
+            " WHERE owner_user_id = ? AND operation_id = ?",
+            ("2026-09-26T00:00:00+00:00", _OWNER,
+             f"quick-ask:{body['operation_id']}"),
+        )
+        for index in range(35):
+            con.execute(
+                "INSERT INTO byot_operation_journal"
+                " (api_key_id, owner_user_id, operation_id, state, reserved_cents,"
+                " authority_digest, created_at, updated_at, request_digest,"
+                " quote_estimate_usd) VALUES (?, ?, ?, 'sent', 1, ?, ?, ?, ?, ?)",
+                ("user-owner-model", _OWNER, f"quick-ask:invalid-{index:02d}",
+                 "a" * 64, "2026-09-27T00:00:00+00:00",
+                 "2026-09-27T00:00:00+00:00", "b" * 64, "0.01"),
+            )
+
+    def unexpected(*args: object, **kwargs: object) -> None:
+        raise AssertionError("receipt recovery must not call the model path")
+
+    monkeypatch.setattr(quick_ask, "_quote", unexpected)
+    monkeypatch.setattr(quick_ask, "dispatch_talk_to_book_byot", unexpected)
+    response = client.get("/research/quick-ask/recent")
+    assert response.status_code == 200, response.text
+    assert response.json()["operations"] == [{
+        "operation_id": body["operation_id"],
+        "created_at": "2026-09-26T00:00:00+00:00",
+        "status": "answered",
+        "result": {
+            **first.json(), "usage_basis": "prior_receipt",
+            "input_tokens": None, "output_tokens": None, "replayed": True,
+        },
+    }]
+    assert len(provider.calls) == 1
+
+
 def test_recent_receipts_do_not_create_missing_ledger(
     route, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:

@@ -399,19 +399,7 @@ async def recent_quick_ask(request: Request, response: Response) -> dict[str, ob
         ) from None
     operations: list[dict[str, object]] = []
     for row in rows:
-        if not isinstance(row.operation_id, str) or not row.operation_id.startswith(
-            "quick-ask:"
-        ):
-            continue
         operation_id = row.operation_id.removeprefix("quick-ask:")
-        try:
-            if str(UUID(operation_id)) != operation_id:
-                continue
-            created_at = datetime.fromisoformat(row.created_at)
-            if created_at.tzinfo is None:
-                continue
-        except (TypeError, ValueError):
-            continue
         result = _recent_receipt(row, operation_id)
         operations.append({
             "operation_id": operation_id,

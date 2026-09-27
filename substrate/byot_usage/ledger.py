@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final
+from uuid import UUID
 
 __all__ = [
     "ByotUsageLedger",
@@ -292,13 +293,16 @@ class ByotUsageLedger:
         return OperationRow(*row) if row is not None else None
 
     def recent_quick_ask_operations(self, owner_user_id: str) -> list[OperationRow]:
-        """Read at most ten sent, request-bound Quick Ask rows for one owner."""
+        """Read ten valid Quick Ask identities, paging past malformed rows."""
         if not owner_user_id:
             raise ValueError("owner_user_id must be non-empty")
         con = sqlite3.connect(f"{Path(self._db_path).resolve().as_uri()}?mode=ro", uri=True)
+        rows: list[OperationRow] = []
+        cursor: tuple[object, object] | None = None
         try:
             con.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
-            rows = con.execute(
+            con.execute("BEGIN")
+            query = (
                 "SELECT api_key_id, owner_user_id, operation_id, state, reserved_cents,"
                 " actual_cents, authority_digest, evidence_sha256, provider_id, model_id,"
                 " dispatch_event_id, result_text, created_at, updated_at,"
@@ -309,12 +313,44 @@ class ByotUsageLedger:
                 " AND length(request_digest) = 64"
                 " AND request_digest NOT GLOB '*[^0-9a-f]*'"
                 " AND quote_estimate_usd IS NOT NULL"
-                " ORDER BY created_at DESC, operation_id DESC LIMIT 10",
-                (owner_user_id,),
-            ).fetchall()
+            )
+            while len(rows) < 10:
+                page_query = query
+                params: tuple[object, ...] = (owner_user_id,)
+                if cursor is not None:
+                    page_query += (
+                        " AND (created_at < ? OR"
+                        " (created_at = ? AND operation_id < ?))"
+                    )
+                    params += (cursor[0], cursor[0], cursor[1])
+                page = con.execute(
+                    page_query + " ORDER BY created_at DESC, operation_id DESC LIMIT 32",
+                    params,
+                ).fetchall()
+                if not page:
+                    break
+                for raw in page:
+                    row = OperationRow(*raw)
+                    if not isinstance(row.operation_id, str) or not row.operation_id.startswith(
+                        "quick-ask:"
+                    ):
+                        continue
+                    operation_id = row.operation_id.removeprefix("quick-ask:")
+                    try:
+                        if str(UUID(operation_id)) != operation_id:
+                            continue
+                        created_at = datetime.fromisoformat(row.created_at)
+                        if created_at.tzinfo is None:
+                            continue
+                    except (TypeError, ValueError):
+                        continue
+                    rows.append(row)
+                    if len(rows) == 10:
+                        break
+                cursor = (page[-1][12], page[-1][2])
         finally:
             con.close()
-        return [OperationRow(*row) for row in rows]
+        return rows
 
     def snapshot(self, owner_user_id: str) -> list[KeyUsageRow]:
         """Return usage rows for all keys owned by ``owner_user_id``."""
