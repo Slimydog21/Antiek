@@ -1,9 +1,8 @@
-"""The owner-safe ``evidence_index`` and the refresh receipt row (LB-9a).
+"""The owner-safe evidence store and the refresh receipt row (LB-9a).
 
-THREAD-CONTRACT §1.12 (signed rev 8.10) admits ``evidence_index`` as the
-refs-only evidence base only with an owner-safe id: the owner in the id
-material, or the key ``(owner_user_id, evidence_id)``. This store does both
-(LB-9 spec D1):
+THREAD-CONTRACT §1.12 (signed rev 8.10) admits the refs-only evidence base
+only with an owner-safe id: the owner in the id material, or the key
+``(owner_user_id, evidence_id)``. This store does both (LB-9 spec D1):
 
 - the id material is ``companion_document.v1``, owner, scope, scope id, kind
   and anchor, joined by ``\\x1f``;
@@ -13,12 +12,15 @@ material, or the key ``(owner_user_id, evidence_id)``. This store does both
 - scope and scope id are in the material because one node can sit in a
   project and a document of the same owner.
 
-#3514 keyed the table on ``evidence_id`` alone and minted the id from kind,
-claim text and refs with no owner, so a second owner refreshing the same
-document hit ``Duplicate key "evidence_id: ev-…"`` (compws R2), and its
-``resolve`` answered one owner's id to anyone. ``init_companion_document_schema``
-moves a table of that shape aside to ``evidence_index_legacy_3514`` before it
-creates this one; any other unexpected shape is refused, never guessed at.
+The tables are LB-9a's own, ``companion_document_evidence`` and
+``companion_document_receipts``. #3514 is live on main: its routes read and
+write its own ``evidence_index``, which is keyed on ``evidence_id`` alone and
+mints the id from kind, claim text and refs with no owner, so a second owner
+refreshing the same document hits ``Duplicate key "evidence_id: ev-…"``
+(compws R2, lane A's C1). LB-9a never reads, writes, renames or drops that
+table; it stands beside it. LB-9d retires #3514's table and routes in one
+reviewed change. A table under LB-9a's own name with any other shape is
+refused, never written into.
 
 Rows hold refs only. There is no text column: ``text_sha256`` is the
 server-side hash of the node label (64 hex digits, checked by the DDL too)
@@ -51,8 +53,10 @@ ENTRY_KINDS: Final[tuple[EntryKind, ...]] = get_args(EntryKind)
 #: material changes every id, so it is a reviewed change with a new version.
 ID_MATERIAL_VERSION: Final = "companion_document.v1"
 
-#: Where a #3514-shaped ``evidence_index`` is moved on first init.
-LEGACY_3514_TABLE: Final = "evidence_index_legacy_3514"
+#: LB-9a's own tables. They never share a name with #3514's live
+#: ``evidence_index`` or any of its other tables.
+EVIDENCE_TABLE: Final = "companion_document_evidence"
+RECEIPTS_TABLE: Final = "companion_document_receipts"
 
 # Stored strings back to their literal types; the DDL's CHECKs keep the
 # stored values inside these, so a KeyError here is a corrupt row.
@@ -62,8 +66,8 @@ _KIND_OF: Final[dict[str, EntryKind]] = {k: k for k in ENTRY_KINDS}
 _ANCHOR = re.compile(r"node:[^\s\x1f#]{1,256}|event:[^\s\x1f#]{1,256}#\d{1,6}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
-EVIDENCE_INDEX_DDL: Final = """
-CREATE TABLE IF NOT EXISTS evidence_index (
+EVIDENCE_DDL: Final = """
+CREATE TABLE IF NOT EXISTS companion_document_evidence (
   owner_user_id VARCHAR NOT NULL,
   evidence_id VARCHAR NOT NULL,
   scope VARCHAR NOT NULL CHECK (scope IN ('project', 'document')),
@@ -84,7 +88,7 @@ CREATE TABLE IF NOT EXISTS evidence_index (
   PRIMARY KEY (owner_user_id, evidence_id)
 );
 CREATE INDEX IF NOT EXISTS idx_companion_document_evidence_scope
-  ON evidence_index(owner_user_id, scope, scope_id);
+  ON companion_document_evidence(owner_user_id, scope, scope_id);
 """
 
 RECEIPTS_DDL: Final = """
@@ -108,21 +112,6 @@ _COLUMNS: Final = (
     "pins_json, process_thread_id, process_event_id, confidence, updated_at, text_sha256, refresh_event_id"
 )
 _CURRENT_KEY: Final = ["owner_user_id", "evidence_id"]
-_LEGACY_3514_COLUMNS: Final = frozenset(
-    {
-        "evidence_id",
-        "owner_user_id",
-        "scope",
-        "scope_id",
-        "kind",
-        "refs_json",
-        "tombstone",
-        "rebuilt_at",
-    }
-)
-# #3514 created this index on its table; DuckDB will not rename a table
-# while an index depends on it, and the index is a cache.
-_LEGACY_3514_INDEX: Final = "idx_evidence_index_scope"
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,33 +228,22 @@ def _primary_key(con: Any, table: str) -> list[str]:
 
 
 def _current_shape(con: Any) -> bool:
-    return _primary_key(con, "evidence_index") == _CURRENT_KEY and "refresh_event_id" in _columns(
-        con, "evidence_index"
+    return _primary_key(con, EVIDENCE_TABLE) == _CURRENT_KEY and "refresh_event_id" in _columns(
+        con, EVIDENCE_TABLE
     )
 
 
 def init_companion_document_schema(con: LockedConnection) -> None:
-    """Create both tables (idempotent). An ``evidence_index`` of #3514's
-    shape is renamed to ``evidence_index_legacy_3514`` first, in one
-    transaction with the new table's creation; any other shape that is not
-    this one is refused."""
-    if table_exists(con, "evidence_index") and not _current_shape(con):
-        if _columns(con, "evidence_index") != _LEGACY_3514_COLUMNS or _primary_key(
-            con, "evidence_index"
-        ) != ["evidence_id"]:
-            raise RuntimeError(
-                "evidence_index exists with a shape that is neither #3514's nor the owner-safe one; "
-                "refusing to migrate it"
-            )
-        if table_exists(con, LEGACY_3514_TABLE):
-            raise RuntimeError(
-                f"evidence_index has #3514's shape but {LEGACY_3514_TABLE} already exists"
-            )
-        with con.transaction():
-            con.execute(f"DROP INDEX IF EXISTS {_LEGACY_3514_INDEX}")
-            con.execute(f"ALTER TABLE evidence_index RENAME TO {LEGACY_3514_TABLE}")
-            con.execute(EVIDENCE_INDEX_DDL)
-    con.execute(EVIDENCE_INDEX_DDL)
+    """Create LB-9a's two tables (idempotent). Nothing else is touched:
+    #3514's ``evidence_index`` and its other tables keep every column, row
+    and index. A ``companion_document_evidence`` that exists with another
+    shape is refused rather than written into."""
+    if table_exists(con, EVIDENCE_TABLE) and not _current_shape(con):
+        raise RuntimeError(
+            f"{EVIDENCE_TABLE} exists without the owner-safe shape "
+            "(key owner_user_id, evidence_id); refusing to write into it"
+        )
+    con.execute(EVIDENCE_DDL)
     con.execute(RECEIPTS_DDL)
 
 
@@ -349,12 +327,12 @@ def replace_scope(
     init_companion_document_schema(con)
     with con.transaction():
         con.execute(
-            "DELETE FROM evidence_index WHERE owner_user_id = ? AND scope = ? AND scope_id = ?",
+            f"DELETE FROM {EVIDENCE_TABLE} WHERE owner_user_id = ? AND scope = ? AND scope_id = ?",
             [receipt.owner_user_id, receipt.scope, receipt.scope_id],
         )
         if params:
             con.executemany(
-                f"INSERT INTO evidence_index ({_COLUMNS}) VALUES ({', '.join('?' * 15)})",
+                f"INSERT INTO {EVIDENCE_TABLE} ({_COLUMNS}) VALUES ({', '.join('?' * 15)})",
                 params,
             )
         upsert_receipt(con, receipt)
@@ -403,18 +381,18 @@ def _to_row(r: Sequence[Any]) -> EvidenceRow:
 
 
 def _readable(con: Any) -> bool:
-    return table_exists(con, "evidence_index") and _current_shape(con)
+    return table_exists(con, EVIDENCE_TABLE) and _current_shape(con)
 
 
 def read_scope(
     con: Any, *, owner_user_id: str, scope: EntryScope, scope_id: str
 ) -> tuple[EvidenceRow, ...]:
     """One owner's rows for one scope, sorted by id. Empty before the first
-    refresh, and on a database that still holds #3514's table."""
+    refresh. Never reads #3514's ``evidence_index``."""
     if not _readable(con):
         return ()
     rows = con.execute(
-        f"SELECT {_COLUMNS} FROM evidence_index "
+        f"SELECT {_COLUMNS} FROM {EVIDENCE_TABLE} "
         "WHERE owner_user_id = ? AND scope = ? AND scope_id = ? ORDER BY evidence_id",
         [owner_user_id, scope, scope_id],
     ).fetchall()
@@ -427,7 +405,7 @@ def resolve(con: Any, owner_user_id: str, entry_id: str) -> EvidenceRow | None:
     if not _readable(con):
         return None
     row = con.execute(
-        f"SELECT {_COLUMNS} FROM evidence_index WHERE owner_user_id = ? AND evidence_id = ?",
+        f"SELECT {_COLUMNS} FROM {EVIDENCE_TABLE} WHERE owner_user_id = ? AND evidence_id = ?",
         [owner_user_id, entry_id],
     ).fetchone()
     return None if row is None else _to_row(row)
@@ -438,7 +416,7 @@ def read_receipt(
 ) -> CompanionDocumentReceipt | None:
     """The receipt row for ``(owner, scope, scope_id)``, or None when that
     scope was never refreshed."""
-    if not table_exists(con, "companion_document_receipts"):
+    if not table_exists(con, RECEIPTS_TABLE):
         return None
     row = con.execute(
         "SELECT refresh_event_id, content_hash, covered_json, positions_json, membership_digest, "
@@ -464,10 +442,11 @@ def read_receipt(
 
 __all__ = [
     "ENTRY_KINDS",
-    "EVIDENCE_INDEX_DDL",
+    "EVIDENCE_DDL",
+    "EVIDENCE_TABLE",
     "ID_MATERIAL_VERSION",
-    "LEGACY_3514_TABLE",
     "RECEIPTS_DDL",
+    "RECEIPTS_TABLE",
     "SCOPES",
     "CompanionDocumentReceipt",
     "EntryKind",
