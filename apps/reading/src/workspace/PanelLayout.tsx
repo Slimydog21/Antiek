@@ -11,6 +11,7 @@ import { COMPANION_PANEL_ID } from "./companionVisibility";
 import { mothershipForPath } from "./mothershipForPath";
 import { DOCUMENT_PANEL_ID } from "./documentPanel";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
+import ProjectTreeOverlay from "./ProjectTreeOverlay";
 import { useWorkspace } from "./WorkspaceStore";
 import { escOverlayOpen } from "./escapeOverlay";
 import { isTextEditing } from "./shortcuts";
@@ -105,6 +106,7 @@ export function PanelLayout({ mainSlot }: Props) {
   // The strip renders nothing without a router, so neither does its fallback.
   const inRouter = useInRouterContext();
   const tier = useViewportTier();
+  const projectTreeOverlay = tier === "md" && dockLeftIds.includes("shortcuts:projecttree");
   // What the right pane holds follows the route's mothership (the outline in
   // writing, the agents elsewhere), so its name does too. Read through the
   // router's location context: PanelLayout also renders without a router.
@@ -210,7 +212,7 @@ export function PanelLayout({ mainSlot }: Props) {
   // 320px dock cannot fit), and there is no "use a larger screen" banner:
   // the shell around it (5-key dock, quiet header) is the phone design.
   if (tier === "sm") {
-    return <div className="h-full w-full overflow-auto">{mainSlot}</div>;
+    return <div data-cockpit-content tabIndex={-1} className="h-full w-full overflow-auto">{mainSlot}</div>;
   }
 
   const inset = layoutPreset === "omarchy-inset";
@@ -229,7 +231,7 @@ export function PanelLayout({ mainSlot }: Props) {
       <Suspense fallback={inRouter ? <DocumentStripFallback /> : null}>
         <DocumentTabStrip />
       </Suspense>
-      <main className="flex-1 min-w-0 relative overflow-hidden">
+      <main data-cockpit-content tabIndex={-1} className="flex-1 min-w-0 relative overflow-hidden">
         {/* Underlying mainSlot — the route content (the document tabs'
             tabpanel while the strip is mounted) */}
         <div id={DOCUMENT_PANEL_ID} className="absolute inset-0 overflow-auto">{mainSlot}</div>
@@ -344,7 +346,7 @@ export function PanelLayout({ mainSlot }: Props) {
             style={{ width: leftDockWidth }}
             aria-label="Left dock"
           >
-            {dockLeftIds.map((id) => (
+            {dockLeftIds.filter((id) => !projectTreeOverlay || id !== "shortcuts:projecttree").map((id) => (
               <PanelLayoutPanel key={id} id={id} />
             ))}
           </aside>
@@ -400,6 +402,8 @@ export function PanelLayout({ mainSlot }: Props) {
           ))}
         </aside>
       </div>
+
+      {projectTreeOverlay && <ProjectTreeOverlay />}
 
       {/* Fullscreen is never invisible state: a chip says it is on and is
           the pointer path back (Esc restores from any focus too). */}

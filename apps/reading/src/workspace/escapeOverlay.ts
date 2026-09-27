@@ -23,13 +23,24 @@ const SELECTOR = '[data-esc-overlay], [aria-modal="true"]';
 
 /** Is a transient overlay open on screen (not inside a hidden pane or a
  *  closed <details>)? */
-export function escOverlayOpen(root: ParentNode = document): boolean {
+export function escOverlayOpen(root: ParentNode = document, except: Element | null = null): boolean {
   for (const el of root.querySelectorAll<HTMLElement>(SELECTOR)) {
-    if (el.closest("[hidden]")) continue;
+    if (el === except || el.closest("[hidden]")) continue;
     const details = el.parentElement?.closest("details");
     if (details && !details.open) continue;
     if (el.getAttribute("aria-hidden") === "true") continue;
     return true;
   }
   return false;
+}
+
+
+/** Portalled dialogs share a stacking level; the last visible dialog owns Escape. */
+export function topModal(root: ParentNode = document): HTMLElement | null {
+  const dialogs = Array.from(root.querySelectorAll<HTMLElement>('[aria-modal="true"]'));
+  return dialogs.filter((el) => {
+    if (el.closest('[hidden], [aria-hidden="true"]')) return false;
+    const details = el.parentElement?.closest("details");
+    return !details || details.open;
+  }).at(-1) ?? null;
 }

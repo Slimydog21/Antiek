@@ -52,11 +52,22 @@ export default function CompanionPane() {
 
   const active = tabs.find((t) => t.id === activeTabId) ?? null;
   const scroller = useRef<HTMLDivElement>(null);
+  const pendingFocus = useRef(false);
+  const root = useRef<HTMLElement>(null);
   const tabKey = useMemo(() => tabs.map((t) => t.id).join("\u0000"), [tabs]);
   // Re-measured when the tab set changes and when questions land (they
   // title, and so size, the thread tabs).
   const overflow = useStripOverflow(scroller, [tabKey, investigations]);
   const overflowing = overflow.start || overflow.end;
+
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    pendingFocus.current = false;
+    const next = activeTabId
+      ? document.getElementById(agentTabDomId(activeTabId))
+      : root.current?.querySelector<HTMLElement>("[data-new-agent-trigger]");
+    next?.focus();
+  }, [activeTabId, tabKey]);
 
   // The active agent scrolls into view (a key, the menu, a new agent).
   useEffect(() => {
@@ -71,6 +82,7 @@ export default function CompanionPane() {
 
   return (
     <section
+      ref={root}
       aria-label="Companion"
       data-companion-pane
       className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden"
@@ -111,7 +123,11 @@ export default function CompanionPane() {
               summary={summaryOf(tab)}
               active={tab.id === activeTabId}
               onActivate={() => activateAgentTab(tab.id)}
-                onClose={() => closeAgentTabWithUndo(tab, summaryOf(tab))}
+                onClose={() => {
+                  pendingFocus.current = document.getElementById(agentTabDomId(tab.id))
+                    ?.closest("[data-agent-tab]")?.contains(document.activeElement) ?? false;
+                  closeAgentTabWithUndo(tab, summaryOf(tab));
+                }}
               />
             ))}
           </div>
@@ -395,6 +411,7 @@ function NewAgentButton({
   return (
     <div className="relative shrink-0" ref={ref}>
       <button
+        data-new-agent-trigger
         type="button"
         aria-label="New agent"
         aria-expanded={open}

@@ -54,7 +54,7 @@
 export const KEYMAP_DECISION =
   "docs/decisions/mothership-keys-herdr-prefix.md (specs/antiek-mothership/DECISIONS.md D2)";
 
-export type KeymapOrigin = "herdr-default" | "D2" | "legacy-SPR-08";
+export type KeymapOrigin = "herdr-default" | "D2" | "legacy-SPR-08" | "lane-A-proposed";
 export type KeymapScope = "anywhere" | "outside-text";
 export type KeymapTask = "find" | "go" | "panels" | "help";
 export type Platform = "mac" | "other";
@@ -206,7 +206,7 @@ export const KEYMAP: readonly KeymapRow[] = [
   // ── The reader's contents (lane A B2): in a narrow cockpit pane the TOC
   // column folds away (a container query), and this brings it back in the
   // pane. shift+c, beside c (new tab), for "contents".
-  { id: "prefix-reader-toc", action: "reader.tocToggle", prefixKey: "shift+c", scope: "outside-text", origin: "D2", decision: D },
+  { id: "prefix-reader-toc", action: "reader.tocToggle", prefixKey: "shift+c", scope: "outside-text", origin: "lane-A-proposed", decision: "lane A proposal 2026-09-27 (A1c), pending ratification" },
 
   // ── D2 attention inbox (D4): held for the inbox, a no-op until it ships ─
   { id: "prefix-inbox", action: "inbox.toggle", prefixKey: "i", scope: "outside-text", origin: "D2", decision: D },

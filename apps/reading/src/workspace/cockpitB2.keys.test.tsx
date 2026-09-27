@@ -523,3 +523,184 @@ describe("B2-6 prefix+shift+t reopens the focused pane's last closed tab", () =>
     expect(tabs().trees[m]).toBe(before);
   });
 });
+
+
+describe("A1c project tree at half-screen width", () => {
+  it("opens a named visible dialog, keeps fullscreen, and returns focus after Escape", async () => {
+    tierRef.current = "md";
+    mount("/read/doc-9");
+    await flush();
+    const origin = screen.getByRole("region", { name: "Primary pane" });
+    act(() => { ws().setFullscreenPane("left"); origin.focus(); });
+    prefixed("b");
+    const dialog = await screen.findByRole("dialog", { name: "Project" });
+    expect(dialog.closest("[hidden]")).toBeNull();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(ws().fullscreenPane).toBe("left");
+    esc(document.activeElement ?? document.body);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Project" })).toBeNull());
+    expect(document.activeElement).toBe(origin);
+    expect(ws().fullscreenPane).toBe("left");
+    esc(origin);
+    expect(ws().fullscreenPane).toBeNull();
+  });
+
+  it("keeps the tree in the visible dock at lg", async () => {
+    tierRef.current = "lg";
+    mount("/read/doc-9");
+    await flush();
+    prefixed("b");
+    const tree = await screen.findByRole("region", { name: "Project" });
+    expect(tree.closest("[hidden]")).toBeNull();
+    expect(tree.closest("aside")?.getAttribute("aria-label")).toBe("Left dock");
+    expect(screen.queryByRole("dialog", { name: "Project" })).toBeNull();
+  });
+});
+
+
+describe("A1c Escape ownership", () => {
+  it("a dialog opened over a focused floating panel owns the first Escape", async () => {
+    mount("/read/doc-9", <ModalProbe />);
+    await flush();
+    act(() => ws().open("FakeNotebook", {}, { mode: "floating", title: "Notes", id: "notes" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Open dialog" }));
+    expect(screen.queryByRole("dialog")).not.toBeNull();
+    esc(document.activeElement ?? document.body);
+    await flush();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(ws().panels.notes).toBeDefined();
+    esc();
+    expect(ws().panels.notes).toBeUndefined();
+  });
+
+  it("a select consumes Escape without clearing the selected passage", async () => {
+    const clearSelection = vi.spyOn(window.getSelection()!, "removeAllRanges");
+    mount("/read/doc-9", <>
+      <SelectProbe />
+      <FloatMenu selection={{ text: "a passage", rect: { top: 100, left: 100, width: 80, height: 18 }, provenance: { documentId: "doc-9", chunkId: null } }} investigationId="read-doc-9" onDeepResearch={() => {}} />
+    </>);
+    await flush();
+    fireEvent.click(screen.getByRole("combobox", { name: "Pick" }).querySelector("button")!);
+    clearSelection.mockClear();
+    esc();
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(clearSelection).not.toHaveBeenCalled();
+    esc();
+    expect(clearSelection).toHaveBeenCalledOnce();
+  });
+
+  it("the expanded path closes before fullscreen even when focus leaves its list", async () => {
+    mount("/read/doc-9");
+    await waitFor(() => expect(activeDoc()).not.toBeNull());
+    let parent = activeDoc()!;
+    act(() => {
+      for (let i = 0; i < 5; i++) {
+        const id = `path-${i}`;
+        tabs().spawnTab("reading", parent, { tab_id: id, kind: "reader", ref: `doc-${i}`, mothership: "reading", activate: true });
+        parent = id;
+      }
+      ws().setFullscreenPane("left");
+    });
+    await flush();
+    const trigger = screen.getByRole("button", { name: /Show the whole path/ });
+    fireEvent.click(trigger);
+    expect(document.querySelector("[data-tab-path-full]")).not.toBeNull();
+    expect(document.querySelector("[data-tab-path-full]")?.contains(document.activeElement)).toBe(true);
+    act(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); });
+    esc();
+    expect(document.querySelector("[data-tab-path-full]")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(ws().fullscreenPane).toBe("left");
+    esc(trigger);
+    expect(ws().fullscreenPane).toBeNull();
+  });
+});
+
+
+describe("A1c agent-tab close focus", () => {
+  it("Delete moves focus from the removed tab to the newly active tab", async () => {
+    await seedCockpit();
+    const tab = screen.getByRole("tab", { name: /Question B/ });
+    tab.focus();
+    fireEvent.keyDown(tab, { key: "Delete" });
+    await flush();
+    expect(screen.queryByRole("tab", { name: /Question B/ })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("tab", { name: /Question A/ }));
+  });
+
+  it("closing the last focused agent tab focuses New agent", async () => {
+    await seedCockpit();
+    act(() => comp().closeAgentTabWithUndo("agent:thread:inv-a"));
+    const tab = screen.getByRole("tab", { name: /Question B/ });
+    tab.focus();
+    fireEvent.keyDown(tab, { key: "Delete" });
+    await flush();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /new agent/i }));
+  });
+});
+
+
+describe("A1c overlay review regressions", () => {
+  it("a modal above the path menu owns Escape", async () => {
+    mount("/read/doc-9", <ModalProbe />);
+    await waitFor(() => expect(activeDoc()).not.toBeNull());
+    let parent = activeDoc()!;
+    act(() => {
+      for (let i = 0; i < 5; i++) {
+        const id = `modal-path-${i}`;
+        tabs().spawnTab("reading", parent, { tab_id: id, kind: "reader", ref: `doc-${i}`, mothership: "reading", activate: true });
+        parent = id;
+      }
+    });
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Show the whole path/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Open dialog" }));
+    esc(document.activeElement ?? document.body);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.querySelector("[data-tab-path-full]")).not.toBeNull();
+    esc();
+    expect(document.querySelector("[data-tab-path-full]")).toBeNull();
+  });
+
+  it("a modal above a selection menu owns Escape", async () => {
+    const clearSelection = vi.spyOn(window.getSelection()!, "removeAllRanges");
+    mount("/read/doc-9", <>
+      <ModalProbe />
+      <FloatMenu selection={{ text: "a passage", rect: { top: 100, left: 100, width: 80, height: 18 }, provenance: { documentId: "doc-9", chunkId: null } }} investigationId="read-doc-9" onDeepResearch={() => {}} />
+    </>);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Open dialog" }));
+    clearSelection.mockClear();
+    esc(document.activeElement ?? document.body);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(clearSelection).not.toHaveBeenCalled();
+  });
+
+  it("resizing an open Project dialog to phone width leaves a visible focus target", async () => {
+    tierRef.current = "md";
+    mount("/read/doc-9");
+    await flush();
+    screen.getByRole("region", { name: "Primary pane" }).focus();
+    prefixed("b");
+    await screen.findByRole("dialog", { name: "Project" });
+    act(() => { tierRef.current = "sm"; ws().setFocusedPane("right"); });
+    await flush();
+    expect(screen.queryByRole("dialog", { name: "Project" })).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector("[data-cockpit-content]"));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it("closing Project returns focus to the visible pane when its origin was hidden", async () => {
+    tierRef.current = "md";
+    mount("/read/doc-9");
+    await flush();
+    screen.getByRole("region", { name: "Primary pane" }).focus();
+    prefixed("b");
+    await screen.findByRole("dialog", { name: "Project" });
+    act(() => ws().setFullscreenPane("right"));
+    esc(document.activeElement ?? document.body);
+    expect(document.activeElement).toBe(screen.getByRole("region", { name: "Agents pane" }));
+    expect(ws().fullscreenPane).toBe("right");
+  });
+});

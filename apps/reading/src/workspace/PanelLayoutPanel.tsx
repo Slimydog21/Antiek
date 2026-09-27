@@ -5,7 +5,7 @@ import type { RefObject } from "react";
 import { opaquePanelShadowClasses } from "../design/elevation";
 import { surfaceSpring } from "../design/motion";
 
-import { ESC_OVERLAY_PROPS } from "./escapeOverlay";
+import { escOverlayOpen, ESC_OVERLAY_PROPS } from "./escapeOverlay";
 import { PanelHandle } from "./PanelHandle";
 import { PanelRegistry } from "./PanelRegistry";
 import { useWorkspace } from "./WorkspaceStore";
@@ -93,6 +93,7 @@ export function PanelLayoutPanel({ id }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       if (rootRef.current?.closest("[hidden]")) return;
+      if (escOverlayOpen(document, rootRef.current)) return;
       const t = e.target as HTMLElement | null;
       if (t) {
         const tag = t.tagName.toLowerCase();

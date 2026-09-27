@@ -8,6 +8,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 
+import { ESC_OVERLAY_PROPS, topModal } from "./escapeOverlay";
 import type { TabLabel } from "./tabLabels";
 import { NumberedLabel } from "./tabStripParts";
 import type { TabTree } from "./tabTree";
@@ -47,14 +48,21 @@ export function TabPathHeader({
       if (listRef.current?.contains(t) || ellipsisRef.current?.contains(t)) return;
       setOpen(false);
     }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape" || e.defaultPrevented || listRef.current?.closest("[hidden]")) return;
+      const modal = topModal();
+      if (modal && !modal.contains(listRef.current)) return;
+      e.preventDefault();
+      setOpen(false);
+      ellipsisRef.current?.focus();
+    }
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
-
-  function close() {
-    setOpen(false);
-    ellipsisRef.current?.focus();
-  }
 
   const shown: (string | "ellipsis")[] = compressed
     ? [path[0], "ellipsis", path[path.length - 2], path[path.length - 1]]
@@ -118,13 +126,7 @@ export function TabPathHeader({
           ref={listRef}
           id="tab-path-full"
           data-tab-path-full
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              e.stopPropagation();
-              close();
-            }
-          }}
+          {...ESC_OVERLAY_PROPS}
           className="absolute left-1.5 top-full z-30 mt-0.5 max-h-[50vh] w-[min(28rem,calc(100vw-2rem))] overflow-auto rounded border border-hairline bg-ice-0 dark:bg-charcoal-2 shadow-z2 py-1"
         >
           <p className="px-2 pb-1 text-xxs uppercase tracking-wider text-shadow-1 dark:text-moonlight">

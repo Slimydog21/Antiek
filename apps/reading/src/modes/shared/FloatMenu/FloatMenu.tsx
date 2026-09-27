@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import LemonButton from "../../../components/lemon/LemonButton";
 import AIActionFailure from "../../../shared/AIActionFailure";
+import { topModal } from "../../../workspace/escapeOverlay";
 import { zIndex } from "../../../design/zIndex";
 import { ApiError, editSelection } from "../../../lib/api";
 import { useVoiceCapture } from "../../../hooks/useVoiceCapture";
@@ -146,7 +147,9 @@ export default function FloatMenu({
   useEffect(() => {
     if (!selection) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !e.defaultPrevented && !rootRef.current?.closest("[hidden]")) {
+        const modal = topModal();
+        if (modal && !modal.contains(rootRef.current)) return;
         // The Esc is the menu's alone (workspace/escapeOverlay.ts).
         e.preventDefault();
         window.getSelection()?.removeAllRanges();
