@@ -249,6 +249,38 @@ def test_quote_qualifies_the_resolved_variant_for_a_legacy_choice(
     assert provider.calls == []
 
 
+def test_legacy_choice_replays_its_canonical_stored_answer_without_resending(route) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    body = _body()
+    body["model_choice"]["model_id"] = "deepseek-reasoner"
+    payload = {**body, "quote_digest": "b" * 64}
+    operation = f"quick-ask:{body['operation_id']}"
+    request_digest = quick_ask._request_digest(
+        _OWNER, operation, quick_ask.QuickAskExecute.model_validate(payload),
+    )
+    ledger.prepare_operation(
+        "user-owner-model", _OWNER, operation, 1, "a" * 64,
+        request_digest=request_digest, quote_estimate_usd="0.004",
+    )
+    ledger.mark_operation_sent(_OWNER, operation)
+    ledger.record_operation_result(
+        _OWNER, operation, actual_cents=1, evidence_sha256="e" * 64,
+        dispatch_event_id="canonical-send", provider_id="user-owner-model",
+        model_id=_MODEL, result_text="canonical stored answer",
+        cost_usd_estimate="0.003",
+    )
+    ledger.settle_operation(_OWNER, operation, 1, "e" * 64)
+
+    replay = client.post("/research/quick-ask", json=payload)
+    assert replay.status_code == 200, replay.json()
+    assert replay.json()["answer"] == "canonical stored answer"
+    assert replay.json()["model_id"] == _MODEL
+    assert replay.json()["replayed"] is True
+    changed = {**payload, "model_choice": {**payload["model_choice"], "model_id": "deepseek-chat"}}
+    assert client.post("/research/quick-ask", json=changed).status_code == 409
+    assert provider.calls == []
+
+
 def test_settled_replay_returns_prior_receipt_without_new_send_or_false_zero_usage(route) -> None:
     client, provider, _, _, _, identity, _ = route
     body = _body()

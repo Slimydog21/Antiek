@@ -195,10 +195,10 @@ def _terminal_replay(
         return None
     if row.request_digest is None or row.request_digest != request_digest:
         raise HTTPException(status_code=409, detail="quick_ask_operation_conflict")
-    if (
-        (row.provider_id is not None and row.provider_id != body.model_choice.provider_id)
-        or (row.model_id is not None and row.model_id != body.model_choice.model_id)
-    ):
+    # The digest above binds the original requested model choice. A legacy
+    # choice may have been sent under its canonical model ID, so the journal's
+    # result model does not have to equal the old name in that request.
+    if row.provider_id is not None and row.provider_id != body.model_choice.provider_id:
         raise HTTPException(status_code=409, detail="quick_ask_operation_conflict")
     settled_estimates = _settled_estimates(row) if row.state == "settled" else None
     if row.state == "settled" and (
