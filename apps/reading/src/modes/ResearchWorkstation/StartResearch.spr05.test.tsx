@@ -177,7 +177,7 @@ async function renderHome(embedded = false) {
     </MemoryRouter>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Deep research · multiple model calls" }));
-  fireEvent.click(screen.getByRole("combobox", { name: "Model for Ask investigation" }).querySelector("button")!);
+  fireEvent.click((await screen.findByRole("combobox", { name: "Model for Ask investigation" })).querySelector("button")!);
   fireEvent.click(await screen.findByRole("option", { name: /Paid Claude/ }));
   return view;
 }
