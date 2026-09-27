@@ -232,9 +232,22 @@ def test_privileged_search_loses_retained_chunks_after_real_takedown(env):
             opened = substrate.query("body", top_k=20, policy_tag="private_research")
         finally:
             substrate.close()
-        assert SENTINEL not in _texts(opened)
-        # open() left vss_active False: this query is the brute-force fallback.
-        assert substrate.vss_active is False
+        # open() selects the engine. Record which one ran. Exclusion is
+        # required on that engine; vss_active is not a fixed expected value.
+        opened_text = _texts(opened)
+        if substrate.vss_active:
+            engine = "vss-native"
+            assert SENTINEL not in opened_text, engine
+            assert OPEN_TAKEN not in opened_text, engine
+            assert NULL_CLASS not in opened_text, engine
+            assert OPEN in opened_text, engine
+        else:
+            engine = "brute-force-fallback"
+            assert SENTINEL not in opened_text, engine
+            assert OPEN_TAKEN not in opened_text, engine
+            assert NULL_CLASS not in opened_text, engine
+            assert OPEN in opened_text, engine
+        print(f"OBSERVED_VSS_ENGINE={engine} vss_active={substrate.vss_active}")
         hydrated_text = _texts(_hydrate_public(con, model, env))
         assert NULL_CLASS not in hydrated_text
         assert OPEN_TAKEN not in hydrated_text
