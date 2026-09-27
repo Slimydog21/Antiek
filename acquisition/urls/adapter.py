@@ -61,7 +61,7 @@ from substrate.rights.register import (  # noqa: E402
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
-from .client import FetchedHtml, fetch  # noqa: E402  # sys.path bootstrap
+from .client import FetchedHtml, FetchPurpose, fetch  # noqa: E402  # sys.path bootstrap
 from .extract import (  # noqa: E402  # sys.path bootstrap
     MarkdownDoc,
     html_to_markdown,
@@ -163,6 +163,7 @@ def ingest_url(
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
     http_client: object | None = None,
+    fetch_purpose: FetchPurpose = FetchPurpose.AGENT,
     fetched: FetchedHtml | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
     on_conflict: str = "ignore",
@@ -172,6 +173,10 @@ def ingest_url(
     ``fetched`` lets callers reuse an already-fetched body (e.g. a
     crawler that batches requests) — when set, no HTTP is performed
     and ``http_client`` is ignored.
+
+    ``fetch_purpose`` selects the outbound User-Agent (see
+    acquisition.urls.client.FetchPurpose); a caller fetching for a person's
+    research keeps the AGENT default.
 
     ``on_conflict`` (default ``"ignore"``): on the default path a re-ingest of
     an unchanged ``document_id`` is a graph no-op (``insert_document`` early-
@@ -203,7 +208,9 @@ def ingest_url(
                 author=None,
             )
 
-    page: FetchedHtml = fetched or fetch(url, client=http_client)  # type: ignore[arg-type]
+    page: FetchedHtml = fetched or fetch(
+        url, client=http_client, purpose=fetch_purpose,  # type: ignore[arg-type]
+    )
     md_doc: MarkdownDoc = html_to_markdown(page.body, base_url=page.final_url)
 
     document_id = url_doc_id(page.final_url)
