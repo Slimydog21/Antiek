@@ -40,6 +40,16 @@ from substrate.books.html_sanitizer import SANITIZER_VERSION, sanitize_book_html
 MAX_READER_HTML_CHARS = 500_000
 
 
+def bounded_sanitized_reader_html(main_html: str) -> str:
+    """Return the exact body the sidecar writer stores for ``main_html``.
+
+    The storage bound is applied before sanitization. This pure projection is
+    useful for read-only preflight; only :func:`store_reader_html` may persist
+    the result or stamp trusted sanitizer provenance.
+    """
+    return sanitize_book_html(main_html[:MAX_READER_HTML_CHARS])
+
+
 def _require_locked(con: Any) -> None:
     if not isinstance(con, LockedConnection):
         raise TypeError(
@@ -70,7 +80,7 @@ def store_reader_html(
     the sanitized body.
     """
     _require_locked(con)
-    sanitized = sanitize_book_html(main_html[:MAX_READER_HTML_CHARS])
+    sanitized = bounded_sanitized_reader_html(main_html)
     captured_at = datetime.now(UTC).replace(tzinfo=None)
     con.execute(
         """
