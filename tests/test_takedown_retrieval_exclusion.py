@@ -232,22 +232,19 @@ def test_privileged_search_loses_retained_chunks_after_real_takedown(env):
             opened = substrate.query("body", top_k=20, policy_tag="private_research")
         finally:
             substrate.close()
-        # open() selects the engine. Record which one ran. Exclusion is
-        # required on that engine; vss_active is not a fixed expected value.
         opened_text = _texts(opened)
-        if substrate.vss_active:
-            engine = "vss-native"
-            assert SENTINEL not in opened_text, engine
-            assert OPEN_TAKEN not in opened_text, engine
-            assert NULL_CLASS not in opened_text, engine
-            assert OPEN in opened_text, engine
-        else:
-            engine = "brute-force-fallback"
-            assert SENTINEL not in opened_text, engine
-            assert OPEN_TAKEN not in opened_text, engine
-            assert NULL_CLASS not in opened_text, engine
-            assert OPEN in opened_text, engine
-        print(f"OBSERVED_VSS_ENGINE={engine} vss_active={substrate.vss_active}")
+        observed_engine = (
+            "vss-flag-true" if substrate.vss_active else "brute-force-fallback"
+        )
+        # vss_active only names the path open() selected. HNSW is not measured.
+        print(
+            f"OBSERVED_VSS_ENGINE={observed_engine} "
+            f"vss_active={substrate.vss_active} hnsw_measured=false"
+        )
+        assert SENTINEL not in opened_text, observed_engine
+        assert OPEN_TAKEN not in opened_text, observed_engine
+        assert NULL_CLASS not in opened_text, observed_engine
+        assert OPEN in opened_text, observed_engine
         hydrated_text = _texts(_hydrate_public(con, model, env))
         assert NULL_CLASS not in hydrated_text
         assert OPEN_TAKEN not in hydrated_text
