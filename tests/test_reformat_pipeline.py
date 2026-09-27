@@ -177,9 +177,11 @@ def test_reformat_classes_and_traces_every_bite_source_byte_identical(env) -> No
     for b in bites:
         assert b.source_refs is not None
         for ref in b.source_refs:
-            payload = json.loads(ref)
-            assert payload["node_id"] in {"c-1", "c-2"}
-            assert payload["end_scalar"] > payload["start_scalar"]
+            # corespan:{doc_id}:{chunk_id}:{start}:{end}
+            parts = ref.split(":")
+            assert parts[0] == "corespan"
+            assert parts[2] in {"c-1", "c-2"}
+            assert int(parts[4]) > int(parts[3])
     # The research-supplemented bite carries its investigation.
     assert bites[3].investigation_id == "inv-diligence-1"
     # The author-verbatim bite BYTE-VERIFIES (recomputed, not trusted).

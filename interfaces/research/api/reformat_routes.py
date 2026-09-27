@@ -182,9 +182,16 @@ def register_reformat_routes(app: FastAPI) -> None:
             out_bites = []
             for bite in bites:
                 refs = (
-                    None
-                    if bite.source_refs is None
-                    else [json_loads(r) for r in bite.source_refs]
+                    [
+                        {
+                            "node_id": r.split(":")[2],
+                            "start_scalar": int(r.split(":")[3]),
+                            "end_scalar": int(r.split(":")[4]),
+                        }
+                        for r in bite.source_refs
+                    ]
+                    if bite.source_refs
+                    else None
                 )
                 hints: list[int | None] = []
                 if refs:

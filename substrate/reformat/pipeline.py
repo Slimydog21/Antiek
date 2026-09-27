@@ -295,7 +295,8 @@ def reformat_document(
                     f"a bite refs source block {e} which does not exist"
                 ) from e
             source_refs = [
-                json.dumps(b.anchor_ref, sort_keys=True) for b in span_blocks
+                f"corespan:{source_document_id}:{b.chunk_id}:{b.start_scalar}:{b.end_scalar}"
+                for b in span_blocks
             ]
             source_sha = text_sha256(
                 "\n\n".join(b.text for b in span_blocks)
