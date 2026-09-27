@@ -133,7 +133,7 @@ describe("Sources authored upload is capability-gated", () => {
     await waitFor(() => expect(uploadForms()).toHaveLength(1));
     const form = uploadForms()[0];
     expect(form.get("acquisition_attestation")).toBe("personal_reading");
-    expect(form.get("title")).toBe("draft");
+    expect(form.has("title")).toBe(false);
     expect(await screen.findByRole("button", { name: "Open in reader" })).toBeTruthy();
   });
 });

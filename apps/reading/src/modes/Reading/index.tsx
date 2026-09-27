@@ -113,6 +113,9 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  // Owner admission permits display and owner anchors, not generic export or attribution.
+  const privateAuthoredReadable =
+    body?.reason === "owner_private_authored" && body.full_text !== null;
 
   useEffect(() => {
     let cancelled = false;
@@ -154,9 +157,9 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   useEffect(() => {
     // The anchor-map is only meaningful with a readable body (the reader
     // renders only gate-served text — a gated snippet carries no anchorable
-    // passages). ownerReadable is the same flag the FloatMenu outbound guard
-    // uses; the owner manifest path mirrors owner-full-text.
-    const readable = body?.servable || body?.reason === "owner_personal_reading";
+    // passages). An admitted private body uses the owner manifest without
+    // granting the separate FloatMenu outbound permission.
+    const readable = body?.servable || body?.reason === "owner_personal_reading" || privateAuthoredReadable;
     if (!documentId || !readable) {
       setAnchorMapChunks([]);
       return;
@@ -165,7 +168,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
     void (async () => {
       try {
         const map = await getAnchorMap(documentId, {
-          owner: body?.reason === "owner_personal_reading",
+          owner: body?.reason === "owner_personal_reading" || privateAuthoredReadable,
         });
         if (!cancelled) setAnchorMapChunks(map.chunks);
       } catch {
@@ -177,7 +180,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
     return () => {
       cancelled = true;
     };
-  }, [documentId, body]);
+  }, [documentId, body, privateAuthoredReadable]);
 
   // The ONE scalar space: the anchor-map's offsets and the anchor schema
   // both pin to unicode-nfc-v1 normalized text, so the body the reader
@@ -1067,7 +1070,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
                 </div>
               ) : (
                 <>
-                  {!ownerReadable && (
+                  {!ownerReadable && !privateAuthoredReadable && (
                     <div className="text-sm border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
                       {book.servability === "taken_down"
                         ? "This title has been removed and is no longer available to read."

@@ -202,8 +202,8 @@ export function fileStem(name: string): string {
  *
  * `title` goes out as the multipart `title` field, which
  * interfaces/research/api/upload_routes.py accepts (`Form(None)`) and stores on
- * the document for every upload kind. A blank title sends the file stem, so an
- * upload is never named by its hex id (A-04 client half). */
+ * the document for every upload kind. A blank title is omitted so the backend
+ * can derive it from the final document heading or filename. */
 export async function uploadSource(
   file: File,
   acquisitionAttestation: AcquisitionAttestation,
@@ -219,7 +219,8 @@ export async function uploadSource(
   const form = new FormData();
   form.append("file", file);
   form.append("acquisition_attestation", wireToken);
-  form.append("title", title?.trim() || fileStem(file.name));
+  const explicitTitle = title?.trim();
+  if (explicitTitle) form.append("title", explicitTitle);
 
   try {
     const response = await apiFetch(`${API_BASE}/sources/upload`, {

@@ -114,7 +114,7 @@ export default function Sources() {
   const [status, setStatus] = useState<Status>("idle");
   const [rows, setRows] = useState<IngestRow[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  /** Pre-filled from the file name; sent as the document title (A-04). */
+  /** Only user-entered text is sent; the filename remains a placeholder. */
   const [uploadTitle, setUploadTitle] = useState("");
   const [attested, setAttested] = useState(false);
   /** Bartz attestation choice. Personal reading stays the default (owner-only).
@@ -178,7 +178,6 @@ export default function Sources() {
     const validationError = validateSourceUpload(file);
     setUploadError(validationError ? uploadErrorCopy[validationError] : null);
     setUploadFile(validationError ? null : file);
-    if (!validationError) setUploadTitle(fileStem(file.name));
   }
 
   async function handleUpload(e: React.FormEvent) {

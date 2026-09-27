@@ -44,6 +44,19 @@ describe("sourceUploadApi", () => {
     expect((init.body as FormData).get("acquisition_attestation")).toBe("personal_reading");
   });
 
+  it.each([undefined, "", "   "])("omits blank title %j so the backend can derive it", async (title) => {
+    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({ document_id: "uploaded" }), { status: 201 }));
+    await uploadSource(new File(["# Actual heading"], "fallback.md"), "personal_reading", undefined, title);
+    const form = apiFetchMock.mock.calls[0][1].body as FormData;
+    expect(form.has("title")).toBe(false);
+  });
+
+  it("preserves the explicit user title", async () => {
+    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({ document_id: "uploaded" }), { status: 201 }));
+    await uploadSource(new File(["# Heading"], "fallback.md"), "personal_reading", undefined, "  User title  ");
+    expect((apiFetchMock.mock.calls[0][1].body as FormData).get("title")).toBe("User title");
+  });
+
   it("maps server failures to value-free typed errors", async () => {
     apiFetchMock.mockResolvedValue(new Response("private.pdf failed conversion", { status: 422 }));
     const promise = uploadSource(new File(["body"], "private.pdf"), "personal_reading");

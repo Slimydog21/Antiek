@@ -39,6 +39,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isServability,
+  SERVABILITY_VALUES,
   servabilityLabel,
   UNKNOWN_RIGHTS_LABEL,
   type Servability,
@@ -199,5 +200,18 @@ describe("servabilityLabel is total at runtime", () => {
 
   it("leaves platform_authored copy unchanged (real platform titles use it)", () => {
     expect(servabilityLabel("platform_authored").label).toBe("Antiek original");
+  });
+});
+
+
+describe("composed private-authored contract", () => {
+  it("pins all eight presentation values independently of the local backend checkout", () => {
+    expect([...SERVABILITY_VALUES].sort()).toEqual([
+      "public_domain", "platform_authored", "publisher_opted_in", "source_declared_open",
+      "gated_metadata_only", "taken_down", "personal_readable", "private_authored",
+    ].sort());
+    expect(isServability("private_authored")).toBe(true);
+    expect(isServability("user_authored_private")).toBe(false);
+    expect(servabilityLabel("private_authored")).toEqual({ label: "Private authored", colour: "muted" });
   });
 });

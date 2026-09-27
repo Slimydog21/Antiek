@@ -38,6 +38,14 @@ const work = {
 };
 
 describe("parse honesty", () => {
+  it("accepts private authored metadata without granting public serving", () => {
+    const privateWork = { ...work, servability: "private_authored", servable_full_text: false };
+    const parsed = parseBookSummary(privateWork);
+    expect(formatServability(parsed)).toBe("Private authored");
+    expect(() => parseBookSummary({ ...privateWork, servable_full_text: true }))
+      .toThrow("servable_full_text contradicts servability");
+  });
+
   it("accepts a personal_readable row as owner-only, not full-text servable (A-01)", () => {
     const personal = {
       ...work,

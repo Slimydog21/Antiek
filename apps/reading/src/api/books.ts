@@ -35,6 +35,7 @@ export const SERVABILITY_VALUES = [
   // personal_reading, the Sources upload default). Missing here was A-01:
   // the reader crashed on every "Personal reading" upload.
   "personal_readable",
+  "private_authored",
 ] as const;
 
 export type Servability = (typeof SERVABILITY_VALUES)[number];
@@ -1116,6 +1117,8 @@ export function servabilityLabel(s: Servability): { label: string; colour: "succ
       // The owner's own copy, never publicly served. Not "Antiek original"
       // and not "library": it is neither (A-06 copy half).
       return { label: "Personal reading", colour: "muted" };
+    case "private_authored":
+      return { label: "Private authored", colour: "muted" };
     default: {
       const _exhaustive: never = s;
       void _exhaustive;

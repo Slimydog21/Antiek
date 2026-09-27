@@ -51,6 +51,8 @@ function sourceLine(work: BookSummary): string {
       return "Removed from the shelf";
     case "personal_readable":
       return "Your document";
+    case "private_authored":
+      return "Your private document";
     default: {
       // Exhaustive at compile time; a runtime value from a newer backend
       // renders a neutral line instead of an empty one (A-01).

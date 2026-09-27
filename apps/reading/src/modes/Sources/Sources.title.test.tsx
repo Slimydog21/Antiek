@@ -1,13 +1,4 @@
-/**
- * Uploads carry the title the user sees (FFX SPR-02 M3, finding A-04 client
- * half). Before this, the form had no title field and the multipart body had
- * no `title`, so every upload was named by its hex id in the reader,
- * Documents and Library. interfaces/research/api/upload_routes.py accepts
- * `title: str | None = Form(None)` and writes it for every upload kind.
- *
- * Mocked at the network boundary (apiFetch), so the real uploadSource builds
- * the FormData this test inspects.
- */
+/** Uses the real upload client to distinguish user titles from filename placeholders. */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,11 +45,26 @@ describe("Sources upload title", () => {
   });
   afterEach(cleanup);
 
-  it("pre-fills the title from the file name without its extension", () => {
+  it("shows the filename as a placeholder without choosing a title", () => {
     chooseAndConfirm("field-notes-on-spaced-repetition.md");
-    expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe(
-      "field-notes-on-spaced-repetition",
-    );
+    expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("");
+    expect(screen.getByLabelText("Title").getAttribute("placeholder")).toBe("field-notes-on-spaced-repetition");
+  });
+
+  it("omits an untouched title", async () => {
+    chooseAndConfirm("draft.v2.md");
+    expect((await submittedForm()).has("title")).toBe(false);
+  });
+
+  it("resets an explicit title and attestation on file replacement", () => {
+    chooseAndConfirm("first.md");
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Old title" } });
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!fileInput) throw new Error("File input missing");
+    fireEvent.change(fileInput, { target: { files: [new File(["# Second"], "second.md")] } });
+    expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("");
+    expect(screen.getByLabelText("Title").getAttribute("placeholder")).toBe("second");
+    expect((screen.getByLabelText(/I confirm the attestation above/) as HTMLInputElement).checked).toBe(false);
   });
 
   it("sends the edited title in the multipart body", async () => {
@@ -69,10 +75,10 @@ describe("Sources upload title", () => {
     expect(form.get("acquisition_attestation")).toBe("personal_reading");
   });
 
-  it("sends the file stem when the title field is cleared", async () => {
+  it("omits the title when the field is cleared", async () => {
     chooseAndConfirm("draft.v2.md");
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "   " } });
     const form = await submittedForm();
-    expect(form.get("title")).toBe("draft.v2");
+    expect(form.has("title")).toBe(false);
   });
 });
