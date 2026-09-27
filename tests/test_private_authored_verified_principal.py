@@ -207,12 +207,12 @@ def test_owner_anchor_map_uses_one_read_snapshot(monkeypatch, tmp_path):
     keeper = duckdb.connect(db)
     original = routes.build_anchor_map
     interleaved: list[str] = []
+    replacement = BODY_A + "\nA newly appended section after the served passage."
 
     def write_between_guard_and_map(con, *, document_id, served_text):
         with connect_write(
             db, purpose="pa01-interleaved-chunk-writer", timeout_s=2
         ) as writer:
-            replacement = "new body written between serve and anchor map"
             writer.execute(
                 "UPDATE documents SET raw_text=? WHERE document_id=?",
                 [replacement, document_id],
@@ -224,8 +224,15 @@ def test_owner_anchor_map_uses_one_read_snapshot(monkeypatch, tmp_path):
                 "VALUES (?,?,0,?,?,?)",
                 [
                     "private-a-new-chunk", document_id, "Page 2",
-                    replacement, len(replacement.split()),
+                    BODY_A, len(BODY_A.split()),
                 ],
+            )
+            appended = "A newly appended section after the served passage."
+            writer.execute(
+                "INSERT INTO chunks "
+                "(chunk_id,document_id,chunk_index,section_path,text,token_count) "
+                "VALUES (?,?,1,?,?,?)",
+                ["private-a-appended-chunk", document_id, "Page 3", appended, len(appended.split())],
             )
         interleaved.append(served_text)
         return original(con, document_id=document_id, served_text=served_text)
@@ -241,10 +248,13 @@ def test_owner_anchor_map_uses_one_read_snapshot(monkeypatch, tmp_path):
     with connect_write(db, purpose="pa01-interleaved-state-check") as writer:
         assert writer.execute(
             "SELECT raw_text FROM documents WHERE document_id='private-a'"
-        ).fetchone() == ("new body written between serve and anchor map",)
+        ).fetchone() == (replacement,)
         assert writer.execute(
-            "SELECT chunk_id FROM chunks WHERE document_id='private-a'"
-        ).fetchall() == [("private-a-new-chunk",)]
+            "SELECT chunk_id FROM chunks WHERE document_id='private-a' ORDER BY chunk_index"
+        ).fetchall() == [
+            ("private-a-new-chunk",),
+            ("private-a-appended-chunk",),
+        ]
 
 
 def test_owner_anchor_map_failure_rolls_back_and_closes(monkeypatch, tmp_path):
