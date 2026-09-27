@@ -98,6 +98,7 @@ vi.mock("./useViewportTier", () => ({ useViewportTier: () => h.tierRef.current }
 
 import { prefixState } from "../components/hotkeys/prefixState";
 import WriteHome from "../modes/Write/WriteHome";
+import { setSectionProseOwner } from "../modes/Write/sectionProseOwner";
 import { PanelLayout } from "./PanelLayout";
 import { useBlockSources } from "./blockSources";
 import { useCompanion } from "./companionStore";
@@ -146,6 +147,9 @@ async function generateFirstDraft(main: HTMLElement) {
 }
 
 beforeEach(() => {
+  // This focused cockpit fixture mounts below AuthProvider.
+  setSectionProseOwner(null);
+  setSectionProseOwner("cockpit-sweep-writer");
   pinPlatform("mac");
   h.tierRef.current = "xl";
   h.apiFetchMock.mockReset().mockImplementation(() =>
@@ -174,6 +178,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  act(() => { setSectionProseOwner(null); });
   uninstall?.();
   uninstall = null;
   cleanup();
