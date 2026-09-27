@@ -74,7 +74,7 @@ describe("deriveIslandRefs", () => {
 
 // ── The total status mapping ──────────────────────────────────────────────
 
-const PROJECTIONS = ["loading", "in_progress", "completed", "failed", "not_found", null] as const;
+const PROJECTIONS = ["loading", "in_progress", "completed", "failed", "not_found", "error", null] as const;
 const SESSIONS: (ResearchRunState | null)[] = [
   "pending",
   "running",
@@ -97,6 +97,13 @@ function expected(input: IslandStatusInput): string {
   if (input.session === "done" || input.projection === "completed" || input.summary === "completed") {
     return input.insightCount === 0 ? "complete_empty" : "complete";
   }
+  const knownLive =
+    input.summary === "in_progress" ||
+    input.session === "pending" ||
+    input.session === "running" ||
+    input.session === "paused" ||
+    input.session === "stopping";
+  if (input.projection === "error" && !knownLive) return "unavailable";
   return "live";
 }
 
@@ -117,9 +124,27 @@ describe("islandStatus — the exhaustive mapping", () => {
         cases.push(`${projection}:${session}=${mapped}`);
       }
     }
-    // 6 × 9 = 54 cases, every one named and checked — an unmapped future
+    // 7 × 9 = 63 cases, every one named and checked — an unmapped future
     // state fails here loudly, never silently.
-    expect(cases).toHaveLength(54);
+    expect(cases).toHaveLength(63);
+  });
+
+  it("a projection that could not be read is unavailable: never live, never gone", () => {
+    // The seed fetch failed, so whether the thread runs, finished or exists is
+    // unknown. A spinner would claim it runs and "gone" would claim it vanished.
+    expect(
+      islandStatus({ projection: "error", summary: null, session: null, insightCount: null }),
+    ).toBe("unavailable");
+    // Another source that does know still decides.
+    expect(
+      islandStatus({ projection: "error", summary: "in_progress", session: null, insightCount: null }),
+    ).toBe("live");
+    expect(
+      islandStatus({ projection: "error", summary: null, session: "done", insightCount: 2 }),
+    ).toBe("complete");
+    expect(
+      islandStatus({ projection: "error", summary: "failed", session: null, insightCount: null }),
+    ).toBe("failed");
   });
 
   it("gone: a missing trajectory is honest gone, whatever the session says", () => {
