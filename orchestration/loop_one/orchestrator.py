@@ -1875,14 +1875,20 @@ async def _run_investigation(
         lambda: _run_phase_7(ctx),
         lambda: _run_phase_8(ctx),
     ]
-    for run in phases:
+    for position, run in enumerate(phases, start=1):
         ok = await run()
         if not ok:
+            # A phase that returns False without naming itself still failed
+            # here. The payload's phase is 1..9, so reporting 0 raised inside
+            # this detached task and no terminal row was ever written; and an
+            # unset failed_phase would let the chase gate treat the run as a
+            # success.
+            ctx.failed_phase = ctx.failed_phase or position
             await broadcast_emit(
                 broadcaster,
                 ctx.investigation_id,
                 InvestigationFailedPayload(
-                    phase=ctx.failed_phase or 0,
+                    phase=ctx.failed_phase,
                     reason=ctx.fail_reason or "(unknown)",
                     last_completed_phase=(
                         ctx.last_completed_phase
@@ -2109,12 +2115,12 @@ def make_loop_one_handler(
                 from interfaces.research.api.settings_models_admin import UserModelChoice
                 app = getattr(broadcaster, "_owner_model_app", None)
                 if app is None or req.owner_user_id is None or req.owner_operation_id is None:
-                    ctx.failed_phase = 0
+                    ctx.failed_phase = 1
                     ctx.fail_reason = "owner_model_unavailable"
                     await broadcast_emit(
                         broadcaster, ctx.investigation_id,
                         InvestigationFailedPayload(
-                            phase=0, reason=ctx.fail_reason,
+                            phase=1, reason=ctx.fail_reason,
                             last_completed_phase=None,
                         ), role="orchestrator", policy_id="owner-model-terminal",
                     )
@@ -2125,12 +2131,12 @@ def make_loop_one_handler(
                         for role in PAID_LOOP_ONE_ROLES
                     }
                 except Exception:
-                    ctx.failed_phase = 0
+                    ctx.failed_phase = 1
                     ctx.fail_reason = "owner_model_unavailable"
                     await broadcast_emit(
                         broadcaster, ctx.investigation_id,
                         InvestigationFailedPayload(
-                            phase=0, reason=ctx.fail_reason,
+                            phase=1, reason=ctx.fail_reason,
                             last_completed_phase=None,
                         ), role="orchestrator", policy_id="owner-model-terminal",
                     )
