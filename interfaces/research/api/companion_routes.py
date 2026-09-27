@@ -216,10 +216,16 @@ def register_companion_routes(app: FastAPI) -> None:
         routes never write; a refresh is a POST). Before any build the JSON
         answer is 200 ``{"document_id", "state": "not_built"}`` (the rail
         shows an empty state rather than an error) and the HTML answer is
-        404 ``companion_not_built``."""
+        404 ``companion_not_built``.
+
+        The path comes from ``default_db_path``, not ``_resolve_db_path``:
+        the latter's ``ensure_initialized`` takes the writer lock on a cold
+        schema probe, and this GET never reaches the writer."""
+        from substrate.graph import default_db_path
+
         owner = _reader_owner_id(request)
         return _serve_last_build(
-            _resolve_db_path(), owner=owner, document_id=document_id, format=format
+            default_db_path(), owner=owner, document_id=document_id, format=format
         )
 
     @app.post(
