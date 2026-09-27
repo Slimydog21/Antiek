@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
@@ -716,12 +716,13 @@ type CompanionView =
   | { phase: "unavailable" }
   | { phase: "load_failed" }
   | { phase: "build_failed" }
+  | { phase: "refresh_failed" }
   | {
       phase: "built";
       payload: BuiltCompanion;
       refreshing: boolean;
       /** A refresh that failed while this companion stayed in hand. */
-      notice: "rebuild_failed" | "build_failed" | null;
+      notice: "rebuild_failed" | null;
     };
 
 const COMPANION_COPY = {
@@ -732,6 +733,8 @@ const COMPANION_COPY = {
   loadFailed: "Couldn't load the companion.",
   buildFailed: "Couldn't build the companion yet.",
   rebuildFailed: "Couldn't rebuild the companion. The last version is shown.",
+  refreshFailed: "Couldn't refresh the companion.",
+  ready: "Companion ready.",
 } as const;
 
 function companionLine(view: CompanionView): string | null {
@@ -748,11 +751,12 @@ function companionLine(view: CompanionView): string | null {
       return COMPANION_COPY.loadFailed;
     case "build_failed":
       return COMPANION_COPY.buildFailed;
+    case "refresh_failed":
+      return COMPANION_COPY.refreshFailed;
     case "built":
       if (view.refreshing) return COMPANION_COPY.rebuilding;
       if (view.notice === "rebuild_failed") return COMPANION_COPY.rebuildFailed;
-      if (view.notice === "build_failed") return COMPANION_COPY.buildFailed;
-      return null;
+      return COMPANION_COPY.ready;
   }
 }
 
@@ -784,9 +788,30 @@ function CompanionSection({ documentId }: { documentId: string }) {
   const [inspectRows, setInspectRows] = useState<EvidenceRowItem[] | null>(null);
   // One request at a time, even across a double click inside one frame.
   const inFlight = useRef(false);
+  const mounted = useRef(true);
+  const actionRef = useRef<HTMLButtonElement>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  function focusStatusFromAction() {
+    if (actionRef.current && document.activeElement === actionRef.current) {
+      statusRef.current?.focus();
+    }
+  }
+
+  function showUnavailable() {
+    focusStatusFromAction();
+    setView({ phase: "unavailable" });
+  }
 
   async function exclusive(task: () => Promise<void>) {
-    if (inFlight.current) return;
+    if (inFlight.current || !mounted.current) return;
     inFlight.current = true;
     try {
       await task();
@@ -805,11 +830,14 @@ function CompanionSection({ documentId }: { documentId: string }) {
     try {
       answer = await getDocumentCompanion(documentId);
     } catch (err) {
-      setView(isCompanionNotFound(err) ? { phase: "unavailable" } : { phase: "load_failed" });
+      if (!mounted.current) return;
+      if (isCompanionNotFound(err)) showUnavailable();
+      else setView({ phase: "load_failed" });
       return;
     }
+    if (!mounted.current) return;
     if (answer.state === "built") showBuilt(answer);
-    else if (answer.state === "withheld") setView({ phase: "unavailable" });
+    else if (answer.state === "withheld") showUnavailable();
     else await rebuild(null); // not_built: ask for exactly one build
   }
 
@@ -821,43 +849,49 @@ function CompanionSection({ documentId }: { documentId: string }) {
     );
     try {
       const answer = await refreshDocumentCompanion(documentId);
+      if (!mounted.current) return;
       if (answer.state === "built") showBuilt(answer);
-      else if (answer.state === "withheld") setView({ phase: "unavailable" });
+      else if (answer.state === "withheld") showUnavailable();
       else await rebuildFailed(inHand, false);
     } catch (err) {
+      if (!mounted.current) return;
       if (isCompanionNotFound(err)) {
-        setView({ phase: "unavailable" });
+        showUnavailable();
         return;
       }
       const hasLastBuild =
-        err instanceof CompanionRebuildFailedError ? err.hasLastBuild : inHand !== null;
+        err instanceof CompanionRebuildFailedError ? err.hasLastBuild : null;
       await rebuildFailed(inHand, hasLastBuild);
     }
   }
 
-  async function rebuildFailed(inHand: BuiltCompanion | null, hasLastBuild: boolean) {
+  async function rebuildFailed(inHand: BuiltCompanion | null, hasLastBuild: boolean | null) {
+    focusStatusFromAction();
     if (inHand) {
       setView({
         phase: "built",
         payload: inHand,
         refreshing: false,
-        notice: hasLastBuild ? "rebuild_failed" : "build_failed",
+        notice: "rebuild_failed",
       });
       return;
     }
-    if (!hasLastBuild) {
-      setView({ phase: "build_failed" });
+    if (hasLastBuild !== true) {
+      setView({ phase: hasLastBuild === false ? "build_failed" : "refresh_failed" });
       return;
     }
     // The server kept a last build this rail never received. Read it (the GET
     // never writes) so "the last version is shown" is true.
     try {
       const answer = await getDocumentCompanion(documentId);
+      if (!mounted.current) return;
       if (answer.state === "built") showBuilt(answer, "rebuild_failed");
-      else if (answer.state === "withheld") setView({ phase: "unavailable" });
+      else if (answer.state === "withheld") showUnavailable();
       else setView({ phase: "build_failed" });
     } catch (err) {
-      setView(isCompanionNotFound(err) ? { phase: "unavailable" } : { phase: "load_failed" });
+      if (!mounted.current) return;
+      if (isCompanionNotFound(err)) showUnavailable();
+      else setView({ phase: "load_failed" });
     }
   }
 
@@ -868,8 +902,12 @@ function CompanionSection({ documentId }: { documentId: string }) {
   }
 
   function retry() {
+    if (inFlight.current) return;
+    focusStatusFromAction();
     if (view.phase === "load_failed") void exclusive(load);
-    else if (view.phase === "build_failed") void exclusive(() => rebuild(null));
+    else if (view.phase === "build_failed" || view.phase === "refresh_failed") {
+      void exclusive(() => rebuild(null));
+    }
     else if (view.phase === "built") void exclusive(() => rebuild(view.payload));
   }
 
@@ -877,6 +915,7 @@ function CompanionSection({ documentId }: { documentId: string }) {
   const canRetry =
     view.phase === "load_failed" ||
     view.phase === "build_failed" ||
+    view.phase === "refresh_failed" ||
     (view.phase === "built" && !view.refreshing && view.notice !== null);
   const payload = view.phase === "built" ? view.payload : null;
   const refreshing = view.phase === "built" && view.refreshing;
@@ -901,15 +940,18 @@ function CompanionSection({ documentId }: { documentId: string }) {
         <div className={`flex items-baseline justify-between gap-2 ${line ? "mb-1.5" : ""}`}>
           <p
             id={statusId}
+            ref={statusRef}
+            tabIndex={-1}
             role="status"
             aria-live="polite"
-            className="font-serif text-xs italic text-ink-mute dark:text-moonlight"
+            className="font-serif text-xs italic text-ink-mute focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun dark:text-moonlight"
           >
             {line}
           </p>
           {canRetry && (
             <button
               type="button"
+              ref={actionRef}
               onClick={retry}
               className="shrink-0 font-mono text-xxs text-shadow-1 underline decoration-dotted underline-offset-2 hover:text-ink dark:text-moonlight dark:hover:text-bright"
             >
@@ -963,16 +1005,19 @@ function CompanionSection({ documentId }: { documentId: string }) {
                 generated · rebuilt {payload.rebuilt_at.slice(0, 10)}
               </p>
               <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void exclusive(() => rebuild(payload))}
-                  disabled={refreshing}
-                  aria-describedby={refreshing ? statusId : undefined}
-                  className="font-mono text-xxs text-shadow-1 underline decoration-dotted underline-offset-2 hover:text-ink disabled:cursor-not-allowed disabled:text-ink-mute dark:text-moonlight dark:hover:text-bright dark:disabled:text-moonlight"
-                  title={refreshing ? "A rebuild is already running" : "Rebuild the companion from this book's latest notes and evidence"}
-                >
-                  Refresh
-                </button>
+                {!canRetry && (
+                  <button
+                    type="button"
+                    ref={actionRef}
+                    onClick={() => void exclusive(() => rebuild(payload))}
+                    aria-disabled={refreshing}
+                    aria-describedby={refreshing ? statusId : undefined}
+                    className="font-mono text-xxs text-shadow-1 underline decoration-dotted underline-offset-2 hover:text-ink aria-disabled:cursor-not-allowed aria-disabled:text-ink-mute dark:text-moonlight dark:hover:text-bright dark:aria-disabled:text-moonlight"
+                    title={refreshing ? "A rebuild is already running" : "Rebuild the companion from this book's latest notes and evidence"}
+                  >
+                    Refresh
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
