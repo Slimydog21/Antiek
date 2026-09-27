@@ -1654,20 +1654,6 @@ def create_app(
                 "https://antiek.ai",
                 "https://www.antiek.ai",
             ]
-    if cors_origins:
-        # H6 magic-link auth: ``credentials=True`` is required for the
-        # browser to carry the ANTIEK_SESSION cookie cross-origin from
-        # the Pages frontend to api.antiek.ai. Pair with explicit
-        # origins (no wildcard); the cookie itself is HttpOnly +
-        # Secure + SameSite=Lax + Domain=.antiek.ai in production.
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cors_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-
     # ── H4 + H4.5 + H6: operator auth middleware ──
     # THREE complementary auth paths, all opt-in via env vars:
     #
@@ -1909,6 +1895,20 @@ def create_app(
                     "code": "operator_auth_required",
                 }
             },
+        )
+
+    if cors_origins:
+        # H6 magic-link auth: ``credentials=True`` is required for the
+        # browser to carry the ANTIEK_SESSION cookie cross-origin from
+        # the Pages frontend to api.antiek.ai. Pair with explicit
+        # origins (no wildcard); the cookie itself is HttpOnly +
+        # Secure + SameSite=Lax + Domain=.antiek.ai in production.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
         )
 
     # ── Magic-link auth routes (PostHog-style owned login surface) ──
