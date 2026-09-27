@@ -34,15 +34,29 @@ def corpus():
         ("private-a", "user_authored_private", "owner-a"),
         ("private-b", "user_authored_private", "owner-b"),
         ("private-default", "user_authored_private", "__operator__"),
+        ("private-upper-operator", "user_authored_private", "__OPERATOR__"),
         ("private-blank", "user_authored_private", ""),
         ("private-space", "user_authored_private", " "),
         ("private-padded", "user_authored_private", "owner-a "),
+        ("private-shared", "user_authored_private", "shared"),
+        ("private-upper-shared", "user_authored_private", "SHARED"),
+        ("private-service", "user_authored_private", "service"),
+        ("private-upper-service", "user_authored_private", "SERVICE"),
+        ("private-local", "user_authored_private", "local"),
+        ("private-upper-local", "user_authored_private", "LOCAL"),
         ("personal-a", "personal_reading", "owner-a"),
         ("personal-b", "personal_reading", "owner-b"),
         ("personal-default", "personal_reading", "__operator__"),
+        ("personal-upper-operator", "personal_reading", "__OPERATOR__"),
         ("personal-blank", "personal_reading", ""),
         ("personal-space", "personal_reading", " "),
         ("personal-padded", "personal_reading", "owner-a "),
+        ("personal-shared", "personal_reading", "shared"),
+        ("personal-upper-shared", "personal_reading", "SHARED"),
+        ("personal-service", "personal_reading", "service"),
+        ("personal-upper-service", "personal_reading", "SERVICE"),
+        ("personal-local", "personal_reading", "local"),
+        ("personal-upper-local", "personal_reading", "LOCAL"),
         ("research", "research_only", None),
         ("restricted", "restricted_pending_opt_in", None),
         ("unknown-a", "unknown_future_class", "owner-a"),
@@ -92,6 +106,26 @@ def test_no_owner_authority_from_invalid_or_padded_identity(corpus, tag, owner):
     seen = visible(corpus, tag, owner)
     assert not {name for name in seen if name.startswith(("private-", "personal-"))}
     assert ("research" in seen) == (tag == "private_research")
+
+
+@pytest.mark.parametrize("tag", ["operator_only", "private_research"])
+def test_reserved_owner_ids_never_unlock_private_or_personal_rows(corpus, tag):
+    reserved = (
+        "__operator__", "__OPERATOR__",
+        "shared", "SHARED",
+        "service", "SERVICE",
+        "local", "LOCAL",
+    )
+    seen = visible(corpus, tag, None)
+    for owner_id in reserved:
+        seen.update(visible(corpus, tag, owner_id))
+
+    assert not {
+        document_id for document_id in seen
+        if document_id.startswith(("private-", "personal-"))
+    }
+    assert {"private-a", "personal-a"} <= visible(corpus, tag, "owner-a")
+    assert {"private-b", "personal-b"} <= visible(corpus, tag, "owner-b")
 
 
 def test_omitted_owner_cannot_match_stored_default(corpus):

@@ -26,6 +26,7 @@ content from search with no backfill); reconsider only with a legacy migration.
 from __future__ import annotations
 
 from substrate.constants import (
+    FORBIDDEN_OWNERS,
     GATED_DEFAULT_CONTENT_CLASS,
     PERSONAL_READING_CONTENT_CLASS,
     RESEARCH_ONLY_CONTENT_CLASS,
@@ -178,7 +179,7 @@ def non_privileged_chunk_sql_clause(
             owner_user_id if isinstance(owner_user_id, str)
             and owner_user_id.strip()
             and owner_user_id == owner_user_id.strip()
-            and owner_user_id != "__operator__" else None
+            and owner_user_id.casefold() not in FORBIDDEN_OWNERS else None
         )
         owner_clause = f" OR {table_alias}.owner_user_id = ?" if owner_id is not None else ""
         sql = (

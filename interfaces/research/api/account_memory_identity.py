@@ -43,10 +43,9 @@ from hashlib import sha256
 
 from fastapi import Request
 
-SESSION_AUTH_METHOD = "antiek_session_cookie"
+from substrate.constants import FORBIDDEN_OWNERS
 
-# Storage/service identities that cannot name a person. Refused as owners.
-FORBIDDEN_OWNERS = frozenset({"__operator__", "shared", "service", "local"})
+SESSION_AUTH_METHOD = "antiek_session_cookie"
 
 # The one sentinel the authentication paths actually mint (magic-link callback, code
 # exchange, passkey assertion, dev-login — all of ``auth.py``). A request carrying it has

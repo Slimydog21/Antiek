@@ -23,6 +23,13 @@ from __future__ import annotations
 
 from typing import Final, NamedTuple
 
+# Storage/service identities that cannot identify a distinct human owner. Shared by
+# API-side owner identity and substrate retrieval so both boundaries reject the same
+# reserved values without importing application code into core.
+FORBIDDEN_OWNERS: Final[frozenset[str]] = frozenset(
+    {"__operator__", "shared", "service", "local"}
+)
+
 # ============================================================
 # Section A — Five role pipeline
 # ============================================================
