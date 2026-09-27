@@ -11,7 +11,7 @@ const request = {
   model_choice: {
     authority: "user_model" as const,
     provider_id: "owner-deepseek",
-    model_id: "deepseek-v4-flash",
+    model_id: "deepseek-flash",
   },
   quote_digest: "a".repeat(64),
 };
@@ -29,14 +29,14 @@ describe("Quick Ask browser wire contract", () => {
   it("uses the server's owner-scoped eligible variants without a browser model allowlist", async () => {
     apiFetch.mockResolvedValue(json({
       models: [{
-        provider_id: "owner-deepseek", model_id: "deepseek-v4-flash",
+        provider_id: "owner-deepseek", model_id: "deepseek-flash",
         display_name: "My DeepSeek", price_snapshot: "deepseek-2026-09-27",
         price_source: "https://api-docs.deepseek.com/pricing",
       }],
       count: 1,
     }));
     expect(await fetchQuickAskModels()).toMatchObject([
-      { provider_id: "owner-deepseek", model_id: "deepseek-v4-flash" },
+      { provider_id: "owner-deepseek", model_id: "deepseek-flash" },
     ]);
     expect(apiFetch).toHaveBeenCalledOnce();
     expect(apiFetch).toHaveBeenCalledWith("/research/quick-ask/models");
@@ -45,7 +45,7 @@ describe("Quick Ask browser wire contract", () => {
   it("preserves an answer with unknown charge and its incomplete flag", async () => {
     apiFetch.mockResolvedValue(json({
       answer: "Partial answer", operation_id: request.operation_id,
-      provider_id: "owner-deepseek", model_id: "deepseek-v4-flash",
+      provider_id: "owner-deepseek", model_id: "deepseek-flash",
       estimated_cost_usd: null, usage_basis: "charge_unknown",
       input_tokens: null, output_tokens: null, replayed: false,
       incomplete: true, reported_usage_estimate_exceeds_quote: null,
@@ -79,7 +79,7 @@ describe("Quick Ask browser wire contract", () => {
   it("rejects a paid answer attributed to another operation without resending", async () => {
     apiFetch.mockResolvedValue(json({
       answer: "Wrong operation", operation_id: "45670f5f-4d04-4d6c-84f3-68d9c56dcb25",
-      provider_id: "owner-deepseek", model_id: "deepseek-v4-flash",
+      provider_id: "owner-deepseek", model_id: "deepseek-flash",
       estimated_cost_usd: 0.0004,
       usage_basis: "provider_reported_tokens_priced_locally",
       input_tokens: 12, output_tokens: 25, replayed: false, incomplete: false,
