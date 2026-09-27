@@ -93,6 +93,7 @@ async function typeInEditor(text: string): Promise<void> {
 }
 
 import Outline from "./Outline";
+import { runInlineComplete } from "./Editor/InlineComplete";
 
 const NODE_ID = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
 
@@ -546,5 +547,155 @@ describe("Outline — the editor never shows stale prose (cockpit R3)", () => {
     await userEvent.click(screen.getByRole("button", { name: /^x-ray$/i }));
     const host = container.querySelector(".ProseMirror")!.closest("[data-write-editor-host]") as HTMLElement | null;
     expect(host?.hidden).toBe(true);
+  });
+});
+
+describe("Outline — draft generation and ordered saves (A1c)", () => {
+  function deferred<T>() {
+    let resolve = (_value: T): void => { throw new Error("Promise not initialized"); };
+    let reject = (_reason: unknown): void => { throw new Error("Promise not initialized"); };
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  }
+
+  async function mountSaved() {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    const result = render(
+      <Outline deliverableId="dlv-1" sections={[section({ block_count: 1, prose_text: "Saved prose." })]} onChanged={vi.fn()} />,
+    );
+    await screen.findByText("Capital intensity rises with scale");
+    await waitFor(() => expect(editorHolder.current).toBeTruthy());
+    return result;
+  }
+
+  async function debounce() {
+    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+  }
+
+  afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+  it.each(["success", "failure"])("makes the real editor read-only during generation and editable after %s", async (outcome) => {
+    const generation = deferred<GenerationResult>();
+    generateSectionMock.mockReturnValue(generation.promise);
+    const { container } = await mountSaved();
+    await userEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(generateSectionMock).toHaveBeenCalledTimes(1));
+    expect(editor().isEditable).toBe(false);
+    expect(container.querySelector(".ProseMirror")?.getAttribute("contenteditable")).toBe("false");
+    expect(screen.getByText("Generating a draft… Editing will resume when it finishes.")).toBeTruthy();
+    await act(async () => {
+      if (outcome === "success") generation.resolve({ status: "generated", section_id: "sec-1", prose_text: "New draft." });
+      else generation.reject(new ApiError("no key", 503, ""));
+    });
+    await waitFor(() => expect(editor().isEditable).toBe(true));
+    expect(container.querySelector(".ProseMirror")?.textContent).toContain(outcome === "success" ? "New draft." : "Saved prose.");
+    expect(screen.queryByText("Generating a draft… Editing will resume when it finishes.")).toBeNull();
+  });
+
+  it("does not let a completion arriving with generation save the replaced editor over the new draft", async () => {
+    const generation = deferred<GenerationResult>();
+    const completion = deferred<{ text: string }>();
+    generateSectionMock.mockReturnValue(generation.promise);
+    const { container } = await mountSaved();
+    editor().commands.setTextSelection(editor().state.doc.content.size - 1);
+    const pendingCompletion = runInlineComplete(editor(), { pending: false }, () => completion.promise);
+    await userEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(generateSectionMock).toHaveBeenCalledTimes(1));
+    vi.useFakeTimers();
+    await act(async () => {
+      generation.resolve({ status: "generated", section_id: "sec-1", prose_text: "New draft." });
+      completion.resolve({ text: " Stale completion." });
+      await pendingCompletion;
+    });
+    await debounce();
+    expect(container.querySelector(".ProseMirror")?.textContent).toBe("New draft.");
+    expect(updateSectionProseMock).not.toHaveBeenCalled();
+  });
+
+  it("sends only the latest queued prose after the in-flight save, and never reports the older response as saved", async () => {
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    updateSectionProseMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    await mountSaved();
+    vi.useFakeTimers();
+    await typeInEditor(" A");
+    const firstText = editor().getText();
+    await debounce();
+    expect(updateSectionProseMock).toHaveBeenCalledTimes(1);
+    await typeInEditor(" B");
+    await debounce();
+    await typeInEditor(" C");
+    const latestText = editor().getText();
+    await debounce();
+    expect(updateSectionProseMock).toHaveBeenCalledTimes(1);
+    await act(async () => { first.resolve({}); });
+    expect(updateSectionProseMock).toHaveBeenCalledTimes(2);
+    expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
+      prose_text: latestText, original_text: firstText, promote_to_graph: false,
+    });
+    expect(screen.queryByText(/^Saved\./)).toBeNull();
+    expect(editor().getText()).toBe(latestText);
+    await act(async () => { second.resolve({}); });
+    expect(screen.getByText(/^Saved\./)).toBeTruthy();
+  });
+
+  it("flushes the latest edit when leaving the piece before the debounce expires", async () => {
+    const { unmount } = await mountSaved();
+    vi.useFakeTimers();
+    await typeInEditor(" Keep this edit.");
+    const latestText = editor().getText();
+    expect(updateSectionProseMock).not.toHaveBeenCalled();
+    unmount();
+    await act(async () => {});
+    expect(updateSectionProseMock).toHaveBeenCalledTimes(1);
+    expect(updateSectionProseMock).toHaveBeenCalledWith("sec-1", {
+      prose_text: latestText, original_text: "Saved prose.", promote_to_graph: false,
+    });
+  });
+
+  it("queues an unmount flush behind the earlier save instead of writing out of order", async () => {
+    const first = deferred<unknown>();
+    updateSectionProseMock.mockReturnValueOnce(first.promise);
+    const { unmount } = await mountSaved();
+    vi.useFakeTimers();
+    await typeInEditor(" First edit.");
+    const firstText = editor().getText();
+    await debounce();
+    await typeInEditor(" Last edit.");
+    const latestText = editor().getText();
+    unmount();
+    await act(async () => {});
+    expect(updateSectionProseMock).toHaveBeenCalledTimes(1);
+    await act(async () => { first.resolve({}); });
+    expect(updateSectionProseMock).toHaveBeenCalledTimes(2);
+    expect(updateSectionProseMock).toHaveBeenLastCalledWith("sec-1", {
+      prose_text: latestText, original_text: firstText, promote_to_graph: false,
+    });
+  });
+
+  it("waits for a save already in flight before generating even after its debounce fired", async () => {
+    const save = deferred<unknown>();
+    updateSectionProseMock.mockReturnValueOnce(save.promise);
+    generateSectionMock.mockResolvedValue({ status: "generated", section_id: "sec-1", prose_text: "New draft." });
+    await mountSaved();
+    vi.useFakeTimers();
+    await typeInEditor(" Kept first.");
+    await debounce();
+    await act(async () => { screen.getByRole("button", { name: /generate draft/i }).click(); });
+    expect(generateSectionMock).not.toHaveBeenCalled();
+    await act(async () => { save.resolve({}); });
+    expect(generateSectionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a failed edit available and does not generate over it", async () => {
+    updateSectionProseMock.mockRejectedValue(new ApiError("save failed", 503, ""));
+    const { container } = await mountSaved();
+    await typeInEditor(" Unsaved edit.");
+    const latestText = editor().getText();
+    await userEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(screen.getByText(/couldn.t save/i)).toBeTruthy());
+    expect(generateSectionMock).not.toHaveBeenCalled();
+    expect(container.querySelector(".ProseMirror")?.textContent).toBe(latestText);
+    expect(editor().isEditable).toBe(true);
   });
 });

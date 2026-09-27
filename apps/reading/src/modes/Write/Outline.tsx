@@ -194,6 +194,7 @@ function SectionCard({
 
   // Generation state (M3).
   const [generating, setGenerating] = useState(false);
+  const generationInFlight = useRef(false);
   const [projection, setProjection] = useState<ComposerModelProjection | null>(null);
   const [projectionError, setProjectionError] = useState<string | null>(null);
   const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
@@ -237,38 +238,49 @@ function SectionCard({
   const latestProseRef = useRef<string>(section.prose_text ?? "");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Each section sends its latest queued text after the current request settles.
+  const queuedProse = useRef<string | null>(null);
+  const saveQueue = useRef<Promise<boolean> | null>(null);
+
   const persistProse = useCallback(
-    async (plainText: string) => {
-      const original = savedProseRef.current;
-      // Empty prose is rejected by the API (min_length=1) and would blank a
-      // draft — mirror CreationStudio's non-empty guard.
-      if (!plainText.trim()) return;
-      // Unchanged since the last confirmed save — nothing to persist.
-      if (plainText === original) {
-        setSaveState({ status: "saved" });
-        return;
-      }
-      setSaveState({ status: "pending" });
-      try {
-        await updateSectionProse(section.section_id, {
-          prose_text: plainText,
-          original_text: original ?? undefined,
-          promote_to_graph: false,
-        });
-        savedProseRef.current = plainText;
-        setProseText(plainText); // keep the X-ray / reload view in sync
-        setSaveState({ status: "saved" });
-      } catch (e) {
-        // Do NOT swallow (contrast Editor.tsx's edit.captured .catch(()=>{})):
-        // a lost save must be visible so the "saved" promise is never a lie.
-        const message =
-          e instanceof ApiError
-            ? `HTTP ${e.status}`
-            : e instanceof Error
-              ? e.message
-              : String(e);
-        setSaveState({ status: "error", message });
-      }
+    (plainText: string): Promise<boolean> => {
+      queuedProse.current = plainText;
+      const save = (saveQueue.current ?? Promise.resolve(true)).then(async () => {
+        const text = queuedProse.current;
+        queuedProse.current = null;
+        if (text === null) return latestProseRef.current === savedProseRef.current;
+        if (!text.trim()) return text === (savedProseRef.current ?? "");
+        const original = savedProseRef.current;
+        if (text === original) {
+          if (text === latestProseRef.current) setSaveState({ status: "saved" });
+          return true;
+        }
+        setSaveState({ status: "pending" });
+        try {
+          await updateSectionProse(section.section_id, {
+            prose_text: text,
+            original_text: original ?? undefined,
+            promote_to_graph: false,
+          });
+          savedProseRef.current = text;
+          if (text === latestProseRef.current) {
+            setProseText(text);
+            setSaveState({ status: "saved" });
+          }
+          return true;
+        } catch (e) {
+          const message =
+            e instanceof ApiError
+              ? `HTTP ${e.status}`
+              : e instanceof Error
+                ? e.message
+                : String(e);
+          setSaveState({ status: "error", message });
+          return false;
+        }
+      });
+      saveQueue.current = save;
+      return save;
     },
     [section.section_id],
   );
@@ -288,15 +300,12 @@ function SectionCard({
     [persistProse],
   );
 
-  // Send an edit still waiting on the debounce now. Before a regenerate the
-  // edit is saved first, so the new draft replaces a saved edit (and a failed
-  // regenerate leaves it saved) rather than a late autosave landing on top of
-  // the new draft.
-  const flushPendingSave = useCallback(async () => {
-    if (!saveTimer.current) return;
-    clearTimeout(saveTimer.current);
+  // Generation waits for queued and in-flight saves, even after the debounce
+  // has fired, so an old PATCH cannot overwrite the new draft.
+  const flushPendingSave = useCallback(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = null;
-    await persistProse(latestProseRef.current);
+    return persistProse(latestProseRef.current);
   }, [persistProse]);
 
   // A pending debounce FLUSHES on unmount (leaving the piece, a section
@@ -386,21 +395,22 @@ function SectionCard({
     }
   }
 
+  useEffect(() => {
+    editorRef.current?.setEditable(!generating, false);
+  }, [generating, draftRevision, draftContent]);
+
   async function handleGenerate() {
+    if (generationInFlight.current) return;
+    generationInFlight.current = true;
+    editorRef.current?.setEditable(false, false);
     setGenerating(true);
     setGenResult(null);
     setGenError(null);
     try {
-      await flushPendingSave();
+      if (!(await flushPendingSave())) return;
       const r = await generateSection(section.section_id);
       setGenResult(r);
       if (r.status === "generated" && r.prose_text) {
-        // A keystroke typed while the draft was generating must not autosave
-        // over it: the new draft replaces the editor's document.
-        if (saveTimer.current) {
-          clearTimeout(saveTimer.current);
-          saveTimer.current = null;
-        }
         latestProseRef.current = r.prose_text;
         // Load the real prose into the editor (M4). Plain prose becomes
         // editable paragraphs; a fresh editor is keyed on the new draft, so
@@ -423,6 +433,7 @@ function SectionCard({
       const reason = e instanceof ApiError && e.status === 503 ? null : String(e);
       setGenError({ reason: reason === "null" ? null : reason });
     } finally {
+      generationInFlight.current = false;
       setGenerating(false);
     }
   }
@@ -478,6 +489,10 @@ function SectionCard({
   // left the edit nowhere a reload or the next keystroke could keep it).
   const handleApplyEdit = useCallback(
     (editedText: string) => {
+      if (generationInFlight.current) {
+        toast.warn("Wait for the draft to finish before applying this edit.");
+        return;
+      }
       const sel = selection;
       if (!sel || !sel.text) return;
       const ed = editorRef.current;
@@ -710,6 +725,11 @@ function SectionCard({
           hidden={view === "xray"}
           className="mt-3 rounded border border-rule p-3 dark:border-charcoal-1"
         >
+          {generating && (
+            <p role="status" className="mb-2 text-xs text-ink-mute dark:text-moonlight">
+              Generating a draft… Editing will resume when it finishes.
+            </p>
+          )}
           {genResult?.status === "generated" &&
             genResult.unsupported_paragraphs &&
             genResult.unsupported_paragraphs.length > 0 && (
