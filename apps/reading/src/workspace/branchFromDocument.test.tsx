@@ -49,7 +49,8 @@ vi.mock("./useViewportTier", () => ({ useViewportTier: () => tierRef.current }))
 
 import { PanelLayout } from "./PanelLayout";
 import { useWorkspace } from "./WorkspaceStore";
-import { adoptTabForRoute, rootTabId } from "./documentSpace";
+import { adoptTabForRoute } from "./documentSpace";
+import { tabIdOf } from "./tabTestKit";
 import { emptyTabTree, spawnChild, type TabTree } from "./tabTree";
 import { useTabTrees } from "./tabTreeStore";
 
@@ -101,7 +102,7 @@ afterEach(() => {
 
 function readerTree(): TabTree {
   const r = spawnChild(emptyTabTree("reading"), null, {
-    tab_id: "root:reader:doc-9",
+    tab_id: "tReaderDoc9",
     kind: "reader",
     ref: "doc-9",
     mothership: "reading",
@@ -114,14 +115,14 @@ describe("P-D — a branch from a document lands as a child of its tab", () => {
   it("adoptTabForRoute: a branch intent spawns under its parent, not a root", async () => {
     const tree = readerTree();
     const intent = {
-      parentTabId: "root:reader:doc-9",
+      parentTabId: "tReaderDoc9",
       mothership: "reading" as const,
       origin: { document_id: "doc-9", kind: "research" as const },
     };
     const a = adoptTabForRoute(tree, "/inv/new-1", intent);
     expect(a).toEqual({
       action: "branch",
-      parentId: "root:reader:doc-9",
+      parentId: "tReaderDoc9",
       ref: { kind: "research", ref: "/inv/new-1" },
       origin: intent.origin,
     });
@@ -140,7 +141,7 @@ describe("P-D — a branch from a document lands as a child of its tab", () => {
     await waitFor(() => expect(tabs().trees.reading?.active_tab_id ?? null).not.toBeNull());
     await flush();
     const readerRoot = tabs().trees.reading!.active_tab_id!;
-    expect(readerRoot).toBe(rootTabId({ kind: "reader", ref: "doc-9" }));
+    expect(readerRoot).toBe(tabIdOf(tabs().trees.reading!, "reader", "doc-9"));
 
     const go = branchNavigation("/inv/new-1", here(), { document_id: "doc-9", kind: "research", page_index: 3 });
     act(() => nav.current!(go.to, go.options));

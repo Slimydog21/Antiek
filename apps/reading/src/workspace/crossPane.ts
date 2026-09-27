@@ -11,8 +11,9 @@
  * setOpenDocumentHandler. Every caller speaks `openDocumentInLeftPane` and
  * never changes.
  */
-import { childTabId, freshTabId, mothershipForPath, rootTabId } from "./documentSpace";
+import { findOpenTab, mothershipForPath } from "./documentSpace";
 import { adoptRoute } from "./routeSync";
+import { newTabId } from "./tabId";
 import { setTabTitle } from "./tabTitles";
 import { locationStamp, useTabTrees } from "./tabTreeStore";
 import { useWorkspace } from "./WorkspaceStore";
@@ -44,8 +45,9 @@ export interface OpenDocumentRequest {
 
 /** The D6 handler: a left child tab under the spawning (active) tab — or a
  *  root tab when nothing is active. Re-opening the same document under the
- *  same parent ACTIVATES the open tab (never a duplicate); reopening one
- *  that was closed takes a fresh id, since the closed id stays in history. */
+ *  same parent ACTIVATES the open tab (never a duplicate), found by its
+ *  fields; reopening one that was closed opens a new tab (a new opaque id:
+ *  the closed one stays in history). */
 function spawnDocumentTab(req: OpenDocumentRequest): void {
   const mothership = mothershipForPath(window.location.pathname, window.location.search);
   const requestedAt = locationStamp();
@@ -62,14 +64,14 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
     const tree = s.trees[mothership];
     if (!tree) return;
     const parentId = tree.active_tab_id;
-    const shows = (id: string) => tree.nodes[id].kind === "reader" && tree.nodes[id].ref === req.documentId;
+    const parent = parentId ? tree.nodes[parentId] : null;
     // Already the active tab: nothing to open; only make sure it is seen.
-    if (parentId && shows(parentId)) {
+    if (parent && parent.side === "left" && parent.kind === "reader" && parent.ref === req.documentId) {
       if (takeScreen) revealLeftPane();
       return;
     }
-    const siblings = parentId ? tree.nodes[parentId].child_order : tree.root_order;
-    const open = siblings.find(shows);
+    // Found by its fields, never by its (opaque) id.
+    const open = findOpenTab(tree, { side: "left", kind: "reader", ref: req.documentId, parent_tab_id: parentId });
     if (open) {
       if (takeScreen) {
         s.activateTab(mothership, open);
@@ -77,12 +79,9 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
       }
       return;
     }
-    const base = parentId
-      ? childTabId(parentId, "reader", req.documentId)
-      : rootTabId({ kind: "reader", ref: req.documentId });
     if (req.documentTitle) setTabTitle("reader", req.documentId, req.documentTitle);
     s.spawnTab(mothership, parentId, {
-      tab_id: freshTabId(tree, base),
+      tab_id: newTabId(tree),
       origin: { document_id: req.documentId, kind: "reference" },
       kind: "reader",
       ref: req.documentId,

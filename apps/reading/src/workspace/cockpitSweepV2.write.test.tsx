@@ -101,8 +101,8 @@ import WriteHome from "../modes/Write/WriteHome";
 import { PanelLayout } from "./PanelLayout";
 import { useBlockSources } from "./blockSources";
 import { useCompanion } from "./companionStore";
-import { childTabId } from "./documentSpace";
 import { installShortcuts } from "./shortcuts";
+import { tabIdOf } from "./tabTestKit";
 import { useTabTrees } from "./tabTreeStore";
 import { useWorkspace } from "./WorkspaceStore";
 import { useWriteOutline } from "./writeOutlineStore";
@@ -111,8 +111,10 @@ import { pinPlatform, unpinPlatform } from "./keymapTestKit";
 let uninstall: (() => void) | null = null;
 const ws = () => useWorkspace.getState();
 const tabs = () => useTabTrees.getState();
-const BODY = "root:document:/write/d-1";
-const SEC = (s: string) => childTabId(BODY, "document", `section:${s}`);
+/** The piece's body tab and its section tabs, found by what they show
+ *  (tab ids are opaque). Each throws until the tab is open. */
+const BODY = () => tabIdOf(tabs().trees.writing!, "document", "/write/d-1");
+const SEC = (s: string) => tabIdOf(tabs().trees.writing!, "document", `section:${s}`, BODY());
 
 function mountCockpit(path: string) {
   window.history.replaceState({}, "", path);
@@ -219,7 +221,7 @@ describe("F-02 — a section-tab switch never loses an edit", () => {
     expect(visibleText(main, "Intro section")).toEqual([]);
     expect(visibleText(main, "Body section").length).toBeGreaterThan(0);
     act(() => {
-      tabs().activateTab("writing", BODY);
+      tabs().activateTab("writing", BODY());
     });
     await waitFor(() => expect(visibleText(main, "Intro section").length).toBeGreaterThan(0));
     const editor = main.querySelector(".ProseMirror");

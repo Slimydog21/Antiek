@@ -302,11 +302,20 @@ function isKnown(tree: TabTree, id: string): boolean {
   return Object.hasOwn(tree.nodes, id) || Object.hasOwn(tree.history, id);
 }
 
+/** THREAD-CONTRACT §1.6: a tab_id is 1 to 64 of [A-Za-z0-9_-]. */
+const TAB_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** True when `id` is a tab_id the server accepts and a record can key. */
+export function isLegalTabId(id: unknown): id is string {
+  return typeof id === "string" && TAB_ID_RE.test(id) && id !== "__proto__";
+}
+
 /** tab_ids are record keys. "__proto__" is the one key a plain object cannot
  *  hold safely, so it is refused. */
 function tabIdProblem(id: unknown): string | null {
   if (typeof id !== "string" || id.length === 0) return "tab_id must be a non-empty string";
   if (id === "__proto__") return 'tab_id "__proto__" is reserved';
+  if (!TAB_ID_RE.test(id)) return `tab_id ${JSON.stringify(id)} is not 1 to 64 of [A-Za-z0-9_-]`;
   return null;
 }
 
@@ -1001,14 +1010,24 @@ function normalizeNode(n: TabNode): TabNode {
   return { ...n, side: n.side ?? "left", title: n.title ?? "" };
 }
 
-/** Parse a snapshot from the server. Refuses one that breaks an invariant,
+/** Parse a snapshot from the server. Refuses one holding a tab_id outside
+ *  §1.6's alphabet (`invalid_tab_id`), and one that breaks an invariant,
  *  names an unknown branch kind, or whose retired_numbers disagree with its
- *  history. */
+ *  history (`invalid_snapshot`). Every tree the store holds comes through
+ *  here, the HTTP adapter's `fromWire` output included. */
 export function fromSnapshot(snapshot: TabTreeSnapshot): TabTreeResult<{ tree: TabTree }> {
   const w = snapshot?.tree;
   if (!w || typeof w !== "object" || typeof w.nodes !== "object" || typeof w.history !== "object" || !Array.isArray(w.root_order)) {
     return fail("invalid_snapshot", "snapshot.tree is malformed");
   }
+  // Every tab_id, open or retired, keys and nodes alike, is one the server
+  // accepts (§1.6): a structural id is refused here, before it reaches a tree.
+  const ids = new Set<string>([...Object.keys(w.nodes), ...Object.keys(w.history)]);
+  for (const n of [...Object.values(w.nodes), ...Object.values(w.history).map((e) => e?.node)]) {
+    if (n && typeof n.tab_id === "string") ids.add(n.tab_id);
+  }
+  const badIds = [...ids].map(tabIdProblem).filter((p): p is string => p !== null);
+  if (badIds.length > 0) return fail("invalid_tab_id", badIds.join("; "));
   const problems: string[] = [];
   const all = [
     ...Object.keys(w.nodes).map((id) => w.nodes[id]),

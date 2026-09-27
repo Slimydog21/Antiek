@@ -354,7 +354,7 @@ describe("the tab-tree keys", () => {
   });
 
   it("prefix c closes nothing (it is 'new tab', held for the picker); lift-only close stays in the store", async () => {
-    const { m } = await seedTree();
+    const { m, rootId } = await seedTree();
     act(() => {
       tabs().spawnTab(m, "c1", { tab_id: "c1-1", kind: "reader", ref: "doc-a1", mothership: m, activate: false });
       tabs().activateTab(m, "c1");
@@ -371,7 +371,8 @@ describe("the tab-tree keys", () => {
     // The child LIFTED into c1's place under the root, keeping its hier
     // number (addresses are never renumbered on lift).
     expect(tree.nodes["c1-1"].hier_number).toBe("1.1.1");
-    expect(tree.nodes["root:reader:doc-9"].child_order).toContain("c1-1");
+    expect(tree.nodes[rootId].ref).toBe("doc-9");
+    expect(tree.nodes[rootId].child_order).toContain("c1-1");
     expect(tabs().heldClose?.token.tab_id).toBe("c1");
     act(() => {
       tabs().undoClose(tabs().heldClose!.token.close_id);

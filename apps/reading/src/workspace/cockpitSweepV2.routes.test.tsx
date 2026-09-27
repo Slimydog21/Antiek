@@ -52,6 +52,7 @@ import { openDocumentInLeftPane } from "./crossPane";
 import { mothershipForPath } from "./documentSpace";
 import { useWorkspace } from "./WorkspaceStore";
 import { useTabTrees } from "./tabTreeStore";
+import { tabIdOf } from "./tabTestKit";
 import { installShortcuts } from "./shortcuts";
 import { pinPlatform, press, unpinPlatform } from "./keymapTestKit";
 import {
@@ -325,22 +326,23 @@ describe("D6-F06 — an agent open keeps the current mode (PROBE-4, V12)", () =>
     const research = tabs().trees.research!;
     const active = research.nodes[research.active_tab_id!];
     expect(active.ref).toBe("doc-9");
-    expect(active.parent_tab_id).toBe("root:research:/inv/inv-1");
-    expect(research.root_order).toEqual(["root:research:/inv/inv-1"]);
+    const invTab = tabIdOf(research, "research", "/inv/inv-1");
+    expect(active.parent_tab_id).toBe(invTab);
+    expect(research.root_order).toEqual([invTab]);
   });
 
   it("a reload at /inv/inv-1 with a persisted active reader child stays at /inv/inv-1", async () => {
     const adapter = createInMemoryTabTreeAdapter();
     const t = emptyTabTree("research");
     const a = spawnChild(t, null, {
-      tab_id: "root:research:/inv/inv-1",
+      tab_id: "tInv1",
       kind: "research",
       ref: "/inv/inv-1",
       mothership: "research",
       activate: true,
     });
     if (!a.ok) throw new Error("a");
-    const b = spawnChild(a.tree, "root:research:/inv/inv-1", {
+    const b = spawnChild(a.tree, "tInv1", {
       tab_id: "kid",
       kind: "reader",
       ref: "doc-9",
@@ -355,7 +357,7 @@ describe("D6-F06 — an agent open keeps the current mode (PROBE-4, V12)", () =>
     await waitFor(() => expect(tabs().trees.research).not.toBeNull());
     await settle(10);
     expect(here()).toBe("/inv/inv-1");
-    expect(tabs().trees.research!.active_tab_id).toBe("root:research:/inv/inv-1");
+    expect(tabs().trees.research!.active_tab_id).toBe("tInv1");
     expect(tabs().trees.research!.nodes.kid).toBeTruthy();
   });
 });

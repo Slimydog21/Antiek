@@ -200,11 +200,18 @@ Persistence is ONLY through a `TabTreeAdapter` (§1.6: never web storage).
 `bindActiveProject` (run on the first load when the app sets
 `tabTreeHandle.bindOnLoad`) binds the trees to the first non-archived project
 through `tabTreeHttpAdapter.ts` over lane B's routes and reports
-`tabsPersistence: "server"`; a 404 on `GET /projects` keeps the in-memory
-adapter (`"session"`: trees end with the page). `tabTreeWire.ts` maps the
+`tabsPersistence: "server"`; a 404 on `GET /projects`, or a 200 that is not
+JSON (the SPA fallback), keeps the in-memory adapter (`"session"`: trees end
+with the page), and a network error is retried after 1 s, 4 s and 15 s first.
+A save the server refuses (422) sets `persistenceIssue` until a later save of
+that tree is accepted; `tabsSaved(state)` is true only when bound and clean.
+`tabTreeWire.ts` maps the
 model to the §1.6 wire (history ↔ `retired[]`, island ↔ selection,
 `next_root_index` ↔ `next_child_index.root`); `setTabTreeAdapter` stays the
-test seam.
+test seam. Every tab_id is opaque (`tabId.ts` `newTabId()`, the one minting
+path: `t` + base64url of 16 random bytes); the model refuses any id outside
+§1.6's 1 to 64 of `[A-Za-z0-9_-]`, and a tab is found by its fields
+(`documentSpace.findOpenTab` / `findClosedTab`), never by parsing its id.
 
 ## Write mode (C5, 2026-09-24)
 

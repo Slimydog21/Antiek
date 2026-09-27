@@ -904,7 +904,7 @@ describe("BookReader in the cockpit (repair round 1)", () => {
   it("a highlight's deep research branches from the reader's tab (?m= keeps its tree)", async () => {
     const { tabTreeHandle } = await import("../../workspace/tabTreeHandle");
     tabTreeHandle.store = {
-      getState: () => ({ trees: { reading: { active_tab_id: "root:reader:doc-1" } } }),
+      getState: () => ({ trees: { reading: { active_tab_id: "tReaderDoc1" } } }),
     } as never;
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
@@ -925,14 +925,14 @@ describe("BookReader in the cockpit (repair round 1)", () => {
     const [to, options] = navigateMock.mock.calls.at(-1)!;
     expect(to).toBe("/inv/inv-from-highlight?m=reading");
     const branch = (options as { state: { tabBranch: Record<string, unknown> } }).state.tabBranch;
-    expect(branch.parentTabId).toBe("root:reader:doc-1");
+    expect(branch.parentTabId).toBe("tReaderDoc1");
     expect(branch.origin).toEqual({ document_id: "doc-1", kind: "research", page_index: 0 });
   });
 
   it("'Research this page' branches from the reader's tab too", async () => {
     const { tabTreeHandle } = await import("../../workspace/tabTreeHandle");
     tabTreeHandle.store = {
-      getState: () => ({ trees: { reading: { active_tab_id: "root:reader:doc-1" } } }),
+      getState: () => ({ trees: { reading: { active_tab_id: "tReaderDoc1" } } }),
     } as never;
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
@@ -951,7 +951,7 @@ describe("BookReader in the cockpit (repair round 1)", () => {
     const [to, options] = navigateMock.mock.calls.at(-1)!;
     expect(to).toBe("/inv/inv-child-xyz?m=reading");
     expect((options as { state: { tabBranch: { parentTabId: string } } }).state.tabBranch.parentTabId).toBe(
-      "root:reader:doc-1",
+      "tReaderDoc1",
     );
   });
 });

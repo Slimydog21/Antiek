@@ -55,7 +55,7 @@ import { prefixState } from "../components/hotkeys/prefixState";
 import type { DeliverableDetailResponse } from "../lib/api";
 import { PanelLayout } from "./PanelLayout";
 import { useWorkspace } from "./WorkspaceStore";
-import { childTabId, freshTabId, rootTabId } from "./documentSpace";
+import { tabIdOf } from "./tabTestKit";
 import { installShortcuts } from "./shortcuts";
 import { pinPlatform, unpinPlatform } from "./keymapTestKit";
 import { sectionRefOf } from "./sectionRef";
@@ -224,7 +224,7 @@ describe("P-B — activating another piece's section tab navigates to that piece
     mount("/write/B");
     await waitFor(() => expect(tabs().trees.writing?.active_tab_id ?? null).not.toBeNull());
     await flush();
-    const aRoot = rootTabId({ kind: "document", ref: "/write/A" });
+    const aRoot = "tPieceA";
     act(() => {
       tabs().spawnTab("writing", null, { tab_id: aRoot, kind: "document", ref: "/write/A", mothership: "writing", activate: false });
       tabs().spawnTab("writing", aRoot, { tab_id: "secA", kind: "document", ref: sectionRefOf("sa"), mothership: "writing", activate: false });
@@ -251,7 +251,7 @@ describe("P-B — activating another piece's section tab navigates to that piece
 // ─── P-C: a reopened piece gets its section tabs again ──────────────────
 
 describe("P-C — a piece closed and reopened gets its section tabs under the new root", () => {
-  it("the Write sync adopts the reseeded root (base~2), not the closed base id", async () => {
+  it("the Write sync adopts the reseeded root (a new tab), not the closed one", async () => {
     await tabs().ensureMothership("writing");
     const detail = {
       deliverable_id: "A",
@@ -264,7 +264,7 @@ describe("P-C — a piece closed and reopened gets its section tabs under the ne
     } as unknown as DeliverableDetailResponse;
     const h = renderHook(({ d }) => useWriteTreeSync(d), { initialProps: { d: detail } });
     await flush();
-    const base = rootTabId({ kind: "document", ref: "/write/A" });
+    const base = tabIdOf(tabs().trees.writing!, "document", "/write/A");
     expect(tabs().trees.writing!.nodes[base].child_order.length).toBe(2);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     act(() => tabs().activateTab("writing", base));
@@ -273,8 +273,8 @@ describe("P-C — a piece closed and reopened gets its section tabs under the ne
       vi.advanceTimersByTime(10_000);
     });
     vi.useRealTimers();
-    const fresh = freshTabId(tabs().trees.writing!, base);
-    expect(fresh).toBe(`${base}~2`);
+    const fresh = "tPieceAReopened";
+    expect(tabs().trees.writing!.history[base]).toBeTruthy();
     act(() => {
       tabs().spawnTab("writing", null, { tab_id: fresh, kind: "document", ref: "/write/A", mothership: "writing" });
     });
@@ -282,10 +282,12 @@ describe("P-C — a piece closed and reopened gets its section tabs under the ne
     await flush();
     const after = tabs().trees.writing!;
     expect(after.nodes[fresh].child_order).toEqual([
-      childTabId(fresh, "document", sectionRefOf("s1")),
-      childTabId(fresh, "document", sectionRefOf("s2")),
+      tabIdOf(after, "document", sectionRefOf("s1"), fresh),
+      tabIdOf(after, "document", sectionRefOf("s2"), fresh),
     ]);
     expect(after.root_order).toEqual([fresh]);
+    // New tabs, not the closed piece's retired sections brought back.
+    for (const id of after.nodes[fresh].child_order) expect(Object.hasOwn(after.history, id)).toBe(false);
   });
 
   it("with the piece closed and not reopened, the sync seeds a fresh root rather than failing", async () => {
@@ -298,7 +300,7 @@ describe("P-C — a piece closed and reopened gets its section tabs under the ne
     } as unknown as DeliverableDetailResponse;
     const h = renderHook(({ d }) => useWriteTreeSync(d), { initialProps: { d: detail } });
     await flush();
-    const base = rootTabId({ kind: "document", ref: "/write/A" });
+    const base = tabIdOf(tabs().trees.writing!, "document", "/write/A");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     act(() => tabs().activateTab("writing", base));
     act(() => tabs().closeActiveTab("writing", "prune"));
@@ -309,8 +311,11 @@ describe("P-C — a piece closed and reopened gets its section tabs under the ne
     h.rerender({ d: { ...(detail as object) } as DeliverableDetailResponse });
     await flush();
     const after = tabs().trees.writing!;
-    expect(after.root_order).toEqual([`${base}~2`]);
-    expect(after.nodes[`${base}~2`].child_order.length).toBe(1);
+    const reseeded = tabIdOf(after, "document", "/write/A");
+    expect(reseeded).not.toBe(base);
+    expect(Object.hasOwn(after.history, base)).toBe(true);
+    expect(after.root_order).toEqual([reseeded]);
+    expect(after.nodes[reseeded].child_order.length).toBe(1);
   });
 });
 

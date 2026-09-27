@@ -8,12 +8,15 @@
  * adapter is the model's IN-MEMORY one ("session": a reload starts empty).
  * `bindActiveProject` binds the trees to the active project's server row
  * through the HTTP adapter (tabTreeHttpAdapter.ts, lane B's LB-2 routes) and
- * reports "server"; when GET /projects answers 404 (the route is not
- * deployed) it keeps the in-memory adapter and reports "session", so the UI
- * can say "Tabs aren't saved across reloads yet". Every save goes through one
- * path for both adapters: snapshot + expected version, adopt the server's
- * answer (replaying ops made in flight), rebase after a 409, and after a 422
- * log, refetch and rebase.
+ * reports "server"; when GET /projects answers 404, or a 200 that is not
+ * JSON (the route is not deployed), it keeps the in-memory adapter and
+ * reports "session", so the UI can say "Tabs aren't saved across reloads
+ * yet"; a network error is retried first (1 s, 4 s, 15 s). Every save goes
+ * through one path for both adapters: snapshot + expected version, adopt the
+ * server's answer (replaying ops made in flight), rebase after a 409, and
+ * after a 422 log, refetch, rebase and record `persistenceIssue` (cleared by
+ * the next accepted save of that tree), so "server" never claims tabs are
+ * saved while the server is refusing them (`tabsSaved`).
  *
  * Tabs are NAVIGATION state (tab ≠ branch): closing or pruning a tab never
  * touches the investigation/document it pointed at. public_number stays null
@@ -65,9 +68,30 @@ import { createHttpTabTreeAdapter } from "./tabTreeHttpAdapter";
  *  reaches a server: a server-bound store uses the active project's id. */
 export const SESSION_PROJECT_KEY = "default";
 
-/** Where the trees live: "session" (in memory, gone on reload) or "server"
- *  (the active project's row, §1.6). */
+/** Where the trees are saved to: "session" (in memory, gone on reload) or
+ *  "server" (the active project's row, §1.6). It claims the tabs ARE saved
+ *  only while `persistenceIssue` is null: see `tabsSaved`. */
 export type TabsPersistence = "session" | "server";
+
+/** The last save of `mothership`'s tree was refused (a 422: Part 2 §2.2
+ *  calls it a lane-A bug). The store has already logged it, refetched and
+ *  rebased, so the tabs are on screen but not saved. A later accepted save of
+ *  that tree clears it. `at` is when the refusal came back (ISO 8601). */
+export interface PersistenceIssue {
+  reason: "refused";
+  at: string;
+  mothership: Mothership;
+}
+
+/** True when the tabs are saved on the server: bound to a project, and the
+ *  last save was accepted. */
+export function tabsSaved(s: { tabsPersistence: TabsPersistence; persistenceIssue: PersistenceIssue | null }): boolean {
+  return s.tabsPersistence === "server" && s.persistenceIssue === null;
+}
+
+/** GET /projects retries after a network error (A2b item 6): three, after
+ *  1 s, 4 s and 15 s. */
+export const PROJECT_RETRY_DELAYS_MS: readonly number[] = [1_000, 4_000, 15_000];
 
 /** The active project's id, or null when there is none to bind to. May throw
  *  (an ApiError 404 means GET /projects is not deployed). */
@@ -160,12 +184,17 @@ interface TabTreeState {
   /** The project the trees are bound to (null = session, in memory). */
   projectId: string | null;
   tabsPersistence: TabsPersistence;
+  /** Set when the last save was refused, null when it was accepted (or none
+   *  has run). The UI copy for it is not written yet; the state is exposed. */
+  persistenceIssue: PersistenceIssue | null;
 
   setTabTreeAdapter: (adapter: TabTreeAdapter) => void;
   /** Bind the trees to the active project (default source: the first
-   *  non-archived project). A 404 from GET /projects, no project, or any
-   *  other failure keeps the in-memory adapter ("session"). A load waits for
-   *  a binding in flight. */
+   *  non-archived project). A network error is retried (PROJECT_RETRY_DELAYS_MS)
+   *  before giving up. A 404 from GET /projects, a 200 that is not JSON (the
+   *  route is absent), no project, or any other failure keeps the in-memory
+   *  adapter ("session"). A load waits for a binding in flight, retries
+   *  included. */
   bindActiveProject: (
     source?: ActiveProjectSource,
     makeAdapter?: () => TabTreeAdapter,
@@ -223,6 +252,45 @@ const undoToasts = new Map<string, number>();
 let navSeq = 0;
 /** Written closes still inside their toast's window, by close_id. */
 const recentCloses = new Map<string, { mothership: Mothership; token: UndoToken }>();
+
+/** How a failed GET /projects is read. */
+type ProjectFailure = "absent" | "network" | "other";
+
+function classifyProjectFailure(e: unknown): ProjectFailure {
+  // 404: the route is not deployed.
+  if (e instanceof ApiError) return e.status === 404 ? "absent" : "other";
+  // A 200 whose body is not JSON: the edge does not route /projects to the
+  // API and the SPA fallback answered index.html, so resp.json() threw a
+  // SyntaxError. The route is absent exactly as a 404 says it is.
+  if (e instanceof SyntaxError) return "absent";
+  // fetch rejects (a TypeError) when there is no response at all: the
+  // network, not the route. Worth another try.
+  return "network";
+}
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** The active project's id, or null (stay on session). A network error is
+ *  retried after each of PROJECT_RETRY_DELAYS_MS; a route that is absent is
+ *  not retried and not logged; anything else is logged once. */
+async function readActiveProject(source: ActiveProjectSource): Promise<string | null> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await source();
+    } catch (e) {
+      const kind = classifyProjectFailure(e);
+      if (kind === "absent") return null;
+      if (kind === "network" && attempt < PROJECT_RETRY_DELAYS_MS.length) {
+        await wait(PROJECT_RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      // Logged, and the session trees kept rather than lose the operator's tabs.
+      // eslint-disable-next-line no-console
+      console.error("[antiek/tabs] could not read the active project; tabs stay in this session:", e);
+      return null;
+    }
+  }
+}
 
 function noErrors(): Record<Mothership, string | null> {
   return { research: null, writing: null, reading: null };
@@ -323,6 +391,8 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
    *  first `sentOps`) replay on the server's snapshot and stay pending. */
   function adoptSaved(mothership: Mothership, snapshot: TabTreeSnapshot, sentOps: number): void {
     const inFlight = (get().pendingOps[mothership] ?? []).slice(sentOps);
+    // Accepted: whatever an earlier refusal of this tree said no longer holds.
+    if (get().persistenceIssue?.mothership === mothership) set({ persistenceIssue: null });
     adopt(mothership, snapshot, inFlight);
   }
 
@@ -373,7 +443,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
         if (get().adapter !== adapter) return;
         if (retry.status === "saved") adoptSaved(mothership, retry.snapshot, retrySent);
         else if (retry.status === "conflict") adopt(mothership, retry.current, get().pendingOps[mothership] ?? []);
-        else reportInvalid(retry);
+        else reportInvalid(mothership, retry);
       } catch (e) {
         // eslint-disable-next-line no-console
         console.error("[antiek/tabs] save failed; retrying with the next write:", e);
@@ -384,7 +454,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     }
     // A 422: the server refused the snapshot. Part 2 §2.2: a lane-A bug. Log
     // it with its detail, refetch and rebase; never show it to the operator.
-    reportInvalid(result);
+    reportInvalid(mothership, result);
     try {
       const fresh = await adapter.load(key, mothership);
       if (get().adapter !== adapter) return;
@@ -395,11 +465,13 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     }
   }
 
-  function reportInvalid(result: { reason: string; tab_id: string | null; detail: string }): void {
+  /** A 422: log it (a lane-A bug) and record that the tabs are not saved. */
+  function reportInvalid(mothership: Mothership, result: { reason: string; tab_id: string | null; detail: string }): void {
     // eslint-disable-next-line no-console
     console.error(
       `[antiek/tabs] the server refused the tab snapshot (${result.reason}${result.tab_id ? `, tab ${result.tab_id}` : ""}), a lane-A bug: ${result.detail}`,
     );
+    set({ persistenceIssue: { reason: "refused", at: new Date().toISOString(), mothership } });
   }
 
   /** The hold lapsed (or a newer close superseded it): the close joins the
@@ -457,6 +529,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     adapter: createInMemoryTabTreeAdapter(),
     projectId: null,
     tabsPersistence: "session",
+    persistenceIssue: null,
 
     setTabTreeAdapter: (adapter) => {
       loads.clear();
@@ -469,23 +542,14 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
         loaded: emptyLoaded(),
         loadError: noErrors(),
         pendingOps: { research: [], writing: [], reading: [] },
+        persistenceIssue: null,
       });
     },
 
     bindActiveProject: (source = firstOpenProject, makeAdapter = serverAdapter) => {
       bindingStarted = true;
       const run = (async (): Promise<TabsPersistence> => {
-        let projectId: string | null = null;
-        try {
-          projectId = await source();
-        } catch (e) {
-          // 404: GET /projects is not deployed. Anything else is logged; both
-          // keep the session trees rather than lose the operator's tabs.
-          if (!(e instanceof ApiError && e.status === 404)) {
-            // eslint-disable-next-line no-console
-            console.error("[antiek/tabs] could not read the active project; tabs stay in this session:", e);
-          }
-        }
+        const projectId = await readActiveProject(source);
         if (projectId === null) {
           set({ tabsPersistence: "session", projectId: null });
           return "session";
@@ -496,6 +560,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
           adapter: makeAdapter(),
           projectId,
           tabsPersistence: "server",
+          persistenceIssue: null,
           trees: { research: null, writing: null, reading: null },
           loaded: emptyLoaded(),
           loadError: noErrors(),
@@ -724,6 +789,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
         adapter: createInMemoryTabTreeAdapter(),
         projectId: null,
         tabsPersistence: "session",
+        persistenceIssue: null,
       });
     },
   };

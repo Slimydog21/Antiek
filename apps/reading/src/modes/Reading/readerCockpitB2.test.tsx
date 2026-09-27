@@ -219,13 +219,16 @@ describe("B2-7 opening the house slot's book opens a root tab, never a provenanc
   async function seedReaderTab(mothership: "reading" | "research") {
     const { useTabTrees } = await import("../../workspace/tabTreeStore");
     await useTabTrees.getState().ensureMothership(mothership);
-    useTabTrees.getState().spawnTab(mothership, null, {
-      tab_id: "root:reader:doc-1",
+    const seeded = useTabTrees.getState().spawnTab(mothership, null, {
+      tab_id: "tReaderDoc1",
       kind: "reader",
       ref: "doc-1",
       mothership,
       activate: true,
     });
+    // The reader tab must be there, or "no branch intent" would pass vacuously.
+    expect(seeded.ok).toBe(true);
+    expect(useTabTrees.getState().trees[mothership]!.active_tab_id).toBe("tReaderDoc1");
   }
 
   async function clickHouse() {
