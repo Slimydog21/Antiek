@@ -219,7 +219,7 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
   it("names what is opening while the list loads", () => {
     listState.current = { ...listState.current, loading: true };
     renderMonitor();
-    expect(screen.getByRole("status").textContent).toContain("Opening your research");
+    expect(screen.getByText("Opening your research…").closest('[role="status"]')).not.toBeNull();
   });
 
   it("disables launch with a clear reason when unauthenticated", () => {

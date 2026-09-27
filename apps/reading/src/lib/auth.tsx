@@ -227,7 +227,7 @@ function AuthUnavailableScreen({
           onClick={() => void retry()}
           disabled={retrying}
           aria-busy={retrying}
-          className="rounded-md px-4 py-2 text-sm font-semibold bg-sun text-ink hover:bg-sun-deep disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink dark:focus-visible:ring-bright focus-visible:ring-offset-2"
+          className="rounded-md px-4 py-2 text-sm font-semibold bg-sun text-ink hover:bg-sun-hover disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink dark:focus-visible:ring-bright focus-visible:ring-offset-2"
         >
           Retry
         </button>
