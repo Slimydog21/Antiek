@@ -396,14 +396,16 @@ class _RecordingGate:
 # (method, path, body, content_type, fewest write-gate acquires). The floor
 # proves the helper's own writes ran and were recorded, not just the route's
 # _write: e.g. the invite answer is token resolve + consent check + voice-note
-# ingest + answer turn.
+# ingest. The answer turn is written by the ingest's after_write hook under
+# the ingest's own lock (an answer lands whole or not at all), so it is not a
+# separate acquire; a floor one lower would pass without the ingest's hop.
 _TWO_HOP_ROUTES: list[tuple[str, str, Any, str | None, int]] = [
     (
         "POST",
         "/speak/interviews/{iid}/answers",
         {"question_id": "q1", "transcript": "hello there", "duration_seconds": 1.0},
         None,
-        3,
+        2,
     ),
     ("POST", "/speak/interviews/{iid}/followups", None, None, 1),
     ("GET", "/speak/pushes", None, None, 1),
@@ -413,9 +415,9 @@ _TWO_HOP_ROUTES: list[tuple[str, str, Any, str | None, int]] = [
         "/speak/invite/{token}/answer",
         {"question_id": "q1", "transcript": "hello there", "duration_seconds": 1.0},
         None,
-        4,
+        3,
     ),
-    ("POST", "/speak/invite/{token}/voice?question_id=q1&duration_seconds=1", b"voice", "audio/webm", 4),
+    ("POST", "/speak/invite/{token}/voice?question_id=q1&duration_seconds=1", b"voice", "audio/webm", 3),
     ("POST", "/speak/invite/{token}/followups", None, None, 2),
     ("POST", "/speak/invite/{token}/decline", None, None, 2),
 ]
