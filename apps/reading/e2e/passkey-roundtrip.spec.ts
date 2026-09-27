@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { devLogin } from "./_dev-login";
+
 /**
  * The hard-to-vary passkey proof.
  *
@@ -26,12 +28,11 @@ test("email bootstrap becomes a real passkey-only second unlock", async ({
     },
   });
 
-  const setupDestination = encodeURIComponent(
-    "/login?setup=passkey&next=%2Ftrust",
-  );
-  await page.goto(
-    `http://localhost:8000/auth/dev-login?token=playwright-passkey-bootstrap&next=${setupDestination}`,
-  );
+  await devLogin(page, {
+    apiBase: "http://localhost:8000",
+    next: "/login?setup=passkey&next=%2Ftrust",
+    fixtureToken: "playwright-passkey-bootstrap",
+  });
 
   await expect(
     page.getByRole("heading", { name: "Leave email behind." }),
