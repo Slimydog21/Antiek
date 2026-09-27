@@ -7,6 +7,7 @@ import { listBooks } from "../api/books";
 import type { BookSummary } from "../api/books";
 import type { InvestigationSummary } from "../lib/api";
 import { useInvestigationList } from "../hooks/useInvestigationList";
+import { describeFailure } from "../shared/failure";
 import {
   WORKFLOWS,
   workflowForPath,
@@ -106,7 +107,8 @@ function documentNode(book: BookSummary): TreeNode {
 function useReadDocuments() {
   const [documents, setDocuments] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // The thrown value itself, so describeFailure can tell offline from 503.
+  const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,7 +120,7 @@ function useReadDocuments() {
           setError(null);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) setError(e ?? new Error("unknown"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -157,8 +159,17 @@ export function ProjectTree({
     workflow === "research" ? researchNodes : workflow === "read" ? readNodes : [];
   const recentLoading =
     workflow === "research" ? research.loading : workflow === "read" ? read.loading : false;
-  const recentError =
+  // useInvestigationList only exposes a message string (not this sprint's
+  // file), so a research failure is described generically; the read list
+  // keeps the thrown value. Either way the raw text never renders.
+  const recentFailureValue: unknown =
     workflow === "research" ? research.error : workflow === "read" ? read.error : null;
+  const recentFailure = recentFailureValue
+    ? describeFailure(
+        typeof recentFailureValue === "string" ? new Error(recentFailureValue) : recentFailureValue,
+        { what: "load your recent items" },
+      )
+    : null;
   const pinnedNodes = recent.filter((n) => pinned.has(pinnedKey(n)));
   const recentNodes = recent.filter((n) => !pinned.has(pinnedKey(n)));
 
@@ -231,10 +242,11 @@ export function ProjectTree({
           <p className="px-3 py-2 text-xs text-ink-mute dark:text-moonlight">
             Loading recent items...
           </p>
-        ) : recentError ? (
-          <p className="px-3 py-2 text-xs text-danger">
-            Could not load recent items: {recentError}
-          </p>
+        ) : recentFailure ? (
+          <div className="px-3 py-2 text-xs text-danger" role="alert">
+            <p>{recentFailure.title}</p>
+            <p>{recentFailure.detail}</p>
+          </div>
         ) : recentNodes.length === 0 ? (
           <p className="px-3 py-2 text-xs italic text-ink-mute dark:text-moonlight">
             No recent items yet.

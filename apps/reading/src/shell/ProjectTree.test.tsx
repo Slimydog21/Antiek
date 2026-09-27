@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 
 import type { BookSummary } from "../api/books";
-import type { InvestigationSummary } from "../lib/api";
+import { ApiError, type InvestigationSummary } from "../lib/api";
 import { usePinned } from "../components/navigation/pinnedStore";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import ProjectTree from "./ProjectTree";
@@ -135,11 +135,40 @@ describe("ProjectTree", () => {
     const { container } = renderTree("research");
 
     await waitFor(() =>
-      expect(screen.getByText(/Could not load recent items: backend unavailable/)).toBeTruthy(),
+      expect(screen.getByText("Couldn't load your recent items.")).toBeTruthy(),
     );
+    expect(container.textContent).not.toContain("backend unavailable");
     expect(screen.queryByText("No recent items yet.")).toBeNull();
     expect(screen.queryByText("Loading recent items...")).toBeNull();
     expectNoFabricatedIds(container);
+  });
+});
+
+describe("ProjectTree recent-items failure (F-07 class)", () => {
+  // The raw error string used to render after "Could not load recent items:".
+  const RAW = /\b[1-5]\d\d\b|HTTP|\/books|\/investigations|GET|Failed to fetch/;
+
+  it("a 503 loading documents shows the humanised title and no status or path", async () => {
+    listBooksMock.mockRejectedValue(new ApiError("GET /books?filter=all failed: HTTP 503", 503, "down"));
+    const { container } = renderTree("read");
+    await waitFor(() => expect(screen.getByText("Couldn't load your recent items.")).toBeTruthy());
+    expect(container.textContent).toContain("Antiek is busy or restarting.");
+    expect(container.textContent).not.toMatch(RAW);
+  });
+
+  it("a network TypeError shows the offline description, not 'Failed to fetch'", async () => {
+    listBooksMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    const { container } = renderTree("read");
+    await waitFor(() => expect(screen.getByText("Couldn't load your recent items.")).toBeTruthy());
+    expect(container.textContent).toContain("can't be reached");
+    expect(container.textContent).not.toMatch(RAW);
+  });
+
+  it("a research-list failure never shows the raw message either", async () => {
+    listInvestigationsMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    const { container } = renderTree("research");
+    await waitFor(() => expect(screen.getByText("Couldn't load your recent items.")).toBeTruthy());
+    expect(container.textContent).not.toMatch(RAW);
   });
 });
 
