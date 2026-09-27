@@ -94,5 +94,15 @@ RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 
+# ── cgroup resource isolation ─────────────────────────────────
+CPUQuota=200%
+CPUWeight=50
+MemoryMax=6G
+MemoryHigh=5G
+MemorySwapMax=0
+TasksMax=256
+LimitNOFILE=65536
+OOMScoreAdjust=500
+
 [Install]
 WantedBy=multi-user.target
