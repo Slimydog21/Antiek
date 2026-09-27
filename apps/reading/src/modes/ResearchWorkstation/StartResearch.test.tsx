@@ -410,7 +410,7 @@ describe("StartResearch — owner model authority", () => {
     fetchUserModelsMock.mockRejectedValue(new Error("secret upstream detail"));
     render(<MemoryRouter><StartResearch /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: "Deep research · multiple model calls" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("Can’t load executable models");
+    expect((await screen.findByRole("alert")).textContent).toContain("Can’t load saved models");
     expect(screen.queryByText(/research-[0-9a-f-]+/i)).toBeNull();
     fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Continue without an owner route." } });
     expect((screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled).toBe(true);

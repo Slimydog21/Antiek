@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { cardLift } from "../../design/motion";
 import GlassSurface from "../../shell/GlassSurface";
@@ -13,7 +13,6 @@ import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type {
   ResearchSourcePolicy,
-  ResearchTier,
   UserModelChoice,
 } from "../../lib/api";
 import { fetchUserModels, type UserModelRow } from "../../api/settingsModels";
@@ -87,11 +86,6 @@ const isExecutable = (model: UserModelRow) =>
   model.enabled && model.key_present && model.registered && model.route_eligible &&
   model.pricing_status === "known" && model.hard_ceiling_eligible &&
   model.execution_status === "executable";
-
-const RESEARCH_TIER_OPTIONS: ReadonlyArray<{ value: ResearchTier; label: string; hint: string }> = [
-  { value: "fast", label: "Fast", hint: "lower-latency established route" },
-  { value: "deep", label: "Deep", hint: "reasoning-heavier established route" },
-];
 
 interface PendingOwnerLaunch {
   question: string;
@@ -169,9 +163,6 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const [askMode, setAskMode] = useState<"quick" | "deep">(restoredLaunch ? "deep" : "quick");
   const [quickAskSending, setQuickAskSending] = useState(false);
   const [question, setQuestion] = useState(restoredLaunch?.question ?? "");
-  // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
-  // Recorded on the investigation server-side so it's queryable after.
-  const [tier, setTier] = useState<ResearchTier>("deep");
   const [sourcePolicy, setSourcePolicy] = useState<ResearchSourcePolicy[]>(
     DEFAULT_SOURCE_POLICY,
   );
@@ -216,6 +207,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
 
   const refreshModels = useCallback(async () => {
     setModelsState("loading");
+    setModels([]);
     try {
       const inventory = await fetchUserModels();
       setModels(inventory.models.filter(isExecutable));
@@ -237,18 +229,17 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   }, [modelsState, modelChoice, selectedModel]);
 
   const onSubmit = useCallback(async () => {
-    const pending = modelChoice && selectedModel
-      ? { question, modelChoice, operationId } satisfies PendingOwnerLaunch
-      : null;
-    if (pending) window.sessionStorage.setItem(OWNER_LAUNCH_KEY, JSON.stringify(pending));
-    const id = await submit(modelChoice && selectedModel
-      ? { question, modelChoice, operationId, sourcePolicy }
-      : { question, researchTier: tier, sourcePolicy });
+    // The keyboard path calls this handler directly; the disabled Ask button
+    // alone cannot prevent a no-choice, operator-funded investigation.
+    if (modelsState !== "ready" || !modelChoice || !selectedModel) return;
+    const pending = { question, modelChoice, operationId } satisfies PendingOwnerLaunch;
+    window.sessionStorage.setItem(OWNER_LAUNCH_KEY, JSON.stringify(pending));
+    const id = await submit({ question, modelChoice, operationId, sourcePolicy });
     if (id) {
       window.sessionStorage.removeItem(OWNER_LAUNCH_KEY);
       setQuestion("");
     }
-  }, [submit, question, modelChoice, operationId, selectedModel, tier, sourcePolicy]);
+  }, [submit, question, modelChoice, operationId, selectedModel, modelsState, sourcePolicy]);
 
   const toggleSourcePolicy = useCallback((value: ResearchSourcePolicy) => {
     setSourcePolicy((current) => {
@@ -692,32 +683,29 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               <label className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight" id="research-model-label">
                 Model for Ask
               </label>
-              <LemonSelect
-                value={modelChoice ? modelKey(modelChoice.provider_id, modelChoice.model_id) : "established"}
-                onChange={(value) => value === "established" ? setModelChoice(null) : selectModel(value)}
-                options={[{
-                  value: "established",
-                  label: `Established ${tier} route`,
-                }, ...models.map((model) => ({
-                  value: modelKey(model.id, model.model_id),
-                  label: `${model.display_name} · ${model.model_id}`,
-                }))]}
-                placeholder={
-                  modelsState === "loading"
-                    ? "Checking executable models…"
-                    : models.length === 0
-                      ? "No executable model available"
-                      : "Choose an executable model"
-                }
-                aria-label="Model for Ask investigation"
-                fullWidth
-              />
+              {models.length > 0 ? (
+                <LemonSelect
+                  value={modelChoice ? modelKey(modelChoice.provider_id, modelChoice.model_id) : null}
+                  onChange={selectModel}
+                  options={models.map((model) => ({
+                    value: modelKey(model.id, model.model_id),
+                    label: `${model.display_name} · ${model.model_id}`,
+                  }))}
+                  placeholder="Choose an executable model"
+                  aria-label="Model for Ask investigation"
+                  fullWidth
+                />
+              ) : modelsState === "error" ? (
+                <p className="text-xs font-mono text-emperor" role="alert">
+                  Can’t load saved models. Retry inventory or check <Link to="/settings" className="underline">Settings</Link>.
+                </p>
+              ) : (
+                <p className="text-xs font-mono text-ink-mute dark:text-moonlight" role="status">
+                  {modelsState === "loading" ? "Checking saved models…" : "No executable saved model available."}
+                </p>
+              )}
             </div>
-            {modelsState === "error" ? (
-              <p className="text-xs font-mono text-emperor" role="alert">
-                Can’t load executable models. Check Settings, then retry inventory.
-              </p>
-            ) : selectedModel ? (
+            {selectedModel ? (
               <div className="space-y-1" aria-live="polite">
                 <p className="text-xs font-serif text-ink dark:text-bright">
                   Ask uses this model for the root investigation’s paid Loop One roles. Later chases choose their own route.
@@ -726,22 +714,12 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                   Pricing authority: {selectedModel.rate_snapshot ?? "server-verified executable route"}
                 </p>
               </div>
-            ) : (
+            ) : modelsState === "ready" ? (
               <p className="text-xs font-serif text-ink-mute dark:text-moonlight">
-                Only routes the server reports as eligible and executable appear here.
+                Choose an executable saved model before starting deep research.
+                If none appears, <Link to="/settings" className="underline text-ink dark:text-bright">connect one in Settings</Link> and retry inventory.
               </p>
-            )}
-            {!modelChoice && (
-              <div className="flex items-center gap-2" role="radiogroup" aria-label="Established research depth">
-                {RESEARCH_TIER_OPTIONS.map((option) => (
-                  <button key={option.value} type="button" role="radio" aria-checked={tier === option.value}
-                    title={option.hint} onClick={() => setTier(option.value)}
-                    className={`px-3 py-1 rounded-hog text-xs font-mono border border-rule ${tier === option.value ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            ) : null}
             {modelsState !== "loading" && (
               <button type="button" onClick={() => void refreshModels()} className="text-xs font-mono underline text-ink dark:text-bright">
                 Retry inventory
@@ -791,7 +769,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-xxs font-mono bg-ice-0 dark:bg-charcoal-1 shadow-z1 dark:shadow-z1-night mr-1.5">
                 ⌘ ↵
               </kbd>
-              to ask · charges follow the selected model’s server pricing authority
+              to ask
             </div>
             <div className="flex items-center gap-2">
               {/* SPR-05 M2 — the OPTIONAL "plan it first" path (operator
@@ -805,7 +783,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 variant="secondary"
                 size="lg"
                 onClick={onBreakDown}
-                disabled={busy || question.trim().length < 3}
+                disabled
+                aria-describedby="sub-question-unavailable"
               >
                 Break into sub-questions
               </LemonButton>
@@ -813,12 +792,15 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 variant="primary"
                 size="lg"
                 onClick={() => void onSubmit()}
-                disabled={busy || question.trim().length < 3 || Boolean(modelChoice && !selectedModel)}
+                disabled={busy || modelsState !== "ready" || question.trim().length < 3 || !selectedModel}
               >
                 {busy ? "Starting…" : "Ask"}
               </LemonButton>
             </div>
           </div>
+          <p id="sub-question-unavailable" className="text-xs font-serif text-ink-mute dark:text-moonlight">
+            Sub-question planning is unavailable until its proposal and launch can use your saved model.
+          </p>
         </div>
 
         <div className="mt-7">
