@@ -20,6 +20,17 @@
  *     `BOOK_SERVABILITY_STATUSES: Final[tuple[str, ...]] = (` up to the first
  *     line that is exactly `)`; values are single- or double-quoted literals.
  * The two backend sources must agree with each other as well as with us.
+ *
+ * Known under-matches (review R-03). Each drops a value silently, so a
+ * backend edit into one of these shapes would escape this test:
+ *   - a `#` inside a value string (stripped as a comment), in the enum or tuple;
+ *   - a value outside [a-z0-9_] ("PublicDomain", "public-domain");
+ *   - a prefixed literal (r"value", f"value", b"value");
+ *   - enum members indented differently from the body's first line (mixed
+ *     tabs and spaces).
+ * None occurs in today's servability.py or constants.py. The cross-check that
+ * the enum and tuple extractions agree, and the >= 6 values floor, catch a
+ * drop in only one of the two files but not the same drop in both.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -74,7 +85,7 @@ function extractTupleValues(constantsPy: string): string[] {
   return [...body.matchAll(/(["'])([a-z0-9_]+)\1/g)].map((m) => m[2]);
 }
 
-describe("servability extraction (the regexes neither over- nor under-match)", () => {
+describe("servability extraction (fixture cases; known under-matches listed in the header)", () => {
   it("ignores commented-out members and docstring mentions, and stops at the class end", () => {
     const fixture = [
       "class ServabilityStatus(StrEnum):",
