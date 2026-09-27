@@ -62,17 +62,27 @@ function parseState(raw: unknown, documentId: string): ReadingState {
   };
 }
 
-/** GET the owner's row — null when no position is recorded (404). */
+/** The backend's typed absence (reading_state_routes.py): no row yet. */
+const NOT_RECORDED = "reading_state_not_found";
+
+/**
+ * GET the owner's row — null when no position is recorded: a 404 whose body
+ * is exactly `{"detail": "reading_state_not_found"}`, or a 204 (so a future
+ * backend switch to 204 cannot strand the bus). Any other 404 is a real
+ * failure (wrong id, missing route) and throws like every other status.
+ */
 export async function getReadingState(documentId: string): Promise<ReadingState | null> {
   const resp = await apiFetch(
     `${API_BASE}/books/${encodeURIComponent(documentId)}/reading-state`,
   );
-  if (resp.status === 404) return null;
+  if (resp.status === 204) return null;
   if (!resp.ok) {
+    const body = await resp.text();
+    if (resp.status === 404 && detailOf(body) === NOT_RECORDED) return null;
     throw new ApiError(
       `GET /books/{id}/reading-state failed: HTTP ${resp.status}`,
       resp.status,
-      await resp.text(),
+      body,
     );
   }
   return parseState(await resp.json(), documentId);
@@ -101,4 +111,12 @@ export async function putReadingState(
     );
   }
   return parseState(await resp.json(), documentId);
+}
+
+function detailOf(body: string): unknown {
+  try {
+    return (JSON.parse(body) as { detail?: unknown } | null)?.detail;
+  } catch {
+    return undefined;
+  }
 }

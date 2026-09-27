@@ -659,7 +659,7 @@ describe("auth owner transitions", () => {
         : jsonResponse({}, 401);
       if (url.endsWith("/auth/logout")) { signedIn = null; return jsonResponse({}, 204); }
       if (url.endsWith("/reading-state")) {
-        if (init?.method !== "PUT") return jsonResponse({}, 404);
+        if (init?.method !== "PUT") return jsonResponse({ detail: "reading_state_not_found" }, 404);
         const body: { revision: number } = JSON.parse(init.body ?? "{}");
         const requestOwner = signedIn ?? "none";
         puts.push({ owner: requestOwner, revision: body.revision });
@@ -711,7 +711,7 @@ describe("auth owner transitions", () => {
       if (url.endsWith("/reading-state")) {
         return signedIn === "reader-a"
           ? jsonResponse({ document_id: "doc-1", page_index: 4, anchor_ref: null, prefs: {}, revision: 2, updated_at: "now" })
-          : jsonResponse({}, 404);
+          : jsonResponse({ detail: "reading_state_not_found" }, 404);
       }
       return jsonResponse({});
     });
@@ -795,7 +795,7 @@ describe("auth owner transitions", () => {
           return jsonResponse({ document_id: "doc-1", ...written });
         }
         const row = rows.get(requestOwner);
-        return row ? jsonResponse({ document_id: "doc-1", ...row }) : jsonResponse({}, 404);
+        return row ? jsonResponse({ document_id: "doc-1", ...row }) : jsonResponse({ detail: "reading_state_not_found" }, 404);
       }
       return jsonResponse({});
     });
@@ -847,7 +847,7 @@ describe("auth owner transitions", () => {
         }
         const snapshot = rows.get(requestOwner);
         if (requestOwner === "reader-a" && holdAGet) await heldAGet.promise;
-        return snapshot ? jsonResponse({ document_id: "doc-1", ...snapshot }) : jsonResponse({}, 404);
+        return snapshot ? jsonResponse({ document_id: "doc-1", ...snapshot }) : jsonResponse({ detail: "reading_state_not_found" }, 404);
       }
       return jsonResponse({});
     });
