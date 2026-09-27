@@ -67,6 +67,10 @@ class SourceKind(StrEnum):
     ACADEMIC_PREPRINT = "academic_preprint"    # arXiv / open-access papers
     USER_CONTENT = "user_content"              # the operator's own / -captured media: voice, interview, twitter, youtube
     WEB = "web"                                # fetched third-party web pages
+    # A reader view of a derivation (a reformat, THREAD-CONTRACT §1.11a): it
+    # inherits its core documents' class and holder, so it is escrow-eligible
+    # exactly when they are. Never USER_CONTENT, which would drop the holder.
+    DERIVED = "derived"
 
 
 # Source kinds that must NEVER mint or accrue to an escrow account: the

@@ -90,8 +90,77 @@ class EvidenceDetailOut(BaseModel):
     claim: ClaimDetail | None
     evidence: dict[str, Any] | None
     process: dict[str, Any] | None
+    """A unit-8 derived bite's provenance detail (SPR-03) — class,
+    byte-verification, core span refs, the investigation."""
+    bite: dict[str, Any] | None
     """The tombstone honesty line (set when the row is tombstoned)."""
     note: str | None
+
+
+def _resolve_bite(con: Any, row: EvidenceRow) -> dict[str, Any]:
+    """Resolve a unit-8 bite row's provenance from the provenance store —
+    the class, the byte-verification, the core span refs, the investigation.
+    The bite's TEXT rides ONLY when the derived document serves its owner
+    (the gate exercised on the derived id, never assumed)."""
+    from substrate.books.serve_guard import serve_full_text_guarded
+
+    bite_id = next(r for r in row.refs if r.startswith("bite:"))[5:]
+    gen_ref = next((r for r in row.refs if r.startswith("generation:")), None)
+    record_row = (
+        con.execute(
+            "SELECT source_document_id, prompt, model, mostly_generated "
+            "FROM generation_records WHERE generation_id = ? LIMIT 1",
+            [gen_ref[11:]],
+        ).fetchone()
+        if gen_ref
+        else None
+    )
+    bite_row = con.execute(
+        "SELECT ordinal, contribution_class, source_refs_json, "
+        "investigation_id, derived_text_sha256, source_span_sha256 "
+        "FROM bite_provenance WHERE bite_id = ? LIMIT 1",
+        [bite_id],
+    ).fetchone()
+    if bite_row is None:
+        return {"bite_ref": f"bite:{bite_id}", "gone": True}
+    import json as _json
+
+    source_refs = (
+        None if bite_row[2] is None else [_json.loads(r) for r in _json.loads(str(bite_row[2]))]
+    )
+    # The bite's text: the derived document's bite-aligned chunk — only when
+    # the owner lane lawfully serves it.
+    text: str | None = None
+    if serve_full_text_guarded(con, row.scope_id, owner=True).full_text is not None:
+        chunk = con.execute(
+            "SELECT text FROM chunks WHERE chunk_id = ? AND document_id = ? LIMIT 1",
+            [f"{row.scope_id}-b{int(bite_row[0])}", row.scope_id],
+        ).fetchone()
+        text = None if chunk is None else str(chunk[0])
+    return {
+        "bite_ref": f"bite:{bite_id}",
+        "ordinal": int(bite_row[0]),
+        "contribution_class": str(bite_row[1]),
+        "source_refs": source_refs,
+        "investigation_id": None if bite_row[3] is None else str(bite_row[3]),
+        "byte_verified": (
+            str(bite_row[1]) == "author_verbatim"
+            and bite_row[5] is not None
+            and str(bite_row[4]) == str(bite_row[5])
+        ),
+        "text": text,
+        "generation": (
+            None
+            if record_row is None
+            else {
+                "generation_id": gen_ref[11:] if gen_ref else None,
+                "source_document_id": str(record_row[0]),
+                "prompt": str(record_row[1]),
+                "model": str(record_row[2]),
+                "mostly_generated": bool(record_row[3]),
+            }
+        ),
+    }
 
 
 def _row_out(row: EvidenceRow) -> EvidenceRowOut:
@@ -256,7 +325,15 @@ def register_companion_routes(app: FastAPI) -> None:
             claim = None
             evidence = None
             process = None
-            if row.kind == "claim":
+            bite = None
+            bite_ref = next((r for r in row.refs if r.startswith("bite:")), None)
+            if bite_ref is not None:
+                # A unit-8 derived bite: resolve its provenance from the
+                # store (consumed, never re-derived). The bite's TEXT rides
+                # ONLY when the derived document serves its owner (the gate
+                # exercised, never assumed).
+                bite = _resolve_bite(con, row)
+            elif row.kind == "claim":
                 node_ref = next((r for r in row.refs if r.startswith("node:")), None)
                 node_id = node_ref[5:] if node_ref else None
                 node = (
@@ -314,6 +391,7 @@ def register_companion_routes(app: FastAPI) -> None:
             claim=claim,
             evidence=evidence,
             process=process,
+            bite=bite,
             note=(
                 "The source this evidence traced is gone — this row is an "
                 "honest tombstone: the id still resolves, the content stays "
