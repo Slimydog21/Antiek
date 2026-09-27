@@ -1,0 +1,384 @@
+"""Quick Ask spends at most one owner-selected rung for one operation."""
+
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from datetime import UTC, datetime
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+import pytest
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
+
+from interfaces.research.api import owner_byot_dispatch, quick_ask
+from interfaces.research.api import settings_models_admin as models_admin
+from runtime.byok.store import CredentialMetadata
+from runtime.research_runner.byot_provider_catalog import (
+    ByotModelVariant,
+    ByotProviderPreset,
+)
+from runtime.research_runner.cost_projection import UnitRate
+from runtime.research_runner.protocol import BillingUnit
+from substrate.byot_usage.ledger import ByotUsageLedger
+from substrate.dispatch import (
+    NormalizedUsage,
+    RawProviderResponse,
+    register_provider,
+    reset_provider_registry,
+)
+
+_MODEL = "deepseek-v4-pro"
+_OWNER = "owner-a"
+
+
+class RecordingProvider:
+    def __init__(self, fingerprint: str) -> None:
+        self.name = "user-owner-model"
+        self._user_model_authority_fingerprint = fingerprint
+        self.calls: list[dict[str, Any]] = []
+        self.raw_usage: dict[str, int] = {"input_tokens": 7, "output_tokens": 11}
+        self.fail = False
+
+    def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
+        self.calls.append({"model": model, "prompt": prompt, "max_tokens": max_tokens})
+        if self.fail:
+            raise RuntimeError("private provider error")
+        return RawProviderResponse(
+            text="one answer", raw_usage=self.raw_usage,
+            finish_reason="stop", latency_ms=1, request_id="fake-one",
+        )
+
+    def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
+        return NormalizedUsage(
+            input_tokens=raw_usage.get("input_tokens", 0),
+            output_tokens=raw_usage.get("output_tokens", 0),
+            reported=bool(raw_usage),
+        )
+
+
+@pytest.fixture(autouse=True)
+def _clear_registry() -> None:
+    reset_provider_registry()
+    yield
+    reset_provider_registry()
+
+
+@pytest.fixture
+def route(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    snapshot = datetime.now(UTC).date().isoformat()
+    variant = ByotModelVariant(
+        _MODEL, "DeepSeek V4 Pro",
+        (
+            UnitRate(BillingUnit.INPUT_TOKEN, Decimal("0.00000055")),
+            UnitRate(BillingUnit.OUTPUT_TOKEN, Decimal("0.00000219")),
+        ),
+        f"deepseek-v4-pro-{snapshot}",
+    )
+    preset = ByotProviderPreset(
+        "deepseek", "DeepSeek", "openai_compat", "https://api.deepseek.com",
+        "/chat/completions", (variant,), "https://api-docs.deepseek.com/pricing",
+    )
+    preset_box = [preset]
+    monkeypatch.setattr(quick_ask, "get_provider_preset", lambda _: preset_box[0])
+    monkeypatch.setattr(owner_byot_dispatch, "get_provider_preset", lambda _: preset_box[0])
+
+    record_box = [models_admin.UserModelRecord(
+        id="user-owner-model", owner_user_id=_OWNER,
+        provider_kind="openai_compat", provider_catalog_id="deepseek",
+        model_id=_MODEL, display_name="Owner V4 Pro",
+        base_url="https://api.deepseek.com", cred_ref="cred-owner",
+        cred_fingerprint="a" * 64,
+    )]
+    metadata = CredentialMetadata(
+        cred_id="cred-owner", account_handle=record_box[0].id,
+        pipeline_kind="model_provider", binding_version=3,
+        artifact_fingerprint="a" * 64, owner_user_id=_OWNER,
+    )
+    monkeypatch.setattr(models_admin, "_load_registry", lambda: {record_box[0].id: record_box[0]})
+    monkeypatch.setattr(models_admin, "_credential_metadata", lambda: {metadata.cred_id: metadata})
+
+    identity = {"owner": _OWNER, "method": "antiek_session_cookie"}
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _identity(request: Request, call_next):
+        request.state.user_id = identity["owner"]
+        request.state.auth_method = identity["method"]
+        request.state.user_email = "owner@example.test"
+        return await call_next(request)
+
+    fingerprint = models_admin._record_fingerprint(record_box[0])
+    app.state.user_model_registration_fingerprints = {record_box[0].id: fingerprint}
+    provider = RecordingProvider(fingerprint)
+    register_provider(provider)
+    ledger = ByotUsageLedger(tmp_path / "quick-ask.sqlite3")
+    ledger.set_limit(record_box[0].id, _OWNER, 100)
+    app.state.quick_ask_usage_ledger = ledger
+    app.include_router(quick_ask.quick_ask_router)
+    with TestClient(app) as client:
+        yield client, provider, ledger, preset_box, record_box, identity, app
+
+
+def _body(operation_id: str | None = None, question: str = "What changed?") -> dict[str, Any]:
+    return {
+        "operation_id": operation_id or str(uuid4()),
+        "question": question,
+        "model_choice": {
+            "authority": "user_model", "provider_id": "user-owner-model", "model_id": _MODEL,
+        },
+    }
+
+
+def _quote(client: TestClient, body: dict[str, Any]) -> dict[str, Any]:
+    response = client.post("/research/quick-ask/quote", json=body)
+    assert response.status_code == 200, response.json()
+    return response.json()
+
+
+def test_model_inventory_uses_same_owner_and_current_price_predicate(route) -> None:
+    client, provider, _, preset_box, record_box, identity, app = route
+    listed = client.get("/research/quick-ask/models")
+    assert listed.status_code == 200
+    assert [(row["provider_id"], row["model_id"]) for row in listed.json()["models"]] == [
+        ("user-owner-model", _MODEL),
+    ]
+    assert provider.calls == []
+
+    flash = ByotModelVariant(
+        "deepseek-v4-flash", "DeepSeek V4 Flash",
+        preset_box[0].models[0].rates,
+        preset_box[0].models[0].snapshot.replace("v4-pro", "v4-flash"),
+    )
+    preset_box[0] = replace(preset_box[0], models=(*preset_box[0].models, flash))
+    record_box[0] = record_box[0].model_copy(update={
+        "model_ids": [_MODEL, "deepseek-v4-flash"],
+    })
+    fingerprint = models_admin._record_fingerprint(record_box[0])
+    app.state.user_model_registration_fingerprints = {record_box[0].id: fingerprint}
+    provider._user_model_authority_fingerprint = fingerprint
+    listed = client.get("/research/quick-ask/models")
+    assert [row["model_id"] for row in listed.json()["models"]] == [
+        _MODEL, "deepseek-v4-flash",
+    ]
+
+    stale_flash = replace(flash, snapshot="deepseek-v4-flash-2026-08-12")
+    preset_box[0] = replace(preset_box[0], models=(preset_box[0].models[0], stale_flash))
+    assert [row["model_id"] for row in client.get(
+        "/research/quick-ask/models"
+    ).json()["models"]] == [_MODEL]
+    identity["owner"] = "owner-b"
+    assert client.get("/research/quick-ask/models").json() == {"models": [], "count": 0}
+    assert provider.calls == []
+
+
+def test_quote_is_free_and_confirmed_send_is_one_exact_request(route) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    body = _body(question="A full private question ☂")
+    quote = _quote(client, body)
+    assert provider.calls == []
+    assert quote["max_output_tokens"] == 1024
+    assert quote["estimate_usd"] != "0"
+    assert "not a provider cap" in quote["warning"]
+    response = client.post("/research/quick-ask", json={**body, "quote_digest": quote["quote_digest"]})
+    assert response.status_code == 200, response.json()
+    assert response.json()["usage_basis"] == "provider_reported_tokens_priced_locally"
+    assert response.json()["answer"] == "one answer"
+    assert provider.calls == [{
+        "model": _MODEL, "prompt": body["question"], "max_tokens": 1024,
+    }]
+    assert ledger.operation(_OWNER, f"quick-ask:{body['operation_id']}").state == "settled"
+
+
+def test_settled_replay_returns_prior_receipt_without_new_send_or_false_zero_usage(route) -> None:
+    client, provider, _, _, _, identity, _ = route
+    body = _body()
+    quoted = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    first = client.post("/research/quick-ask", json=quoted)
+    replay = client.post("/research/quick-ask", json=quoted)
+    assert first.status_code == replay.status_code == 200
+    assert replay.json()["answer"] == first.json()["answer"]
+    assert replay.json()["usage_basis"] == "prior_receipt"
+    assert replay.json()["input_tokens"] is None
+    assert replay.json()["output_tokens"] is None
+    assert len(provider.calls) == 1
+    identity["owner"] = "owner-b"
+    foreign = client.post("/research/quick-ask", json=quoted)
+    assert foreign.status_code == 409
+    assert "one answer" not in foreign.text
+    assert len(provider.calls) == 1
+
+
+def test_concurrent_twins_cannot_send_twice(route) -> None:
+    client, provider, _, _, _, _, _ = route
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        responses = list(pool.map(
+            lambda _: client.post("/research/quick-ask", json=payload), range(4),
+        ))
+    assert all(response.status_code in {200, 409} for response in responses)
+    assert any(response.status_code == 200 for response in responses)
+    assert len(provider.calls) == 1
+
+
+def test_changed_question_model_and_quote_are_refused_before_io(route) -> None:
+    client, provider, _, _, _, _, _ = route
+    body = _body()
+    quote = _quote(client, body)
+    changes = (
+        {**body, "question": "A different question", "quote_digest": quote["quote_digest"]},
+        {**body, "model_choice": {**body["model_choice"], "model_id": "mimo-v2.5-pro"},
+         "quote_digest": quote["quote_digest"]},
+        {**body, "quote_digest": "0" * 64},
+    )
+    for changed in changes:
+        response = client.post("/research/quick-ask", json=changed)
+        assert response.status_code == 409
+    missing = client.post("/research/quick-ask", json=body)
+    assert missing.status_code == 422
+    assert provider.calls == []
+
+
+def test_price_drift_within_same_rounded_cent_invalidates_quote(route) -> None:
+    client, provider, _, preset_box, _, _, _ = route
+    body = _body()
+    quote = _quote(client, body)
+    old = preset_box[0]
+    old_variant = old.models[0]
+    new_variant = replace(old_variant, rates=(
+        UnitRate(BillingUnit.INPUT_TOKEN, Decimal("0.00000056")),
+        old_variant.rates[1],
+    ))
+    preset_box[0] = replace(old, models=(new_variant,))
+    new_quote = _quote(client, body)
+    assert new_quote["reserved_cents"] == quote["reserved_cents"]
+    assert new_quote["quote_digest"] != quote["quote_digest"]
+    response = client.post("/research/quick-ask", json={**body, "quote_digest": quote["quote_digest"]})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "quick_ask_quote_changed"
+    assert provider.calls == []
+
+
+def test_reported_usage_above_quote_is_disclosed_without_claiming_hard_cap(route) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    body = _body()
+    quote = _quote(client, body)
+    provider.raw_usage = {"input_tokens": 100_000, "output_tokens": 10}
+    response = client.post(
+        "/research/quick-ask", json={**body, "quote_digest": quote["quote_digest"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["reported_usage_estimate_exceeds_quote"] is True
+    assert response.json()["estimated_cost_usd"] > float(quote["estimate_usd"])
+    row = ledger.operation(_OWNER, f"quick-ask:{body['operation_id']}")
+    assert row is not None and row.state == "settled"
+    assert row.actual_cents is not None and row.actual_cents > quote["reserved_cents"]
+
+
+def test_unreported_usage_and_transport_failure_keep_unknown_hold(route) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    provider.raw_usage = {}
+    response = client.post("/research/quick-ask", json=payload)
+    assert response.status_code == 200
+    assert response.json()["answer"] == "one answer"
+    assert response.json()["usage_basis"] == "charge_unknown"
+    assert response.json()["estimated_cost_usd"] is None
+    assert response.json()["input_tokens"] is None
+    row = ledger.operation(_OWNER, f"quick-ask:{body['operation_id']}")
+    assert row is not None and row.state == "unknown" and row.actual_cents is None
+    assert ledger.key_usage("user-owner-model", _OWNER).held_cents > 0
+    replay = client.post("/research/quick-ask", json=payload)
+    assert replay.status_code == 200
+    assert replay.json()["answer"] == "one answer"
+    assert replay.json()["usage_basis"] == "charge_unknown"
+    assert replay.json()["replayed"] is True
+    assert len(provider.calls) == 1
+
+    second = _body()
+    second_payload = {**second, "quote_digest": _quote(client, second)["quote_digest"]}
+    provider.fail = True
+    response = client.post("/research/quick-ask", json=second_payload)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "charge_unknown"
+    assert len(provider.calls) == 2
+
+
+def test_answer_survives_nonfatal_local_event_failure(
+    route, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, provider, ledger, _, _, _, _ = route
+    monkeypatch.setattr("substrate.dispatch.router._emit_dispatch_call", lambda **_: None)
+    body = _body()
+    payload = {**body, "quote_digest": _quote(client, body)["quote_digest"]}
+    response = client.post("/research/quick-ask", json=payload)
+    assert response.status_code == 200
+    assert response.json()["answer"] == "one answer"
+    assert response.json()["usage_basis"] == "charge_unknown"
+    assert response.json()["estimated_cost_usd"] is None
+    row = ledger.operation(_OWNER, f"quick-ask:{body['operation_id']}")
+    assert row is not None and row.state == "unknown" and row.dispatch_event_id is None
+    assert len(provider.calls) == 1
+
+
+def test_owner_key_endpoint_and_retired_model_gates(route) -> None:
+    client, provider, _, _, record_box, identity, app = route
+    body = _body()
+    identity["owner"] = "owner-b"
+    assert client.post("/research/quick-ask/quote", json=body).status_code == 409
+    identity["owner"] = _OWNER
+    identity["method"] = "unauthenticated_local"
+    assert client.post("/research/quick-ask/quote", json=body).status_code == 401
+    identity["method"] = "antiek_session_cookie"
+    record_box[0] = record_box[0].model_copy(update={"base_url": "https://custom.example"})
+    app.state.user_model_registration_fingerprints = {
+        record_box[0].id: models_admin._record_fingerprint(record_box[0]),
+    }
+    provider._user_model_authority_fingerprint = app.state.user_model_registration_fingerprints[
+        record_box[0].id
+    ]
+    assert client.post("/research/quick-ask/quote", json=body).status_code == 409
+    retired = _body()
+    retired["model_choice"]["model_id"] = "mimo-v2.5-pro"
+    assert client.post("/research/quick-ask/quote", json=retired).status_code == 409
+    assert provider.calls == []
+
+
+def test_revoked_key_and_old_price_snapshot_refuse_quote(route, monkeypatch) -> None:
+    client, provider, _, preset_box, _, _, _ = route
+    body = _body()
+    valid_quote = _quote(client, body)
+    old = preset_box[0]
+    preset_box[0] = replace(old, models=(
+        replace(old.models[0], snapshot="deepseek-v4-pro-2026-08-12"),
+    ))
+    response = client.post("/research/quick-ask/quote", json=body)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "quick_ask_model_unavailable"
+    preset_box[0] = old
+    monkeypatch.setattr(models_admin, "_credential_metadata", lambda: {})
+    response = client.post("/research/quick-ask/quote", json=body)
+    assert response.status_code == 409
+    send = client.post(
+        "/research/quick-ask", json={**body, "quote_digest": valid_quote["quote_digest"]},
+    )
+    assert send.status_code == 409
+    assert provider.calls == []
+
+
+def test_paid_endpoint_refuses_simple_form_content_type(route) -> None:
+    client, provider, _, _, _, _, _ = route
+    response = client.post(
+        "/research/quick-ask",
+        content='{"question":"spend","operation_id":"00000000-0000-4000-8000-000000000000"}',
+        headers={"Content-Type": "text/plain"},
+    )
+    assert response.status_code == 415
+    assert response.json()["detail"] == "quick_ask_json_required"
+    assert provider.calls == []

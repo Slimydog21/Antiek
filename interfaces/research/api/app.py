@@ -7682,6 +7682,9 @@ def create_app(
     from interfaces.research.api.speak_routes import speak_router
     app.include_router(speak_router)
 
+    from interfaces.research.api.quick_ask import quick_ask_router
+    app.include_router(quick_ask_router)
+
     # Cross-workflow thread navigation (antiek-unified SPR-06). Read-only:
     # GET /thread/{node_id} reconstructs an entity's cross-workflow trajectory
     # from the SPR-03 seam events. A VIEW over existing nodes/edges + seam

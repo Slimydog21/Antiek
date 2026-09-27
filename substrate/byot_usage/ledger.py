@@ -406,6 +406,15 @@ class ByotUsageLedger:
                 used, limit = usage if usage is not None else (0, None)
                 if limit is not None and used + other_reserved + reserved_cents > limit:
                     raise OperationConflict("operation exceeds local limit")
+                # First use still needs a visible key-usage row: snapshot()
+                # joins held journal cents through this table. INSERT only;
+                # never replace an owner's configured local limit.
+                con.execute(
+                    "INSERT INTO byot_key_usage"
+                    " (api_key_id, owner_user_id, used_cents, updated_at)"
+                    " VALUES (?, ?, 0, ?) ON CONFLICT(api_key_id, owner_user_id) DO NOTHING",
+                    (api_key_id, owner_user_id, now),
+                )
                 con.execute(
                     "INSERT INTO byot_operation_journal"
                     " (api_key_id, owner_user_id, operation_id, state, reserved_cents,"
@@ -435,6 +444,33 @@ class ByotUsageLedger:
     def mark_operation_unknown(self, owner_user_id: str, operation_id: str) -> None:
         """Retain the full reservation when provider outcome is unknowable."""
         self._transition(owner_user_id, operation_id, "sent", "unknown")
+
+    def record_unknown_result(
+        self, owner_user_id: str, operation_id: str, *, result_text: str,
+        dispatch_event_id: str | None, provider_id: str, model_id: str,
+    ) -> None:
+        """Keep an answer with missing usage or receipt, without settling a charge."""
+        if not all((provider_id, model_id)):
+            raise ValueError("unknown result facts are invalid")
+        con = self._connect()
+        try:
+            con.execute("BEGIN IMMEDIATE")
+            changed = con.execute(
+                "UPDATE byot_operation_journal SET state = 'unknown',"
+                " dispatch_event_id = ?, provider_id = ?, model_id = ?,"
+                " result_text = ?, updated_at = ?"
+                " WHERE owner_user_id = ? AND operation_id = ? AND state = 'sent'",
+                (dispatch_event_id, provider_id, model_id, result_text,
+                 _now_iso(), owner_user_id, operation_id),
+            ).rowcount
+            if changed != 1:
+                raise OperationConflict("unknown result is not recordable")
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+        finally:
+            con.close()
 
     def cancel_prepared_operation(self, owner_user_id: str, operation_id: str) -> None:
         """Release a reservation only while provider I/O is provably unsent."""
