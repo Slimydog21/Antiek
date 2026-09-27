@@ -143,9 +143,21 @@ async def test_single_writer_under_concurrent_launches(events_dir, graph_db):
     assert funnel.promoted_insights == n          # one note each
     assert funnel.promoted_questions == n          # one question each
 
-    # N isolated per-investigation JSONLs — no cross-file corruption.
+    # N isolated per-investigation JSONLs — no cross-file corruption — plus
+    # the session's own log, which holds one branch record per leaf, written
+    # before each leaf's first event (THREAD-CONTRACT §1.3).
     files = sorted(f for f in os.listdir(events_dir) if f.endswith(".jsonl"))
-    assert len(files) == n, files
+    leaf_files = [f for f in files if f.startswith("session-load-leaf-")]
+    assert len(leaf_files) == n, files
+    assert files == sorted([*leaf_files, "session-load.jsonl"]), files
+    branches = [
+        r for r in trajectory("session-load", events_dir=events_dir)
+        if r["action_type"] == "investigation.branched"
+    ]
+    assert sorted(r["payload"]["child_investigation_id"] for r in branches) == sorted(
+        f"session-load-leaf-{i}" for i in range(n)
+    )
+    assert {r["payload"]["via"] for r in branches} == {"cascade_leaf"}
     for i in range(n):
         rows = trajectory(f"session-load-leaf-{i}", events_dir=events_dir)
         assert rows, f"leaf {i} empty"

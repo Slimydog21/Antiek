@@ -41,6 +41,7 @@ from roles.creative_writer import (
 from substrate.graph.ops import attach_block_to_section, insert_deliverable, insert_section
 from substrate.voice_style.rubric import score_voice_style
 
+from .consent import ConsentScope, has_consent
 from .contracts import OutlineBlock, OutlineComposer
 from .interviewer_context import SpeakGraphGapSource
 from .project import project_claims
@@ -195,6 +196,11 @@ class Draft:
     voice_style_ok: bool
     # block_id → contributing interviewee ids. Feeds the SPR-06 split.
     block_contributors: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Public output: blocks left out because a contributing interviewee has
+    # not granted the ``publish`` consent scope. Kept apart from
+    # excluded_claim_ids, which the UI explains as "not corroborated"; a
+    # consent exclusion is a different reason and gets its own sentence.
+    consent_excluded_claim_ids: tuple[str, ...] = ()
 
 
 def generate_draft(
@@ -210,15 +216,23 @@ def generate_draft(
 
     For PUBLIC output, an uncorroborated/​un-attested third-party claim is
     EXCLUDED. For a PRIVATE draft it is included but MARKED unverified.
-    Either way it is never silently presented as fact. Each block links
-    to its contributing interviewee(s) for the SPR-06 split.
+    Either way it is never silently presented as fact. PUBLIC output also
+    EXCLUDES every block a contributor gave without ``publish`` consent:
+    consent to be recorded is not consent to be published. Each block
+    links to its contributing interviewee(s) for the SPR-06 split.
     """
     included: list[OutlineBlock] = []
     excluded: list[str] = []
+    consent_excluded: list[str] = []
     unverified_marked: list[str] = []
     block_contributors: dict[str, tuple[str, ...]] = {}
 
     for b in outline.blocks:
+        if public and not all(
+            has_consent(con, iv, ConsentScope.PUBLISH) for iv in b.contributor_interview_ids
+        ):
+            consent_excluded.append(b.block_id)
+            continue
         claim = get_claim(con, b.block_id)
         ok, _ = check_claim_publishable(claim)
         if public and not ok:
@@ -266,4 +280,5 @@ def generate_draft(
         voice_style_score=score,
         voice_style_ok=score >= voice_style_threshold,
         block_contributors=block_contributors,
+        consent_excluded_claim_ids=tuple(consent_excluded),
     )

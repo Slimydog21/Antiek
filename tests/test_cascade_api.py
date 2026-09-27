@@ -777,6 +777,101 @@ def test_stopped_research_surfaces_as_stopped_not_done(client):
 
 
 # --------------------------------------------------------------------------
+# W5 run-honesty W04 — every status reader agrees on a stopped / halted end.
+#
+# The list route read ``outcome`` and ``chase_halted``; the single-status route
+# and the recovered-session route did not. So one leaf read "stopped" in the
+# list, "completed" on GET /investigations/{id}, and "done" once the session
+# left memory; a budget-halted leaf read "in_progress" forever on the single
+# route. The runner below is the real HostLocalRunner writing the real events.
+# --------------------------------------------------------------------------
+
+
+def test_stopped_and_halted_leaves_read_the_same_on_every_status_reader(client):
+    import asyncio
+
+    from orchestration.cascade_session import reconstruct_session
+    from runtime.research_runner import (
+        BudgetCap,
+        Command,
+        CommandKind,
+        HostLocalRunner,
+        ResearchPlan,
+        make_demo_loop,
+    )
+
+    sid = "session-honest-end"
+    events_dir = os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]
+
+    async def _drive() -> None:
+        runner = HostLocalRunner(
+            make_demo_loop(steps=20, cost_per_step=0.01, delay_s=0.02, emit_note=False),
+            events_dir=events_dir,
+            seal_on_complete=False,
+        )
+        roomy = BudgetCap(cost_usd=5.0)
+        h_stop = await runner.start(f"{sid}-stop", ResearchPlan(
+            investigation_id=f"{sid}-stop", sub_question="q stop",
+            parent_investigation_id=sid, budget=roomy,
+        ))
+        await runner.start(f"{sid}-done", ResearchPlan(
+            investigation_id=f"{sid}-done", sub_question="q done",
+            parent_investigation_id=sid, budget=roomy,
+        ))
+        # Three steps at 0.01 cross this cap: a per-research budget halt.
+        await runner.start(f"{sid}-halt", ResearchPlan(
+            investigation_id=f"{sid}-halt", sub_question="q halt",
+            parent_investigation_id=sid, budget=BudgetCap(cost_usd=0.025),
+        ))
+        await asyncio.sleep(0.08)
+        await runner.steer(h_stop, Command(CommandKind.STOP))
+        await runner.join()
+
+    asyncio.run(_drive())
+
+    expected = {
+        f"{sid}-stop": ("stopped", "stopped"),
+        f"{sid}-done": ("completed", "done"),
+        f"{sid}-halt": ("stopped", "budget_halted"),
+    }
+    listed = {
+        x["investigation_id"]: x["status"]
+        for x in client.get("/investigations", params={"limit": 200}).json()["investigations"]
+    }
+    recovered = {
+        r.investigation_id: r.state
+        for r in reconstruct_session(sid, events_dir=events_dir).researches
+    }
+    for iid, (http_status, run_state) in expected.items():
+        single = client.get(f"/investigations/{iid}").json()["status"]
+        assert single == http_status, (iid, single)
+        assert listed[iid] == http_status, (iid, listed[iid])
+        assert recovered[iid] == run_state, (iid, recovered[iid])
+
+
+def test_loop_one_chase_halt_after_completion_still_reads_completed(client):
+    """Loop One's chase decision writes ``chase_halted`` AFTER
+    ``investigation.completed`` on the same trajectory. That halt is about
+    spawning a child, not this run: the run completed, and every reader must
+    keep saying so."""
+    from substrate.event_log import log_event
+    from substrate.schemas import ActionType
+
+    iid = "inv-chase-finished-001"
+    log_event(iid, ActionType.INVESTIGATION_START_REQUESTED,
+              payload={"question": "A chased question"}, role="operator")
+    log_event(iid, ActionType.INVESTIGATION_COMPLETED,
+              payload={"implicit_recommendation": "proceed"}, role="orchestrator")
+    log_event(iid, ActionType.INVESTIGATION_CHASE_HALTED,
+              payload={"reason": "depth_reached"}, role="orchestrator")
+
+    single = client.get(f"/investigations/{iid}").json()["status"]
+    rows = client.get("/investigations", params={"limit": 200}).json()["investigations"]
+    listed = next(x for x in rows if x["investigation_id"] == iid)["status"]
+    assert (single, listed) == ("completed", "completed")
+
+
+# --------------------------------------------------------------------------
 # Steer (slow loop so the command lands mid-flight)
 # --------------------------------------------------------------------------
 

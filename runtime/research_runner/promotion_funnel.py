@@ -50,6 +50,24 @@ except ImportError:  # pragma: no cover — direct-script fallback
 _FUNNEL_DONE = object()
 
 
+# The ``StepEvent.data`` keys the funnel carries into node metadata. An
+# allowlist, because the producer controls ``data`` entirely (a remote
+# sandbox's event data is forwarded verbatim), and spreading the whole dict let
+# it assert the provenance and trust the substrate reads back:
+# ``groundedness_score`` (preferred over scoring by ``knowledge_unit_of`` and
+# the SPR-08 reuse gate), ``source_kind`` (the §9 user/model discriminator),
+# ``source``, ``identity_scope``, ``source_document_id`` and ``chunk_id``. The
+# set is the in-tree host loops' note keys plus the Prime mapper's host-built
+# telemetry, all descriptive; ``document_id`` is the one grounding input.
+_CARRIED_NOTE_KEYS = frozenset({
+    "document_id",
+    "gather_mode", "backend", "workspace_id", "contained_passes", "ran_as_uid",
+    "artifact_records", "discovery_id", "promotion_decision",
+    "prime_event_type", "input_tokens", "output_tokens", "inference_provider",
+    "finish_reason",
+})
+
+
 def _promotion_metadata(ev: StepEvent) -> dict[str, Any]:
     """Map a StepEvent's ``data`` to the node metadata the graph stores.
 
@@ -62,14 +80,19 @@ def _promotion_metadata(ev: StepEvent) -> dict[str, Any]:
     to the ``doc-gather-*`` placeholder and the chunk→document→ip_holder
     attribution chain would be broken for Exa-sourced evidence.
 
-    Everything else in ``ev.data`` (e.g. ``gather_mode``) is preserved.
-    The base ``source`` tag matches the funnel's prior behavior so
-    ``content_hash`` for already-doc-url paths is unchanged.
+    Only ``_CARRIED_NOTE_KEYS`` (e.g. ``gather_mode``) are preserved; any
+    other key is dropped, so the producer can never set ``source``,
+    ``source_kind``, ``groundedness_score`` or the grounding chunk (``_promote``
+    resolves that host-side from ``document_id``). For an honest note the
+    result is unchanged, so ``content_hash`` for already-doc-url paths is too.
     """
-    meta: dict[str, Any] = {"source": "research_runner", **ev.data}
+    meta: dict[str, Any] = {"source": "research_runner"}
+    meta.update((k, v) for k, v in ev.data.items() if k in _CARRIED_NOTE_KEYS)
     doc_id = meta.get("document_id")
-    if doc_id:
+    if isinstance(doc_id, str) and doc_id:
         meta["source_document_id"] = doc_id
+    else:
+        meta.pop("document_id", None)
     return meta
 
 
@@ -177,13 +200,12 @@ class PromotionFunnel:
                 # Ground the promoted node on a real chunk so the flywheel's
                 # reuse half (knowledge_unit_of) can recover its
                 # claim→chunk→doc grounding and the unit becomes reusable.
-                # Prefer a chunk_id the producer already carried; otherwise
-                # resolve the most substantive chunk of the source document
-                # (read-only SELECT, §16-safe). Stays None for un-groundable
-                # notes, preserving prior behaviour.
-                chunk_id = meta.get("chunk_id")
-                if chunk_id is None and source_document_id:
-                    chunk_id = _resolve_chunk_id(con, source_document_id)
+                # The chunk is always the most substantive chunk of the source
+                # document, resolved host-side (read-only SELECT, §16-safe) and
+                # never taken from the producer, which could name a chunk of
+                # another document. Stays None for un-groundable notes,
+                # preserving prior behaviour.
+                chunk_id = _resolve_chunk_id(con, source_document_id)
                 if ev.kind == "note":
                     nid = promote_insight(
                         text=ev.text, investigation_id=ev.investigation_id,

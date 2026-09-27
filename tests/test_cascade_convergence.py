@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -79,6 +80,8 @@ class _SynthStubProvider:
                 latency_ms=3,
             )
         if "senior investment analyst" in prompt:
+            offered = re.search(r'"chunk_ids":\s*\[\s*"([^"]+)"', prompt)
+            cited = offered.group(1) if offered else "chunk-any"
             return RawProviderResponse(
                 text=json.dumps({
                     "thesis_summary": (
@@ -89,7 +92,7 @@ class _SynthStubProvider:
                         "claim": "Provisional gather notes compound into a thesis.",
                         "confidence": "moderate",
                         "confidence_basis": "DRW gather stub",
-                        "supporting_chunk_ids": ["chunk-any"],
+                        "supporting_chunk_ids": [cited],
                         "supporting_path_indices": [],
                         "effective_source_tier": 3,
                         "hedging_required": True,
@@ -251,20 +254,50 @@ async def test_pack_synthesis_tail_mechanical_phase8_when_skill_templates_missin
     assert ok is True
 
 
-@pytest.mark.asyncio
-async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatch):
-    """M2: leaves gather-only; session parent reaches DeepResearchComplete."""
+def _grounded_gather_loop(document_id: str):
+    """A gather loop that, like the Exa loop, notes a real ingested document;
+    the funnel grounds the insight on that document's substantive chunk."""
+
+    async def _loop(ctx):
+        sub_q = await ctx.checkpoint()
+        yield ctx.note(f"source for {sub_q}", document_id=document_id)
+
+    return _loop
+
+
+def _seed_source(db: str) -> str:
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_chunk, insert_document
+
+    text = (
+        "Photonic qubits lose coherence mainly through waveguide scattering, "
+        "and the loss budget sets the fault-tolerance threshold. "
+    ) * 5
+    with connect_write(db, purpose="test/seed") as con:
+        insert_document(
+            con, document_id="doc-url-src", source_tier=2, document_type="web",
+            title="Photonics source", raw_text=text,
+            content_class="public_domain", ip_holder_id=None,
+        )
+        insert_chunk(
+            con, document_id="doc-url-src", chunk_index=0,
+            chunk_id="chunk-src", text=text,
+        )
+    return "doc-url-src"
+
+
+async def _run_cascade(
+    session_id: str, loop, monkeypatch
+) -> tuple[CascadeSession, object]:
     _patch_dispatch(monkeypatch)
     db = os.environ["ANTIEK_DUCKDB_PATH"]
     ev = os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]
-    init_database_at_path(db)
-
     tree = build_plan("quantum cascade convergence", decomposer=_Dec(["sub a"])).tree
     root_id = persist_tree(
-        tree, investigation_id="session-conv",
+        tree, investigation_id=session_id,
         embedding_provider=_FakeEmbedding(), db_path=db,
     )
-    approve_plan(root_id, approver="op", investigation_id="session-conv", db_path=db)
+    approve_plan(root_id, approver="op", investigation_id=session_id, db_path=db)
     loaded = load_tree(root_id, db_path=db)
     leaves = [
         Leaf(
@@ -274,31 +307,72 @@ async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatc
         )
         for c in loaded.root.children
     ]
-
     funnel = PromotionFunnel(db_path=db, embedding_provider=_FakeEmbedding())
     runner = HostLocalRunner(
-        make_contract_gather_stub(steps=1),
-        events_dir=ev,
-        seal_on_complete=False,
-        on_emit=funnel.submit,
+        loop, events_dir=ev, seal_on_complete=False, on_emit=funnel.submit,
     )
-    session = CascadeSession("session-conv", runner=runner, funnel=funnel,
+    session = CascadeSession(session_id, runner=runner, funnel=funnel,
                              events_dir=ev, db_path=db)
     bus = EventBroadcaster()
     from interfaces.research.api.synthesizer import register_handlers as _register_synth
     _register_synth(bus)
     coordinator = register_handlers(bus)
-
     await session.launch(root_id, leaves)
     _ = [ev_item async for ev_item in session.stream()]
     await session.join_and_merge()
-
     assert session.is_complete()
     assert not session.is_deep_research_complete()
-
     pack = session.build_evidence_pack(plan_root_node_id=root_id)
     await session.run_synthesis_tail(pack, broadcaster=bus, coordinator=coordinator)
+    return session, pack
 
+
+@pytest.mark.asyncio
+async def test_stub_gather_cannot_synthesize_on_phantom_evidence(tmp_path, monkeypatch):
+    """W03: the contract stub retrieves nothing, so its placeholder note is
+    not evidence. The pack must not mint a ``chunk-<node>`` /
+    ``doc-gather-*`` pair for it, and the tail must fail closed on the empty
+    pack per the ratified contract ("Empty pack is valid; it cannot satisfy
+    DeepResearchComplete"): ``investigation.failed`` at phase 6, no paid
+    synthesis call, no ``investigation.completed``."""
+    init_database_at_path(os.environ["ANTIEK_DUCKDB_PATH"])
+    session, pack = await _run_cascade(
+        "session-stub", make_contract_gather_stub(steps=1), monkeypatch,
+    )
+    assert pack.chunks == [], [
+        (c.chunk_id, c.document_id, c.text) for c in pack.chunks
+    ]
+    assert pack.documents == []
+    assert not session.is_deep_research_complete()
+    rows = trajectory("session-stub")
+    kinds = [r.get("action_type") for r in rows]
+    assert ActionType.INVESTIGATION_COMPLETED.value not in kinds
+    assert ActionType.SYNTHESIZE_DELIVERED.value not in kinds
+    assert ActionType.SYNTHESIZE_REQUESTED.value not in kinds
+    failed = [
+        r["payload"] for r in rows
+        if r.get("action_type") == ActionType.INVESTIGATION_FAILED.value
+    ]
+    assert len(failed) == 1, failed
+    assert failed[0]["phase"] == 6
+    assert "empty substrate-grounded evidence pack" in failed[0]["reason"]
+    ok, _ = check_deep_research_complete("session-stub")
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatch):
+    """M2: leaves gather-only; session parent reaches DeepResearchComplete
+    on evidence whose chunk and document exist in the substrate."""
+    db = os.environ["ANTIEK_DUCKDB_PATH"]
+    init_database_at_path(db)
+    doc_id = _seed_source(db)
+    session, pack = await _run_cascade(
+        "session-conv", _grounded_gather_loop(doc_id), monkeypatch,
+    )
+    assert [(c.chunk_id, c.document_id) for c in pack.chunks] == [
+        ("chunk-src", doc_id),
+    ]
     assert session.is_deep_research_complete()
     rows = trajectory("session-conv")
     assert any(
@@ -307,3 +381,90 @@ async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatc
     )
     ok, _ = check_deep_research_complete("leaf-0")
     assert ok is False
+
+class _SlowSynthStubProvider(_SynthStubProvider):
+    """Holds phase 6 in flight long enough to cancel the tail inside it."""
+
+    def call(self, **kw) -> RawProviderResponse:
+        import time as _time
+
+        _time.sleep(1.5)
+        return super().call(**kw)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_synthesis_tail_writes_failed_terminal(monkeypatch):
+    """W5 run-honesty W06 sibling: the cascade Path A tail is a detached task
+    (``cascade_routes._run_to_completion``). A cancel during phase 6 used to
+    leave the session parent's trajectory on its last in-flight event, and
+    ``_run_to_completion`` catches only ``Exception``, so GET
+    /investigations/{session_id} read in_progress forever. The tail now ends
+    with ``investigation.failed`` and the cancellation still propagates."""
+    import asyncio
+
+    import httpx
+
+    from interfaces.research.api.app import create_app
+    from orchestration.session_evidence_pack import PackChunk, PackDocument, SessionEvidencePack
+    from substrate.schemas import Event, InvestigationFailedPayload
+
+    _patch_dispatch(monkeypatch)
+    register_provider(_SlowSynthStubProvider())
+    bus = EventBroadcaster()
+    from interfaces.research.api.synthesizer import register_handlers as _register_synth
+    _register_synth(bus)
+    coordinator = register_handlers(bus)
+
+    sid = "session-tail-cancelled"
+    pack = SessionEvidencePack(
+        session_id=sid,
+        problem_question="Does quantum Path A converge?",
+        chunks=[
+            PackChunk(
+                chunk_id="chunk-1",
+                document_id="doc-1",
+                ip_holder_id=None,
+                text="Provisional gather note.",
+                source_investigation_id="leaf-0",
+                sub_question="sub one",
+            ),
+        ],
+        documents=[PackDocument(document_id="doc-1", title="Gather", ip_holder_id=None)],
+        leaf_investigation_ids=["leaf-0"],
+    )
+    task = asyncio.create_task(
+        run_synthesis_tail_from_pack(pack, broadcaster=bus, coordinator=coordinator),
+    )
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 10.0
+    while loop.time() < deadline:
+        acts = [r["action_type"] for r in trajectory(sid)]
+        if ActionType.SYNTHESIZE_REQUESTED.value in acts:
+            break
+        await asyncio.sleep(0.02)
+    else:
+        pytest.fail(f"phase 6 never started: {acts}")
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert task.cancelled()  # the cancellation still propagates
+
+    terminals = [
+        r for r in trajectory(sid)
+        if r["action_type"] in (
+            ActionType.INVESTIGATION_COMPLETED.value,
+            ActionType.INVESTIGATION_FAILED.value,
+        )
+    ]
+    assert len(terminals) == 1, [r["action_type"] for r in trajectory(sid)]
+    assert terminals[0]["action_type"] == ActionType.INVESTIGATION_FAILED.value
+    assert terminals[0]["policy_id"] == "orchestrator-cascade-tail"
+    p = Event.model_validate(terminals[0]).payload
+    assert isinstance(p, InvestigationFailedPayload)
+    assert p.phase == 6
+    assert p.reason.startswith("cancelled during phase 6"), p.reason
+
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+        body = (await ac.get(f"/investigations/{sid}")).json()
+    assert body["status"] == "failed", body

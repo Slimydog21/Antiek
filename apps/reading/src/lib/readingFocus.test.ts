@@ -28,6 +28,25 @@ describe("readingFocus SERVABLE mount", () => {
     expect(ctx).not.toContain("SECRET-GATED");
   });
 
+  it("scopes focus per reader mount: last publish wins, clearing one keeps the other", () => {
+    const a = {};
+    const b = {};
+    setReadingFocus(
+      { documentId: "doc-b", pageIndex: 0, title: "B", pageText: null, servable: false },
+      b,
+    );
+    setReadingFocus(
+      { documentId: "doc-a", pageIndex: 1, title: "A", pageText: "A text", servable: true },
+      a,
+    );
+    expect(getReadingFocus()?.documentId).toBe("doc-a");
+    clearReadingFocus(a);
+    expect(getReadingFocus()?.documentId).toBe("doc-b");
+    expect(getReadingFocus()?.pageText).toBeNull();
+    clearReadingFocus(b);
+    expect(getReadingFocus()).toBeNull();
+  });
+
   it("formats SERVABLE page for system_context", () => {
     setReadingFocus({
       documentId: "doc-servable",

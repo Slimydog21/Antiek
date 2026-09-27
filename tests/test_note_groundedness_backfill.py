@@ -1,4 +1,4 @@
-"""Passage-aligned note groundedness: broadened evidence + backfill honesty."""
+"""Passage-aligned note groundedness: source-only evidence + backfill honesty."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from roles.note_taker.prompt import NOTE_TAKER_SYSTEM_PROMPT
 from roles.note_taker.replay import CONSUMER_VERSION
 from substrate.eval.groundedness import score_claim
 from substrate.graph.insight_question import (
-    _note_evidence_texts,
-    _score_note_groundedness,
+    _note_evidence_chunk_ids,
+    best_supporting_chunk,
     rescore_promoted_note_groundedness,
 )
 
@@ -24,7 +24,10 @@ def test_prompt_requires_document_entailment() -> None:
     assert CONSUMER_VERSION >= 3
 
 
-def test_note_evidence_includes_decompose_agenda(tmp_path: Path) -> None:
+def test_note_evidence_is_retrieved_chunks_not_pipeline_text(tmp_path: Path) -> None:
+    """W11: the decompose agenda and model-written retrieval answers are the
+    pipeline's own text. A note's evidence is the chunk ids its
+    investigation retrieved (cited events first), nothing else."""
     events = tmp_path / "events"
     events.mkdir()
     inv = "inv-test-evid"
@@ -49,6 +52,19 @@ def test_note_evidence_includes_decompose_agenda(tmp_path: Path) -> None:
             "payload": {
                 "sub_question": "When was the Gettysburg Address delivered?",
                 "answer": "November 19, 1863 per the page label.",
+                "supporting_claims": [
+                    {"claim": "Delivered November 19, 1863.", "chunk_ids": ["c-date"]},
+                ],
+            },
+        },
+        {
+            "event_id": "evt-sibling",
+            "investigation_id": inv,
+            "action_type": "evidence.retrieve.delivered",
+            "payload": {
+                "sub_question": "Where?",
+                "answer": "Gettysburg.",
+                "supporting_claims": [{"claim": "At Gettysburg.", "chunk_ids": ["c-place"]}],
             },
         },
         {
@@ -66,10 +82,9 @@ def test_note_evidence_includes_decompose_agenda(tmp_path: Path) -> None:
         for r in rows:
             f.write(json.dumps(r) + "\n")
 
-    texts = _note_evidence_texts(rows[-1], events_dir=str(events), con=None)
-    blob = "\n".join(texts)
-    assert "November 19, 1863" in blob
-    assert "When was the Gettysburg Address delivered?" in blob
+    assert _note_evidence_chunk_ids(rows[-1], events_dir=str(events)) == [
+        "c-date", "c-place",
+    ]
 
 
 def test_passage_aligned_note_clears_threshold_with_chunks(tmp_path: Path) -> None:
@@ -99,11 +114,11 @@ def test_passage_aligned_note_clears_threshold_with_chunks(tmp_path: Path) -> No
         "document_id": "doc-g",
         "payload": {"note_text": note, "source_event_ids": []},
     }
-    # empty events dir — chunks alone should entail the passage-aligned note
-    (tmp_path / "ev").mkdir()
-    evid = _note_evidence_texts(event, events_dir=str(tmp_path / "ev"), con=con)
-    score = _score_note_groundedness(con, note, chunk_id="c1", evidence_texts=evid)
-    assert score >= 0.5, score
+    # the chunk alone should entail the passage-aligned note
+    assert event["document_id"] == "doc-g"
+    chunk_id, score = best_supporting_chunk(note, {"c1": passage})
+    assert chunk_id == "c1"
+    assert score is not None and score >= 0.5, score
     # process-meta note should stay low against the same chunk
     meta = "The evidence retrieval layer failed uniformly across all sub-questions."
     meta_score = float(score_claim(meta, [passage], cited_chunk_ids=["c1"]).score)

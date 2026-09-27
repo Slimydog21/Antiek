@@ -485,6 +485,13 @@ export default function Speak() {
                       so they aren't in the story yet.
                     </p>
                   )}
+                  {draft.draft.consentExcludedCount > 0 && (
+                    <p className="mt-2 font-serif text-xs text-ink-mute dark:text-moonlight">
+                      {draft.draft.consentExcludedCount === 1
+                        ? "1 memory was left out because the person who shared it hasn't agreed to it being published, so it stays in the private story."
+                        : `${draft.draft.consentExcludedCount} memories were left out because whoever shared them hasn't agreed to them being published, so they stay in the private story.`}
+                    </p>
+                  )}
                 </div>
               )}
             </section>

@@ -135,10 +135,97 @@ def test_missing_ref_id_omitted(graph_db):
     assert resolved == {}
 
 
-def test_malformed_metadata_falls_back_to_edge(graph_db):
+def test_malformed_metadata_is_an_unresolved_pointer_not_an_empty_one(graph_db):
+    # Metadata that cannot be parsed may name any source (a truncated
+    # '{"source_chunk_ids": ["c-restricted"]' hides one), so it binds the node
+    # to the gated default even though its supported_by edge is public. The
+    # node still resolves, with its text, for the cite-only notice.
+    from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
+
     resolved = resolve_refs(["claim-bad-meta"], db_path=graph_db)
     data = resolved["claim-bad-meta"]
-    assert data.content_class == "public_domain"
-    assert data.title == "Edge Source"
-    assert data.source_document_id == "doc-edge"
+    assert data.content_class == GATED_DEFAULT_CONTENT_CLASS
+    assert data.servable is False
     assert data.payload["statement"] == "Bad meta claim"
+
+
+def _add_claim(db_path: str, node_id: str, metadata: dict) -> None:
+    con = connect_write(db_path, purpose="substrate_refs_seed")
+    try:
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope, metadata) "
+            "VALUES (?, 'Mixed claim', 'claim', 'depth', ?)",
+            [node_id, json.dumps(metadata)],
+        )
+    finally:
+        con.close()
+
+
+def test_restricted_supported_by_edge_binds_over_public_metadata(graph_db):
+    # Every grounding pointer is read: a public metadata source does not hide
+    # a supported_by edge onto a personal-reading essay.
+    _add_claim(graph_db, "claim-mixed", {"source_document_id": "doc-pd"})
+    con = connect_write(graph_db, purpose="substrate_refs_seed")
+    try:
+        con.execute(
+            "INSERT INTO edges "
+            "(edge_id, source_node_id, target_node_id, relation, source_document_id, "
+            "source_tier, extraction_confidence, graph_scope) "
+            "VALUES ('e-mixed', 'claim-mixed', 'node-target', 'supported_by', "
+            "'doc-pr', 2, 0.9, 'depth')"
+        )
+    finally:
+        con.close()
+    data = resolve_refs(["claim-mixed"], db_path=graph_db)["claim-mixed"]
+    assert data.content_class == "personal_reading"
+    assert data.source_document_id == "doc-pr"
+    assert data.servable is False
+
+
+def test_missing_metadata_chunk_resolves_to_the_gated_default(graph_db):
+    from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
+
+    _add_claim(
+        graph_db, "claim-chunk-gone",
+        {"source_document_id": "doc-pd", "chunk_id": "chunk-gone"},
+    )
+    data = resolve_refs(["claim-chunk-gone"], db_path=graph_db)["claim-chunk-gone"]
+    assert data.content_class == GATED_DEFAULT_CONTENT_CLASS
+    assert data.servable is False
+
+
+
+def test_source_chunk_ids_entry_that_is_gone_resolves_to_the_gated_default(graph_db):
+    from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
+
+    _add_claim(
+        graph_db, "claim-src-chunks-gone",
+        {"source_document_id": "doc-pd", "source_chunk_ids": ["chunk-gone"]},
+    )
+    data = resolve_refs(["claim-src-chunks-gone"], db_path=graph_db)["claim-src-chunks-gone"]
+    assert data.content_class == GATED_DEFAULT_CONTENT_CLASS
+    assert data.servable is False
+
+
+def test_an_unnamed_pointer_field_binds_the_node_rights(graph_db):
+    # alt_doc_id is named by no code; its shape alone makes it a pointer.
+    _add_claim(
+        graph_db, "claim-alt-doc",
+        {"source_document_id": "doc-pd", "notes": {"alt_doc_id": "doc-pr"}},
+    )
+    data = resolve_refs(["claim-alt-doc"], db_path=graph_db)["claim-alt-doc"]
+    assert data.content_class == "personal_reading"
+    assert data.source_document_id == "doc-pr"
+    assert data.servable is False
+
+
+def test_pointer_free_metadata_keys_are_not_sources(graph_db):
+    # source_event_ids names events, not substrate rows: not a pointer key.
+    _add_claim(
+        graph_db, "claim-events-only",
+        {"source_document_id": "doc-pd", "source_event_ids": ["evt-1"],
+         "origin_note_id": "note-1"},
+    )
+    data = resolve_refs(["claim-events-only"], db_path=graph_db)["claim-events-only"]
+    assert data.content_class == "public_domain"
+    assert data.source_document_id == "doc-pd"

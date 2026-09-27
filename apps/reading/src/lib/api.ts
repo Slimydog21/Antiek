@@ -630,7 +630,9 @@ export interface RubricScore {
 
 export interface InvestigationStatus {
   investigation_id: string;
-  status: "in_progress" | "completed" | "failed" | "not_found";
+  /** "stopped" covers a stopped, cancelled or budget-halted research
+   *  (runtime.research_runner.terminal_event, read by the route). */
+  status: "in_progress" | "completed" | "failed" | "stopped" | "not_found";
   current_phase: number | null;
   last_delivered_action_type: string | null;
   terminal_payload: Record<string, unknown> | null;

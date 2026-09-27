@@ -289,6 +289,7 @@ async def test_provider_unavailable_preserves_traversed_paths(
     # Algorithm echoes the request (no role to correct).
     assert p.selected_algorithm == "top_n_shortest_paths"
     assert e.policy_id == "connector-fallback/no-provider"
+    assert p.role_outcome == "dispatch_failed"
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +326,7 @@ async def test_parse_failure_preserves_paths_and_dispatch_stamp(
     assert p.natural_language_relationships == []
     # Dispatch succeeded — the model failed. Policy reflects the model.
     assert e.policy_id == "stub-connector/stub-pro-model"
+    assert p.role_outcome == "parse_failed"
 
 
 # ---------------------------------------------------------------------------

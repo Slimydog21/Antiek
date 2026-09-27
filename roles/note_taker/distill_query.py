@@ -81,6 +81,8 @@ def _node_ids_from_trajectory(
     for row in trajectory(investigation_id, events_dir=events_dir):
         at = row.get("action_type")
         payload = row.get("payload") or {}
+        if not isinstance(payload, dict):  # a payload that did not decode
+            payload = {}
         nid = payload.get("node_id")
         if at == ActionType.GRAPH_NODE_INSERTED.value and isinstance(nid, str):
             ntype = payload.get("node_type")
@@ -107,6 +109,14 @@ def _node_ids_from_trajectory(
             if isinstance(qid, str) and isinstance(child, str):
                 escalations[qid] = {"reserved_child_investigation_id": child}
     return ordered, escalations
+
+
+def distilled_node_ids(
+    investigation_id: str, *, events_dir: str | None = None
+) -> list[str]:
+    """Every insight/question node id the trajectory records, including a node
+    whose row is gone (``distillation_for`` skips those)."""
+    return _node_ids_from_trajectory(investigation_id, events_dir=events_dir)[0]
 
 
 def distillation_for(

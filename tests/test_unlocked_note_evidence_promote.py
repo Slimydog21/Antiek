@@ -13,7 +13,7 @@ from runtime.db_lock import connect_write
 from substrate.event_log.events import investigation_event_lock
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import (
-    _note_evidence_texts,
+    _note_evidence_chunk_ids,
     promote_from_note_event,
 )
 from substrate.graph.ops import insert_chunk, insert_document
@@ -70,6 +70,7 @@ def _seed(db: str, events: Path, inv: str) -> dict:
                 "Four score and seven years ago our fathers brought forth "
                 "a new nation conceived in Liberty."
             ),
+            "supporting_claims": [{"claim": "Four score.", "chunk_ids": ["c1"]}],
         },
     }
     with (events / f"{inv}.jsonl").open("w") as f:
@@ -90,8 +91,8 @@ def test_evidence_load_while_delivery_lock_held(tmp_path: Path, monkeypatch) -> 
 
     # Hold .delivery.lock on another fd (simulates outer iter_physical_events).
     with investigation_event_lock(investigation_id=inv, events_dir=str(events), timeout_s=2.0):
-        texts = _note_evidence_texts(ev, events_dir=str(events), con=None)
-    assert any("Four score" in t for t in texts)
+        chunk_ids = _note_evidence_chunk_ids(ev, events_dir=str(events))
+    assert chunk_ids == ["c1"]
 
 
 def test_promote_under_held_delivery_lock(tmp_path: Path, monkeypatch) -> None:

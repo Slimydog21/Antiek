@@ -17,6 +17,7 @@ import pytest
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
 from substrate.speak import (
+    consent,
     contributor,
     physical_book,
     project,
@@ -47,8 +48,8 @@ def _con(db):
 
 def _public_ready_project(con):
     """A public project that passes every gate: deceased subject with a
-    documented rationale, contributors mapped, one operator-attested
-    third-party claim."""
+    documented rationale, contributors mapped and granting publish-scope
+    consent, one operator-attested third-party claim."""
     p = project.create_project(con, title="Dad's biography", subject_ref="the-dad",
                                subject_status="deceased", publish_intent="will_be_public")
     subject_consent.record_subject_consent(
@@ -56,6 +57,8 @@ def _public_ready_project(con):
         consent_granted=False, rationale="deceased 2019; documented rule.",
     )
     contributor.map_contributor(con, interview_id="iv-a", project_id=p.project_id, display_name="A")
+    consent.record_consent(con, interview_id="iv-a", project_id=p.project_id,
+                           scopes=[consent.ConsentScope.RECORD, consent.ConsentScope.PUBLISH])
     c = record_claim(con, project_id=p.project_id, interview_id="iv-a",
                      text="He ran the village bakery for thirty years.",
                      about_subject=True, subject_ref="the-dad")
@@ -130,11 +133,30 @@ def test_public_publish_blocked_by_uncorroborated_claim(db, monkeypatch):
     monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_PUBLISHING", "1")
     with _con(db) as con:
         project_id = _public_ready_project(con)
-        # Add an uncorroborated third-party claim → public gate blocks.
+        # Add an uncorroborated third-party claim → public gate blocks,
+        # even though its speaker granted publish consent.
+        consent.record_consent(con, interview_id="iv-b", project_id=project_id,
+                               scopes=[consent.ConsentScope.PUBLISH])
         record_claim(con, project_id=project_id, interview_id="iv-b",
                      text="He secretly funded a rival.", about_subject=True, subject_ref="the-dad")
-        with pytest.raises(PublishBlocked):
+        with pytest.raises(PublishBlocked) as exc:
             publish.publish(con, project_id=project_id)
+        assert "third-party" in str(exc.value)
+
+
+def test_public_publish_blocked_for_record_only_interviewee(db, monkeypatch):
+    """Consent to be recorded is not consent to be published: an
+    interviewee without the publish scope keeps the project private."""
+    monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_PUBLISHING", "1")
+    with _con(db) as con:
+        project_id = _public_ready_project(con)
+        consent.record_consent(con, interview_id="iv-c", project_id=project_id,
+                               scopes=[consent.ConsentScope.RECORD])
+        record_claim(con, project_id=project_id, interview_id="iv-c",
+                     text="I kneaded dough with him on Sundays.")
+        with pytest.raises(PublishBlocked) as exc:
+            publish.publish(con, project_id=project_id)
+        assert "iv-c" in str(exc.value)
 
 
 # ── M4 physical-book ordering hook (quote only) ─────────────────────────

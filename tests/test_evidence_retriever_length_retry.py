@@ -121,6 +121,31 @@ def test_dispatch_and_parse_self_repairs_on_bad_json(monkeypatch):
     assert policy == "stub-evidence/stub-flash-model"
 
 
+def test_failed_self_repair_dispatch_is_a_dispatch_failure_not_a_parse_verdict(monkeypatch):
+    """W5 W01: the first answer did not parse and the repair call reached no
+    model. The parse-failure verdict rests on the repair having run, so this
+    is an outage, typed as one."""
+    import pytest
+
+    from interfaces.research.api.dispatch_failure import RoleDispatchFailed
+    from substrate.dispatch import ProviderError
+
+    sub_q = "What evidence supports X?"
+
+    def fake_once(prompt, event, *, sub_question, semantic_call_id, attempt, max_tokens=None):
+        if "structural contract" in prompt:
+            raise ProviderError("down", provider="stub", model="m", latency_ms=0)
+        return "totally not JSON", "stub-evidence/stub-flash-model", "stop"
+
+    monkeypatch.setattr(er, "_dispatch_once", fake_once)
+    with pytest.raises(RoleDispatchFailed) as raised:
+        er._dispatch_and_parse(
+            "PROMPT_BODY", _event(sub_q), sub_question=sub_q,
+            canonical_chunk_ids=("chk-1",),
+        )
+    assert raised.value.role == "evidence_retriever"
+
+
 def test_flash_tier_raised_and_evidence_budget_is_8192():
     cfg = DispatchConfig.from_yaml(
         Path(__file__).resolve().parents[1]

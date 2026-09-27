@@ -140,6 +140,13 @@ def test_unresolvable_challenge_escalates_without_launch(env):
     rows = trajectory("inv-1", events_dir=env["events"])
     esc = [x for x in rows if x["action_type"] == ActionType.QUESTION_ESCALATED_TO_RESEARCH.value]
     assert esc and esc[0]["payload"]["child_investigation_id"] == body["reserved_child_investigation_id"]
+    # … marked as a reservation, so a provenance gate knows nothing ran under it …
+    assert esc[0]["payload"]["launched"] is False
+    # … and the reservation is recorded in the reserved id's own log, naming
+    # the parent, so a launch into it branches from that parent …
+    reserved_rows = trajectory(body["reserved_child_investigation_id"], events_dir=env["events"])
+    assert [r["action_type"] for r in reserved_rows] == ["investigation.reserved"]
+    assert reserved_rows[0]["payload"]["parent_investigation_id"] == "inv-1"
     # … and NOTHING is launched: no investigation.start_requested anywhere.
     assert all(x["action_type"] != ActionType.INVESTIGATION_START_REQUESTED.value for x in rows)
 

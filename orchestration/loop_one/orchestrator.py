@@ -99,6 +99,7 @@ from skills.domain import (  # noqa: E402
     extract_and_patch,
     generate_master_md,
 )
+from substrate.event_log import BranchNotRecorded, record_branch  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     ConnectorDeliveredPayload,
@@ -120,8 +121,13 @@ from substrate.schemas import (  # noqa: E402
     SynthesizeDeliveredPayload,
     SynthesizeRequestedPayload,
 )
+from substrate.schemas.events import ROLE_ANSWERED_OUTCOMES  # noqa: E402
 
-from .coordinator import InvestigationCoordinator, broadcast_emit  # noqa: E402
+from .coordinator import (  # noqa: E402
+    InvestigationCoordinator,
+    broadcast_emit,
+    broadcast_recorded,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -632,6 +638,23 @@ async def _drive_phase(
 # ---------------------------------------------------------------------------
 
 
+def _require_role_answered(role: str, role_outcome: str) -> None:
+    """Fail the phase when no model answered this role's call.
+
+    A bridge answers a failed dispatch with a fallback Delivered so the
+    phase never hangs, and that fallback is shaped like a model that
+    declined. Phase 1 already refuses its empty fallback; this is the same
+    refusal for the roles after it, read from the typed ``role_outcome``
+    the bridge stamps rather than from the payload's shape. Raised inside
+    a phase's ``work`` so ``_drive_phase`` records it as the phase failure.
+    """
+    if role_outcome not in ROLE_ANSWERED_OUTCOMES:
+        raise RuntimeError(
+            f"{role} dispatch failed ({role_outcome}): no model answered, "
+            "and a provider outage is not an insufficient-evidence verdict"
+        )
+
+
 def _research_dir_for(ctx: InvestigationContext) -> str:
     """Per-investigation research directory. Lazy import so test env
     vars take effect at call time."""
@@ -797,6 +820,8 @@ async def _run_phase_2(
         results = await asyncio.gather(*(
             _retrieve_one(index, sq) for index, sq in enumerate(sub_qs)
         ))
+        for payload in results:
+            _require_role_answered("evidence_retriever", payload.role_outcome)
         ctx.evidence.extend(results)
         # Render the evidence the retrievers actually returned.
         #
@@ -886,6 +911,9 @@ async def _run_phase_3(
             timeout=DEFAULT_ROLE_TIMEOUT,
         )
         if isinstance(delivered.payload, ParameterExtractDeliveredPayload):
+            _require_role_answered(
+                "parameter_extractor", delivered.payload.role_outcome,
+            )
             ctx.parameters = delivered.payload
         # Round 1 critique marker. The Phase 3 postcondition reads
         # this file and checks for the three dimension keywords.
@@ -932,6 +960,8 @@ async def _run_phase_4(
             _action_value(ActionType.CONNECTOR_DELIVERED),
             timeout=DEFAULT_ROLE_TIMEOUT,
         )
+        if isinstance(delivered.payload, ConnectorDeliveredPayload):
+            _require_role_answered("connector", delivered.payload.role_outcome)
         ctx.connector_result = delivered.payload
         # Round 2 deep-dive marker. The Phase 4 postcondition checks
         # for any round2-*.md (≠ critique) above the size floor.
@@ -1207,6 +1237,7 @@ async def _run_phase_6(
             timeout=SYNTHESIZER_TIMEOUT,
         )
         if isinstance(delivered.payload, SynthesizeDeliveredPayload):
+            _require_role_answered("synthesizer", delivered.payload.role_outcome)
             ctx.synthesis = delivered.payload
             # Inline quality scoring after Phase 6 — §14.4 form-axis
             # rubric (G5 follow-up 2026-05-23) + Foundation v2 SPR-02
@@ -1742,8 +1773,52 @@ async def run_synthesis_tail_from_pack(
     broadcaster: EventBroadcaster,
     coordinator: InvestigationCoordinator,
 ) -> InvestigationContext:
-    """Run Loop 1 phases 6–9 only — DRW gather already happened."""
+    """Run Loop 1 phases 6–9 only — DRW gather already happened.
+
+    An empty pack fails closed before phase 6 (decision
+    ``session-evidence-pack``: "Empty pack is valid; it cannot satisfy
+    DeepResearchComplete"). Every pack chunk is substrate-grounded, so no
+    chunks means the gather retrieved nothing the synthesizer could cite;
+    running synthesis anyway would spend a paid call and end in an
+    ``investigation.completed`` that reads as finished research. The normal
+    Loop 1 Ask path keeps its own insufficient-evidence completion.
+
+    Guarded like the Loop One handler: the tail runs as a detached task
+    (``cascade_routes._run_to_completion``), so a cancel mid-phase would
+    otherwise leave the session parent's trajectory without a terminal."""
     ctx = _investigation_context_from_pack(pack)
+    if not pack.chunks:
+        ctx.failed_phase = 6
+        ctx.fail_reason = (
+            "empty substrate-grounded evidence pack: no gathered note cites a "
+            "chunk present in the substrate, so there is nothing to synthesize "
+            f"({len(pack.leaf_investigation_ids)} leaf research(es) merged)"
+        )
+        await broadcast_emit(
+            broadcaster,
+            ctx.investigation_id,
+            InvestigationFailedPayload(
+                phase=6, reason=ctx.fail_reason, last_completed_phase=None,
+            ),
+            role="orchestrator",
+            policy_id="orchestrator-cascade-tail",
+        )
+        return ctx
+    await _fail_on_cancel(
+        ctx,
+        broadcaster,
+        _run_synthesis_tail(ctx, broadcaster, coordinator),
+        policy_id="orchestrator-cascade-tail",
+        first_phase=6,
+    )
+    return ctx
+
+
+async def _run_synthesis_tail(
+    ctx: InvestigationContext,
+    broadcaster: EventBroadcaster,
+    coordinator: InvestigationCoordinator,
+) -> None:
     phases: list[Callable[[], Coroutine[Any, Any, bool]]] = [
         lambda: _run_phase_6(ctx, broadcaster, coordinator),
         lambda: _run_phase_7(ctx),
@@ -1775,7 +1850,7 @@ async def run_synthesis_tail_from_pack(
                         "cascade-tail path (audit is best-effort; run continues)",
                         ctx.investigation_id,
                     )
-            return ctx
+            return
 
     try:
         from orchestration.invariants.deep_research_complete import (
@@ -1803,7 +1878,7 @@ async def run_synthesis_tail_from_pack(
             role="orchestrator",
             policy_id="orchestrator-cascade-tail",
         )
-        return ctx
+        return
 
     assert ctx.synthesis is not None
     # Persist BEFORE announcing. `_deposit_synthesis_to_substrate` used to be
@@ -1832,7 +1907,6 @@ async def run_synthesis_tail_from_pack(
         policy_id="orchestrator-cascade-tail",
     )
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
-    return ctx
 
 
 # ---------------------------------------------------------------------------
@@ -2175,11 +2249,66 @@ def make_loop_one_handler(
         # further offloaded via asyncio.to_thread so --workers 1 uvicorn
         # keeps serving /health during Loop One.
         asyncio.create_task(
-            run_and_maybe_chase(),
+            _fail_on_cancel(ctx, broadcaster, run_and_maybe_chase()),
             name=f"loop_one:{event.investigation_id}",
         )
 
     return handle_investigation_start
+
+
+async def _fail_on_cancel(
+    ctx: InvestigationContext,
+    broadcaster: EventBroadcaster,
+    run: Awaitable[None],
+    *,
+    policy_id: str = "orchestrator-deterministic",
+    first_phase: int = 1,
+) -> None:
+    """Await ``run``; if the task is cancelled before the run wrote its own
+    terminal, write ``investigation.failed`` and re-raise.
+
+    ``first_phase`` is the phase a run that completed none of its own phases
+    is in: 1 for a full Loop One run, 6 for the cascade synthesis tail, which
+    starts from a gathered evidence pack.
+
+    uvicorn cancels leftover tasks at shutdown, so every run in flight during
+    a restart ends here. ``asyncio.CancelledError`` is a BaseException, and
+    each phase handler catches only ``Exception``, so without this the
+    trajectory stopped on its last in-flight event and every status reader
+    showed ``in_progress`` forever. The cascade runner already ends a
+    cancelled research with a terminal (``host_local._run``).
+
+    Keyed on the trajectory, not on in-memory state: a cancel that lands
+    after the run's own ``completed`` or ``failed`` (for example during the
+    chase decision) adds nothing. ``broadcast_emit`` writes the event
+    durably before its first await, so the terminal lands even if the
+    broadcast is interrupted."""
+    try:
+        await run
+    except asyncio.CancelledError:
+        from runtime.research_runner import terminal_event
+        from substrate.event_log import trajectory
+
+        if terminal_event(trajectory(ctx.investigation_id)) is None:
+            phase = min(max(ctx.last_completed_phase + 1, first_phase), 9)
+            ctx.failed_phase = phase
+            ctx.fail_reason = (
+                f"cancelled during phase {phase}: the run's task was "
+                "cancelled (service shutdown or restart) before a terminal "
+                "verdict"
+            )
+            await broadcast_emit(
+                broadcaster,
+                ctx.investigation_id,
+                InvestigationFailedPayload(
+                    phase=phase,
+                    reason=ctx.fail_reason,
+                    last_completed_phase=(ctx.last_completed_phase or None),
+                ),
+                role="orchestrator",
+                policy_id=policy_id,
+            )
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -2352,6 +2481,28 @@ async def _maybe_spawn_chase_child(
     import uuid as _uuid
 
     child_id = f"inv-{_uuid.uuid4().hex[:12]}"
+    # The parent records the branch first, durably (THREAD-CONTRACT §1.3):
+    # a chase child whose edge is not in the parent's log does not start.
+    try:
+        branch_event_id = record_branch(
+            ctx.investigation_id, child_id, via="chase",
+            spawn_context=next_question, role="orchestrator",
+            policy_id="orchestrator-chase",
+        )
+    except BranchNotRecorded:
+        await broadcast_emit(
+            broadcaster,
+            ctx.investigation_id,
+            InvestigationChaseHaltedPayload(
+                reason="branch_not_recorded",
+                depth_reached=depth,
+                cost_total_usd=round(cost_total, 6),
+            ),
+            role="orchestrator",
+            policy_id="orchestrator-chase",
+        )
+        return
+    await broadcast_recorded(broadcaster, ctx.investigation_id, branch_event_id)
     await broadcast_emit(
         broadcaster,
         child_id,
@@ -2379,6 +2530,7 @@ async def _maybe_spawn_chase_child(
         child_id,
         InvestigationSpawnedFromPayload(
             parent_investigation_id=ctx.investigation_id,
+            parent_event_id=branch_event_id,
             spawn_context=next_question,
         ),
         role="orchestrator",

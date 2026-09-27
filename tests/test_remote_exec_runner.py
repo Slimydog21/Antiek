@@ -218,3 +218,37 @@ async def test_command_after_finish_is_noop(events_dir):
     await r.steer(h, Command(kind=CommandKind.STOP))
     await r.cancel(h)  # idempotent teardown
     assert prov.torn_down.count("inv-0") == 1
+
+
+async def test_a_branched_leaf_records_the_branch_in_the_parent_first(events_dir):
+    # THREAD-CONTRACT §1.3: the parent session holds the edge, written before
+    # the leaf's first event; the leaf's spawned_from points back at it.
+    prov = FakeProvider(steps=1)
+    r = RemoteResearchRunner(prov, events_dir=events_dir, seal_on_complete=False)
+    plan = ResearchPlan(investigation_id="leaf-remote", sub_question="q?",
+                        parent_investigation_id="sess-remote", budget=BudgetCap(cost_usd=1.0))
+    h = await r.start("leaf-remote", plan)
+    [ev async for ev in r.stream(h)]
+    (branch,) = [row for row in trajectory("sess-remote", events_dir=events_dir)
+                 if row["action_type"] == "investigation.branched"]
+    assert branch["payload"]["child_investigation_id"] == "leaf-remote"
+    assert branch["payload"]["via"] == "cascade_leaf"
+    leaf_rows = trajectory("leaf-remote", events_dir=events_dir)
+    assert branch["emitted_at"] <= min(row["emitted_at"] for row in leaf_rows)
+    spawned = [row for row in leaf_rows if row["action_type"] == "investigation.spawned_from"]
+    assert spawned[0]["payload"]["parent_event_id"] == branch["event_id"]
+
+
+async def test_a_leaf_whose_branch_cannot_be_recorded_is_never_provisioned(events_dir):
+    prov = FakeProvider(steps=1)
+    r = RemoteResearchRunner(prov, events_dir=events_dir, seal_on_complete=False)
+    plan = ResearchPlan(investigation_id="leaf-orphan", sub_question="q?",
+                        parent_investigation_id="../not-a-parent", budget=BudgetCap(cost_usd=1.0))
+    h = await r.start("leaf-orphan", plan)
+    events = [ev async for ev in r.stream(h)]
+    assert r.status(h).state == RunState.FAILED
+    assert prov.provisioned == []
+    assert events[-1].state == RunState.FAILED
+    failed = [row for row in trajectory("leaf-orphan", events_dir=events_dir)
+              if row["action_type"] == "investigation.failed"]
+    assert failed and "branch_not_recorded" in failed[0]["payload"]["error"]

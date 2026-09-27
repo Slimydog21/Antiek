@@ -90,7 +90,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 # Package-relative imports work in installed mode (`pip install -e .`).
 # For direct-script execution (`python events.py ...`), fall back to a
@@ -758,17 +758,86 @@ def trajectory(
 
     A sealed Parquet snapshot and a later live JSONL tail are merged by
     immutable event id, so long-lived streams remain visible after reopening.
+    A record that does not parse as an event is skipped; use
+    ``trajectory_read`` to learn whether any was.
     """
+    return _read_trajectory(investigation_id, events_dir=events_dir).rows
+
+
+class TrajectoryRead(NamedTuple):
+    """The rows ``trajectory`` returns, whether storage exists for the id, and
+    whether the rows are every stored event.
+
+    ``stored`` is True when a snapshot or a tail exists for the id, even an
+    empty or unreadable one. ``complete`` is True only when there is at least
+    one stored event and every stored record is a usable event: an object with
+    a non-empty ``event_id``, ``action_type`` and ``emitted_at`` whose payload
+    is absent, null or decodes to an object, and a sealed snapshot could be
+    read (pyarrow). A
+    gate that clears on what a trajectory records needs both: a missing log
+    may be research that never ran, while a stored log that does not read in
+    full means what the investigation stood on is unknown.
+    """
+
+    rows: list[dict[str, Any]]
+    complete: bool
+    stored: bool
+
+
+_EVENT_STORAGE_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}")
+
+
+def is_event_storage_id(value: object) -> bool:
+    """Whether ``value`` names an event log inside the events dir (no path)."""
+    return isinstance(value, str) and bool(_EVENT_STORAGE_ID.fullmatch(value))
+
+
+def trajectory_read(
+    investigation_id: str,
+    *,
+    events_dir: str | None = None,
+) -> TrajectoryRead:
+    """``trajectory`` plus whether storage exists and every stored event was
+    read, in one pass.
+
+    Unlike ``trajectory``, an id that is not an event-storage name (a path, an
+    empty string) is never joined onto the events dir: it reads nothing and is
+    reported as not stored and incomplete.
+    """
+    if not is_event_storage_id(investigation_id):
+        return TrajectoryRead([], False, False)
+    return _read_trajectory(investigation_id, events_dir=events_dir)
+
+
+def _usable_event(row: dict[str, Any]) -> bool:
+    event_id, action_type = row.get("event_id"), row.get("action_type")
+    payload, emitted_at = row.get("payload"), row.get("emitted_at")
+    return (
+        isinstance(event_id, str) and bool(event_id)
+        and isinstance(action_type, str) and bool(action_type)
+        and (payload is None or isinstance(payload, dict))
+        and ((isinstance(emitted_at, str) and bool(emitted_at)) or isinstance(emitted_at, datetime))
+    )
+
+
+def _read_trajectory(
+    investigation_id: str,
+    *,
+    events_dir: str | None = None,
+) -> TrajectoryRead:
     pq = _parquet_path(investigation_id, events_dir=events_dir)
     jl = _jsonl_path(investigation_id, events_dir=events_dir)
 
     rows: list[dict[str, Any]] = []
+    stored = os.path.exists(pq) or os.path.exists(jl)
+    every_record_read = True
     if os.path.exists(pq):
         try:
             import pyarrow.parquet as pq_reader
             table = pq_reader.read_table(pq)
             rows = table.to_pylist()
         except ImportError:
+            every_record_read = False
             print("pyarrow not installed; reading sealed Parquet requires pyarrow.",
                   file=sys.stderr)
     if os.path.exists(jl):
@@ -778,17 +847,20 @@ def trajectory(
                 if not line:
                     continue
                 try:
-                    rows.append(json.loads(line))
+                    row = json.loads(line)
                 except json.JSONDecodeError:
+                    every_record_read = False
                     continue
-
-    if len(rows) == 1 and not isinstance(rows[0].get("payload"), str):
-        return rows
+                if not isinstance(row, dict):
+                    every_record_read = False
+                    continue
+                rows.append(row)
 
     for r in rows:
         if isinstance(r.get("payload"), str):
             with contextlib.suppress(TypeError, ValueError):
                 r["payload"] = json.loads(r["payload"])
+    complete = every_record_read and bool(rows) and all(_usable_event(r) for r in rows)
 
     # A completed run normally never reopens after sealing. Long-lived product
     # streams can, however, append after a snapshot exists. Keep both layers
@@ -802,8 +874,9 @@ def trajectory(
         else:
             without_id.append(row)
     merged = [*by_id.values(), *without_id]
-    merged.sort(key=lambda r: (r.get("emitted_at") or "", r.get("event_id") or ""))
-    return merged
+    # str(): a record with a non-string timestamp must order, not raise.
+    merged.sort(key=lambda r: (str(r.get("emitted_at") or ""), str(r.get("event_id") or "")))
+    return TrajectoryRead(merged, complete, stored)
 
 
 class PhysicalTrajectoryError(RuntimeError):

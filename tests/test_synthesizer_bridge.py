@@ -407,6 +407,7 @@ async def test_first_dispatch_provider_unavailable_fallback(
     assert p.thesis_components == []
     assert p.constraint_compliance.hard_constraints_satisfied is False
     assert e.policy_id == "synthesizer-fallback/no-provider"
+    assert p.role_outcome == "dispatch_failed"
     # No constraint loop ran.
     resolved = [
         r for r in trajectory(inv)
@@ -443,6 +444,7 @@ async def test_first_dispatch_parse_failure_fallback(
     assert p.thesis_components == []
     # Dispatch succeeded — parse failed; policy_id reflects the model.
     assert e.policy_id == "stub-synthesizer/stub-synth-model"
+    assert p.role_outcome == "parse_failed"
 
 
 # ---------------------------------------------------------------------------

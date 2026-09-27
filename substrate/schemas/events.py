@@ -90,6 +90,17 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     # Sprint 12: continuous chase mode — the orchestrator emits these
     # at the boundary between one chase iteration and the next.
     INVESTIGATION_CHASE_HALTED = "investigation.chase_halted"
+    # Mothership B0 (specs/antiek-mothership/THREAD-CONTRACT.md §1.3): the
+    # durable parent -> child edge, written into the PARENT's log before the
+    # child's first event. spawned_from on the child stays and points back
+    # at it through parent_event_id.
+    INVESTIGATION_BRANCHED = "investigation.branched"
+    # A branch whose launch was refused before the child's first event, written
+    # by the same request that wrote the branch (THREAD-CONTRACT §1.3).
+    INVESTIGATION_BRANCH_ABANDONED = "investigation.branch_abandoned"
+    # A child id reserved for a later launch, recorded in the CHILD's own log
+    # (the note-taker's unresolvable challenge; a chase may launch into it).
+    INVESTIGATION_RESERVED = "investigation.reserved"
     # Sprint 15: creation surface edit-back-into-graph (master spec
     # §10.4 Option B). When the operator edits generated prose, the
     # substrate optionally promotes the edit to a first-class claim
@@ -803,7 +814,18 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v39: Operator feedback-thread resolution becomes an immutable audit event.
 # v40: Feedback reply audit payload distinguishes reply, decline, and approval
 #     request outcomes without exposing private message text.
-EVENT_SCHEMA_VERSION: int = 40
+# v41: Mothership B0 (specs/antiek-mothership/THREAD-CONTRACT.md §1.3):
+#     new ``investigation.branched`` action + payload (with BranchOrigin,
+#     BranchAnchor, BranchTextLocator), the parent-side edge written before a
+#     child starts; QuestionEscalatedToResearchPayload.launched (False =
+#     reserved, never started); and InvestigationChaseHaltedPayload.reason
+#     "branch_not_recorded"; investigation.branch_abandoned (a branch whose
+#     launch was refused before the child's first event) and
+#     investigation.reserved (a reserved child id, in the child's own log).
+#     Purely additive. Takes the next free version
+#     with a renumber-at-merge preflight (the D2 40->41 plan is superseded).
+#     2026-09-24.
+EVENT_SCHEMA_VERSION: int = 41
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1265,11 +1287,22 @@ class QuestionIdentifiedPayload(_PayloadBase):
 
 
 class QuestionEscalatedToResearchPayload(_PayloadBase):
+    """A question handed to child research under ``child_investigation_id``.
+
+    ``launched`` is False when the id is only reserved: no research was started
+    under it (the note-taker's unresolvable challenge, which a chase may later
+    launch into). Every path that starts the research leaves it True, and an
+    event from before this field reads as True. A provenance gate may treat a
+    child as never having run only when every reference to it is a
+    reservation and no log exists for it.
+    """
+
     action_type: Literal[ActionType.QUESTION_ESCALATED_TO_RESEARCH] = (
         ActionType.QUESTION_ESCALATED_TO_RESEARCH
     )
     question_id: str
     child_investigation_id: str
+    launched: bool = True
 
 
 class QuestionResolvedByDocPayload(_PayloadBase):
@@ -1724,6 +1757,26 @@ ConstraintLoopStatus = Literal[
     "escalated",  # preflight conflict — constraints contradictory
     "preflight_failed",  # constraints contradictory before any iteration
 ]
+
+# How a research role's Delivered payload came to exist. The bridges answer a
+# failed call with a fallback Delivered (so the phase never hangs), and that
+# fallback is shaped exactly like a model that declined: empty output plus
+# ``insufficient_evidence``. This field is what tells them apart. The bridge
+# sets it from what happened at dispatch, never from the model's text:
+#
+# - ``delivered`` — the model answered and the answer parsed.
+# - ``parse_failed`` — the model answered, but even after the bridge's repair
+#   attempt the answer did not parse. The 2026-05-18 H2.5 contract treats this
+#   as "no defensible answer", a valid terminal.
+# - ``dispatch_failed`` — no model answered (provider error, missing key,
+#   breaker open, owner credential unavailable). Nothing was decided, so no
+#   gate may read this payload as a verdict.
+RoleOutcome = Literal["delivered", "parse_failed", "dispatch_failed"]
+
+# The outcomes in which a model actually answered. Gates that accept an empty
+# or declined payload as a verdict (the H2.5 hatches) accept it only from
+# these; anything else, including an outcome added later, is not a verdict.
+ROLE_ANSWERED_OUTCOMES: frozenset[str] = frozenset({"delivered", "parse_failed"})
 
 
 class ConstraintViolationFoundPayload(_PayloadBase):
@@ -2184,6 +2237,8 @@ class ConnectorDeliveredPayload(_PayloadBase):
     natural_language_relationships: list[NaturalLanguageRelationship] = Field(
         default_factory=list,
     )
+    # How this payload was produced; see ``RoleOutcome``.
+    role_outcome: RoleOutcome = "delivered"
 
 
 # ---------------------------------------------------------------------------
@@ -2315,6 +2370,8 @@ class SynthesizeDeliveredPayload(_PayloadBase):
     # converged.
     constraint_loop_status: ConstraintLoopStatus = "single_pass"
     constraint_loop_iterations: int = Field(default=1, ge=1)
+    # How this payload was produced; see ``RoleOutcome``.
+    role_outcome: RoleOutcome = "delivered"
 
 
 # ---------------------------------------------------------------------------
@@ -2447,6 +2504,9 @@ class InvestigationChaseHaltedPayload(_PayloadBase):
         "budget_exceeded",
         "no_open_questions",
         "chase_disabled",
+        # The parent's investigation.branched could not be written durably,
+        # so the child was not started (THREAD-CONTRACT §1.3).
+        "branch_not_recorded",
     ]
     depth_reached: int = Field(default=0, ge=0)
     duration_seconds: float = Field(default=0.0, ge=0.0)
@@ -2471,6 +2531,88 @@ class InvestigationSpawnedFromPayload(_PayloadBase):
     parent_investigation_id: str
     parent_event_id: str | None = None
     spawn_context: str = ""
+
+
+class BranchTextLocator(_PayloadBase):
+    """A character span of a document's canonical text, keyed to that text's
+    hash (the html_projection TextLocator shape): durable across re-renders,
+    remapped when the canonical text changes."""
+
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
+    text_sha256: str = Field(min_length=1)
+
+
+class BranchAnchor(_PayloadBase):
+    """Where in a document a branch was opened (THREAD-CONTRACT §1.4).
+    ``source_locator`` is the durable key; ``region_id`` is per projection;
+    ``quote``/``prefix``/``suffix`` re-find the span after the text moves;
+    ``page_index`` is the legacy passage_research read path."""
+
+    document_id: str = Field(min_length=1)
+    source_locator: BranchTextLocator | None = None
+    region_id: str | None = None
+    quote: str | None = None
+    prefix: str | None = None
+    suffix: str | None = None
+    page_index: int | None = Field(default=None, ge=0)
+
+
+class BranchOrigin(_PayloadBase):
+    """What in the parent the branch was opened from. ``selection`` is a
+    highlighted span (the UI renders it as an island)."""
+
+    kind: Literal["footnote", "reference", "citation", "selection", "research", "manual"]
+    document_id: str | None = None
+    anchor: BranchAnchor | None = None
+
+
+class InvestigationBranchedPayload(_PayloadBase):
+    """A parent investigation handed work to a child investigation.
+
+    Written into the PARENT's trajectory, strictly, before the child's first
+    event: a child whose branch could not be recorded does not start. This
+    is the authoritative edge of the logic tree (D6) and of provenance: a
+    reader that finds a branch here knows the child ran, so a child whose own
+    log is later lost stays an unresolved dependency instead of vanishing.
+    ``via`` says which launch path wrote it."""
+
+    action_type: Literal[ActionType.INVESTIGATION_BRANCHED] = (
+        ActionType.INVESTIGATION_BRANCHED
+    )
+    child_investigation_id: str = Field(min_length=1)
+    via: Literal[
+        "chase", "cascade_leaf", "sub_question", "watch_for_later",
+        "passage_spin", "reserved_launch", "api",
+    ]
+    origin: BranchOrigin | None = None
+    spawn_context: str = ""
+    question_id: str | None = None
+
+
+class InvestigationBranchAbandonedPayload(_PayloadBase):
+    """The launch behind ``branch_event_id`` was refused before the child's
+    first event (a capacity refusal after the branch was written), by the same
+    request that wrote the branch. It cancels exactly that branch; a branch
+    with no abandonment stays a live dependency."""
+
+    action_type: Literal[ActionType.INVESTIGATION_BRANCH_ABANDONED] = (
+        ActionType.INVESTIGATION_BRANCH_ABANDONED
+    )
+    child_investigation_id: str = Field(min_length=1)
+    branch_event_id: str = Field(min_length=1)
+    reason: Literal["capacity_refused"]
+
+
+class InvestigationReservedPayload(_PayloadBase):
+    """This investigation id is reserved by ``parent_investigation_id`` for a
+    later launch; nothing has run under it. Written into the reserved id's own
+    log, so a launch into the id finds its parent, and a reserved child that
+    never ran still has a readable log (no evidence, no false withhold)."""
+
+    action_type: Literal[ActionType.INVESTIGATION_RESERVED] = ActionType.INVESTIGATION_RESERVED
+    parent_investigation_id: str = Field(min_length=1)
+    question_id: str | None = None
 
 
 class PageAttributionComputedPayload(_PayloadBase):
@@ -2682,6 +2824,8 @@ class ParameterExtractDeliveredPayload(_PayloadBase):
     )
     parameters: list[Parameter] = Field(default_factory=list)
     constraints: list[ConstraintSpec] = Field(default_factory=list)
+    # How this payload was produced; see ``RoleOutcome``.
+    role_outcome: RoleOutcome = "delivered"
 
 
 # ---------------------------------------------------------------------------
@@ -2763,6 +2907,8 @@ class EvidenceRetrieveDeliveredPayload(_PayloadBase):
     supporting_claims: list[SupportingClaim] = Field(default_factory=list)
     evidentiary_gaps: list[EvidentiaryGap] = Field(default_factory=list)
     insufficient_evidence: bool = False
+    # How this payload was produced; see ``RoleOutcome``.
+    role_outcome: RoleOutcome = "delivered"
 
 
 # ---------------------------------------------------------------------------
@@ -4308,6 +4454,9 @@ TypedPayload = Annotated[
     | InvestigationCompletedPayload
     | InvestigationFailedPayload
     | InvestigationSpawnedFromPayload
+    | InvestigationBranchedPayload
+    | InvestigationBranchAbandonedPayload
+    | InvestigationReservedPayload
     | InvestigationChaseHaltedPayload
     | ClaimAssertedByOperatorPayload
     | PageAttributionComputedPayload
@@ -4449,6 +4598,9 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset(
         ActionType.INVESTIGATION_COMPLETED.value,
         ActionType.INVESTIGATION_FAILED.value,
         ActionType.INVESTIGATION_SPAWNED_FROM.value,
+        ActionType.INVESTIGATION_BRANCHED.value,
+        ActionType.INVESTIGATION_BRANCH_ABANDONED.value,
+        ActionType.INVESTIGATION_RESERVED.value,
         ActionType.INVESTIGATION_CHASE_HALTED.value,
         ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
         ActionType.PAGE_ATTRIBUTION_COMPUTED.value,

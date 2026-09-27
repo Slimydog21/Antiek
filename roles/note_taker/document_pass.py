@@ -20,7 +20,13 @@ from typing import Any
 
 try:
     from substrate.event_log import emit_typed
-    from substrate.graph.insight_question import promote_insight, promote_question
+    from substrate.flywheel.reuse_gate import REUSE_GROUNDEDNESS_THRESHOLD
+    from substrate.graph.insight_question import (
+        best_supporting_chunk,
+        chunk_texts_for,
+        promote_insight,
+        promote_question,
+    )
     from substrate.schemas.events import NoteEmergedPayload, QuestionIdentifiedPayload
 
     from .distill import Distillation, Distiller
@@ -29,7 +35,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from roles.note_taker.distill import Distillation, Distiller
     from substrate.event_log import emit_typed
+    from substrate.flywheel.reuse_gate import REUSE_GROUNDEDNESS_THRESHOLD
     from substrate.graph.insight_question import (
+        best_supporting_chunk,
+        chunk_texts_for,
         promote_insight,
         promote_question,
     )
@@ -76,6 +85,9 @@ async def run_document_pass(
     )
     result = PassResult()
     primary_chunk = chunk_ids[0] if chunk_ids else None
+    # Each insight cites the chunk that supports it, never simply the first
+    # chunk: an insight from chapter eight must not cite chapter one (W11).
+    chunk_texts = chunk_texts_for(chunk_ids, con=con) if chunk_ids else {}
 
     for note in distillation.insights:
         # Provenance guard (rigor #1): the parser already drops notes with no
@@ -98,10 +110,15 @@ async def run_document_pass(
                 ),
                 role="note_taker", document_id=document_id, events_dir=events_dir,
             )
+        cited_chunk, score = best_supporting_chunk(note.text, chunk_texts)
+        if score is None or score < REUSE_GROUNDEDNESS_THRESHOLD:
+            # No chunk supports it at the reuse gate's bar: keep the document
+            # provenance, cite no chunk.
+            cited_chunk = None
         nid = promote_insight(
             text=note.text, investigation_id=investigation_id,
             confidence=note.confidence, supported_by=supported_by,
-            source_document_id=document_id, chunk_id=primary_chunk,
+            source_document_id=document_id, chunk_id=cited_chunk,
             metadata={"source_chunk_ids": list(chunk_ids),
                       "source_event_ids": list(note.source_event_ids),
                       "origin_note_id": note.note_id},

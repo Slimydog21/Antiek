@@ -2,7 +2,8 @@
  * DRW SPR-09 M4 — live session consumption + reconnect.
  *
  * Polls SPR-06's durable `GET /research/sessions/{id}` (status + cost) on an
- * interval, stopping once every research is terminal. Polling — not an
+ * interval, stopping once every research is terminal and the session parent
+ * is no longer pending (see `SessionParentState`). Polling — not an
  * EventSource — is the deliberate choice: it matches the codebase's dominant
  * live-update idiom (setInterval + cancellation), and because each poll
  * re-derives authoritative state from the durable endpoint (which itself
@@ -22,8 +23,72 @@ import {
   type ResearchStatus,
   type HardCeilingSnapshot,
   type SessionCost,
+  type SessionStatus,
 } from "../../api/research";
 import type { ResearchSourcePolicy } from "../../lib/api";
+
+/**
+ * The session PARENT's outcome, which leaf states cannot tell you: every leaf
+ * can be DONE while join/merge or the synthesis tail failed. Only the
+ * backend's `deep_research_complete === true` is success; anything the
+ * response does not affirm is `unknown`, never success. Every kind except
+ * `pending` is settled: nothing more will change it, so polling stops.
+ */
+export type SessionParentState =
+  | { kind: "complete" }
+  | { kind: "synthesis_failed"; error: string }
+  /** The parent ended failed (a skipped tail, or completion that ended it). */
+  | { kind: "failed"; reason: string }
+  /** The parent ended stopped: every leaf was stopped or cancelled. */
+  | { kind: "stopped" }
+  /** The parent ended at the budget limit before any leaf finished. */
+  | { kind: "budget_halted" }
+  /** The parent ended completed, but the backend does not affirm
+   * DeepResearchComplete. */
+  | { kind: "unconfirmed" }
+  /** Completion finished without writing a parent verdict and none is coming
+   * (a hard-ceiling run, or a server without the synthesis tail wired). */
+  | { kind: "not_synthesized" }
+  /** The backend says not complete yet, records no failure, and completion
+   * may still write the verdict. */
+  | { kind: "pending" }
+  /** Recovered session (null) or a response without the field. */
+  | { kind: "unknown" };
+
+export function deriveSessionParent(s: SessionStatus): SessionParentState {
+  const error = s.synthesis_tail_error?.trim();
+  if (error) return { kind: "synthesis_failed", error };
+  if (s.deep_research_complete === true) return { kind: "complete" };
+  // A skipped tail ends the parent without ever setting deep_research_complete,
+  // so the parent's own terminal, not that flag, says how the session ended.
+  const terminal = s.parent_terminal;
+  if (terminal) {
+    switch (terminal.state) {
+      case "failed":
+        return {
+          kind: "failed",
+          reason: terminal.reason?.trim() || "the session ended failed without a recorded reason",
+        };
+      case "stopped":
+        return { kind: "stopped" };
+      case "budget_halted":
+        return { kind: "budget_halted" };
+      case "done":
+        return s.deep_research_complete === false ? { kind: "unconfirmed" } : { kind: "unknown" };
+      default:
+        return { kind: "unknown" };
+    }
+  }
+  if (s.deep_research_complete === false) {
+    return s.completion_running === false ? { kind: "not_synthesized" } : { kind: "pending" };
+  }
+  return { kind: "unknown" };
+}
+
+// Backoff ceiling while leaves are terminal but the parent is still pending
+// (the synthesis tail can run for minutes, and a path that skips the tail
+// never settles).
+const PARENT_PENDING_MAX_INTERVAL_MS = 30_000;
 
 export interface SessionView {
   researches: ResearchStatus[];
@@ -31,6 +96,7 @@ export interface SessionView {
   hardCeiling: HardCeilingSnapshot | null;
   live: boolean;
   allTerminal: boolean;
+  parent: SessionParentState;
   loading: boolean;
   sourcePolicy: ResearchSourcePolicy[];
   sourcePolicyExecution: "metadata_only" | "runner_consumed" | null;
@@ -44,6 +110,7 @@ const EMPTY: SessionView = {
   hardCeiling: null,
   live: false,
   allTerminal: false,
+  parent: { kind: "unknown" },
   loading: true,
   sourcePolicy: [],
   sourcePolicyExecution: null,
@@ -65,6 +132,7 @@ export function useResearchSession(
     let cancelled = false;
     const interval = opts.intervalMs ?? 1500;
     let terminalEvidencePolls = 0;
+    let parentPendingPolls = 0;
     setView({ ...EMPTY, loading: true });
 
     const poll = async () => {
@@ -74,12 +142,14 @@ export function useResearchSession(
         const allTerminal =
           (s.all_terminal ?? s.researches.every((r) => TERMINAL_STATES.has(r.state))) &&
           s.researches.length > 0;
+        const parent = deriveSessionParent(s);
         setView({
           researches: s.researches,
           cost: s.cost ?? null,
           hardCeiling: s.hard_ceiling ?? null,
           live: s.live,
           allTerminal,
+          parent,
           loading: false,
           sourcePolicy: s.source_policy ?? [],
           sourcePolicyExecution: s.source_policy_execution ?? null,
@@ -93,7 +163,17 @@ export function useResearchSession(
             s.hard_ceiling.unknown_outcome_count === 0);
         if (!allTerminal) {
           terminalEvidencePolls = 0;
+          parentPendingPolls = 0;
           timerRef.current = window.setTimeout(poll, interval);
+        } else if (parent.kind === "pending") {
+          // Leaves are done but the parent has neither completed nor failed:
+          // the synthesis tail may still be running, and a tail failure lands
+          // only after this point. Keep watching, backing off.
+          parentPendingPolls += 1;
+          timerRef.current = window.setTimeout(
+            poll,
+            Math.min(interval * 2 ** (parentPendingPolls - 1), PARENT_PENDING_MAX_INTERVAL_MS),
+          );
         } else if (!evidenceFinal && terminalEvidencePolls < 3) {
           terminalEvidencePolls += 1;
           timerRef.current = window.setTimeout(

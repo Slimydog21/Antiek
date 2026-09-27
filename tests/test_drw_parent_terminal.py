@@ -49,7 +49,6 @@ from roles.cascade_planner.persist import load_tree
 from runtime.research_runner import (
     HostLocalRunner,
     PromotionFunnel,
-    make_demo_loop,
 )
 from substrate.event_log import trajectory
 from substrate.graph.schema import init_database_at_path
@@ -105,7 +104,41 @@ def env(monkeypatch):
 
     monkeypatch.setattr(iq, "graph_db_path", lambda: db)
     init_database_at_path(db)
+    _seed_source(db)
     return {"db": db, "events": ev}
+
+
+_SOURCE_DOC = "doc-drw-src"
+
+
+def _seed_source(db: str) -> None:
+    """One real source document + chunk for the gather to cite. Since the pack
+    stopped inventing chunk ids (audit wave 5 W03), a placeholder note gives
+    an empty pack and the cascade skips the synthesis tail (W05). A tail that
+    must RUN (to fail, or to complete) needs substrate-grounded evidence."""
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_chunk, insert_document
+
+    text = (
+        "Photonic qubits lose coherence mainly through waveguide scattering, "
+        "and the loss budget sets the fault-tolerance threshold. "
+    ) * 5
+    with connect_write(db, purpose="test/seed") as con:
+        insert_document(
+            con, document_id=_SOURCE_DOC, source_tier=2, document_type="web",
+            title="Photonics source", raw_text=text,
+            content_class="public_domain", ip_holder_id=None,
+        )
+        insert_chunk(con, document_id=_SOURCE_DOC, chunk_index=0,
+                     chunk_id="chunk-drw-src", text=text)
+
+
+def _grounded_gather_loop():
+    async def _loop(ctx):
+        sub_q = await ctx.checkpoint()
+        yield ctx.note(f"source for {sub_q}", document_id=_SOURCE_DOC)
+
+    return _loop
 
 
 def _approved_plan(env, subs=("sub one",), session_id="session-1"):
@@ -128,7 +161,7 @@ def _approved_plan(env, subs=("sub one",), session_id="session-1"):
 def _make_session(env, session_id="session-1"):
     funnel = PromotionFunnel(db_path=env["db"], embedding_provider=_FakeEmbedding())
     runner = HostLocalRunner(
-        make_demo_loop(steps=1, emit_note=True),
+        _grounded_gather_loop(),
         events_dir=env["events"],
         seal_on_complete=False,
         on_emit=funnel.submit,

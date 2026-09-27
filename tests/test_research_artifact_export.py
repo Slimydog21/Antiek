@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from runtime.db_lock import connect_write
 from services.html_projection.context import RenderContext
 from services.html_projection.island import extract_island
 from services.html_projection.renderer import render
@@ -29,6 +30,19 @@ class _StubEmbedding:
         return [b / 255.0 for b in d[: self.dimension]]
 
 
+def _seed_servable_sources(db: str, *document_ids: str) -> None:
+    """Give the fixtures' source documents a servable rights class: a research
+    artifact is an export, so an insight whose source rights are unknown
+    renders cite-only (tests/test_research_artifact_rights.py)."""
+    with connect_write(db, purpose="test/servable_sources") as con:
+        for document_id in document_ids:
+            con.execute(
+                "INSERT INTO documents (document_id, source_tier, document_type, "
+                "content_class, title) VALUES (?, 1, 'article', 'public_domain', ?)",
+                [document_id, document_id],
+            )
+
+
 @pytest.fixture
 def art_env(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="ra-export-")
@@ -41,6 +55,7 @@ def art_env(monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", arts)
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     ensure_initialized(db)
+    _seed_servable_sources(db, "doc-1", "doc-2")
     return {"db": db, "events": events, "arts": arts}
 
 

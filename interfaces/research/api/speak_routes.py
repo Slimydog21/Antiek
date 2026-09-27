@@ -38,7 +38,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, TypeVar
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
 from runtime.db_lock import ReadLockTimeout, WriteLockTimeout, connect_read, connect_write
@@ -321,8 +321,11 @@ class DraftRequest(BaseModel):
 
 
 class PublishRequest(BaseModel):
+    # The gate checks the project's own subject; a body subject_ref once
+    # redirected it to any stand-in, so an unknown field is now a 422.
+    model_config = ConfigDict(extra="forbid")
+
     deliverable_id: str | None = None
-    subject_ref: str | None = None
     ad_revenue_usd: str = "0"
     quality_scores: dict[str, float] | None = None
 
@@ -486,12 +489,11 @@ async def public_feed() -> dict:
                 # An active takedown means STOP PUBLISHING. This feed is
                 # unauthenticated and returns subject_ref + subject_status,
                 # so without this predicate a project under takedown keeps
-                # disclosing its subject to anyone. substrate/speak/
-                # publish_gate.py:162 refuses to publish on exactly this
-                # condition; the browsable surface has to agree with the
-                # gate that governs it.
-                "AND NOT EXISTS (SELECT 1 FROM speak_takedowns t "
-                "WHERE t.project_id = p.project_id AND t.status = 'active') "
+                # disclosing its subject to anyone. check_public_publish
+                # (substrate/speak/publish_gate.py, step 2) refuses to
+                # publish on exactly this condition; the browsable surface
+                # has to agree with the gate that governs it.
+                f"AND {takedown_mod.NO_ACTIVE_TAKEDOWN_SQL} "
                 "ORDER BY p.created_at DESC"
             ).fetchall()
 
@@ -715,9 +717,10 @@ async def get_interview(interview_id: str) -> dict:
 
 @speak_router.post("/interviews/{interview_id}/answers", status_code=201)
 async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict:
-    # Two-hop write: submit_answer opens connect_write itself (three times:
-    # consent check, voice-note ingest, answer turn), out of _write's reach
-    # and the one-hop lint's, so the bound is passed explicitly.
+    # Two-hop write: submit_answer opens connect_write itself (twice: the
+    # consent check, then the voice-note ingest, whose after_write hook
+    # writes the answer turn in the same lock and transaction), out of
+    # _write's reach and the one-hop lint's, so the bound is passed explicitly.
     def _sync() -> Any:
         with _translate():
             return submit_answer(
@@ -855,6 +858,7 @@ async def draft(project_id: str, req: DraftRequest) -> dict:
         "prose_text": d.prose_text,
         "cited_interview_ids": list(d.cited_interview_ids),
         "excluded_claim_ids": list(d.excluded_claim_ids),
+        "consent_excluded_claim_ids": list(d.consent_excluded_claim_ids),
         "unverified_marked_claim_ids": list(d.unverified_marked_claim_ids),
         "voice_style_score": d.voice_style_score,
         "voice_style_ok": d.voice_style_ok,
@@ -866,10 +870,11 @@ async def publish(project_id: str, req: PublishRequest) -> dict:
     ad_revenue = _decimal(req.ad_revenue_usd, "ad_revenue_usd")
 
     def _sync() -> Any:
+        # The gate reads the project's own subject; the body carries none.
         with _translate(), _write("speak/api:publish") as con:
             return publish_mod.publish(
                 con, project_id=project_id, deliverable_id=req.deliverable_id,
-                subject_ref=req.subject_ref, ad_revenue_usd=ad_revenue,
+                ad_revenue_usd=ad_revenue,
                 quality_scores=req.quality_scores,
             )
 
@@ -1363,12 +1368,14 @@ async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
         with _translate(), _write("speak/api:invite_answer_resolve") as con:
             interview_id, _ = _require_token(con, token)
         # submit_answer acquires its own lock(s); call outside ours — but
-        # still on this thread, never the loop.
+        # still on this thread, never the loop. door_token re-checks the
+        # token under submit_answer's own locks: a takedown can land
+        # between ours and theirs.
         with _translate():
             return submit_answer(
                 _db(), interview_id=interview_id, question_id=req.question_id,
                 transcript=req.transcript, duration_seconds=req.duration_seconds,
-                timeout_s=_WRITE_TIMEOUT_S,
+                door_token=token, timeout_s=_WRITE_TIMEOUT_S,
             )
 
     result = await _off_loop(_sync)
@@ -1482,7 +1489,9 @@ async def invitee_voice(
         with _translate(), _write("speak/api:invite_voice_resolve") as con:
             interview_id, _ = _require_token(con, token)
         # transcribe + submit acquire their own locks; do them OUTSIDE ours
-        # — and off the loop, since Whisper is CPU-bound for seconds.
+        # — and off the loop, since Whisper is CPU-bound for seconds. That
+        # gap is why door_token re-checks the token under submit_answer's
+        # locks: a takedown landing mid-transcription must still refuse.
         with _translate():
             text = transcribe_voice(
                 audio,
@@ -1493,7 +1502,7 @@ async def invitee_voice(
             return text, submit_answer(
                 _db(), interview_id=interview_id, question_id=question_id,
                 transcript=text, duration_seconds=duration_seconds,
-                timeout_s=_WRITE_TIMEOUT_S,
+                door_token=token, timeout_s=_WRITE_TIMEOUT_S,
             )
 
     text, result = await _off_loop(_sync)
@@ -1539,7 +1548,8 @@ async def invitee_followups(token: str) -> dict[str, Any]:
             interview_id, _ = _require_token(con, token)
         with _translate():
             return next_followups(
-                _db(), interview_id=interview_id, timeout_s=_WRITE_TIMEOUT_S
+                _db(), interview_id=interview_id, door_token=token,
+                timeout_s=_WRITE_TIMEOUT_S,
             )
 
     fus = await _off_loop(_sync)

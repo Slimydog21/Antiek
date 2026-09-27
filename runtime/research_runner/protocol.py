@@ -29,7 +29,7 @@ invariant.
 from __future__ import annotations
 
 import enum
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import (
@@ -55,6 +55,48 @@ class RunState(enum.StrEnum):
 
     def is_terminal(self) -> bool:
         return self in {RunState.DONE, RunState.STOPPED, RunState.FAILED, RunState.BUDGET_HALTED}
+
+
+def terminal_event(
+    rows: Sequence[Mapping[str, Any]],
+) -> tuple[RunState, Mapping[str, Any]] | None:
+    """The terminal state a persisted trajectory records, and the row that
+    records it. ``None`` means the research has not ended.
+
+    Every status reader (the recovered session, ``GET /investigations`` and
+    ``GET /investigations/{id}``) calls this, so one research cannot read
+    "stopped" on one surface and "done" or "in_progress" on another.
+
+    - ``investigation.completed`` carrying ``outcome`` ``stopped`` or
+      ``cancelled`` is STOPPED; the runner ends a stop or a cancel through
+      ``completed``, so reading the action alone reports it as done.
+    - ``investigation.failed`` is FAILED.
+    - ``investigation.chase_halted`` is BUDGET_HALTED only when the trajectory
+      has no completed or failed row. The runner's budget halt writes nothing
+      else, but Loop One writes a chase halt AFTER ``completed`` when it
+      declines to spawn a child; that halt is about the child, not this run.
+    """
+    from substrate.schemas.events import ActionType
+
+    completed = ActionType.INVESTIGATION_COMPLETED.value
+    failed = ActionType.INVESTIGATION_FAILED.value
+    halted = ActionType.INVESTIGATION_CHASE_HALTED.value
+    halt_row: Mapping[str, Any] | None = None
+    for row in reversed(rows):
+        at = row.get("action_type")
+        if at == completed:
+            payload = row.get("payload")
+            outcome = payload.get("outcome") if isinstance(payload, Mapping) else None
+            if outcome in ("stopped", "cancelled"):
+                return RunState.STOPPED, row
+            return RunState.DONE, row
+        if at == failed:
+            return RunState.FAILED, row
+        if at == halted and halt_row is None:
+            halt_row = row
+    if halt_row is not None:
+        return RunState.BUDGET_HALTED, halt_row
+    return None
 
 
 class CommandKind(enum.StrEnum):

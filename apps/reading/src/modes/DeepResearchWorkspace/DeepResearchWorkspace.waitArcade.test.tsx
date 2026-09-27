@@ -24,6 +24,7 @@ const sessionView = vi.hoisted(() => ({
     cost: null,
     live: true,
     allTerminal: false,
+    parent: { kind: "unknown" },
     loading: false,
     error: null as string | null,
   },
@@ -136,6 +137,7 @@ afterEach(() => {
     cost: null,
     live: true,
     allTerminal: false,
+    parent: { kind: "unknown" },
     loading: false,
     error: null,
   };

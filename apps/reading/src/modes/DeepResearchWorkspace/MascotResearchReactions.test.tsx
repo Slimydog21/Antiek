@@ -23,7 +23,11 @@ const IDLE: ResearchReactionSnapshot = {
   allTerminal: false,
   error: null,
   researchStates: [],
+  parent: { kind: "unknown" },
 };
+
+// Leaf DONE is not session success; only the parent's affirmed completion is.
+const PARENT_COMPLETE = { kind: "complete" } as const;
 
 afterEach(() => {
   cleanup();
@@ -34,7 +38,8 @@ describe("Brain deep-research reactions", () => {
   it("derives only authoritative success and failure outcomes", () => {
     expect(deriveResearchReactionPhase(IDLE)).toBe("idle");
     expect(deriveResearchReactionPhase({ ...IDLE, researchStates: ["running"] })).toBe("running");
-    expect(deriveResearchReactionPhase({ ...IDLE, allTerminal: true, researchStates: ["done", "done"] })).toBe("complete");
+    expect(deriveResearchReactionPhase({ ...IDLE, allTerminal: true, researchStates: ["done", "done"], parent: PARENT_COMPLETE })).toBe("complete");
+    expect(deriveResearchReactionPhase({ ...IDLE, allTerminal: true, researchStates: ["done", "done"] })).toBe("idle");
     expect(deriveResearchReactionPhase({ ...IDLE, allTerminal: true, researchStates: ["done", "failed"] })).toBe("error");
     expect(deriveResearchReactionPhase({ ...IDLE, allTerminal: true, researchStates: ["budget_halted"] })).toBe("error");
     expect(deriveResearchReactionPhase({ ...IDLE, researchStates: ["failed", "running"] })).toBe("error");
@@ -56,7 +61,7 @@ describe("Brain deep-research reactions", () => {
     act(() => view.rerender(<Host snapshot={{ ...IDLE, error: "offline" }} />));
     act(() => view.rerender(<Host snapshot={{ ...IDLE, error: "offline" }} />));
     act(() => view.rerender(<Host snapshot={{ ...IDLE, researchStates: ["running"] }} />));
-    act(() => view.rerender(<Host snapshot={{ ...IDLE, allTerminal: true, researchStates: ["done", "done"] }} />));
+    act(() => view.rerender(<Host snapshot={{ ...IDLE, allTerminal: true, researchStates: ["done", "done"], parent: PARENT_COMPLETE }} />));
 
     expect(experiences).toEqual([
       "deep_research_error",
@@ -72,6 +77,7 @@ describe("Brain deep-research reactions", () => {
       ...IDLE,
       allTerminal: true,
       researchStates: ["done"] as const,
+      parent: PARENT_COMPLETE,
     };
     const view = render(
       <StrictMode>
@@ -105,6 +111,7 @@ describe("Brain deep-research reactions", () => {
             ...IDLE,
             allTerminal: true,
             researchStates: ["done"],
+            parent: PARENT_COMPLETE,
           }}
         />,
       ),
@@ -130,6 +137,7 @@ describe("Brain deep-research reactions", () => {
             sessionId: "session-local",
             allTerminal: true,
             researchStates: ["done"],
+            parent: PARENT_COMPLETE,
           }}
         />,
       ),

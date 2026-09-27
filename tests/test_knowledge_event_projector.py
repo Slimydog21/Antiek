@@ -998,3 +998,73 @@ def test_recovery_worker_disabled_by_env_gate(monkeypatch, tmp_path):
         worker = getattr(app.state, "knowledge_event_recovery_worker", None)
         assert worker is None
         assert getattr(app.state, "knowledge_event_recovery_stop", None) is None
+
+
+def test_below_groundedness_note_is_receipted_and_projection_continues(
+    graph_db: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W10: a note that ``promote_from_note_event`` refuses (its best source
+    chunk scores below the groundedness bar) is a designed refusal, not
+    corruption. It must get a quarantine receipt naming the typed refusal and
+    advance the frontier, so the valid notes around it (and in other
+    investigations) still project. Before the fix the refusal surfaced as
+    ``EventConsumerCorruption`` and the startup worker stopped for good."""
+    events_dir = tmp_path / "events"
+    events_dir.mkdir()
+    # Production shape: recover() and promote share default_events_dir().
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events_dir))
+    from substrate.graph.ops import insert_chunk, insert_document
+
+    garden = (
+        "The monastery garden grew lavender, rosemary and thyme along the "
+        "south wall, and the brothers kept bees for wax. "
+    ) * 6
+    with connect_write(graph_db, purpose="test/seed") as con:
+        insert_document(
+            con, document_id="doc-garden", source_tier=3, document_type="book",
+            title="Garden", raw_text=garden, content_class="public_domain",
+        )
+        insert_chunk(
+            con, document_id="doc-garden", chunk_index=0,
+            chunk_id="chunk-garden", text=garden,
+        )
+    before = _event("evt-before", "note.emerged", "A note with no source.", "2020")
+    refused = _event(
+        "evt-refused", "note.emerged",
+        "Medieval grain tariffs shaped Venetian banking guilds.", "2021",
+    )
+    refused["document_id"] = "doc-garden"
+    after = _event("evt-after", "note.emerged", "Another note with no source.", "2022")
+    _write_tail(events_dir / "inv-1.jsonl", [before, refused, after])
+    other = _event("evt-other", "note.emerged", "A note in another trajectory.", "2023")
+    other["investigation_id"] = "inv-2"
+    _write_tail(events_dir / "inv-2.jsonl", [other])
+
+    report = projector.recover(
+        db_path=graph_db, events_dir=str(events_dir), wall_time_s=10
+    )
+
+    assert (report.succeeded, report.quarantined, report.catching_up) == (3, 1, False)
+    con = duckdb.connect(graph_db, read_only=True)
+    try:
+        rows = con.execute(
+            "SELECT event_id, status, error_class FROM event_consumer_receipts "
+            "ORDER BY event_id"
+        ).fetchall()
+        refused_nodes = con.execute(
+            "SELECT COUNT(*) FROM nodes WHERE canonical_label = ?",
+            ["Medieval grain tariffs shaped Venetian banking guilds."],
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert rows == [
+        ("evt-after", "succeeded", None),
+        ("evt-before", "succeeded", None),
+        ("evt-other", "succeeded", None),
+        ("evt-refused", "quarantined", "NoteGroundednessRefused"),
+    ]
+    assert refused_nodes == 0
+    again = projector.recover(
+        db_path=graph_db, events_dir=str(events_dir), wall_time_s=10
+    )
+    assert (again.succeeded, again.quarantined, again.scanned) == (0, 0, 0)

@@ -7,9 +7,23 @@ import tempfile
 
 import pytest
 
+from runtime.db_lock import connect_write
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import promote_insight
 from substrate.research_artifact.compose import compose_artifacts
+
+
+def _seed_servable_sources(db: str, *document_ids: str) -> None:
+    """Give the fixtures' source documents a servable rights class: a research
+    artifact is an export, so an insight whose source rights are unknown
+    renders cite-only (tests/test_research_artifact_rights.py)."""
+    with connect_write(db, purpose="test/servable_sources") as con:
+        for document_id in document_ids:
+            con.execute(
+                "INSERT INTO documents (document_id, source_tier, document_type, "
+                "content_class, title) VALUES (?, 1, 'article', 'public_domain', ?)",
+                [document_id, document_id],
+            )
 
 
 @pytest.fixture
@@ -24,6 +38,7 @@ def compose_env(monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", arts)
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     ensure_initialized(db)
+    _seed_servable_sources(db, "doc-1")
     return {"db": db, "events": events}
 
 

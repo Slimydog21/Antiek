@@ -325,6 +325,12 @@ export interface AssembledDraft {
   prose: string;
   /** Points left out because they aren't corroborated / are contradicted. */
   excludedCount: number;
+  /**
+   * Points left out of a PUBLIC draft because the person who shared them has
+   * not agreed to publication (no `publish` consent). A different reason
+   * from `excludedCount`, so the page explains it in its own sentence.
+   */
+  consentExcludedCount: number;
 }
 
 /**
@@ -340,8 +346,17 @@ export async function assembleDraft(id: string, isPublic: boolean): Promise<Asse
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
-  const excluded = Array.isArray(data.excluded_claim_ids) ? data.excluded_claim_ids.length : 0;
-  return { prose: typeof data.prose_text === "string" ? data.prose_text : "", excludedCount: excluded };
+  const ids = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const consentExcluded = new Set(ids(data.consent_excluded_claim_ids));
+  // A consent exclusion is counted once, under consent, even if a server
+  // also lists it among the uncorroborated ones.
+  const excluded = ids(data.excluded_claim_ids).filter((c) => !consentExcluded.has(c));
+  return {
+    prose: typeof data.prose_text === "string" ? data.prose_text : "",
+    excludedCount: excluded.length,
+    consentExcludedCount: consentExcluded.size,
+  };
 }
 
 /**

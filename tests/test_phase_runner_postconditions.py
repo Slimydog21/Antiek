@@ -667,6 +667,73 @@ def test_phase_8_insufficient_evidence_short_circuits_pass(tmp_path):
     assert "insufficient_evidence" in reason
 
 
+# ---------------------------------------------------------------------------
+# W5 run-honesty W01 — the H2.5 hatches take a verdict only from a model that
+# answered. A bridge's fallback for a failed dispatch is shaped exactly like an
+# honest decline; ``role_outcome="dispatch_failed"`` is what tells them apart,
+# and the hatches used to pass on the shape alone.
+# ---------------------------------------------------------------------------
+
+
+def _outage_synthesis(investigation_id: str, role_outcome: str) -> None:
+    emit_typed(
+        investigation_id,
+        SynthesizeDeliveredPayload(
+            thesis_summary="",
+            implicit_recommendation="insufficient_evidence",
+            constraint_compliance=ConstraintCompliance(
+                hard_constraints_satisfied=False,
+                soft_constraints_violated=[],
+                violations_justified=[],
+            ),
+            constraint_loop_status="single_pass",  # type: ignore[arg-type]
+            role_outcome=role_outcome,  # type: ignore[arg-type]
+        ),
+        role="synthesizer", policy_id="synthesizer-fallback/no-provider",
+    )
+
+
+def test_phase_2_hatch_refuses_declines_no_model_made(research_dir):
+    _write_round1(research_dir, body="# Round 1\n\nNothing retrievable.\n")
+    for i in range(2):
+        emit_typed(
+            "inv-p2-outage",
+            EvidenceRetrieveDeliveredPayload(
+                sub_question=f"sub question {i}",
+                answer="(dispatch_failed)",
+                insufficient_evidence=True,
+                role_outcome="dispatch_failed",
+            ),
+            role="evidence_retriever",
+            policy_id="evidence-retriever-fallback/no-provider",
+        )
+    ok, reason = check_phase_2("inv-p2-outage", research_dir=research_dir)
+    assert ok is False, reason
+
+
+def test_phase_6_hatch_refuses_a_dispatch_failed_synthesis():
+    _outage_synthesis("inv-p6-outage", "dispatch_failed")
+    ok, reason = check_phase_6("inv-p6-outage")
+    assert ok is False, reason
+    assert "dispatch_failed" in reason
+
+
+def test_phase_6_hatch_still_accepts_a_parse_failed_synthesis():
+    """H2.5 ratified: a model that answered unparseably, even after the
+    self-repair retry, is "no defensible thesis" and converges."""
+    _outage_synthesis("inv-p6-parse", "parse_failed")
+    ok, reason = check_phase_6("inv-p6-parse")
+    assert ok is True, reason
+
+
+def test_phase_8_does_not_skip_compounding_on_a_dispatch_failed_synthesis(tmp_path):
+    _outage_synthesis("inv-p8-outage", "dispatch_failed")
+    ok, reason = check_phase_8(
+        "inv-p8-outage", knowledge_skills_dir=str(tmp_path / "skills-outage"),
+    )
+    assert ok is False, reason
+
+
 def test_phase_8_skill_file_mtime_fallback(tmp_path):
     """No AUTO_PATCH_APPLIED event but a skill file modified recently
     → passes (mtime fallback).

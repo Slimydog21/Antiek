@@ -37,6 +37,19 @@ from .schema import ensure_speak_schema
 
 _TARGET_KINDS = frozenset({"interview", "claim", "subject"})
 
+# SQL predicate for every public surface of a project (``/speak/feed``,
+# ``/speak/opportunities``, ``/speak/pushes``, and the open-contribute door
+# whose invite landing page returns the subject): a project under an active
+# takedown is not listed or opened, because those surfaces disclose
+# ``subject_ref``.
+# Expects the project table aliased as ``p``. Tokens minted through the
+# open-contribute door before the takedown are closed by the sibling
+# predicate ``invitations.INVITE_DOOR_OPEN_SQL``, applied in ``resolve_token``.
+NO_ACTIVE_TAKEDOWN_SQL = (
+    "NOT EXISTS (SELECT 1 FROM speak_takedowns t "
+    "WHERE t.project_id = p.project_id AND t.status = 'active')"
+)
+
 
 @dataclass(frozen=True)
 class Takedown:

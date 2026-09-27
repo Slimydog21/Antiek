@@ -2,8 +2,7 @@
 
 Maps a resolved synthesis (its metadata + claims, each claim carrying its
 claim→chunk→document provenance) into the doc-model JSON the SPR-02
-renderer accepts. Two responsibilities the master spec puts HERE and
-nowhere else:
+renderer accepts. Three responsibilities live HERE and nowhere else:
 
 1. **Rights filtering (M2).** The filter lives in this adapter, so no caller
    can bypass it by handing unfiltered third-party text to the renderer. A
@@ -27,11 +26,18 @@ nowhere else:
    sourced" banner; an unsourced claim renders with a visible "(unsourced)"
    marker rather than fabricated citation density.
 
-The synthesis's own output (target question, thesis, recommendation,
-attribution manifest, model + parameter versions) is operator-authored
-research and rides in the doc-model ``metadata`` (preserved in the island);
-it is NOT third-party text and is not rights-filtered. The attribution
-manifest carries only ip_holder identity (never chunk text or embeddings).
+3. **Prose clearance.** A claim's statement (and the thesis) is prose written
+   from its sources, and it can repeat a gated passage verbatim. It is
+   emitted only when the claim has sources and every one resolves to a
+   servable document; otherwise a visible withheld marker stands in its place
+   while the citations still render. No sources, an unresolved source or a
+   cite-only source all mean the prose cannot be cleared for export.
+
+The synthesis's metadata (target question, recommendation, attribution
+manifest, model + parameter versions) rides in the doc-model ``metadata``
+(preserved in the island); it is operator-authored and is not rights-filtered.
+The attribution manifest carries only ip_holder identity (never chunk text or
+embeddings).
 """
 
 from __future__ import annotations
@@ -145,6 +151,17 @@ def _recommendation_tone(rec: str) -> str:
     return _RECOMMENDATION_TONE.get(str(rec).lower(), "neutral")
 
 
+_WITHHELD_PROSE = (
+    "(withheld — this text stands on sources that do not clear it for export)"
+)
+
+
+def _prose_cleared(sources: list[SourceRef]) -> bool:
+    """Synthesized prose is exported only when it has sources and every one of
+    them resolves to a servable document (the same allowlist as the passages)."""
+    return bool(sources) and all(s.resolved and s.servable for s in sources)
+
+
 def _source_label(src: SourceRef) -> str:
     """A citation label built ONLY from non-text provenance — title, owner,
     locator. NEVER the chunk text (that would defeat cite-only)."""
@@ -191,12 +208,22 @@ def adapt_synthesis(export: SynthesisExport) -> dict[str, Any]:
             )
         )
 
-    # The synthesis's own output (operator-authored; not third-party text).
+    # The thesis stands on every claim, so it clears only when each claim does:
+    # an unsourced claim leaves it standing on something it cannot trace.
     if export.thesis_text:
-        content.append(_claim_card(export.thesis_text))
+        thesis_cleared = bool(export.claims) and all(
+            _prose_cleared(claim.sources) for claim in export.claims
+        )
+        content.append(
+            _claim_card(export.thesis_text if thesis_cleared else _WITHHELD_PROSE)
+        )
 
     for claim in export.claims:
-        content.append(_claim_card(claim.statement))
+        content.append(
+            _claim_card(
+                claim.statement if _prose_cleared(claim.sources) else _WITHHELD_PROSE
+            )
+        )
         if not claim.sources:
             content.append(_prose("(unsourced)"))
             continue

@@ -63,7 +63,7 @@ def test_event_schema_version_bumped():
     account-memory graph events) -> 35 (surface.served_impression, Own Your
     Mind P0) -> 36 (link.monster.digested, Link Monster) -> 37-40
     (artifact feedback and agent-work lifecycle events)."""
-    assert EVENT_SCHEMA_VERSION == 40
+    assert EVENT_SCHEMA_VERSION == 41
 
 
 # ── validation (rigor #3: rejects bad input at emit time) ───────────────────

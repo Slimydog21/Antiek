@@ -349,3 +349,29 @@ describe("StartResearch — log-as-home consolidation (SPR-05 M3)", () => {
     expect(screen.queryByText("Hidden in standalone")).toBeNull();
   });
 });
+
+describe("StartResearch — a skipped attach is not added (audit W24)", () => {
+  it("does not claim the source was added, and derives no prompt, when 0 chunks were written", async () => {
+    ingestSourceMock.mockResolvedValue({
+      status: "skipped",
+      detected_kind: "url",
+      document_id: "doc-url-a9c6177dc441ef77",
+      document_loaded_event_id: "evt-1",
+      chunks_written: 0,
+      skipped_reason: "low_word_count",
+      error_message: null,
+      title: "Paywalled article",
+      episodes_processed: 0,
+      episodes_ingested: 0,
+    });
+    renderHome();
+    const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
+    const link = screen.getByLabelText("Attach a link");
+    fireEvent.change(link, { target: { value: "https://example.com/paywalled-article" } });
+    fireEvent.keyDown(link, { key: "Enter" });
+    expect(await screen.findByText(/too little readable text/i)).toBeTruthy();
+    expect(screen.queryByText(/to your corpus/i)).toBeNull();
+    expect(input.value).toBe("");
+    expect(screen.queryByText(/Prompt suggested from your attachment/i)).toBeNull();
+  });
+});

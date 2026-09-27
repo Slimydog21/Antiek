@@ -16,8 +16,10 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -126,6 +128,8 @@ def ingest_voice_note(
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
+    write_guard: Callable[[Any], None] | None = None,
+    after_write: Callable[[Any, IngestVoiceNoteResult], None] | None = None,
     timeout_s: float = DEFAULT_TIMEOUT_S,
 ) -> IngestVoiceNoteResult:
     """Write a transcribed voice note into the substrate graph.
@@ -134,9 +138,21 @@ def ingest_voice_note(
     tests). This adapter does not perform transcription itself; pair
     with ``transcribe_and_ingest`` to chain the two.
 
-    ``timeout_s`` bounds the write-lock wait. An HTTP caller passes its
-    own bounded wait so a held writer fails fast instead of pinning an
-    executor thread for ``connect_write``'s 300s default.
+    ``write_guard(con)`` runs under this ingest's write lock before
+    anything is written, the ``document_loaded`` event included; if it
+    raises, the note leaves no event, document, chunk or node. A caller
+    whose permission to write can be revoked between its own check and
+    this lock (Speak's invite door, closed by a takedown) passes its check
+    here. ``after_write(con, result)`` runs under the same lock and in the
+    same DuckDB transaction as the note's writes, so the caller's
+    bookkeeping lands with the note or not at all: if it raises, the
+    document, chunks and nodes roll back with it. With either hook the lock
+    is taken even for a note too short to store.
+
+    ``timeout_s`` bounds the write-lock wait, on the too-short path's lock
+    as well as the stored path's. An HTTP caller passes its own bounded
+    wait so a held writer fails fast instead of pinning an executor thread
+    for ``connect_write``'s 300s default.
     """
     when = recorded_at or datetime.now(UTC)
     document_id = voice_note_doc_id(operator_id, when)
@@ -159,26 +175,49 @@ def ingest_voice_note(
         page_count=None,
         source_uri=None,
     )
-    event_id = emit_typed(
-        investigation_id,
-        payload,
-        document_id=document_id,
-        role="acquisition",
-        policy_id="acquisition/voice",
-    )
-
-    if word_count < min_word_count:
-        return IngestVoiceNoteResult(
+    def _emit_loaded() -> str | None:
+        return emit_typed(
+            investigation_id,
+            payload,
             document_id=document_id,
-            document_loaded_event_id=event_id,
-            skipped_reason="low_word_count",
-            title=auto_title,
-            transcript_text=transcript,
-            duration_seconds=duration_seconds,
+            role="acquisition",
+            policy_id="acquisition/voice",
         )
 
+    from runtime.db_lock import connect_write
+
     resolved_db_path = db_path or default_db_path()
-    ensure_initialized(resolved_db_path)
+    # Unguarded callers keep emitting before the lock. A guarded ingest emits
+    # under the lock once the guard passes (db lock then event lock, the
+    # order write/event_outbox.dispatch_pending already takes).
+    event_id = _emit_loaded() if write_guard is None else None
+
+    if word_count < min_word_count:
+        def _skipped(loaded_event_id: str | None) -> IngestVoiceNoteResult:
+            return IngestVoiceNoteResult(
+                document_id=document_id,
+                document_loaded_event_id=loaded_event_id,
+                skipped_reason="low_word_count",
+                title=auto_title,
+                transcript_text=transcript,
+                duration_seconds=duration_seconds,
+            )
+
+        if write_guard is None and after_write is None:
+            return _skipped(event_id)
+        with connect_write(
+            resolved_db_path, purpose="acquisition/voice", timeout_s=timeout_s
+        ) as con:
+            if write_guard is not None:
+                write_guard(con)
+                event_id = _emit_loaded()
+            skipped = _skipped(event_id)
+            if after_write is not None:
+                with con.transaction():
+                    after_write(con, skipped)
+        return skipped
+
+    ensure_initialized(resolved_db_path, timeout_s=timeout_s)
 
     chunks: list[Chunk] = chunk_markdown(full_text)
     chunk_ids: list[str] = []
@@ -186,83 +225,93 @@ def ingest_voice_note(
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
-    from runtime.db_lock import connect_write
-
     with connect_write(
         resolved_db_path, purpose="acquisition/voice", timeout_s=timeout_s
     ) as con:
-        insert_document(
-            con,
-            document_id=document_id,
-            source_tier=int(source_tier),
-            document_type="voice_note",
-            source_uri=None,
-            title=auto_title,
-            author=operator_id,
-            published_at=when,
-            investigation_id=investigation_id,
-            raw_text=full_text,
-            metadata={
-                "operator_id": operator_id,
-                "duration_seconds": duration_seconds,
-                "language": language,
-                "transcription_source": "whisper",
-                "recorded_at": when.isoformat(),
-            },
-            on_conflict="ignore",
-        )
-        register_source_document(
-            con,
-            document_id=document_id,
-            source_kind=SourceKind.USER_CONTENT,
-        )
-        for i, chunk in enumerate(chunks):
-            chunk_id = insert_chunk(
+        if write_guard is not None:
+            write_guard(con)
+            event_id = _emit_loaded()
+        # The flock gives mutual exclusion, not atomicity: DuckDB autocommits
+        # each statement (see LockedConnection.transaction). One transaction
+        # makes the note and whatever after_write adds (Speak's answer turn)
+        # commit together or roll back together. The JSONL event log is
+        # outside it.
+        with con.transaction():
+            insert_document(
                 con,
                 document_id=document_id,
-                chunk_index=i,
-                text=chunk.text,
-                section_path=chunk.section or None,
-                embedding=emb.encode(chunk.text),
-                embedding_provider=emb,
-                token_count=chunk.token_count,
-            )
-            chunk_ids.append(chunk_id)
-            chunks_written += 1
-
-            label = chunk.text.strip().splitlines()[0] if chunk.text.strip() else ""
-            if len(label) > _NODE_LABEL_MAX:
-                label = label[: _NODE_LABEL_MAX - 1] + "…"
-            if not label:
-                label = f"voice-note#{i}"
-            node_id = insert_node(
-                con,
-                canonical_label=label,
-                node_type="entity",
-                graph_scope="cross_domain",
+                source_tier=int(source_tier),
+                document_type="voice_note",
+                source_uri=None,
+                title=auto_title,
+                author=operator_id,
+                published_at=when,
                 investigation_id=investigation_id,
-                embedding=emb.encode(label),
+                raw_text=full_text,
                 metadata={
-                    "source": "voice_note",
                     "operator_id": operator_id,
-                    "chunk_id": chunk_id,
-                    "section": chunk.section,
+                    "duration_seconds": duration_seconds,
+                    "language": language,
+                    "transcription_source": "whisper",
+                    "recorded_at": when.isoformat(),
                 },
-                parent_event_id=event_id,
                 on_conflict="ignore",
             )
-            node_ids.append(node_id)
+            register_source_document(
+                con,
+                document_id=document_id,
+                source_kind=SourceKind.USER_CONTENT,
+            )
+            for i, chunk in enumerate(chunks):
+                chunk_id = insert_chunk(
+                    con,
+                    document_id=document_id,
+                    chunk_index=i,
+                    text=chunk.text,
+                    section_path=chunk.section or None,
+                    embedding=emb.encode(chunk.text),
+                    embedding_provider=emb,
+                    token_count=chunk.token_count,
+                )
+                chunk_ids.append(chunk_id)
+                chunks_written += 1
 
-    return IngestVoiceNoteResult(
-        document_id=document_id,
-        chunk_ids=chunk_ids,
-        node_ids=node_ids,
-        document_loaded_event_id=event_id,
-        chunks_written=chunks_written,
-        title=auto_title,
-        transcript_text=transcript,
-        duration_seconds=duration_seconds,
-    )
+                label = chunk.text.strip().splitlines()[0] if chunk.text.strip() else ""
+                if len(label) > _NODE_LABEL_MAX:
+                    label = label[: _NODE_LABEL_MAX - 1] + "…"
+                if not label:
+                    label = f"voice-note#{i}"
+                node_id = insert_node(
+                    con,
+                    canonical_label=label,
+                    node_type="entity",
+                    graph_scope="cross_domain",
+                    investigation_id=investigation_id,
+                    embedding=emb.encode(label),
+                    metadata={
+                        "source": "voice_note",
+                        "operator_id": operator_id,
+                        "chunk_id": chunk_id,
+                        "section": chunk.section,
+                    },
+                    parent_event_id=event_id,
+                    on_conflict="ignore",
+                )
+                node_ids.append(node_id)
+
+            result = IngestVoiceNoteResult(
+                document_id=document_id,
+                chunk_ids=chunk_ids,
+                node_ids=node_ids,
+                document_loaded_event_id=event_id,
+                chunks_written=chunks_written,
+                title=auto_title,
+                transcript_text=transcript,
+                duration_seconds=duration_seconds,
+            )
+            if after_write is not None:
+                after_write(con, result)
+    return result
 
 
 def transcribe_and_ingest(

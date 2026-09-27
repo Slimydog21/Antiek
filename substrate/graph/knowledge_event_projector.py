@@ -9,6 +9,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from typing import Any
 
 import duckdb
@@ -23,6 +24,7 @@ from substrate.event_log.events import PhysicalStorageCursor
 from substrate.schemas.events import ActionType
 
 from .insight_question import (
+    NoteGroundednessRefused,
     graph_db_path,
     promote_from_marginalia_event,
     promote_from_note_event,
@@ -31,8 +33,10 @@ from .insight_question import (
 
 CONSUMER_NAME = "knowledge_graph_projector"
 CONSUMER_VERSION = 1
-_ACTIONS = {
-    ActionType.NOTE_EMERGED.value: promote_from_note_event,
+_ACTIONS: dict[str, Callable[..., str | None]] = {
+    # A below-bar note is a designed refusal; ask for it as a typed signal so
+    # it is receipted, never mistaken for "produced no node" corruption.
+    ActionType.NOTE_EMERGED.value: partial(promote_from_note_event, raise_on_refusal=True),
     ActionType.QUESTION_IDENTIFIED.value: promote_from_question_event,
     ActionType.MARGINALIA_NOTED.value: promote_from_marginalia_event,
 }
@@ -256,8 +260,7 @@ def _resolve_one(
     ]).encode()).hexdigest()
     resolution = "unsupported" if action_type not in _ACTIONS else "succeeded"
 
-    payload_error = _payload_error(event) if action_type in _ACTIONS else None
-    if payload_error is not None:
+    def quarantine(error_class: str, message: str) -> None:
         con.execute(
             "INSERT INTO event_consumer_receipts "
             "(consumer_name, consumer_version, investigation_id, event_id, action_type, "
@@ -270,28 +273,37 @@ def _resolve_one(
                 event_id,
                 action_type,
                 normalized_sha256,
-                LegacyEventPayloadError.__name__,
-                _bounded_digest(payload_error),
+                error_class,
+                _bounded_digest(message),
             ],
         )
+
+    payload_error = _payload_error(event) if action_type in _ACTIONS else None
+    if payload_error is not None:
+        quarantine(LegacyEventPayloadError.__name__, payload_error)
         resolution = "quarantined"
     elif action_type in _ACTIONS:
-        output_ref = _ACTIONS[action_type](
-            event, con=con, enabled=True, embedding_provider=embedding_provider,
-            emit_graph_events=False,
-        )
-        if not output_ref:
-            raise EventConsumerCorruption("validated knowledge event produced no graph node")
-        if checkpoint:
-            checkpoint("after_projection_before_receipt", event_id)
-        con.execute(
-            "INSERT INTO event_consumer_receipts "
-            "(consumer_name, consumer_version, investigation_id, event_id, action_type, "
-            "normalized_sha256, status, output_ref, attempt_count) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'succeeded', ?, 1)",
-            [CONSUMER_NAME, CONSUMER_VERSION, investigation_id, event_id,
-             action_type, normalized_sha256, output_ref],
-        )
+        try:
+            output_ref = _ACTIONS[action_type](
+                event, con=con, enabled=True, embedding_provider=embedding_provider,
+                emit_graph_events=False,
+            )
+        except NoteGroundednessRefused as refusal:
+            quarantine(NoteGroundednessRefused.__name__, str(refusal))
+            resolution = "quarantined"
+        else:
+            if not output_ref:
+                raise EventConsumerCorruption("validated knowledge event produced no graph node")
+            if checkpoint:
+                checkpoint("after_projection_before_receipt", event_id)
+            con.execute(
+                "INSERT INTO event_consumer_receipts "
+                "(consumer_name, consumer_version, investigation_id, event_id, action_type, "
+                "normalized_sha256, status, output_ref, attempt_count) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'succeeded', ?, 1)",
+                [CONSUMER_NAME, CONSUMER_VERSION, investigation_id, event_id,
+                 action_type, normalized_sha256, output_ref],
+            )
 
     con.execute(
         "INSERT INTO event_consumer_events (consumer_name, consumer_version, "

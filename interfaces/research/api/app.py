@@ -79,7 +79,16 @@ from roles.thought_partner import (  # noqa: E402
 from substrate.agent_skills.py_analysis import summarize_rows  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import (  # noqa: E402
+    BranchNotRecorded,
+    ReservationParentMismatch,
+    abandon_branch,
+    emit_typed,
+    launch_parent,
+    record_branch,
+    trajectory,
+    trajectory_read,
+)
 from substrate.graph import default_db_path  # noqa: E402
 from substrate.graph.health import DuckDBHealth, probe_duckdb_health  # noqa: E402
 from substrate.schemas import (  # noqa: E402
@@ -437,9 +446,11 @@ def _probe_graph_duckdb() -> DuckDBHealth:
 
 class InvestigationStartRequest(BaseModel):
     """POST body for ``/investigations``. Operator-facing cold-question
-    entry point. ``investigation_id`` is auto-generated when omitted —
-    use a stable id when retrying the same question for backtest
-    correlation.
+    entry point. ``investigation_id`` is auto-generated when omitted. A known
+    id is an idempotent replay of that start, not a new run: the same body
+    returns the ORIGINAL ``start_event_id`` and runs nothing (so polling reads
+    the earlier run's result), and a different body is 409
+    ``investigation_id_conflict``. To ask the same question again, omit the id.
 
     Sprint 11: ``parent_investigation_id`` + ``spawn_context`` are
     optional metadata for the web app's highlight-to-chase mechanic.
@@ -641,6 +652,18 @@ class RubricScore(BaseModel):
     notes: str = ""
 
 
+# The HTTP status word for each terminal ``RunState`` (keyed by its string
+# value, which a ``RunState`` StrEnum hashes equal to). Both budget-halted and
+# operator-stopped runs read ``stopped``: the M1 vocabulary the list route and
+# the monitor already use.
+_INVESTIGATION_STATUS_BY_RUN_STATE: dict[str, str] = {
+    "done": "completed",
+    "failed": "failed",
+    "stopped": "stopped",
+    "budget_halted": "stopped",
+}
+
+
 class InvestigationStatusResponse(BaseModel):
     """Response from ``GET /investigations/{id}``. ``status`` is one of:
 
@@ -648,6 +671,8 @@ class InvestigationStatusResponse(BaseModel):
     - ``in_progress`` — start event present, no terminal event yet
     - ``completed`` — investigation.completed event present
     - ``failed`` — investigation.failed event present
+    - ``stopped`` — completed with a stopped/cancelled ``outcome``, or a
+      budget-halted chase with no completed/failed event
 
     ``current_phase`` is the most recent phase the phase_log entered;
     ``last_delivered_action_type`` is the most recent ``*.delivered``
@@ -2711,25 +2736,23 @@ def create_app(
         spawns the per-investigation coroutine that drives phases
         1-9. Returns the investigation_id + start_event_id
         immediately so the caller can poll status."""
-        from .compute_capacity_gate import (
-            attach_capacity_warn_header,
-            commit_start_acu,
-            run_capacity_precheck,
-            warning_body,
-        )
-
-        # Antiek-hosted ACU gate (1 ACU / start). Hard refuse only when
-        # ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT=hard and used >= limit.
-        capacity_gate = run_capacity_precheck(request)
         # Lazy import — avoid pulling InvestigationStartRequestedPayload
         # at module import time so test setups that monkey-patch the
         # schema layer (drift tests) don't see a partially-initialized
         # module.
         import uuid as _uuid
 
+        from substrate.compute_capacity.acu_meter import CapacityGateResult
         from substrate.schemas import (
             InvestigationSpawnedFromPayload,
             InvestigationStartRequestedPayload,
+        )
+
+        from .compute_capacity_gate import (
+            attach_capacity_warn_header,
+            commit_start_acu,
+            run_capacity_precheck,
+            warning_body,
         )
 
         owner_user_id: str | None = None
@@ -2774,15 +2797,121 @@ def create_app(
         if canonical_owner_id is not None and req.investigation_id not in (None, canonical_owner_id):
             raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         investigation_id = req.investigation_id or canonical_owner_id or f"inv-{_uuid.uuid4().hex[:12]}"
-        # Meter 1 ACU for this start (gated, idempotent on investigation_id)
-        # BEFORE anything is claimed, appended or broadcast. A failed charge
-        # (503/429) must mean no run, never an unmetered run behind a 503.
-        post_gate = commit_start_acu(
-            request,
-            investigation_id=investigation_id,
-            reason="post_investigations",
-        )
+        # Lineage is settled before anything is charged (THREAD-CONTRACT §1.3):
+        # a launch into a reserved id takes the reserving parent, and a parent
+        # must exist.
+        effective_parent = req.parent_investigation_id
+        branch_via: Literal["chase", "reserved_launch"] = "chase"
+        branch_event_id: str | None = None
+        if req.investigation_id is not None and operation_id is None:
+            # A reservation binds the id to its parent before and after the
+            # start, so an identical retry resolves the same parent and replays.
+            try:
+                effective_parent, reserved = launch_parent(investigation_id, effective_parent)
+            except ReservationParentMismatch:
+                raise HTTPException(status_code=409, detail="reservation_parent_mismatch") from None
+            if reserved:
+                branch_via = "reserved_launch"
+        if effective_parent is not None:
+            try:
+                parent_stored = trajectory_read(effective_parent).stored
+            except Exception:  # noqa: BLE001 - an unreadable parent is not a parent
+                parent_stored = False
+            if not parent_stored:
+                raise HTTPException(status_code=422, detail="parent_investigation_not_found")
+        try:
+            start_payload = InvestigationStartRequestedPayload(
+                question=req.question,
+                context=req.context,
+                topic_slug=req.topic_slug,
+                max_sub_questions=req.max_sub_questions,
+                parent_investigation_id=effective_parent,
+                spawn_context=req.spawn_context,
+                # SPR-01 M3: record the chosen research tier on the
+                # start event (queryable after the fact). The payload
+                # field is the same CLOSED set.
+                research_tier=req.research_tier,
+
+                source_policy=req.source_policy,
+                owner_user_id=owner_user_id,
+                owner_operation_id=operation_id,
+                owner_model_choices=parsed_choices,
+                owner_launch_digest=launch_digest,
+                owner_launch_version=1 if operation_id is not None else None,
+            )
+        except ValidationError:
+            raise HTTPException(status_code=422, detail="model_selection_invalid") from None
+
+        def _house_replay_event_id() -> str | None:
+            # A house start is keyed on its investigation_id: a retry with the
+            # same id and the same request is a replay of the start event
+            # already on the trajectory, never a second paid run (the ACU
+            # charge is idempotent on the id, so a rerun would be unmetered,
+            # and two runs under one id steal each other's coordinator
+            # futures). The same id with a different request is refused.
+            for row in trajectory(investigation_id):
+                if row.get("action_type") != "investigation.start_requested":
+                    continue
+                if row.get("payload") != start_payload.model_dump(mode="json"):
+                    raise HTTPException(status_code=409, detail="investigation_id_conflict")
+                return str(row["event_id"])
+            return None
+
         replay_event_id: str | None = None
+        if operation_id is None:
+            # Decided before the capacity gate: a replay runs nothing, so it
+            # is neither refused at the cap nor charged (its start may predate
+            # metering or be a chase child that never carried an ACU row), and
+            # a conflict is a 409 that bills nothing.
+            replay_event_id = _house_replay_event_id()
+        capacity_gate: CapacityGateResult | None = None
+        post_gate: CapacityGateResult | None = None
+        conflict_detail = (
+            "owner_model_operation_conflict" if operation_id is not None
+            else "investigation_id_conflict"
+        )
+        if replay_event_id is None:
+            # Antiek-hosted ACU gate (1 ACU / start). Hard refuse only when
+            # ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT=hard and used >= limit, and
+            # never for an id whose start this owner already paid (a retry);
+            # an id another owner paid for is a 409 conflict.
+            capacity_gate = run_capacity_precheck(
+                request, investigation_id=investigation_id,
+                conflict_detail=conflict_detail,
+            )
+            # The parent records the branch before anything is charged: a
+            # branch that cannot be written refuses the launch with nothing
+            # billed (THREAD-CONTRACT §1.3).
+            if effective_parent is not None:
+                try:
+                    branch_event_id = record_branch(
+                        effective_parent, investigation_id, via=branch_via,
+                        spawn_context=req.spawn_context or "",
+                        role="operator", policy_id="operator-cli",
+                    )
+                except BranchNotRecorded:
+                    raise HTTPException(status_code=503, detail="branch_not_recorded") from None
+            # Meter 1 ACU for this start (gated, idempotent on investigation_id)
+            # BEFORE anything is claimed, appended or broadcast. A failed charge
+            # (503/429) must mean no run, never an unmetered run behind a 503.
+            # An owner operation's canonical id is charged before its claim is
+            # written, so an owner replay or conflict passes the gate above and
+            # is decided by the claim below. A refusal here comes before any
+            # start event, so this request abandons the branch it just wrote.
+            try:
+                post_gate = commit_start_acu(
+                    request,
+                    investigation_id=investigation_id,
+                    reason="post_investigations",
+                    conflict_detail=conflict_detail,
+                )
+            except HTTPException:
+                if effective_parent is not None:
+                    abandon_branch(
+                        effective_parent, investigation_id,
+                        branch_event_id=branch_event_id, role="operator",
+                    )
+                raise
         if operation_id is not None:
             from .research_owner_dispatch import OwnerLaunchConflict, claim_owner_launch
             try:
@@ -2813,28 +2942,13 @@ def create_app(
                             replay_event_id = str(row["event_id"])
                             break
                         raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
+        elif replay_event_id is None:
+            # A twin may have appended between the check above and the charge.
+            replay_event_id = _house_replay_event_id()
         try:
             event_id = replay_event_id or emit_typed(
                 investigation_id,
-                InvestigationStartRequestedPayload(
-                    question=req.question,
-                    context=req.context,
-                    topic_slug=req.topic_slug,
-                    max_sub_questions=req.max_sub_questions,
-                    parent_investigation_id=req.parent_investigation_id,
-                    spawn_context=req.spawn_context,
-                    # SPR-01 M3: record the chosen research tier on the
-                    # start event (queryable after the fact). The payload
-                    # field is the same CLOSED set.
-                    research_tier=req.research_tier,
-
-                    source_policy=req.source_policy,
-                    owner_user_id=owner_user_id,
-                    owner_operation_id=operation_id,
-                    owner_model_choices=parsed_choices,
-                    owner_launch_digest=launch_digest,
-                    owner_launch_version=1 if operation_id is not None else None,
-                ),
+                start_payload,
                 role="operator",
                 policy_id="operator-cli",
                 event_id=owner_start_event_id if operation_id is not None else None,
@@ -2867,13 +2981,14 @@ def create_app(
 
         # Sprint 11: emit the spawn-lineage event when parent provided.
         # Non-fatal if it fails; the start event already encodes the
-        # lineage in its own payload.
-        if req.parent_investigation_id:
+        # lineage in its own payload. A replay already emitted it.
+        if effective_parent and replay_event_id is None:
             with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
                 emit_typed(
                     investigation_id,
                     InvestigationSpawnedFromPayload(
-                        parent_investigation_id=req.parent_investigation_id,
+                        parent_investigation_id=effective_parent,
+                        parent_event_id=branch_event_id,
                         spawn_context=req.spawn_context or "",
                     ),
                     role="operator",
@@ -2882,9 +2997,9 @@ def create_app(
                 )
 
         # Broadcast only a fresh or append-only launch. Once the durable
-        # journal says broadcast, an exact HTTP replay must not start a second
-        # paid run.
-        should_broadcast = operation_id is None
+        # journal says broadcast (owner) or the start event already exists
+        # (house), an exact HTTP replay must not start a second paid run.
+        should_broadcast = operation_id is None and replay_event_id is None
         if operation_id is not None:
             from .research_owner_dispatch import claim_owner_broadcast
             should_broadcast = claim_owner_broadcast(operation_id)
@@ -2903,8 +3018,13 @@ def create_app(
                         raise HTTPException(status_code=503, detail="owner_model_start_pending") from None
                 break
 
-        warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
-        attach_capacity_warn_header(response, warn_gate)
+        # A house replay was never gated or charged, so it carries no warning.
+        warn_gate = (
+            post_gate if post_gate is not None and post_gate.verdict == "soft_warn"
+            else capacity_gate
+        )
+        if warn_gate is not None:
+            attach_capacity_warn_header(response, warn_gate)
 
         return InvestigationStartResponse(
             investigation_id=investigation_id,
@@ -2916,7 +3036,7 @@ def create_app(
             # durably queues the launch, so do not call this "accepted".
             owner_model_status=("replayed" if replay_event_id is not None else "queued")
             if operation_id is not None else None,
-            capacity_warning=warning_body(warn_gate),
+            capacity_warning=warning_body(warn_gate) if warn_gate is not None else None,
         )
 
     @app.get(
@@ -2929,38 +3049,37 @@ def create_app(
         """Phase-progression + terminal-verdict summary for one
         investigation. Distinguishes ``not_found`` (no events at all)
         from ``in_progress`` (start event present, no terminal yet)
-        from terminal states ``completed`` / ``failed``."""
+        from terminal states ``completed`` / ``failed`` / ``stopped``.
+
+        The terminal state comes from ``runtime.research_runner.
+        terminal_event``, the reader the list route and the recovered
+        cascade session share: a stopped or cancelled run and a
+        budget-halted chase read ``stopped`` here too, never ``completed``
+        or ``in_progress`` forever."""
+        from runtime.research_runner import terminal_event
         from substrate.schemas import ActionType
 
         rows = trajectory(investigation_id)
-        if not rows:
+        if not rows or all(r.get("action_type") == ActionType.INVESTIGATION_RESERVED.value for r in rows):
+            # A reserved id that never started (THREAD-CONTRACT §1.3) is not an
+            # investigation yet.
             return InvestigationStatusResponse(
                 investigation_id=investigation_id, status="not_found",
             )
 
-        completed_action = ActionType.INVESTIGATION_COMPLETED.value
-        failed_action = ActionType.INVESTIGATION_FAILED.value
-
-        # Walk newest-first to find the latest phase, latest delivered,
-        # and any terminal verdict.
+        # Walk newest-first to find the latest phase and latest delivered.
         last_phase: int | None = None
         last_delivered: str | None = None
-        terminal_row: dict[str, Any] | None = None
 
         for r in reversed(rows):
             at = r.get("action_type")
-            if terminal_row is None and at in (completed_action, failed_action):
-                terminal_row = r
             if last_delivered is None and isinstance(at, str) and at.endswith(".delivered"):
                 last_delivered = at
             if last_phase is None and r.get("phase") is not None:
                 last_phase = int(r["phase"])
-            if (
-                terminal_row is not None
-                and last_delivered is not None
-                and last_phase is not None
-            ):
+            if last_delivered is not None and last_phase is not None:
                 break
+        terminal = terminal_event(rows)
 
         # SPR-11 M3: surface the §14.4 inline-rubric verdict, READ from the
         # persisted rubric.scored event (never recomputed). Null when the
@@ -2988,15 +3107,11 @@ def create_app(
                         source_policy = [x for x in sp if isinstance(x, str)]
                 break
 
-        if terminal_row is not None:
-            status = (
-                "completed"
-                if terminal_row.get("action_type") == completed_action
-                else "failed"
-            )
+        if terminal is not None:
+            run_state, terminal_row = terminal
             return InvestigationStatusResponse(
                 investigation_id=investigation_id,
-                status=status,
+                status=_INVESTIGATION_STATUS_BY_RUN_STATE[run_state],
                 current_phase=last_phase,
                 last_delivered_action_type=last_delivered,
                 terminal_payload=terminal_row.get("payload"),
@@ -3057,6 +3172,7 @@ def create_app(
         import os as _os
 
         from orchestration.continuous.suggestions import policy_is_daemon
+        from runtime.research_runner import terminal_event
         from substrate.event_log import default_events_dir
         from substrate.schemas import ActionType
 
@@ -3089,7 +3205,7 @@ def create_app(
                 continue
             inv_id = filename[:-len(".jsonl")]
             rows = trajectory(inv_id)
-            if not rows:
+            if not rows or all(r.get("action_type") == "investigation.reserved" for r in rows):
                 continue
             # A non-inv- file is only a research if its trajectory says so;
             # this keeps unrelated logs out of the list while admitting the
@@ -3146,26 +3262,20 @@ def create_app(
                     # The session parent's own row: no start_requested, so take
                     # its launch time so the group sorts by real freshness.
                     started_at = r.get("emitted_at")
-                elif at == completed_action:
-                    # Stop/cancel finishes through completed with an explicit
-                    # ``outcome`` — surface it honestly as ``stopped`` rather
-                    # than "done" (the M1 vocabulary lists them as distinct).
-                    if payload.get("outcome") in ("stopped", "cancelled"):
-                        terminal_status = "stopped"
-                    else:
-                        terminal_status = "completed"
-                    completed_at = r.get("emitted_at")
-                elif at == failed_action:
-                    terminal_status = "failed"
-                    completed_at = r.get("emitted_at")
-                elif at == halted_action:
-                    # Budget-halted: terminal (matches reconstruct_session's
-                    # BUDGET_HALTED), shown as stopped — never running forever.
-                    terminal_status = "stopped"
-                    completed_at = r.get("emitted_at")
                 elif at == "dispatch.call":
                     with contextlib.suppress(TypeError, ValueError):
                         cost_total += float(payload.get("cost_usd", 0.0))
+
+            # Stop/cancel finishes through completed with an explicit
+            # ``outcome`` and a budget halt writes only chase_halted; the
+            # shared reader maps both to ``stopped`` (the M1 vocabulary lists
+            # them as distinct from done), exactly as the single-status route
+            # and reconstruct_session do.
+            terminal = terminal_event(rows)
+            if terminal is not None:
+                run_state, terminal_row = terminal
+                terminal_status = _INVESTIGATION_STATUS_BY_RUN_STATE[run_state]
+                completed_at = terminal_row.get("emitted_at")
 
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)
@@ -5136,6 +5246,14 @@ def create_app(
             )
 
         child_inv_id = f"inv-{_uuid.uuid4().hex[:12]}"
+        try:
+            record_branch(
+                found_source_inv, child_inv_id, via="watch_for_later",
+                question_id=question_id, spawn_context=f"watch-for-later/{question_id}",
+                role="operator", policy_id="operator/brainstorm",
+            )
+        except BranchNotRecorded:
+            raise HTTPException(status_code=503, detail="branch_not_recorded") from None
         try:
             start_event_id = emit_typed(
                 child_inv_id,

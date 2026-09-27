@@ -95,9 +95,19 @@ async def broadcast_emit(
     )
     if eid is None:
         return None
-    # Look up the just-emitted event to broadcast the full envelope.
+    await broadcast_recorded(broadcaster, investigation_id, eid)
+    return eid
+
+
+async def broadcast_recorded(
+    broadcaster: EventBroadcaster, investigation_id: str, event_id: str | None
+) -> None:
+    """Broadcast an event that is already durable in the log (for example a
+    strict ``record_branch`` write) so live consumers see it. Never raises."""
+    if event_id is None:
+        return
     for row in reversed(trajectory(investigation_id)):
-        if row.get("event_id") == eid:
+        if row.get("event_id") == event_id:
             try:
                 event = Event.model_validate(row)
                 await broadcaster.broadcast(event)
@@ -111,10 +121,18 @@ async def broadcast_emit(
                         "SSE broadcast failed for investigation_id=%s "
                         "(event_id=%s); event is durable, live consumers may "
                         "miss this update: %r",
-                        investigation_id, eid, e,
+                        investigation_id, event_id, e,
                     )
             break
-    return eid
+
+
+class WaiterAlreadyRegistered(RuntimeError):
+    """A second ``wait_for`` on a key another caller is still awaiting.
+
+    Overwriting the pending future would orphan the first waiter until its
+    timeout, and its ``finally`` cleanup would then pop the second waiter's
+    future too. Two waiters on one key means two runs of one investigation;
+    the later one is refused instead."""
 
 
 class InvestigationCoordinator:
@@ -183,16 +201,22 @@ class InvestigationCoordinator:
         concurrent waiters on the same action type are supported —
         the handler matches ``payload.sub_question``. With an empty
         correlation, only one waiter per ``(investigation_id,
-        action_type)`` is allowed (linear phases 1, 3–9)."""
+        action_type)`` is allowed (linear phases 1, 3–9); a second one
+        raises ``WaiterAlreadyRegistered``."""
         key = (investigation_id, action_type, correlation)
+        held = self._pending.get(key)
+        if held is not None and not held.done():
+            raise WaiterAlreadyRegistered(
+                f"a waiter is already registered for {key!r}"
+            )
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[Event] = loop.create_future()
         self._pending[key] = fut
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
         finally:
-            # Clean up unconditionally; the future may have been
-            # resolved already (which is fine — .pop() handles both
-            # cases). On timeout the future is cancelled by
-            # asyncio.wait_for, so cleanup leaves no leak.
-            self._pending.pop(key, None)
+            # Clean up only our own entry; the future may have been
+            # resolved (and popped) already. On timeout the future is
+            # cancelled by asyncio.wait_for, so cleanup leaves no leak.
+            if self._pending.get(key) is fut:
+                del self._pending[key]

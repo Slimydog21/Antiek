@@ -136,7 +136,10 @@ def research_projection_doc_model(body: ResearchArtifactBody) -> dict[str, objec
             node_id=question.node_id,
         )
     heading("Synthesis excerpt")
-    paragraph(body.synthesis_excerpt or "Synthesis not available.")
+    if body.synthesis_withheld:
+        paragraph("Synthesis not available to display (§9.0 guard).")
+    else:
+        paragraph(body.synthesis_excerpt or "Synthesis not available.")
     if body.agent_notes:
         heading("Agent notes")
         for note in body.agent_notes:

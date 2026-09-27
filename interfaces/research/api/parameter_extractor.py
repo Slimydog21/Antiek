@@ -24,7 +24,8 @@ Failure-mode discipline (mirrors decomposer + evidence_retriever):
   to gate against (which is the correct safe behavior — no
   ungated constraints).
 - Provider unavailable → same fallback shape, policy_id stamped
-  ``parameter-extractor-fallback/no-provider``.
+  ``parameter-extractor-fallback/no-provider``. ``role_outcome`` tells the
+  two apart (``parse_failed`` vs ``dispatch_failed``).
 """
 
 from __future__ import annotations
@@ -59,9 +60,11 @@ from substrate.schemas import (  # noqa: E402
     Parameter,
     ParameterExtractDeliveredPayload,
     ParameterExtractRequestedPayload,
+    RoleOutcome,
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
+from .dispatch_failure import RoleDispatchFailed  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -91,13 +94,17 @@ def _result_to_parameter_payloads(
     return out
 
 
-def _empty_delivered_payload() -> ParameterExtractDeliveredPayload:
+def _empty_delivered_payload(
+    *, role_outcome: RoleOutcome = "parse_failed",
+) -> ParameterExtractDeliveredPayload:
     """Fallback when dispatch/parse fails. Empty parameter +
     constraint lists — the constraint loop reads zero constraints
-    and gates on nothing, which is the correct safe behavior."""
+    and gates on nothing, which is the correct safe behavior.
+    ``role_outcome`` records which failure produced it."""
     return ParameterExtractDeliveredPayload(
         parameters=[],
         constraints=[],
+        role_outcome=role_outcome,
     )
 
 
@@ -153,8 +160,9 @@ def _dispatch_and_parse(
     canonical_chunk_ids: tuple[str, ...] = (),
 ) -> tuple[ParameterExtractResult | None, str]:
     """Run one parameter_extractor dispatch + parse. Returns
-    ``(result, policy_id)`` on success, ``(None, fallback_id)`` on
-    failure."""
+    ``(result, policy_id)`` on success, ``(None, policy_id)`` when the
+    answer did not parse; raises ``RoleDispatchFailed`` when no model
+    answered."""
     try:
         from .research_owner_dispatch import dispatch_loop_one
         result = dispatch_loop_one(prompt, "parameter_extractor", investigation_id=event.investigation_id,
@@ -172,7 +180,9 @@ def _dispatch_and_parse(
             f"{type(exc).__name__}: {exc}",
             flush=True,
         )
-        return None, "parameter-extractor-fallback/no-provider"
+        raise RoleDispatchFailed(
+            "parameter_extractor", "parameter-extractor-fallback/no-provider",
+        ) from exc
 
     try:
         parsed = parse_parameter_extractor_response(
@@ -207,12 +217,21 @@ def make_parameter_extractor_handler(
         canonical_chunk_ids = _extract_canonical_chunk_ids(evidence_block)
 
         prompt = render_full_prompt(evidence_block=evidence_block)
-        result, policy_id = await asyncio.to_thread(
-            _dispatch_and_parse,
-            prompt,
-            event,
-            canonical_chunk_ids=canonical_chunk_ids,
-        )
+        try:
+            result, policy_id = await asyncio.to_thread(
+                _dispatch_and_parse,
+                prompt,
+                event,
+                canonical_chunk_ids=canonical_chunk_ids,
+            )
+        except RoleDispatchFailed as failed:
+            await _emit_delivered(
+                event,
+                payload=_empty_delivered_payload(role_outcome="dispatch_failed"),
+                policy_id=failed.policy_id,
+                broadcaster=broadcaster,
+            )
+            return
 
         if result is None:
             await _emit_delivered(

@@ -155,6 +155,40 @@ describe("Speak project page", () => {
     expect(await screen.findByRole("alert")).toBeTruthy();
   });
 
+  it("never blames corroboration for a memory left out for lack of publish consent", async () => {
+    // Drive the REAL assembleDraft so the response-to-count split is tested,
+    // not a hand-built AssembledDraft.
+    const real = await vi.importActual<typeof import("../../lib/speakApi")>("../../lib/speakApi");
+    api.assembleDraft.mockImplementation(real.assembleDraft);
+    api.getProject.mockResolvedValue({
+      id: "p1", name: "Grandma Rosa", willBePublic: true, subjectStatusWord: "deceased",
+    });
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        prose_text: "She ran the village bakery for thirty years.",
+        excluded_claim_ids: ["c-uncorroborated"],
+        consent_excluded_claim_ids: ["c-no-publish-1", "c-no-publish-2"],
+      }),
+    });
+    mount();
+    await screen.findByText("Grandma Rosa");
+    fireEvent.click(screen.getByRole("button", { name: /assemble the story/i }));
+    expect(await screen.findByText(/thirty years/)).toBeTruthy();
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/speak/projects/p1/draft",
+      expect.objectContaining({ body: JSON.stringify({ public: true }) }),
+    );
+    // One uncorroborated memory, explained as such.
+    const corroboration = screen.getByText(/only one person mentioned them/i);
+    expect(corroboration.textContent).toMatch(/^\s*1 memory was left/);
+    // Two consent exclusions, explained as consent, in their own sentence.
+    const consent = screen.getByText(/hasn't agreed to them being published/i);
+    expect(consent.textContent).toMatch(/^2 memories were left out/);
+    expect(consent.textContent).not.toMatch(/mentioned|disagreed/);
+  });
+
   it("gathers economics/publishing behind one Settings tap; the split is shown, not paid", async () => {
     api.getProject.mockResolvedValue({
       id: "p1", name: "Grandma Rosa", willBePublic: true, subjectStatusWord: "deceased",

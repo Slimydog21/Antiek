@@ -64,7 +64,11 @@ def test_golden_chain_carries_title_and_ip_holder():
     dm = adapt_synthesis(_export(claims=[Claim("Claim A", [SERVABLE]),
                                          Claim("Claim B", [RESTRICTED_DOC])]))
     blob = json.dumps(dm)
-    assert "Claim A" in blob and "Claim B" in blob
+    assert "Claim A" in blob
+    # Claim B is prose written from a gated book: its citation renders, its
+    # statement does not (it can repeat the passage verbatim).
+    assert "Claim B" not in blob
+    assert "withheld" in blob and "A gated book" in blob
     assert "On Liberty" in blob  # servable source title in the cite label
     assert "mit-press" in blob  # ip_holder surfaces even for a cite-only source
 
@@ -119,3 +123,30 @@ def test_rendered_html_also_hides_restricted_text():
     # Belt-and-braces: the visible HTML, not only the doc-model, omits it.
     dm = adapt_synthesis(_export(claims=[Claim("Claim A", [PERSONAL])]))
     assert "SECRET THIRD PARTY TEXT" not in render(dm, RenderContext())
+
+
+UNRESOLVED = SourceRef(
+    document_id=None,
+    document_title="missing chunk c-gone",
+    content_class=None,
+    ip_holder_id=None,
+)
+
+
+def test_thesis_is_cleared_against_every_claim_source():
+    clean = adapt_synthesis(_export(claims=[Claim("Claim A", [SERVABLE])]))
+    assert "X holds under Y." in json.dumps(clean)
+    for sources in ([SERVABLE, PERSONAL], [SERVABLE, UNRESOLVED], []):
+        blob = json.dumps(
+            adapt_synthesis(_export(claims=[Claim("Claim A", [SERVABLE]),
+                                            Claim("Claim B", sources)]))
+        )
+        assert "X holds under Y." not in blob, sources
+        assert "Claim B" not in blob, sources
+        assert "Claim A" in blob
+
+
+def test_thesis_with_no_claims_has_no_source_to_clear_it():
+    blob = json.dumps(adapt_synthesis(_export()))
+    assert "X holds under Y." not in blob
+    assert "withheld" in blob

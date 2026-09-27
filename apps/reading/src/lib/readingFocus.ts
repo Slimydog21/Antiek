@@ -24,26 +24,43 @@ export interface ReadingFocus {
 
 const PAGE_TEXT_CAP = 4000;
 
+// One entry per reader mount, in publish order. The Thought Partner reads the
+// most recently published entry, so the reader last touched wins, and closing
+// one reader window leaves another open reader's focus in place instead of
+// wiping the only slot.
+const DEFAULT_OWNER = Symbol("readingFocus.default");
+const mounts = new Map<unknown, ReadingFocus>();
 let current: ReadingFocus | null = null;
 
 export function getReadingFocus(): ReadingFocus | null {
   return current;
 }
 
-export function setReadingFocus(focus: ReadingFocus | null): void {
+/**
+ * Publish `owner`'s focus (a reader mount passes a stable token of its own).
+ * `null` with no owner clears every mount; with an owner, only that mount.
+ */
+export function setReadingFocus(
+  focus: ReadingFocus | null,
+  owner: unknown = DEFAULT_OWNER,
+): void {
   if (focus === null) {
-    current = null;
+    if (owner === DEFAULT_OWNER) mounts.clear();
+    else mounts.delete(owner);
   } else {
     const servable = focus.servable === true;
-    current = {
+    mounts.delete(owner);
+    mounts.set(owner, {
       documentId: focus.documentId,
       pageIndex: focus.pageIndex,
       title: focus.title,
       servable,
       // Dual structure: never retain body for gated books.
       pageText: servable && focus.pageText ? focus.pageText : null,
-    };
+    });
   }
+  current = null;
+  for (const latest of mounts.values()) current = latest;
   if (typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent(READING_FOCUS_EVENT, { detail: current }),
@@ -51,8 +68,8 @@ export function setReadingFocus(focus: ReadingFocus | null): void {
   }
 }
 
-export function clearReadingFocus(): void {
-  setReadingFocus(null);
+export function clearReadingFocus(owner: unknown = DEFAULT_OWNER): void {
+  setReadingFocus(null, owner);
 }
 
 /**

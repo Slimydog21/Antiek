@@ -36,10 +36,38 @@ def _db_path() -> str:
     return os.path.expanduser(default_db_path())
 
 
-def run_capacity_precheck(request: Request) -> CapacityGateResult:
+def _charged_to_owner(
+    con: Any, investigation_id: str, owner: str, conflict_detail: str
+) -> bool:
+    """True when this owner already paid for the id's start, else False.
+
+    The ledger holds one charge per id. An id another owner paid for can be
+    neither this owner's retry nor a new start this owner could be charged
+    for, so it is refused as a conflict instead of running on their charge.
+    """
+    row = lookup_start_acu_row(con, investigation_id)
+    if row is None:
+        return False
+    if row[0] != owner:
+        raise HTTPException(status_code=409, detail=conflict_detail)
+    return True
+
+
+def run_capacity_precheck(
+    request: Request,
+    *,
+    investigation_id: str | None = None,
+    conflict_detail: str = "investigation_id_conflict",
+) -> CapacityGateResult:
     """Read+evaluate under write lock so soft/hard see a consistent row.
 
     Creates nothing on refuse; may materialize later on successful record.
+    An ``investigation_id`` whose start is already charged to this owner is
+    a retry of a paid start, not a new one: it is never hard-refused here,
+    by the same rule ``commit_start_acu`` applies, so a retry after the start
+    that used the last ACU of the allowance reaches the caller's replay/conflict
+    decision instead of a 429. An id charged to another owner is a 409
+    ``conflict_detail``.
     """
     owner = resolve_capacity_owner(request)
     db = _db_path()
@@ -48,9 +76,12 @@ def run_capacity_precheck(request: Request) -> CapacityGateResult:
             db, purpose="compute-capacity:gate", timeout_s=_LOCK_TIMEOUT_S
         ) as con:
             gate = gate_investigation_start(con, owner)
+            charged = investigation_id is not None and _charged_to_owner(
+                con, investigation_id, owner, conflict_detail
+            )
     except WriteLockTimeout as exc:
         raise HTTPException(status_code=503, detail="graph_busy_retry") from exc
-    if gate.verdict == "hard_refuse":
+    if gate.verdict == "hard_refuse" and not charged:
         raise HTTPException(
             status_code=429, detail=capacity_exhausted_payload(gate)
         )
@@ -62,13 +93,15 @@ def commit_start_acu(
     *,
     investigation_id: str,
     reason: str,
+    conflict_detail: str = "investigation_id_conflict",
 ) -> CapacityGateResult:
     """Gate and record 1 ACU BEFORE the start is appended or broadcast.
 
     Idempotent on investigation id. The hard gate is re-evaluated under the
     same writer lock as the insert, so starts racing past the precheck cannot
     both charge beyond the cap. Callers must not start the run unless this
-    returns: a 503 or 429 here means nothing started and nothing was charged.
+    returns: a 503, 429 or 409 here means nothing started and nothing was
+    charged.
     """
     owner = resolve_capacity_owner(request)
     db = _db_path()
@@ -76,8 +109,9 @@ def commit_start_acu(
         with connect_write(
             db, purpose="compute-capacity:record-acu", timeout_s=_LOCK_TIMEOUT_S
         ) as con:
-            # A replay of an already-charged start is not re-gated.
-            if lookup_start_acu_row(con, investigation_id) is None:
+            # A replay of a start already charged to this owner is not
+            # re-gated; an id another owner paid for is refused (409).
+            if not _charged_to_owner(con, investigation_id, owner, conflict_detail):
                 gate = gate_investigation_start(con, owner)
                 if gate.verdict == "hard_refuse":
                     raise HTTPException(

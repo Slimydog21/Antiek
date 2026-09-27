@@ -128,3 +128,60 @@ describe("PasteIngest — universal ingest wiring (M3)", () => {
     await waitFor(() => expect(screen.getByText(/Couldn.t absorb that/)).toBeTruthy());
   });
 });
+
+// POST /sources/ingest answers `skipped` with chunks_written 0 whenever nothing
+// reached the graph (paywall / JS page, no transcript, …). Nothing was written,
+// so nothing can be cited: it must not read as absorbed (audit W24).
+const SKIPPED_URL = {
+  status: "skipped",
+  detected_kind: "url",
+  document_id: "doc-url-a9c6177dc441ef77",
+  document_loaded_event_id: "evt-1",
+  chunks_written: 0,
+  skipped_reason: "low_word_count",
+  error_message: null,
+  title: "Paywalled article",
+  episodes_processed: 0,
+  episodes_ingested: 0,
+};
+
+describe("PasteIngest — a skipped ingest is not absorbed", () => {
+  it("says plainly that nothing was added when the URL ingest wrote 0 chunks", async () => {
+    ingestSourceMock.mockResolvedValue(SKIPPED_URL);
+    const { container } = render(<PasteIngest investigationId="inv-1" />);
+    pasteText(screen.getByText(dropZoneText), "https://example.com/paywalled-article");
+    await waitFor(() => expect(container.textContent).toMatch(/Paywalled article/));
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/Absorbed/);
+    expect(text).not.toMatch(/can be cited/);
+    expect(text).toMatch(/too little readable text/);
+    expect(text).not.toMatch(/low_word_count/);
+  });
+
+  it("does not report a too-short pasted passage as absorbed", async () => {
+    ingestVoiceNoteMock.mockResolvedValue({
+      status: "skipped",
+      document_id: "doc-voice-1",
+      title: "Pasted note",
+      chunks_written: 0,
+      document_loaded_event_id: "e",
+      skipped_reason: "low_word_count",
+    });
+    const { container } = render(<PasteIngest investigationId="inv-1" />);
+    pasteText(screen.getByText(dropZoneText), "too short");
+    await waitFor(() => expect(container.textContent).toMatch(/too little readable text/));
+    expect(container.textContent).not.toMatch(/Absorbed/);
+  });
+
+  it("still treats a URL already in the corpus (alias hit) as absorbed", async () => {
+    ingestSourceMock.mockResolvedValue({
+      ...SKIPPED_URL,
+      document_id: "doc-url-existing",
+      skipped_reason: "alias_resolved_to_existing_document",
+      title: null,
+    });
+    render(<PasteIngest investigationId="inv-1" />);
+    pasteText(screen.getByText(dropZoneText), "https://example.com/long-article");
+    await waitFor(() => expect(screen.getByText(/Absorbed/)).toBeTruthy());
+  });
+});
