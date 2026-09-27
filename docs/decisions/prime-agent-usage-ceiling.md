@@ -9,6 +9,7 @@
 `substrate/dispatch/base.py` (`NormalizedUsage.reported`, `cache_unknown`, `optional_count`);
 `runtime/prime_agent/process.py` (the subprocess receipt: state, detail, duration_ms, stdout/stderr — no usage field).
 **Builds on:** audit wave 4 C06 (PR #3415, "unreported usage is billed at ceiling"); SPR-01 Prime Agent connect (PR #3399); the owner-BYOT reserve-before-spend ledger (PR #720), whose reservation bound is the same ceiling.
+**Closes:** `audit-wave4-open-calls.md` §4 ("What a Prime Agent dispatch costs on the books"), whose resolved direction of 2026-09-23 this record makes the declared adapter contract.
 
 ## What is true today
 
@@ -57,9 +58,14 @@ Consequences the operator should expect:
   protocol). Then the adapter forwards real counts with `reported=True`,
   and the ceiling rule stops applying to it automatically.
 - The providers behind Prime Agent expose per-call usage through an API the
-  substrate can query after the fact. Then a reconciliation pass can
-  replace the ceiling with the reading in the ledger, keeping the receipt's
-  original `reported=False` for audit.
+  substrate can query after the fact. A reconciliation pass could then
+  replace the ceiling with the reading, keeping the receipt's original
+  `reported=False` for audit. Note that the owner-BYOT ledger has no such
+  path today: `substrate/byot_usage/ledger.py` only accumulates
+  `used_cents` (`settle_operation` refuses any row that is not
+  `settlement_pending`, and both mutation paths add, never adjust), so an
+  after-the-fact reading needs a new, audited adjustment mutation on the
+  ledger before it can replace anything.
 
 Never `reported=True` with zeros. A zero that looks like a reading is the
 one state this record forbids.
