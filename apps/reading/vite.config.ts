@@ -19,7 +19,10 @@ const API_TARGET = process.env.ANTIEK_DEV_API_TARGET || "http://127.0.0.1:8000";
  * operator's live event bus while its HTTP went to the harness backend (A-19).
  */
 export function wsTargetFor(apiTarget: string): string {
-  return apiTarget.replace(/^http(s?):/i, (_m, s: string) => `ws${s}:`);
+  // Schemes are case-insensitive; emit the canonical lower-case one.
+  return apiTarget.replace(/^https?:/i, (scheme) =>
+    scheme.toLowerCase() === "https:" ? "wss:" : "ws:",
+  );
 }
 
 /**
@@ -40,7 +43,9 @@ export function spaNavigationBypass(
   req: Pick<IncomingMessage, "method" | "headers" | "url">,
 ): string | undefined {
   if (req.method !== "GET" && req.method !== "HEAD") return undefined;
-  if (!req.headers.accept?.includes("text/html")) return undefined;
+  // Media types are case-insensitive (RFC 9110 §8.3.1). Known limit: q-values
+  // are not parsed, so an explicit "text/html;q=0" still counts as HTML.
+  if (!req.headers.accept?.toLowerCase().includes("text/html")) return undefined;
   return req.url;
 }
 

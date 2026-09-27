@@ -57,16 +57,26 @@ describe("spaNavigationBypass (M1)", () => {
     expect(spaNavigationBypass(req("*/*"))).toBeUndefined();
   });
 
+  it("matches the Accept media type case-insensitively (RFC 9110 §8.3.1)", () => {
+    expect(spaNavigationBypass(req("Text/HTML"))).toBe("/sources");
+    expect(spaNavigationBypass(req("TEXT/HTML,*/*;q=0.8"))).toBe("/sources");
+    expect(spaNavigationBypass(req("Application/JSON"))).toBeUndefined();
+  });
+
   it("never bypasses a non-GET/HEAD request, even one that accepts HTML", () => {
     expect(spaNavigationBypass(req("text/html", "POST", "/sources/upload"))).toBeUndefined();
   });
 });
 
 describe("wsTargetFor (M2)", () => {
-  it("maps http to ws and https to wss, keeping host and port", () => {
-    expect(wsTargetFor("http://127.0.0.1:8017")).toBe("ws://127.0.0.1:8017");
-    expect(wsTargetFor("https://api.example.test")).toBe("wss://api.example.test");
-    expect(wsTargetFor("HTTP://127.0.0.1:8017")).toBe("ws://127.0.0.1:8017");
+  it.each([
+    ["http://127.0.0.1:8017", "ws://127.0.0.1:8017"],
+    ["HTTP://127.0.0.1:8017", "ws://127.0.0.1:8017"],
+    ["https://api.example.test", "wss://api.example.test"],
+    ["HTTPS://api.example.test", "wss://api.example.test"],
+    ["HttpS://api.example.test:8443", "wss://api.example.test:8443"],
+  ])("maps %s to %s (scheme normalised, host and port kept)", (input, expected) => {
+    expect(wsTargetFor(input)).toBe(expected);
   });
 });
 
@@ -79,8 +89,11 @@ describe("exported dev config", () => {
     expect(targetOf(proxy["/health"])).toBe("http://127.0.0.1:8017");
   });
 
-  it("defaults both HTTP and /ws to 127.0.0.1:8000 only when the var is unset", async () => {
-    const { proxy } = await loadConfig({ ANTIEK_DEV_API_TARGET: undefined });
+  it.each([
+    ["unset", undefined],
+    ["empty", ""],
+  ])("defaults both HTTP and /ws to 127.0.0.1:8000 when the var is unset or empty (%s)", async (_label, value) => {
+    const { proxy } = await loadConfig({ ANTIEK_DEV_API_TARGET: value });
     expect(targetOf(proxy["/ws"])).toBe("ws://127.0.0.1:8000");
     expect(targetOf(proxy["/health"])).toBe("http://127.0.0.1:8000");
   });
