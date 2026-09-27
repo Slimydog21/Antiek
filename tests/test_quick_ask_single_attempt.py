@@ -142,6 +142,72 @@ def _quote(client: TestClient, body: dict[str, Any]) -> dict[str, Any]:
     return response.json()
 
 
+def test_registered_deepseek_current_catalog_completes_one_ask_and_replay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "settings" / "user_models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "byok" / "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "byok" / "master.key"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def owner_identity(request: Request, call_next):
+        request.state.user_id = _OWNER
+        request.state.auth_method = "antiek_session_cookie"
+        request.state.user_email = "owner@example.test"
+        return await call_next(request)
+
+    models_admin.register_settings_models_admin_routes(app)
+    app.include_router(quick_ask.quick_ask_router)
+    ledger = ByotUsageLedger(tmp_path / "quick-ask.sqlite3")
+    app.state.quick_ask_usage_ledger = ledger
+
+    with TestClient(app) as client:
+        registered = client.post("/settings/models/user", json={
+            "provider_catalog_id": "deepseek",
+            "provider_kind": "openai_compat",
+            "model_id": _MODEL,
+            "display_name": "My DeepSeek",
+            "api_key": "test-only-disposable-key",
+        })
+        assert registered.status_code == 201, registered.json()
+        provider_id = registered.json()["id"]
+        fingerprint = app.state.user_model_registration_fingerprints[provider_id]
+        provider = RecordingProvider(fingerprint)
+        provider.name = provider_id
+        register_provider(provider)
+        ledger.set_limit(provider_id, _OWNER, 100)
+
+        inventory = client.get("/research/quick-ask/models")
+        assert inventory.status_code == 200, inventory.json()
+        assert [(row["provider_id"], row["model_id"]) for row in inventory.json()["models"]] == [
+            (provider_id, _MODEL),
+        ]
+        body = _body(question="What changed in the current catalog?")
+        body["model_choice"]["provider_id"] = provider_id
+        quote = _quote(client, body)
+        assert quote["model_id"] == _MODEL
+        assert quote["price_snapshot"] == inventory.json()["models"][0]["price_snapshot"]
+        assert provider.calls == []
+
+        payload = {**body, "quote_digest": quote["quote_digest"]}
+        first = client.post("/research/quick-ask", json=payload)
+        assert first.status_code == 200, first.json()
+        assert first.json()["answer"] == "one answer"
+        assert first.json()["replayed"] is False
+        replay = client.post("/research/quick-ask", json=payload)
+        assert replay.status_code == 200, replay.json()
+        assert replay.json()["answer"] == "one answer"
+        assert replay.json()["replayed"] is True
+        assert provider.calls == [{
+            "model": _MODEL, "prompt": body["question"], "max_tokens": 1024,
+        }]
+        assert ledger.operation(_OWNER, f"quick-ask:{body['operation_id']}").state == "settled"
+
+
 def test_model_inventory_uses_same_owner_and_current_price_predicate(route) -> None:
     client, provider, _, preset_box, record_box, identity, app = route
     listed = client.get("/research/quick-ask/models")
