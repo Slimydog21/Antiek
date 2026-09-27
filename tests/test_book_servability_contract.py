@@ -47,27 +47,11 @@ def _property_schema(document: dict, model_name: str, property_name: str) -> dic
     return result
 
 
-def _enum_values(document: dict, node: dict) -> list[str]:
-    node = _resolve_ref(document, node)
-    if "enum" in node:
-        return node["enum"]
-    for key in ("anyOf", "oneOf", "allOf"):
-        for branch in node.get(key, []):
-            values = _enum_values(document, branch)
-            if values:
-                return values
-    return []
-
-
-def _allows_null(document: dict, node: dict) -> bool:
-    node = _resolve_ref(document, node)
-    if node.get("type") == "null":
-        return True
-    return any(
-        _allows_null(document, branch)
-        for key in ("anyOf", "oneOf", "allOf")
-        for branch in node.get(key, [])
-    )
+def _assert_exact_enum_schema(document: dict, node: dict, values: list[str]) -> None:
+    schema = _resolve_ref(document, node)
+    assert schema.get("type") == "string"
+    assert schema.get("enum") == values
+    assert not any(key in schema for key in ("anyOf", "oneOf", "allOf"))
 
 
 def _asset_for(status: ServabilityStatus) -> BookAsset:
@@ -113,8 +97,18 @@ def test_mounted_book_openapi_uses_the_canonical_servability_enum():
 
     for model_name, nullable in fields.items():
         property_schema = _property_schema(document, model_name, "servability")
-        assert _enum_values(document, property_schema) == canonical_values
-        assert _allows_null(document, property_schema) is nullable
+        if nullable:
+            schema = _resolve_ref(document, property_schema)
+            branches = schema.get("anyOf")
+            assert isinstance(branches, list) and len(branches) == 2
+            resolved_branches = [_resolve_ref(document, branch) for branch in branches]
+            null_branches = [branch for branch in resolved_branches if branch.get("type") == "null"]
+            enum_branches = [branch for branch in resolved_branches if branch.get("type") != "null"]
+            assert len(null_branches) == 1
+            assert len(enum_branches) == 1
+            _assert_exact_enum_schema(document, enum_branches[0], canonical_values)
+        else:
+            _assert_exact_enum_schema(document, property_schema, canonical_values)
 
 
 def test_book_response_serialization_preserves_all_seven_wire_values():
