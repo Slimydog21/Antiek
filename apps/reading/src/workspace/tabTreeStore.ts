@@ -31,6 +31,7 @@ import { labelForTab } from "./tabLabels";
 import { resetTabTitles, titleKey, useTabTitles } from "./tabTitles";
 import { tabTreeHandle } from "./tabTreeHandle";
 import {
+  acknowledgeRestores,
   closeTab,
   createInMemoryTabTreeAdapter,
   emptyTabTree,
@@ -65,6 +66,7 @@ export interface HeldClose {
   mothership: Mothership;
   token: UndoToken;
   op: TabOp;
+  expiresAt: number;
 }
 
 /**
@@ -108,6 +110,8 @@ export interface SpawnTabResult {
 }
 
 interface TabTreeState {
+  /** Invalidates in-flight work even when the same adapter is selected again. */
+  contextEpoch: number;
   trees: Record<Mothership, TabTree | null>;
   /** Motherships whose initial adapter load has completed. */
   loaded: Record<Mothership, boolean>;
@@ -186,6 +190,32 @@ function emptyLoaded(): Record<Mothership, boolean> {
 }
 
 export const useTabTrees = create<TabTreeState>()((set, get) => {
+  // Only accepted server history can authorize a restore PUT. A close/undo
+  // pair coalesced before saving is a cancellation, not a retired-node restore.
+  const acceptedTrees = new Map<Mothership, TabTree>();
+
+  function prepareRestores(mothership: Mothership, tree: TabTree): TabTree {
+    if (!tree.restoring) return tree;
+    const accepted = acceptedTrees.get(mothership);
+    const nodes = { ...tree.nodes };
+    const restoring = { ...tree.restoring };
+    for (const id of Object.keys(restoring)) {
+      if (!nodes[id]) continue;
+      const retired = accepted?.history[id]?.node;
+      if (retired) {
+        nodes[id] = { ...nodes[id], pruned_at: retired.pruned_at };
+        restoring[id] = retired;
+      } else {
+        const { pruned_at: _localClose, ...open } = nodes[id];
+        nodes[id] = open;
+        delete restoring[id];
+      }
+    }
+    const next: TabTree = { ...tree, nodes, restoring };
+    if (!Object.keys(restoring).length) delete next.restoring;
+    return next;
+  }
+
   /** Apply a pure-model op to a mothership's tree, keep the pending log,
    *  and queue the snapshot save. */
   function apply(
@@ -218,7 +248,8 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       return;
     }
     const prior = saveQueues.get(mothership) ?? Promise.resolve();
-    const run = prior.then(() => saveNow(mothership));
+    const contextEpoch = get().contextEpoch;
+    const run = prior.then(() => get().contextEpoch === contextEpoch ? saveNow(mothership) : undefined);
     saveQueues.set(mothership, run);
   }
 
@@ -230,11 +261,12 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
   /** Record a save's new version on the tree, and drop from the pending log
    *  the ops that save carried (ops made while it was in flight stay, for a
    *  later rebase). */
-  function markSaved(mothership: Mothership, version: number, sentOps: number): void {
+  function markSaved(mothership: Mothership, version: number, sentOps: number, sent: TabTree): void {
+    acceptedTrees.set(mothership, acknowledgeRestores(sent, sent, version));
     set((s) => ({
       trees: {
         ...s.trees,
-        [mothership]: s.trees[mothership] ? { ...s.trees[mothership]!, version } : s.trees[mothership],
+        [mothership]: s.trees[mothership] ? acknowledgeRestores(s.trees[mothership]!, sent, version) : s.trees[mothership],
       },
       pendingOps: { ...s.pendingOps, [mothership]: (s.pendingOps[mothership] ?? []).slice(sentOps) },
     }));
@@ -249,13 +281,16 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       deferredSaves.add(mothership);
       return;
     }
-    const { adapter, trees, pendingOps } = get();
-    const tree = trees[mothership];
-    if (!tree) return;
+    const { adapter, trees, pendingOps, contextEpoch } = get();
+    const currentTree = trees[mothership];
+    if (!currentTree) return;
+    const tree = prepareRestores(mothership, currentTree);
+    if (tree !== currentTree) set((s) => ({ trees: { ...s.trees, [mothership]: tree } }));
     const sentOps = (pendingOps[mothership] ?? []).length;
     const result = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(tree));
+    if (get().contextEpoch !== contextEpoch) return;
     if (result.status === "saved") {
-      markSaved(mothership, result.version, sentOps);
+      markSaved(mothership, result.version, sentOps, tree);
       return;
     }
     if (result.status === "conflict") {
@@ -265,12 +300,30 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       // tab; lane B's multi-device adapter can, and it is fully wired.
       const parsed = fromSnapshot(result.current);
       if (!parsed.ok) return;
+      acceptedTrees.set(mothership, parsed.tree);
       // Every op made so far, including those made while the save was in
       // flight; a close still inside its window is not one of them.
       const ops = get().pendingOps[mothership] ?? [];
-      const { tree: rebased, dropped } = rebase(parsed.tree, ops);
-      if (dropped.length > 0) {
-        toast.info("A tab was closed on another device; your other changes were kept.");
+      const replayed = rebase(parsed.tree, ops);
+      const { dropped, reparented } = replayed;
+      const rebased = prepareRestores(mothership, replayed.tree);
+      const notices = new Set<string>();
+      for (const { tab_id, reason } of reparented) {
+        const moved = rebased.nodes[tab_id];
+        if (!moved) continue;
+        const parent_tab_id = moved.parent_tab_id;
+        const destination = parent_tab_id === null ? "to the root" : `under ${rebased.nodes[parent_tab_id].hier_number}`;
+        const cause = reason === "closed_parent" ? "its parent was closed on another device" : "kept a tab added on another device";
+        notices.add(`Moved ${destination}: ${cause}`);
+      }
+      for (const { reason } of dropped) {
+        notices.add(reason === "tab_not_open" || reason === "unknown_tab"
+          ? "A tab was closed on another device; your other changes were kept."
+          : reason === "duplicate_tab_id"
+            ? "A tab already exists on another device; your other changes were kept."
+            : reason === "not_closed_by_token"
+              ? "That close changed on another device; your other changes were kept."
+              : "A tab change could not be applied to the updated tree; your other changes were kept.");
       }
       // A close held while the save was in flight stays held: it is replayed
       // onto the rebased tree for the screen only (same close_id, so its
@@ -280,10 +333,15 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       let shown = rebased;
       if (held && held.op.type === "close") {
         const op = held.op;
-        const replay = closeTab(rebased, op.tab_id, op.mode, op.now, op.close_id);
+        const replay = closeTab(rebased, op.tab_id, op.mode, op.now, op.close_id, op.seen_tab_ids);
         if (replay.ok) {
           shown = replay.tree;
-          set({ heldClose: { mothership, token: replay.undo, op: replay.op } });
+          for (const node of Object.values(shown.nodes)) {
+            if (op.mode !== "prune" || node.parent_tab_id === rebased.nodes[node.tab_id]?.parent_tab_id) continue;
+            const destination = node.parent_tab_id === null ? "to the root" : `under ${shown.nodes[node.parent_tab_id].hier_number}`;
+            notices.add(`Moved ${destination}: kept a tab added on another device`);
+          }
+          set({ heldClose: { ...held, token: replay.undo, op: replay.op } });
         } else {
           // Another device already closed it: nothing is left to hold.
           if (holdTimer !== null) clearTimeout(holdTimer);
@@ -291,12 +349,20 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
           set({ heldClose: null });
         }
       }
+      for (const notice of notices) toast.info(notice);
+      const droppedOps = new Set(dropped.map(({ op }) => op));
+      const remainingOps = ops.filter((op) => !droppedOps.has(op));
       set((s) => ({
         trees: { ...s.trees, [mothership]: shown },
-        pendingOps: { ...s.pendingOps, [mothership]: [] },
+        pendingOps: { ...s.pendingOps, [mothership]: remainingOps },
       }));
       const retry = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(rebased));
-      if (retry.status === "saved") markSaved(mothership, retry.version, 0);
+      if (get().contextEpoch !== contextEpoch) return;
+      if (retry.status === "saved") markSaved(mothership, retry.version, remainingOps.length, rebased);
+      else if (retry.status === "rejected") {
+        // eslint-disable-next-line no-console
+        console.error("[antiek/tabs] snapshot rejected:", retry.reasons);
+      }
       // The hold may have ended while the rebase was in flight.
       if (!heldOn(mothership)) flushDeferred();
       return;
@@ -322,11 +388,16 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       },
     }));
     const closeId = held.token.close_id;
-    recentCloses.set(closeId, { mothership: held.mothership, token: held.token });
-    setTimeout(() => {
-      recentCloses.delete(closeId);
+    const remaining = held.expiresAt - Date.now();
+    if (remaining > 0) {
+      recentCloses.set(closeId, { mothership: held.mothership, token: held.token });
+      setTimeout(() => {
+        recentCloses.delete(closeId);
+        undoToasts.delete(closeId);
+      }, remaining);
+    } else {
       undoToasts.delete(closeId);
-    }, UNDO_TTL_MS);
+    }
     deferredSaves.add(held.mothership);
     flushDeferred();
   }
@@ -351,6 +422,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
   }
 
   return {
+    contextEpoch: 0,
     trees: { research: null, writing: null, reading: null },
     loaded: emptyLoaded(),
     loadError: noErrors(),
@@ -363,7 +435,18 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
 
     setTabTreeAdapter: (adapter) => {
       loads.clear();
+      acceptedTrees.clear();
+      saveQueues.clear();
+      deferredSaves.clear();
+      recentCloses.clear();
+      for (const id of undoToasts.values()) toast.dismiss(id);
+      undoToasts.clear();
+      if (holdTimer !== null) clearTimeout(holdTimer);
+      holdTimer = null;
       set({
+        heldClose: null,
+        navIntent: null,
+        contextEpoch: get().contextEpoch + 1,
         adapter,
         trees: { research: null, writing: null, reading: null },
         loaded: emptyLoaded(),
@@ -376,13 +459,14 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       if (get().loaded[mothership]) return Promise.resolve();
       const inflight = loads.get(mothership);
       if (inflight) return inflight;
-      const adapter = get().adapter;
+      const { adapter, contextEpoch } = get();
       let run: Promise<void> | null = null;
       run = (async () => {
         try {
           const snapshot = await adapter.load(TAB_PROJECT_ID, mothership);
-          if (get().adapter !== adapter) return; // swapped mid-flight
+          if (get().contextEpoch !== contextEpoch) return; // swapped mid-flight
           const parsed = fromSnapshot(snapshot);
+          if (parsed.ok) acceptedTrees.set(mothership, parsed.tree);
           set((s) => ({
             trees: {
               ...s.trees,
@@ -392,7 +476,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
             loadError: { ...s.loadError, [mothership]: null },
           }));
         } catch (e) {
-          if (get().adapter !== adapter) return;
+          if (get().contextEpoch !== contextEpoch) return;
           set((s) => ({
             loadError: { ...s.loadError, [mothership]: e instanceof Error ? e.message : String(e) },
           }));
@@ -482,7 +566,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       const message = closeMessage(tree, active, mode, closedCount);
       set((s) => ({
         trees: { ...s.trees, [mothership]: result.tree },
-        heldClose: { mothership, token: result.undo, op: result.op },
+        heldClose: { mothership, token: result.undo, op: result.op, expiresAt: Date.now() + UNDO_TTL_MS },
       }));
       // Closing is a user command: show whichever tab it left active.
       if (result.tree.active_tab_id !== tree.active_tab_id) requestNav(mothership, result.tree);
@@ -522,7 +606,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       recentCloses.delete(closeId);
       const tree = get().trees[recent.mothership];
       if (!tree) return;
-      const result = undo(tree, recent.token);
+      const result = undo(tree, recent.token, true);
       if (result.ok) {
         apply(recent.mothership, result.tree, result.op, result.tree.active_tab_id !== tree.active_tab_id);
       }
@@ -564,7 +648,9 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       undoToasts.clear();
       saveQueues.clear();
       resetTabTitles();
+      acceptedTrees.clear();
       set({
+        contextEpoch: get().contextEpoch + 1,
         trees: { research: null, writing: null, reading: null },
         loaded: emptyLoaded(),
         loadError: noErrors(),

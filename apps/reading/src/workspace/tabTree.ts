@@ -129,6 +129,8 @@ export interface TabTree {
   active_tab_id: string | null;
   /** Closed and pruned tabs by tab_id (soft close: recoverable, numbers kept). */
   history: Readonly<Record<string, ClosedTab>>;
+  /** Retired-node proof for restores awaiting server acknowledgment; never serialized. */
+  restoring?: Readonly<Record<string, TabNode>>;
   /** Next index for a root tab. Monotonic. */
   next_root_index: number;
   /** Next child index per parent tab_id (absent = 1). Monotonic. */
@@ -199,8 +201,8 @@ export interface UndoToken {
  *  the pending log that `rebase` replays after a 409. */
 export type TabOp =
   | { type: "spawn"; parent_tab_id: string | null; input: SpawnInput; hier_number: string }
-  | { type: "close"; close_id: string; tab_id: string; mode: CloseMode; now: string }
-  | { type: "undo"; token: UndoToken }
+  | { type: "close"; close_id: string; tab_id: string; mode: CloseMode; now: string; seen_tab_ids: readonly string[] }
+  | { type: "undo"; token: UndoToken; restore_retired?: boolean }
   | { type: "restore"; tab_id: string; close_id: string }
   | { type: "assign_public_number"; tab_id: string; public_number: number }
   | { type: "set_active"; tab_id: string | null };
@@ -324,6 +326,21 @@ export function emptyTabTree(mothership: Mothership, version = 0): TabTree {
 /** Record a successful PUT: the tree now descends from `version`. */
 export function withVersion(tree: TabTree, version: number): TabTree {
   return { ...tree, version };
+}
+
+/** A successful PUT acknowledges only the restore records that request carried. */
+export function acknowledgeRestores(tree: TabTree, sent: TabTree, version: number): TabTree {
+  const nodes = { ...tree.nodes };
+  const restoring = { ...tree.restoring };
+  for (const id of Object.keys(sent.restoring ?? {})) {
+    if (restoring[id] !== sent.restoring?.[id]) continue;
+    if (nodes[id]?.pruned_at === restoring[id].pruned_at) nodes[id] = withoutPrunedAt(nodes[id]);
+    delete restoring[id];
+  }
+  const next = { ...tree, nodes, version };
+  if (Object.keys(restoring).length > 0) next.restoring = restoring;
+  else delete next.restoring;
+  return next;
 }
 
 /** Root → tab, as tab_ids. Empty when the tab is not open. Iterative. */
@@ -490,15 +507,19 @@ export function closeTab(
   mode: CloseMode,
   now: string,
   closeId = `${tabId}@${now}`,
+  seenTabIds?: readonly string[],
 ): TabTreeResult<{ tree: TabTree; undo: UndoToken; op: TabOp }> {
   const x = openNode(tree, tabId);
   if (!x) return fail("tab_not_open", `tab ${tabId} is not open`);
   const parentId = x.parent_tab_id;
   const siblings = siblingsOf(tree, parentId);
   const index = siblings.indexOf(tabId);
-  const removed = mode === "prune" ? subtreeIds(tree, tabId) : [tabId];
+  const seen = seenTabIds === undefined ? null : new Set(seenTabIds);
+  const removed = mode === "prune" ? subtreeIds(tree, tabId).filter((id) => seen === null || seen.has(id)) : [tabId];
   const removedSet = new Set(removed);
-  const lifted = mode === "prune" ? [] : x.child_order;
+  const lifted = mode === "prune"
+    ? subtreeIds(tree, tabId).filter((id) => !removedSet.has(id) && removedSet.has(tree.nodes[id].parent_tab_id ?? ""))
+    : x.child_order;
   const newSiblings = [...siblings.slice(0, index), ...lifted, ...siblings.slice(index + 1)];
 
   const nodes: Record<string, TabNode> = {};
@@ -512,7 +533,14 @@ export function closeTab(
     nodes[parentId] = { ...updated, child_order: newSiblings };
   }
   const history: Record<string, ClosedTab> = { ...tree.history };
-  for (const id of removed) history[id] = { node: { ...tree.nodes[id], pruned_at: now }, close_id: closeId };
+  for (const id of removed) {
+    let node: TabNode = { ...tree.nodes[id], pruned_at: now };
+    if (mode === "prune" && lifted.length > 0) {
+      node = { ...node, child_order: node.child_order.filter((c) => removedSet.has(c)) };
+      if (node.last_visited_child_id && !removedSet.has(node.last_visited_child_id)) node = withoutLastVisited(node);
+    }
+    history[id] = { node, close_id: closeId };
+  }
 
   let active = tree.active_tab_id;
   if (active !== null && removedSet.has(active)) {
@@ -539,7 +567,7 @@ export function closeTab(
     prev_active_tab_id: tree.active_tab_id,
     parent_remembered_it: parentRememberedIt,
   };
-  return { ok: true, tree: next, undo: token, op: { type: "close", close_id: closeId, tab_id: tabId, mode, now } };
+  return { ok: true, tree: next, undo: token, op: { type: "close", close_id: closeId, tab_id: tabId, mode, now, seen_tab_ids: seenTabIds ?? removed } };
 }
 
 /** The nearest open tab at or above `id`, walking closed tabs' recorded
@@ -572,7 +600,7 @@ function nearestOpenAncestor(tree: TabTree, id: string | null): string | null {
  * Refuses a token whose close is not the one that put the tab in history
  * (already undone, or superseded by a later close).
  */
-export function undo(tree: TabTree, token: UndoToken): TabTreeResult<{ tree: TabTree; op: TabOp }> {
+export function undo(tree: TabTree, token: UndoToken, restoreRetired = false): TabTreeResult<{ tree: TabTree; op: TabOp }> {
   const entry = closedTab(tree, token.tab_id);
   if (!entry || entry.close_id !== token.close_id) {
     return fail("not_closed_by_token", `tab ${token.tab_id} is not closed by ${token.close_id}`);
@@ -593,7 +621,11 @@ export function undo(tree: TabTree, token: UndoToken): TabTreeResult<{ tree: Tab
   let rootOrder: string[] = [...tree.root_order];
   const history: Record<string, ClosedTab> = {};
   for (const id of Object.keys(tree.history)) if (!restoreSet.has(id)) history[id] = tree.history[id];
-  for (const id of restore) nodes[id] = withoutPrunedAt(tree.history[id].node);
+  for (const id of restore) {
+    nodes[id] = restoreRetired ? tree.history[id].node
+      : tree.restoring?.[id] ? { ...tree.history[id].node, pruned_at: tree.restoring[id].pruned_at }
+        : withoutPrunedAt(tree.history[id].node);
+  }
 
   const detach = (childId: string, fromParent: string | null) => {
     if (fromParent === null) {
@@ -641,7 +673,12 @@ export function undo(tree: TabTree, token: UndoToken): TabTreeResult<{ tree: Tab
   const active =
     token.prev_active_tab_id !== null && restoreSet.has(token.prev_active_tab_id) ? token.prev_active_tab_id : tree.active_tab_id;
   const next: TabTree = { ...tree, nodes, root_order: rootOrder, history, active_tab_id: active };
-  return { ok: true, tree: next, op: { type: "undo", token } };
+  if (restoreRetired) {
+    const restoring = { ...tree.restoring };
+    for (const id of restore) restoring[id] = tree.history[id].node;
+    next.restoring = restoring;
+  }
+  return { ok: true, tree: next, op: { type: "undo", token, ...(restoreRetired ? { restore_retired: true } : {}) } };
 }
 
 /**
@@ -699,7 +736,7 @@ export function restoreClosed(
   const history: Record<string, ClosedTab> = {};
   for (const id of Object.keys(tree.history)) if (!restoreSet.has(id)) history[id] = tree.history[id];
   for (const id of restore) {
-    let node: TabNode = withoutPrunedAt(tree.history[id].node);
+    let node: TabNode = tree.history[id].node;
     const kept = node.child_order.filter((c) => restoreSet.has(c));
     node = { ...node, child_order: kept };
     if (node.last_visited_child_id !== undefined && !kept.includes(node.last_visited_child_id)) {
@@ -712,7 +749,9 @@ export function restoreClosed(
   let rootOrder = tree.root_order;
   if (target === null) rootOrder = [...tree.root_order, tabId];
   else nodes[target] = { ...nodes[target], child_order: [...nodes[target].child_order, tabId] };
-  const next = activate({ ...tree, nodes, root_order: rootOrder, history }, tabId);
+  const restoring = { ...tree.restoring };
+  for (const id of restore) restoring[id] = tree.history[id].node;
+  const next = activate({ ...tree, nodes, root_order: rootOrder, history, restoring }, tabId);
   return { ok: true, tree: next, op: { type: "restore", tab_id: tabId, close_id: entry.close_id } };
 }
 
@@ -744,9 +783,10 @@ export interface DroppedOp {
 
 export interface RebaseResult {
   tree: TabTree;
-  /** Ops that no longer apply. The UI shows one quiet toast for all of them
-   *  ("A tab was closed on another device"), never a modal. */
+  /** Ops that no longer apply; the UI reports their reasons without a modal. */
   dropped: DroppedOp[];
+  /** Tabs reattached because their parent closed; the UI names the destination. */
+  reparented: { tab_id: string; parent_tab_id: string | null; reason: "closed_parent" | "unseen_child" }[];
   /** Pending spawns whose hier_number changed under the remote counters. */
   renumbered: { tab_id: string; from: string; to: string }[];
 }
@@ -758,14 +798,15 @@ export interface RebaseResult {
  *    recomputed under the remote counters, because another device may have
  *    spawned under the same parent; it was never final (R3-5).
  *  - An op on a tab the remote closed is dropped and reported.
- *  - A replayed prune closes the subtree as it stands on the remote, which
- *    can include children another device added (soft, so recoverable).
+ *  - A replayed prune closes only the recorded visible subtree. Unseen
+ *    remote children lift to its parent and retain their own descendants.
  * The result keeps the remote's version, ready for the next PUT.
  */
 export function rebase(remote: TabTree, pending: readonly TabOp[]): RebaseResult {
   let tree = remote;
   const dropped: DroppedOp[] = [];
   const renumbered: RebaseResult["renumbered"] = [];
+  const reparented: RebaseResult["reparented"] = [];
   const replayedCloses = new Map<string, UndoToken>();
   for (const op of pending) {
     switch (op.type) {
@@ -777,15 +818,21 @@ export function rebase(remote: TabTree, pending: readonly TabOp[]): RebaseResult
           break;
         }
         tree = r.tree;
+        if (parent !== op.parent_tab_id) reparented.push({ tab_id: op.input.tab_id, parent_tab_id: parent, reason: "closed_parent" });
         const now = tree.nodes[op.input.tab_id].hier_number;
         if (now !== op.hier_number) renumbered.push({ tab_id: op.input.tab_id, from: op.hier_number, to: now });
         break;
       }
       case "close": {
-        const r = closeTab(tree, op.tab_id, op.mode, op.now, op.close_id);
+        const r = closeTab(tree, op.tab_id, op.mode, op.now, op.close_id, op.seen_tab_ids);
         if (!r.ok) {
           dropped.push({ op, reason: r.error.code });
           break;
+        }
+        for (const id of Object.keys(r.tree.nodes)) {
+          if (op.mode === "prune" && tree.nodes[id]?.parent_tab_id !== r.tree.nodes[id].parent_tab_id) {
+            reparented.push({ tab_id: id, parent_tab_id: r.tree.nodes[id].parent_tab_id, reason: "unseen_child" });
+          }
         }
         tree = r.tree;
         replayedCloses.set(op.close_id, r.undo);
@@ -793,7 +840,7 @@ export function rebase(remote: TabTree, pending: readonly TabOp[]): RebaseResult
       }
       case "undo": {
         const token = replayedCloses.get(op.token.close_id) ?? op.token;
-        const r = undo(tree, token);
+        const r = undo(tree, token, op.restore_retired);
         if (!r.ok) {
           dropped.push({ op, reason: r.error.code });
           break;
@@ -821,7 +868,7 @@ export function rebase(remote: TabTree, pending: readonly TabOp[]): RebaseResult
       }
     }
   }
-  return { tree, dropped, renumbered };
+  return { tree, dropped, renumbered, reparented };
 }
 
 // ---------------------------------------------------------------------------
@@ -971,7 +1018,7 @@ export function checkInvariants(tree: TabTree): string[] {
     if (n.tab_id !== id) v.push(`I5: open key ${id} holds tab ${n.tab_id}`);
     if (Object.hasOwn(tree.history, id)) v.push(`I5: ${id} is both open and closed`);
     if (n.mothership !== tree.mothership) v.push(`I5: ${id} belongs to ${n.mothership}`);
-    if (n.pruned_at !== undefined) v.push(`I5: open tab ${id} has pruned_at`);
+    if (n.pruned_at !== undefined && n.pruned_at !== tree.restoring?.[id]?.pruned_at) v.push(`I5: open tab ${id} has pruned_at without a pending restore`);
   }
   for (const id of closedIds) {
     const n = tree.history[id].node;
@@ -1162,7 +1209,20 @@ export function createInMemoryTabTreeAdapter(): TabTreeAdapter {
     async save(projectId, mothership, snapshot) {
       const stored = current(projectId, mothership);
       if (snapshot.version !== stored.version) return { status: "conflict", current: stored };
-      const parsed = fromSnapshot(JSON.parse(JSON.stringify(snapshot)) as TabTreeSnapshot);
+      const incoming = JSON.parse(JSON.stringify(snapshot)) as TabTreeSnapshot;
+      const restoreErrors: string[] = [];
+      for (const [id, node] of Object.entries(incoming.tree?.nodes ?? {})) {
+        if (node.pruned_at === undefined) continue;
+        const retired = stored.tree.history[id]?.node;
+        const fields = ["pruned_at", "side", "kind", "ref", "branch_origin", "opened_by", "hier_number", "public_number"] as const;
+        if (!retired || fields.some((field) => JSON.stringify(node[field]) !== JSON.stringify(retired[field]))) {
+          restoreErrors.push(`${id}: restore differs from retired node`);
+        } else {
+          delete node.pruned_at; // Server acknowledgment; clients send the original timestamp.
+        }
+      }
+      if (restoreErrors.length) return { status: "rejected", reasons: restoreErrors };
+      const parsed = fromSnapshot(incoming);
       if (!parsed.ok) return { status: "rejected", reasons: [parsed.error.message] };
       const tree = parsed.tree;
       if (tree.mothership !== mothership) return { status: "rejected", reasons: [`tree is for ${tree.mothership}`] };
