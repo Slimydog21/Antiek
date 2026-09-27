@@ -43,7 +43,7 @@ def _container(keypair, text: str) -> bytes:
 def _registry_with(keypair, text: str) -> ExportRegistry:
     reg = ExportRegistry()
     r = read_antiek(_container(keypair, text))
-    reg.record_export(r.document_id, r.content_tiptap)
+    reg.record_export(r.document_id, r.content_tiptap, exporter_id="user-test")
     return reg
 
 
