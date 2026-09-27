@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import pytest
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
-from interfaces.research.api.books import _admit_private_document, register_book_routes
+from interfaces.research.api.books import _admit_private_document
 from runtime.db_lock import connect_read, connect_write
 from substrate.books.ingest import register_book
 from substrate.books.serve_guard import serve_full_text_guarded
@@ -31,21 +31,32 @@ def seed(db: str, *, document_id: str = "private-a", owner: str = "owner-a") -> 
         register_book(con, document_id=document_id, content_class=PRIVATE)
 
 
-def client(db: str, monkeypatch) -> TestClient:
+def owner_id(email: str) -> str:
+    from substrate.multi_user.auth import subject_owner_id
+
+    return subject_owner_id("magic_link", email)
+
+
+def session(email: str) -> dict[str, str]:
+    from substrate.multi_user.auth import mint_session_cookie
+
+    return {"ANTIEK_SESSION": mint_session_cookie("magic_link", email, email)}
+
+
+def client(db: str, monkeypatch, tmp_path) -> TestClient:
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
-    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "owner@example.test")
-    app = FastAPI()
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "pa01-serving-session-secret-" + "x" * 48)
+    monkeypatch.setenv(
+        "ANTIEK_OPERATOR_EMAIL", "owner-a@example.test,owner-b@example.test"
+    )
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    from interfaces.research.api.app import create_app
 
-    @app.middleware("http")
-    async def test_identity(request: Request, call_next):
-        owner = request.headers.get("x-test-owner")
-        if owner:
-            request.state.user_id = owner
-            request.state.auth_method = "antiek_session_cookie"
-        return await call_next(request)
-
-    register_book_routes(app)
-    return TestClient(app)
+    return TestClient(
+        create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    )
 
 
 def test_canonical_registration_and_exact_owner_serve(tmp_path):
@@ -267,14 +278,20 @@ def test_noncanonical_private_owner_never_declares_body(tmp_path, stored_owner):
 def test_book_detail_and_body_foreign_equal_missing(tmp_path, monkeypatch):
     db = str(tmp_path / "graph.duckdb")
     ensure_initialized(db)
-    seed(db)
-    api = client(db, monkeypatch)
+    seed(db, owner=owner_id("owner-a@example.test"))
+    api = client(db, monkeypatch, tmp_path)
     for path in ("/books/private-a", "/books/private-a/full-text", "/books/private-a/owner-full-text"):
-        foreign = api.get(path, headers={"x-test-owner": "owner-b"})
-        missing = api.get(path.replace("private-a", "absent"), headers={"x-test-owner": "owner-b"})
+        foreign = api.get(path, cookies=session("owner-b@example.test"))
+        missing = api.get(
+            path.replace("private-a", "absent"),
+            cookies=session("owner-b@example.test"),
+        )
         assert foreign.status_code == missing.status_code == 404
         assert foreign.json() == missing.json() == {"detail": "book_not_found"}
-    own = api.get("/books/private-a/owner-full-text", headers={"x-test-owner": "owner-a"})
+    own = api.get(
+        "/books/private-a/owner-full-text",
+        cookies=session("owner-a@example.test"),
+    )
     assert own.status_code == 200, own.text
     assert own.json()["full_text"] == BODY
     assert own.json()["ad_eligible"] is False
@@ -282,33 +299,38 @@ def test_book_detail_and_body_foreign_equal_missing(tmp_path, monkeypatch):
 
 def test_signed_session_cannot_read_foreign_private_book(tmp_path, monkeypatch):
     from interfaces.research.api.app import create_app
-    from substrate.auth import mint_session_cookie
 
     db = str(tmp_path / "graph.duckdb")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
     monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
     monkeypatch.setenv("ANTIEK_AUTH_SECRET", "pa01-signed-cookie-secret-" + "x" * 48)
-    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "owner@example.test")
+    monkeypatch.setenv(
+        "ANTIEK_OPERATOR_EMAIL", "owner-a@example.test,owner-b@example.test"
+    )
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     ensure_initialized(db)
-    seed(db)
+    seed(db, owner=owner_id("owner-a@example.test"))
     api = TestClient(create_app(register_wrestling=False, register_providers=False, cors_origins=[]))
-    def cookies(owner: str) -> dict[str, str]:
-        return {"ANTIEK_SESSION": mint_session_cookie(user_id=owner, email="owner@example.test")}
 
     for path in ("/books/private-a", "/books/private-a/owner-full-text", "/books/private-a/ask"):
         if path.endswith("/ask"):
-            foreign = api.post(path, cookies=cookies("owner-b"), json={"question": "private?"})
+            foreign = api.post(
+                path, cookies=session("owner-b@example.test"),
+                json={"question": "private?"},
+            )
         else:
-            foreign = api.get(path, cookies=cookies("owner-b"))
+            foreign = api.get(path, cookies=session("owner-b@example.test"))
         assert foreign.status_code == 404, foreign.text
         assert foreign.json() == {"detail": "book_not_found"}
-    own = api.get("/books/private-a/owner-full-text", cookies=cookies("owner-a"))
+    own = api.get(
+        "/books/private-a/owner-full-text",
+        cookies=session("owner-a@example.test"),
+    )
     assert own.status_code == 200, own.text
     assert own.json()["full_text"] == BODY
     anonymous = api.get("/books/private-a/owner-full-text")
-    assert anonymous.status_code in {401, 403}
+    assert anonymous.status_code == 401
     assert BODY not in anonymous.text
 
 
@@ -319,39 +341,39 @@ def test_private_html_sidecar_and_takedown(tmp_path, monkeypatch):
     db = str(tmp_path / "graph.duckdb")
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
     ensure_initialized(db)
-    seed(db)
+    seed(db, owner=owner_id("owner-a@example.test"))
     with connect_write(db, purpose="pa01-sidecar") as con:
         store_reader_html(
             con, document_id="private-a",
             main_html="<article><h1>Private title</h1><p>Private HTML passage.</p></article>",
             source_kind="upload",
         )
-    api = client(db, monkeypatch)
-    owner = {"x-test-owner": "owner-a"}
-    foreign = {"x-test-owner": "owner-b"}
-    own = api.get("/books/private-a/owner-full-text", headers=owner)
+    api = client(db, monkeypatch, tmp_path)
+    owner = session("owner-a@example.test")
+    foreign = session("owner-b@example.test")
+    own = api.get("/books/private-a/owner-full-text", cookies=owner)
     assert own.status_code == 200
     assert own.json()["content_format"] == "html"
     assert "Private HTML passage" in own.json()["full_text"]
-    denied = api.get("/books/private-a/owner-full-text", headers=foreign)
+    denied = api.get("/books/private-a/owner-full-text", cookies=foreign)
     assert denied.status_code == 404
     assert "Private HTML passage" not in denied.text
     with connect_write(db, purpose="pa01-takedown") as con:
         assert take_down(con, "private-a", reason="PA01 test")
-    taken = api.get("/books/private-a/owner-full-text", headers=owner)
+    taken = api.get("/books/private-a/owner-full-text", cookies=owner)
     assert taken.status_code == 200
     assert taken.json()["full_text"] is None
     assert taken.json()["snippet"] is None
     assert taken.json()["servability"] == "taken_down"
     for path in ("/books/private-a", "/books/private-a/full-text", "/books/private-a/owner-full-text"):
-        denied = api.get(path, headers=foreign)
-        missing = api.get(path.replace("private-a", "absent"), headers=foreign)
+        denied = api.get(path, cookies=foreign)
+        missing = api.get(path.replace("private-a", "absent"), cookies=foreign)
         assert denied.status_code == missing.status_code == 404
         assert denied.json() == missing.json() == {"detail": "book_not_found"}
     with connect_write(db, purpose="pa01-reinstate") as con:
         assert reinstate(con, "private-a")
-    restored = api.get("/books/private-a/owner-full-text", headers=owner)
+    restored = api.get("/books/private-a/owner-full-text", cookies=owner)
     assert restored.status_code == 200
     assert restored.json()["servability"] == "private_authored"
     assert restored.json()["full_text"] is None  # takedown purged stored bytes
-    assert api.get("/books/private-a", headers=foreign).status_code == 404
+    assert api.get("/books/private-a", cookies=foreign).status_code == 404

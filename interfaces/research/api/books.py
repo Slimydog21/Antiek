@@ -31,7 +31,7 @@ import logging
 import re
 import threading
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import replace
 from html.parser import HTMLParser
 from typing import Any, Literal, cast
@@ -41,6 +41,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
 from substrate.books.serve import ServeResult
+from substrate.constants import FORBIDDEN_OWNERS, USER_AUTHORED_PRIVATE_CONTENT_CLASS
+from substrate.multi_user.auth import VerifiedPrincipal
 from substrate.research_bridge.ingest import (
     CHUNK_TARGET_CHARS,
     _chunk_paragraphs,
@@ -150,28 +152,35 @@ def _reader_owner_id(request: Request) -> str:
 
 
 def _private_owner_id(request: Request) -> str | None:
-    """A verified, non-fallback account identity for the new private class."""
+    """Return owner authority only from the subject-backed auth middleware."""
     state = getattr(request, "state", None)
     user_id = getattr(state, "user_id", None)
     auth_method = getattr(state, "auth_method", None)
+    principal = getattr(state, "verified_principal", None)
+    if not isinstance(principal, VerifiedPrincipal):
+        return None
+    owner_id = principal.owner_user_id
     if (
-        auth_method in _OWNER_AUTH_METHODS
-        and isinstance(user_id, str)
-        and user_id.strip()
-        and user_id.strip() != "__operator__"
+        auth_method != "antiek_session_cookie"
+        or principal.auth_method != "antiek_session_cookie"
+        or bool(getattr(state, "legacy_session", False))
+        or not isinstance(user_id, str)
+        or not isinstance(owner_id, str)
+        or not owner_id
+        or owner_id != owner_id.strip()
+        or owner_id.casefold() in FORBIDDEN_OWNERS
+        or user_id != owner_id
     ):
-        return user_id
-    return None
+        return None
+    return owner_id
 
 
 def _admit_private_document(
     con: Any, document_id: str, request: Request, *, owner_route: bool = True,
     row: tuple[Any, ...] | None = None,
     missing_ok: bool = False,
-) -> None:
+) -> str | None:
     """Hide a private document before detail, body, anchor, or ask work."""
-    from substrate.constants import USER_AUTHORED_PRIVATE_CONTENT_CLASS
-
     if row is None:
         row = con.execute(
             "SELECT d.content_class, d.owner_user_id, b.pre_takedown_content_class, "
@@ -182,7 +191,7 @@ def _admit_private_document(
         ).fetchone()
     if row is None:
         if missing_ok:
-            return
+            return None
         raise HTTPException(status_code=404, detail="book_not_found")
     private_authored = row[0] == USER_AUTHORED_PRIVATE_CONTENT_CLASS or (
         len(row) >= 4 and bool(row[3])
@@ -200,6 +209,8 @@ def _admit_private_document(
             or owner_id != stored_owner
         ):
             raise HTTPException(status_code=404, detail="book_not_found")
+        return owner_id
+    return None
 
 # arXiv canonical-link prefix; the serve guard stamps result.canonical_url as
 # ``https://arxiv.org/abs/<arxiv_id>`` for an arXiv doc (None otherwise), so the
@@ -2132,23 +2143,30 @@ def register_book_routes(app: FastAPI) -> None:
         """
         from runtime.db_lock import connect_read
 
-        if _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
-            raise HTTPException(status_code=403, detail="owner_read_required")
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            _admit_private_document(con, document_id, request)
+            con.execute("BEGIN TRANSACTION")
+            admitted_owner = _admit_private_document(con, document_id, request)
+            if admitted_owner is None and _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
+                raise HTTPException(status_code=403, detail="owner_read_required")
             result = serve_full_text_guarded(
                 con, document_id, owner=True,
-                owner_user_id=_private_owner_id(request),
+                owner_user_id=admitted_owner,
             )
             result = _prefer_reader_html_body(con, document_id, result, owner=True)
+            if not result.found:
+                raise HTTPException(status_code=404, detail="book_not_found")
+            response = _full_text_response(result)
+            con.execute("COMMIT")
+        except BaseException:
+            with suppress(Exception):
+                con.execute("ROLLBACK")
+            raise
         finally:
             con.close()
-        if not result.found:
-            raise HTTPException(status_code=404, detail="book_not_found")
         _record_arxiv_serve_audit(db, document_id, result)
-        return _full_text_response(result)
+        return response
 
     @app.post(
         "/books/{document_id}/ad-impressions",

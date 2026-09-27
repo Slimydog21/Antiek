@@ -20,6 +20,7 @@ carries body text — ids, offsets, hashes only.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -30,7 +31,6 @@ from interfaces.research.api.books import (
     _OWNER_READ_POLICY_TAG,
     _admit_private_document,
     _owner_read_policy_tag,
-    _private_owner_id,
     _reader_owner_id,
     _resolve_db_path,
 )
@@ -480,34 +480,44 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         from runtime.db_lock import connect_read
         from substrate.books.serve_guard import serve_full_text_guarded
 
-        if _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
-            raise HTTPException(status_code=403, detail="owner_read_required")
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            _admit_private_document(con, document_id, request)
+            con.execute("BEGIN TRANSACTION")
+            admitted_owner = _admit_private_document(con, document_id, request)
+            if (
+                admitted_owner is None
+                and _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG
+            ):
+                raise HTTPException(status_code=403, detail="owner_read_required")
             result = serve_full_text_guarded(
                 con, document_id, owner=True,
-                owner_user_id=_private_owner_id(request),
+                owner_user_id=admitted_owner,
             )
             if not result.found:
                 raise HTTPException(status_code=404, detail="book_not_found")
             if result.full_text is None:
                 raise HTTPException(status_code=403, detail="anchor_map_gated")
             manifest = build_anchor_map(con, document_id=document_id, served_text=result.full_text)
+            response = AnchorMapOut(
+                document_id=document_id,
+                chunks=[
+                    AnchorMapChunkOut(
+                        chunk_id=c.chunk_id,
+                        section_path=c.section_path,
+                        body_start=c.body_start,
+                        body_end=c.body_end,
+                        node_text_sha256=c.node_text_sha256,
+                    )
+                    for c in manifest.chunks
+                ],
+                complete=manifest.complete,
+            )
+            con.execute("COMMIT")
+        except BaseException:
+            with suppress(Exception):
+                con.execute("ROLLBACK")
+            raise
         finally:
             con.close()
-        return AnchorMapOut(
-            document_id=document_id,
-            chunks=[
-                AnchorMapChunkOut(
-                    chunk_id=c.chunk_id,
-                    section_path=c.section_path,
-                    body_start=c.body_start,
-                    body_end=c.body_end,
-                    node_text_sha256=c.node_text_sha256,
-                )
-                for c in manifest.chunks
-            ],
-            complete=manifest.complete,
-        )
+        return response
