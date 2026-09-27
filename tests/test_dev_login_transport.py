@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
+import shlex
+import shutil
 import subprocess
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -161,13 +165,6 @@ def test_mac_mini_curl_mode_sends_token_only_in_body(tmp_path: Path) -> None:
                 return
             observed["target"] = self.path
             observed["body"] = self.rfile.read(int(self.headers["Content-Length"]))
-            process_list = subprocess.run(
-                ["ps", "-axo", "command"], capture_output=True, text=True, check=True,
-            ).stdout
-            observed["curl_argv"] = [
-                line for line in process_list.splitlines()
-                if "curl" in line and "/auth/dev-login" in line
-            ]
             self.send_response(302)
             self.send_header("Location", "/memory")
             self.end_headers()
@@ -185,15 +182,34 @@ def test_mac_mini_curl_mode_sends_token_only_in_body(tmp_path: Path) -> None:
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
     try:
-        env = os.environ.copy()
-        env.update({
+        real_curl = shutil.which("curl")
+        python3 = shutil.which("python3")
+        assert real_curl is not None
+        assert python3 is not None
+        argv_log = tmp_path / "curl-argv.jsonl"
+        curl_wrapper = tmp_path / "curl-capture"
+        curl_wrapper.write_text(
+            f"#!{sys.executable}\n"
+            "import json, os, sys\n"
+            f"with open({str(argv_log)!r}, 'a', encoding='utf-8') as log:\n"
+            "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+            f"os.execv({real_curl!r}, [{real_curl!r}, *sys.argv[1:]])\n"
+        )
+        curl_wrapper.chmod(0o700)
+        bash_env = tmp_path / "bash-env"
+        bash_env.write_text(f'curl() {{ {shlex.quote(str(curl_wrapper))} "$@"; }}\n')
+        (tmp_path / ".curlrc").write_text("")
+        env = {
+            "PATH": os.pathsep.join((str(Path(python3).parent), "/usr/bin", "/bin")),
+            "CURL_HOME": str(tmp_path),
+            "BASH_ENV": str(bash_env),
             "ANTIEK_PLATFORM": str(tmp_path),
             "ANTIEK_API_BASE_URL": f"http://127.0.0.1:{server.server_port}",
             "ANTIEK_OWNER_LOGIN_MODE": "curl",
             "ANTIEK_COOKIE_JAR": str(tmp_path / "cookies"),
             "ANTIEK_DEV_LOGIN_TOKEN": _TOKEN,
             "ANTIEK_AUTH_SECRET": _SECRET,
-        })
+        }
         script = Path(__file__).resolve().parents[1] / "scripts/mac-mini-owner-dev-login.sh"
         completed = subprocess.run(
             ["bash", str(script), "/memory"], env=env,
@@ -204,8 +220,12 @@ def test_mac_mini_curl_mode_sends_token_only_in_body(tmp_path: Path) -> None:
         body = parse_qs(observed["body"].decode("ascii"))
         assert body["token"] == [_TOKEN]
         assert body["next"] == ["/memory"]
-        assert observed["curl_argv"]
-        assert _TOKEN not in "\n".join(observed["curl_argv"])
+        curl_argv = [json.loads(line) for line in argv_log.read_text().splitlines()]
+        dev_login_url = f"{env['ANTIEK_API_BASE_URL']}{_PATH}"
+        post_argv = [argv for argv in curl_argv if dev_login_url in argv]
+        assert len(post_argv) == 1
+        assert post_argv[0][post_argv[0].index("--data-binary") + 1] == "@-"
+        assert _TOKEN not in json.dumps(curl_argv)
         assert _TOKEN not in completed.stdout + completed.stderr
         assert _TOKEN not in "\n".join(observed["access_lines"])
         assert not list(tmp_path.glob("*.html"))
@@ -224,6 +244,8 @@ def test_mac_mini_curl_mode_sends_token_only_in_body(tmp_path: Path) -> None:
         assert observed["get_count"] == 1
         assert "auth_method" not in denied.stdout
         assert _TOKEN not in denied.stdout + denied.stderr
+        assert _TOKEN not in argv_log.read_text()
+        assert _TOKEN not in "\n".join(observed["access_lines"])
     finally:
         server.shutdown()
         server.server_close()
