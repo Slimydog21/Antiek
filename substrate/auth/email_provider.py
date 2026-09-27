@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -33,13 +34,26 @@ class EmailDeliveryFailure(Exception):
 
 @dataclass(frozen=True)
 class OutboundEmail:
-    """A single outbound email's payload."""
+    """A single outbound email's payload.
+
+    Callers must reuse a stable key for retries of the same payload. The HTTP
+    providers retain send keys for 24 hours; this field alone is not a durable
+    application outbox.
+    """
 
     to: str
     subject: str
     text_body: str
     html_body: str | None = None
     from_addr: str = "Antiek <noreply@antiek.ai>"
+    idempotency_key: str | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        key = self.idempotency_key
+        if key is not None and (
+            not isinstance(key, str) or re.fullmatch(r"[A-Za-z0-9._~-]{1,256}", key) is None
+        ):
+            raise ValueError("idempotency key must be 1-256 URL-safe characters")
 
 
 @dataclass(frozen=True)
@@ -68,13 +82,21 @@ def _utc_iso() -> str:
 class MockEmailProvider:
     """Test + local-dev provider. Records every send in-memory and
     prints to stdout so the operator can copy a magic link out of the
-    server log when running locally without Resend."""
+    server log when running locally without Resend. Its keyed replay cache
+    lasts until ``clear``; it does not simulate the HTTP providers' expiry."""
 
     name: str = "mock"
     log_to_stdout: bool = True
     sent: list[EmailRecord] = field(default_factory=list)
+    _idempotent: dict[str, EmailRecord] = field(default_factory=dict, init=False, repr=False)
 
     def send(self, email: OutboundEmail) -> EmailRecord:
+        if email.idempotency_key is not None:
+            prior = self._idempotent.get(email.idempotency_key)
+            if prior is not None:
+                if prior.email != email:
+                    raise EmailDeliveryFailure("idempotency key used for a different email")
+                return prior
         record = EmailRecord(
             email=email,
             provider=self.name,
@@ -82,6 +104,8 @@ class MockEmailProvider:
             sent_at=_utc_iso(),
         )
         self.sent.append(record)
+        if email.idempotency_key is not None:
+            self._idempotent[email.idempotency_key] = record
         if self.log_to_stdout:
             print(
                 f"\n[MockEmailProvider] to={email.to} "
@@ -94,6 +118,7 @@ class MockEmailProvider:
 
     def clear(self) -> None:
         self.sent.clear()
+        self._idempotent.clear()
 
 
 @dataclass
@@ -116,9 +141,7 @@ class ResendEmailProvider:
 
     def send(self, email: OutboundEmail) -> EmailRecord:
         if not self.api_key:
-            raise EmailDeliveryFailure(
-                "RESEND_API_KEY not configured; cannot send via Resend."
-            )
+            raise EmailDeliveryFailure("RESEND_API_KEY not configured; cannot send via Resend.")
         payload = {
             "from": email.from_addr,
             "to": [email.to],
@@ -128,14 +151,17 @@ class ResendEmailProvider:
         if email.html_body:
             payload["html"] = email.html_body
         data = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        if email.idempotency_key is not None:
+            headers["Idempotency-Key"] = email.idempotency_key
         req = urllib.request.Request(
             self.api_url,
             data=data,
             method="POST",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -143,9 +169,7 @@ class ResendEmailProvider:
                 parsed = json.loads(body) if body else {}
         except urllib.error.HTTPError as exc:
             err_body = exc.read().decode("utf-8", errors="replace")
-            raise EmailDeliveryFailure(
-                f"Resend HTTP {exc.code}: {err_body}"
-            ) from exc
+            raise EmailDeliveryFailure(f"Resend HTTP {exc.code}: {err_body}") from exc
         except urllib.error.URLError as exc:
             raise EmailDeliveryFailure(f"Resend transport error: {exc}") from exc
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -222,14 +246,17 @@ class AgentMailEmailProvider:
         if email.html_body:
             payload["html"] = email.html_body
         data = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        if email.idempotency_key is not None:
+            headers["Idempotency-Key"] = email.idempotency_key
         req = urllib.request.Request(
             url,
             data=data,
             method="POST",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -240,9 +267,7 @@ class AgentMailEmailProvider:
             # AgentMail returns 429 with Retry-After for rate limits;
             # we surface the body so the caller's error logging can
             # see the structured shape.
-            raise EmailDeliveryFailure(
-                f"AgentMail HTTP {exc.code}: {err_body}"
-            ) from exc
+            raise EmailDeliveryFailure(f"AgentMail HTTP {exc.code}: {err_body}") from exc
         except urllib.error.URLError as exc:
             raise EmailDeliveryFailure(f"AgentMail transport error: {exc}") from exc
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
