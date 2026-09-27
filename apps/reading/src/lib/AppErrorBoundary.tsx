@@ -94,7 +94,14 @@ class RootErrorBoundary extends Component<BoundaryProps, BoundaryState> {
 
   render(): ReactNode {
     if (!this.state.hasError) return this.props.children;
-    const staleDeploy = isChunkLoadError(this.state.error) || getChunkLoadFailure() !== null;
+    // The fallback must not be able to throw past itself (critic F-03b):
+    // anything the stale-deploy check throws degrades to the generic copy.
+    let staleDeploy = false;
+    try {
+      staleDeploy = isChunkLoadError(this.state.error) || getChunkLoadFailure() !== null;
+    } catch {
+      staleDeploy = false;
+    }
     return (
       <main
         role="alert"

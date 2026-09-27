@@ -18,6 +18,22 @@ import { AppErrorBoundary } from "./AppErrorBoundary";
 const { routerOverride } = vi.hoisted(() => ({
   routerOverride: { current: null as null | (() => unknown) },
 }));
+// F-03b (MiMo delta): the fallback's stale-deploy check must not be able to
+// throw past the fallback. `chunkOverride` makes the helpers throw per test.
+const { chunkOverride } = vi.hoisted(() => ({
+  chunkOverride: { isChunkLoadError: null as null | (() => boolean), getChunkLoadFailure: null as null | (() => unknown) },
+}));
+vi.mock("./chunkLoadRecovery", async (orig) => {
+  const real = await orig<typeof import("./chunkLoadRecovery")>();
+  return {
+    ...real,
+    isChunkLoadError: (err: unknown) =>
+      chunkOverride.isChunkLoadError ? chunkOverride.isChunkLoadError() : real.isChunkLoadError(err),
+    getChunkLoadFailure: () =>
+      chunkOverride.getChunkLoadFailure ? chunkOverride.getChunkLoadFailure() : real.getChunkLoadFailure(),
+  };
+});
+
 vi.mock("react-router-dom", async (orig) => {
   const real = await orig<typeof import("react-router-dom")>();
   return {
@@ -41,6 +57,8 @@ beforeEach(() => {
 
 afterEach(() => {
   routerOverride.current = null;
+  chunkOverride.isChunkLoadError = null;
+  chunkOverride.getChunkLoadFailure = null;
   cleanup();
   consoleError.mockRestore();
 });
@@ -221,6 +239,43 @@ describe("AppErrorBoundary (F-01 / A-02)", () => {
         </AppErrorBoundary>,
       );
       expect(screen.getByText("Something broke on this page.")).toBeTruthy();
+    });
+  });
+
+  describe("the fallback itself cannot throw (critic F-03b)", () => {
+    function expectGenericFallback() {
+      expect(screen.getByText("Something broke on this page.")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Go to Home" }).getAttribute("href")).toBe("/home");
+      expect(document.querySelectorAll("a[href], button").length).toBeGreaterThanOrEqual(2);
+    }
+
+    it("isChunkLoadError throwing still renders the generic copy with Reload + Go to Home", () => {
+      chunkOverride.isChunkLoadError = () => {
+        throw new Error("isChunkLoadError exploded");
+      };
+      render(
+        <MemoryRouter>
+          <AppErrorBoundary>
+            <Thrower when />
+          </AppErrorBoundary>
+        </MemoryRouter>,
+      );
+      expectGenericFallback();
+    });
+
+    it("getChunkLoadFailure throwing still renders the generic copy with Reload + Go to Home", () => {
+      chunkOverride.getChunkLoadFailure = () => {
+        throw new Error("getChunkLoadFailure exploded");
+      };
+      render(
+        <MemoryRouter>
+          <AppErrorBoundary>
+            <Thrower when />
+          </AppErrorBoundary>
+        </MemoryRouter>,
+      );
+      expectGenericFallback();
     });
   });
 });
