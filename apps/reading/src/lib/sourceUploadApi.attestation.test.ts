@@ -29,7 +29,8 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 describe("attestation mapper (never yields the legacy public token)", () => {
-  const capabilities: Array<[string, unknown]> = [
+  // Capability answers as the API would send them; null = the route 404s.
+  const answers: Array<[string, unknown]> = [
     ["null (route absent / error)", null],
     ["empty accepted", { accepted: [], authored_default: null, aliases: {} }],
     ["legacy-only accepted", { accepted: ["personal_reading", LEGACY_PUBLIC_TOKEN], authored_default: LEGACY_PUBLIC_TOKEN, aliases: {} }],
@@ -37,33 +38,50 @@ describe("attestation mapper (never yields the legacy public token)", () => {
     ["A06-capable", { accepted: ["personal_reading", "user_authored_private", LEGACY_PUBLIC_TOKEN], authored_default: "user_authored_private", aliases: { [LEGACY_PUBLIC_TOKEN]: "user_authored_private" } }],
   ];
 
-  it.each(capabilities)("authored with capability %s never maps to the legacy token", (_name, cap) => {
-    let token: string | undefined;
+  async function loadCapability(answer: unknown) {
+    uploadApi.resetUploadAttestationsCache();
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValueOnce(
+      answer === null ? new Response("Not Found", { status: 404 }) : json(answer),
+    );
+    return uploadApi.loadUploadAttestations();
+  }
+
+  it.each(answers)("authored with capability %s never puts the legacy token on the wire", async (_name, answer) => {
+    const cap = await loadCapability(answer);
+    let attestation: uploadApi.AcquisitionAttestation | undefined;
     try {
-      token = uploadApi.attestationToken("authored", cap as uploadApi.UploadAttestationCapability | null);
+      attestation = uploadApi.attestationToken("authored", cap);
     } catch (error) {
       expect(error).toBeInstanceOf(uploadApi.SourceUploadError);
       expect((error as uploadApi.SourceUploadError).code).toBe("authored_unavailable");
     }
-    expect(token).not.toBe(LEGACY_PUBLIC_TOKEN);
-    if (token !== undefined) expect(token).toBe("user_authored_private");
+    if (attestation === undefined) return;
+    apiFetchMock.mockResolvedValueOnce(
+      json({ document_id: "d", detected_kind: "md", reader_html_available: true, chunk_count: 0 }, 201),
+    );
+    await uploadApi.uploadSource(new File(["x"], "draft.md"), attestation);
+    const form = (apiFetchMock.mock.calls.at(-1)![1] as RequestInit).body as FormData;
+    expect(form.get("acquisition_attestation")).not.toBe(LEGACY_PUBLIC_TOKEN);
+    expect(form.get("acquisition_attestation")).toBe("user_authored_private");
   });
 
-  it("maps authored to user_authored_private only when the API lists that exact token", () => {
-    expect(uploadApi.attestationToken("authored", { accepted: ["personal_reading", "user_authored_private"], authored_default: "user_authored_private", aliases: {} })).toBe("user_authored_private");
+  it("issues an authored attestation only when the API lists that exact token", async () => {
+    expect(typeof uploadApi.attestationToken("authored", await loadCapability({ accepted: ["personal_reading", "user_authored_private"], authored_default: "user_authored_private", aliases: {} }))).toBe("object");
     expect(() => uploadApi.attestationToken("authored", null)).toThrow(uploadApi.SourceUploadError);
-    expect(() => uploadApi.attestationToken("authored", { accepted: ["personal_reading"], authored_default: "user_authored_private", aliases: {} })).toThrow(uploadApi.SourceUploadError);
+    const withoutToken = await loadCapability({ accepted: ["personal_reading"], authored_default: "user_authored_private", aliases: {} });
+    expect(() => uploadApi.attestationToken("authored", withoutToken)).toThrow(uploadApi.SourceUploadError);
   });
 
-  it("maps personal reading to personal_reading regardless of capability (unchanged path)", () => {
+  it("maps personal reading to personal_reading regardless of capability (unchanged path)", async () => {
     expect(uploadApi.attestationToken("personal", null)).toBe("personal_reading");
-    expect(uploadApi.attestationToken("personal", { accepted: [], authored_default: null, aliases: {} })).toBe("personal_reading");
+    expect(uploadApi.attestationToken("personal", await loadCapability({ accepted: [], authored_default: null, aliases: {} }))).toBe("personal_reading");
   });
 
   it("uploadSource refuses the legacy token at runtime without any request", async () => {
     apiFetchMock.mockReset();
     await expect(
-      uploadApi.uploadSource(new File(["x"], "draft.md"), LEGACY_PUBLIC_TOKEN as uploadApi.AcquisitionAttestation),
+      uploadApi.uploadSource(new File(["x"], "draft.md"), LEGACY_PUBLIC_TOKEN as unknown as uploadApi.AcquisitionAttestation),
     ).rejects.toMatchObject({ code: "authored_unavailable" });
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
@@ -125,5 +143,81 @@ describe("no code path can send the legacy public token for authored content", (
   it("the comment stripper keeps string content and removes comments", () => {
     expect(stripComments('const u = "https://x"; // user_' + 'owned').trimEnd()).toBe('const u = "https://x";');
     expect(stripComments("/* " + LEGACY_PUBLIC_TOKEN + " */ const a = 1;")).toBe(" const a = 1;");
+  });
+});
+
+describe("the authored token cannot leave without a verified capability (review R-01, R-02)", () => {
+  const uploadCalls = () =>
+    apiFetchMock.mock.calls.filter(([url]) => String(url).endsWith("/sources/upload"));
+  const capabilityAnswer = (accepted: string[]) =>
+    json({ accepted, authored_default: "user_authored_private", aliases: {} });
+
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    uploadApi.resetUploadAttestationsCache();
+  });
+
+  it("a raw 'user_authored_private' string is refused before any request", async () => {
+    await expect(
+      // @ts-expect-error a raw string is not a verified authored attestation
+      uploadApi.uploadSource(new File(["# Draft"], "draft.md"), "user_authored_private"),
+    ).rejects.toMatchObject({ code: "authored_unavailable" });
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("after a 404 capability the raw string and the mapper both still refuse", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("Not Found", { status: 404 }));
+    const cap = await uploadApi.loadUploadAttestations();
+    expect(cap).toBeNull();
+    expect(() => uploadApi.attestationToken("authored", cap)).toThrow(uploadApi.SourceUploadError);
+    await expect(
+      uploadApi.uploadSource(
+        new File(["# Draft"], "draft.md"),
+        "user_authored_private" as unknown as uploadApi.AcquisitionAttestation,
+      ),
+    ).rejects.toMatchObject({ code: "authored_unavailable" });
+    expect(uploadCalls()).toHaveLength(0);
+  });
+
+  it("a hand-built capability object does not unlock the authored token", async () => {
+    const forgedCapability = {
+      accepted: ["personal_reading", "user_authored_private"],
+      authored_default: "user_authored_private",
+      aliases: {},
+    } as unknown as uploadApi.UploadAttestationCapability;
+    expect(uploadApi.authoredUploadSupported(forgedCapability)).toBe(false);
+    expect(() => uploadApi.attestationToken("authored", forgedCapability)).toThrow(uploadApi.SourceUploadError);
+    await expect(
+      uploadApi.uploadSource(
+        new File(["# Draft"], "draft.md"),
+        {} as unknown as uploadApi.AcquisitionAttestation,
+      ),
+    ).rejects.toMatchObject({ code: "authored_unavailable" });
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("a verified capability yields an opaque value that uploadSource sends as the token", async () => {
+    apiFetchMock.mockResolvedValueOnce(capabilityAnswer(["personal_reading", "user_authored_private"]));
+    const cap = await uploadApi.loadUploadAttestations();
+    const attestation = uploadApi.attestationToken("authored", cap);
+    expect(typeof attestation).not.toBe("string");
+    apiFetchMock.mockResolvedValueOnce(
+      json({ document_id: "doc-upload-1", detected_kind: "md", reader_html_available: true, chunk_count: 0 }, 201),
+    );
+    await uploadApi.uploadSource(new File(["# Draft"], "draft.md"), attestation);
+    expect(uploadCalls()).toHaveLength(1);
+    const form = (uploadCalls()[0][1] as RequestInit).body as FormData;
+    expect(form.get("acquisition_attestation")).toBe("user_authored_private");
+  });
+
+  it("the loaded capability is frozen, so a consumer cannot fake the advertisement", async () => {
+    apiFetchMock.mockResolvedValueOnce(capabilityAnswer(["personal_reading"]));
+    const cap = await uploadApi.loadUploadAttestations();
+    expect(cap).not.toBeNull();
+    expect(Object.isFrozen(cap)).toBe(true);
+    expect(Object.isFrozen(cap!.accepted)).toBe(true);
+    expect(() => (cap!.accepted as string[]).push("user_authored_private")).toThrow(TypeError);
+    expect(uploadApi.authoredUploadSupported(cap)).toBe(false);
+    expect(() => uploadApi.attestationToken("authored", cap)).toThrow(uploadApi.SourceUploadError);
   });
 });

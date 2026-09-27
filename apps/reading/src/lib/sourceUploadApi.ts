@@ -10,30 +10,62 @@ export const SOURCE_UPLOAD_EXTENSIONS = [
   ".odt", ".ods", ".odp", ".rtf", ".csv",
 ] as const;
 
-/** The tokens this client may send as `acquisition_attestation`.
+/* Privacy gate for authored uploads (A-06 client half; backend INBOX
+ * 2026-09-27T00:40Z). The legacy authored token is never sent: on an API
+ * without A-06 it mints a publicly served class (substrate/books/servability.py
+ * maps it to platform_authored). The private token is sent only when the API
+ * advertised it, and that is enforced here, not by callers:
  *
- * Deliberately excludes the legacy authored token: on an API without the A-06
- * fix it mints a publicly served class (substrate/books/servability.py maps it
- * to platform_authored), so sending it for a private draft publishes it.
- * `user_authored_private` is sent only when the API advertises it (see
- * loadUploadAttestations). Backend INBOX 2026-09-27T00:40Z. */
-export type AcquisitionAttestation = "personal_reading" | "user_authored_private";
+ *   - loadUploadAttestations() is the only source of an
+ *     UploadAttestationCapability (frozen, recorded in a module WeakSet);
+ *   - attestationToken("authored", cap) issues a VerifiedAuthoredAttestation
+ *     (an opaque object, recorded in a module WeakSet) only for such a
+ *     capability that lists the private token;
+ *   - uploadSource() accepts "personal_reading" or an issued attestation and
+ *     nothing else. A raw string is a type error and a runtime
+ *     SourceUploadError("authored_unavailable"), before any request.
+ *
+ * The raw private token is deliberately not exported. */
+const AUTHORED_PRIVATE_TOKEN = "user_authored_private";
 
-/** What the user chose in the form; mapped to a wire token by attestationToken. */
+declare const capabilityBrand: unique symbol;
+declare const authoredBrand: unique symbol;
+
+/** GET /sources/upload/attestations (static; served by an A-06-capable API).
+ * Obtainable only from loadUploadAttestations(); frozen. */
+export interface UploadAttestationCapability {
+  readonly accepted: readonly string[];
+  readonly authored_default: string | null;
+  readonly aliases: Readonly<Record<string, string>>;
+  readonly [capabilityBrand]: true;
+}
+
+/** Proof that the user chose "authored" against a verified capability that
+ * lists the private token. Opaque; issued only by attestationToken(). */
+export interface VerifiedAuthoredAttestation {
+  readonly [authoredBrand]: true;
+}
+
+/** What uploadSource() accepts. */
+export type AcquisitionAttestation = "personal_reading" | VerifiedAuthoredAttestation;
+
+/** What the user chose in the form; mapped by attestationToken. */
 export type AttestationChoice = "personal" | "authored";
 
-export const AUTHORED_PRIVATE_TOKEN = "user_authored_private";
+const verifiedCapabilities = new WeakSet<object>();
+const issuedAuthoredAttestations = new WeakSet<object>();
 
-const SENDABLE_ATTESTATIONS: ReadonlySet<string> = new Set<AcquisitionAttestation>([
-  "personal_reading",
-  AUTHORED_PRIVATE_TOKEN,
-]);
-
-/** GET /sources/upload/attestations (static; served by an A-06-capable API). */
-export interface UploadAttestationCapability {
-  accepted: string[];
-  authored_default: string | null;
-  aliases: Record<string, string>;
+/** The wire token for an attestation, or authored_unavailable. */
+function wireAttestation(attestation: unknown): string {
+  if (attestation === "personal_reading") return "personal_reading";
+  if (
+    typeof attestation === "object" &&
+    attestation !== null &&
+    issuedAuthoredAttestations.has(attestation)
+  ) {
+    return AUTHORED_PRIVATE_TOKEN;
+  }
+  throw new SourceUploadError("authored_unavailable");
 }
 
 export interface SourceUploadResponse {
@@ -82,19 +114,26 @@ function codeForStatus(status: number): SourceUploadErrorCode {
  * and `aliases` are deliberately ignored: they are advisory, and following an
  * alias could lead back to the legacy public class. */
 export function authoredUploadSupported(capability: UploadAttestationCapability | null): boolean {
-  return capability !== null && capability.accepted.includes(AUTHORED_PRIVATE_TOKEN);
+  return (
+    capability !== null &&
+    verifiedCapabilities.has(capability) &&
+    capability.accepted.includes(AUTHORED_PRIVATE_TOKEN)
+  );
 }
 
-/** Map the form choice to the wire token. Authored content maps to
- * `user_authored_private` or throws `authored_unavailable`; there is no
- * fallback to a legacy or public class and no inferred publication consent. */
+/** Map the form choice to what uploadSource() accepts. Authored content
+ * yields a VerifiedAuthoredAttestation (sent as `user_authored_private`) or
+ * throws `authored_unavailable`; there is no fallback to a legacy or public
+ * class and no inferred publication consent. */
 export function attestationToken(
   choice: AttestationChoice,
   capability: UploadAttestationCapability | null,
 ): AcquisitionAttestation {
   if (choice === "personal") return "personal_reading";
-  if (authoredUploadSupported(capability)) return AUTHORED_PRIVATE_TOKEN;
-  throw new SourceUploadError("authored_unavailable");
+  if (!authoredUploadSupported(capability)) throw new SourceUploadError("authored_unavailable");
+  const attestation = Object.freeze({}) as VerifiedAuthoredAttestation;
+  issuedAuthoredAttestations.add(attestation);
+  return attestation;
 }
 
 function parseCapability(raw: unknown): UploadAttestationCapability | null {
@@ -107,11 +146,13 @@ function parseCapability(raw: unknown): UploadAttestationCapability | null {
       if (typeof v === "string") aliases[k] = v;
     }
   }
-  return {
-    accepted: o.accepted as string[],
+  const capability = Object.freeze({
+    accepted: Object.freeze([...(o.accepted as string[])]),
     authored_default: typeof o.authored_default === "string" ? o.authored_default : null,
-    aliases,
-  };
+    aliases: Object.freeze(aliases),
+  }) as unknown as UploadAttestationCapability;
+  verifiedCapabilities.add(capability);
+  return capability;
 }
 
 let attestationsPromise: Promise<UploadAttestationCapability | null> | null = null;
@@ -163,16 +204,15 @@ export async function uploadSource(
   signal?: AbortSignal,
   title?: string,
 ): Promise<SourceUploadResponse> {
-  // Runtime guard behind the type: nothing but a sendable token leaves here.
-  if (!SENDABLE_ATTESTATIONS.has(acquisitionAttestation)) {
-    throw new SourceUploadError("authored_unavailable");
-  }
+  // Runtime guard behind the type: nothing but "personal_reading" or an
+  // issued authored attestation leaves here, and it is checked before any request.
+  const wireToken = wireAttestation(acquisitionAttestation);
   const validationError = validateSourceUpload(file);
   if (validationError) throw new SourceUploadError(validationError);
 
   const form = new FormData();
   form.append("file", file);
-  form.append("acquisition_attestation", acquisitionAttestation);
+  form.append("acquisition_attestation", wireToken);
   form.append("title", title?.trim() || fileStem(file.name));
 
   try {
