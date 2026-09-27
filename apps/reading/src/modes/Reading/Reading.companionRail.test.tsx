@@ -22,7 +22,7 @@
  *     build exists; no status number, server code or error_type renders.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { BookDetail, FullTextResponse } from "../../api/books";
@@ -621,15 +621,159 @@ describe("the companion section's states (lane B's pinned wire shape)", () => {
     fireEvent.click(within(section).getByRole("button", { name: "Refresh" }));
     await within(section).findByText("Rebuilding the companion…");
     const refresh = within(section).getByRole("button", { name: "Refresh" }) as HTMLButtonElement;
-    expect(refresh.disabled).toBe(true);
+    expect(refresh.disabled).toBe(false);
+    expect(refresh.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(refresh);
     expect(companionCalls("POST")).toHaveLength(1);
     // The companion in hand stays readable while it rebuilds.
     expect(section.textContent).toContain("the companion's first finding");
     post.resolve(jsonResponse(builtPayload({ rebuilt_at: "2026-09-27T08:00:00Z" })));
     await waitFor(() => expect(section.textContent).toContain("rebuilt 2026-09-27"));
-    expect((within(section).getByRole("button", { name: "Refresh" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(refresh.getAttribute("aria-disabled")).toBe("false");
     expect(section.textContent).not.toContain("Rebuilding the companion…");
+  });
+
+  it.each([true, false])("keeps visible content honest after refresh failure (last build %s) with one Retry", async (hasLastBuild) => {
+    route(true, { get: () => jsonResponse(builtPayload()), post: () => rebuildFailed(hasLastBuild) });
+    await renderRail();
+    const section = await openCompanion();
+    const refresh = await within(section).findByRole("button", { name: "Refresh" });
+    refresh.focus();
+    fireEvent.click(refresh);
+    await within(section).findByText(REBUILD_FAILED);
+    expect(document.activeElement).toBe(within(section).getByRole("status"));
+    expect(section.textContent).toContain("the companion's first finding");
+    expect(section.textContent).not.toContain(BUILD_FAILED);
+    expect(within(section).getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    expect(within(section).queryByRole("button", { name: "Refresh" })).toBeNull();
+  });
+
+  it("keeps Refresh focused and rejects two clicks in the same React batch", async () => {
+    const post = deferred<Response>();
+    route(true, { get: () => jsonResponse(builtPayload()), post: () => post.promise });
+    await renderRail();
+    const section = await openCompanion();
+    const refresh = await within(section).findByRole("button", { name: "Refresh" });
+    refresh.focus();
+    act(() => {
+      fireEvent.click(refresh);
+      fireEvent.click(refresh);
+      expect(companionCalls("POST")).toHaveLength(1);
+    });
+    expect(document.activeElement).toBe(refresh);
+    expect(refresh.getAttribute("aria-disabled")).toBe("true");
+    expect(refresh.getAttribute("aria-describedby")).toBe(within(section).getByRole("status").id);
+    await act(async () => post.resolve(jsonResponse(builtPayload())));
+    expect(document.activeElement).toBe(refresh);
+    expect(within(section).getByRole("status").textContent).toBe("Companion ready.");
+  });
+
+  it.each(["read", "build"])("Retry after failed %s keeps focus on the status through success", async (stage) => {
+    const answer = deferred<Response>();
+    let attempts = 0;
+    route(true, {
+      get: () => {
+        if (stage === "build") return jsonResponse({ document_id: "doc-1", state: "not_built" });
+        attempts += 1;
+        if (attempts === 1) throw new TypeError("network");
+        return answer.promise;
+      },
+      post: () => ++attempts === 1 ? rebuildFailed(false) : answer.promise,
+    });
+    await renderRail();
+    const section = await openCompanion();
+    const retry = await within(section).findByRole("button", { name: "Retry" });
+    retry.focus();
+    fireEvent.click(retry);
+    const status = within(section).getByRole("status");
+    expect(document.activeElement).toBe(status);
+    await act(async () => answer.resolve(jsonResponse(builtPayload())));
+    expect(document.activeElement).toBe(status);
+    expect(status.textContent).toBe("Companion ready.");
+  });
+
+  it("refresh 404 removes stale content and controls, with the same unavailable line and a focus destination", async () => {
+    route(true, { get: () => jsonResponse(builtPayload()), post: () => jsonResponse({ detail: "book_not_found" }, 404) });
+    await renderRail();
+    const section = await openCompanion();
+    const refresh = await within(section).findByRole("button", { name: "Refresh" });
+    refresh.focus();
+    fireEvent.click(refresh);
+    await within(section).findByText(UNAVAILABLE);
+    expect(companionRegion(section).textContent?.trim()).toBe(UNAVAILABLE);
+    expect(section.textContent).not.toMatch(SERVER_DETAIL);
+    expect(within(section).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(within(section).queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(document.activeElement).toBe(within(section).getByRole("status"));
+  });
+
+  it("a late unavailable response does not move focus back from the disclosure", async () => {
+    const post = deferred<Response>();
+    route(true, { get: () => jsonResponse(builtPayload()), post: () => post.promise });
+    await renderRail();
+    const section = await openCompanion();
+    const refresh = await within(section).findByRole("button", { name: "Refresh" });
+    refresh.focus();
+    fireEvent.click(refresh);
+    const header = companionHeader(section);
+    header.focus();
+    fireEvent.click(header);
+    await act(async () => post.resolve(jsonResponse({ detail: "book_not_found" }, 404)));
+    expect(document.activeElement).toBe(header);
+    expect(companionRegion(section).hidden).toBe(true);
+  });
+
+  it.each([true, false])("malformed refresh error never invents last-build availability (visible build %s)", async (inHand) => {
+    route(true, {
+      get: () => jsonResponse(inHand ? builtPayload() : { document_id: "doc-1", state: "not_built" }),
+      post: () => jsonResponse("not a valid error body", 503),
+    });
+    await renderRail();
+    const section = await openCompanion();
+    if (inHand) fireEvent.click(await within(section).findByRole("button", { name: "Refresh" }));
+    await within(section).findByText(inHand ? REBUILD_FAILED : "Couldn't refresh the companion.");
+    expect(within(section).getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(companionCalls("GET")).toHaveLength(1);
+    expect(companionCalls("POST")).toHaveLength(1);
+    expect(section.textContent).not.toContain(BUILD_FAILED);
+  });
+
+  it.each(["built", "not_built"])("switching documents during GET ignores the old %s response and never starts its rebuild", async (oldState) => {
+    const oldGet = deferred<Response>();
+    const second = builtPayload({ document_id: "doc-2", claims: [{ evidence_id: "second", kind: "insight", node_ref: "node:2", text: "second document finding" }] });
+    route(true, { get: (url) => url.includes("/doc-1/") ? oldGet.promise : jsonResponse(second) });
+    const { rerenderRail } = await renderRail();
+    await openCompanion();
+    expect(companionCalls("GET")).toHaveLength(1);
+    rerenderRail("doc-2");
+    const section = await openCompanion();
+    await within(section).findByText("second document finding");
+    await act(async () => oldGet.resolve(jsonResponse(oldState === "built" ? builtPayload() : { document_id: "doc-1", state: "not_built" })));
+    expect(section.textContent).toContain("second document finding");
+    expect(section.textContent).not.toContain("the companion's first finding");
+    expect(companionCalls("GET")).toHaveLength(2);
+    expect(companionCalls("POST")).toHaveLength(0);
+  });
+
+  it.each(["success", "failure"])("switching documents during POST ignores its %s and does not recover the old document", async (outcome) => {
+    const oldPost = deferred<Response>();
+    const second = builtPayload({ document_id: "doc-2", claims: [{ evidence_id: "second", kind: "insight", node_ref: "node:2", text: "second document finding" }] });
+    route(true, {
+      get: (url) => jsonResponse(url.includes("/doc-1/") ? { document_id: "doc-1", state: "not_built" } : second),
+      post: () => oldPost.promise,
+    });
+    const { rerenderRail } = await renderRail();
+    await openCompanion();
+    await waitFor(() => expect(companionCalls("POST")).toHaveLength(1));
+    rerenderRail("doc-2");
+    const section = await openCompanion();
+    await within(section).findByText("second document finding");
+    await act(async () => oldPost.resolve(outcome === "success" ? jsonResponse(builtPayload()) : rebuildFailed(true)));
+    expect(section.textContent).toContain("second document finding");
+    expect(section.textContent).not.toContain("the companion's first finding");
+    expect(companionCalls("GET")).toHaveLength(2);
+    expect(companionCalls("POST")).toHaveLength(1);
+    expect(String(companionCalls("POST")[0][0])).toContain("/documents/doc-1/");
   });
 
   it("collapsing and re-opening does not refetch", async () => {

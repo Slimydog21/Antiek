@@ -71,7 +71,7 @@ export interface NotBuiltCompanion {
   state: "not_built";
 }
 
-export type CompanionWithheldReason = "taken_down" | "not_servable" | (string & {});
+export type CompanionWithheldReason = "taken_down" | "not_servable";
 
 export interface WithheldCompanion {
   document_id: string;
@@ -91,12 +91,12 @@ export interface EvidenceRowItem {
 
 /**
  * The refresh route's 503: the rebuild failed. `hasLastBuild` says whether the
- * server still holds a previous build (parsed from `has_last_build`; false when
- * the body is unparsable). The message deliberately names neither the server
+ * server still holds a previous build (parsed from `has_last_build`; null when
+ * that fact is unknown). The message deliberately names neither the server
  * code nor the error_type.
  */
 export class CompanionRebuildFailedError extends ApiError {
-  readonly hasLastBuild: boolean;
+  readonly hasLastBuild: boolean | null;
 
   constructor(body: string) {
     super("companion rebuild failed", 503, body);
@@ -114,17 +114,21 @@ function companionUrl(documentId: string, suffix = ""): string {
   return `${API_BASE}/documents/${encodeURIComponent(documentId)}/companion${suffix}?format=json`;
 }
 
-function parseHasLastBuild(body: string): boolean {
+function parseHasLastBuild(body: string): boolean | null {
   try {
     const parsed: unknown = JSON.parse(body);
-    return (
+    if (
       typeof parsed === "object" &&
       parsed !== null &&
-      (parsed as { has_last_build?: unknown }).has_last_build === true
-    );
+      "has_last_build" in parsed &&
+      typeof parsed.has_last_build === "boolean"
+    ) {
+      return parsed.has_last_build;
+    }
   } catch {
-    return false;
+    // An invalid error response tells us nothing about the saved build.
   }
+  return null;
 }
 
 function malformed(raw: unknown): ApiError {
@@ -143,10 +147,11 @@ export function parseCompanionResponse(raw: unknown): CompanionResponse {
     case "not_built":
       return { document_id: documentId, state: "not_built" };
     case "withheld":
+      if (body.reason !== "taken_down" && body.reason !== "not_servable") throw malformed(raw);
       return {
         document_id: documentId,
         state: "withheld",
-        reason: typeof body.reason === "string" ? body.reason : "not_servable",
+        reason: body.reason,
       };
     case "built":
     case undefined: {

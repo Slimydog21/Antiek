@@ -80,6 +80,11 @@ describe("getDocumentCompanion — the state union", () => {
     expect(res).toEqual({ document_id: "doc-1", state: "withheld", reason });
   });
 
+  it.each([undefined, null, 7, "", "new_reason"])("rejects an invalid withheld reason: %s", async (reason) => {
+    apiFetchMock.mockResolvedValue(json({ document_id: "doc-1", state: "withheld", reason }));
+    await expect(getDocumentCompanion("doc-1")).rejects.toBeInstanceOf(ApiError);
+  });
+
   it("a malformed legacy payload is rejected, never rendered", async () => {
     apiFetchMock.mockResolvedValue(json({ document_id: "doc-1", claims: "nope" }));
     await expect(getDocumentCompanion("doc-1")).rejects.toBeInstanceOf(ApiError);
@@ -132,11 +137,11 @@ describe("refreshDocumentCompanion — the explicit rebuild", () => {
     expect((err as CompanionRebuildFailedError).hasLastBuild).toBe(expected);
   });
 
-  it("503 with an unparsable body defaults hasLastBuild to false", async () => {
+  it("503 with an unparsable body leaves last-build availability unknown", async () => {
     apiFetchMock.mockResolvedValue(json("<html>bad gateway</html>", 503));
     const err = await refreshDocumentCompanion("doc-1").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CompanionRebuildFailedError);
-    expect((err as CompanionRebuildFailedError).hasLastBuild).toBe(false);
+    expect((err as CompanionRebuildFailedError).hasLastBuild).toBeNull();
   });
 
   it("the typed error carries no server code or error_type in its message", async () => {
