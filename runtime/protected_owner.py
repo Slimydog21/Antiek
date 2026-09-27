@@ -262,7 +262,7 @@ class OwnerAdmission(Generic[Handle]):  # noqa: UP046 - Python 3.11 syntax
         with self._condition:
             self._check_identity()
             if self._state is OwnerState.REFUSED:
-                raise SourceChanged("source identity changed")
+                raise AdmissionError("owner refused")
             self._state = OwnerState.FREEZING
             self._reap_warm()
             self._condition.notify_all()

@@ -120,6 +120,9 @@ def test_freeze_blocks_admission_and_drain_waits_for_promised_child():
     with pytest.raises(DrainTimeout):
         owner.drain(deadline=time.monotonic() + 0.02)
     assert owner.state is OwnerState.REFUSED
+    with pytest.raises(AdmissionError, match="owner refused") as refused:
+        owner.freeze()
+    assert type(refused.value) is AdmissionError
     assert child.use() is opened[0]
     assert closed == []
     child.close()
