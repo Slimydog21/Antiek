@@ -30,15 +30,24 @@ Honesty rules (mirror settings_models_admin):
 
 Persistence: ``(ANTIEK_HOME|~/.antiek)/settings/lineup.json`` (override
 ``ANTIEK_LINEUP_PATH``), mirroring the user_models.json precedent —
-no DuckDB, single-writer API process, lenient reads, fsynced writes.
+no DuckDB. A missing file reads as "no assignments yet"; an unreadable or
+malformed one is a typed 503 and is never overwritten (it holds every
+owner's rows). PUT's read-modify-write runs under an flock, and writes are
+fsynced renames of a unique temp file (handlers run in a threadpool, so
+``--workers 1`` alone does not serialize them).
 Owner-scoped: one assignment map per owner user id; ``__operator__``
 gets the same shape as any owner.
 """
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
+import threading
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -62,8 +71,11 @@ from substrate.dispatch.lineup_catalog import (
 )
 
 # ---------------------------------------------------------------------------
-# Registry — owner-scoped assignments, JSON sidecar, lenient reads.
+# Registry — owner-scoped assignments, JSON sidecar, integrity-checked reads.
 # ---------------------------------------------------------------------------
+
+_REGISTRY_LOCK = threading.Lock()
+_REGISTRY_UNREADABLE = "lineup_registry_unreadable"  # string: the UI renders str details
 
 
 def _registry_path() -> Path:
@@ -74,26 +86,71 @@ def _registry_path() -> Path:
     return Path(home) / ".antiek" / "settings" / "lineup.json"
 
 
+def _unreadable() -> HTTPException:
+    return HTTPException(status_code=503, detail=_REGISTRY_UNREADABLE)
+
+
 def _load_registry() -> dict[str, Any]:
+    """Read the multi-owner registry; only a MISSING file is empty.
+
+    Anything else that cannot be trusted (I/O error, bad JSON, wrong shape)
+    raises a typed 503 rather than reading as "every slot Auto": that answer
+    would be false, and a PUT built on it would erase every other owner.
+    """
     path = _registry_path()
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return {}
+    except (OSError, ValueError) as exc:
+        raise _unreadable() from exc
     if not isinstance(raw, dict):
-        return {}
+        raise _unreadable()
+    owners = raw.get("owners", {})
+    if not isinstance(owners, dict):
+        raise _unreadable()
+    for owner_map in owners.values():
+        if not isinstance(owner_map, dict) or not all(
+            isinstance(owner_map.get(k, {}), dict) for k in ("general", "advanced")
+        ):
+            raise _unreadable()
     return raw
 
 
-def _write_registry_unlocked(registry: dict[str, Any]) -> None:
+@contextmanager
+def _registry_guard() -> Iterator[None]:
+    """Serialize read-modify-write across threads (lock) and processes (flock)."""
     path = _registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(
-        json.dumps(registry, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    tmp.replace(path)
+    with _REGISTRY_LOCK:
+        fd = os.open(f"{path}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
+
+def _write_registry_unlocked(registry: dict[str, Any]) -> None:
+    """Atomic, durable replace. Caller holds ``_registry_guard``."""
+    path = _registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(tmp, "x", encoding="utf-8") as handle:
+            handle.write(json.dumps(registry, indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+        dir_fd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    finally:
+        with suppress(FileNotFoundError):
+            tmp.unlink()
 
 
 # ---------------------------------------------------------------------------
@@ -432,22 +489,22 @@ def put_lineup(request: Request, update: LineupUpdate) -> LineupResponse:
 
     advanced = validate_advanced(update.advanced)
 
-    registry = _load_registry()
-    owners = registry.get("owners", {})
-
     def as_json(map_: dict[str, LineupChoice | None]) -> dict[str, Any]:
         return {
             k: v.model_dump(mode="json") if v is not None else None
             for k, v in map_.items()
         }
 
-    owners[owner] = {
-        "general": as_json(general),
-        "advanced": as_json(advanced),
-        "updated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-    }
-    registry["owners"] = owners
-    _write_registry_unlocked(registry)
+    with _registry_guard():
+        registry = _load_registry()
+        owners = registry.get("owners", {})
+        owners[owner] = {
+            "general": as_json(general),
+            "advanced": as_json(advanced),
+            "updated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+        registry["owners"] = owners
+        _write_registry_unlocked(registry)
     return _view(request)
 
 

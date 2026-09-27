@@ -192,7 +192,7 @@ def test_6_roundtrip_event_carries_the_importer():
 
     reg = ExportRegistry()
     doc = {"type": "doc", "content": [{"type": "paragraph"}]}
-    reg.record_export("doc-1", doc)
+    reg.record_export("doc-1", doc, exporter_id="tester-1")
     rt = classify_roundtrip("doc-1", doc, reg, user_id="reader-7")
     assert rt.is_roundtrip and rt.event is not None
     assert rt.event["user_id"] == "reader-7"
@@ -200,21 +200,36 @@ def test_6_roundtrip_event_carries_the_importer():
 
 
 def test_6_verdict_excludes_operator_and_unknown_actor():
-    from services.demand_gate.analysis import compute_verdict
+    from datetime import UTC, datetime, timedelta
+
+    from services.demand_gate.analysis import EXPORT_OFFERED, compute_verdict
     from services.demand_gate.roundtrip_detector import ROUNDTRIP_EVENT_TYPE
 
+    start = datetime(2026, 10, 1, tzinfo=UTC)
+    at = (start + timedelta(days=1)).isoformat()
+
     def ev(uid):
-        e = {"action_type": ROUNDTRIP_EVENT_TYPE, "document_id": "d", "classification": "traveled_and_changed"}
+        e = {"action_type": ROUNDTRIP_EVENT_TYPE, "document_id": "d", "classification": "traveled_and_changed",
+             "exported_by": ["reader-3"], "emitted_at": at}
         if uid is not ...:
             e["user_id"] = uid
         return e
 
     op = "operator-1"
-    assert compute_verdict([ev("reader-2")], operator_user_id=op).counts["organic_roundtrip"] == 1
-    assert compute_verdict([ev(op)], operator_user_id=op).counts["organic_roundtrip"] == 0
+    testers = frozenset({"reader-2", "reader-3", "reader-4", "reader-5", "reader-6"})
+    offered = {"action_type": EXPORT_OFFERED, "user_id": "reader-2", "emitted_at": at}
+
+    def organic(e):
+        return compute_verdict(
+            [offered, e], operator_user_id=op, tester_ids=testers,
+            window_start=start, window_end=start + timedelta(days=14),
+        ).counts["organic_roundtrip"]
+
+    assert organic(ev("reader-2")) == 1
+    assert organic(ev(op)) == 0
     # The detector's own pre-fix event: no user_id key at all. Not admissible.
-    assert compute_verdict([ev(...)], operator_user_id=op).counts["organic_roundtrip"] == 0
-    assert compute_verdict([ev(None)], operator_user_id=op).counts["organic_roundtrip"] == 0
+    assert organic(ev(...)) == 0
+    assert organic(ev(None)) == 0
 
 
 # ── #13 / #14 books: born classified; a skipped ingest is a skip ──
