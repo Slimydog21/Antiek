@@ -2,7 +2,7 @@ import { LemonTag } from "../lemon";
 import { placeholderSpine } from "./placeholderSpine";
 import { cardLift } from "../../design/motion";
 import type { BookSummary } from "../../api/books";
-import { servabilityLabel } from "../../api/books";
+import { servabilityLabel, UNKNOWN_RIGHTS_LABEL } from "../../api/books";
 
 /**
  * WorkCard — one work on the M2 Library browse shelf (Read SPR-09).
@@ -49,6 +49,15 @@ function sourceLine(work: BookSummary): string {
       return "Catalog record";
     case "taken_down":
       return "Removed from the shelf";
+    case "personal_readable":
+      return "Your document";
+    default: {
+      // Exhaustive at compile time; a runtime value from a newer backend
+      // renders a neutral line instead of an empty one (A-01).
+      const _exhaustive: never = work.servability;
+      void _exhaustive;
+      return UNKNOWN_RIGHTS_LABEL;
+    }
   }
 }
 

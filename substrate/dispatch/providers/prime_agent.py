@@ -112,8 +112,19 @@ class PrimeAgentProvider:
         )
 
     def normalize_usage(self, raw_usage: dict[str, object]) -> NormalizedUsage:
+        """Prime Agent reports no token counts, and this adapter says so.
+
+        The binary's receipt carries state, detail, duration and captured
+        output only, so there is nothing to meter. ``reported=False`` is the
+        honest state: the router bills the call ceiling (one input token per
+        prompt byte plus the output budget) rather than a definite zero. It is
+        declared here, not left to the accident of an empty ``raw_usage``, so a
+        later change that populates ``raw_usage`` with anything but real counts
+        cannot silently flip the router back to trusting zeros. See
+        ``docs/decisions/prime-agent-usage-ceiling.md``.
+        """
         del raw_usage
-        return NormalizedUsage(input_tokens=0, output_tokens=0)
+        return NormalizedUsage(input_tokens=0, output_tokens=0, reported=False)
 
 
 def _request_id(*, model: str, prompt: str) -> str:
