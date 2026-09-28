@@ -123,14 +123,19 @@ def test_zero_buyer_accrues_no_dollars_but_tracks_attention(db):
 
 
 def test_unknown_rights_holder_goes_to_flagged_bucket(db):
-    """A gated book with no rights holder accrues to the unattributed
-    bucket, never to a wrong holder, and never disburses."""
+    """An ad-eligible book with no rights holder accrues to the unattributed
+    bucket, never to a wrong holder, and never disburses. (A GATED book is
+    not ad-eligible and is refused before the bucket; see
+    test_a_gated_book_accrues_nothing.)"""
     con = connect_write(db, purpose="setup")
     try:
         insert_document(con, document_id="doc-orphan", source_tier=2,
                         document_type="book", title="Orphan", raw_text="x")
-        # register with no rights_holder_name → gated, ip_holder_id NULL
-        bingest.register_book(con, document_id="doc-orphan", provenance="online")
+        # public domain → servable, ad-eligible; no rights_holder_name →
+        # ip_holder_id NULL
+        bingest.register_book(
+            con, document_id="doc-orphan", content_class="public_domain",
+        )
     finally:
         con.close()
     con = connect_write(db, purpose="accrue")
@@ -144,7 +149,37 @@ def test_unknown_rights_holder_goes_to_flagged_bucket(db):
     assert result.unattributed is True
     assert result.ip_holder_id == UNATTRIBUTED_RIGHTS_BUCKET
     assert result.accrued_to_escrow_cents == 0  # held, not mis-accrued
+    assert result.reason == "unattributed_revenue_held"
     assert is_disbursement_unlocked(connect_read(db), UNATTRIBUTED_RIGHTS_BUCKET) is False
+
+
+def test_a_gated_book_accrues_nothing(db):
+    """A gated (pre-onboarded, body withheld) book is not ad-eligible: the
+    reader shows it no ad border, and the settlement refuses its revenue for
+    the shared predicate's reason instead of escrowing it."""
+    con = connect_write(db, purpose="setup")
+    try:
+        insert_document(con, document_id="doc-gated", source_tier=2,
+                        document_type="book", title="Gated", raw_text="x")
+        asset = bingest.register_book(
+            con, document_id="doc-gated", rights_holder_name="Gated Press",
+        )
+        holder = asset.ip_holder_id
+    finally:
+        con.close()
+    con = connect_write(db, purpose="accrue")
+    try:
+        result = accrue_reading_session(
+            con, document_id="doc-gated", session_id="s1",
+            impressions=[_imp("doc-gated", "slot:doc-gated:p0:top", 800)],
+        )
+        holder_after = ip_holders.get(con, holder)
+    finally:
+        con.close()
+    assert result.accruable is False
+    assert result.reason == "not_ad_eligible:body_not_servable"
+    assert result.accrued_to_escrow_cents == 0
+    assert holder_after.escrow_balance_usd == 0
 
 
 def test_client_priced_book_impression_endpoint_is_tombstoned(db):
@@ -208,3 +243,33 @@ def test_reconciliation_no_double_count_on_reemit(db):
     # Escrow reflects one impression's publisher share, not two.
     from decimal import Decimal
     assert holder_after.escrow_balance_usd <= Decimal("10.00")
+
+
+def test_dangling_holder_refuses_before_any_ledger_write(db, monkeypatch):
+    """Codex critic on #3415: documents.ip_holder_id has no FK, so a dangling
+    id reaches accrue_reading_session. accrue_escrow raises on it (C09), but the
+    payouts ledger was already written by then: a partial accrual. The holder
+    must be checked before ANY write, as the other escrow writers do."""
+    import substrate.marketplace_metrics.book_escrow as be
+
+    _book_with_publisher(db, "doc-dangle", "MIT Press")
+    con = connect_write(db, purpose="dangle")
+    try:
+        con.execute("UPDATE documents SET ip_holder_id = 'iph-gone' WHERE document_id = 'doc-dangle'")
+    finally:
+        con.close()
+    ledger_calls: list[str] = []
+    monkeypatch.setattr(be, "_accrue_payouts_ledger",
+                        lambda con, **kw: ledger_calls.append(kw["document_id"]))
+
+    con = connect_write(db, purpose="accrue")
+    try:
+        with pytest.raises(ip_holders.UnknownIpHolderError):
+            accrue_reading_session(
+                con, document_id="doc-dangle", session_id="s-dangle",
+                impressions=[_imp("doc-dangle", "slot:doc-dangle:p0:top", 1000,
+                                  session="s-dangle")],
+            )
+    finally:
+        con.close()
+    assert ledger_calls == [], "the payouts ledger was written before the holder check"

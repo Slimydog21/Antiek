@@ -41,6 +41,9 @@ class IngestResult:
     # "returned_unmodified" | "traveled_and_changed", else None (not a tracked
     # round-trip, or no registry passed).
     roundtrip: str | None = None
+    # The detector's typed event (actor, exporters, time) — kept, not discarded,
+    # so a caller can append it to the event log the verdict reads.
+    roundtrip_event: dict | None = None
 
 
 def ingest_antiek(
@@ -80,6 +83,7 @@ def ingest_antiek(
                 False, None, True, "container signature did not verify; quarantined"
             )
         roundtrip = None
+        roundtrip_event = None
         if export_registry is not None:
             rt = classify_roundtrip(
                 result.document_id,
@@ -88,9 +92,15 @@ def ingest_antiek(
                 user_id=user_id,
             )
             roundtrip = rt.classification if rt.is_roundtrip else None
+            roundtrip_event = rt.event
         # The SIGNED structured content — NOT the rendered projection.html.
         return IngestResult(
-            True, result.content_tiptap, False, None, roundtrip=roundtrip
+            True,
+            result.content_tiptap,
+            False,
+            None,
+            roundtrip=roundtrip,
+            roundtrip_event=roundtrip_event,
         )
 
     # 2. single-file .antiek.html — verify the whole-file signature, then

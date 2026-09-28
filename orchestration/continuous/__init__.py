@@ -32,9 +32,13 @@ from .budget import DaemonBudget, DaemonBudgetError
 from .daemon import (
     DaemonConfig,
     DaemonState,
+    DbFlagSource,
+    FlagSource,
     SpawnFn,
+    make_emit_spawn_fn,
     no_op_spawn,
     run_one_iteration,
+    spawn_enabled,
 )
 from .research_topic import ResearchTopic, topic_id_for
 from .scoring import (
@@ -58,16 +62,20 @@ __all__ = [
     "DaemonBudgetError",
     "DaemonConfig",
     "DaemonState",
+    "DbFlagSource",
+    "FlagSource",
     "GapEntry",
     "GapRegistry",
     "ResearchTopic",
     "SpawnFn",
     "Suggestion",
     "build_suggestions",
+    "make_emit_spawn_fn",
     "no_op_spawn",
     "normalize_gap_description",
     "policy_is_daemon",
     "run_one_iteration",
     "score_gap",
+    "spawn_enabled",
     "topic_id_for",
 ]

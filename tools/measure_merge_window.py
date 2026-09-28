@@ -95,7 +95,10 @@ def measure_one(*, n_docs: int, n_chunks: int, dim: int) -> float:
         con.close()
     _populate_staging(staging, n_docs=n_docs, n_chunks=n_chunks, dim=dim)
     result = merge_staging(live_db=live, staging_db=staging)
-    assert result.total_inserted >= n_chunks, "measurement merged fewer rows than staged"
+    if result.total_inserted < n_chunks:
+        raise RuntimeError(
+            f"measurement merged {result.total_inserted} rows but staged {n_chunks}"
+        )
     return result.window_s
 
 

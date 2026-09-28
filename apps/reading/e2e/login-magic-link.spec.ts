@@ -17,6 +17,14 @@ test.describe("login magic-link surface", () => {
         body: JSON.stringify({ available: false, count: null }),
       }),
     );
+    // Hermetic identity: signed out. The suite used to leave /auth/me
+    // unmocked and relied on ANY failure reading as "signed out"; since FFX
+    // SPR-01 (F-03) an unreachable API renders the outage screen instead of
+    // /login, so the signed-out answer is stated explicitly. Tests that sign
+    // in register their own /auth/me 200 later, which takes precedence.
+    await page.route("**/auth/me", (route) =>
+      route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "no session" }) }),
+    );
   });
 
   test("A-TRANSPORT-FETCH shows Cannot reach Antiek API on fetch failure", async ({
