@@ -256,7 +256,7 @@ _WRITE_LOG_PURPOSE = "_write_log_internal"
 _SAME_FILE_DIFFERENT_CONFIG = (
     "Can't open a connection to same database file with a different configuration"
 )
-_READ_MODE_RETRY_WINDOW_S = 0.25
+_READ_MODE_RETRY_WINDOW_S = 2.0
 _READ_MODE_RETRY_INTERVAL_S = 0.01
 
 
