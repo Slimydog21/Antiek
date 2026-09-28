@@ -65,9 +65,11 @@ jobs:
             --cov-report=xml:coverage.xml
           rc=$?
           echo "pytest_exit=$rc (informational — does not gate)"
-          if [ -f coverage.xml ]; then
-            python - <<'PY'
+          python - <<'PY'
           import xml.etree.ElementTree as ET, os
+          if not os.path.isfile("coverage.xml"):
+              print("COVERAGE line_rate=? (coverage.xml not produced)")
+              raise SystemExit(0)
           root = ET.parse("coverage.xml").getroot()
           line = root.attrib.get("line-rate", "?")
           branch = root.attrib.get("branch-rate", "?")
@@ -88,7 +90,6 @@ jobs:
                   fh.write("This job is informational and cannot block a merge. ")
                   fh.write("See this workflow's header for the flip-to-blocking condition.\n")
           PY
-          fi
           exit 0
 
       - name: Upload coverage.xml
