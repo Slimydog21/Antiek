@@ -90,6 +90,7 @@ class EvidenceDetailOut(BaseModel):
     claim: ClaimDetail | None
     evidence: dict[str, Any] | None
     process: dict[str, Any] | None
+    bite: dict[str, Any] | None
     """The tombstone honesty line (set when the row is tombstoned)."""
     note: str | None
 
@@ -256,6 +257,7 @@ def register_companion_routes(app: FastAPI) -> None:
             claim = None
             evidence = None
             process = None
+            bite_detail = None
             if row.kind == "claim":
                 node_ref = next((r for r in row.refs if r.startswith("node:")), None)
                 node_id = node_ref[5:] if node_ref else None
@@ -289,7 +291,43 @@ def register_companion_routes(app: FastAPI) -> None:
                     "anchor_ref": anchor_ref or "",
                     "status": str(anchor[0]) if anchor else "gone",
                 }
+                bite_ref = next((r for r in row.refs if r.startswith("bite:")), None)
+                bite_detail = None
+                if bite_ref:
+                    from substrate.provenance.store import (
+                        ProvenanceStore,
+                        provenance_tables_exist,
+                    )
+
+                    bite_id = bite_ref[5:]
+                    if provenance_tables_exist(con):
+                        gen_row = con.execute(
+                            "SELECT generation_id FROM generation_records "
+                            "WHERE derived_document_id = ? LIMIT 1",
+                            [row.scope_id],
+                        ).fetchone()
+                        if gen_row is not None:
+                            for b in ProvenanceStore().bites_for_generation(
+                                con, str(gen_row[0])
+                            ):
+                                if b.bite_id == bite_id:
+                                    chunk_row = con.execute(
+                                        "SELECT text FROM chunks WHERE chunk_id = ? LIMIT 1",
+                                        [f"{row.scope_id}-b{b.ordinal}"],
+                                    ).fetchone()
+                                    bite_detail = {
+                                        "contribution_class": b.contribution_class,
+                                        "byte_verified": True,
+                                        "generation": {
+                                            "generation_id": b.generation_id,
+                                        },
+                                        "text": str(chunk_row[0]) if chunk_row else None,
+                                        "investigation_id": b.investigation_id,
+                                        "source_refs": list(b.source_refs) if b.source_refs else None,
+                                    }
+                                    break
             elif row.kind == "process":
+                bite_detail = None
                 inv_ref = next(
                     (r for r in row.refs if r.startswith("investigation:")), None
                 )
@@ -314,6 +352,7 @@ def register_companion_routes(app: FastAPI) -> None:
             claim=claim,
             evidence=evidence,
             process=process,
+            bite=bite_detail,
             note=(
                 "The source this evidence traced is gone — this row is an "
                 "honest tombstone: the id still resolves, the content stays "
