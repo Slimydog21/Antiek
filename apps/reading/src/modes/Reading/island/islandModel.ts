@@ -43,7 +43,10 @@ export type IslandStatus =
   | "failed"
   | "stopped"
   | "budget_halted"
-  | "gone";
+  | "gone"
+  /** The thread's state could not be read (its seed fetch failed) and no
+   *  other source settled it. Not terminal: a retry can resolve it. */
+  | "unavailable";
 
 /** The statuses that are TERMINAL — an island in one never spins again. */
 export const ISLAND_TERMINAL_STATUSES: ReadonlySet<IslandStatus> = new Set([
@@ -78,8 +81,9 @@ export function deriveIslandRefs(anchors: readonly BookAnchor[]): IslandRef[] {
 /** The three status sources the mapping arbitrates (all already-loaded
  *  data — no new fetches beyond what the hook composes). */
 export interface IslandStatusInput {
-  /** The event projection (useInvestigation). null = still loading. */
-  projection: "loading" | "in_progress" | "completed" | "failed" | "not_found" | null;
+  /** The event projection (useInvestigation). null = still loading;
+   *  "error" = its seed fetch failed, so the thread's state is unknown. */
+  projection: "loading" | "in_progress" | "completed" | "failed" | "not_found" | "error" | null;
   /** The family-list summary status, when the thread is in the loaded page. */
   summary: InvestigationSummary["status"] | null;
   /** The session-level run state, when the owning session is resolvable. */
@@ -139,6 +143,10 @@ export function islandStatus(input: IslandStatusInput): IslandStatus {
   ) {
     return "live";
   }
+  // 7. The projection could not be read and nothing above knew better:
+  //    unavailable. Never live (a spinner claims the thread runs) and never
+  //    gone (the record may well exist).
+  if (input.projection === "error") return "unavailable";
   return assertNeverIsland(input as never);
 }
 

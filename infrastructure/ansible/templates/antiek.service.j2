@@ -136,5 +136,19 @@ RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 
+# ── cgroup resource isolation ─────────────────────────────────────────────
+# Without these, the API, the continuous-research daemon and the backup
+# timer share the host with NO CPU/memory/task caps (EV-R24-F). A runaway
+# investigation or a memory leak can starve the others. These caps bound one
+# unit without taking the host down.
+CPUQuota=300%
+CPUWeight=100
+MemoryMax=12G
+MemoryHigh=10G
+MemorySwapMax=0
+TasksMax=512
+LimitNOFILE=65536
+OOMScoreAdjust=200
+
 [Install]
 WantedBy=multi-user.target

@@ -1,25 +1,23 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import {
   API_BASE,
-  applySourceMerge,
-  commitSourceMerge,
   composeResearchArtifacts,
   type InvestigationSummary,
   type ResearchArtifactComposeResponse,
-  type SourceMergeApplyResponse,
-  type SourceMergeCommitResponse,
-  type SourceMergePreviewResponse,
-  type SourceMergeReviewPacket,
-  type SourceMergeRestoreResponse,
-  previewSourceMerge,
-  restoreSourceMerge,
 } from "../../lib/api";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
+import {
+  getDocumentCompanion,
+  listDocumentEvidence,
+  type CompanionPayload,
+  type EvidenceRowItem,
+} from "../../api/companions";
+import ReformatReview from "./ReformatReview";
 import Thinking from "../../shared/Thinking";
 
 /**
@@ -65,8 +63,6 @@ export interface ReadingCompanionProps {
   documentId: string;
   /** The book title, for the rail's human framing (never the raw id). */
   title?: string | null;
-  /** Called after commit/restore changes the served source body. */
-  onSourceBodyChanged?: () => void;
   /**
    * The book's reading thread id (``read-<documentId>``). The companion
    * READS this thread's events for notes; it is the same id the reader's
@@ -79,7 +75,6 @@ export interface ReadingCompanionProps {
 export default function ReadingCompanion({
   documentId,
   title,
-  onSourceBodyChanged,
   readingThreadId,
 }: ReadingCompanionProps) {
   // Read/display only — subscribe to the book's reading thread for notes.
@@ -92,23 +87,6 @@ export default function ReadingCompanion({
     [investigations],
   );
   const [copiedMergePacket, setCopiedMergePacket] = useState(false);
-  const [copiedSourceReviewPacket, setCopiedSourceReviewPacket] = useState(false);
-  const [sourceApplyAck, setSourceApplyAck] = useState(false);
-  const [sourceApplyConflictAck, setSourceApplyConflictAck] = useState(false);
-  const [sourcePreviewBusy, setSourcePreviewBusy] = useState(false);
-  const [sourcePreviewReceipt, setSourcePreviewReceipt] = useState<SourceMergePreviewResponse | null>(null);
-  const [sourcePreviewError, setSourcePreviewError] = useState<string | null>(null);
-  const [sourceCommitAck, setSourceCommitAck] = useState(false);
-  const [sourceCommitBusy, setSourceCommitBusy] = useState(false);
-  const [sourceCommitReceipt, setSourceCommitReceipt] = useState<SourceMergeCommitResponse | null>(null);
-  const [sourceCommitError, setSourceCommitError] = useState<string | null>(null);
-  const [sourceRestoreAck, setSourceRestoreAck] = useState(false);
-  const [sourceRestoreBusy, setSourceRestoreBusy] = useState(false);
-  const [sourceRestoreReceipt, setSourceRestoreReceipt] = useState<SourceMergeRestoreResponse | null>(null);
-  const [sourceRestoreError, setSourceRestoreError] = useState<string | null>(null);
-  const [sourceApplyBusy, setSourceApplyBusy] = useState(false);
-  const [sourceApplyReceipt, setSourceApplyReceipt] = useState<SourceMergeApplyResponse | null>(null);
-  const [sourceApplyError, setSourceApplyError] = useState<string | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftMergeReceipt, setDraftMergeReceipt] = useState<ResearchArtifactComposeResponse | null>(null);
   const [draftMergeIds, setDraftMergeIds] = useState<string[]>([]);
@@ -139,144 +117,11 @@ export default function ReadingCompanion({
       child_investigation_ids: handoffs.map((handoff) => handoff.child_investigation_id),
       ready_child_investigation_ids: readyHandoffs.map((handoff) => handoff.child_investigation_id),
       source_passages: handoffs.map((handoff) => handoff.source_passage),
-      next_step: "open the child researches, export completed artifacts, then draft a merge before changing the book asset",
+      next_step: "open the child researches, export completed artifacts, then draft a merge; the book itself is never changed",
       no_spend: true,
     };
     await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
     setCopiedMergePacket(true);
-  }
-
-  async function copySourceMergeReviewPacket() {
-    if (!draftMergeReceipt) return;
-    const payload = buildSourceMergeReviewPacket({
-      documentId,
-      title,
-      readingThreadId,
-      draftMergeReceipt,
-      draftMergeIds,
-    });
-    await navigator.clipboard?.writeText(
-      JSON.stringify(
-        {
-          ...payload,
-          next_step: "review the draft merge before any source book or twin-document mutation",
-        },
-        null,
-        2,
-      ),
-    );
-    setCopiedSourceReviewPacket(true);
-  }
-
-  function buildSourceMergeApplyRequest() {
-    if (!draftMergeReceipt || !sourceApplyAck) return;
-    if (draftMergeReceipt.hash_conflicts.length > 0 && !sourceApplyConflictAck) return;
-    const packet = buildSourceMergeReviewPacket({
-      documentId,
-      title,
-      readingThreadId,
-      draftMergeReceipt,
-      draftMergeIds,
-    });
-    return {
-      reviewed_packet: packet,
-      expected_content_hashes: Object.fromEntries(
-        draftMergeReceipt.members.map((member) => [member.investigation_id, member.content_hash]),
-      ),
-      acknowledge_reviewed_draft: true,
-      acknowledge_source_book_mutation: true,
-      acknowledge_twin_document_mutation: true,
-      acknowledge_hash_conflicts: sourceApplyConflictAck,
-      operator_reviewer: "reader-companion",
-    };
-  }
-
-  async function previewSourceMergeReceipt() {
-    const request = buildSourceMergeApplyRequest();
-    if (!request) return;
-    setSourcePreviewBusy(true);
-    setSourcePreviewError(null);
-    try {
-      const result = await previewSourceMerge(request);
-      setSourcePreviewReceipt(result);
-      setSourceCommitAck(false);
-      setSourceCommitReceipt(null);
-      setSourceCommitError(null);
-      setSourceRestoreAck(false);
-      setSourceRestoreReceipt(null);
-      setSourceRestoreError(null);
-    } catch (error) {
-      setSourcePreviewError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSourcePreviewBusy(false);
-    }
-  }
-
-  async function commitSourceMergeReceipt() {
-    const request = buildSourceMergeApplyRequest();
-    if (!request || !sourcePreviewReceipt || !sourceCommitAck) return;
-    setSourceCommitBusy(true);
-    setSourceCommitError(null);
-    try {
-      const result = await commitSourceMerge({
-        ...request,
-        expected_source_revision_id: sourcePreviewReceipt.source_revision_id,
-        expected_twin_revision_id: sourcePreviewReceipt.twin_revision_id,
-        expected_before_source_hash: sourcePreviewReceipt.before_source_hash,
-        expected_after_source_hash: sourcePreviewReceipt.after_source_hash,
-        expected_before_twin_hash: sourcePreviewReceipt.before_twin_hash,
-        expected_after_twin_hash: sourcePreviewReceipt.after_twin_hash,
-        acknowledge_body_rewrite: true,
-      });
-      setSourceCommitReceipt(result);
-      setSourceRestoreAck(false);
-      setSourceRestoreReceipt(null);
-      setSourceRestoreError(null);
-      onSourceBodyChanged?.();
-    } catch (error) {
-      setSourceCommitError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSourceCommitBusy(false);
-    }
-  }
-
-  async function restoreSourceMergeReceipt() {
-    if (!sourceCommitReceipt || !sourceRestoreAck) return;
-    setSourceRestoreBusy(true);
-    setSourceRestoreError(null);
-    try {
-      const result = await restoreSourceMerge({
-        document_id: sourceCommitReceipt.document_id,
-        parent_reading_thread_id: readingThreadId,
-        source_revision_id: sourceCommitReceipt.source_revision_id,
-        twin_revision_id: sourceCommitReceipt.twin_revision_id,
-        expected_after_source_hash: sourceCommitReceipt.after_source_hash,
-        expected_before_source_hash: sourceCommitReceipt.before_source_hash,
-        acknowledge_restore: true,
-        operator_reviewer: "reader-companion",
-      });
-      setSourceRestoreReceipt(result);
-      onSourceBodyChanged?.();
-    } catch (error) {
-      setSourceRestoreError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSourceRestoreBusy(false);
-    }
-  }
-
-  async function applySourceMergeReceipt() {
-    const request = buildSourceMergeApplyRequest();
-    if (!request) return;
-    setSourceApplyBusy(true);
-    setSourceApplyError(null);
-    try {
-      const result = await applySourceMerge(request);
-      setSourceApplyReceipt(result);
-    } catch (error) {
-      setSourceApplyError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSourceApplyBusy(false);
-    }
   }
 
   async function draftReadyChases() {
@@ -290,19 +135,6 @@ export default function ReadingCompanion({
       const result = await composeResearchArtifacts(readyIds, true);
       setDraftMergeReceipt(result);
       setDraftMergeIds(readyIds);
-      setCopiedSourceReviewPacket(false);
-      setSourceApplyAck(false);
-      setSourceApplyConflictAck(false);
-      setSourcePreviewReceipt(null);
-      setSourcePreviewError(null);
-      setSourceCommitAck(false);
-      setSourceCommitReceipt(null);
-      setSourceCommitError(null);
-      setSourceRestoreAck(false);
-      setSourceRestoreReceipt(null);
-      setSourceRestoreError(null);
-      setSourceApplyReceipt(null);
-      setSourceApplyError(null);
     } catch (error) {
       setDraftError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -390,184 +222,14 @@ export default function ReadingCompanion({
                 {draftMergeReceipt.members.length} artifacts ·{" "}
                 {draftMergeReceipt.members.filter((member) => member.twin_notes_path).length} notes twins
               </p>
-              <div className="mt-1 flex items-center justify-between gap-2 border-t border-rule pt-1 dark:border-charcoal-1">
-                <p>Review only · book not changed</p>
-                <button
-                  type="button"
-                  onClick={() => void copySourceMergeReviewPacket()}
-                  className="shrink-0 text-ink underline dark:text-bright"
-                  title="Copy a review-only packet for deciding whether to merge into the source book"
-                >
-                  {copiedSourceReviewPacket ? "copied review" : "copy review"}
-                </button>
-              </div>
-              <label className="mt-1 flex items-start gap-1.5 border-t border-rule pt-1 dark:border-charcoal-1">
-                <input
-                  type="checkbox"
-                  checked={sourceApplyAck}
-                  onChange={(event) => setSourceApplyAck(event.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>Reviewed draft · create receipt only</span>
-              </label>
-              {draftMergeReceipt.hash_conflicts.length > 0 ? (
-                <label className="mt-1 flex items-start gap-1.5">
-                  <input
-                    type="checkbox"
-                    checked={sourceApplyConflictAck}
-                    onChange={(event) => setSourceApplyConflictAck(event.target.checked)}
-                    className="mt-0.5"
-                  />
-                  <span>Conflict reviewed</span>
-                </label>
-              ) : null}
-              <div className="mt-1 flex items-center justify-between gap-2">
-                <p>Ledger only · body not rewritten</p>
-                <button
-                  type="button"
-                  onClick={() => void previewSourceMergeReceipt()}
-                  disabled={
-                    sourcePreviewBusy ||
-                    !sourceApplyAck ||
-                    (draftMergeReceipt.hash_conflicts.length > 0 && !sourceApplyConflictAck)
-                  }
-                  className="shrink-0 text-ink underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
-                  title="Preview revision evidence without rewriting the book body"
-                >
-                  {sourcePreviewBusy ? "previewing" : "preview"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void applySourceMergeReceipt()}
-                  disabled={
-                    sourceApplyBusy ||
-                    !sourceApplyAck ||
-                    (draftMergeReceipt.hash_conflicts.length > 0 && !sourceApplyConflictAck)
-                  }
-                  className="shrink-0 text-ink underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
-                  title="Record the reviewed source/twin apply receipt without rewriting the book body"
-                >
-                  {sourceApplyBusy ? "applying" : "apply receipt"}
-                </button>
-              </div>
-              {sourcePreviewReceipt ? (
-                <div
-                  className="mt-1 border-t border-rule pt-1 dark:border-charcoal-1"
-                  aria-label="Source merge preview"
-                  role="region"
-                >
-                  <p>Preview {sourcePreviewReceipt.status}</p>
-                  <p>{sourcePreviewReceipt.source_bytes_before} → {sourcePreviewReceipt.source_bytes_after} bytes</p>
-                  <p className="truncate" title={sourcePreviewReceipt.before_source_hash}>
-                    before {sourcePreviewReceipt.before_source_hash}
-                  </p>
-                  <p className="truncate" title={sourcePreviewReceipt.after_source_hash}>
-                    after {sourcePreviewReceipt.after_source_hash}
-                  </p>
-                  <p>writes performed {String(sourcePreviewReceipt.writes_performed)}</p>
-                  <label className="mt-1 flex items-start gap-1.5 border-t border-rule pt-1 dark:border-charcoal-1">
-                    <input
-                      type="checkbox"
-                      checked={sourceCommitAck}
-                      onChange={(event) => setSourceCommitAck(event.target.checked)}
-                      className="mt-0.5"
-                    />
-                    <span>Rewrite source from preview</span>
-                  </label>
-                  <div className="mt-1 flex items-center justify-between gap-2">
-                    <p>Requires preview hash match</p>
-                    <button
-                      type="button"
-                      onClick={() => void commitSourceMergeReceipt()}
-                      disabled={sourceCommitBusy || !sourceCommitAck}
-                      className="shrink-0 text-ink underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
-                      title="Commit the reviewed draft into the source body using the preview hashes"
-                    >
-                      {sourceCommitBusy ? "rewriting" : "rewrite source"}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {sourcePreviewError ? (
-                <p className="mt-1 text-emperor">{sourcePreviewError}</p>
-              ) : null}
-              {sourceCommitReceipt ? (
-                <div
-                  className="mt-1 border-t border-rule pt-1 dark:border-charcoal-1"
-                  aria-label="Source merge commit"
-                  role="region"
-                >
-                  <p>Commit {sourceCommitReceipt.status}</p>
-                  <p>{sourceCommitReceipt.source_bytes_before} → {sourceCommitReceipt.source_bytes_after} bytes</p>
-                  <p className="truncate" title={sourceCommitReceipt.event_id}>
-                    {sourceCommitReceipt.event_id}
-                  </p>
-                  <p>writes performed {String(sourceCommitReceipt.writes_performed)}</p>
-                  <label className="mt-1 flex items-start gap-1.5 border-t border-rule pt-1 dark:border-charcoal-1">
-                    <input
-                      type="checkbox"
-                      checked={sourceRestoreAck}
-                      onChange={(event) => setSourceRestoreAck(event.target.checked)}
-                      className="mt-0.5"
-                    />
-                    <span>Restore previous source body</span>
-                  </label>
-                  <div className="mt-1 flex items-center justify-between gap-2">
-                    <p>Requires current hash match</p>
-                    <button
-                      type="button"
-                      onClick={() => void restoreSourceMergeReceipt()}
-                      disabled={sourceRestoreBusy || !sourceRestoreAck}
-                      className="shrink-0 text-ink underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
-                      title="Restore the previous source body from the commit snapshot"
-                    >
-                      {sourceRestoreBusy ? "restoring" : "restore"}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {sourceCommitError ? (
-                <p className="mt-1 text-emperor">{sourceCommitError}</p>
-              ) : null}
-              {sourceRestoreReceipt ? (
-                <div
-                  className="mt-1 border-t border-rule pt-1 dark:border-charcoal-1"
-                  aria-label="Source merge restore"
-                  role="region"
-                >
-                  <p>Restore {sourceRestoreReceipt.status}</p>
-                  <p className="truncate" title={sourceRestoreReceipt.event_id}>
-                    {sourceRestoreReceipt.event_id}
-                  </p>
-                  <p>writes performed {String(sourceRestoreReceipt.writes_performed)}</p>
-                </div>
-              ) : null}
-              {sourceRestoreError ? (
-                <p className="mt-1 text-emperor">{sourceRestoreError}</p>
-              ) : null}
-              {sourceApplyReceipt ? (
-                <div
-                  className="mt-1 border-t border-rule pt-1 dark:border-charcoal-1"
-                  aria-label="Source merge receipt"
-                  role="region"
-                >
-                  <p>Receipt {sourceApplyReceipt.status}</p>
-                  <p className="truncate" title={sourceApplyReceipt.source_revision_id}>
-                    {sourceApplyReceipt.source_revision_id}
-                  </p>
-                  <p className="truncate" title={sourceApplyReceipt.twin_revision_id}>
-                    {sourceApplyReceipt.twin_revision_id}
-                  </p>
-                  <p>Book body not rewritten</p>
-                </div>
-              ) : null}
-              {sourceApplyError ? (
-                <p className="mt-1 text-emperor">{sourceApplyError}</p>
-              ) : null}
+              <p className="mt-1 border-t border-rule pt-1 dark:border-charcoal-1">
+                Review only · the book is never changed
+              </p>
               {draftMergeReceipt.hash_conflicts.length > 0 ? (
                 <p className="text-emperor">
-                  {draftMergeReceipt.hash_conflicts.length} hash conflict
-                  {draftMergeReceipt.hash_conflicts.length === 1 ? "" : "s"} need review
+                  {draftMergeReceipt.hash_conflicts.length === 1
+                    ? "1 hash conflict needs review"
+                    : `${draftMergeReceipt.hash_conflicts.length} hash conflicts need review`}
                 </p>
               ) : (
                 <p>No hash conflicts</p>
@@ -600,6 +262,12 @@ export default function ReadingCompanion({
           </ol>
         </section>
       ) : null}
+
+      {/* Reformat-provenance SPR-02: the review surface renders ONLY for a
+          derived document (a plain book shows nothing). */}
+      <ReformatReview documentId={documentId} />
+
+      <CompanionSection documentId={documentId} />
 
       <div className="flex-1 min-h-0">
         {notes.length === 0 ? (
@@ -652,36 +320,6 @@ function draftMergeHref(investigationIds: string[]): string {
   return `${API_BASE}/research/artifacts/compose/draft-merge.html?${params.toString()}`;
 }
 
-function buildSourceMergeReviewPacket({
-  documentId,
-  title,
-  readingThreadId,
-  draftMergeReceipt,
-  draftMergeIds,
-}: {
-  documentId: string;
-  title?: string | null;
-  readingThreadId: string;
-  draftMergeReceipt: ResearchArtifactComposeResponse;
-  draftMergeIds: string[];
-}): SourceMergeReviewPacket {
-  return {
-    kind: "antiek.reader.source_merge_review_packet",
-    document_id: documentId,
-    title: title ?? null,
-    parent_reading_thread_id: readingThreadId,
-    draft_merge_path: draftMergeReceipt.draft_merge_path ?? draftMergeReceipt.path,
-    compose_index_path: draftMergeReceipt.path,
-    member_investigation_ids: draftMergeReceipt.members.map((member) => member.investigation_id),
-    requested_investigation_ids: draftMergeIds,
-    hash_conflict_count: draftMergeReceipt.hash_conflicts.length,
-    hash_conflicts: draftMergeReceipt.hash_conflicts,
-    source_book_mutated: false,
-    twin_document_mutated: false,
-    no_spend: true,
-  };
-}
-
 function handoffStatusLabel(summary: InvestigationSummary | undefined): string {
   if (!summary) return "saved locally";
   switch (summary.status) {
@@ -695,4 +333,135 @@ function handoffStatusLabel(summary: InvestigationSummary | undefined): string {
     case "not_found":
       return "not found";
   }
+}
+
+/**
+ * CompanionSection — the generated document companion in the rail
+ * (companions SPR-02). READ-ONLY like the whole rail: it renders the
+ * companion's STRUCTURED payload (the sanctioned path — generated content
+ * arrives as data and renders as elements; raw generated HTML is never
+ * injected anywhere in this path). Claims carry their evidence ids as
+ * data attributes (provenance markers, never rendered as labels); a
+ * withheld book's claims render metadata lines only (the server withholds
+ * the text — the rail never receives it). The "inspect evidence base"
+ * toggle is the index's ONLY user surface: an honest debug dump for trust
+ * calibration, not a browsable index UI.
+ */
+function CompanionSection({ documentId }: { documentId: string }) {
+  const [state, setState] = useState<
+    | { kind: "loading" }
+    | { kind: "ready"; payload: CompanionPayload }
+    | { kind: "unavailable" }
+  >({ kind: "loading" });
+  const [inspectRows, setInspectRows] = useState<EvidenceRowItem[] | null>(null);
+
+  useEffect(() => {
+    // load-on-mount; a failed/malformed read is the honest unavailable state.
+    let cancelled = false;
+    void getDocumentCompanion(documentId)
+      .then((payload) => {
+        if (!cancelled) setState({ kind: "ready", payload });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ kind: "unavailable" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId]);
+
+  if (state.kind === "loading") return null;
+  if (state.kind === "unavailable") return null; // the rail stands alone honestly
+
+  const { payload } = state;
+  return (
+    <section
+      className="border-b border-rule px-4 py-3 dark:border-charcoal-1"
+      aria-label="Document companion"
+      data-companion-section
+    >
+      <p className="mb-2 font-mono text-xxs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        The companion so far
+      </p>
+      {!payload.servable && (
+        <p className="mb-1.5 font-serif text-xs italic text-ink-mute dark:text-moonlight">
+          This book's text is withheld — only its metadata shows here.
+        </p>
+      )}
+      {payload.claims.length === 0 && payload.processes.length === 0 ? (
+        <p className="font-serif text-xs italic text-ink-mute dark:text-moonlight">
+          No companion yet — it gathers as you read and research this book.
+        </p>
+      ) : (
+        <ol className="space-y-1.5" data-companion-claims>
+          {payload.claims.slice(0, 5).map((claim) => (
+            <li
+              key={claim.evidence_id}
+              data-evidence-id={claim.evidence_id}
+              className="font-serif text-xs leading-relaxed text-ink dark:text-bright"
+            >
+              <span className="mr-1 font-mono text-xxs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                {claim.kind === "insight" ? "Finding" : "Open question"} ·
+              </span>
+              {claim.text ?? <span className="italic">grounded in a withheld source</span>}
+            </li>
+          ))}
+          {payload.processes.slice(0, 4).map((process) => (
+            <li
+              key={process.evidence_id}
+              data-evidence-id={process.evidence_id}
+              className="font-mono text-xxs text-shadow-1 dark:text-moonlight"
+            >
+              {process.label} — {process.status_line}
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p className="font-mono text-xxs text-shadow-2 dark:text-moonlight">
+          generated · rebuilt {payload.rebuilt_at.slice(0, 10)}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            if (inspectRows !== null) {
+              setInspectRows(null);
+              return;
+            }
+            void listDocumentEvidence(documentId)
+              .then((resp) => setInspectRows(resp.rows))
+              .catch(() => setInspectRows([]));
+          }}
+          className="font-mono text-xxs text-shadow-1 underline decoration-dotted underline-offset-2 hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          title="The evidence base's inspect dump — operator debug, read-only"
+        >
+          {inspectRows !== null ? "close inspect" : "inspect evidence base"}
+        </button>
+      </div>
+      {inspectRows !== null && (
+        <div
+          className="mt-2 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-xxs text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight"
+          data-companion-inspect
+          role="region"
+          aria-label="Evidence base inspect dump"
+        >
+          {inspectRows.length === 0 ? (
+            <p className="italic">No evidence rows on record.</p>
+          ) : (
+            <ul className="space-y-1">
+              {inspectRows.map((row) => (
+                <li key={row.evidence_id} data-evidence-id={row.evidence_id}>
+                  {row.kind} · {row.evidence_id}
+                  {row.tombstone ? " · tombstone" : ""}
+                  <span className="block truncate" title={row.refs.join(" · ")}>
+                    {row.refs.join(" · ")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
 }
