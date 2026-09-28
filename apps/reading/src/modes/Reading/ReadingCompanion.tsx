@@ -17,6 +17,7 @@ import {
   type CompanionPayload,
   type EvidenceRowItem,
 } from "../../api/companions";
+import ReformatReview from "./ReformatReview";
 import Thinking from "../../shared/Thinking";
 
 /**
@@ -261,6 +262,10 @@ export default function ReadingCompanion({
           </ol>
         </section>
       ) : null}
+
+      {/* Reformat-provenance SPR-02: the review surface renders ONLY for a
+          derived document (a plain book shows nothing). */}
+      <ReformatReview documentId={documentId} />
 
       <CompanionSection documentId={documentId} />
 
