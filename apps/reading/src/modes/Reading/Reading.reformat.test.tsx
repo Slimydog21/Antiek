@@ -396,6 +396,9 @@ describe("the island reformat affordance + ask-to-open", () => {
     route(server);
     await renderReader();
     await screen.findByText("The ope");
+    await waitFor(() => {
+      expect(document.querySelector('[data-island-id="a-island"]')).toBeTruthy();
+    });
     fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
     fireEvent.click(await screen.findByRole("button", { name: "Reformat this" }));
     fireEvent.change(screen.getByLabelText("What should the reformat do?"), {
