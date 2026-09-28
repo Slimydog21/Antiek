@@ -213,6 +213,12 @@ def list_public_opportunities(
     """
     if ensure:
         ensure_speak_schema(con)
+    # An active takedown means STOP PUBLISHING, whatever its target. This list
+    # is served to logged-out visitors with each project's title and subject,
+    # so it agrees with the gate that governs publication
+    # (substrate/speak/publish_gate.py refuses to publish under any active
+    # takedown) and with /speak/feed, which hides the same projects with the
+    # same predicate. A finer per-target rule needs a signed rights clause.
     rows = con.execute(
         """
         SELECT p.project_id, ip.title, p.subject_ref,
@@ -223,6 +229,10 @@ def list_public_opportunities(
         FROM speak_projects p
         JOIN interview_projects ip ON ip.project_id = p.project_id
         WHERE p.publish_intent = 'will_be_public'
+          AND NOT EXISTS (
+              SELECT 1 FROM speak_takedowns t
+              WHERE t.project_id = p.project_id AND t.status = 'active'
+          )
         """
     ).fetchall()
     has_interest = bool(tokenize_interest(interest))

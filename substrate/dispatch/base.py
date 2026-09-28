@@ -191,12 +191,64 @@ class NormalizedUsage:
     ``(input_tokens, cached_input_tokens, cache_creation_input_tokens, output_tokens)``
     together with the per-tier pricing entry to compute ``cost_usd``.
     Adapters MUST NOT compute cost themselves — keep pricing in one place.
+
+    ``reported`` is False when the provider did not report the counts (no
+    usage block, or an input/output count that is missing, null or not an
+    int; see ``usage_counts_reported``). Zero tokens and
+    unknown tokens are different facts: the router bills an unreported call
+    at its worst-case ceiling rather than as a free 0-token call.
+
+    ``cache_unknown`` is True when the primary counts are real but the cache
+    split is not (a null / non-int cached count). Only an adapter whose input
+    count is INCLUSIVE of cached tokens may use it (OpenAI-compatible): it
+    bills the whole input at the full rate with ``cached_input_tokens=0``,
+    conservative on the cache discount only, and never discards valid
+    primaries for the whole-call ceiling. An adapter whose input count
+    EXCLUDES the cache (Anthropic) cannot know its total and reports
+    ``reported=False`` instead.
     """
 
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
+    reported: bool = True
+    cache_unknown: bool = False
+
+
+def usage_counts_reported(raw_usage: dict[str, Any], keys: tuple[str, ...]) -> bool:
+    """True only when every required count in ``raw_usage`` is a real count.
+
+    Key presence is not enough: ``{"prompt_tokens": null}`` or a blank ``""``
+    is the provider saying nothing, and an adapter's ``int(x or 0)`` would
+    turn it into a definite 0 that prices a paid call as free. A count must
+    be a non-negative ``int`` (``bool`` excluded, since it subclasses int).
+    """
+    for key in keys:
+        value = raw_usage.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return False
+    return True
+
+
+def optional_count(container: Any, key: str) -> int | None:
+    """An OPTIONAL usage count (a cache subset): 0 when the key is absent (a
+    call with no cache genuinely reports none), the count when it is a real
+    non-negative ``int``, and None when it is present but not one (``null``,
+    a string, a float, a bool, a negative).
+
+    None means the provider did not really report the split, and the adapter
+    must return ``reported=False`` so the router bills the ceiling. Coercing
+    it to 0 prices a paid cache write as free, and ``int(value)`` on a string
+    raises before the router can bill the call at all."""
+    if not isinstance(container, dict):
+        return None
+    if key not in container:
+        return 0
+    value = container[key]
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        return None
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +316,8 @@ class Provider(Protocol):
         """Convert this provider's raw usage shape into ``NormalizedUsage``.
 
         Must handle the case where the provider returned partial or no
-        usage data — return zeros rather than raising. The router emits
-        the DispatchCall event regardless of whether usage was available.
+        usage data — return zeros with ``reported=False`` rather than
+        raising. The router emits the DispatchCall event regardless, priced
+        at the call's ceiling when usage was not reported.
         """
         ...

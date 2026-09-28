@@ -29,16 +29,19 @@ on:
 
 concurrency:
   # One CI run per PR branch: a new push to a PR cancels the previous run,
-  # because only the latest head of a PR is worth testing.
+  # because only the latest head of a PR is worth testing. The hostage case
+  # this used to cause (#3425, runs 36227075895 and 36230596484: GitHub left
+  # the dependency-only rollup queued after cancelling the matrix shards, and
+  # the branch-scoped group then blocked every later push) is closed by the
+  # rollup's `if: !cancelled()` below, not by giving every superseded head a
+  # group of its own. Keying PRs by SHA with cancel-in-progress off (12:18Z,
+  # 2026-09-26) let every superseded head run to completion: with a merge
+  # train that updates heads on every main move, 25 CI runs across 15 refs
+  # sat queued behind ~10 obsolete duplicates while 3 jobs ran.
   #
   # main is different. Every commit on main is a release candidate — the
-  # ansible deploy pulls main HEAD — so its verification must run to
-  # completion. Keying main by `github.ref` with cancel-in-progress meant
-  # each merge cancelled the previous merge's run: in the 24h to
-  # 2026-09-19, 52 merges landed at a ~4-minute median cadence against a
-  # 45-minute pytest job and CI completed on main exactly zero times.
-  # Keying main by `github.sha` gives every commit its own group, so runs
-  # never cancel each other and each merged SHA gets a real verdict.
+  # deploy gates pull the exact SHA — so its verification must run to
+  # completion; keying main by `github.sha` gives every commit its own group.
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -133,7 +136,11 @@ jobs:
   pytest:
     name: pytest
     needs: pytest-suite
-    if: ${{ always() }}
+    # `always()` is unsafe for this dependency shape: after a newer push
+    # cancels all four shards, GitHub still schedules the rollup, and that
+    # queued rollup can keep the run non-terminal. Skip it when upstream was
+    # cancelled; it still runs after ordinary shard success or failure.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     # The full tests/ gate runs in the four pytest-suite shards above. This job
     # retains the stable required-check name and runs the service suites plus

@@ -325,9 +325,12 @@ def ingest_entry(
         # escrow write stays under substrate/, never a cross-layer accrue_escrow
         # call out of acquisition/ (collision #3 / seam #3). Accrual only; the
         # money path (payout/stripe_connect) is untouched, G2/G3 stay gated.
+        # Keyed on (holder, document_id): a re-run or grant flip of the SAME
+        # work does not seed again (accrued stays False).
         with connect_write(db_path, purpose="opt_in/accrue") as con:
-            accrue_opt_in_escrow(con, ip_holder_id, accrual_usd)
-        accrued = True
+            accrued = accrue_opt_in_escrow(
+                con, ip_holder_id, accrual_usd, document_id=result.document_id
+            )
 
     return WorkOutcome(
         title=entry.title,

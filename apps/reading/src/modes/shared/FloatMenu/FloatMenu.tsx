@@ -81,6 +81,14 @@ export interface FloatMenuProps {
   /** CK-5: apply the model's edited span. The host splices it into the
    *  section prose (its own selection state identifies the span to replace). */
   onApplyEdit?: (editedText: string) => void;
+  /** Anchor-first SPR-02: pin the selection as a PERSISTENT passage anchor
+   *  alongside the action (Note/Dialogue/Search) or alone (the Pin button).
+   *  The READING host wires this to the anchors API; hosts that omit it keep
+   *  the menu byte-for-byte unchanged (D-3, mode-gated not a fork) — and
+   *  Deep-research is deliberately NOT routed here: its pin lives in the
+   *  host's onDeepResearch, which needs the anchor id for the SPR-04
+   *  spawn write-back (one pin, one link). */
+  onPinAnchor?: (pin: { source: string }, selection: FloatMenuSelection) => void;
 }
 
 /** Clamp the menu on-screen at a viewport edge (rigor #3). The menu sits above
@@ -129,6 +137,7 @@ export default function FloatMenu({
   rewriteActions,
   editContext,
   onApplyEdit,
+  onPinAnchor,
 }: FloatMenuProps) {
   const [view, setView] = useState<FloatMenuView>({ kind: "menu" });
   const rootRef = useRef<HTMLDivElement>(null);
@@ -191,19 +200,45 @@ export default function FloatMenu({
       {view.kind === "menu" && (
         <div className="flex flex-col">
           <div className="flex items-stretch divide-x divide-charcoal-2">
-            <MenuButton label="Note" onClick={() => setView({ kind: "note" })} />
-            <MenuButton label="Dialogue" onClick={() => setView({ kind: "dialogue" })} />
-            <MenuButton label="Search" onClick={() => setView({ kind: "search" })} />
+            <MenuButton
+              label="Note"
+              onClick={() => {
+                onPinAnchor?.({ source: "floatmenu_note" }, selection);
+                setView({ kind: "note" });
+              }}
+            />
+            <MenuButton
+              label="Dialogue"
+              onClick={() => {
+                onPinAnchor?.({ source: "floatmenu_dialogue" }, selection);
+                setView({ kind: "dialogue" });
+              }}
+            />
+            <MenuButton
+              label="Search"
+              onClick={() => {
+                onPinAnchor?.({ source: "floatmenu_search" }, selection);
+                setView({ kind: "search" });
+              }}
+            />
             <MenuButton
               label="Deep-research"
               onClick={() => {
                 // DEEP-RESEARCH → the REUSED chase path (host wires
                 // ChaseThread + startInvestigation). §9.0: hand the host the
                 // guarded outbound text (null ⇒ withheld) so a withheld body
-                // never becomes a child investigation's spawn_context.
+                // never becomes a child investigation's spawn_context. Its pin
+                // lives in the host's onDeepResearch (the SPR-04 write-back
+                // needs the anchor id — one pin, one link).
                 onDeepResearch(outboundText(selection), selection);
               }}
             />
+            {onPinAnchor && (
+              <MenuButton
+                label="Pin"
+                onClick={() => onPinAnchor({ source: "pin" }, selection)}
+              />
+            )}
           </div>
           {/* Write SPR-09 M4: rewrite actions, shown ONLY when the Write host
               supplies them (D-3). Each routes the selection through the §9.0

@@ -8,6 +8,9 @@ vi.mock("./api", () => ({
 }));
 
 import {
+  attestationToken,
+  loadUploadAttestations,
+  resetUploadAttestationsCache,
   SOURCE_UPLOAD_MAX_BYTES,
   SourceUploadError,
   uploadSource,
@@ -46,5 +49,35 @@ describe("sourceUploadApi", () => {
     const promise = uploadSource(new File(["body"], "private.pdf"), "personal_reading");
     await expect(promise).rejects.toMatchObject({ code: "conversion_failed" } satisfies Partial<SourceUploadError>);
     await expect(promise).rejects.not.toThrow(/private\.pdf/);
+  });
+
+  it("surfaces a refused re-attestation instead of the EPUB ceremony 409", async () => {
+    // An authored re-upload of bytes stored as personal_reading is refused
+    // (A-06 re-attestation matrix). Authored uploads carry a verified
+    // attestation from the capability route (FFX SPR-02); the legacy
+    // authored token can no longer be sent at all.
+    resetUploadAttestationsCache();
+    apiFetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      accepted: ["personal_reading", "user_authored_private"],
+      authored_default: "user_authored_private",
+      aliases: {},
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const authored = attestationToken("authored", await loadUploadAttestations());
+    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({
+      detail: {
+        code: "upload_attestation_conflict",
+        document_id: "doc-upload-safe",
+        stored_content_class: "personal_reading",
+        stored_attestation: "personal_reading",
+      },
+    }), { status: 409, headers: { "Content-Type": "application/json" } }));
+    await expect(uploadSource(new File(["body"], "private.pdf"), authored))
+      .rejects.toMatchObject({ code: "attestation_conflict" } satisfies Partial<SourceUploadError>);
+
+    apiFetchMock.mockResolvedValue(new Response(JSON.stringify({
+      detail: "EPUB goes through the authorized book-acquisition ceremony",
+    }), { status: 409, headers: { "Content-Type": "application/json" } }));
+    await expect(uploadSource(new File(["body"], "private.pdf"), "personal_reading"))
+      .rejects.toMatchObject({ code: "book_ceremony" } satisfies Partial<SourceUploadError>);
   });
 });
