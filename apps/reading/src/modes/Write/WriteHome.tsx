@@ -385,7 +385,7 @@ export default function WriteHome() {
       </main>
 
       <aside className="hidden w-80 shrink-0 flex-col border-l border-rule bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-2 lg:flex">
-        <BlockRepository onAdd={(hit) => addHandler.current(hit)} />
+        <BlockRepository onAdd={(hit) => addHandler.current(hit)} deliverableId={deliverableId ?? null} />
       </aside>
     </GlassSurface>
   );

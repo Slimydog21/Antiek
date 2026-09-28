@@ -2,21 +2,24 @@
 #
 # systemd unit for the continuous-research daemon (master-spec §7.3 +
 # §7.4). Scans the trajectory event log for unresolved evidentiary
-# gaps across investigations and spawns follow-on chases when budget
-# allows.
+# gaps across investigations and scores them.
 #
-# This unit is INDEPENDENT of the main `antiek` service: the daemon
-# reads the event log but never writes to the DuckDB it reads. All
-# spawned investigations are submitted to the substrate via the
-# in-process API the same way an operator would — so the
-# single-writer invariant holds (the substrate's uvicorn is still
-# the only DuckDB writer). The daemon is a READ-side cron loop, not
-# a parallel writer.
+# Spawning is OFF and refused (LB-10): with ANTIEK_DAEMON_SPAWN_ENABLED set
+# the daemon exits 78 (EX_CONFIG) and RestartPreventExitStatus below keeps
+# it down, because its spawn path has no investigation handler in this
+# process and diligence has no per-flag consent yet (mothership spec decision D4,
+# ~/Antiek/specs/antiek-mothership/DECISIONS.md). Spawning returns
+# with an API-routed, consented launch, submitted through the substrate API
+# so the single-writer invariant holds.
+#
+# This unit is INDEPENDENT of the main `antiek` service: the daemon reads
+# the event log and never writes the DuckDB it reads.
 #
 # Budget cap per §16 ("Letting the daemon's chase budget exceed
 # $5/day by default… Cost runaway is the failure mode that turns
 # Antiek into a $5000/month surprise charge"). Enforced via
-# ANTIEK_DAEMON_BUDGET_USD_PER_DAY which the daemon checks on every
+# ANTIEK_DAEMON_HOURLY_BUDGET_USD (a DAILY cap despite the name — see
+# orchestration/continuous/budget.py) which the daemon checks on every
 # tick before spawning.
 
 [Unit]
@@ -48,12 +51,16 @@ Environment="TORCH_HOME={{ antiek_state_dir }}/cache/torch"
 # - ANTIEK_DAEMON_SLEEP_SECONDS: how often the daemon scans the log
 # - ANTIEK_DAEMON_EXPECTED_COST_USD: cost-per-spawn estimate used
 #   for budget gating
-# - ANTIEK_DAEMON_BUDGET_USD_PER_DAY: §16 hard cap on total spawn
-#   spend per UTC day. Default 5; the daemon refuses to spawn once
-#   today's running total approaches the cap.
+# - ANTIEK_DAEMON_HOURLY_BUDGET_USD: §16 hard cap on total spawn
+#   spend per UTC day (the name says hourly; budget.py reads it as the
+#   daily cap). Default 5; the daemon refuses to spawn once today's
+#   running total would exceed the cap. This line once set
+#   ANTIEK_DAEMON_BUDGET_USD_PER_DAY, which nothing reads, so any
+#   operator change to the cap was silently ignored;
+#   tests/test_systemd_env_is_read.py now fails on a name no code reads.
 Environment="ANTIEK_DAEMON_SLEEP_SECONDS=60"
 Environment="ANTIEK_DAEMON_EXPECTED_COST_USD=0.50"
-Environment="ANTIEK_DAEMON_BUDGET_USD_PER_DAY=5.0"
+Environment="ANTIEK_DAEMON_HOURLY_BUDGET_USD=5.0"
 
 # ── THE LOAD-BEARING LINE ────────────────────────────────────────────
 # The daemon's main loop. Reads event log, picks highest-scored
@@ -64,6 +71,11 @@ ExecStart={{ antiek_install_dir }}/.venv/bin/python -m orchestration.continuous
 
 Restart=on-failure
 RestartSec=30s
+# 78 = EX_CONFIG: the daemon refused its configuration (for example the
+# spawn switch before spawning is API-routed and consented). Restarting
+# cannot fix a configuration, so the unit stays down and reads failed
+# instead of flapping every RestartSec.
+RestartPreventExitStatus=78
 
 StandardOutput=journal
 StandardError=journal
@@ -81,6 +93,16 @@ RestrictSUIDSGID=true
 RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
+
+# ── cgroup resource isolation ─────────────────────────────────
+CPUQuota=200%
+CPUWeight=50
+MemoryMax=6G
+MemoryHigh=5G
+MemorySwapMax=0
+TasksMax=256
+LimitNOFILE=65536
+OOMScoreAdjust=500
 
 [Install]
 WantedBy=multi-user.target
