@@ -76,8 +76,11 @@ class _RecordingProvider:
         from substrate.dispatch import RawProviderResponse
 
         self.prompts.append(prompt)
+        # Report a genuinely free call. An EMPTY usage block now means
+        # "usage unknown" and is billed at the call ceiling (audit C06).
         return RawProviderResponse(
-            text=self.reply, raw_usage={}, finish_reason="stop", latency_ms=1,
+            text=self.reply, raw_usage={"input_tokens": 0, "output_tokens": 0},
+            finish_reason="stop", latency_ms=1,
         )
 
     def normalize_usage(self, raw_usage):

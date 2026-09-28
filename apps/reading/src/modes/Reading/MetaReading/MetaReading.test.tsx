@@ -13,6 +13,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import MetaReading from "./index";
+import { positionStorageKey, setReadingPositionOwner } from "../usePosition";
 
 const { generateMock, navigateMock, acceptPromotionMock } = vi.hoisted(() => ({
   generateMock: vi.fn(),
@@ -76,6 +77,7 @@ beforeEach(() => {
   navigateMock.mockReset();
   acceptPromotionMock.mockReset();
   window.sessionStorage.clear();
+  setReadingPositionOwner("reader-a");
 });
 afterEach(cleanup);
 
@@ -101,14 +103,23 @@ describe("MetaReading (M4)", () => {
     await generate();
     fireEvent.click(screen.getByRole("button", { name: "open at p.12" }));
     // Seeds the usePosition locator + routes to the reader (no parallel nav).
-    expect(window.sessionStorage.getItem("antiek.read.pos.doc-mr")).toBe("11");
+    expect(window.sessionStorage.getItem(positionStorageKey("doc-mr"))).toBe("11");
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-mr");
+  });
+
+  it("a citation jump writes only the current owner's locator", async () => {
+    setReadingPositionOwner("reader-b");
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "open at p.12" }));
+    expect(window.sessionStorage.getItem(positionStorageKey("doc-mr"))).toBe("11");
+    setReadingPositionOwner("reader-a");
+    expect(window.sessionStorage.getItem(positionStorageKey("doc-mr"))).toBeNull();
   });
 
   it("an unresolved cite opens the book without a fabricated page", async () => {
     await generate({ citations: [cite({ page_index: null, page_resolved: false })] });
     fireEvent.click(screen.getByRole("button", { name: "open the book" }));
-    expect(window.sessionStorage.getItem("antiek.read.pos.doc-mr")).toBeNull();
+    expect(window.sessionStorage.getItem(positionStorageKey("doc-mr"))).toBeNull();
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-mr");
   });
 
