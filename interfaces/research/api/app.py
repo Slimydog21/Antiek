@@ -90,10 +90,7 @@ from substrate.schemas import (  # noqa: E402
     TypedPayload,
 )
 
-from .account_memory_context import (  # noqa: E402
-    account_memory_context,
-    record_account_memory_from_turn,
-)
+from .account_memory_context import account_memory_context  # noqa: E402
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
@@ -1854,7 +1851,9 @@ def create_app(
                     cookie_claims = None
                 if cookie_claims is not None:
                     cookie_email = cookie_claims.email.strip().lower()
-                    if not operator_emails or cookie_email in operator_emails:
+                    # Allowlist, never "no list = anyone": with no
+                    # operator email configured a cookie proves nobody.
+                    if cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
@@ -1965,6 +1964,15 @@ def create_app(
     # text), the queue read, and dismiss.
     from .diligence_routes import register_diligence_routes
     register_diligence_routes(app)
+    # Companions SPR-02 — the companion surfaces + the evidence-base query
+    # API: per-document companion (HTML export / structured payload), the
+    # owner-scoped evidence reads, project scope honestly unavailable.
+    from .companion_routes import register_companion_routes
+    register_companion_routes(app)
+    # Reformat-provenance SPR-02 — the reformat generation call + the
+    # provenance read the review surface renders.
+    from .reformat_routes import register_reformat_routes
+    register_reformat_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
@@ -2770,6 +2778,14 @@ def create_app(
         if canonical_owner_id is not None and req.investigation_id not in (None, canonical_owner_id):
             raise HTTPException(status_code=409, detail="owner_model_operation_conflict")
         investigation_id = req.investigation_id or canonical_owner_id or f"inv-{_uuid.uuid4().hex[:12]}"
+        # Meter 1 ACU for this start (gated, idempotent on investigation_id)
+        # BEFORE anything is claimed, appended or broadcast. A failed charge
+        # (503/429) must mean no run, never an unmetered run behind a 503.
+        post_gate = commit_start_acu(
+            request,
+            investigation_id=investigation_id,
+            reason="post_investigations",
+        )
         replay_event_id: str | None = None
         if operation_id is not None:
             from .research_owner_dispatch import OwnerLaunchConflict, claim_owner_launch
@@ -2891,12 +2907,6 @@ def create_app(
                         raise HTTPException(status_code=503, detail="owner_model_start_pending") from None
                 break
 
-        # Meter 1 ACU for this start (idempotent on investigation_id).
-        post_gate = commit_start_acu(
-            request,
-            investigation_id=investigation_id,
-            reason="post_investigations",
-        )
         warn_gate = post_gate if post_gate.verdict == "soft_warn" else capacity_gate
         attach_capacity_warn_header(response, warn_gate)
 
@@ -4968,7 +4978,7 @@ def create_app(
         if claims is None:
             return False
         cookie_email = claims.email.strip().lower()
-        return not operator_emails or cookie_email in operator_emails
+        return cookie_email in operator_emails
 
     @app.websocket("/ws/events")
     async def ws_events(
@@ -6727,18 +6737,6 @@ def create_app(
             ) from None
 
         parsed = parse_thought_partner_response(result.text)
-        # SPR-11 T7: write stable first-person facts from this turn back into
-        # owner-private account memory. Dark until the env flag named in
-        # substrate.memory.interaction_extractor is set; best-effort, so it can
-        # never change the response below. Off the loop thread because it
-        # takes the write lock (the sanctioned to_thread shape, as /health's
-        # flywheel probe).
-        await asyncio.to_thread(
-            record_account_memory_from_turn,
-            request,
-            prompt=req.prompt,
-            investigation_id=req.investigation_id,
-        )
         return ThoughtPartnerResponseBody(
             shape=parsed.shape,
             text=result.text,

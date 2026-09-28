@@ -68,7 +68,7 @@
     # if any registered route prefix is absent here. Keep this list
     # ONE-LINE — Caddy's tokenizer for `path` matcher arguments doesn't
     # honor backslash line continuation.
-    @api_routes path /account/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /api/* /artifacts/* /attribution* /auth/* /backtest* /billing* /blocks/* /book-acquisition* /books* /campaigns* /chunks* /claims/* /complete /compose-context /coordination* /corpus* /creator-payouts* /cross-graph/* /deliverables* /diligence* /docs* /documents* /events/* /export* /federation* /feedback/* /health /ingest/* /internal/* /interview-projects* /interviews* /investigations* /krea* /library* /links/* /loop-3/* /meta-readings* /multimedia* /notebooks* /openapi.json /ops/* /outcomes* /payouts* /publishers* /quality-gate* /reading/* /research/* /sections* /settings* /skill-rules* /sources* /speak/* /speech* /stats* /styles /styles/* /supersession* /syntheses/* /thought-partner /thread/* /trajectory /trajectory/* /trust-center* /twins* /voice-notes* /voice/* /watch-for-later* /.well-known/* /write/* /ws/*
+    @api_routes path /account/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /api/* /artifacts/* /attribution* /auth/* /backtest* /billing* /blocks/* /book-acquisition* /books* /campaigns* /chunks* /claims/* /complete /compose-context /coordination* /corpus* /creator-payouts* /cross-graph/* /deliverables* /diligence* /docs* /documents* /events/* /evidence/* /export* /federation* /feedback/* /health /ingest/* /internal/* /interview-projects* /interviews* /investigations* /krea* /library* /links/* /loop-3/* /meta-readings* /multimedia* /notebooks* /openapi.json /ops/* /outcomes* /payouts* /projects/* /publishers* /quality-gate* /reading/* /research/* /sections* /settings* /skill-rules* /sources* /speak/* /speech* /stats* /styles /styles/* /supersession* /syntheses/* /thought-partner /thread/* /trajectory /trajectory/* /trust-center* /twins* /voice-notes* /voice/* /watch-for-later* /.well-known/* /workstations* /write/* /ws/*
 
 
     # ~14 paths overlap between backend API + frontend React Router
@@ -99,6 +99,14 @@
     @spa_browser_nav {
         header Accept *text/html*
         not path /auth/* /health /openapi.json /ops/*
+    }
+
+    # Named matchers MUST sit at server scope (Caddy rejects @matchers
+    # defined inside route/handle). `@static_exists` is the "real file on
+    # disk" matcher used by the static-asset handler inside the route.
+    @static_exists file {
+        # file-matcher `root` is a path, not the root DIRECTIVE (no `*` slot).
+        root {{ frontend_dist_dir }}
     }
 
     route {
@@ -145,9 +153,6 @@
         #    fonts, /favicon.svg, /mark-*.png) → serve them as-is.
         #    `file` is the matcher, so a miss falls through rather than
         #    being papered over by an index.html fallback.
-        @static_exists file {
-            root * {{ frontend_dist_dir }}
-        }
         handle @static_exists {
             root * {{ frontend_dist_dir }}
             file_server
@@ -218,10 +223,54 @@
     #   Matrix was api=0/www=0 for HSTS and CSP; the two hosts disagreed
     #   about which headers exist at all.
     #
-    # CSP is scoped to the clickjacking axis only (frame-ancestors). A full
-    # resource CSP is deliberately NOT set here until the SPA's CSP surface
-    # is proven stable in a browser pass — a wrong CSP breaks the app
-    # silently for users, which is worse than the gap it closes. The
+    # Full resource CSP (2026-09-27). The 2026-09-26 policy deliberately
+    # stopped at frame-ancestors because a wrong resource CSP breaks the
+    # app silently; this closes that residual now that every source below
+    # is traced to a surface in the shipped bundle (paths in apps/reading).
+    # The policy and apps/reading/public/_headers state the same string on
+    # both hosts on purpose: the Pages build and the api.antiek.ai copy of
+    # the SPA are the same bundle with different env baked in.
+    #
+    # Why each non-obvious source is here:
+    #   script-src posthog hosts: posthog-js is baked into the Pages
+    #     bundle when VITE_POSTHOG_PROJECT_TOKEN is set
+    #     (src/lib/posthogClient.ts) and talks to its api_host;
+    #     *.posthog.com / *.i.posthog.com cover the EU and US hosts named
+    #     in docs/decisions/posthog-activation.md.
+    #   style-src 'unsafe-inline': React style props (AppShell.tsx,
+    #     PanelLayout.tsx, BrainPresence.tsx). fonts.googleapis.com: the
+    #     Google Fonts @import in src/modes/LinkMonster/LinkMonster.css.
+    #   img-src data:: the Login.css noise texture and the krea scene
+    #     placeholders are data: URIs (src/krea/placeholder.ts). https::
+    #     AdBorder renders creative_url as <img>, and adFillClient accepts
+    #     an absolute https: creative (src/components/ad/adFillClient.ts,
+    #     isCreativeUrl).
+    #   font-src fonts.gstatic.com: font files behind that same import.
+    #   connect-src api.antiek.ai + wss: the Pages host builds with
+    #     VITE_API_BASE_URL=https://api.antiek.ai and derives wss:// for
+    #     /ws/events (src/hooks/useEventStream.ts, src/modes/Replay);
+    #     'self' alone would 404 every API call on that host. The
+    #     api.antiek.ai copy of the SPA is same-origin and stays on 'self'.
+    #   media-src blob:: ReadAloud plays TTS through
+    #     new Audio(URL.createObjectURL(blob))
+    #     (src/components/voice/ReadAloud.tsx).
+    #   frame-src blob:: style and document previews are
+    #     URL.createObjectURL(html) iframes (StyleWheel.tsx,
+    #     DocumentStylePreview.tsx). KnowledgePanel's srcDoc iframe is
+    #     sandboxed to zero permissions and needs no source.
+    #   worker-src 'self': pdfjs ships its worker as a same-origin
+    #     /assets/pdf.worker-*.mjs (src/components/PdfViewer.tsx).
+    #
+    # unsafe-eval is deliberately absent. The only eval-shaped code in the
+    # production bundle is pdfjs's isEvalSupported() probe and its
+    # PostScriptCompiler; both fall back to the interpreter when the probe
+    # throws (checked against the built dist: each site is try/catch
+    # guarded), so pdf.js keeps working under this policy.
+    #
+    # The ArxivFrame embed of arxiv.org is deliberately NOT allowed: the
+    # component degrades to its link card when framing fails, and arxiv.org
+    # refuses framing anyway (src/modes/Reading/ArxivFrame.tsx).
+    #
     # X-Frame-Options above and frame-ancestors here are the same policy
     # stated twice on purpose: XFO for legacy UAs, CSP for modern ones.
     header {
@@ -231,6 +280,6 @@
         Referrer-Policy "strict-origin-when-cross-origin"
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
-        Content-Security-Policy "frame-ancestors 'self'"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' https://*.posthog.com https://*.i.posthog.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.antiek.ai wss://api.antiek.ai https://*.posthog.com https://*.i.posthog.com; media-src 'self' blob:; worker-src 'self'; frame-src 'self' blob:"
     }
 }

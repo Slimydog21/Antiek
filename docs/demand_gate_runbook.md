@@ -42,13 +42,34 @@ record in the verdict, and it taints that tester's signal.
 1. At the end date, stop accepting new tester activity.
 2. Collect the demand-gate events (the four telemetry types + any
    `demand_gate.roundtrip_detected` from the detector, plus any documented
-   third-party-reader / agent-unprompted observations).
-3. Run the analysis (reproducible, criteria-hash-pinned):
+   third-party-reader / agent-unprompted observations). Every event needs a
+   timezone-aware `emitted_at`. A hand-documented third-party-reader or
+   agent-unprompted observation must name the `tool` / `agent`, name who in
+   `user_id` (not you), and cite an `evidence_ref` (a link or id the signed
+   verdict points at). Anything missing is not admissible.
+3. Run the analysis (reproducible, criteria-hash-pinned) with the tester ids
+   and window pinned in pre-flight step 3:
    ```python
    from services.demand_gate.analysis import compute_verdict
-   v = compute_verdict(events, operator_user_id="<your-user-id>")
+   v = compute_verdict(
+       events,
+       operator_user_id="<your-user-id>",
+       tester_ids={"<tester-1>", ...},   # the N pinned ids, 5 <= N <= 15
+       window_start=<aware start datetime>,
+       window_end=<start + 14 days>,
+   )
    print(v.verdict, v.counts, v.criteria_commit)
    ```
+   A round-trip counts only when the re-importer (`user_id`) and at least one
+   exporter (`exported_by`) are pinned testers, no exporter is the operator,
+   and it falls inside the window. An unmodified re-import is attributed to
+   whoever exported those exact bytes; an edited one to every exporter of the
+   document, so an operator export of any version refuses it. Tester ids that
+   differ only by case or whitespace are one person and raise
+   `GateNotRunnable`. `GateNotRunnable` means no verdict exists: the window or
+   tester set breaks the pre-registration, or no `export_offered` event
+   reached a pinned tester in the window (the offer was never instrumented).
+   Do not sign either template; record it as a finding.
 4. Apply the matching template: `docs/decisions/verdict-sustain.md` **or**
    `docs/decisions/verdict-retire.md`. Fill only the bracketed fields; do not
    edit the reasoning. Sign + date.

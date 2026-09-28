@@ -258,6 +258,7 @@ _SAME_FILE_DIFFERENT_CONFIG = (
 )
 _READ_MODE_RETRY_WINDOW_S = 0.25
 _READ_MODE_RETRY_INTERVAL_S = 0.01
+_connect_open_lock = threading.Lock()
 
 
 def _external_duckdb_lock_conflict(exc: Exception) -> bool:
@@ -1264,7 +1265,8 @@ def connect_read(
 
     while True:
         try:
-            return duckdb.connect(db_path, read_only=True)
+            with _connect_open_lock:
+                return duckdb.connect(db_path, read_only=True)
         except Exception as exc:
             if wait_for_external_lock(exc):
                 continue
@@ -1277,9 +1279,10 @@ def connect_read(
             if not lazy_ok:
                 raise
             try:
-                return _ReadOrientedConnection(
-                    duckdb.connect(db_path, read_only=False)
-                )
+                with _connect_open_lock:
+                    return _ReadOrientedConnection(
+                        duckdb.connect(db_path, read_only=False)
+                    )
             except Exception as fallback_exc:
                 if wait_for_external_lock(fallback_exc):
                     continue
