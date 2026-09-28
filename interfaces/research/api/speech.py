@@ -12,6 +12,8 @@ never burns credits without an explicit key. The provider is the existing
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
@@ -29,8 +31,13 @@ def register_speech_routes(app: FastAPI) -> None:
         from substrate.dispatch.providers.openai_tts import OpenAITTSProvider
 
         provider = OpenAITTSProvider()
+        # synthesize() is a blocking httpx POST of up to 60 s. Inline in this
+        # async def it parks the event loop of the single uvicorn worker, so
+        # every other request waits on it. Hop it to a thread, the idiom
+        # speak_routes._off_loop uses; exceptions re-raise here unchanged, so
+        # the error mapping below is the same.
         try:
-            audio = provider.synthesize(req.text, voice=req.voice)
+            audio = await asyncio.to_thread(provider.synthesize, req.text, voice=req.voice)
         except RuntimeError as exc:  # no API key
             raise HTTPException(status_code=503, detail=f"tts_unavailable: {exc}") from exc
         except ValueError as exc:

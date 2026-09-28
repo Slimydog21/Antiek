@@ -1400,7 +1400,6 @@ export async function getAnchorMap(
   return resp.json() as Promise<AnchorMapResponse>;
 }
 
-
 // ── SPR-03: distill surface (insights / open questions / living notes) ──
 //
 // Mirrors interfaces/research/api/distill_routes.py. The node_id is an
@@ -1469,94 +1468,6 @@ export interface ResearchArtifactComposeResponse {
   hash_conflicts: string[][];
 }
 
-export interface SourceMergeReviewPacket {
-  kind: "antiek.reader.source_merge_review_packet";
-  document_id: string;
-  title: string | null;
-  parent_reading_thread_id: string;
-  draft_merge_path: string;
-  compose_index_path: string;
-  member_investigation_ids: string[];
-  requested_investigation_ids: string[];
-  hash_conflict_count: number;
-  hash_conflicts: string[][];
-  source_book_mutated: boolean;
-  twin_document_mutated: boolean;
-  no_spend: boolean;
-}
-
-export interface SourceMergeApplyRequest {
-  reviewed_packet: SourceMergeReviewPacket;
-  expected_content_hashes: Record<string, string>;
-  acknowledge_reviewed_draft: boolean;
-  acknowledge_source_book_mutation: boolean;
-  acknowledge_twin_document_mutation: boolean;
-  acknowledge_hash_conflicts?: boolean;
-  operator_reviewer?: string | null;
-}
-
-export interface SourceMergeApplyResponse {
-  status: string;
-  document_id: string;
-  source_revision_id: string;
-  twin_revision_id: string;
-  event_id: string;
-  member_investigation_ids: string[];
-  hash_conflicts_acknowledged: boolean;
-}
-
-export interface SourceMergePreviewResponse {
-  status: string;
-  document_id: string;
-  source_revision_id: string;
-  twin_revision_id: string;
-  member_investigation_ids: string[];
-  before_source_hash: string;
-  after_source_hash: string;
-  before_twin_hash: string;
-  after_twin_hash: string;
-  source_bytes_before: number;
-  source_bytes_after: number;
-  twin_bytes_after: number;
-  writes_performed: boolean;
-}
-
-export interface SourceMergeCommitRequest extends SourceMergeApplyRequest {
-  expected_source_revision_id: string;
-  expected_twin_revision_id: string;
-  expected_before_source_hash: string;
-  expected_after_source_hash: string;
-  expected_before_twin_hash: string;
-  expected_after_twin_hash: string;
-  acknowledge_body_rewrite: boolean;
-}
-
-export interface SourceMergeCommitResponse extends SourceMergePreviewResponse {
-  event_id: string;
-}
-
-export interface SourceMergeRestoreRequest {
-  document_id: string;
-  parent_reading_thread_id: string;
-  source_revision_id: string;
-  twin_revision_id: string;
-  expected_after_source_hash: string;
-  expected_before_source_hash: string;
-  acknowledge_restore: boolean;
-  operator_reviewer?: string | null;
-}
-
-export interface SourceMergeRestoreResponse {
-  status: string;
-  document_id: string;
-  source_revision_id: string;
-  twin_revision_id: string;
-  event_id: string;
-  before_source_hash: string;
-  restored_source_hash: string;
-  writes_performed: boolean;
-}
-
 /** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
 export async function getResearchArtifactBlocks(
   investigationId: string,
@@ -1615,82 +1526,6 @@ export async function composeResearchArtifacts(
   return resp.json();
 }
 
-/** POST /research/artifacts/source-merge/apply — preflight reviewed source/twin apply. */
-export async function applySourceMerge(
-  request: SourceMergeApplyRequest,
-): Promise<SourceMergeApplyResponse> {
-  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/apply`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!resp.ok) {
-    throw new ApiError(
-      `POST /research/artifacts/source-merge/apply failed: HTTP ${resp.status}`,
-      resp.status,
-      await resp.text(),
-    );
-  }
-  return resp.json();
-}
-
-/** POST /research/artifacts/source-merge/preview — no-write source/twin revision evidence. */
-export async function previewSourceMerge(
-  request: SourceMergeApplyRequest,
-): Promise<SourceMergePreviewResponse> {
-  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/preview`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!resp.ok) {
-    throw new ApiError(
-      `POST /research/artifacts/source-merge/preview failed: HTTP ${resp.status}`,
-      resp.status,
-      await resp.text(),
-    );
-  }
-  return resp.json();
-}
-
-/** POST /research/artifacts/source-merge/commit — rewrite source/twin from a bound preview. */
-export async function commitSourceMerge(
-  request: SourceMergeCommitRequest,
-): Promise<SourceMergeCommitResponse> {
-  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/commit`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!resp.ok) {
-    throw new ApiError(
-      `POST /research/artifacts/source-merge/commit failed: HTTP ${resp.status}`,
-      resp.status,
-      await resp.text(),
-    );
-  }
-  return resp.json();
-}
-
-/** POST /research/artifacts/source-merge/restore — restore source body from a committed merge. */
-export async function restoreSourceMerge(
-  request: SourceMergeRestoreRequest,
-): Promise<SourceMergeRestoreResponse> {
-  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/restore`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!resp.ok) {
-    throw new ApiError(
-      `POST /research/artifacts/source-merge/restore failed: HTTP ${resp.status}`,
-      resp.status,
-      await resp.text(),
-    );
-  }
-  return resp.json();
-}
-
 /** GET /research/{id}/distill — the durable product of a research:
  *  its insights + open questions, read off the graph. */
 export async function getDistillation(
@@ -1721,7 +1556,6 @@ export interface ChallengeNoteResponse {
   /** The reserved (un-launched) child research id, when escalated. */
   reserved_child_investigation_id?: string | null;
 }
-
 
 /** Prompt / question telemetry from the investigation trajectory (event-log SoT).
  *  Full prompt bodies are not stored on dispatch.call — only prompt_hash +
