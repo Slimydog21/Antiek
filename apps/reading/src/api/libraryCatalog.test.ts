@@ -38,6 +38,22 @@ const work = {
 };
 
 describe("parse honesty", () => {
+  it("accepts a personal_readable row as owner-only, not full-text servable (A-01)", () => {
+    const personal = {
+      ...work,
+      document_id: "doc-upload-24e63b6fb9eea860",
+      servability: "personal_readable",
+      servable_full_text: false,
+    };
+    const s = parseBookSummary(personal);
+    expect(s.servability).toBe("personal_readable");
+    expect(s.servable_full_text).toBe(false);
+    // Owner-readable is never publicly servable: the contradiction check holds.
+    expect(() => parseBookSummary({ ...personal, servable_full_text: true })).toThrow(
+      "servable_full_text contradicts servability",
+    );
+  });
+
   it("accepts metadata-only summary", () => {
     const s = parseBookSummary(work);
     expect(s.document_id).toBe("doc-1");
@@ -114,6 +130,16 @@ describe("parse honesty", () => {
     expect(() => parseBookSummary({ ...work, taken_down: true })).toThrow(
       /taken_down contradicts/,
     );
+  });
+
+  it("formatServability calls a personal document personal reading, not gated (F-07)", () => {
+    const personal = parseBookSummary({
+      ...work,
+      servability: "personal_readable",
+      servable_full_text: false,
+    });
+    expect(formatServability(personal)).toBe("Personal reading");
+    expect(formatServability(personal)).not.toMatch(/gated/i);
   });
 
   it("formatServability honesty", () => {

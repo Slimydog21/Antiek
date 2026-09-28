@@ -221,16 +221,8 @@ def search(
             f"EmbeddingModel.encode returned {len(query_vec)} dims; "
             f"model.dimension is {dim}. Match them."
         )
-    assert_embedding_compatible(con, model)
-
-    sim_expr = cosine_similarity_sql("c.embedding", query_vec, dim)
-
-    sql = f"""
-        SELECT
-            c.chunk_id, c.section_path, c.text, c.token_count,
-            c.document_id, c.chunk_index,
-            d.title, d.source_tier, d.document_type,
-            {sim_expr} AS similarity
+    candidate_sql = """
+        SELECT c.chunk_id
         FROM chunks c
         JOIN documents d ON c.document_id = d.document_id
         WHERE c.embedding IS NOT NULL
@@ -238,13 +230,13 @@ def search(
     params: list[Any] = []
     if scoped_ids is not None:
         placeholders = ",".join("?" for _ in scoped_ids)
-        sql += f" AND c.document_id IN ({placeholders})"
+        candidate_sql += f" AND c.document_id IN ({placeholders})"
         params.extend(scoped_ids)
     elif document_id is not None:
-        sql += " AND c.document_id = ?"
+        candidate_sql += " AND c.document_id = ?"
         params.append(document_id)
     if source_tier_max is not None:
-        sql += " AND d.source_tier <= ?"
+        candidate_sql += " AND d.source_tier <= ?"
         params.append(int(source_tier_max))
     # Sprint 18 retrieval-time gate (master-spec §9.0) + Personal-Reading Lane
     # SPR-01 — emitted only via retrieval_gate.non_privileged_chunk_sql_clause.
@@ -253,8 +245,23 @@ def search(
         policy_tag=policy_tag,
         owner_user_id=owner_user_id or "__operator__",
     )
-    sql += gate_sql
+    candidate_sql += gate_sql
     params.extend(gate_params)
+    assert_embedding_compatible(
+        con, model, candidate_sql=candidate_sql, candidate_params=params,
+    )
+
+    sim_expr = cosine_similarity_sql("c.embedding", query_vec, dim)
+    sql = f"""
+        SELECT
+            c.chunk_id, c.section_path, c.text, c.token_count,
+            c.document_id, c.chunk_index,
+            d.title, d.source_tier, d.document_type,
+            {sim_expr} AS similarity
+        FROM ({candidate_sql}) eligible
+        JOIN chunks c ON c.chunk_id = eligible.chunk_id
+        JOIN documents d ON c.document_id = d.document_id
+    """
     sql += " ORDER BY similarity DESC LIMIT ?"
     params.append(int(top_k))
 
