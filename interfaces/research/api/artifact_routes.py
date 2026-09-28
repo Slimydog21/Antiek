@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 _PKG_ROOT = os.path.dirname(
@@ -26,19 +26,13 @@ from substrate.contracts.anti_ek_honesty import (  # noqa: E402
 )
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
-    SourceMergeApplyReceipt,
-    SourceMergeCommitReceipt,
-    SourceMergePreviewReceipt,
     SourceMergeRestoreReceipt,
-    apply_source_merge_review,
     build_body,
     build_html_only,
-    commit_source_merge_review,
     compose_artifacts,
     export_research_artifact,
     import_agent_notes,
     list_outline_blocks,
-    preview_source_merge_review,
     render_twin_notes_html,
     research_projection_doc_model,
     restore_source_merge_review,
@@ -46,7 +40,6 @@ from substrate.research_artifact import (  # noqa: E402
 from substrate.research_artifact.paths import (  # noqa: E402
     artifact_path_for,
     read_importable_artifact,
-    read_reviewed_draft_merge,
 )
 from substrate.research_artifact.store import ResearchArtifactStore  # noqa: E402
 
@@ -119,72 +112,6 @@ class ComposeOut(BaseModel):
     hash_conflicts: list[list[str]]
 
 
-class SourceMergeReviewPacketIn(BaseModel):
-    kind: str
-    document_id: str = Field(min_length=1)
-    title: str | None = None
-    parent_reading_thread_id: str = Field(min_length=1)
-    draft_merge_path: str = Field(min_length=1)
-    compose_index_path: str = Field(min_length=1)
-    member_investigation_ids: list[str] = Field(min_length=2)
-    requested_investigation_ids: list[str] = Field(default_factory=list)
-    hash_conflict_count: int = Field(ge=0)
-    hash_conflicts: list[list[str]] = Field(default_factory=list)
-    source_book_mutated: bool
-    twin_document_mutated: bool
-    no_spend: bool
-
-
-class SourceMergeApplyIn(BaseModel):
-    reviewed_packet: SourceMergeReviewPacketIn
-    expected_content_hashes: dict[str, str] = Field(default_factory=dict)
-    acknowledge_reviewed_draft: bool = False
-    acknowledge_source_book_mutation: bool = False
-    acknowledge_twin_document_mutation: bool = False
-    acknowledge_hash_conflicts: bool = False
-    operator_reviewer: str | None = Field(default=None, max_length=160)
-
-
-class SourceMergeApplyOut(BaseModel):
-    status: str
-    document_id: str
-    source_revision_id: str
-    twin_revision_id: str
-    event_id: str
-    member_investigation_ids: list[str]
-    hash_conflicts_acknowledged: bool
-
-
-class SourceMergeCommitIn(SourceMergeApplyIn):
-    expected_source_revision_id: str = Field(min_length=1)
-    expected_twin_revision_id: str = Field(min_length=1)
-    expected_before_source_hash: str = Field(min_length=1)
-    expected_after_source_hash: str = Field(min_length=1)
-    expected_before_twin_hash: str = Field(min_length=1)
-    expected_after_twin_hash: str = Field(min_length=1)
-    acknowledge_body_rewrite: bool = False
-
-
-class SourceMergePreviewOut(BaseModel):
-    status: str
-    document_id: str
-    source_revision_id: str
-    twin_revision_id: str
-    member_investigation_ids: list[str]
-    before_source_hash: str
-    after_source_hash: str
-    before_twin_hash: str
-    after_twin_hash: str
-    source_bytes_before: int
-    source_bytes_after: int
-    twin_bytes_after: int
-    writes_performed: bool
-
-
-class SourceMergeCommitOut(SourceMergePreviewOut):
-    event_id: str
-
-
 class SourceMergeRestoreIn(BaseModel):
     document_id: str = Field(min_length=1)
     parent_reading_thread_id: str = Field(min_length=1)
@@ -207,56 +134,20 @@ class SourceMergeRestoreOut(BaseModel):
     writes_performed: bool
 
 
-def _clean_member_ids(raw_ids: list[str]) -> list[str]:
-    ids: list[str] = []
-    for item in raw_ids:
-        iid = item.strip()
-        if iid and iid not in ids:
-            ids.append(iid)
-    return ids
-
-
 def _raise_source_merge_refusal(detail: str, *, status_code: int = 409) -> None:
     raise HTTPException(status_code=status_code, detail=detail)
 
 
-def _validate_source_merge_preflight(body: SourceMergeApplyIn, *, db_path: str) -> list[str]:
-    packet = body.reviewed_packet
-    if packet.kind != "antiek.reader.source_merge_review_packet":
-        _raise_source_merge_refusal("invalid_source_merge_review_packet", status_code=400)
-    if packet.source_book_mutated or packet.twin_document_mutated:
-        _raise_source_merge_refusal("source_merge_packet_already_mutated")
-    if not packet.no_spend:
-        _raise_source_merge_refusal("source_merge_packet_must_be_no_spend", status_code=400)
-    member_ids = _clean_member_ids(packet.member_investigation_ids)
-    if len(member_ids) < 2:
-        _raise_source_merge_refusal("source_merge_requires_two_members", status_code=400)
-    try:
-        read_reviewed_draft_merge(packet.draft_merge_path)
-    except ValueError:
-        _raise_source_merge_refusal("source_merge_draft_merge_path_invalid", status_code=400)
-    if len(packet.hash_conflicts) != packet.hash_conflict_count:
-        _raise_source_merge_refusal("source_merge_conflict_count_mismatch", status_code=400)
-    if (
-        not body.acknowledge_reviewed_draft
-        or not body.acknowledge_source_book_mutation
-        or not body.acknowledge_twin_document_mutation
-    ):
-        _raise_source_merge_refusal("source_merge_operator_acknowledgement_required")
-    if packet.hash_conflicts and not body.acknowledge_hash_conflicts:
-        _raise_source_merge_refusal("source_merge_hash_conflicts_acknowledgement_required")
+_SOURCE_MERGE_RETIRED_DESCRIPTION = "Retired: under T6 a merge never writes the source document"
 
-    missing_hashes = [iid for iid in member_ids if not body.expected_content_hashes.get(iid)]
-    if missing_hashes:
-        _raise_source_merge_refusal("source_merge_expected_content_hashes_required", status_code=400)
-    stale_ids: list[str] = []
-    for iid in member_ids:
-        current_hash = build_body(iid, db_path=db_path).content_hash()
-        if current_hash != body.expected_content_hashes[iid]:
-            stale_ids.append(iid)
-    if stale_ids:
-        _raise_source_merge_refusal("source_merge_stale_review_packet")
-    return member_ids
+
+def _source_merge_retired() -> JSONResponse:
+    """The whole answer of a retired source-merge route, given before anything
+    is opened, locked, read or written."""
+    return JSONResponse(
+        status_code=410,
+        content={"reason": "retired", "alternatives": ["adopt_reading_version", "merge_into_write"]},
+    )
 
 
 @artifact_router.post("/{investigation_id}/artifact/export", response_model=ExportOut)
@@ -396,148 +287,69 @@ async def post_compose_artifacts(body: ComposeIn) -> ComposeOut:
     )
 
 
-@artifact_router.post("/artifacts/source-merge/apply", response_model=SourceMergeApplyOut)
-async def post_source_merge_apply(body: SourceMergeApplyIn) -> SourceMergeApplyOut:
-    """Preflight the irreversible source-book/twin apply boundary.
+# Source merge: preview, apply and commit are retired. Under the operator's
+# binding ruling T6 a merge never writes the source document; it either adopts
+# a reformulation as the project's reading version or merges into a Write draft
+# (THREAD-CONTRACT §1.11 "Source merge (corrected in rev 8.8)"). The paths stay
+# registered so an old client gets one stable answer. Their handlers take no
+# body parameter, so FastAPI never reads or validates the reviewed packet, and
+# they return before touching the database, a lock, a file, a receipt or the
+# event log. Restore stays live below: it is the undo for any merge already
+# committed on prod.
 
-    This route validates the reviewed packet and all mutation acknowledgements,
-    then records the first durable apply receipt under the DuckDB write lock.
-    The receipt is a metadata ledger entry: the source book body and twin body
-    are not rewritten by this milestone.
+
+@artifact_router.post(
+    "/artifacts/source-merge/preview",
+    status_code=410,
+    deprecated=True,
+    response_description=_SOURCE_MERGE_RETIRED_DESCRIPTION,
+)
+async def post_source_merge_preview() -> JSONResponse:
+    """Retired: always 410.
+
+    Preview computed the body a commit would write into the source document,
+    and to do it took the DuckDB write lock and read the draft file the client
+    named. T6 rules that a merge never writes the source (THREAD-CONTRACT
+    §1.11 "Source merge (corrected in rev 8.8)"), so there is no source write
+    left to preview.
     """
-
-    db_path = _db()
-    member_ids = _validate_source_merge_preflight(body, db_path=db_path)
-    packet = body.reviewed_packet
-
-    def _apply_sync() -> SourceMergeApplyReceipt:
-        try:
-            with connect_write(db_path, purpose="research_artifact/source_merge_apply") as con:
-                return apply_source_merge_review(
-                    con,
-                    document_id=packet.document_id,
-                    parent_reading_thread_id=packet.parent_reading_thread_id,
-                    draft_merge_path=packet.draft_merge_path,
-                    compose_index_path=packet.compose_index_path,
-                    member_investigation_ids=member_ids,
-                    expected_content_hashes=body.expected_content_hashes,
-                    hash_conflicts=packet.hash_conflicts,
-                    hash_conflicts_acknowledged=body.acknowledge_hash_conflicts,
-                    operator_reviewer=body.operator_reviewer,
-                )
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    try:
-        receipt = await asyncio.to_thread(_apply_sync)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return SourceMergeApplyOut(
-        status=receipt.status,
-        document_id=receipt.document_id,
-        source_revision_id=receipt.source_revision_id,
-        twin_revision_id=receipt.twin_revision_id,
-        event_id=receipt.event_id or "",
-        member_investigation_ids=receipt.member_investigation_ids,
-        hash_conflicts_acknowledged=receipt.hash_conflicts_acknowledged,
-    )
-@artifact_router.post("/artifacts/source-merge/preview", response_model=SourceMergePreviewOut)
-async def post_source_merge_preview(body: SourceMergeApplyIn) -> SourceMergePreviewOut:
-    """Preview source/twin revision evidence without writing bodies or events."""
-
-    db_path = _db()
-    member_ids = _validate_source_merge_preflight(body, db_path=db_path)
-    packet = body.reviewed_packet
-    def _preview_sync() -> SourceMergePreviewReceipt:
-        with connect_write(db_path, purpose="research_artifact/source_merge_preview") as con:
-            return preview_source_merge_review(
-                con,
-                document_id=packet.document_id,
-                draft_merge_path=packet.draft_merge_path,
-                compose_index_path=packet.compose_index_path,
-                member_investigation_ids=member_ids,
-                expected_content_hashes=body.expected_content_hashes,
-                hash_conflicts=packet.hash_conflicts,
-            )
-
-    try:
-        preview = await asyncio.to_thread(_preview_sync)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return SourceMergePreviewOut(
-        status=preview.status,
-        document_id=preview.document_id,
-        source_revision_id=preview.source_revision_id,
-        twin_revision_id=preview.twin_revision_id,
-        member_investigation_ids=preview.member_investigation_ids,
-        before_source_hash=preview.before_source_hash,
-        after_source_hash=preview.after_source_hash,
-        before_twin_hash=preview.before_twin_hash,
-        after_twin_hash=preview.after_twin_hash,
-        source_bytes_before=preview.source_bytes_before,
-        source_bytes_after=preview.source_bytes_after,
-        twin_bytes_after=preview.twin_bytes_after,
-        writes_performed=preview.writes_performed,
-    )
+    return _source_merge_retired()
 
 
-@artifact_router.post("/artifacts/source-merge/commit", response_model=SourceMergeCommitOut)
-async def post_source_merge_commit(body: SourceMergeCommitIn) -> SourceMergeCommitOut:
-    """Commit a reviewed preview to the source body and twin revision ledger."""
+@artifact_router.post(
+    "/artifacts/source-merge/apply",
+    status_code=410,
+    deprecated=True,
+    response_description=_SOURCE_MERGE_RETIRED_DESCRIPTION,
+)
+async def post_source_merge_apply() -> JSONResponse:
+    """Retired: always 410.
 
-    if not body.acknowledge_body_rewrite:
-        _raise_source_merge_refusal("source_merge_body_rewrite_acknowledgement_required")
-    db_path = _db()
-    member_ids = _validate_source_merge_preflight(body, db_path=db_path)
-    packet = body.reviewed_packet
-    def _commit_sync() -> SourceMergeCommitReceipt:
-        with connect_write(db_path, purpose="research_artifact/source_merge_commit") as con:
-            return commit_source_merge_review(
-                con,
-                document_id=packet.document_id,
-                parent_reading_thread_id=packet.parent_reading_thread_id,
-                draft_merge_path=packet.draft_merge_path,
-                compose_index_path=packet.compose_index_path,
-                member_investigation_ids=member_ids,
-                expected_content_hashes=body.expected_content_hashes,
-                hash_conflicts=packet.hash_conflicts,
-                expected_source_revision_id=body.expected_source_revision_id,
-                expected_twin_revision_id=body.expected_twin_revision_id,
-                expected_before_source_hash=body.expected_before_source_hash,
-                expected_after_source_hash=body.expected_after_source_hash,
-                expected_before_twin_hash=body.expected_before_twin_hash,
-                expected_after_twin_hash=body.expected_after_twin_hash,
-                operator_reviewer=body.operator_reviewer,
-            )
+    Apply wrote the receipt and audit event that commit consumed before it
+    rewrote the source document's body. T6 rules that a merge never writes the
+    source (THREAD-CONTRACT §1.11 "Source merge (corrected in rev 8.8)"), so a
+    receipt authorising that write must not be recorded.
+    """
+    return _source_merge_retired()
 
-    try:
-        receipt = await asyncio.to_thread(_commit_sync)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return SourceMergeCommitOut(
-        status=receipt.status,
-        document_id=receipt.document_id,
-        source_revision_id=receipt.source_revision_id,
-        twin_revision_id=receipt.twin_revision_id,
-        member_investigation_ids=receipt.member_investigation_ids,
-        before_source_hash=receipt.before_source_hash,
-        after_source_hash=receipt.after_source_hash,
-        before_twin_hash=receipt.before_twin_hash,
-        after_twin_hash=receipt.after_twin_hash,
-        source_bytes_before=receipt.source_bytes_before,
-        source_bytes_after=receipt.source_bytes_after,
-        twin_bytes_after=receipt.twin_bytes_after,
-        writes_performed=receipt.writes_performed,
-        event_id=receipt.event_id or "",
-    )
+
+@artifact_router.post(
+    "/artifacts/source-merge/commit",
+    status_code=410,
+    deprecated=True,
+    response_description=_SOURCE_MERGE_RETIRED_DESCRIPTION,
+)
+async def post_source_merge_commit() -> JSONResponse:
+    """Retired: always 410.
+
+    Commit rewrote a source document's body from a reviewed twin-note merge,
+    the write T6 forbids: a merge adopts a reformulation as the reading version
+    or merges into a Write draft, never into the source (THREAD-CONTRACT §1.11
+    "Source merge (corrected in rev 8.8)"). The contract once said
+    ``validate_commit_boundary`` refused this route, but that function has no
+    production caller; this handler is the refusal.
+    """
+    return _source_merge_retired()
 
 
 @artifact_router.post("/artifacts/source-merge/restore", response_model=SourceMergeRestoreOut)

@@ -258,8 +258,12 @@ Likely culprits (in order of probability):
    restarting — a restart drops live connections for nothing:
    ```bash
    cd ~/Desktop/Antiek/infrastructure/ansible
-   ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml --tags caddy
+   LIVE_SHA=$(curl -s https://api.antiek.ai/health | jq -r .build_sha)
+   ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml --tags caddy \
+     -e antiek_target_sha="$LIVE_SHA"
    ```
+   The required-checks gate verifies that SHA before any route is rendered,
+   and refuses a missing SHA or one whose checks are not green.
 
 ## WebSocket connections dropping
 
@@ -278,8 +282,13 @@ re-render from the template:
 
 ```bash
 cd ~/Desktop/Antiek/infrastructure/ansible
-ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml --tags caddy
+LIVE_SHA=$(curl -s https://api.antiek.ai/health | jq -r .build_sha)
+ansible-playbook -i inventory.ini playbooks/deploy_atomic.yml --tags caddy \
+  -e antiek_target_sha="$LIVE_SHA"
 ```
+
+The required-checks gate verifies that SHA before any route is rendered,
+and refuses a missing SHA or one whose checks are not green.
 
 This tag is safe only when the exact gated SHA already has a complete
 release and receipt under `/opt/antiek-releases`. The atomic playbook
