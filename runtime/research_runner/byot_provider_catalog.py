@@ -46,6 +46,18 @@ class ByotModelVariant:
     label: str
     rates: tuple[UnitRate, ...]
     snapshot: str
+    # The name sent to the provider when it differs from the catalog id: a
+    # mode variant (e.g. Flash without thinking) is its own catalog entry,
+    # priced and bound on its own id, but the provider knows one model.
+    wire_model_id: str | None = None
+    # DeepSeek's documented mode switch, sent as {"thinking": {"type": ...}}
+    # (api-docs.deepseek.com/guides/thinking_mode). None sends nothing and
+    # leaves the provider default.
+    thinking: Literal["enabled", "disabled"] | None = None
+
+    @property
+    def request_model_id(self) -> str:
+        return self.wire_model_id or self.model_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,17 +143,33 @@ BYOT_PROVIDER_PRESETS: tuple[ByotProviderPreset, ...] = (
         default_base_url="https://api.deepseek.com",
         chat_completions_path="/chat/completions",
         models=(
+            # DeepSeek discontinued deepseek-chat / deepseek-reasoner on
+            # 2026-07-24 and retired V4 Flash for V4.1 Flash on 2026-09-10
+            # (api-docs.deepseek.com/updates). Rates are the PEAK cache-miss
+            # rows from the pricing page, checked 2026-09-23, so the ceiling
+            # projection never under-estimates an off-peak call. Thinking is
+            # on by default for both current models (guides/thinking_mode,
+            # checked 2026-09-24), so the two Flash modes are explicit rows.
             ByotModelVariant(
-                "deepseek-reasoner",
+                "deepseek-v4-pro",
                 "DeepSeek V4 Pro",
-                _rates("0.55", "2.19"),
-                "deepseek-v4-pro-2026-08-spec",
+                _rates("1.32", "3.96"),
+                "deepseek-v4-pro-0813-2026-09-23",
             ),
             ByotModelVariant(
-                "deepseek-chat",
-                "DeepSeek V4 Flash",
-                _rates("0.28", "0.42"),
-                "deepseek-v4-flash-2026-08-spec",
+                "deepseek-flash",
+                "DeepSeek V4.1 Flash",
+                _rates("0.30", "1.20"),
+                "deepseek-flash-v4.1-2026-09-23",
+                thinking="enabled",
+            ),
+            ByotModelVariant(
+                "deepseek-flash-nothink",
+                "DeepSeek V4.1 Flash (no thinking)",
+                _rates("0.30", "1.20"),
+                "deepseek-flash-v4.1-nothink-2026-09-24",
+                wire_model_id="deepseek-flash",
+                thinking="disabled",
             ),
         ),
         pricing_source="https://api-docs.deepseek.com/quick_start/pricing",
@@ -243,9 +271,31 @@ def get_provider_preset(catalog_id: str) -> ByotProviderPreset:
     return _PRESETS_BY_ID[canonical_catalog_id(catalog_id)]
 
 
+# Provider model names that were renamed or retired, mapped to the current
+# variant that keeps BOTH the old name's mode and its price class. A key saved
+# under an old name keeps working and is priced, bound and sent as that
+# variant rather than failing at the provider or silently changing behaviour.
+# DeepSeek's own transition (updates, 2026-04-24): deepseek-chat was V4 Flash
+# non-thinking and deepseek-reasoner V4 Flash thinking. V4 Flash is now V4.1
+# Flash (2026-09-10), and deepseek-v4-flash is routed there by DeepSeek.
+_LEGACY_MODEL_IDS: dict[ProviderCatalogId, dict[str, str]] = {
+    "deepseek": {
+        "deepseek-chat": "deepseek-flash-nothink",
+        "deepseek-reasoner": "deepseek-flash",
+        "deepseek-v4-flash": "deepseek-flash",
+    },
+}
+
+
+def canonical_model_id(preset: ByotProviderPreset, model_id: str) -> str:
+    """The current catalog name for ``model_id`` (unchanged if not legacy)."""
+    return _LEGACY_MODEL_IDS.get(preset.catalog_id, {}).get(model_id, model_id)
+
+
 def get_model_variant(preset: ByotProviderPreset, model_id: str) -> ByotModelVariant:
+    current = canonical_model_id(preset, model_id)
     try:
-        return next(model for model in preset.models if model.model_id == model_id)
+        return next(model for model in preset.models if model.model_id == current)
     except StopIteration as exc:
         raise KeyError(f"model is not in BYOT provider preset: {model_id}") from exc
 
@@ -332,6 +382,7 @@ __all__ = [
     "ByotProviderPreset",
     "ProviderCatalogId",
     "canonical_catalog_id",
+    "canonical_model_id",
     "get_model_variant",
     "get_provider_preset",
     "route_authority_catalog_entries",

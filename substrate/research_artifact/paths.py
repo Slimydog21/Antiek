@@ -123,7 +123,9 @@ def atomic_write_nofollow(path: Path, data: bytes) -> None:
     The parent directory's descriptor is closed on every path out, and no
     cleanup step replaces the error that caused it: closing and removing the
     temp after a failure are best effort, the original failure is what
-    raises. A temp that fails to close is removed and never published."""
+    raises, and a cleanup failure rides on it as a note (not as its cause:
+    the cleanup did not cause the failure). A temp that fails to close is
+    removed and never published."""
     parent_fd, name = _open_parent_dir(path, create=True)
     try:
         temp_name = f".{name}.{secrets.token_hex(12)}.tmp"
@@ -136,20 +138,34 @@ def atomic_write_nofollow(path: Path, data: bytes) -> None:
                     written = os.write(fd, view)
                     view = view[written:]
                 os.fsync(fd)
-            except BaseException:
-                with suppress(OSError):
+            except BaseException as failure:
+                try:
                     os.close(fd)
+                except OSError as close_error:
+                    failure.add_note(_cleanup_note("closing the temp file", close_error))
                 raise
             # Closed outside the handler: its own error is the failure then.
             os.close(fd)
             os.replace(temp_name, name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
             os.fsync(parent_fd)
-        except BaseException:
-            with suppress(OSError):
+        except BaseException as failure:
+            try:
                 os.unlink(temp_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass  # never created, or already published by the replace
+            except OSError as unlink_error:
+                failure.add_note(_cleanup_note("removing the temp file", unlink_error))
             raise
     finally:
         os.close(parent_fd)
+
+
+def _cleanup_note(stage: str, error: OSError) -> str:
+    """A cleanup failure as a note: the stage, the error's type and errno.
+
+    Never the error's text: an OSError's str names its file, and the temp's
+    name embeds the artifact id."""
+    return f"{stage} also failed: {type(error).__name__} (errno {error.errno}, {error.strerror})"
 
 
 def _open_parent_dir(path: Path, *, create: bool) -> tuple[int, str]:
