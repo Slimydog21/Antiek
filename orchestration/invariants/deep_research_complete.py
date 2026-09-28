@@ -81,7 +81,16 @@ def check_deep_research_complete(
         )),
         (9, lambda: check_phase_9(investigation_id)),
     )
-    assert tuple(p for p, _ in phase_checks) == DEEP_RESEARCH_TERMINAL_PHASES
+    observed_phases = tuple(p for p, _ in phase_checks)
+    if observed_phases != DEEP_RESEARCH_TERMINAL_PHASES:
+        # Survives `python -O`: this is the checker's completion warrant. If the
+        # phase list can drift, the checker must refuse to run — an over-reported
+        # "complete" is worse than no verdict (rigor #3).
+        raise RuntimeError(
+            "deep-research completion checker is missing terminal phases: "
+            f"expected {DEEP_RESEARCH_TERMINAL_PHASES!r}, "
+            f"got {observed_phases!r}"
+        )
     for phase, run in phase_checks:
         ok, reason = run()
         if not ok:

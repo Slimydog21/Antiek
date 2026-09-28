@@ -639,6 +639,19 @@ def accrue_window(
     # returned "pass"/empty); replace() cannot.
     result = replace(result, batch_ref=batch_ref)
 
+    # Every holder a line will credit must resolve BEFORE the first append-only
+    # write (the dwell cap below writes too): documents.ip_holder_id has no FK,
+    # and a ledger row crediting an id escrow never received loses the money
+    # while reconciles() stays True. Caps only lower cents, so this is a superset.
+    ip_holders.require_holders(
+        con,
+        {
+            line.ip_holder_id
+            for line in result.asset_lines
+            if line.ip_holder_id is not None and line.amount_cents > 0
+        },
+    )
+
     if dwell_cap_ms is not None:
         result = _apply_dwell_caps(
             con,

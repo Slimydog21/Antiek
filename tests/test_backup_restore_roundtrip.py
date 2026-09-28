@@ -22,8 +22,17 @@ constraints follow). Consequences for an **unnormalized raw DuckDB export**:
   2. Where IMPORT does limp past a lone trailing comma, the self-ref FK is gone
      and no longer enforced — silent data-integrity loss on restore.
 
-Only **two** self-ref FKs exist in the source schema (``edges.superseded_by`` →
-``edges``; ``deliverable_sections.parent_section_id`` → ``deliverable_sections``).
+**Census (corrected 2026-09-27):** at source_sha ``9f35a73a1`` there are **four**
+self-ref FKs, not two: the named pair (``edges.superseded_by`` → ``edges``;
+``deliverable_sections.parent_section_id`` → ``deliverable_sections``) plus two
+composite self-refs on ``derived_asset_revisions``
+(``(derived_asset_id, parent_revision_id)`` and the ``restored_from`` composite
+over content/manifest SHA). All four are dropped on restore by the same DuckDB
+limitation; the normalizer handles all four malformation sites and the verify
+gate's self-ref exclusion already covers them, so restore is sound — but the
+documented integrity-drift surface is larger than this docstring previously
+claimed. The "two" count is true only on branches without
+``derived_asset_revisions``; the claim is SHA-scoped.
 Non-self-referential FKs, CHECK constraints, indexes, and data all round-trip
 correctly (proven below).
 

@@ -3,72 +3,72 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import AppShell from "./AppShell";
-import PanelWindowApp from "./PanelWindowApp";
 import CommandPalette from "./components/CommandPalette";
 import { AuthProvider, useAuth } from "./lib/auth";
-import Backtest from "./modes/Backtest";
-import Billing from "./modes/Billing";
-import Biography from "./modes/Biography";
-import BrainstormStation from "./modes/BrainstormStation";
-import Coordination from "./modes/Coordination";
-import CostConsent from "./modes/Coordination/CostConsent";
-import CreationStudio from "./modes/CreationStudio";
-import CrossGraphCitations from "./modes/CrossGraphCitations";
-import Home from "./modes/Home/Home";
-import Library from "./modes/Library";
-// Link Monster is lazy-loaded: its p5 furnace-stage chunk must not
-// ship on every page load (S12 bundle budget, WP-12.2 — main index
-// chunk ceiling 700 KB gz). Only /link-monster pulls the Monster in.
-const LinkMonster = lazy(() => import("./modes/LinkMonster/LinkMonster"));
-import LibraryView from "./components/library/LibraryView";
-import Login from "./modes/Login";
-import Loop3 from "./modes/Loop3";
-import Map from "./modes/Map";
-import MidnightOil from "./modes/MidnightOil";
-import Multimedia from "./modes/Multimedia";
-import Notebook from "./modes/Notebook";
-import AutoNotebook from "./modes/Notebook/AutoNotebook";
-import NotebooksIndex from "./modes/NotebooksIndex";
-import Outcomes from "./modes/Outcomes";
-import OutcomesIndex from "./modes/OutcomesIndex";
-import PricingPage from "./modes/Pricing";
-import PrivacyDashboard from "./modes/PrivacyDashboard";
-import BookReader from "./modes/Reading";
-import MetaReading from "./modes/Reading/MetaReading";
-import PersonalSpace from "./modes/Reading/PersonalSpace";
-import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
-import ResearchWorkstation from "./modes/ResearchWorkstation";
-import MyResearch from "./modes/ResearchWorkstation/MyResearch";
-import Settings from "./modes/Settings";
-import SkillRuleDetail from "./modes/SkillRuleDetail";
-import SkillRules from "./modes/SkillRules";
-import Sources from "./modes/Sources";
-import SpeakConsole from "./modes/Speak";
-import SpeakIndex from "./modes/SpeakIndex";
-import SpeakInvite from "./modes/SpeakInvite";
-import SpeakPublicBrowse from "./modes/SpeakPublicBrowse";
-import TrustCenter from "./modes/TrustCenter";
-import Explain from "./modes/Explain";
-import ObjectiveCard from "./modes/ObjectiveCard";
-import Signals from "./modes/Signals";
-import WriteHome from "./modes/Write/WriteHome";
-import WrestleApp from "./modes/WrestleApp";
 
-// Account Memory is lazy-loaded: it is an owner-private secondary panel, not
-// part of the first paint. Keeping it out of App's entry chunk preserves the
-// WP-12.2 700 KB gz budget as the routed surface set grows.
+// ── WP-12.2 bundle budget (index chunk ceiling 700 KB gz) ──────────────
+// Every routed mode is code-split. Only the shell, the auth provider and
+// the ⌘K palette ship in the entry chunk — the route components arrive on
+// visit, one chunk each. This is the architecturally correct split: the
+// routes were already isolated by react-router, so lazy() costs nothing in
+// behaviour and keeps the entry chunk from growing with the surface set.
+//
+// The two prior hand-rolled lazies (LinkMonster's p5 furnace-stage chunk,
+// DocumentsIndex's style-wheel preview) are folded into this same policy
+// rather than kept as special cases.
+const LinkMonster = lazy(() => import("./modes/LinkMonster/LinkMonster"));
 const AccountMemory = lazy(() => import("./modes/AccountMemory"));
-// The documents listing is a secondary surface reached from navigation, and its
-// row preview pulls in the style wheel; lazy-loading it keeps both out of the
-// entry chunk, which sits within about 1 KB of the 700 KB gz ceiling.
 const DocumentsIndex = lazy(() => import("./modes/DocumentsIndex"));
-// These secondary routes are not part of the first paint. Loading them on
-// visit keeps their tables and replay view out of the entry bundle.
 const Federation = lazy(() => import("./modes/Federation"));
 const OperatorDashboard = lazy(() => import("./modes/OperatorDashboard"));
 const PayoutsAudit = lazy(() => import("./modes/PayoutsAudit"));
 const Replay = lazy(() => import("./modes/Replay"));
 const Stats = lazy(() => import("./modes/Stats"));
+
+const PanelWindowApp = lazy(() => import("./PanelWindowApp"));
+const Backtest = lazy(() => import("./modes/Backtest"));
+const Billing = lazy(() => import("./modes/Billing"));
+const Biography = lazy(() => import("./modes/Biography"));
+const BrainstormStation = lazy(() => import("./modes/BrainstormStation"));
+const Coordination = lazy(() => import("./modes/Coordination"));
+const CostConsent = lazy(() => import("./modes/Coordination/CostConsent"));
+const CreationStudio = lazy(() => import("./modes/CreationStudio"));
+const CrossGraphCitations = lazy(() => import("./modes/CrossGraphCitations"));
+const Home = lazy(() => import("./modes/Home/Home"));
+const Library = lazy(() => import("./modes/Library"));
+const LibraryView = lazy(() => import("./components/library/LibraryView"));
+const Login = lazy(() => import("./modes/Login"));
+const Loop3 = lazy(() => import("./modes/Loop3"));
+const Map = lazy(() => import("./modes/Map"));
+const MidnightOil = lazy(() => import("./modes/MidnightOil"));
+const Multimedia = lazy(() => import("./modes/Multimedia"));
+const Notebook = lazy(() => import("./modes/Notebook"));
+const AutoNotebook = lazy(() => import("./modes/Notebook/AutoNotebook"));
+const NotebooksIndex = lazy(() => import("./modes/NotebooksIndex"));
+const Outcomes = lazy(() => import("./modes/Outcomes"));
+const OutcomesIndex = lazy(() => import("./modes/OutcomesIndex"));
+const PricingPage = lazy(() => import("./modes/Pricing"));
+const PrivacyDashboard = lazy(() => import("./modes/PrivacyDashboard"));
+const BookReader = lazy(() => import("./modes/Reading"));
+const MetaReading = lazy(() => import("./modes/Reading/MetaReading"));
+const PersonalSpace = lazy(() => import("./modes/Reading/PersonalSpace"));
+const DeepResearchWorkspace = lazy(() => import("./modes/DeepResearchWorkspace"));
+const ResearchWorkstation = lazy(() => import("./modes/ResearchWorkstation"));
+const MyResearch = lazy(() => import("./modes/ResearchWorkstation/MyResearch"));
+const Settings = lazy(() => import("./modes/Settings"));
+const SkillRuleDetail = lazy(() => import("./modes/SkillRuleDetail"));
+const SkillRules = lazy(() => import("./modes/SkillRules"));
+const Sources = lazy(() => import("./modes/Sources"));
+const SpeakConsole = lazy(() => import("./modes/Speak"));
+const SpeakIndex = lazy(() => import("./modes/SpeakIndex"));
+const SpeakInvite = lazy(() => import("./modes/SpeakInvite"));
+const SpeakPublicBrowse = lazy(() => import("./modes/SpeakPublicBrowse"));
+const TrustCenter = lazy(() => import("./modes/TrustCenter"));
+const Explain = lazy(() => import("./modes/Explain"));
+const ObjectiveCard = lazy(() => import("./modes/ObjectiveCard"));
+const Signals = lazy(() => import("./modes/Signals"));
+const WriteHome = lazy(() => import("./modes/Write/WriteHome"));
+const WrestleApp = lazy(() => import("./modes/WrestleApp"));
 
 function RouteLoading({ label }: { label: string }) {
   return (
@@ -129,6 +129,10 @@ function AuthenticatedRoutes() {
       {/* AISidecar is no longer mounted directly here — it lives as
           PanelKind="AISidecar" and is mounted by the panel system
           when the operator opens it via ⌘/ (S8-full refactor). */}
+      {/* Outer Suspense boundary for the code-split mode routes (WP-12.2).
+          Per-route Suspense blocks below keep their specific copy and take
+          precedence; anything lazy without its own boundary lands here. */}
+      <Suspense fallback={<RouteLoading label="Loading…" />}>
       <Routes>
         {/* SPR-12 M1 — the unified branded home. A NEW route (the top-left
             rail logo points here). "/" deliberately STAYS the Research door
@@ -341,6 +345,7 @@ function AuthenticatedRoutes() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </AppShell>
   );
 }
@@ -348,6 +353,7 @@ function AuthenticatedRoutes() {
 export default function App() {
   return (
     <AuthProvider>
+      <Suspense fallback={<RouteLoading label="Loading…" />}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/trust" element={<TrustCenter />} />
@@ -370,6 +376,7 @@ export default function App() {
           }
         />
       </Routes>
+      </Suspense>
     </AuthProvider>
   );
 }
