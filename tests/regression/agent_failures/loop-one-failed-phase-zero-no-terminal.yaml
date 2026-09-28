@@ -1,0 +1,63 @@
+id: loop-one-failed-phase-zero-no-terminal
+observed_at: 2026-09-27
+source: .infinite/agent-board.json (claim sweep-v2-lb3a0-failed-terminal-20260927)
+agent: claude
+phase: investigation_start
+failure_type: terminal_event_validation_swallowed
+
+context_summary: |
+  Loop One reports a failed run by emitting investigation.failed, and the
+  thread contract reads a thread as failed only when that row exists. Three
+  failure paths built the payload with phase=0: both owner-model refusals in
+  the investigation-start handler, and the phase loop whenever the phase that
+  returned False had not set ctx.failed_phase itself. InvestigationFailedPayload
+  requires 1 <= phase <= 9, so building the payload raised a pydantic
+  ValidationError inside the detached loop_one:<id> task. The task swallowed
+  the exception, no terminal row was written, and the thread read as running
+  forever.
+
+input:
+  prompt: |
+    POST an investigation start whose owner_model_choices are set while the
+    broadcaster has no _owner_model_app (or owner_user_id is None), or whose
+    choices fail UserModelChoice validation. Separately, run a start where a
+    phase returns False without assigning ctx.failed_phase.
+  env:
+    ANTIEK_RESEARCH_EVENTS_DIR: /tmp/antiek-events
+
+expected_behavior: |
+  Every failed run writes exactly one investigation.failed row. The owner-model
+  refusals report phase=1 (the refusal stopped phase 1 from starting) with
+  reason owner_model_unavailable and last_completed_phase None. The phase loop
+  reports the 1-based position of the phase that returned False when the phase
+  did not set failed_phase itself. The loop_one task finishes without raising.
+
+actual_failure: |
+  InvestigationFailedPayload(phase=0, ...) raised
+  pydantic_core.ValidationError ("Input should be greater than or equal to 1")
+  before emit_typed ran. The exception propagated out of the detached task,
+  asyncio dropped it, and the trajectory ended with no investigation.failed or
+  investigation.completed row.
+
+harness_check_that_now_catches: |
+  orchestration/loop_one/orchestrator.py now reports phase=1 at both owner-model
+  refusals and, in the phase loop, sets ctx.failed_phase to the 1-based position
+  of the phase that returned False when the phase left it unset, so the payload
+  always validates and the chase gate still sees a failed run.
+  tests/test_loop_one_failed_terminal.py drives the real start handler against
+  a temp event log, awaits the loop_one:<id> task, and asserts exactly one
+  investigation.failed row with the expected phase, no exception on the task,
+  and no chase child after a silent phase-7 failure.
+
+fix_commit: LB-3a0
+
+notes: |
+  LB-3a0. fix_commit names the commit "fix(loop-one): a failed run writes its
+  terminal (LB-3a0)" on branch fix/lb3a0-failed-terminal-20260927, which
+  directly follows the commit that filed this fixture as a GAP. The schema
+  keeps phase ge=1. Hand mutations (restoring phase=0 at either owner-model
+  site, `ctx.failed_phase or 0`, a 0-based loop position, dropping the
+  failed_phase assignment, overwriting a phase's own failed_phase) each turn
+  at least one test in that file red. Out of scope here: an exception other
+  than OwnerByotDispatchUnavailable escaping _run_investigation still ends the
+  detached task without a terminal row.

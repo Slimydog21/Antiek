@@ -152,6 +152,7 @@ function Host({
   onRewrite,
   editContext,
   onApplyEdit,
+  onPinAnchor,
 }: {
   onDeepResearch?: (t: string | null, s: FloatMenuSelection) => void;
   hybridEnabled?: boolean;
@@ -163,6 +164,8 @@ function Host({
   /** CK-5: the Write edit-context + apply callback (mode-gated). */
   editContext?: { deliverableId: string; sectionId: string };
   onApplyEdit?: (editedText: string) => void;
+  /** Anchor-first SPR-02: the reading host's pin seam (mode-gated). */
+  onPinAnchor?: (pin: { source: string }, s: FloatMenuSelection) => void;
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
   const selection = useFloatMenuSelection({
@@ -182,6 +185,7 @@ function Host({
         rewriteActions={onRewrite ? { onRewrite } : undefined}
         editContext={editContext}
         onApplyEdit={onApplyEdit}
+        onPinAnchor={onPinAnchor}
       />
     </div>
   );
@@ -534,5 +538,77 @@ describe("Hybrid stub is flagged off by default (M4)", () => {
     const hybrid = document.querySelector("[data-floatmenu-hybrid]");
     expect(hybrid).toBeTruthy();
     expect(hybrid?.textContent).toMatch(/coming/i); // honestly unfinished
+  });
+});
+
+// ── Anchor-first SPR-02 — the pin seam ─────────────────────────────────────
+
+describe("the pin seam (anchor-first SPR-02)", () => {
+  it("Note, Dialogue, and Search each fire exactly one pin with their source", () => {
+    const onPinAnchor = vi.fn();
+    render(<Host onPinAnchor={onPinAnchor} />);
+    selectTextIn(screen.getByTestId("scope"), "the selected passage text");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Note" }));
+    expect(onPinAnchor).toHaveBeenCalledTimes(1);
+    expect(onPinAnchor.mock.calls[0][0]).toEqual({ source: "floatmenu_note" });
+    expect(onPinAnchor.mock.calls[0][1].text).toBe("the selected passage text");
+
+    // A fresh selection for the next action (the menu resets per selection).
+    clearSelection();
+    selectTextIn(screen.getByTestId("scope"), "the selected passage text");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Dialogue" }));
+    expect(onPinAnchor).toHaveBeenCalledTimes(2);
+    expect(onPinAnchor.mock.calls[1][0]).toEqual({ source: "floatmenu_dialogue" });
+
+    clearSelection();
+    selectTextIn(screen.getByTestId("scope"), "the selected passage text");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Search" }));
+    expect(onPinAnchor).toHaveBeenCalledTimes(3);
+    expect(onPinAnchor.mock.calls[2][0]).toEqual({ source: "floatmenu_search" });
+  });
+
+  it("Deep-research does NOT double-pin at the menu (its pin lives in the host's onDeepResearch)", () => {
+    const onPinAnchor = vi.fn();
+    const onDeepResearch = vi.fn();
+    render(<Host onPinAnchor={onPinAnchor} onDeepResearch={onDeepResearch} />);
+    selectTextIn(screen.getByTestId("scope"), "the selected passage text");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research" }));
+    // The menu hands the host the selection exactly once — the pin happens
+    // inside the host's onDeepResearch (the SPR-04 write-back needs the id).
+    expect(onDeepResearch).toHaveBeenCalledTimes(1);
+    expect(onPinAnchor).not.toHaveBeenCalled();
+  });
+
+  it("the Pin button pins without acting — and only exists when the host wires the seam", () => {
+    const onPinAnchor = vi.fn();
+    render(<Host onPinAnchor={onPinAnchor} />);
+    selectTextIn(screen.getByTestId("scope"), "the selected passage text");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pin" }));
+    expect(onPinAnchor).toHaveBeenCalledTimes(1);
+    expect(onPinAnchor.mock.calls[0][0]).toEqual({ source: "pin" });
+    // No action fired: no note saved, no search, no spawn.
+    expect(postTypedEventMock).not.toHaveBeenCalled();
+    expect(searchBlocksMock).not.toHaveBeenCalled();
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+  });
+
+  it("a host WITHOUT the seam gets the byte-for-byte menu (no Pin button, no fires)", () => {
+    render(<Host />);
+    selectTextIn(screen.getByTestId("scope"), "the selected passage text");
+    expect(screen.queryByRole("menuitem", { name: "Pin" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Note" })).toBeTruthy();
+  });
+
+  it("a withheld selection still pins (the host sends the metadata-only form); the Search refusal is unchanged", async () => {
+    const onPinAnchor = vi.fn();
+    render(<Host onPinAnchor={onPinAnchor} provenance={{ servable: false }} />);
+    selectTextIn(screen.getByTestId("scope"), "the selected passage text");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Search" }));
+    // The pin seam still fires — the metadata-only shape is the host's job —
+    // while the OUTBOUND refusal stands: no search query leaves the client.
+    expect(onPinAnchor).toHaveBeenCalledTimes(1);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("restricted source");
+    expect(searchBlocksMock).not.toHaveBeenCalled();
   });
 });

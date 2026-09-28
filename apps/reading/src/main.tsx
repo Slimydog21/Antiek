@@ -7,6 +7,9 @@ import "./design/motion.css";
 import App from "./App";
 import AppLegacy from "./AppLegacy";
 import { PostHogRoot } from "./lib/PostHogRoot";
+import { AppErrorBoundary } from "./lib/AppErrorBoundary";
+import { installChunkLoadRecovery } from "./lib/chunkLoadRecovery";
+import { RouteTitle } from "./lib/RouteTitle";
 
 /**
  * S12 cutover flag.
@@ -29,11 +32,22 @@ if (import.meta.env.DEV) {
   console.info(`[antiek] UI version: ${uiVersion}`);
 }
 
+// P-05: a stale tab whose hashed chunks were replaced by a deploy reloads
+// once per failed asset, then falls through to the boundary (never a loop).
+installChunkLoadRecovery();
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <PostHogRoot>
       <BrowserRouter>
-        {uiVersion === "v1" ? <AppLegacy /> : <App />}
+        {/* F-01: the one root boundary, covering both UI trees. Inside the
+            router only so it can reset on pathname change; its fallback
+            never depends on the router (see AppErrorBoundary.tsx). */}
+        <AppErrorBoundary>
+          {/* A-13: "<Mode name> · Antiek" per route, from MODE_TAXONOMY. */}
+          <RouteTitle />
+          {uiVersion === "v1" ? <AppLegacy /> : <App />}
+        </AppErrorBoundary>
       </BrowserRouter>
     </PostHogRoot>
   </React.StrictMode>,
