@@ -437,4 +437,3 @@ def test_bulk_pdf_429_event_names_the_pdf_host(tmp_path: Path) -> None:
     pdf_events = [e for e in read_ban_events() if e["source"] == ARXIV_PDF_SOURCE_KEY]
     assert len(pdf_events) == 1, read_ban_events()
     assert pdf_events[0]["host"] == "arxiv.org"
-
