@@ -41,6 +41,8 @@ The C06 repair makes `substrate/dispatch/router.py` bill any successful call who
 
 **Resolved direction (2026-09-23, Prime lane owner):** Prime Agent runs on the operator's metered DeepSeek/Kimi keys, so a zero-priced tier would be a false statement. Ceiling billing at the base tier's price is the honest interim. Surfacing real counts from the backend receipt is queued as its own follow-up on the #3399 seam. If the binary reports no counts, the ceiling stays and this record says why.
 
+**Closed (2026-09-27):** recorded as `prime-agent-usage-ceiling.md`; the adapter now declares `reported=False` itself (no longer an accident of an empty `raw_usage`), with a regression test that goes red if the declaration is removed. Reconsider-if conditions live in that record.
+
 ---
 
 ## Latent defects: real mechanisms with no production path today
