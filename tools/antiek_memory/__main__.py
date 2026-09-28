@@ -24,7 +24,6 @@ from substrate.graph.schema import init_database_at_path
 from substrate.graph.search import (
     EmbeddingModel,
     SentenceTransformerEmbedding,
-    search,
     search_personal_chunks,
 )
 
