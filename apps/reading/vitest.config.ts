@@ -32,6 +32,8 @@ export default defineConfig({
       // its unit tests are the gate's own negative controls.
       "scripts/**/*.test.ts",
       "../../tools/**/*.test.ts",
+      // The dev-server proxy config's own tests (A-19).
+      "vite.config.test.ts",
     ],
     // Storybook stories aren't tests
     exclude: ["**/node_modules/**", "**/dist/**", "**/storybook-static/**"],
