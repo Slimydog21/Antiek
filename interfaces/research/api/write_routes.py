@@ -36,11 +36,13 @@ no fabricated citations), so no REST path can mint orphan prose.
 # connect_read may return a read-oriented handle, not a bare connection.
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from roles.creative_writer.prompt import AdjacentSection
@@ -573,6 +575,7 @@ class FromInvestigationRequest(BaseModel):
         "investor_brief", "general_essay",
     ] = "research_memo"
     title: str | None = Field(default=None, max_length=300)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class FromInvestigationResponse(BaseModel):
@@ -585,6 +588,18 @@ class FromInvestigationResponse(BaseModel):
     synthesis_id: str | None = None
     synthesis_status: str | None = None
     synthesis_recommendation: str | None = None
+    idempotent_replay: bool = False
+
+
+def _promotion_request_digest(req: FromInvestigationRequest, owner_user_id: str) -> str:
+    body = {
+        "investigation_id": req.investigation_id,
+        "deliverable_kind": req.deliverable_kind,
+        "title": req.title,
+        "owner_user_id": owner_user_id,
+    }
+    encoded = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 @write_router.post(
@@ -594,6 +609,7 @@ class FromInvestigationResponse(BaseModel):
 )
 def promote_investigation(
     req: FromInvestigationRequest, request: Request,
+    response: Response,
 ) -> FromInvestigationResponse:
     """Seed a deliverable from a completed investigation's synthesis: one
     graph-node block per synthesis-pinned source node, each carrying
@@ -609,17 +625,35 @@ def promote_investigation(
     # Local import (mirrors generate_section_draft at the draft_generation
     # import): keeps the top-level promote_context import unchanged so the
     # declared-bar line-keyed baseline for this file does not shift.
-    from substrate.write.promote_context import promote_investigation_to_deliverable
+    from substrate.write.promote_context import (
+        PromotionIdempotencyConflict,
+        promote_investigation_to_deliverable,
+    )
 
     owner_user_id = _authenticated_owner_user_id(request)
-    with _translate(), _write("write/promote_investigation") as con:
-        result = promote_investigation_to_deliverable(
-            con,
-            req.investigation_id,
-            deliverable_kind=req.deliverable_kind,
-            owner_user_id=owner_user_id,
-            title=req.title,
-        )
+    try:
+        with _translate(), _write("write/promote_investigation") as con:
+            result = promote_investigation_to_deliverable(
+                con,
+                req.investigation_id,
+                deliverable_kind=req.deliverable_kind,
+                owner_user_id=owner_user_id,
+                title=req.title,
+                idempotency_key=req.idempotency_key,
+                request_digest=(
+                    _promotion_request_digest(req, owner_user_id)
+                    if req.idempotency_key is not None
+                    else None
+                ),
+            )
+    except PromotionIdempotencyConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "idempotency_conflict",
+                "idempotency_key": req.idempotency_key,
+            },
+        ) from exc
     if result is None:
         raise HTTPException(
             status_code=404,
@@ -632,6 +666,8 @@ def promote_investigation(
                 "investigation_id": req.investigation_id,
             },
         )
+    if result.idempotent_replay:
+        response.status_code = 200
     return FromInvestigationResponse(
         deliverable_id=result.deliverable_id,
         section_id=result.section_id,
@@ -642,6 +678,7 @@ def promote_investigation(
         synthesis_id=result.synthesis_id,
         synthesis_status=result.synthesis_status,
         synthesis_recommendation=result.synthesis_recommendation,
+        idempotent_replay=result.idempotent_replay,
     )
 
 
