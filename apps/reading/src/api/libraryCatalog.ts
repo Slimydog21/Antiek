@@ -8,7 +8,7 @@
  */
 
 import { API_BASE, apiFetch } from "../lib/api";
-import type { Servability } from "./books";
+import { isServability, servabilityLabel, type Servability } from "./books";
 
 export type LibraryFilter = "servable" | "gated" | "all";
 
@@ -49,14 +49,6 @@ export const FORBIDDEN_BODY_KEYS = [
   "text",
 ] as const;
 
-const SERVABILITY_VALUES = new Set<Servability>([
-  "public_domain",
-  "platform_authored",
-  "publisher_opted_in",
-  "source_declared_open",
-  "gated_metadata_only",
-  "taken_down",
-]);
 const FULL_TEXT_SERVABLE = new Set<Servability>([
   "public_domain",
   "platform_authored",
@@ -135,15 +127,14 @@ export function parseBookSummary(raw: unknown, path = "work"): BookSummary {
     o.page_count,
     `${path}.page_count`,
   );
-  if (
-    typeof o.servability !== "string" ||
-    !SERVABILITY_VALUES.has(o.servability as Servability)
-  ) {
+  // One source of truth for the vocabulary: books.ts SERVABILITY_VALUES,
+  // pinned to the backend enum by books.servability.test.ts (A-01).
+  if (!isServability(o.servability)) {
     throw new Error(
       `library catalog response rejected: ${path}.servability is invalid`,
     );
   }
-  const servability = o.servability as Servability;
+  const servability = o.servability;
   if (o.taken_down !== (servability === "taken_down")) {
     throw new Error(
       `library catalog response rejected: ${path}.taken_down contradicts servability`,
@@ -247,5 +238,9 @@ export async function fetchLibraryCatalog(
 export function formatServability(summary: BookSummary): string {
   if (summary.taken_down) return "taken down";
   if (summary.servable_full_text) return "servable HTML/full-text";
+  // Owner-readable, not gated: use the same copy as the badge (F-07).
+  if (summary.servability === "personal_readable") {
+    return servabilityLabel(summary.servability).label;
+  }
   return `gated (${summary.servability})`;
 }
