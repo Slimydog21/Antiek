@@ -179,7 +179,8 @@ function isFailureDetailObject(
   return typeof o.code === "string";
 }
 
-function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
+/** The full envelope, including the server's own `message`, for classifyClientError only. */
+function readFailureEnvelope(err: ApiError): ClientFailureClassification | null {
   try {
     const parsed = JSON.parse(err.body) as { detail?: unknown };
     const detail = parsed.detail;
@@ -198,10 +199,28 @@ function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
   } catch {
     // unparseable body
   }
-  return {
-    code: "unknown",
-    retryable: FAILURE_RETRYABLE_DEFAULT.unknown,
-  };
+  return null;
+}
+
+/**
+ * The closed-set failure envelope in an ApiError body, or null when the body
+ * does not carry one. Unlike classifyClientError, this tells a recognized
+ * `unknown` envelope apart from an unparseable body. It deliberately returns
+ * no `message`: the server's own text is never rendered. Show
+ * FAILURE_HEADLINES[code], as describeFailure does.
+ */
+export function parseFailureEnvelope(err: ApiError): { code: FailureCode; retryable: boolean } | null {
+  const envelope = readFailureEnvelope(err);
+  return envelope ? { code: envelope.code, retryable: envelope.retryable } : null;
+}
+
+function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
+  return (
+    readFailureEnvelope(err) ?? {
+      code: "unknown",
+      retryable: FAILURE_RETRYABLE_DEFAULT.unknown,
+    }
+  );
 }
 
 /** Classify a thrown value from apiFetch / research client calls. */
