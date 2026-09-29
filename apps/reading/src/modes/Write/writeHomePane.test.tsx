@@ -71,7 +71,7 @@ afterEach(() => {
 });
 
 async function mountPiece() {
-  render(
+  const view = render(
     <MemoryRouter initialEntries={["/write/d-1"]}>
       <Routes>
         <Route path="/write/:deliverableId" element={<WriteHome />} />
@@ -79,6 +79,7 @@ async function mountPiece() {
     </MemoryRouter>,
   );
   await screen.findByRole("heading", { name: "Why the finches matter" });
+  return view;
 }
 
 const tokens = (el: Element) => el.className.split(/\s+/);
@@ -133,5 +134,45 @@ describe("B3-6 Write answers to its pane's width", () => {
       fireEvent.keyDown(aside, { key: "Escape" });
     });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("a hidden block drawer leaves Escape for the active layer", async () => {
+    const view = await mountPiece();
+    const aside = document.querySelector<HTMLElement>("[data-block-repository-aside]")!;
+    act(() => {
+      fireEvent.click(document.querySelector<HTMLElement>("[data-blocks-toggle]")!);
+    });
+    expect(aside.getAttribute("data-open")).toBe("true");
+
+    view.container.hidden = true;
+    let event: KeyboardEvent | undefined;
+    act(() => {
+      event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+      document.body.dispatchEvent(event);
+    });
+    expect(event!.defaultPrevented).toBe(false);
+    expect(aside.getAttribute("data-open")).toBe("true");
+  });
+
+  it("a visible block drawer close restores toggle focus", async () => {
+    await mountPiece();
+    const aside = document.querySelector<HTMLElement>("[data-block-repository-aside]")!;
+    const toggle = document.querySelector<HTMLElement>("[data-blocks-toggle]")!;
+    act(() => {
+      fireEvent.click(toggle);
+    });
+    expect(aside.getAttribute("data-open")).toBe("true");
+
+    const outside = document.createElement("button");
+    outside.type = "button";
+    outside.dataset.a1cFocusSentinel = "write";
+    document.body.append(outside);
+    outside.focus();
+    act(() => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    expect(aside.getAttribute("data-open")).toBe("false");
+    expect(document.activeElement).toBe(toggle);
+    outside.remove();
   });
 });

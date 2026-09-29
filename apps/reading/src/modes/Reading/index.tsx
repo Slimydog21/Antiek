@@ -679,12 +679,18 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
     window.addEventListener(READER_TOC_TOGGLE_EVENT, onToggle);
     return () => window.removeEventListener(READER_TOC_TOGGLE_EVENT, onToggle);
   }, [inWindow]);
+  const tocRef = useRef<HTMLElement>(null);
+  const tocToggleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!tocOpen) return;
     const onKey = (e: KeyboardEvent) => {
+      // One Esc, one layer: a hidden TOC must not eat Escape (A1c low 11),
+      // and closing restores focus to the Contents toggle.
       if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (tocRef.current?.closest("[hidden]")) return;
       e.preventDefault();
       setTocOpen(false);
+      tocToggleRef.current?.focus();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -871,6 +877,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
           reader-md it folds away, and the Contents toggle opens it over the
           page, inside the pane (lane A B2-5). */}
       <aside
+        ref={tocRef}
         id={`reader-toc-${documentId}`}
         data-reader-toc
         data-open={tocOpen ? "true" : "false"}
@@ -989,6 +996,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
                 <button
                   type="button"
                   onClick={() => setTocOpen((open) => !open)}
+                  ref={tocToggleRef}
                   aria-expanded={tocOpen}
                   aria-controls={`reader-toc-${documentId}`}
                   aria-label="Contents"

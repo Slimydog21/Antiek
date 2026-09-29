@@ -73,12 +73,18 @@ export default function WriteHome() {
   // fits (write-lg). A transient overlay: Esc closes it (one Esc, one
   // handler: it claims the key, so a pane fullscreen waits for the next).
   const [blocksOpen, setBlocksOpen] = useState(false);
+  const blocksRef = useRef<HTMLElement>(null);
+  const blocksToggleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!blocksOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      // One Esc, one layer: a hidden blocks drawer must not eat Escape
+      // (A1c low 11), and closing restores focus to its toggle.
       if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (blocksRef.current?.closest("[hidden]")) return;
       e.preventDefault();
       setBlocksOpen(false);
+      blocksToggleRef.current?.focus();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -409,6 +415,7 @@ export default function WriteHome() {
               <button
                 type="button"
                 data-blocks-toggle
+                ref={blocksToggleRef}
                 aria-expanded={blocksOpen}
                 aria-controls={BLOCK_REPOSITORY_ID}
                 onClick={() => setBlocksOpen((o) => !o)}
@@ -466,6 +473,7 @@ export default function WriteHome() {
           (never a viewport breakpoint: a 1024 px viewport gives the inset's
           left pane ~668 px), a drawer over the piece below it. */}
       <aside
+        ref={blocksRef}
         id={BLOCK_REPOSITORY_ID}
         data-block-repository-aside
         data-open={blocksOpen ? "true" : "false"}
