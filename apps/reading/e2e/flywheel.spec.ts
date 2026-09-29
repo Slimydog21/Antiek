@@ -43,7 +43,7 @@ test.describe("SPR-08 — frontend flywheel walk (one entity, four workflows)", 
     page,
   }) => {
     await page.setViewportSize({ width: 1100, height: 400 });
-    await loadStory(page, "shell-threadbreadcrumb-spr-06--full-flywheel-thread");
+    await loadStory(page, "shell-trail-spr-06--full-flywheel-thread");
 
     const breadcrumb = page.locator('[data-testid="trail-breadcrumb"]');
     await expect(breadcrumb).toBeVisible({ timeout: 5_000 });
@@ -80,7 +80,7 @@ test.describe("SPR-08 — frontend flywheel walk (one entity, four workflows)", 
     page,
   }) => {
     await page.setViewportSize({ width: 1100, height: 400 });
-    await loadStory(page, "shell-threadbreadcrumb-spr-06--with-unbuilt-hop");
+    await loadStory(page, "shell-trail-spr-06--with-unbuilt-hop");
 
     await expect(page.locator('[data-testid="trail-breadcrumb"]')).toBeVisible({
       timeout: 5_000,
@@ -100,7 +100,7 @@ test.describe("SPR-08 — frontend flywheel walk (one entity, four workflows)", 
     await page.setViewportSize({ width: 1100, height: 400 });
     await loadStory(
       page,
-      "shell-threadbreadcrumb-spr-06--forked-thread-suppressed",
+      "shell-trail-spr-06--forked-thread-suppressed",
     );
 
     // The negative the flywheel rests on: if a hop ever held a COPY (a

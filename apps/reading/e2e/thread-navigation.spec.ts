@@ -31,7 +31,7 @@ async function loadStory(page: Page, id: string): Promise<void> {
 test.describe("SPR-06 — cross-workflow thread navigation", () => {
   test("renders a 1-hop (degenerate) thread", async ({ page }) => {
     await page.setViewportSize({ width: 1100, height: 400 });
-    await loadStory(page, "shell-threadbreadcrumb-spr-06--one-hop-thread");
+    await loadStory(page, "shell-trail-spr-06--one-hop-thread");
 
     await expect(page.locator('[data-testid="trail-breadcrumb"]')).toBeVisible({
       timeout: 5_000,
@@ -46,7 +46,7 @@ test.describe("SPR-06 — cross-workflow thread navigation", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1100, height: 400 });
-    await loadStory(page, "shell-threadbreadcrumb-spr-06--full-flywheel-thread");
+    await loadStory(page, "shell-trail-spr-06--full-flywheel-thread");
 
     await expect(page.locator('[data-testid="trail-breadcrumb"]')).toBeVisible({
       timeout: 5_000,
@@ -60,7 +60,7 @@ test.describe("SPR-06 — cross-workflow thread navigation", () => {
 
   test("jumping along the thread advances the breadcrumb", async ({ page }) => {
     await page.setViewportSize({ width: 1100, height: 500 });
-    await loadStory(page, "shell-threadbreadcrumb-spr-06--jump-along-thread");
+    await loadStory(page, "shell-trail-spr-06--jump-along-thread");
 
     await expect(page.locator('[data-testid="trail-jump"]')).toBeVisible({
       timeout: 5_000,
@@ -80,7 +80,7 @@ test.describe("SPR-06 — cross-workflow thread navigation", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1100, height: 400 });
-    await loadStory(page, "shell-threadbreadcrumb-spr-06--with-unbuilt-hop");
+    await loadStory(page, "shell-trail-spr-06--with-unbuilt-hop");
 
     await expect(page.locator('[data-testid="trail-breadcrumb"]')).toBeVisible({
       timeout: 5_000,
@@ -99,7 +99,7 @@ test.describe("SPR-06 — cross-workflow thread navigation", () => {
     await page.setViewportSize({ width: 1100, height: 400 });
     await loadStory(
       page,
-      "shell-threadbreadcrumb-spr-06--forked-thread-suppressed",
+      "shell-trail-spr-06--forked-thread-suppressed",
     );
 
     // The breadcrumb refuses to render a trail over copied entities.
