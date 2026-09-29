@@ -108,6 +108,22 @@ def test_lock_gate_covers_main_promotions_and_targeted_pull_requests() -> None:
     assert "main" in pull_branches
 
 
+def test_lock_context_is_in_the_recorded_required_fence() -> None:
+    contract = yaml.safe_load((_REPO / ".github" / "required-checks.yml").read_text(encoding="utf-8"))
+    assert isinstance(contract, dict)
+    required = contract.get("required")
+    assert isinstance(required, list)
+    assert "dependency lock" in required
+    exempt = contract.get("emitted_but_not_required")
+    assert isinstance(exempt, dict)
+    assert "dependency lock" not in exempt
+
+
+def test_deploy_gate_checks_the_lock_context() -> None:
+    script = (_REPO / "tools" / "deploy" / "require_green.sh").read_text(encoding="utf-8")
+    assert "  'dependency lock'\n" in script
+
+
 def test_lock_gate_uses_the_same_uv_pin_as_deployment() -> None:
     # Keep this test and the deploy contract in one pin family. The deploy side
     # has its own exact Ansible assertions; parse the pip name there rather than
