@@ -89,6 +89,9 @@ export interface BookReaderProps {
    * ONE consumer is the islands' dig-deeper prefill; ignoring it is lawful
    * and changes nothing. */
   origin?: { from: string; id: string } | null;
+  /** A one-shot page landing (the reformat trace jump, SPR-02): applied
+   *  once when the pages resolve, then the bus owns the position. */
+  initialPage?: number | null;
 }
 
 /** The decorations registry needs a ReadingContext; the highlight
@@ -100,7 +103,7 @@ const ANCHOR_STUB_CTX: ReadingContext = {
   substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
 };
 
-export default function BookReader({ documentId: documentIdProp, origin = null }: BookReaderProps = {}) {
+export default function BookReader({ documentId: documentIdProp, origin = null, initialPage = null }: BookReaderProps = {}) {
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
   const documentId = documentIdProp ?? routeDocumentId;
   const inWindow = useInWindow();
@@ -112,44 +115,43 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   const [housePool, setHousePool] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
+
+  const loadBook = useCallback(async (isCancelled: () => boolean) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [detail, full] = await Promise.all([
+        getBook(documentId),
+        getBookFullText(documentId),
+      ]);
+      if (isCancelled()) return;
+      setBook(detail);
+      setBody(full);
+      // House-state candidates for the zero-buyer ad border.
+      try {
+        const servable = await listBooks("servable");
+        if (!isCancelled()) setHousePool(servable.books);
+      } catch {
+        /* house pool is best-effort; a neutral house card is fine */
+      }
+    } catch (e: unknown) {
+      if (!isCancelled()) setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (!isCancelled()) setLoading(false);
+    }
+  }, [documentId]);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    (async () => {
-      try {
-        const [detail, full] = await Promise.all([
-          getBook(documentId),
-          getBookFullText(documentId),
-        ]);
-        if (cancelled) return;
-        setBook(detail);
-        setBody(full);
-        // House-state candidates for the zero-buyer ad border.
-        try {
-          const servable = await listBooks("servable");
-          if (!cancelled) setHousePool(servable.books);
-        } catch {
-          /* house pool is best-effort; a neutral house card is fine */
-        }
-      } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    void loadBook(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [documentId, reloadToken]);
+  }, [loadBook]);
 
-  const refreshSourceBody = useCallback(() => {
-    setReloadToken((token) => token + 1);
-  }, []);
-
-
+  const reload = useCallback(() => {
+    void loadBook(() => false);
+  }, [loadBook]);
 
   useEffect(() => {
     // The anchor-map is only meaningful with a readable body (the reader
@@ -189,6 +191,15 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   );
   const pages = useMemo(() => paginate(normalizedBody), [normalizedBody]);
   const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
+
+  // The one-shot page landing (the reformat trace jump): applied ONCE when
+  // the pages resolve; the bus owns the position from then on.
+  const initialPageAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialPageAppliedRef.current || initialPage == null || pages.length === 0) return;
+    initialPageAppliedRef.current = true;
+    setPageIndex(initialPage);
+  }, [initialPage, pages.length, setPageIndex]);
 
   // ── Anchored highlights (anchor-first SPR-02) ─────────────────────────
   // The owner's persisted anchors (SPR-03) and the chunk anchor-map — the
@@ -805,7 +816,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
           title="Couldn't open this book"
           body="Your library and notes are unchanged. Check your connection, then try again."
           detail={error}
-          onRetry={refreshSourceBody}
+          onRetry={reload}
         />
       </CenterNote>
     );
@@ -1210,7 +1221,6 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
           documentId={documentId}
           title={book.title}
           readingThreadId={readingThreadId}
-          onSourceBodyChanged={refreshSourceBody}
         />
       </div>
 

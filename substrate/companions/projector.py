@@ -273,6 +273,53 @@ def project_document(
         if anchor.investigation_id:
             investigation_ids.add(anchor.investigation_id)
 
+    # ── Evidence: the derived bites' provenance refs ────────────────────
+    # The reformat pipeline mints BiteRow accounts (unit 6 stable-id
+    # discipline). Each bite projects ONE evidence row carrying its
+    # content-derived id — the ref IS the identity, never the text.
+    try:
+        from substrate.provenance.store import ProvenanceStore, provenance_tables_exist
+
+        if provenance_tables_exist(con):
+            gen_row = con.execute(
+                "SELECT generation_id FROM generation_records "
+                "WHERE derived_document_id = ? LIMIT 1",
+                [document_id],
+            ).fetchone()
+            if gen_row is not None:
+                gen_id = str(gen_row[0])
+                for bite in ProvenanceStore().bites_for_generation(con, gen_id):
+                    refs = [
+                        f"bite:{bite.bite_id}",
+                        f"generation:{gen_id}",
+                        f"class:{bite.contribution_class}",
+                        f"doc:{document_id}",
+                    ]
+                    if bite.investigation_id:
+                        refs.append(f"investigation:{bite.investigation_id}")
+                    if bite.source_refs:
+                        refs.extend(bite.source_refs)
+                    eid = make_evidence_id(
+                        "evidence",
+                        f"bite:{bite.bite_id}",
+                        refs,
+                    )
+                    rows.append(
+                        EvidenceRow(
+                            evidence_id=eid,
+                            owner_user_id=owner_user_id,
+                            scope="document",
+                            scope_id=document_id,
+                            kind="evidence",
+                            refs=tuple(refs),
+                            tombstone=False,
+                            rebuilt_at=_EPOCH,
+                        )
+                    )
+                    stamps.append(_EPOCH)
+    except Exception:
+        pass  # an absent provenance store degrades honestly
+
     # ── Process: the linked threads + the reading thread ───────────────
     thread_ids = sorted(investigation_ids | {f"read-{document_id}"})
     for iid in thread_ids:
