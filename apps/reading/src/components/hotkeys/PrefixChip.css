@@ -1,0 +1,39 @@
+/* The "prefix armed" chip: small, low, centred above the dock. It never takes
+ * pointer events, so it cannot cover a control the operator reaches for. */
+
+.antiek-prefix-chip__region {
+  position: fixed;
+  left: 50%;
+  bottom: 76px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.antiek-prefix-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 6px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-2);
+  background: var(--bg-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: 999px;
+  box-shadow: var(--shadow-z1);
+}
+
+.antiek-prefix-chip__key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--text-1);
+  background: var(--bg-inset);
+  border: 1px solid var(--keycap-edge);
+  border-radius: 4px;
+}

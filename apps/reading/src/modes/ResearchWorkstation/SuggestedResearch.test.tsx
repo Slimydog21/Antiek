@@ -227,3 +227,20 @@ describe("SuggestedResearch — honest no-key / no-daemon (M4)", () => {
     expect(screen.getByText(/daemon offline/i)).toBeTruthy();
   });
 });
+
+describe("SuggestedResearch — the mode survives its navigation (lane A B2-8)", () => {
+  it("a research opened from a reader (/inv/<id>?m=reading) opens its child in the same mode", async () => {
+    suggestState.current.suggestions = [
+      sug({ key: "k1", question: "Chase me", source_investigation_id: "inv-src1" }),
+    ];
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/inv/inv-src1?m=reading"]}>
+        <SuggestedResearch />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Chase me");
+    await user.click(screen.getByRole("button", { name: "Chase this" }));
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-new99?m=reading"));
+  });
+});

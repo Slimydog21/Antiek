@@ -23,16 +23,18 @@ export default function SpeakPublicBrowse() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [opps, setOpps] = useState<PublicOpportunity[]>([]);
+  // The opportunities request failed: unknown, not "none open".
+  const [oppsFailed, setOppsFailed] = useState(false);
   const [g7Live, setG7Live] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [feedFailed, setFeedFailed] = useState(false);
 
   const reload = useCallback(async () => {
     setFeedLoading(true);
-    setError(null);
+    setFeedFailed(false);
     try {
       const [f, o, g7] = await Promise.all([
         listPublicFeed(),
-        listPublicOpportunities().catch(() => [] as PublicOpportunity[]),
+        listPublicOpportunities().catch(() => null),
         speakPublicHonesty().catch(() => ({
           openContributionLive: false,
           publicPublishingLive: false,
@@ -41,12 +43,16 @@ export default function SpeakPublicBrowse() {
         })),
       ]);
       setFeed(f);
-      setOpps(o);
+      setOpps(o ?? []);
+      setOppsFailed(o === null);
       setG7Live(Boolean(g7 && typeof g7 === "object" ? g7.openContributionLive : g7));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      // Only the feed request can reject here (the others resolve to a
+      // fallback), so this is a feed failure: an unknown, not an empty feed.
+      setFeedFailed(true);
       setFeed([]);
       setOpps([]);
+      setOppsFailed(true);
       setG7Live(false);
     } finally {
       setFeedLoading(false);
@@ -98,13 +104,13 @@ export default function SpeakPublicBrowse() {
           </p>
         </aside>
 
-        {error && (
-          <p className="font-mono text-xs text-emperor" role="alert">
-            {error}
-          </p>
-        )}
-
-        <PublicLane feedLoading={feedLoading} feed={feed} visitorMode />
+        <PublicLane
+          feedLoading={feedLoading}
+          feed={feed}
+          visitorMode
+          feedFailed={feedFailed}
+          onRetry={() => void reload()}
+        />
 
         <section
           className="rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1"
@@ -116,7 +122,11 @@ export default function SpeakPublicBrowse() {
           <p className="mt-1 font-serif text-xs text-ink-mute dark:text-moonlight">
             {PUSHES_COPY.rankingSignals}
           </p>
-          {opps.length === 0 ? (
+          {feedLoading ? null : oppsFailed ? (
+            <p className="mt-2 font-serif text-sm text-ink dark:text-bright" role="status">
+              Open projects didn't load, so we can't say which are open right now.
+            </p>
+          ) : opps.length === 0 ? (
             <p className="mt-2 font-serif text-sm text-ink-mute dark:text-moonlight">
               {PUSHES_COPY.publicEmpty}
             </p>

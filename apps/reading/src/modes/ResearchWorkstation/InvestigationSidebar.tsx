@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { NavLink, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { ModeNavLink } from "../../workspace/ModeLink";
 
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../hooks/useInvestigationTree";
@@ -106,7 +107,7 @@ function TreeRow({
         ) : (
           <span className="w-3 shrink-0" />
         )}
-        <NavLink
+        <ModeNavLink
           to={`/inv/${node.investigationId}`}
           className={`flex-1 min-w-0 py-1 px-1.5 rounded transition-colors relative ${
             isActive
@@ -140,7 +141,7 @@ function TreeRow({
               </div>
             </div>
           </div>
-        </NavLink>
+        </ModeNavLink>
       </div>
       {expanded && node.children.length > 0 && (
         <ul className="space-y-1 mt-1">

@@ -25,6 +25,7 @@ import {
   ariaBinding,
   type ProductActivateDetail,
 } from "../components/hotkeys/bindings";
+import { ariaKeyshortcutsFor } from "../components/hotkeys/bindings";
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -64,9 +65,14 @@ describe("NavRail SPR-08 — on-bar chips + click≡hotkey parity", () => {
     expect(bindingForProduct("research")!.spec).toBe("mod+j");
     const expectedAria = ariaBinding(bindingForProduct("research")!.spec);
     expect(expectedAria).toMatch(/^(Meta|Control)\+J$/);
-    const chip = button.querySelector('[role="img"]') as HTMLElement;
+    // MS-01: the BUTTON carries aria-keyshortcuts, generated from the keymap
+    // table; the on-bar chip stays visible but is decorative, so the shortcut
+    // is announced once, on the control that runs it.
+    expect(button.getAttribute("aria-keyshortcuts")).toBe(ariaKeyshortcutsFor("door.research"));
+    expect(button.getAttribute("aria-keyshortcuts")).toBe(expectedAria);
+    const chip = button.querySelector(".antiek-keychip") as HTMLElement;
     expect(chip, "the Research door must render an on-bar hotkey chip").toBeTruthy();
-    expect(chip.getAttribute("aria-keyshortcuts")).toBe(expectedAria);
+    expect(chip.getAttribute("aria-hidden")).toBe("true");
     // The chip is a single combo glyph (⌘J / CtrlJ) — NOT two chord keys,
     // and no "then" separator is rendered.
     expect(button.querySelector(".antiek-keychip__then")).toBeNull();
@@ -138,5 +144,27 @@ describe("NavRail SPR-08 — on-bar chips + click≡hotkey parity", () => {
     expect(fired[0].source).toBe("click");
     expect(fired[0].productId).toBe("more");
     expect(fired[0].route).toBeUndefined();
+  });
+
+  it("every bound rail control carries aria-keyshortcuts from the keymap (none hand-written)", () => {
+    render(
+      <MemoryRouter>
+        <NavRail />
+      </MemoryRouter>,
+    );
+    const expectations: Array<[string, Parameters<typeof ariaKeyshortcutsFor>[0]]> = [
+      ['[data-product-id="research"]', "door.research"],
+      ['[data-product-id="read"]', "door.read"],
+      ['[data-product-id="write"]', "door.write"],
+      ['[data-product-id="speak"]', "door.speak"],
+      ['[data-product-id="more"]', "door.more"],
+      ['[data-product-id="home"]', "door.home"],
+    ];
+    for (const [selector, action] of expectations) {
+      const el = document.querySelector(selector) as HTMLElement;
+      expect(el.getAttribute("aria-keyshortcuts"), selector).toBe(ariaKeyshortcutsFor(action));
+    }
+    const search = screen.getByTitle(/^Search · /);
+    expect(search.getAttribute("aria-keyshortcuts")).toBe(ariaKeyshortcutsFor("palette.toggle"));
   });
 });
