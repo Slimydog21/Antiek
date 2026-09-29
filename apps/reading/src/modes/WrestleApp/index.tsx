@@ -57,6 +57,22 @@ export default function WrestleApp() {
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(initialDocumentId);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [seenParam, setSeenParam] = useState<string | null>(initialDocumentId);
+
+  // G-X1: "/wrestle/:documentId" and "/wrestle/:other" render THIS component
+  // at the same tree position, so React keeps one instance and the state
+  // above does not re-initialise. The document identity is the route's:
+  // when the param moves, the id (and any locally chosen bytes, which belong
+  // to the previous document) follow it BEFORE children commit — PanelHost
+  // keys its starters on the route params and must see this document's
+  // starters in the very render the param moves. A local file pick on the
+  // param-less "/wrestle" still sets the id directly (the pick owns the
+  // id/bytes pair until the route itself changes).
+  if (initialDocumentId !== seenParam) {
+    setSeenParam(initialDocumentId);
+    setDocumentId(initialDocumentId);
+    setPdfBytes(null);
+  }
 
   const { events, status, reconnects } = useEventStream(investigationId);
 

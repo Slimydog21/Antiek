@@ -344,7 +344,20 @@ export const useWorkspace = create<Store>()((set, get) => ({
   // panes the operator never hid). The layout PRESET survives: it is the
   // operator's persisted chrome preference, not layout state — same standing
   // as custom hotkeys.
-  reset: () => set({ ...EMPTY_SNAPSHOT, fullscreenPane: null, focusedPane: null }),
+  //
+  // G-X2: a reset is NOT persisted. The palette clears the saved layout key
+  // and then resets; without the suppression below, this state change would
+  // schedule a debounced snapshot of the EMPTY layout and write it back into
+  // the very key just cleared (~250 ms later). Any write already pending for
+  // the pre-reset layout is cancelled for the same reason.
+  reset: () => {
+    if (pendingWrite) {
+      clearTimeout(pendingWrite);
+      pendingWrite = null;
+    }
+    suppressPersistAfterReset = true;
+    set({ ...EMPTY_SNAPSHOT, fullscreenPane: null, focusedPane: null });
+  },
 }));
 
 /**
@@ -361,6 +374,8 @@ export const useWorkspace = create<Store>()((set, get) => ({
 let activeScope: PersistScope = { kind: "global" };
 let persistenceEnabled = true;
 let pendingWrite: ReturnType<typeof setTimeout> | null = null;
+/** G-X2: swallow the one subscriber pass caused by `reset()` — see below. */
+let suppressPersistAfterReset = false;
 
 export function setPersistScope(scope: PersistScope): void {
   activeScope = scope;
@@ -395,6 +410,10 @@ export function getHydrationGeneration(): number {
 }
 
 useWorkspace.subscribe((state, prev) => {
+  if (suppressPersistAfterReset) {
+    suppressPersistAfterReset = false;
+    return;
+  }
   if (!persistenceEnabled) return;
   // Cheap reference-equality check on the bits we care about — avoid
   // writing on every store mutation if the persisted slice didn't move.

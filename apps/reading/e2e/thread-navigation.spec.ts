@@ -33,12 +33,12 @@ test.describe("SPR-06 — cross-workflow thread navigation", () => {
     await page.setViewportSize({ width: 1100, height: 400 });
     await loadStory(page, "shell-threadbreadcrumb-spr-06--one-hop-thread");
 
-    await expect(page.locator('[data-testid="thread-breadcrumb"]')).toBeVisible({
+    await expect(page.locator('[data-testid="trail-breadcrumb"]')).toBeVisible({
       timeout: 5_000,
     });
     // The single Research hop is the current position.
     await expect(
-      page.locator('[data-testid="thread-hop-current-research"]'),
+      page.locator('[data-testid="trail-hop-current-research"]'),
     ).toBeVisible();
   });
 
@@ -48,7 +48,7 @@ test.describe("SPR-06 — cross-workflow thread navigation", () => {
     await page.setViewportSize({ width: 1100, height: 400 });
     await loadStory(page, "shell-threadbreadcrumb-spr-06--full-flywheel-thread");
 
-    await expect(page.locator('[data-testid="thread-breadcrumb"]')).toBeVisible({
+    await expect(page.locator('[data-testid="trail-breadcrumb"]')).toBeVisible({
       timeout: 5_000,
     });
     // Research origin + Read + Write segments present.
@@ -62,18 +62,18 @@ test.describe("SPR-06 — cross-workflow thread navigation", () => {
     await page.setViewportSize({ width: 1100, height: 500 });
     await loadStory(page, "shell-threadbreadcrumb-spr-06--jump-along-thread");
 
-    await expect(page.locator('[data-testid="thread-jump"]')).toBeVisible({
+    await expect(page.locator('[data-testid="trail-jump"]')).toBeVisible({
       timeout: 5_000,
     });
     // Initially the canonical entity is in focus at the Research origin; the
     // Write segment is a navigable button.
-    const writeSegment = page.locator('[data-testid="thread-hop-write"]');
+    const writeSegment = page.locator('[data-testid="trail-hop-write"]');
     await expect(writeSegment).toBeVisible();
     // Jump to Write. Because every hop shares the SAME entity id, the active
     // entity doesn't change id — but the jump is accepted (no crash, no fake
     // screen) since Write IS a built workflow. The breadcrumb stays coherent.
     await writeSegment.click();
-    await expect(page.locator('[data-testid="thread-breadcrumb"]')).toBeVisible();
+    await expect(page.locator('[data-testid="trail-breadcrumb"]')).toBeVisible();
   });
 
   test("a hop into an unbuilt workflow shows the honest stub segment", async ({
@@ -82,13 +82,13 @@ test.describe("SPR-06 — cross-workflow thread navigation", () => {
     await page.setViewportSize({ width: 1100, height: 400 });
     await loadStory(page, "shell-threadbreadcrumb-spr-06--with-unbuilt-hop");
 
-    await expect(page.locator('[data-testid="thread-breadcrumb"]')).toBeVisible({
+    await expect(page.locator('[data-testid="trail-breadcrumb"]')).toBeVisible({
       timeout: 5_000,
     });
     // The unbuilt hop is a dimmed, non-navigable "not yet" segment — never a
     // fake clickable target.
     await expect(
-      page.locator('[data-testid="thread-hop-stub-write"]'),
+      page.locator('[data-testid="trail-hop-stub-write"]'),
     ).toBeVisible();
     await expect(page.getByText(/not yet available/i)).toBeVisible();
   });
@@ -104,9 +104,9 @@ test.describe("SPR-06 — cross-workflow thread navigation", () => {
 
     // The breadcrumb refuses to render a trail over copied entities.
     await expect(
-      page.locator('[data-testid="thread-breadcrumb-integrity-warning"]'),
+      page.locator('[data-testid="trail-breadcrumb-integrity-warning"]'),
     ).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText(/integrity error/i)).toBeVisible();
-    await expect(page.locator('[data-testid="thread-breadcrumb"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="trail-breadcrumb"]')).toHaveCount(0);
   });
 });

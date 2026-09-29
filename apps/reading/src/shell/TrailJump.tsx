@@ -79,7 +79,7 @@ export function TrailJump({
   };
 
   return (
-    <div className="flex flex-col min-h-0" data-testid="thread-jump">
+    <div className="flex flex-col min-h-0" data-testid="trail-jump">
       <div className="shrink-0 border-b border-hairline bg-card py-1.5">
         <Trail
           thread={thread}
@@ -92,7 +92,7 @@ export function TrailJump({
         // The honest stub for a jump into an unbuilt workflow. This is the
         // SPR-04 WorkflowStub — the same surface SceneChrome shows — not a
         // fake screen.
-        <div className="flex-1 min-h-0" data-testid="thread-jump-stub">
+        <div className="flex-1 min-h-0" data-testid="trail-jump-stub">
           <WorkflowStub workflow={stubbedWorkflow} />
         </div>
       )}

@@ -45,7 +45,7 @@ test.describe("SPR-08 — frontend flywheel walk (one entity, four workflows)", 
     await page.setViewportSize({ width: 1100, height: 400 });
     await loadStory(page, "shell-threadbreadcrumb-spr-06--full-flywheel-thread");
 
-    const breadcrumb = page.locator('[data-testid="thread-breadcrumb"]');
+    const breadcrumb = page.locator('[data-testid="trail-breadcrumb"]');
     await expect(breadcrumb).toBeVisible({ timeout: 5_000 });
 
     // The flywheel's workflow segments are present, in order: Research origin →
@@ -62,17 +62,17 @@ test.describe("SPR-08 — frontend flywheel walk (one entity, four workflows)", 
     // back-and-forth thread highlights the operator's ACTUAL position. This
     // fixture is research -> read -> write -> read on one entity id, so the
     // current hop is the FINAL read, and research renders as a plain hop.
-    // Measured testids for this story: thread-hop-research, thread-hop-read,
-    // thread-hop-write, thread-hop-current-read. The old selector asked for
-    // thread-hop-current-research, which this fixture cannot produce.
-    const research = page.locator('[data-testid="thread-hop-research"]');
-    const write = page.locator('[data-testid="thread-hop-write"]');
+    // Measured testids for this story: trail-hop-research, trail-hop-read,
+    // trail-hop-write, trail-hop-current-read. The old selector asked for
+    // trail-hop-current-research, which this fixture cannot produce.
+    const research = page.locator('[data-testid="trail-hop-research"]');
+    const write = page.locator('[data-testid="trail-hop-write"]');
     await expect(research).toBeVisible();
     await expect(write).toBeVisible();
     // Pin the position semantics the component documents, rather than only
     // asserting the hops exist.
     await expect(
-      page.locator('[data-testid="thread-hop-current-read"]'),
+      page.locator('[data-testid="trail-hop-current-read"]'),
     ).toBeVisible();
   });
 
@@ -82,14 +82,14 @@ test.describe("SPR-08 — frontend flywheel walk (one entity, four workflows)", 
     await page.setViewportSize({ width: 1100, height: 400 });
     await loadStory(page, "shell-threadbreadcrumb-spr-06--with-unbuilt-hop");
 
-    await expect(page.locator('[data-testid="thread-breadcrumb"]')).toBeVisible({
+    await expect(page.locator('[data-testid="trail-breadcrumb"]')).toBeVisible({
       timeout: 5_000,
     });
     // The Write hop is marked unbuilt → an honest, non-navigable "not yet"
     // stub segment, NEVER a fabricated clickable target (intellectual honesty
     // #1). This is the UI flywheel being honest about what exists.
     await expect(
-      page.locator('[data-testid="thread-hop-stub-write"]'),
+      page.locator('[data-testid="trail-hop-stub-write"]'),
     ).toBeVisible();
     await expect(page.getByText(/not yet available/i)).toBeVisible();
   });
@@ -107,10 +107,10 @@ test.describe("SPR-08 — frontend flywheel walk (one entity, four workflows)", 
     // different id), the breadcrumb must NOT render a trail — it would assert a
     // continuity the data can't support. The integrity warning shows instead.
     await expect(
-      page.locator('[data-testid="thread-breadcrumb-integrity-warning"]'),
+      page.locator('[data-testid="trail-breadcrumb-integrity-warning"]'),
     ).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText(/integrity error/i)).toBeVisible();
-    await expect(page.locator('[data-testid="thread-breadcrumb"]')).toHaveCount(
+    await expect(page.locator('[data-testid="trail-breadcrumb"]')).toHaveCount(
       0,
     );
   });

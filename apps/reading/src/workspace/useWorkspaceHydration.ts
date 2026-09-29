@@ -30,8 +30,11 @@ import { EMPTY_SNAPSHOT } from "./panel.types";
  * the operator's most recent layout for that route forward.
  *
  * Mount once at AppShell level; it owns the cross-route hydration cycle.
+ *
+ * `routeKey` is exported for CommandPalette: "Reset workspace layout (this
+ * route)" must clear the same collapsed key this hook writes under (G-X2).
  */
-function routeKey(pathname: string): string {
+export function routeKey(pathname: string): string {
   // Collapse common dynamic params so all "/inv/<x>" routes share one
   // route-scoped layout, but the per-investigation scope can still
   // override specific ids.
