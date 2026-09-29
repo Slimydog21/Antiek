@@ -204,6 +204,34 @@ function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
   };
 }
 
+/**
+ * The closed-set failure envelope on an ApiError body, WITHOUT the server's
+ * own message (a message is for logs; `describeFailure` renders only the
+ * contract headline). Null when the body carries no recognized envelope —
+ * the caller then describes the failure from the HTTP status instead.
+ */
+export function parseFailureEnvelope(
+  err: ApiError,
+): { code: FailureCode; retryable: boolean } | null {
+  try {
+    const parsed = JSON.parse(err.body) as { detail?: unknown };
+    const detail = parsed.detail;
+    if (isFailureDetailObject(detail) && FAILURE_CODES.has(detail.code)) {
+      const code = detail.code as FailureCode;
+      return {
+        code,
+        retryable:
+          typeof detail.retryable === "boolean"
+            ? detail.retryable
+            : FAILURE_RETRYABLE_DEFAULT[code],
+      };
+    }
+  } catch {
+    // unparseable body
+  }
+  return null;
+}
+
 /** Classify a thrown value from apiFetch / research client calls. */
 export function classifyClientError(e: unknown): ClientFailureClassification {
   if (e instanceof ApiError) {

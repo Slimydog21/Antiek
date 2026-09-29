@@ -111,7 +111,7 @@ describe("signed §2.2 restore and rebase", () => {
     expect(tabs().trees.reading!.version).toBe(0);
   });
 
-  it("retains restore intent when a conflict retry is not accepted", async () => {
+  it("saves a restore after two conflicts with no follow-up trigger (CR-F3 bounded retry)", async () => {
     const closed = must(closeTab(base(), "P", "prune", "t1")).tree;
     let calls = 0;
     const adapter: TabTreeAdapter = {
@@ -124,10 +124,35 @@ describe("signed §2.2 restore and rebase", () => {
     const save = vi.spyOn(adapter, "save");
     tabs().setTabTreeAdapter(adapter); await tabs().ensureMothership("reading");
     tabs().undoLastClose("reading"); await drain();
+    // Two conflicts, then the bounded third attempt succeeds — WITHOUT the
+    // old follow-up trigger (activateTab) the base needed to force a save.
+    expect(save.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(tabs().pendingOps.reading).toEqual([]);
+    expect(tabs().trees.reading!.nodes.P.pruned_at).toBeUndefined();
+  });
+
+  it("retains restore intent and reports honestly when every conflict attempt is refused (CR-F3)", async () => {
+    const closed = must(closeTab(base(), "P", "prune", "t1")).tree;
+    const warn = vi.spyOn(toast, "warn");
+    let calls = 0;
+    const adapter: TabTreeAdapter = {
+      load: async () => toSnapshot(closed),
+      save: async () => ++calls <= 3
+        ? { status: "conflict", current: toSnapshot(closed) }
+        : { status: "saved", version: 2 },
+      allocate: async () => ({ public_number: 1 }),
+    };
+    const save = vi.spyOn(adapter, "save");
+    tabs().setTabTreeAdapter(adapter); await tabs().ensureMothership("reading");
+    tabs().undoLastClose("reading"); await drain();
+    // The bound is spent (1 initial + MAX_CONFLICT_RETRIES) and the intent
+    // is NOT dropped: it stays pending, and the operator is told honestly.
+    expect(save.mock.calls.length).toBe(3);
     expect(tabs().pendingOps.reading).toEqual([{ type: "restore", tab_id: "P", close_id: "P@t1" }]);
     expect(tabs().trees.reading!.nodes.P.pruned_at).toBe("t1");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("kept here"));
+    // The next operator action retries and lands it.
     tabs().activateTab("reading", "R"); await drain();
-    expect(save.mock.calls[2][2].tree.nodes.P.pruned_at).toBe("t1");
     expect(tabs().pendingOps.reading).toEqual([]);
     expect(tabs().trees.reading!.nodes.P.pruned_at).toBeUndefined();
   });

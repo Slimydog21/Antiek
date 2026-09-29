@@ -47,6 +47,7 @@ import {
   type CloseMode,
   type Mothership,
   type SpawnInput,
+  type SaveResult,
   type TabNode,
   type TabOp,
   type TabTree,
@@ -58,6 +59,10 @@ import {
  *  workstation layer (lane B) owns real project ids — a named constant, not
  *  a secret default. */
 export const TAB_PROJECT_ID = "default";
+
+/** CR-F3: how many rebase-and-save attempts follow the first 409 before the
+ *  store stops and says so honestly. Intent is never dropped either way. */
+const MAX_CONFLICT_RETRIES = 2;
 
 export type { Mothership, TabNode, TabTree, UndoToken };
 
@@ -296,72 +301,91 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     if (result.status === "conflict") {
       // Another writer won. Rebase the pending ops onto the remote snapshot
       // (spawns are never lost; dead ops drop with one quiet toast) and save
-      // once more. The in-memory adapter cannot produce this path in a single
-      // tab; lane B's multi-device adapter can, and it is fully wired.
-      const parsed = fromSnapshot(result.current);
-      if (!parsed.ok) return;
-      acceptedTrees.set(mothership, parsed.tree);
-      // Every op made so far, including those made while the save was in
-      // flight; a close still inside its window is not one of them.
-      const ops = get().pendingOps[mothership] ?? [];
-      const replayed = rebase(parsed.tree, ops);
-      const { dropped, reparented } = replayed;
-      const rebased = prepareRestores(mothership, replayed.tree);
-      const notices = new Set<string>();
-      for (const { tab_id, reason } of reparented) {
-        const moved = rebased.nodes[tab_id];
-        if (!moved) continue;
-        const parent_tab_id = moved.parent_tab_id;
-        const destination = parent_tab_id === null ? "to the root" : `under ${rebased.nodes[parent_tab_id].hier_number}`;
-        const cause = reason === "closed_parent" ? "its parent was closed on another device" : "kept a tab added on another device";
-        notices.add(`Moved ${destination}: ${cause}`);
-      }
-      for (const { reason } of dropped) {
-        notices.add(reason === "tab_not_open" || reason === "unknown_tab"
-          ? "A tab was closed on another device; your other changes were kept."
-          : reason === "duplicate_tab_id"
-            ? "A tab already exists on another device; your other changes were kept."
-            : reason === "not_closed_by_token"
-              ? "That close changed on another device; your other changes were kept."
-              : "A tab change could not be applied to the updated tree; your other changes were kept.");
-      }
-      // A close held while the save was in flight stays held: it is replayed
-      // onto the rebased tree for the screen only (same close_id, so its
-      // toast's Undo still finds it), and the retry below writes the tree
-      // WITHOUT it.
-      const held = heldOn(mothership);
-      let shown = rebased;
-      if (held && held.op.type === "close") {
-        const op = held.op;
-        const replay = closeTab(rebased, op.tab_id, op.mode, op.now, op.close_id, op.seen_tab_ids);
-        if (replay.ok) {
-          shown = replay.tree;
-          for (const node of Object.values(shown.nodes)) {
-            if (op.mode !== "prune" || node.parent_tab_id === rebased.nodes[node.tab_id]?.parent_tab_id) continue;
-            const destination = node.parent_tab_id === null ? "to the root" : `under ${shown.nodes[node.parent_tab_id].hier_number}`;
-            notices.add(`Moved ${destination}: kept a tab added on another device`);
-          }
-          set({ heldClose: { ...held, token: replay.undo, op: replay.op } });
-        } else {
-          // Another device already closed it: nothing is left to hold.
-          if (holdTimer !== null) clearTimeout(holdTimer);
-          holdTimer = null;
-          set({ heldClose: null });
+      // again. CR-F3: a retry that conflicts too REBASES onto that newer
+      // snapshot and tries again, bounded — a second 409 never silently
+      // drops the operator's intent (the base retried once and then left the
+      // change pending with no further trigger). If every attempt is
+      // refused, the intent STAYS in the pending log and the operator is
+      // told honestly; the next action retries.
+      let conflict: Extract<SaveResult, { status: "conflict" }> = result;
+      for (let attempt = 1; attempt <= MAX_CONFLICT_RETRIES; attempt++) {
+        const parsed = fromSnapshot(conflict.current);
+        if (!parsed.ok) return;
+        acceptedTrees.set(mothership, parsed.tree);
+        // Every op made so far, including those made while the save was in
+        // flight; a close still inside its window is not one of them.
+        const ops = get().pendingOps[mothership] ?? [];
+        const replayed = rebase(parsed.tree, ops);
+        const { dropped, reparented } = replayed;
+        const rebased = prepareRestores(mothership, replayed.tree);
+        const notices = new Set<string>();
+        for (const { tab_id, reason } of reparented) {
+          const moved = rebased.nodes[tab_id];
+          if (!moved) continue;
+          const parent_tab_id = moved.parent_tab_id;
+          const destination = parent_tab_id === null ? "to the root" : `under ${rebased.nodes[parent_tab_id].hier_number}`;
+          const cause = reason === "closed_parent" ? "its parent was closed on another device" : "kept a tab added on another device";
+          notices.add(`Moved ${destination}: ${cause}`);
         }
-      }
-      for (const notice of notices) toast.info(notice);
-      const droppedOps = new Set(dropped.map(({ op }) => op));
-      const remainingOps = ops.filter((op) => !droppedOps.has(op));
-      set((s) => ({
-        trees: { ...s.trees, [mothership]: shown },
-        pendingOps: { ...s.pendingOps, [mothership]: remainingOps },
-      }));
-      const retry = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(rebased));
-      if (get().contextEpoch !== contextEpoch) return;
-      if (retry.status === "saved") markSaved(mothership, retry.version, remainingOps.length, rebased);
-      else if (retry.status === "rejected") {
-        // eslint-disable-next-line no-console
-        console.error("[antiek/tabs] snapshot rejected:", retry.reasons);
+        for (const { reason } of dropped) {
+          notices.add(reason === "tab_not_open" || reason === "unknown_tab"
+            ? "A tab was closed on another device; your other changes were kept."
+            : reason === "duplicate_tab_id"
+              ? "A tab already exists on another device; your other changes were kept."
+              : reason === "not_closed_by_token"
+                ? "That close changed on another device; your other changes were kept."
+                : "A tab change could not be applied to the updated tree; your other changes were kept.");
+        }
+        // A close held while the save was in flight stays held: it is replayed
+        // onto the rebased tree for the screen only (same close_id, so its
+        // toast's Undo still finds it), and the retry below writes the tree
+        // WITHOUT it.
+        const held = heldOn(mothership);
+        let shown = rebased;
+        if (held && held.op.type === "close") {
+          const op = held.op;
+          const replay = closeTab(rebased, op.tab_id, op.mode, op.now, op.close_id, op.seen_tab_ids);
+          if (replay.ok) {
+            shown = replay.tree;
+            for (const node of Object.values(shown.nodes)) {
+              if (op.mode !== "prune" || node.parent_tab_id === rebased.nodes[node.tab_id]?.parent_tab_id) continue;
+              const destination = node.parent_tab_id === null ? "to the root" : `under ${shown.nodes[node.parent_tab_id].hier_number}`;
+              notices.add(`Moved ${destination}: kept a tab added on another device`);
+            }
+            set({ heldClose: { ...held, token: replay.undo, op: replay.op } });
+          } else {
+            // Another device already closed it: nothing is left to hold.
+            if (holdTimer !== null) clearTimeout(holdTimer);
+            holdTimer = null;
+            set({ heldClose: null });
+          }
+        }
+        for (const notice of notices) toast.info(notice);
+        const droppedOps = new Set(dropped.map(({ op }) => op));
+        const remainingOps = ops.filter((op) => !droppedOps.has(op));
+        set((s) => ({
+          trees: { ...s.trees, [mothership]: shown },
+          pendingOps: { ...s.pendingOps, [mothership]: remainingOps },
+        }));
+        const retry = await adapter.save(TAB_PROJECT_ID, mothership, toSnapshot(rebased));
+        if (get().contextEpoch !== contextEpoch) return;
+        if (retry.status === "saved") {
+          markSaved(mothership, retry.version, remainingOps.length, rebased);
+          break;
+        }
+        if (retry.status === "rejected") {
+          // eslint-disable-next-line no-console
+          console.error("[antiek/tabs] snapshot rejected:", retry.reasons);
+          break;
+        }
+        // Conflicted again: loop rebase onto THIS newer snapshot. When the
+        // bound is spent the intent stays pending (never dropped) and the
+        // operator is told the truth — it saves on their next action.
+        if (attempt === MAX_CONFLICT_RETRIES) {
+          toast.warn("Another writer keeps changing these tabs. Your change is kept here and saves on your next action.");
+          break;
+        }
+        conflict = retry;
       }
       // The hold may have ended while the rebase was in flight.
       if (!heldOn(mothership)) flushDeferred();
