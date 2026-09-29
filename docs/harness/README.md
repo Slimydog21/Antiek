@@ -17,23 +17,35 @@ Each one names the observed failure, so a reader can judge whether it applies he
 8. **A child that finishes in seconds with no artifact is a dead lane, not a completed task** — Read its transcript before trusting or re-tasking it.
 9. **Verify a requester-named tool exists before building against it** — `gws` did not exist on PATH; the answer was to ask, not to substitute.
 10. **Skills have two silent frontmatter defects** — (a folded description over 1024 chars, and a colon-space that creates a nested mapping). Neither stops the skill loading; only a live launch reveals them.
+## Where the skills live
 
-## Skills that exist on the machine and not in this repo
+The nine skills these rules came from are **parked outside this repository**, byte for byte, at
 
-- `beads-fleet`
-- `estate-audit`
-- `grokbot-resource`
-- `harness-drift`
-- `harness-upstream`
-- `media-information`
-- `modal-compute`
-- `ocr-review-gate`
-- `public-data`
+    /Users/slimydog/Antiek/third_party/harness-skills/
+
+They are working-machine artefacts: they embed local absolute paths, and `public-data` alone carries
+a 276 KB source registry plus 235 KB of generated source contracts. Those change with the operator's
+machine, not with this product, so they are kept out of the diff and this review stays about the
+rules.
+
+| parked skill | what it is |
+|---|---|
+| `beads-fleet` | drive a subagent swarm from the beads ledger |
+| `estate-audit` | weekly report-only health check of the local agent estate |
+| `grokbot-resource` | treat the tailnet Grok Bot computers as remote workers |
+| `harness-drift` | what changed in production, for pulling back |
+| `harness-upstream` | this direction: local lessons into a product PR |
+| `media-information` | YouTube, X, Reddit, HN, Mastodon, podcasts, RSS, Wayback |
+| `modal-compute` | bounded remote compute with the safety contract |
+| `ocr-review-gate` | rule-driven review with no second model spend |
+| `public-data` | 133 authoritative public sources, generated and gated |
+
+To review one, read it in place at that path; nothing here depends on it.
 
 ## Local extensions worth reviewing
 
-- `beads-prime.ts`
-- `estate-report.ts`
+Also local-only, and not shipped here: `beads-prime.ts` (re-injects the beads ledger at session
+start and after compaction) and `estate-report.ts` (surfaces the weekly audit at session start).
 
 ## Doctrine deltas to consider by hand
 
