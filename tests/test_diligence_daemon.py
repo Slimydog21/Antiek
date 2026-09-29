@@ -362,7 +362,9 @@ def test_spawn_enabled_gate(isolated_env, monkeypatch):
 
 def test_main_wiring_is_byte_equivalent_no_op_when_disabled(isolated_env, monkeypatch):
     """env unset ⇒ run_forever receives no_op_spawn and NO flag source (the
-    pre-activation behavior); env set ⇒ the real emit path + queue source."""
+    pre-activation behavior); env set ⇒ refused with EX_CONFIG before anything
+    is wired (LB-10: the emit path has no handler in the daemon's process and
+    diligence has no per-flag consent yet)."""
     import orchestration.continuous.daemon as daemon_mod
 
     captured: dict = {}
@@ -377,10 +379,12 @@ def test_main_wiring_is_byte_equivalent_no_op_when_disabled(isolated_env, monkey
     assert captured["spawn_fn"] is no_op_spawn
     assert captured["flag_source"] is None
 
+    captured.clear()
     monkeypatch.setenv("ANTIEK_DAEMON_SPAWN_ENABLED", "1")
-    daemon_mod.main()
-    assert captured["spawn_fn"] is not no_op_spawn
-    assert isinstance(captured["flag_source"], DbFlagSource)
+    with pytest.raises(SystemExit) as refused:
+        daemon_mod.main()
+    assert refused.value.code == daemon_mod.EX_CONFIG
+    assert captured == {}
 
 
 # ── Proof 5: the dedupe paths ──────────────────────────────────────────────

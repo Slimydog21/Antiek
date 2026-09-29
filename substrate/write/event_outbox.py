@@ -38,13 +38,12 @@ def eventful_transaction(
 ) -> Iterator[None]:
     """Commit a mutation and its outbox intent under the global writer lock."""
     del investigation_id
-    con.execute("BEGIN TRANSACTION")
-    try:
+    # LockedConnection.transaction is re-entrant. A caller may already own an
+    # atomic multi-statement transaction (promotion creates a deliverable,
+    # blocks, and an idempotency receipt together); a bare BEGIN here would
+    # make that composition impossible.
+    with con.transaction():
         yield
-        con.execute("COMMIT")
-    except Exception:
-        con.execute("ROLLBACK")
-        raise
 
 
 def canonical_event_json(event: Event) -> str:
@@ -251,18 +250,13 @@ def dispatch_pending(
                     checkpoint("after_append", event_id)
             if checkpoint:
                 checkpoint("before_receipt", event_id)
-            con.execute("BEGIN TRANSACTION")
-            try:
+            with con.transaction():
                 con.execute(
                     "UPDATE write_event_outbox SET state='delivered', "
                     "attempt_count=attempt_count+1, delivered_at=CURRENT_TIMESTAMP "
                     "WHERE event_id=? AND state='pending'",
                     [event_id],
                 )
-                con.execute("COMMIT")
-            except Exception:
-                con.execute("ROLLBACK")
-                raise
             delivered.append(event_id)
     return delivered
 
@@ -331,6 +325,16 @@ def dispatch_pending_best_effort(
     *,
     events_dir: str | None = None,
 ) -> list[str]:
+    """Deliver committed outbox rows without blocking the owning writer.
+
+    A caller inside an outer multi-statement transaction must not append JSONL
+    yet: the database rows can still roll back, and a durable trajectory event
+    for a rolled-back mutation cannot be undone. Return no delivery here; the
+    transaction owner dispatches after commit (and recovery remains the
+    backstop if that post-commit dispatch fails).
+    """
+    if con.in_explicit_transaction:
+        return []
     try:
         return _drain_investigation(con, investigation_id, events_dir=events_dir)
     except Exception as exc:
