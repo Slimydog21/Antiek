@@ -375,10 +375,15 @@ def test_route_refuses_another_owners_investigation(client):
     assert count == 0
 
 
-def test_route_idempotency_key_replays_one_deliverable(client):
+def test_route_idempotency_key_replays_one_deliverable(client, monkeypatch):
     _seed_synthesis()
     _seed_start_event(owner_user_id="user-bob")
     client.cookies.update(_cookie("user-bob"))
+    dispatched: list[str] = []
+    monkeypatch.setattr(
+        "substrate.write.promote_context.dispatch_pending_best_effort",
+        lambda _con, investigation_id, **_kwargs: dispatched.append(investigation_id),
+    )
     body = {
         "investigation_id": "inv-1",
         "deliverable_kind": "research_memo",
@@ -398,6 +403,7 @@ def test_route_idempotency_key_replays_one_deliverable(client):
     finally:
         con.close()
     assert count == 1
+    assert dispatched == ["inv-1", "inv-1"]
 
 
 def test_route_idempotency_conflict_detects_changed_body(client):
@@ -479,7 +485,9 @@ def test_failed_idempotency_receipt_rolls_back_the_whole_promotion(monkeypatch):
         for event in trajectory("inv-1")
         if event.get("action_type") == "outline_block.placed"
     ]
-    assert len(placed_events) == len(result.block_ids)
+    assert [
+        event["payload"]["outline_block_id"] for event in placed_events
+    ] == result.block_ids
 
 
 def test_route_rejects_missing_authenticated_identity_without_writing(client):

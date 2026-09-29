@@ -264,6 +264,7 @@ def promote_investigation_to_deliverable(
             request_digest=request_digest,
         )
         if replayed is not None:
+            dispatch_pending_best_effort(con, investigation_id)
             return replayed
 
     # 1. Find the investigation's most-recent DEPOSITABLE synthesis.
