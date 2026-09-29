@@ -38,7 +38,7 @@ if _REPO not in sys.path:
 from interfaces.research.api import create_app  # noqa: E402
 from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from substrate.auth.magic_link import mint_session_cookie  # noqa: E402
-from substrate.event_log import emit_typed  # noqa: E402
+from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.graph.ops import insert_chunk, insert_document, insert_node  # noqa: E402
 from substrate.schemas import InvestigationStartRequestedPayload  # noqa: E402
@@ -459,6 +459,12 @@ def test_failed_idempotency_receipt_rolls_back_the_whole_promotion(monkeypatch):
     finally:
         con.close()
     assert count == 0
+    placed_events = [
+        event
+        for event in trajectory("inv-1")
+        if event.get("action_type") == "outline_block.placed"
+    ]
+    assert placed_events == []
 
     result = _promote()
     assert result is not None and result.idempotent_replay is False
@@ -468,6 +474,12 @@ def test_failed_idempotency_receipt_rolls_back_the_whole_promotion(monkeypatch):
     finally:
         con.close()
     assert count == 1
+    placed_events = [
+        event
+        for event in trajectory("inv-1")
+        if event.get("action_type") == "outline_block.placed"
+    ]
+    assert len(placed_events) == len(result.block_ids)
 
 
 def test_route_rejects_missing_authenticated_identity_without_writing(client):

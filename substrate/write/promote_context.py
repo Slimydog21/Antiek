@@ -39,6 +39,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from runtime.db_lock import LockedConnection
     from substrate.graph.ops import insert_deliverable, insert_section
 
+from .event_outbox import dispatch_pending_best_effort
 from .outline_block import place_block
 
 
@@ -382,4 +383,5 @@ def promote_investigation_to_deliverable(
                     json.dumps(asdict(result), separators=(",", ":"), sort_keys=True),
                 ],
             )
-        return result
+    dispatch_pending_best_effort(con, investigation_id)
+    return result
