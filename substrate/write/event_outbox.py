@@ -325,6 +325,16 @@ def dispatch_pending_best_effort(
     *,
     events_dir: str | None = None,
 ) -> list[str]:
+    """Deliver committed outbox rows without blocking the owning writer.
+
+    A caller inside an outer multi-statement transaction must not append JSONL
+    yet: the database rows can still roll back, and a durable trajectory event
+    for a rolled-back mutation cannot be undone. Return no delivery here; the
+    transaction owner dispatches after commit (and recovery remains the
+    backstop if that post-commit dispatch fails).
+    """
+    if con.in_explicit_transaction:
+        return []
     try:
         return _drain_investigation(con, investigation_id, events_dir=events_dir)
     except Exception as exc:

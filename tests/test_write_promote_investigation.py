@@ -38,7 +38,7 @@ if _REPO not in sys.path:
 from interfaces.research.api import create_app  # noqa: E402
 from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from substrate.auth.magic_link import mint_session_cookie  # noqa: E402
-from substrate.event_log import emit_typed  # noqa: E402
+from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.graph.ops import insert_chunk, insert_document, insert_node  # noqa: E402
 from substrate.schemas import InvestigationStartRequestedPayload  # noqa: E402
@@ -375,10 +375,15 @@ def test_route_refuses_another_owners_investigation(client):
     assert count == 0
 
 
-def test_route_idempotency_key_replays_one_deliverable(client):
+def test_route_idempotency_key_replays_one_deliverable(client, monkeypatch):
     _seed_synthesis()
     _seed_start_event(owner_user_id="user-bob")
     client.cookies.update(_cookie("user-bob"))
+    dispatched: list[str] = []
+    monkeypatch.setattr(
+        "substrate.write.promote_context.dispatch_pending_best_effort",
+        lambda _con, investigation_id, **_kwargs: dispatched.append(investigation_id),
+    )
     body = {
         "investigation_id": "inv-1",
         "deliverable_kind": "research_memo",
@@ -398,6 +403,7 @@ def test_route_idempotency_key_replays_one_deliverable(client):
     finally:
         con.close()
     assert count == 1
+    assert dispatched == ["inv-1", "inv-1"]
 
 
 def test_route_idempotency_conflict_detects_changed_body(client):
@@ -459,6 +465,12 @@ def test_failed_idempotency_receipt_rolls_back_the_whole_promotion(monkeypatch):
     finally:
         con.close()
     assert count == 0
+    placed_events = [
+        event
+        for event in trajectory("inv-1")
+        if event.get("action_type") == "outline_block.placed"
+    ]
+    assert placed_events == []
 
     result = _promote()
     assert result is not None and result.idempotent_replay is False
@@ -468,6 +480,14 @@ def test_failed_idempotency_receipt_rolls_back_the_whole_promotion(monkeypatch):
     finally:
         con.close()
     assert count == 1
+    placed_events = [
+        event
+        for event in trajectory("inv-1")
+        if event.get("action_type") == "outline_block.placed"
+    ]
+    assert [
+        event["payload"]["outline_block_id"] for event in placed_events
+    ] == result.block_ids
 
 
 def test_route_rejects_missing_authenticated_identity_without_writing(client):
