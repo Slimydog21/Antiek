@@ -49,6 +49,7 @@ import ThreadIsland from "./island/ThreadIsland";
 import { deriveIslandRefs } from "./island/islandModel";
 import { runSpawnFlow } from "./island/spawnFlows";
 import { toast } from "../../components/lemon/LemonToast";
+import { describeFailure } from "../../shared/failure";
 import {
   HIDDEN_ISLANDS_CHANGED,
   readHiddenIslands,
@@ -496,15 +497,24 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
   // (Deep-research pins inside onDeepResearch below — the SPR-04 write-back
   // needs the anchor id). Auto-pins are best-effort beside their action: a
   // failed pin never breaks the action (it is logged, never surfaced as if
-  // the action failed); the manual Pin is surfaced honestly.
+  // the action failed); the manual Pin is surfaced honestly (D8: the swallowed
+  // 422 anchor_resolution_not_found was the day-one journey blocker — the
+  // operator saw zero marks, zero alerts).
   const onPinAnchor = useCallback(
     (pin: { source: string }, sel: FloatMenuSelection) => {
+      const manual = pin.source === "pin";
       void (async () => {
         try {
           await pinFromSelection(pin.source, sel);
           refetchAnchors();
+          if (manual) toast.info("Highlight pinned.");
         } catch (e) {
-          console.warn(`anchor pin (${pin.source}) failed`, e);
+          // Diagnostics for logs; a plain sentence for the operator.
+          const described = describeFailure(e, { what: "pin that passage" });
+          console.warn(`anchor pin (${pin.source}) failed`, described.diagnostics ?? e);
+          if (manual) {
+            toast.warn(`${described.title} ${described.detail}`);
+          }
         }
       })();
     },
