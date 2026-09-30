@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
+import { LoadingState } from "../../components/states";
 
 /**
  * Investigations index — operator-facing list of past + in-flight
@@ -217,7 +218,7 @@ export default function InvestigationsIndex() {
           )}
 
           {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+            <LoadingState variant="inline" label="Opening your research" />
           )}
 
           {!loading && rows.length === 0 && !error && (

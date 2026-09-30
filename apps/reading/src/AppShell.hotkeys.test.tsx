@@ -14,8 +14,14 @@
  * matches the event the HUD listens for, and stub only the keydown installer.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, render, act } from "@testing-library/react";
+import { cleanup, render, act, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+
+// The key sheet is lazy. Load its module once up front, so a slow first
+// transform under a loaded full-suite run cannot outlast waitFor.
+beforeAll(async () => {
+  await import("./components/hotkeys/KeySheet");
+}, 30_000);
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -80,15 +86,19 @@ function mountShell() {
 }
 
 describe("AppShell SPR-08 — the HotkeyHud is mounted + HELP_TOGGLE-driven", () => {
-  it("does not show the HUD at rest, but the HELP_TOGGLE event opens it (mounted once, self-subscribed)", () => {
+  it("does not show the HUD at rest, but the HELP_TOGGLE event opens it (mounted once, self-subscribed)", async () => {
     mountShell();
     // At rest the HUD renders nothing (LemonModal is a portal to body).
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 
-    // The `?` key fires HELP_TOGGLE in shortcuts.ts; the mounted HUD listens.
+    // The `?` key fires HELP_TOGGLE in shortcuts.ts; the mounted HUD listens
+    // and lazy-loads the key sheet (MS-01).
     act(() => {
       window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
     });
+    // The key sheet is a lazy chunk: its first import pays a cold module
+    // transform, which exceeds waitFor's 1 s default on a loaded machine.
+    await waitFor(() => expect(document.body.querySelector('[role="dialog"]')).toBeTruthy(), { timeout: 8000 });
     const dialog = document.body.querySelector('[role="dialog"]');
     expect(
       dialog,
@@ -103,11 +113,49 @@ describe("AppShell SPR-08 — the HotkeyHud is mounted + HELP_TOGGLE-driven", ()
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("mounts EXACTLY ONE HUD (a single toggle yields a single dialog, not N)", () => {
+  it("mounts EXACTLY ONE HUD (a single toggle yields a single dialog, not N)", async () => {
     mountShell();
     act(() => {
       window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.HELP_TOGGLE));
     });
+    await waitFor(() => expect(document.body.querySelector('[role="dialog"]')).toBeTruthy());
     expect(document.body.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+  });
+});
+
+describe("AppShell MS-01 — the prefix, its chip and the key sheet end to end", () => {
+  const key = (init: KeyboardEventInit) =>
+    act(() => {
+      (document.activeElement ?? document.body).dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+      );
+    });
+
+  it("ctrl+b shows the 'prefix armed' chip; '?' then opens the sheet and the chip goes", async () => {
+    mountShell();
+    expect(document.querySelector('[data-testid="prefix-armed-chip"]')).toBeNull();
+    key({ key: "b", code: "KeyB", ctrlKey: true });
+    const chip = document.querySelector('[data-testid="prefix-armed-chip"]');
+    expect(chip, "the armed prefix must be visible").toBeTruthy();
+    expect(chip!.closest('[role="status"]')).toBeTruthy();
+    key({ key: "?", code: "Slash", shiftKey: true });
+    expect(document.querySelector('[data-testid="prefix-armed-chip"]')).toBeNull();
+    await waitFor(() => expect(document.body.querySelector('[role="dialog"]')).toBeTruthy());
+  });
+
+  it("'?' from inside the open sheet closes it (the sheet owns its toggle) and focus comes back", async () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    mountShell();
+    opener.focus();
+    key({ key: "?", code: "Slash", shiftKey: true });
+    await waitFor(() => expect(document.body.querySelector('[role="dialog"]')).toBeTruthy());
+    await waitFor(() =>
+      expect(document.body.querySelector('[role="dialog"]')!.contains(document.activeElement)).toBe(true),
+    );
+    key({ key: "?", code: "Slash", shiftKey: true });
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
   });
 });

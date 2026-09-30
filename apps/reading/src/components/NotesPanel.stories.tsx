@@ -27,6 +27,7 @@ function userAsk(id: string, text: string): Event {
   return {
     event_id: id,
     investigation_id: "inv-storybook-demo",
+    param_version: "storybook",
     document_id: "doc-quantum-2026",
     action_type: "distillation.requested",
     emitted_at: new Date().toISOString(),

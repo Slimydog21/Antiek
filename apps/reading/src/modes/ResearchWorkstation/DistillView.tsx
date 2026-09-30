@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { ModeLink } from "../../workspace/ModeLink";
 
 import {
   getDistillation,
@@ -338,13 +338,13 @@ function Grounding({ node, investigationId }: { node: DistilledNode; investigati
 function OpenAutoNotebookLink({ investigationId }: { investigationId: string }) {
   return (
     <p className="px-0 pt-1">
-      <Link
+      <ModeLink
         to={`/notebook/auto/${encodeURIComponent(investigationId)}`}
         data-testid="open-auto-notebook"
         className="font-mono text-xs uppercase tracking-wider text-sun-deep dark:text-sun underline-offset-2 hover:underline"
       >
         Open auto-notebook →
-      </Link>
+      </ModeLink>
     </p>
   );
 }
