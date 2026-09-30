@@ -1,6 +1,6 @@
 # Harness lessons ported from the operator's machine
 
-Generated 2026-09-29 19:20 from `/Users/slimydog` against `origin/main`.
+Generated 2026-09-29 19:20 from the operator's machine against `origin/main`.
 
 These are rules that were paid for in production incidents, not preferences.
 Each one names the observed failure, so a reader can judge whether it applies here.
@@ -19,9 +19,9 @@ Each one names the observed failure, so a reader can judge whether it applies he
 10. **Skills have two silent frontmatter defects** — (a folded description over 1024 chars, and a colon-space that creates a nested mapping). Neither stops the skill loading; only a live launch reveals them.
 ## Where the skills live
 
-The nine skills these rules came from are **parked outside this repository**, byte for byte, at
-
-    /Users/slimydog/Antiek/third_party/harness-skills/
+The nine skills these rules came from are **parked outside this repository**, byte for byte.
+Each machine chooses the directory. If `ANTIEK_HARNESS_SKILLS` is set, that is the location.
+If it is unset, look for `third_party/harness-skills` relative to the Antiek checkout root.
 
 They are working-machine artefacts: they embed local absolute paths, and `public-data` alone carries
 a 276 KB source registry plus 235 KB of generated source contracts. Those change with the operator's
