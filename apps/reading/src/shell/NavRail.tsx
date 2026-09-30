@@ -488,6 +488,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     return (
       <>
         <aside
+          data-orientation="bottom"
+          data-rail-flow="inline"
           className="h-16 w-full shrink-0 flex items-stretch bg-ink dark:bg-void [--focus:var(--sun)]"
           aria-label="Primary navigation"
         >
@@ -527,6 +529,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         // Mobile-only overlay elevation (was a z-40 literal): the named
         // `mobileRail` rung. Desktop stays in-flow with no z, as before.
         style={isMobile ? { zIndex: zIndex.mobileRail } : undefined}
+        data-orientation="left"
+        data-rail-flow={isMobile ? "overlay" : "inline"}
         aria-label="Primary navigation"
       >
         {isMobile && (
