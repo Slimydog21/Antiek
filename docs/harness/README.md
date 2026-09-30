@@ -17,11 +17,14 @@ Each one names the observed failure, so a reader can judge whether it applies he
 8. **A child that finishes in seconds with no artifact is a dead lane, not a completed task** — Read its transcript before trusting or re-tasking it.
 9. **Verify a requester-named tool exists before building against it** — `gws` did not exist on PATH; the answer was to ask, not to substitute.
 10. **Skills have two silent frontmatter defects** — (a folded description over 1024 chars, and a colon-space that creates a nested mapping). Neither stops the skill loading; only a live launch reveals them.
+11. **Reproduce CI's environment, not just its command line** — Running CI's own command locally on a provisioned machine gave `184 failed` against a branch that was in fact clean. CI blanks seven provider keys **and** has none of the thirteen `ANTIEK_*` variables a provisioned machine exports; blanking only the token is worse than blanking none, because it produces a configuration CI never has. Every failure carried one signature (`operator_auth_required`); clearing all thirteen gave `3249 passed, 0 failed`.
+12. **A 404 from the classic protection endpoint is not "no protection"** — `repos/…/branches/main/protection` returns 404 while a ruleset enforces strict up-to-date plus nine required status contexts. "Unprotected, so nothing is required" is the wrong conclusion, and the merge is then refused. Read `rules/branches/main` before reasoning about what a branch requires.
+
 ## Where the skills live
 
-The nine skills these rules came from are **parked outside this repository**, byte for byte,
-at `third_party/harness-skills` relative to the checkout root. No environment file and no
-absolute path decides that location.
+The nine skills these rules came from are **parked outside this repository**, byte for byte, on the
+operator's machine at `third_party/harness-skills` under his checkout root — that path exists on his
+machine, not in this repository. No environment file and no absolute path decides that location.
 
 They stay outside this diff. `public-data` alone carries a 276 KB source registry plus 235 KB of
 generated source contracts, and that registry is operator data rather than product code, so this
