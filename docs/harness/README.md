@@ -19,14 +19,13 @@ Each one names the observed failure, so a reader can judge whether it applies he
 10. **Skills have two silent frontmatter defects** — (a folded description over 1024 chars, and a colon-space that creates a nested mapping). Neither stops the skill loading; only a live launch reveals them.
 ## Where the skills live
 
-The nine skills these rules came from are **parked outside this repository**, byte for byte.
-Each machine chooses the directory. If `ANTIEK_HARNESS_SKILLS` is set, that is the location.
-If it is unset, look for `third_party/harness-skills` relative to the Antiek checkout root.
+The nine skills these rules came from are **parked outside this repository**, byte for byte,
+at `third_party/harness-skills` relative to the checkout root. No environment file and no
+absolute path decides that location.
 
-They are working-machine artefacts: they embed local absolute paths, and `public-data` alone carries
-a 276 KB source registry plus 235 KB of generated source contracts. Those change with the operator's
-machine, not with this product, so they are kept out of the diff and this review stays about the
-rules.
+They stay outside this diff. `public-data` alone carries a 276 KB source registry plus 235 KB of
+generated source contracts, and that registry is operator data rather than product code, so this
+review stays about the rules.
 
 | parked skill | what it is |
 |---|---|
@@ -51,7 +50,7 @@ start and after compaction) and `estate-report.ts` (surfaces the weekly audit at
 
 These are NOT applied automatically - doctrine is judgement, not a file copy:
 
-- `CLAUDE.md` here and `~/.prime/agent/APPEND_SYSTEM.md` there overlap. Where a rule
+- `CLAUDE.md` in this repository and the local doctrine file kept outside it overlap. Where a rule
   exists in only one, decide which side owns it rather than copying both ways.
 - The Google/Gmail path changed: `gog` is dead, `gws` is current. If this repo
   documents `gog auth login` anywhere, that instruction is stale.
