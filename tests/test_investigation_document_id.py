@@ -12,8 +12,9 @@ from __future__ import annotations
 import os
 import tempfile
 
-import interfaces.research.api.app as app_mod
 from fastapi.testclient import TestClient
+
+import interfaces.research.api.app as app_mod
 from substrate.event_log.events import log_event
 
 
