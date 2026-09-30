@@ -396,6 +396,11 @@ export interface InvestigationSummary {
    * server-side). The surface badges it "found by the loop"; the raw
    * policy_id is never sent. Optional for back-compat with older responses. */
   spawned_by_daemon?: boolean;
+  /** THREAD-CONTRACT §1.2 ThreadSummary `document_id?`: the document this
+   * thread was born from, taken from the event envelope. Lane B's W1 wire
+   * carries it; until that ships the server omits it. Absent = unknown (not
+   * "no document"), so clients must stay correct without it. */
+  document_id?: string | null;
 }
 
 /** GET /investigations — list past investigations for the sidebar. */

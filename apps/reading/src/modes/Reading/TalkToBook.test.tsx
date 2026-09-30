@@ -470,7 +470,9 @@ describe("TalkToBook (M2)", () => {
     const panel = screen.getByTestId("talk-to-book");
     expect(panel.className).toContain("left-3");
     expect(panel.className).toContain("right-3");
-    expect(panel.className).toContain("sm:w-96");
+    // The panel's width answers to the READER's container (it lives in a
+    // cockpit pane, cockpit R2-H4), not the viewport.
+    expect(panel.className).toContain("reader-md:w-96");
     expect(screen.getByRole("button", { name: "Close" }).className).toContain("min-h-11");
     expect(screen.getByRole("button", { name: "Ask" }).className).toContain("min-h-11");
   });

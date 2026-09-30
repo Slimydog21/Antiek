@@ -1,11 +1,10 @@
 import {
-  apiFetch,
   postTypedEvent,
   searchBlocks,
   ApiError,
   type BlockSearchHit,
 } from "../../../lib/api";
-import { composeThoughtPartnerSystemContext } from "../../../components/ai/thoughtPartnerSeed";
+import { thoughtPartnerOnce } from "../../../components/ai/thoughtPartnerOnce";
 import type { MarginaliaNotedPayload } from "../../../generated/types";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
 
@@ -203,9 +202,11 @@ export interface RewriteActions {
   onRewrite: (intent: RewriteIntent, selection: FloatMenuSelection) => void;
 }
 
-/** One-shot dialogue over the selection via /thought-partner. Throws
- * `ApiError` (status carried) on failure so the caller can branch the no-key
- * 503 case onto AIActionFailure, exactly as VoiceChaseButton.tsx:56 does. */
+/** One-shot dialogue over the selection via /thought-partner — through
+ * `thoughtPartnerOnce` (components/ai/thoughtPartnerOnce.ts), the ONE wire
+ * the companion's dialogue tab also uses. Throws `ApiError` (status carried)
+ * on failure so the caller can branch the no-key 503 case onto
+ * AIActionFailure, exactly as VoiceChaseButton.tsx:56 does. */
 export async function dialogueOverSelection(args: {
   investigationId: string;
   selection: FloatMenuSelection;
@@ -215,28 +216,5 @@ export async function dialogueOverSelection(args: {
     throw new ApiError(WITHHELD_OUTBOUND_REASON, 403, WITHHELD_OUTBOUND_REASON);
   }
   const prompt = buildDialoguePrompt(args.selection, args.followUp);
-  const resp = await apiFetch("/thought-partner", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      investigation_id: args.investigationId,
-      prompt,
-      system_context: composeThoughtPartnerSystemContext(null),
-    }),
-  });
-  if (!resp.ok) {
-    throw new ApiError(
-      `POST /thought-partner failed: HTTP ${resp.status}`,
-      resp.status,
-      await resp.text(),
-    );
-  }
-  const data = await resp.json();
-  const reply: string = data.text ?? data.body ?? "";
-  const rawShape = String(data.shape ?? "SYNTHESIS").toUpperCase();
-  const shape =
-    rawShape === "CHALLENGE" || rawShape === "EXTENSION"
-      ? rawShape
-      : "SYNTHESIS";
-  return { prompt, reply, shape };
+  return thoughtPartnerOnce({ investigationId: args.investigationId, prompt });
 }
