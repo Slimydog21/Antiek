@@ -178,8 +178,8 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
     expect(WORKFLOWS.read.defaultRoute).not.toBe("/wrestle");
   });
 
-  it("the Read landing surface resolves to the Library (ThreadJump + stub agree)", () => {
-    // landingModeForWorkflow is the single source ThreadJump uses; it must
+  it("the Read landing surface resolves to the Library (TrailJump + stub agree)", () => {
+    // landingModeForWorkflow is the single source TrailJump uses; it must
     // agree with the door so the re-home holds everywhere, not just on the rail.
     const landing = landingModeForWorkflow("read");
     expect(landing?.id).toBe("Library");
@@ -256,8 +256,8 @@ describe("Write door re-home (Write SPR-07)", () => {
     expect(WORKFLOWS.write.defaultRoute).not.toBe("/create");
   });
 
-  it("the Write landing surface resolves on /write (ThreadJump + stub agree)", () => {
-    // landingModeForWorkflow is the single source ThreadJump uses; it must
+  it("the Write landing surface resolves on /write (TrailJump + stub agree)", () => {
+    // landingModeForWorkflow is the single source TrailJump uses; it must
     // agree with the door so the re-home holds everywhere, not just on the rail.
     const landing = landingModeForWorkflow("write");
     expect(landing?.workflow).toBe("write");

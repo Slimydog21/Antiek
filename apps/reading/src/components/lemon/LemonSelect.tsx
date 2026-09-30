@@ -69,7 +69,11 @@ export function LemonSelect<V>({
       if (!rootRef.current?.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      // The Esc is the listbox's alone (escapeOverlay.ts).
+      if (e.key === "Escape" && !e.defaultPrevented) {
+        e.preventDefault();
+        close();
+      }
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setHoverIdx((i) => {
@@ -141,6 +145,7 @@ export function LemonSelect<V>({
       {open && (
         <ul
           role="listbox"
+          data-esc-overlay=""
           className={
             "absolute top-[calc(100%+4px)] left-0 z-50 min-w-full " +
             "bg-ice-0 dark:bg-charcoal-2 " +

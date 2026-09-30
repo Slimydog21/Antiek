@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-import type { Editor } from "@tiptap/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Editor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 
 import {
   capDocumentContext,
@@ -32,74 +33,82 @@ describe("capDocumentContext", () => {
 });
 
 describe("runInlineComplete", () => {
-  function fakeEditor(prefix: string, fullText: string): Editor {
-    const pos = prefix.length + 1;
-    return {
-      state: {
-        selection: {
-          empty: true,
-          $from: {
-            parent: { isTextblock: true },
-            start: () => 1,
-            pos,
-          },
-        },
-        doc: {
-          textBetween: (from: number, to: number) => fullText.slice(from - 1, to - 1),
-        },
-      },
-      getText: () => fullText,
-      commands: { insertContent: vi.fn() },
-    } as unknown as Editor;
+  const editors: Editor[] = [];
+  function makeEditor(text: string) {
+    const editor = new Editor({
+      element: document.createElement("div"),
+      extensions: [StarterKit],
+      content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] },
+    });
+    editor.commands.setTextSelection(text.length + 1);
+    editors.push(editor);
+    return editor;
+  }
+  afterEach(() => { for (const editor of editors.splice(0)) editor.destroy(); });
+
+  function delayedCompletion() {
+    let resolve = (_value: { text: string }): void => { throw new Error("Promise not initialized"); };
+    const promise = new Promise<{ text: string }>((res) => { resolve = res; });
+    return { complete: vi.fn(() => promise), resolve };
   }
 
   it("does not call completeInline when prefix is whitespace-only", async () => {
     const complete = vi.fn();
     const storage: InlineCompleteStorage = { pending: false };
-    const editor = fakeEditor("   ", "   ");
-
-    await runInlineComplete(editor, storage, complete);
-
+    await runInlineComplete(makeEditor("   "), storage, complete);
     expect(complete).not.toHaveBeenCalled();
     expect(storage.pending).toBe(false);
   });
 
-  it("ignores a second trigger while pending (no duplicate call)", async () => {
-    let resolveFirst!: () => void;
-    const first = new Promise<{ text: string }>((r) => {
-      resolveFirst = () => r({ text: "x" });
-    });
-    const complete = vi.fn(() => first);
+  it("ignores a second trigger while pending", async () => {
+    const { complete, resolve } = delayedCompletion();
     const storage: InlineCompleteStorage = { pending: false };
-    const editor = fakeEditor("Hello", "Hello world");
-
-    const p1 = runInlineComplete(editor, storage, complete);
-    expect(shouldRequestCompletion("Hello", storage.pending)).toBe(false);
-    const p2 = runInlineComplete(editor, storage, complete);
-
-    resolveFirst();
-    await Promise.all([p1, p2]);
-
+    const editor = makeEditor("Hello");
+    const first = runInlineComplete(editor, storage, complete);
+    const second = runInlineComplete(editor, storage, complete);
+    expect(storage.pending).toBe(true);
+    resolve({ text: " there" });
+    await Promise.all([first, second]);
     expect(complete).toHaveBeenCalledTimes(1);
+    expect(editor.getText()).toBe("Hello there");
     expect(storage.pending).toBe(false);
   });
 
-  it("inserts continuation text on success", async () => {
+  it("inserts continuation text into the unchanged request context", async () => {
     const complete = vi.fn().mockResolvedValue({ text: " there" });
     const storage: InlineCompleteStorage = { pending: false };
-    const insertContent = vi.fn();
-    const editor = {
-      ...fakeEditor("Hi", "Hi"),
-      commands: { insertContent },
-    } as unknown as Editor;
-
+    const editor = makeEditor("Hi");
     await runInlineComplete(editor, storage, complete);
+    expect(complete).toHaveBeenCalledWith({ prefix: "Hi", document_context: "Hi" });
+    expect(editor.getText()).toBe("Hi there");
+  });
 
-    expect(complete).toHaveBeenCalledWith({
-      prefix: "Hi",
-      document_context: "Hi",
-    });
-    expect(insertContent).toHaveBeenCalledWith(" there");
+  it.each(["readonly", "destroyed"])("does not request a completion from a %s editor", async (state) => {
+    const editor = makeEditor("Hello");
+    if (state === "readonly") editor.setEditable(false, false);
+    else editor.destroy();
+    const complete = vi.fn().mockResolvedValue({ text: " stale" });
+    await runInlineComplete(editor, { pending: false }, complete);
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it.each(["readonly", "destroyed", "edited", "selection moved", "replaced document"])("drops a late completion after the editor is %s", async (change) => {
+    const editor = makeEditor("Hello");
+    const { complete, resolve } = delayedCompletion();
+    const storage: InlineCompleteStorage = { pending: false };
+    const pending = runInlineComplete(editor, storage, complete);
+    if (change === "readonly") editor.setEditable(false, false);
+    if (change === "destroyed") editor.destroy();
+    if (change === "edited") editor.commands.insertContent(" edited");
+    if (change === "selection moved") editor.commands.setTextSelection(1);
+    if (change === "replaced document") editor.commands.setContent("<p>A different draft.</p>");
+    const currentText = editor.isDestroyed ? null : editor.getText();
+    const commands = vi.spyOn(editor, "commands", "get");
+    resolve({ text: " stale completion" });
+    await pending;
+    expect(commands).not.toHaveBeenCalled();
+    if (currentText !== null) expect(editor.getText()).toBe(currentText);
+    expect(storage.pending).toBe(false);
   });
 });
 
