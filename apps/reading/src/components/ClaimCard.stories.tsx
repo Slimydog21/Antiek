@@ -78,7 +78,7 @@ export const WithFailedGrounding: Story = {
     grounding: {
       result: "failed",
       reason: "absent_from_source",
-      searched_regions: ["reg-abc123", "reg-def456"],
+      searched_regions: ["reg-abc123", "reg-def456", "reg-ghi789", "reg-jkl012", "reg-mno345"],
       eventId: "ev-grounding-failed",
     },
   },

@@ -28,6 +28,7 @@ from substrate.companions.evidence_index import read_scope, resolve
 from substrate.diligence.store import DiligenceStore
 from substrate.graph.ops import insert_document
 from substrate.graph.schema import init_database_at_path
+from substrate.research_artifact.paths import companion_path_for
 
 OWNER = "__operator__"
 BODY_TEXT = "The companion fixture book opens with a servable sentence worth keeping."
@@ -166,10 +167,14 @@ def _seed(api_env, document_id: str = "doc-1") -> None:
 def test_companion_get_renders_narrative_with_evidence_ids_and_headers(api_env) -> None:
     _seed(api_env)
     client = _client()
+    # The GET serves the last build and never writes (THREAD-CONTRACT
+    # §1.12): the build is the refresh POST's.
+    assert client.post("/documents/doc-1/companion/refresh").status_code == 200
 
     resp = client.get("/documents/doc-1/companion")
     assert resp.status_code == 200
     assert resp.headers["x-antiek-companion-generated"] == "true"
+    assert resp.headers["x-antiek-serving"] == "last-build"
     assert resp.headers["x-antiek-document-id"] == "doc-1"
     assert resp.headers["x-antiek-rebuilt-at"]
     html = resp.text
@@ -199,7 +204,7 @@ def test_companion_get_renders_narrative_with_evidence_ids_and_headers(api_env) 
 def test_evidence_get_resolves_claim_evidence_and_process(api_env) -> None:
     _seed(api_env)
     client = _client()
-    client.get("/documents/doc-1/companion")  # rebuild + populate the index
+    client.post("/documents/doc-1/companion/refresh")  # rebuild + populate the index
     con = connect_read(api_env["db"])
     try:
         rows = read_scope(con, owner_user_id=OWNER, scope="document", scope_id="doc-1")
@@ -227,7 +232,7 @@ def test_evidence_get_resolves_claim_evidence_and_process(api_env) -> None:
 def test_tombstoned_id_resolves_honestly(api_env) -> None:
     _seed(api_env)
     client = _client()
-    client.get("/documents/doc-1/companion")
+    client.post("/documents/doc-1/companion/refresh")
     con = connect_read(api_env["db"])
     try:
         claim = next(
@@ -242,7 +247,7 @@ def test_tombstoned_id_resolves_honestly(api_env) -> None:
     with connect_write(api_env["db"], purpose="test/vanish") as con:
         con.execute("DELETE FROM edges WHERE source_node_id = ?", [node_ref[5:]])
         con.execute("DELETE FROM nodes WHERE node_id = ?", [node_ref[5:]])
-    client.get("/documents/doc-1/companion")
+    client.post("/documents/doc-1/companion/refresh")
 
     resp = client.get(f"/evidence/{claim.evidence_id}")
     assert resp.status_code == 200
@@ -255,7 +260,7 @@ def test_tombstoned_id_resolves_honestly(api_env) -> None:
 def test_second_owner_gets_404s(api_env) -> None:
     _seed(api_env)
     client = _client()
-    client.get("/documents/doc-1/companion")
+    client.post("/documents/doc-1/companion/refresh")
     con = connect_read(api_env["db"])
     try:
         first = read_scope(con, owner_user_id=OWNER, scope="document", scope_id="doc-1")[0]
@@ -271,6 +276,7 @@ def test_second_owner_gets_404s(api_env) -> None:
         )
 
     assert client.get("/documents/doc-1/companion").status_code == 404
+    assert client.post("/documents/doc-1/companion/refresh").status_code == 404
     assert client.get(f"/evidence/{first.evidence_id}").status_code == 404
 
 
@@ -286,7 +292,7 @@ def test_project_scope_answers_honestly_unavailable(api_env) -> None:
 def test_query_filters_compose(api_env) -> None:
     _seed(api_env)
     client = _client()
-    client.get("/documents/doc-1/companion")
+    client.post("/documents/doc-1/companion/refresh")
     claims = client.get("/documents/doc-1/evidence?kind=claim").json()
     assert claims["count"] == 2
     assert all(r["kind"] == "claim" for r in claims["rows"])
@@ -303,11 +309,17 @@ def test_query_filters_compose(api_env) -> None:
 def test_export_lands_beside_artifacts_with_the_honesty_header(api_env) -> None:
     _seed(api_env)
     client = _client()
+    assert client.post("/documents/doc-1/companion/refresh").status_code == 200
     resp = client.get("/documents/doc-1/companion")
     assert resp.status_code == 200
-    exported = Path(api_env["arts"]) / "companions" / "doc-1.html"
+    # The persisted build is keyed by (owner, document) under the artifacts
+    # dir; the pre-owner companions/<doc>.html layout is gone.
+    exported = companion_path_for(OWNER, "doc-1")
+    assert exported.is_relative_to(Path(api_env["arts"]) / "companions" / "by-owner")
     assert exported.exists()
-    text = exported.read_text(encoding="utf-8")
+    assert not (Path(api_env["arts"]) / "companions" / "doc-1.html").exists()
+    text = json.loads(exported.read_text(encoding="utf-8"))["html"]
+    assert text == resp.text
     assert text.startswith("<!-- generated: never authored")
     assert "rebuilt_at:" in text
     assert "edit the sources, never this file" in text
@@ -349,6 +361,7 @@ def test_empty_document_renders_honest_empty_states(api_env) -> None:
             on_conflict="ignore",
         )
     client = _client()
+    assert client.post("/documents/doc-bare/companion/refresh").status_code == 200
     resp = client.get("/documents/doc-bare/companion")
     assert resp.status_code == 200
     assert "No findings yet." in resp.text

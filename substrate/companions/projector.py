@@ -38,6 +38,7 @@ and the rendering shows the claim's metadata line, never its text.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -48,7 +49,12 @@ from substrate.books.highlights.store import HighlightsStore
 from substrate.diligence.schema import diligence_table_exists
 from substrate.event_log import default_events_dir, trajectory
 
-from .evidence_index import EvidenceRow, make_evidence_id, rebuild_scope
+from .evidence_index import (
+    EvidenceRow,
+    evidence_index_table_exists,
+    make_evidence_id,
+    rebuild_scope,
+)
 from .render import render_document_companion
 
 
@@ -420,15 +426,9 @@ def project_document(
                 ]
                 if bite.investigation_id:
                     refs.append(f"investigation:{bite.investigation_id}")
-                for span_json in bite.source_refs or []:
-                    import json as _json
-
-                    span = _json.loads(span_json)
-                    refs.append(
-                        "corespan:"
-                        f"{record.source_document_id}:{span['node_id']}:"
-                        f"{span['start_scalar']}:{span['end_scalar']}"
-                    )
+                # Main's provenance store already persists canonical
+                # `corespan:<source-document>:<node>:<start>:<end>` strings.
+                refs.extend(bite.source_refs or ())
                 eid = make_evidence_id(
                     "claim", f"bite:{bite.bite_id}", refs
                 )
@@ -499,15 +499,46 @@ def rebuild_document(
     return html
 
 
+class CompanionOwnerChanged(RuntimeError):
+    """The document stopped being the refresher's between the route's owner
+    check and the write lock."""
+
+
+def _evict_other_owners(wcon: Any, *, owner_user_id: str, document_id: str) -> None:
+    """The document owner's refresh drops index rows other owners hold for
+    this document's scope: a previous owner's (the document was re-keyed)
+    or a watcher run as another owner. They are a stale cache of a document
+    that isn't theirs, and while ``evidence_id`` carries no owner they
+    occupy the ids this owner's rebuild writes. Ownership is re-read under
+    the writer lock so the rightful owner's rows are never the ones
+    dropped."""
+    row = wcon.execute(
+        "SELECT owner_user_id FROM documents WHERE document_id = ? LIMIT 1",
+        [document_id],
+    ).fetchone()
+    if row is None or str(row[0]) != owner_user_id:
+        raise CompanionOwnerChanged("the document is no longer the refresher's")
+    if evidence_index_table_exists(wcon):
+        wcon.execute(
+            "DELETE FROM evidence_index WHERE scope = 'document' AND scope_id = ? "
+            "AND owner_user_id <> ?",
+            [document_id, owner_user_id],
+        )
+
+
 def rebuild_document_full(
     db_path: str,
     *,
     owner_user_id: str,
     document_id: str,
     events_dir: str | None = None,
+    evict_other_owners: bool = False,
 ) -> tuple[str, DocumentView]:
     """The rebuild + the VIEW (SPR-02's export/API needs the stamp without a
-    second read — one pass, both products)."""
+    second read — one pass, both products).
+
+    ``evict_other_owners`` is for the document owner's own refresh only
+    (see ``_evict_other_owners``); the watcher leaves it off."""
     rcon = connect_read(db_path)
     try:
         rows, view = project_document(
@@ -519,6 +550,10 @@ def rebuild_document_full(
     finally:
         rcon.close()
     with connect_write(db_path, purpose="companions/rebuild-document") as wcon:
+        if evict_other_owners:
+            _evict_other_owners(
+                wcon, owner_user_id=owner_user_id, document_id=document_id
+            )
         rebuild_scope(
             wcon,
             owner_user_id=owner_user_id,
@@ -595,27 +630,58 @@ def document_companion_payload(view: DocumentView) -> dict[str, Any]:
     }
 
 
+#: The persisted build record's format tag and its read bound (the write
+#: refuses a record the read would refuse, so a build is never unservable
+#: by size alone).
+COMPANION_BUILD_FORMAT = "antiek.companion-build.v1"
+COMPANION_BUILD_READ_LIMIT = 32 * 1024 * 1024
+
+
+@dataclass(frozen=True, slots=True)
+class CompanionBuild:
+    """The last persisted build of one owner's companion of one document:
+    the structured payload and the HTML export, from ONE rebuild."""
+
+    document_id: str
+    rebuilt_at: str
+    payload: dict[str, Any]
+    html: str
+
+
 def export_document_companion(
     db_path: str,
     *,
     owner_user_id: str,
     document_id: str,
     events_dir: str | None = None,
+    evict_other_owners: bool = False,
 ) -> tuple[str, Any, str]:
     """Rebuild + render + EXPORT the per-document companion beside the
     research artifacts (paths.py conventions: validated ids, bounded reads).
-    The honesty header rides the file's head: generated-never-authored, the
-    sources, the source-derived rebuild stamp. Returns (html, path, stamp).
+    The honesty header rides the export's head: generated-never-authored,
+    the sources, the source-derived rebuild stamp. Returns (html, path,
+    stamp).
+
+    The export is one build record keyed by (owner, document) holding the
+    structured payload and the HTML together, published atomically, so the
+    GET serves both from the same rebuild. A failed rebuild or write leaves
+    the previous record in place.
 
     NO artifact event here — rebuild triggers are SPR-03's wiring; the
     export is a manual/API rebuild only."""
-    from substrate.research_artifact.paths import companion_path_for
+    from substrate.research_artifact.paths import (
+        atomic_write_nofollow,
+        companion_owner_key,
+        companion_path_for,
+    )
 
+    out = companion_path_for(owner_user_id, document_id)
     html, view = rebuild_document_full(
         db_path,
         owner_user_id=owner_user_id,
         document_id=document_id,
         events_dir=events_dir,
+        evict_other_owners=evict_other_owners,
     )
     header = (
         "<!-- generated: never authored · sources: graph nodes, event log, "
@@ -623,7 +689,54 @@ def export_document_companion(
         f"{view.rebuilt_at} · rebuilt on demand — edit the sources, never "
         "this file -->\n"
     )
-    out = companion_path_for(document_id)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(header + html, encoding="utf-8")
+    record = {
+        "format": COMPANION_BUILD_FORMAT,
+        "owner_key": companion_owner_key(owner_user_id),
+        "document_id": document_id,
+        "rebuilt_at": view.rebuilt_at,
+        "payload": document_companion_payload(view),
+        "html": header + html,
+    }
+    data = json.dumps(record, ensure_ascii=False).encode("utf-8")
+    if len(data) > COMPANION_BUILD_READ_LIMIT:
+        raise OverflowError(f"companion build exceeds {COMPANION_BUILD_READ_LIMIT} bytes")
+    atomic_write_nofollow(out, data)
     return header + html, out, view.rebuilt_at
+
+
+def load_document_companion_build(
+    *, owner_user_id: str, document_id: str
+) -> CompanionBuild | None:
+    """The last persisted build of (owner, document), read-only: no lock, no
+    connection, no file write. None when there is no build, or when the
+    record is unreadable or names another owner or document — an
+    unusable record is reported as absent, never repaired or guessed."""
+    from substrate.research_artifact.paths import (
+        companion_owner_key,
+        companion_path_for,
+        read_bounded_nofollow,
+    )
+
+    try:
+        path = companion_path_for(owner_user_id, document_id)
+        record = json.loads(
+            read_bounded_nofollow(path, limit=COMPANION_BUILD_READ_LIMIT).decode("utf-8")
+        )
+    except (OSError, ValueError, OverflowError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    if (
+        record.get("format") != COMPANION_BUILD_FORMAT
+        or record.get("owner_key") != companion_owner_key(owner_user_id)
+        or record.get("document_id") != document_id
+    ):
+        return None
+    payload = record.get("payload")
+    html = record.get("html")
+    stamp = record.get("rebuilt_at")
+    if not isinstance(payload, dict) or not isinstance(html, str) or not isinstance(stamp, str):
+        return None
+    return CompanionBuild(
+        document_id=document_id, rebuilt_at=stamp, payload=payload, html=html
+    )

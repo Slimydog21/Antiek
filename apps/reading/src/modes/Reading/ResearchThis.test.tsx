@@ -67,7 +67,8 @@ describe("ResearchThis", () => {
       }),
       expect.objectContaining({ id: "win:research-artifact:inv-child-1" }),
     );
-    expect(navigateMock).toHaveBeenCalledWith("/inv/inv-child-1");
+    // The hand-off loads the branch module first (useBranchTo): a tick later.
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-child-1"));
   });
 
   it("still hands off when the backend does not return artifact paths", async () => {

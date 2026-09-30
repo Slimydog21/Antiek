@@ -119,9 +119,9 @@ const BORDER_NONCOLOR = new Set([
  *  (INVENTORY.md). Grandfathered so the guard can enforce FORWARD without a
  *  big-bang refactor; this set only ever shrinks. Never add to it to silence
  *  a NEW reference — define the token instead. */
-const GRANDFATHERED = new Set([
-  "bg-card", // ResearchLensCursor.stories + mascot stories — card alias mirror; Q13 lint hardening
-  "bg-card-soft", // ResearchLensCursor.stories + mascot stories — same
+const GRANDFATHERED = new Set<string>([
+  // (empty) bg-card / bg-card-soft now resolve: the semantic layer defines
+  // `card` and `card-soft` (design wave w1, 2026-09-23).
 ]);
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -170,6 +170,39 @@ for (const file of walk(SRC)) {
   }
 }
 
+// ── var(--name) references must resolve to a declaration somewhere ─────────
+// The same bug class one layer down: Login.css read var(--charcoal-2),
+// var(--bright) … which nothing declared, so at night the login page lost its
+// background and ink (a guaranteed-invalid value) with every gate green. A
+// declaration is any `--name:` in src CSS/TS, a style-object key, or a
+// setProperty("--name"). References with a fallback (`var(--x, …)`) and
+// Tailwind's internal --tw-* vars are exempt.
+const declaredVars = new Set<string>();
+const varRefs = new Map<string, string>(); // name → first file
+for (const file of walk(SRC)) {
+  const rel = relative(ROOT, file).replace(/\\/g, "/");
+  const text = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const m of text.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)) declaredVars.add(m[1]);
+  for (const m of text.matchAll(/setProperty\(\s*["'`](--[\w-]+)/g)) declaredVars.add(m[1]);
+  for (const m of text.matchAll(/["'`](--[\w-]+)["'`]\s*[:,\]]/g)) declaredVars.add(m[1]);
+  for (const m of text.matchAll(/var\(\s*(--[\w-]+)\s*([,)])/g)) {
+    if (m[2] === ",") continue;
+    if (!varRefs.has(m[1])) varRefs.set(m[1], rel);
+  }
+}
+const undefinedVars = [...varRefs.entries()].filter(
+  ([name]) => !declaredVars.has(name) && !name.startsWith("--tw-"),
+);
+if (undefinedVars.length) {
+  console.error(
+    `\ntoken-refs FAILED: ${undefinedVars.length} var() reference(s) name a custom property nothing declares.`,
+  );
+  console.error("At runtime these are guaranteed-invalid: the property falls back to inherit/initial.");
+  for (const [name, f] of undefinedVars.sort()) console.error(`  var(${name})   (first seen: ${f})`);
+  console.error("\nDeclare the token in src/design/tokens.css (or use a semantic one), then re-run.\n");
+  process.exit(1);
+}
+
 if (violations.size) {
   console.error(
     `\ntoken-refs FAILED: ${violations.size} utilit${
@@ -192,5 +225,6 @@ if (violations.size) {
 }
 console.log(
   `token-refs OK — every design-token utility reference resolves ` +
-    `(${roots.size} token families; ${GRANDFATHERED.size} grandfathered, owned by Q7/Q13).`,
+    `(${roots.size} token families; ${GRANDFATHERED.size} grandfathered), and all ` +
+    `${varRefs.size} var() names resolve to a declaration.`,
 );

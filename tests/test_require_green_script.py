@@ -24,6 +24,7 @@ SCRIPT = ROOT / "tools" / "deploy" / "require_green.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy_backend.yml"
 SHA = "0123456789abcdef0123456789abcdef01234567"
 SHARD_AND_BASE_CONTEXTS = [
+    "dependency lock",
     "tsc", "vitest", "keystone",
     "mypy --strict + ruff (declared scope, baselined)",
     "pytest shard 0 of 4", "pytest shard 1 of 4", "pytest shard 2 of 4", "pytest shard 3 of 4",
@@ -100,10 +101,10 @@ def _green(names=REQUIRED, started="2026-09-22T20:00:00Z"):
     return [{"name": n, "status": "completed", "conclusion": "success", "started_at": started} for n in names]
 
 
-def test_all_nine_green_exits_0(tmp_path):
+def test_all_ten_green_exits_0(tmp_path):
     rc, out, _, calls = _run(tmp_path, _green())
     assert rc == 0, out
-    assert "all 9 required contexts are success" in out
+    assert "all 10 required contexts are success" in out
     assert calls == [
         f"repos/Slimydog21/Antiek/compare/{SHA}...main",
         f"repos/Slimydog21/Antiek/commits/{SHA}/check-runs?per_page=100",
@@ -126,7 +127,7 @@ def test_every_repo_spelling_queries_the_same_path(tmp_path, repo):
 
 def test_one_pending_exits_1(tmp_path):
     runs = _green()
-    runs[1] = {"name": "vitest", "status": "in_progress", "conclusion": None, "started_at": "2026-09-22T20:00:00Z"}
+    runs[2] = {"name": "vitest", "status": "in_progress", "conclusion": None, "started_at": "2026-09-22T20:00:00Z"}
     rc, out, _, _ = _run(tmp_path, runs)
     assert rc == 1
     assert "NOT GREEN: 'vitest' => pending" in out
@@ -134,7 +135,7 @@ def test_one_pending_exits_1(tmp_path):
 
 def test_one_failure_exits_1(tmp_path):
     runs = _green()
-    runs[4]["conclusion"] = "failure"
+    runs[5]["conclusion"] = "failure"
     rc, out, _, _ = _run(tmp_path, runs)
     assert rc == 1
     assert "NOT GREEN: 'pytest shard 0 of 4' => failure" in out
@@ -151,7 +152,7 @@ def test_absent_context_exits_1(tmp_path):
     {"name": "pytest", "status": "in_progress", "conclusion": None, "started_at": "2026-09-22T20:00:00Z"},
     {"name": "pytest", "status": "completed", "conclusion": "failure", "started_at": "2026-09-22T20:00:00Z"},
 ])
-def test_eight_base_and_shard_contexts_green_but_pytest_rollup_not_green_exits_1(tmp_path, rollup):
+def test_nine_base_and_shard_contexts_green_but_pytest_rollup_not_green_exits_1(tmp_path, rollup):
     runs = _green(SHARD_AND_BASE_CONTEXTS)
     if rollup is not None:
         runs.append(rollup)

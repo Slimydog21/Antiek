@@ -31,7 +31,7 @@ export type LemonButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const base =
-  "inline-flex items-center justify-center gap-2 font-mono font-semibold " +
+  "inline-flex items-center justify-center gap-2 font-sans font-medium " +
   "border-edge rounded-hog " +
   "disabled:opacity-50 disabled:pointer-events-none";
 
