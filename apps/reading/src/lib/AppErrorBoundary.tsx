@@ -113,7 +113,7 @@ class RootErrorBoundary extends Component<BoundaryProps, BoundaryState> {
             <button
               type="button"
               onClick={reloadPage}
-              className="rounded-md px-4 py-2 text-sm font-semibold bg-sun text-ink hover:bg-sun-deep focus:outline-none focus-visible:ring-2 focus-visible:ring-ink dark:focus-visible:ring-bright focus-visible:ring-offset-2"
+              className="rounded-md px-4 py-2 text-sm font-semibold bg-sun text-ink hover:bg-sun-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-ink dark:focus-visible:ring-bright focus-visible:ring-offset-2"
             >
               Reload
             </button>

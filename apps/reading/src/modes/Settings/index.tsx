@@ -40,6 +40,7 @@ import {
   type SettingsUsageKeyEntry,
 } from "../../api/settingsUsage";
 import AddModelPanel from "./AddModelPanel";
+import AppearancePanel from "./AppearancePanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
 import ToolConnectionsPanel from "./ToolConnectionsPanel";
 import UsagePanel from "./UsagePanel";
@@ -83,14 +84,6 @@ function usageBalanceChip(usage: SettingsUsageKeyEntry): string {
 }
 export default function Settings() {
   const tier = useViewportTier();
-  const isDark =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const reduceMotion =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const [models, setModels] = useState<ModelRow[] | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -354,14 +347,11 @@ export default function Settings() {
             tabIndex={0}
             className="space-y-6"
           >
+        <AppearancePanel />
+
         <LemonCard title="Environment" elevation="z1">
           <div className="p-4 space-y-3 font-mono text-sm">
             <Row label="Viewport tier" value={tier} />
-            <Row label="OS theme" value={isDark ? "dark" : "light"} />
-            <Row
-              label="Reduce motion"
-              value={reduceMotion ? "yes" : "no"}
-            />
             <Row
               label="UI version"
               value={

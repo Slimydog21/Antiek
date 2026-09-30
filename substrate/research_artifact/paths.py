@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import secrets
@@ -56,14 +57,29 @@ def artifact_source_path_for(artifact_id: str, content_hash: str) -> Path:
     )
 
 
-def companion_path_for(document_id: str) -> Path:
-    """The per-document companion's export path (companions SPR-02): beside
-    the research artifacts, under the same validated-id + bounded-read
-    conventions."""
+def companion_owner_key(owner_user_id: str) -> str:
+    """A path-safe key for one owner. Owner ids can be emails, which the
+    artifact-id pattern refuses, and a digest keeps them out of file names."""
+    if not owner_user_id:
+        raise ValueError("companion owner required")
+    return hashlib.sha256(owner_user_id.encode("utf-8")).hexdigest()[:32]
+
+
+def companion_path_for(owner_user_id: str, document_id: str) -> Path:
+    """The persisted companion build of one owner's view of one document
+    (companions SPR-02), beside the research artifacts under the
+    validated-id and bounded-read conventions.
+
+    Keyed by (owner, document): one owner's build is never at another
+    owner's path, so a re-keyed document cannot serve the previous owner's
+    build. The pre-owner layout (``companions/<document_id>.html``) is never
+    read."""
     return (
         research_artifacts_dir()
         / "companions"
-        / f"{validate_artifact_id(document_id)}.html"
+        / "by-owner"
+        / companion_owner_key(owner_user_id)
+        / f"{validate_artifact_id(document_id)}.json"
     )
 
 

@@ -70,11 +70,8 @@ export default function AIActionFailure({
     <div
       role="alert"
       aria-live="assertive"
-      className={
-        className
-          ? `text-xs font-mono text-emperor flex flex-col gap-2 ${className}`
-          : "text-xs font-mono text-emperor flex flex-col gap-2"
-      }
+      // Error sentences in the interface face, never mono (spec §3, T5).
+      className={`text-sm text-danger flex flex-col gap-2 ${className ?? ""}`}
     >
       <p className="leading-relaxed">
         {code ? (

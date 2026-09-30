@@ -32,7 +32,7 @@ beforeAll(() => {
 describe("type scale (CFEEL-S2 M2) — PostHog app sizes + 24px chrome ceiling", () => {
   // [key, font-size, line-height] — PostHog's real values.
   const EXPECTED: Array<[string, string, string]> = [
-    ["xxs", "10px", "12px"],
+    ["xxs", "11px", "16px"], // 11px floor: PostHog's smallest step (10px retired)
     ["xs", "12px", "16px"],
     ["sm", "14px", "20px"],
     ["base", "16px", "24px"],

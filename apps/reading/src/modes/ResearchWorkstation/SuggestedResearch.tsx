@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
 
 import { getSuggestions, type Suggestion } from "../../api/research";
 import { startInvestigation, ApiError } from "../../lib/api";
@@ -90,7 +90,7 @@ export default function SuggestedResearch({
   canLaunch = true,
   limit = 8,
 }: Props) {
-  const navigate = useNavigate();
+  const navigate = useModeNavigate();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   // Keys chased in this session — dropped from the offered list so a thread
   // the user just pulled isn't offered again before the next server refresh.
