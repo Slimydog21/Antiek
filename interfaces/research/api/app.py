@@ -210,6 +210,11 @@ class HealthResponse(BaseModel):
     backup_age_hours: float | None = None
     backup_marker_path: str = ""
     backup_reason: str = ""
+    # Note-taker replay recovery's own report (prod 2026-10-01). The worker can
+    # be starved of the DuckDB write lock for hours while /health says "ok";
+    # this is the field that makes that state visible without opening a log.
+    # Empty dict when the worker is disabled or has not run a pass yet.
+    note_taker_replay: dict[str, Any] = {}
 
 
     # SPR-01 (antiek-v1-connect) Task 6: the Prime Agent RLM lane. Until
@@ -2413,6 +2418,9 @@ def create_app(
             memory_edges_owner_ready=duckdb_health.memory_edges_owner_ready,
             memory_owner_index_ready=duckdb_health.memory_owner_index_ready,
             **_probe_backup_freshness(),
+            note_taker_replay=dict(
+                getattr(app.state, "note_taker_recovery", {}) or {}
+            ),
             prime_agent_enabled=bool(prime_lane["prime_agent_enabled"]),
             rlm_ratified=bool(prime_lane["rlm_ratified"]),
             prime_agent_binary_present=bool(prime_lane["prime_agent_binary_present"]),
@@ -7936,9 +7944,15 @@ def create_app(
 
         stop = threading.Event()
         app.state.note_taker_recovery_stop = stop
+        # The worker's own report, published for /health. Prod 2026-10-01: it
+        # failed against a contended DuckDB write lock for hours — thousands of
+        # stderr lines and no projection progress — while /health answered
+        # "ok", because nothing read what the worker knew.
+        app.state.note_taker_recovery = {}
         app.state.note_taker_recovery_worker = start_replay_recovery(
             db_path=default_db_path(),
             stop_event=stop,
+            state=app.state.note_taker_recovery,
         )
 
     def _stop_note_taker_replay() -> None:
