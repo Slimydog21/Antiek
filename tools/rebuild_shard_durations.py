@@ -64,7 +64,7 @@ def parse_log(path: Path) -> list[tuple[float, str]]:
         stamp, source_file = m.group(1), m.group(2)
         # GitHub writes seven fractional digits; strptime accepts six.
         stamp = re.sub(r"(\.\d{6})\d*Z$", r"\1Z", stamp)
-        when = _dt.datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=_dt.timezone.utc)
+        when = _dt.datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=_dt.UTC)
         out.append((when.timestamp(), source_file))
     return out
 
@@ -73,7 +73,7 @@ def durations_from_logs(paths: list[Path]) -> dict[str, float]:
     totals: dict[str, float] = {}
     for path in paths:
         seq = parse_log(path)
-        for (t0, f0), (t1, _f1) in zip(seq, seq[1:]):
+        for (t0, f0), (t1, _f1) in zip(seq, seq[1:], strict=False):
             delta = t1 - t0
             # Guard against out-of-order or duplicated lines rather than
             # accumulating nonsense into a weight the packer trusts.
