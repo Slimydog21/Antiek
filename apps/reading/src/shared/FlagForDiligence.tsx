@@ -12,12 +12,13 @@
  * leaves the client). Re-flagging is safe (the server is idempotent), and
  * a successful flag pings the queue rail via notifyDiligenceChanged.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { DistilledNode } from "../lib/api";
 import { ApiError } from "../lib/api";
 import { createFlag, notifyDiligenceChanged } from "../api/diligence";
 import { NOTE_MAX_CHARS } from "./flagCopy";
+import { ESC_OVERLAY_PROPS, topModal } from "../workspace/escapeOverlay";
 
 export interface FlagForDiligenceProps {
   /** The distilled node being flagged (its id + kind + source — its text
@@ -33,6 +34,20 @@ export default function FlagForDiligence({ node, sourceInvestigationId }: FlagFo
   const [phase, setPhase] = useState<Phase>("idle");
   const [note, setNote] = useState("");
   const [reason, setReason] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+
+  function closeComposer() {
+    returnFocus.current = true;
+    setPhase("idle");
+  }
+
+  useEffect(() => {
+    if (phase === "idle" && returnFocus.current) {
+      returnFocus.current = false;
+      triggerRef.current?.focus({ preventScroll: true });
+    }
+  }, [phase]);
 
   async function flag() {
     setPhase("busy");
@@ -63,7 +78,17 @@ export default function FlagForDiligence({ node, sourceInvestigationId }: FlagFo
 
   if (phase === "composing" || phase === "busy" || phase === "error") {
     return (
-      <span className="inline-flex items-center gap-1.5" data-diligence-composer>
+      <span
+        {...ESC_OVERLAY_PROPS}
+        className="inline-flex items-center gap-1.5"
+        data-diligence-composer
+        onKeyDown={(e) => {
+          if (e.key !== "Escape" || e.defaultPrevented || topModal()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (phase !== "busy") closeComposer();
+        }}
+      >
         <input
           type="text"
           value={note}
@@ -76,7 +101,6 @@ export default function FlagForDiligence({ node, sourceInvestigationId }: FlagFo
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") void flag();
-            if (e.key === "Escape") setPhase("idle");
           }}
           className="w-44 rounded-hog border border-rule bg-ice-0 px-1.5 py-0.5 font-mono text-xxs text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
         />
@@ -90,7 +114,7 @@ export default function FlagForDiligence({ node, sourceInvestigationId }: FlagFo
         </button>
         <button
           type="button"
-          onClick={() => setPhase("idle")}
+          onClick={closeComposer}
           disabled={phase === "busy"}
           className="font-mono text-shadow-1 hover:text-ink dark:text-moonlight dark:hover:text-bright"
           aria-label="Cancel the flag"
@@ -108,6 +132,7 @@ export default function FlagForDiligence({ node, sourceInvestigationId }: FlagFo
 
   return (
     <button
+      ref={triggerRef}
       type="button"
       data-diligence-flag={node.node_id}
       onClick={() => setPhase("composing")}

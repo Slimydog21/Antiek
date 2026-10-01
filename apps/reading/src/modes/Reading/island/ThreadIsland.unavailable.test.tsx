@@ -52,6 +52,126 @@ afterEach(() => {
 });
 
 describe("ThreadIsland — unavailable", () => {
+  it("closes only the real diligence editor on Escape and restores its trigger", () => {
+    useIslandThreadMock.mockReturnValue(thread({
+      status: "complete",
+      outcome: { questions: [], insights: [{
+        node_id: "insight-1", kind: "insight", text: "A finding", refinement_count: 0,
+        escalated: false, source_document_id: "doc-1",
+      }] },
+    }));
+    renderIsland();
+    fireEvent.click(screen.getByRole("button", { name: /Expand the island/ }));
+    fireEvent.click(screen.getByRole("button", { name: "flag for diligence" }));
+    const note = screen.getByRole("textbox", { name: "A note for the diligence flag (optional)" });
+    expect(document.activeElement).toBe(note);
+    fireEvent.keyDown(note, { key: "Escape" });
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByRole("button", { name: "Dismiss the island" })).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "flag for diligence" }));
+  });
+
+  it("closes only the real dig composer on Escape and restores its trigger", () => {
+    useIslandThreadMock.mockReturnValue(thread());
+    renderIsland();
+    fireEvent.click(screen.getByRole("button", { name: /Expand the island/ }));
+    const dig = screen.getByRole("button", { name: "Dig deeper" });
+    fireEvent.click(dig);
+    const question = screen.getByRole("textbox", { name: "What do you want to find out?" });
+    expect(document.activeElement).toBe(question);
+    fireEvent.keyDown(question, { key: "Escape" });
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByRole("button", { name: "Dismiss the island" })).toBeTruthy();
+    expect(document.activeElement).toBe(dig);
+  });
+
+  it("moves focus into the card and returns it to the mark on Escape or Dismiss", () => {
+    useIslandThreadMock.mockReturnValue(thread());
+    renderIsland();
+    fireEvent.click(screen.getByRole("button", { name: /Expand the island/ }));
+    const dismiss = screen.getByRole("button", { name: "Dismiss the island" });
+    expect(document.activeElement).toBe(dismiss);
+    fireEvent.keyDown(dismiss, { key: "Escape" });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Expand the island/ }));
+    fireEvent.click(document.activeElement!);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss the island" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Expand the island/ }));
+  });
+
+  it("leaves an open card alone when a modal owns Escape and pointer input", () => {
+    useIslandThreadMock.mockReturnValue(thread());
+    renderIsland();
+    fireEvent.click(screen.getByRole("button", { name: /Expand the island/ }));
+    const modal = document.createElement("div");
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    const input = document.createElement("input");
+    modal.append(input);
+    document.body.append(modal);
+    try {
+      input.focus();
+      fireEvent.keyDown(input, { key: "Escape" });
+      fireEvent.mouseDown(input);
+      expect(screen.getByRole("button", { name: "Dismiss the island" })).toBeTruthy();
+      expect(document.activeElement).toBe(input);
+    } finally {
+      modal.remove();
+    }
+  });
+
+  it("does not take focus from an outside pointer target when closing", () => {
+    useIslandThreadMock.mockReturnValue(thread());
+    renderIsland();
+    fireEvent.click(screen.getByRole("button", { name: /Expand the island/ }));
+    const input = document.createElement("input");
+    document.body.append(input);
+    try {
+      input.focus();
+      fireEvent.mouseDown(input);
+      expect(screen.queryByRole("button", { name: "Dismiss the island" })).toBeNull();
+      expect(document.activeElement).toBe(input);
+    } finally {
+      input.remove();
+    }
+  });
+
+  it("leaves Escape to a nested transient menu", () => {
+    useIslandThreadMock.mockReturnValue(thread());
+    renderIsland();
+    fireEvent.click(screen.getByRole("button", { name: /Expand the island/ }));
+    const card = screen.getByRole("dialog");
+    const menu = document.createElement("div");
+    menu.setAttribute("data-esc-overlay", "");
+    menu.tabIndex = -1;
+    card.append(menu);
+    menu.focus();
+    fireEvent.keyDown(menu, { key: "Escape" });
+    expect(screen.getByRole("button", { name: "Dismiss the island" })).toBeTruthy();
+    expect(document.activeElement).toBe(menu);
+  });
+
+  it("closes the focused card when another card is open", () => {
+    useIslandThreadMock.mockReturnValue(thread());
+    renderIsland();
+    renderIsland();
+    for (const glyph of screen.getAllByRole("button", { name: /Expand the island/ })) fireEvent.click(glyph);
+    const buttons = screen.getAllByRole("button", { name: "Dismiss the island" });
+    expect(document.activeElement).toBe(buttons[1]);
+    fireEvent.keyDown(buttons[1], { key: "Escape" });
+    expect(screen.getAllByRole("button", { name: "Dismiss the island" })).toEqual([buttons[0]]);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Expand the island/ }));
+  });
+
+  it("handles its own Escape inside a floating workspace overlay", () => {
+    useIslandThreadMock.mockReturnValue(thread());
+    const view = renderIsland();
+    view.container.setAttribute("data-esc-overlay", "");
+    fireEvent.click(screen.getByRole("button", { name: /Expand the island/ }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Dismiss the island" }), { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Dismiss the island" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Expand the island/ }));
+  });
+
   it("the collapsed glyph names the unknown state and does not pulse", () => {
     useIslandThreadMock.mockReturnValue(thread());
     const { container } = renderIsland();

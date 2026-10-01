@@ -24,7 +24,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { BookDetail, FullTextResponse } from "../../api/books";
-import type { BookAnchor, DistillationResponse } from "../../lib/api";
+import type { AnchorMapResponse, BookAnchor, DistillationResponse } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useWindows } from "../../workspace/windowsStore";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
@@ -172,6 +172,7 @@ function distillation(count: number): DistillationResponse {
 interface Harness {
   anchors: BookAnchor[];
   investigations: InvestigationSummary[];
+  chunks?: AnchorMapResponse["chunks"];
 }
 
 function route(server: Harness) {
@@ -188,7 +189,7 @@ function route(server: Harness) {
     if (url.endsWith("/anchor-map")) {
       return jsonResponse({
         document_id: "doc-1",
-        chunks: [
+        chunks: server.chunks ?? [
           { chunk_id: "c-1", section_path: "Page 1", body_start: 11, body_end: 33, node_text_sha256: "h".repeat(64) },
         ],
         complete: true,
@@ -271,6 +272,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.removeItem("antiek.island.hidden");
 });
@@ -287,6 +289,36 @@ async function awaitIsland(id: string) {
 // ── Proof 1: both mounts, expand/collapse, never a workspace window ───────
 
 describe("the island widget in BOTH mounts", () => {
+  it("attaches a split, wrapped passage to its last nonempty line inside the reader", async () => {
+    const paragraphs = "First wrapped paragraph.\n\nSecond wrapped paragraph.";
+    getFullTextMock.mockResolvedValue(makeBody({ full_text: `## Page 1\n\n${paragraphs}` }));
+    const pinned = islandAnchor();
+    route({
+      anchors: [islandAnchor({ anchor: {
+        ...pinned.anchor, end_scalar: paragraphs.length, quote: paragraphs, suffix: "",
+      } })],
+      investigations: [summary()],
+      chunks: [{
+        chunk_id: "c-1", section_path: "Page 1", body_start: 11,
+        body_end: 11 + paragraphs.length, node_text_sha256: "h".repeat(64),
+      }],
+    });
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 200, 600, 500));
+    vi.spyOn(Element.prototype, "getClientRects").mockImplementation(function (this: Element) {
+      const rectangles = this.textContent?.startsWith("Second")
+        ? [new DOMRect(100, 300, 220, 18), new DOMRect(180, 320, 130, 18), new DOMRect()]
+        : [new DOMRect(100, 220, 300, 18), new DOMRect(100, 240, 200, 18)];
+      return Object.assign(rectangles, { item: (index: number) => rectangles[index] ?? null });
+    });
+    await renderReader();
+    const glyph = await awaitIsland("a-island");
+    expect(document.querySelectorAll('[data-anchor-id="a-island"]')).toHaveLength(2);
+    const wrapper = glyph.parentElement;
+    expect(wrapper?.style.top).toBe("120px");
+    expect(wrapper?.style.height).toBe("18px");
+    expect(wrapper?.style.getPropertyValue("--island-inline-end")).toBe("198px");
+  });
+
   it("standalone route: the collapsed glyph renders at the passage; expanding opens the pinned card; Esc and Dismiss collapse; never a workspace window", async () => {
     route({ anchors: [islandAnchor()], investigations: [summary()] });
     await renderReader();

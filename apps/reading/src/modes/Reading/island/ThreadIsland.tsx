@@ -40,6 +40,8 @@ import FlagForDiligence from "../../../shared/FlagForDiligence";
 import { hideIsland } from "./hiddenIslands";
 import { useIslandThread } from "./useIslandThread";
 import type { IslandStatus } from "./islandModel";
+import { ESC_OVERLAY_PROPS } from "../../../workspace/escapeOverlay";
+import { useIslandInteraction } from "./useIslandInteraction";
 
 export interface ThreadIslandProps {
   anchorId: string;
@@ -118,36 +120,33 @@ export default function ThreadIsland({
     reservedChildId: string | null;
   } | null>(null);
   const thread = useIslandThread(investigationId);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const digOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const restoreDigFocus = useRef(false);
 
-  const collapse = useCallback(() => {
-    setExpanded(false);
+  const closeDig = useCallback(() => {
+    restoreDigFocus.current = true;
     setDig(null);
   }, []);
 
-  // Esc (element-scoped — the card's own key, never a global binding) and
-  // click-away collapse the open card. Dismiss is the same collapse.
   useEffect(() => {
-    if (!expanded) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") collapse();
+    if (!dig && restoreDigFocus.current) {
+      restoreDigFocus.current = false;
+      digOpenerRef.current?.focus({ preventScroll: true });
     }
-    function onDocMouseDown(e: MouseEvent) {
-      if (cardRef.current && !cardRef.current.contains(e.target as Node)) collapse();
-    }
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onDocMouseDown);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onDocMouseDown);
-    };
-  }, [expanded, collapse]);
+  }, [dig]);
+
+  const onCollapse = useCallback(() => {
+    setExpanded(false);
+    setDig(null);
+  }, []);
+  const { cardRef, glyphRef, dismissRef, collapse } = useIslandInteraction({ expanded, onCollapse });
 
   const glyph = STATUS_GLYPHS[thread.status];
 
   if (!expanded) {
     return (
       <button
+        ref={glyphRef}
         type="button"
         data-island-id={anchorId}
         data-island-state="collapsed"
@@ -155,7 +154,8 @@ export default function ThreadIsland({
         aria-label={`Research thread: ${glyph.label}. Expand the island.`}
         title={glyph.label}
         onClick={() => setExpanded(true)}
-        className="inline-flex items-center justify-center w-3 h-3 align-middle"
+        className="relative inline-flex items-center justify-center w-6 h-6 align-middle pointer-events-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
+        style={{ left: "calc(var(--island-inline-end, 0px) - 6px)" }}
       >
         <span
           data-island-glyph
@@ -181,12 +181,14 @@ export default function ThreadIsland({
   return (
     <div
       ref={cardRef}
+      {...ESC_OVERLAY_PROPS}
       data-island-id={anchorId}
       data-island-state="expanded"
       data-island-status={thread.status}
       role="dialog"
       aria-label={`Research thread island — ${glyph.label}`}
-      className="absolute left-0 top-full mt-1 z-30 w-72 rounded-md border-edge border-sun bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright shadow-z3 dark:shadow-z3-night p-3 text-xs"
+      className="absolute top-full mt-1 z-30 w-72 max-w-full pointer-events-auto rounded-md border-edge border-sun bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright shadow-z3 dark:shadow-z3-night p-3 text-xs"
+      style={{ left: "clamp(0px, var(--island-inline-end, 0px), max(0px, calc(100% - 18rem)))" }}
     >
       {/* 1 — the status line: question, live state, cost-so-far. */}
       <div className="flex items-baseline justify-between gap-2 mb-1.5">
@@ -194,10 +196,11 @@ export default function ThreadIsland({
           {thread.question ?? "untitled research"}
         </p>
         <button
+          ref={dismissRef}
           type="button"
-          onClick={collapse}
+          onClick={() => collapse(true)}
           aria-label="Dismiss the island"
-          className="shrink-0 text-shadow-1 hover:text-ink dark:hover:text-bright px-1"
+          className="shrink-0 inline-flex items-center justify-center w-6 h-6 text-shadow-1 hover:text-ink dark:hover:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
         >
           ×
         </button>
@@ -282,15 +285,16 @@ export default function ThreadIsland({
                       <button
                         type="button"
                         data-island-dig-question={q.node_id}
-                        onClick={() =>
+                        onClick={(event) => {
+                          digOpenerRef.current = event.currentTarget;
                           setDig({
                             initialQuestion: q.text,
                             // The no-orphan seam: an escalated question's
                             // reserved child id rides the dig (launch INTO
                             // it, never a duplicate child).
                             reservedChildId: q.reserved_child_investigation_id ?? null,
-                          })
-                        }
+                          });
+                        }}
                         className="text-sun-deep underline-offset-2 hover:underline"
                         title="Dig deeper on this question — a chase into the thread's family"
                       >
@@ -347,7 +351,7 @@ export default function ThreadIsland({
           reservedChildId={dig.reservedChildId}
           sessionState={thread.sessionState}
           onLaunched={() => thread.refetchFamily()}
-          onClose={() => setDig(null)}
+          onClose={closeDig}
         />
       ) : null}
 
@@ -364,11 +368,12 @@ export default function ThreadIsland({
           type="button"
           data-island-dig-deeper
           disabled={thread.status === "gone"}
-          onClick={() =>
+          onClick={(event) => {
+            digOpenerRef.current = event.currentTarget;
             setDig((open) =>
               open ? null : { initialQuestion: quoteForContext, reservedChildId: null },
-            )
-          }
+            );
+          }}
           title={
             thread.status === "gone"
               ? "The thread's record is missing — there is nothing to chase from"

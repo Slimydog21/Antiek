@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { List as ListIcon } from "lucide-react";
 
@@ -260,9 +261,11 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
           start: island.passageAnchor.start,
           end: island.passageAnchor.end,
         });
-        const span = main!.querySelector(`[data-anchor-id="${island.anchorId}"]`);
-        if (span) {
-          const r = span.getBoundingClientRect();
+        const spans = main!.querySelectorAll(`[data-anchor-id="${island.anchorId}"]`);
+        const r = Array.from(spans).flatMap((span) => Array.from(span.getClientRects()))
+          .filter((rect) => rect.width > 0 && rect.height > 0).at(-1)
+          ?? spans.item(spans.length - 1)?.getBoundingClientRect();
+        if (r) {
           next.set(key, {
             top: r.top - mainRect.top,
             left: r.left - mainRect.left,
@@ -963,7 +966,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
       <main className="flex-1 min-w-0 min-h-0 flex flex-col">
         <div className="shrink-0 w-full max-w-3xl mx-auto px-6 pt-6">
           <div className="pb-2 border-b border-hairline">
-            <header className="flex items-center justify-between gap-3">
+            <header className="flex flex-col items-stretch gap-2 reader-md:flex-row reader-md:items-center reader-md:justify-between reader-md:gap-3">
               <div className="flex items-center gap-1.5 min-w-0">
                 <button
                   type="button"
@@ -976,11 +979,11 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
                 >
                   <ListIcon size={16} strokeWidth={1.75} aria-hidden="true" />
                 </button>
-                <h1 className="text-2xl font-serif font-semibold text-ink dark:text-bright truncate">
+                <h1 className="min-w-0 text-2xl font-serif font-semibold text-ink dark:text-bright break-words reader-md:truncate">
                   {book.title ?? documentId}
                 </h1>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <LemonTag colour={colour} dot>
                   {label}
                 </LemonTag>
@@ -1012,20 +1015,23 @@ export default function BookReader({ documentId: documentIdProp, origin = null }
                 floating layer. NEVER a workspace window. */}
             {enactedIslands.length > 0 && (
               <div className="absolute inset-0 pointer-events-none z-20" data-island-layer>
-                {enactedIslands.map((enacted) =>
-                  enacted.rect ? (
+                {enactedIslands.map((enacted) => {
+                  if (!enacted.rect) return null;
+                  const position: CSSProperties & { "--island-inline-end": string } = {
+                    top: enacted.rect.top,
+                    height: enacted.rect.height,
+                    "--island-inline-end": `${enacted.rect.left + enacted.rect.width - 12}px`,
+                  };
+                  return (
                     <div
                       key={enacted.widget.id}
-                      className="absolute pointer-events-auto"
-                      style={{
-                        top: enacted.rect.top,
-                        left: enacted.rect.left + enacted.rect.width,
-                      }}
+                      className="absolute pointer-events-none inset-x-3"
+                      style={position}
                     >
                       {enacted.widget.render(enacted.rect, islandRenderCtx)}
                     </div>
-                  ) : null,
-                )}
+                  );
+                })}
               </div>
             )}
             <div className="max-w-3xl mx-auto px-6 pt-2 pb-6 flex flex-col gap-4 min-h-full">
