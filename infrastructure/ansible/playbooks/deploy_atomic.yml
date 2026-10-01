@@ -39,6 +39,25 @@
 
   vars:
     antiek_public_dir: "{{ antiek_install_dir }}"
+    # Single source of truth for the release-path consumers, and WHY (prod
+    # incident 2026-10-01). The deploy stops these before schema migrate and
+    # starts them again afterwards. The pause loop and the "require complete
+    # consumer pause" post-condition both read THIS list, so the post-condition
+    # cannot drift from what was actually paused. The 2026-10-01 deploy died on
+    # a later assert whose conditional raised `object of type 'dict' has no
+    # attribute 'skipped'`; its rescue raised the same error, so the box was
+    # left with backups, the health probe, backup-freshness and
+    # continuous-research all stopped. Nothing in the play noticed.
+    release_path_consumers:
+      - antiek-continuous-research.service
+      - antiek-arxiv-oai-sync.timer
+      - antiek-arxiv-oai-sync.service
+      - antiek-backup.timer
+      - antiek-backup.service
+      - antiek-health-probe.service
+      - antiek-health-probe.timer
+      - antiek-backup-freshness.service
+      - antiek-backup-freshness.timer
     antiek_release_root: "/opt/antiek-releases"
     antiek_release_dir: "{{ antiek_release_root }}/{{ antiek_target_sha }}"
     antiek_release_receipt: "{{ antiek_release_dir }}/.release-receipt"
@@ -659,22 +678,32 @@
           ansible.builtin.systemd:
             name: "{{ item }}"
             state: stopped
-          loop:
-            - antiek-continuous-research.service
-            - antiek-arxiv-oai-sync.timer
-            - antiek-arxiv-oai-sync.service
-            - antiek-backup.timer
-            - antiek-backup.service
-            - antiek-health-probe.service
-            - antiek-health-probe.timer
-            - antiek-backup-freshness.service
-            - antiek-backup-freshness.timer
+          loop: "{{ release_path_consumers }}"
           when:
             - arxiv_timer_was_enabled is defined
             - arxiv_timer_was_active is defined
             - (arxiv_timer_pause_result | default({})).rc | default(1) == 0
             - (arxiv_service_pause_result | default({})).rc | default(1) == 0
           register: arxiv_pause_result
+          tags: [code]
+
+        - name: observe every release-path consumer state after the pause
+          # Ask the BOX what happened rather than parsing the bookkeeping of a
+          # loop result. `selectattr('skipped', ...)` over loop results is
+          # version-coupled (a result for a non-skipped item carries no
+          # `skipped` key) and it is what killed the 2026-10-01 deploy. A state
+          # probe is both safer and strictly stronger: it proves the pause
+          # happened, not that the task reported it.
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - show
+              - "{{ item }}"
+              - --property=ActiveState
+          loop: "{{ release_path_consumers }}"
+          register: consumer_pause_states
+          changed_when: false
+          failed_when: false
           tags: [code]
 
         - name: require complete consumer pause before schema or cutover
@@ -684,10 +713,18 @@
               - arxiv_timer_was_active is defined
               - (arxiv_timer_pause_result | default({})).rc | default(1) == 0
               - (arxiv_service_pause_result | default({})).rc | default(1) == 0
-              - (arxiv_pause_result | default({})).results | default([]) | length > 0
+              - (consumer_pause_states | default({})).results | default([]) | length
+                == (release_path_consumers | length)
+              # Every consumer must be affirmatively inactive (or failed, which
+              # is still stopped): an empty or unknown ActiveState does not pass.
               - >-
-                (arxiv_pause_result | default({})).results | default([])
-                | selectattr('skipped', 'equalto', true) | list | length == 0
+                (consumer_pause_states.results | map(attribute='stdout') | map('trim')
+                 | reject('equalto', 'ActiveState=inactive')
+                 | reject('equalto', 'ActiveState=failed') | list | length) == 0
+            fail_msg: >-
+              Release-path consumers are not all stopped: {{ consumer_pause_states.results
+              | map(attribute='stdout') | map('trim') | list }}.
+              Refusing to migrate the schema or cut over while a consumer is live.
           tags: [code]
 
         - name: stop antiek before schema migrate
@@ -1033,17 +1070,22 @@
 
       rescue:
         - name: classify arxiv service pause stage
+          # This task is the RESCUE's classifier: if it raises, no rollback task
+          # runs at all and the paused consumers stay dark (prod 2026-10-01).
+          # It therefore reads only facts that are always defined: the pause
+          # task's own stdout marker, and the LENGTH of the pause loop's result
+          # list (one entry per loop item whether it ran, changed or was
+          # skipped). It never inspects a per-item `skipped` key, whose presence
+          # is version-coupled.
           ansible.builtin.set_fact:
             arxiv_service_pause_attempted: >-
               {{ (arxiv_service_pause_result | default({})).stdout | default('')
                  is search('(?m)^ServicePauseAttempted=1$')
-                 or ((arxiv_pause_result | default({})).results | default([])
-                     | selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.service')
-                     | rejectattr('skipped', 'equalto', true) | list | length > 0) }}
+                 or (arxiv_pause_result | default({})).results | default([]) | length
+                    == (release_path_consumers | length) }}
             arxiv_loop_timer_pause_attempted: >-
-              {{ (arxiv_pause_result | default({})).results | default([])
-                 | selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.timer')
-                 | rejectattr('skipped', 'equalto', true) | list | length > 0 }}
+              {{ (arxiv_pause_result | default({})).results | default([]) | length
+                 == (release_path_consumers | length) }}
           tags: [rollback]
 
         - name: recover arxiv timer policy from attempted stop
@@ -1493,6 +1535,35 @@
               stopped and timer disabled for operator investigation.
               {% endif %}
           tags: [rollback]
+
+      always:
+        # THE INVARIANT THIS ENCODES (prod incident 2026-10-01): a deploy
+        # attempt must never end with the operator's data protection dark. That
+        # day the play died before cutover and its rescue died on the same
+        # conditional, leaving antiek-backup.timer, antiek-backup-freshness.timer,
+        # antiek-health-probe.timer and antiek-continuous-research.service all
+        # stopped with no further task to notice. `always` runs after a
+        # successful block AND after a rescue that itself failed, so no failure
+        # path can skip it. Each unit is started with the policy the design
+        # intends (enabled), and `failed_when: false` keeps a wedged unit from
+        # masking the real failure the rescue is about to report.
+        #
+        # The arXiv timer is deliberately NOT here: its post-deploy policy is
+        # release-dependent (enabled only when the candidate or the rollback
+        # target proved compatibility), and both the success path and the rescue
+        # already set it explicitly.
+        - name: never leave release-path monitoring or backups stopped
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          loop:
+            - antiek-continuous-research.service
+            - antiek-backup.timer
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.timer
+          failed_when: false
+          tags: [code, rollback]
 
     - name: prune only unreferenced complete releases beyond retention
       ansible.builtin.shell: |
