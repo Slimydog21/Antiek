@@ -49,7 +49,7 @@ def test_candidate_pauses_timer_before_capture_and_resumes_after_public_parity()
     assert "TimerLastTrigger=" in capture
     running = _task(candidate, "remember whether an arxiv run was interrupted")
     assert "active|activating" in running["ansible.builtin.set_fact"]["arxiv_was_running"]
-    assert "Job=[0-9]+/start" in running["ansible.builtin.set_fact"]["arxiv_was_running"]
+    assert "PendingJobType=start" in running["ansible.builtin.set_fact"]["arxiv_was_running"]
     consumers = _task(candidate, "pause every release-path consumer before cutover")["loop"]
     assert "antiek-arxiv-oai-sync.timer" in consumers
     assert "antiek-arxiv-oai-sync.service" in consumers
@@ -97,7 +97,7 @@ def test_queued_timer_start_is_classified_as_interrupted() -> None:
     jinja = Environment()
     jinja.tests["search"] = lambda value, pattern: re.search(pattern, value) is not None
     assert jinja.from_string(expression).render(
-        arxiv_before_pause={"stdout": "ActiveState=inactive\nJob=42/start\nTimerLastTrigger=123"}
+        arxiv_before_pause={"stdout": "ActiveState=inactive\nJob=42\nPendingJobType=start\nTimerLastTrigger=123"}
     ) == "True"
 
 
@@ -188,8 +188,8 @@ def test_timer_observation_accepts_new_success_and_rejects_failed_or_stale_resul
     assert disabled["ansible.builtin.systemd"]["enabled"] is False
     assert disabled["ansible.builtin.systemd"]["state"] == "stopped"
     assert stopped["ansible.builtin.systemd"]["name"] == "antiek-arxiv-oai-sync.service"
-    assert "arxiv_rollback_status is failed" in disabled["when"]
-    assert "arxiv_rollback_status is failed" in stopped["when"]
+    assert "(arxiv_rollback_status | default({})) is failed" in disabled["when"][0]
+    assert "(arxiv_rollback_status | default({})) is failed" in stopped["when"][0]
 
 
 @pytest.mark.parametrize("mode, expected_rc, expected_stdout", [
@@ -500,6 +500,7 @@ def test_early_rescue_failure_message_does_not_claim_timer_was_disabled() -> Non
     message = _task(rescue, "fail the deploy after a verified rollback")["ansible.builtin.fail"]["msg"]
     jinja = Environment()
     jinja.filters["bool"] = bool
+    jinja.tests["failed"] = lambda value: bool(value.get("failed"))
     for service_pause_attempted in (False, True):
         rendered = jinja.from_string(message).render(
             antiek_target_sha="candidate", antiek_previous_sha="previous",
@@ -594,3 +595,101 @@ def test_systemd_run_keeps_the_existing_whole_run_lock() -> None:
     assert "--reset-state" not in service
     assert "with whole_run_lock(resolved_db):" in sync
     assert "fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)" in lock
+
+
+@pytest.mark.parametrize("mode,expected_rc,expected_type", [
+    ("start", 0, "start"), ("stop", 0, "stop"),
+    ("none", 0, "none"), ("vanished", 1, None), ("replaced", 1, None),
+    ("recaptured", 0, "start"), ("churn", 1, None),
+])
+def test_capture_real_numeric_job_and_verified_type(tmp_path: Path, mode: str,
+                                                  expected_rc: int, expected_type: str | None) -> None:
+    candidate, _ = _flow()
+    fake = tmp_path / "systemctl"
+    fake.write_text("""#!/bin/bash
+if [ "$1" = list-jobs ]; then
+  case "$MODE" in
+    start|stop) echo "42 antiek-arxiv-oai-sync.service $MODE waiting" ;;
+    replaced|recaptured|churn) echo '43 antiek-arxiv-oai-sync.service start waiting' ;;
+  esac
+elif [ "$2" = antiek-arxiv-oai-sync.timer ]; then
+  echo 123
+else
+  job=42
+  [ "$MODE" = none ] && job=0
+  if [ "$MODE" = recaptured ] || [ "$MODE" = churn ]; then
+    count=0
+    [ -f "$COUNT_FILE" ] && count=$(cat "$COUNT_FILE")
+    count=$((count + 1))
+    echo "$count" > "$COUNT_FILE"
+    [ "$count" -gt 1 ] && job=43
+    if [ "$MODE" = churn ] && [ $((count % 2)) = 1 ]; then job=42; fi
+  fi
+  printf 'ActiveState=inactive\\nJob=%s\\nExecMainStartTimestampMonotonic=9\\n' "$job"
+fi
+""")
+    fake.chmod(0o755)
+    sleep = tmp_path / "sleep"
+    sleep.write_text("#!/bin/bash\nexit 0\n")
+    sleep.chmod(0o755)
+    result = subprocess.run(["/bin/bash", "-c", _task(candidate,
+        "capture arxiv service and timer before pause")["ansible.builtin.shell"]],
+        env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "MODE": mode, "COUNT_FILE": str(tmp_path / "count")},
+        capture_output=True, text=True, check=False)
+    assert result.returncode == expected_rc
+    assert not (tmp_path / "service-stopped").exists()
+    if expected_type is not None:
+        assert f"PendingJobType={expected_type}" in result.stdout
+        jinja = Environment()
+        jinja.tests["search"] = lambda value, pattern: re.search(pattern, value) is not None
+        expression = _task(candidate, "remember whether an arxiv run was interrupted")[
+            "ansible.builtin.set_fact"]["arxiv_was_running"]
+        assert (jinja.from_string(expression).render(
+            arxiv_before_pause={"stdout": result.stdout}) == "True") is (mode in {"start", "recaptured"})
+
+
+@pytest.mark.parametrize("failed_result", ["arxiv_rollback_resume", "arxiv_rollback_timer_resume"])
+@pytest.mark.parametrize("disable_rc", [0, 1])
+def test_failed_rollback_enqueue_disables_restored_timer_and_stops_service(
+    tmp_path: Path, failed_result: str, disable_rc: int,
+) -> None:
+    _, rescue = _flow()
+    fake = tmp_path / "systemctl"
+    fake.write_text("""#!/bin/bash
+if [ "$1" = start ]; then exit 1; fi
+if [ "$1" = disable ]; then
+  [ "$DISABLE_RC" = 0 ] && rm -f "$STATE/timer-enabled" "$STATE/timer-active"
+  exit "$DISABLE_RC"
+fi
+if [ "$1" = stop ]; then rm -f "$STATE/service-active"; fi
+""")
+    fake.chmod(0o755)
+    for name in ("timer-enabled", "timer-active", "service-active"):
+        (tmp_path / name).touch()
+    env = {**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "STATE": str(tmp_path), "DISABLE_RC": str(disable_rc)}
+    enqueue = _task(rescue, "resume the interrupted arxiv run on the compatible previous release")
+    result = subprocess.run([str(fake), "start", "antiek-arxiv-oai-sync.service"], env=env, check=False)
+    assert result.returncode == 1
+    # Ansible must retain failed admission and continue to the cleanup tasks.
+    assert enqueue.get("ignore_errors") is True
+    facts = {"arxiv_rollback_resume": {"failed": failed_result == "arxiv_rollback_resume"},
+             "arxiv_rollback_timer_resume": {"failed": failed_result == "arxiv_rollback_timer_resume"},
+             "arxiv_rollback_status": {"skipped": True}}
+    jinja = Environment()
+    jinja.tests["failed"] = lambda value: bool(value.get("failed"))
+    for name in ("disable arxiv timer after failed rollback continuation",
+                 "stop arxiv service after failed rollback continuation"):
+        task = _task(rescue, name)
+        assert all(jinja.compile_expression(condition)(**facts) for condition in task["when"])
+        unit = task["ansible.builtin.systemd"]
+        if unit.get("enabled") is False:
+            cleanup = subprocess.run([str(fake), "disable", "--now", unit["name"]], env=env, check=False)
+            assert cleanup.returncode == disable_rc
+            assert task.get("ignore_errors") is True
+        else:
+            subprocess.run([str(fake), "stop", unit["name"]], env=env, check=True)
+    assert not (tmp_path / "service-active").exists()
+    assert (tmp_path / "timer-enabled").exists() is bool(disable_rc)
+    assert (tmp_path / "timer-active").exists() is bool(disable_rc)
+    failure = _task(rescue, "fail the deploy after a verified rollback")["ansible.builtin.fail"]["msg"]
+    assert "enqueue" in failure and "operator" in failure

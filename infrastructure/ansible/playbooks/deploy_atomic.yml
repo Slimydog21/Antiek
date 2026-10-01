@@ -582,7 +582,31 @@
         - name: capture arxiv service and timer before pause
           ansible.builtin.shell: |
             set -euo pipefail
-            systemctl show antiek-arxiv-oai-sync.service --property=ActiveState,Job,ExecMainStartTimestampMonotonic
+            # systemd v255 list-jobs exposes JOB UNIT TYPE STATE; show Job is numeric.
+            # Match both ID and unit, then re-read before accepting the snapshot.
+            export SYSTEMD_COLORS=0 LC_ALL=C
+            for attempt in {1..5}; do
+              before=$(systemctl show antiek-arxiv-oai-sync.service --property=ActiveState,Job,ExecMainStartTimestampMonotonic)
+              job=$(sed -n 's/^Job=//p' <<< "$before")
+              pending_type=none
+              if [[ "$job" =~ ^[1-9][0-9]*$ ]]; then
+                jobs=$(systemctl list-jobs --no-legend --no-pager --plain --full)
+                pending_type=$(awk -v id="$job" '$1 == id && $2 == "antiek-arxiv-oai-sync.service" {print $3}' <<< "$jobs")
+              elif [ "$job" != 0 ]; then
+                echo 'Invalid arXiv job identity; refusing service pause' >&2
+                exit 1
+              fi
+              after=$(systemctl show antiek-arxiv-oai-sync.service --property=ActiveState,Job,ExecMainStartTimestampMonotonic)
+              if [ "$before" = "$after" ] && [[ "$pending_type" =~ ^(none|start|stop)$ ]]; then
+                printf '%s\nPendingJobType=%s\n' "$after" "$pending_type"
+                break
+              fi
+              if [ "$attempt" = 5 ]; then
+                echo 'Ambiguous arXiv pending job; refusing service pause' >&2
+                exit 1
+              fi
+              sleep 1
+            done
             printf 'TimerLastTrigger=%s\n' "$(systemctl show antiek-arxiv-oai-sync.timer --property=LastTriggerUSecMonotonic --value)"
           args:
             executable: /bin/bash
@@ -592,7 +616,7 @@
 
         - name: remember whether an arxiv run was interrupted
           ansible.builtin.set_fact:
-            arxiv_was_running: "{{ arxiv_before_pause.stdout is search('ActiveState=(active|activating)|Job=[0-9]+/start') }}"
+            arxiv_was_running: "{{ arxiv_before_pause.stdout is search('ActiveState=(active|activating)|PendingJobType=start') }}"
             arxiv_timer_before: "{{ (arxiv_before_pause.stdout | regex_findall('TimerLastTrigger=(.*)') | first) | default('unknown') }}"
             arxiv_service_start_before: "{{ (arxiv_before_pause.stdout | regex_findall('ExecMainStartTimestampMonotonic=(.*)') | first) | default('unknown', true) }}"
           tags: [code]
@@ -1273,6 +1297,7 @@
             enabled: "{{ arxiv_timer_was_enabled }}"
             state: "{{ 'started' if arxiv_timer_was_active else 'stopped' }}"
           register: arxiv_rollback_timer_resume
+          ignore_errors: true
           when:
             - arxiv_rollback_compatibility is defined
             - arxiv_rollback_compatibility.rc | default(1) == 0
@@ -1308,6 +1333,8 @@
           changed_when: false
           ignore_errors: true
           when:
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not failed
             - arxiv_rollback_compatibility is defined
             - arxiv_rollback_compatibility.rc | default(1) == 0
             - arxiv_rollback_timer_resume is defined
@@ -1320,6 +1347,7 @@
             name: antiek-arxiv-oai-sync.timer
             state: stopped
             enabled: false
+          ignore_errors: true
           when:
             - arxiv_rollback_timer is defined
             - arxiv_rollback_timer is failed
@@ -1340,7 +1368,10 @@
             state: started
             no_block: true
           register: arxiv_rollback_resume
+          ignore_errors: true
           when:
+            - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not failed
             - arxiv_was_running | default(false) | bool
             - arxiv_rollback_timer_resume is defined
             - arxiv_rollback_timer_resume is not skipped
@@ -1373,6 +1404,8 @@
           ignore_errors: true
           when:
             - arxiv_rollback_timer_resume is defined
+            - arxiv_rollback_timer_resume is not failed
+            - arxiv_rollback_timer_resume is defined
             - arxiv_rollback_timer_resume is not skipped
             - >-
               (arxiv_rollback_resume is defined and arxiv_rollback_resume is changed)
@@ -1387,18 +1420,26 @@
             name: antiek-arxiv-oai-sync.timer
             state: stopped
             enabled: false
+          register: arxiv_rollback_timer_cleanup
+          ignore_errors: true
           when:
-            - arxiv_rollback_status is defined
-            - arxiv_rollback_status is failed
+            - >-
+              (arxiv_rollback_status | default({})) is failed
+              or (arxiv_rollback_resume | default({})) is failed
+              or (arxiv_rollback_timer_resume | default({})) is failed
           tags: [rollback]
 
         - name: stop arxiv service after failed rollback continuation
           ansible.builtin.systemd:
             name: antiek-arxiv-oai-sync.service
             state: stopped
+          register: arxiv_rollback_service_cleanup
+          ignore_errors: true
           when:
-            - arxiv_rollback_status is defined
-            - arxiv_rollback_status is failed
+            - >-
+              (arxiv_rollback_status | default({})) is failed
+              or (arxiv_rollback_resume | default({})) is failed
+              or (arxiv_rollback_timer_resume | default({})) is failed
           tags: [rollback]
 
         - name: fail the deploy after a verified rollback
@@ -1408,6 +1449,10 @@
               restored to {{ antiek_previous_sha }}; the DuckDB snapshot is
               {{ antiek_state_dir }}/antiek.duckdb.pre-atomic-{{ antiek_target_sha }}.
               Code rollback does not reverse database writes.
+              {% if (arxiv_rollback_resume | default({})) is failed or (arxiv_rollback_timer_resume | default({})) is failed %}
+              arXiv timer restoration or async enqueue failed. Timer disable and service
+              stop were attempted; verify both units before any operator restart.
+              {% endif %}
               {% if (arxiv_service_pause_attempted | default(false) | bool or arxiv_loop_timer_pause_attempted | default(false) | bool) and arxiv_rollback_compatibility.rc | default(1) != 0 %}
               The arXiv timer is disabled and no automatic sync restart was
               permitted: original timer policy or previous parser/source compatibility
@@ -1416,6 +1461,10 @@
               {% if not (arxiv_service_pause_attempted | default(false) | bool or arxiv_loop_timer_pause_attempted | default(false) | bool) %}
               The arXiv service was not paused; its original timer policy was retained
               or restored before rollback.
+              {% endif %}
+              {% if (arxiv_rollback_timer_cleanup | default({})) is failed or (arxiv_rollback_service_cleanup | default({})) is failed %}
+              arXiv fail-closed cleanup failed. The timer or service may remain enabled
+              or active; operator action is required before further deployment.
               {% endif %}
               {% if arxiv_rollback_status is defined and arxiv_rollback_status is failed %}
               The resumed arXiv run did not reach a successful new execution;
