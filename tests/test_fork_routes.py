@@ -279,6 +279,10 @@ def test_no_fork_specific_fetch_route(api_env) -> None:
         ("/books/{document_id}/forks", "POST"),
         ("/forks/{fork_id}", "GET"),
         ("/forks/{fork_id}/lineage", "GET"),
+        # SPR-02: the fork-merge family — preview/commit receipts, never a
+        # body fetch. The diff's point stands: no fork route serves bodies.
+        ("/research/artifacts/fork-merge/commit", "POST"),
+        ("/research/artifacts/fork-merge/preview", "POST"),
     ]
 
 
