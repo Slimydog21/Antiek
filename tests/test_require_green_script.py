@@ -261,6 +261,17 @@ def _deploy_step() -> dict:
     )
 
 
+def _declared_release_path_consumers() -> list[str]:
+    """The pause loop reads ONE declared list (deploy_atomic.yml
+    `release_path_consumers`), so assertions resolve that list rather than
+    searching the loop expression."""
+    playbook = yaml.safe_load(
+        (ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy_atomic.yml").read_text()
+    )
+    play = next(p for p in playbook if "release_path_consumers" in (p.get("vars") or {}))
+    return list(play["vars"]["release_path_consumers"])
+
+
 def _deploy_playbook_tasks() -> list[dict]:
     playbook = yaml.safe_load(
         (ROOT / "infrastructure" / "ansible" / "playbooks" / "deploy_atomic.yml").read_text()
@@ -299,6 +310,55 @@ def test_deploy_pins_the_exact_sha_verified_by_the_gate():
         if task["name"] == "check out the gated SHA at its final release path"
     )
     assert checkout["ansible.builtin.git"]["version"] == "{{ antiek_target_sha }}"
+
+
+def test_deploy_pause_captures_arxiv_service_after_durable_timer_pause():
+    """Capture an interrupted crawl only after preventing a timer race."""
+    tasks = _deploy_playbook_tasks()
+    stop = next(task for task in tasks if task.get("register") == "arxiv_timer_pause_result")
+    capture = next(task for task in tasks if task.get("register") == "arxiv_before_pause")
+    pause = next(task for task in tasks if task["name"] == "pause every release-path consumer before cutover")
+    shell = stop["ansible.builtin.shell"]
+    assert shell.index("systemctl show") < shell.index("systemctl disable --now")
+    assert "antiek-arxiv-oai-sync.service" in capture["ansible.builtin.shell"]
+    assert "ActiveState,Job" in capture["ansible.builtin.shell"]
+    assert capture["changed_when"] is False
+    assert tasks.index(stop) < tasks.index(capture) < tasks.index(pause)
+    # The pause loop reads ONE declared list (deploy_atomic.yml
+    # `release_path_consumers`); assert against that list, not the loop string.
+    assert pause["loop"] == "{{ release_path_consumers }}"
+    consumers = _declared_release_path_consumers()
+    assert "antiek-arxiv-oai-sync.timer" in consumers
+    assert "antiek-arxiv-oai-sync.service" in consumers
+
+
+def test_deploy_resume_enqueues_interrupted_arxiv_after_public_parity():
+    """A six-hour oneshot must not block deployment verification."""
+    tasks = _deploy_playbook_tasks()
+    pause = next(task for task in tasks if task["name"] == "pause every release-path consumer before cutover")
+    parity = next(task for task in tasks if task["name"] == "run blocking public parity on the candidate")
+    resume = next(task for task in tasks if task["name"] == "resume the interrupted arxiv run on the verified candidate")
+    systemd = resume["ansible.builtin.systemd"]
+    assert systemd["name"] == "antiek-arxiv-oai-sync.service"
+    assert systemd["state"] == "started"
+    assert systemd["no_block"] is True
+    assert "arxiv_was_running | default(false) | bool" in resume["when"]
+    fact = next(task for task in tasks if task["name"] == "remember whether an arxiv run was interrupted")
+    assert "active|activating" in fact["ansible.builtin.set_fact"]["arxiv_was_running"]
+    assert tasks.index(pause) < tasks.index(parity) < tasks.index(resume)
+
+
+def test_deploy_resume_never_starts_the_backup_service():
+    """Backup remains timer-driven; starting the service would run off schedule."""
+    tasks = _deploy_playbook_tasks()
+    starters = [
+        task
+        for task in tasks
+        if (task.get("ansible.builtin.systemd") or {}).get("name")
+        == "antiek-backup.service"
+        and (task.get("ansible.builtin.systemd") or {}).get("state") == "started"
+    ]
+    assert starters == []
 
 
 def _resolve_step_run(env: dict[str, str]) -> subprocess.CompletedProcess:

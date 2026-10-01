@@ -481,3 +481,62 @@ def test_explicit_metadata_only_pin_form(api_env) -> None:
     )
     assert conflict.status_code == 422
     assert "anchor_location_conflicting" in conflict.json()["detail"]
+
+
+# ── LB-1: the DOM-offset / canonical-text bridge ──────────────────────────
+# A browser selection's quote is RENDERED text (whitespace-collapsed by CSS,
+# entity-decoded, zero-width padded). The chunk store holds
+# normalize_node_text(served_text) — NFC + line endings only. When the exact
+# locate misses, resolve_pin retries tolerant and maps back to the original
+# offsets. Refuses honestly when zero or still-multiple.
+
+def test_rendered_dom_quote_resolves_via_the_bridge(api_env) -> None:
+    """A DOM quote with double spaces / NBSP / zero-width locates the same
+    span the exact match would. Negative control: without the bridge this
+    is 422 anchor_resolution_not_found (the wave-1 D8 defect)."""
+    db = api_env["db"]
+    _seed_default_chunks(db)
+    client = _client()
+    # Rendered selection: double space after "a", NBSP before "sentence",
+    # a zero-width joiner inside the phrase — all normal in a DOM toString().
+    rendered = "sentence\u00a0worth\u200d\u00a0remembering"
+    resp = client.post(
+        "/books/doc-anchor/anchors",
+        json=_pin_payload(quote=rendered, prefix="holds a ", suffix=". A middle"),
+    )
+    assert resp.status_code == 201, resp.text
+    anchor = resp.json()
+    assert anchor["anchor"]["node_id"] == "c-1"
+    # The persisted quote is the chunk's canonical window, not the DOM string.
+    assert anchor["anchor"]["quote"] == "sentence worth remembering"
+    assert anchor["status"] == "active"
+    assert anchor["exact_valid"] is True
+
+
+def test_bridge_still_refuses_ambiguity(api_env) -> None:
+    """Two identical chunks → ambiguous, even through the bridge. Never a guess."""
+    db = api_env["db"]
+    _seed_book(
+        db,
+        chunks=[("c-1", BODY_TEXT, None), ("c-2", BODY_TEXT, None)],
+    )
+    client = _client()
+    resp = client.post(
+        "/books/doc-anchor/anchors",
+        json=_pin_payload(quote="a\u00a0sentence worth\u200d remembering"),
+    )
+    assert resp.status_code == 422
+    assert "anchor_resolution_ambiguous" in resp.json()["detail"]
+
+
+def test_bridge_still_refuses_absent(api_env) -> None:
+    """Absent is absent — the bridge does not invent a location."""
+    db = api_env["db"]
+    _seed_default_chunks(db)
+    client = _client()
+    resp = client.post(
+        "/books/doc-anchor/anchors",
+        json=_pin_payload(quote="no\u00a0such\u200d sentence\u00a0 exists", prefix="", suffix=""),
+    )
+    assert resp.status_code == 422
+    assert "anchor_resolution_not_found" in resp.json()["detail"]

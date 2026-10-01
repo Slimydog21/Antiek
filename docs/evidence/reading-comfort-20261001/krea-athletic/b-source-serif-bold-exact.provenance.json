@@ -1,0 +1,23 @@
+{
+  "source": "j-b-blank-branding.png",
+  "source_provenance": "j-b-blank-branding.provenance.json",
+  "source_sha256": "424a581a4b20432e0a3ea46e31a5ad0905ade12d56423cbf39ead9417e131029",
+  "family": "Source Serif 4",
+  "font_source": "/Users/slimydog/Antiek/worktrees/reading-typography-20261001/apps/reading/public/fonts/reading/source-serif-regular-latin.woff2",
+  "font_sha256": "f2ea9c12d2fe9bd3a9589b02ad2c0909da88f30938c91adc838c4f4098f9f9e0",
+  "axes": {
+    "wght": 800,
+    "opsz": 20
+  },
+  "lettering": "Antiek and two A monograms drawn from original font glyph outlines, no generated or fallback lettering",
+  "magenta": "#943D4A",
+  "exact_rgb": [
+    148,
+    61,
+    74
+  ],
+  "verified_exact_fill_pixels": 16546,
+  "matte": "Border-connected cream plus enclosed negative space between legs; cream shoe panels retain alpha",
+  "preview": "b-source-serif-bold-exact.svg",
+  "status": "font confirmation pending; preview only"
+}
