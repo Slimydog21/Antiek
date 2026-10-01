@@ -39,6 +39,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isServability,
+  SERVABILITY_VALUES,
   servabilityLabel,
   UNKNOWN_RIGHTS_LABEL,
   type Servability,
@@ -149,6 +150,18 @@ describe("servability extraction (fixture cases; known under-matches listed in t
       'BOOK_DEFAULT_SERVABILITY: Final[str] = "gated_metadata_only"',
     ].join("\n");
     expect(extractTupleValues(fixture)).toEqual(["public_domain", "personal_readable"]);
+  });
+});
+
+describe("private-authored presentation contract", () => {
+  it("accepts the eight canonical statuses and rejects the upload-attestation alias", () => {
+    expect([...SERVABILITY_VALUES].sort()).toEqual([
+      "public_domain", "platform_authored", "publisher_opted_in", "source_declared_open",
+      "gated_metadata_only", "taken_down", "personal_readable", "private_authored",
+    ].sort());
+    expect(isServability("private_authored")).toBe(true);
+    expect(isServability("user_authored_private")).toBe(false);
+    expect(servabilityLabel("private_authored")).toEqual({ label: "Private authored", colour: "muted" });
   });
 });
 

@@ -38,6 +38,30 @@ const work = {
 };
 
 describe("parse honesty", () => {
+  it("accepts private metadata without public full-text permission", () => {
+    const privateWork = { ...work, servability: "private_authored", servable_full_text: false };
+    const parsed = parseBookSummary(privateWork);
+    expect(parsed.servability).toBe("private_authored");
+    expect(parsed.servable_full_text).toBe(false);
+    expect(formatServability(parsed)).toBe("Private authored");
+    expect(() => parseBookSummary({ ...privateWork, servable_full_text: true }))
+      .toThrow("servable_full_text contradicts servability");
+  });
+
+  it.each(["body", "full_text", "raw_text", "snippet"])(
+    "rejects private catalog field %s without disclosing its value",
+    (key) => {
+      const privateWork = {
+        ...work, servability: "private_authored", servable_full_text: false,
+        [key]: "private-body-marker",
+      };
+      expect(() => parseBookSummary(privateWork)).toThrow("library catalog response rejected");
+      try { parseBookSummary(privateWork); } catch (error) {
+        expect(String(error)).not.toContain("private-body-marker");
+      }
+    },
+  );
+
   it("accepts a personal_readable row as owner-only, not full-text servable (A-01)", () => {
     const personal = {
       ...work,

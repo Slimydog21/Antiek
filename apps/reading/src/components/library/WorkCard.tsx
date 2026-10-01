@@ -10,6 +10,8 @@ import { servabilityLabel, UNKNOWN_RIGHTS_LABEL } from "../../api/books";
  * Title / author / source / servability, with a CLEAR servable-vs-gated
  * affordance:
  *   • servable (full text) → "Read" — opens the reader (/read/:id).
+ *   • private authored → "Read"; body access still requires the owner's
+ *     admitted reader response, never the catalog flag.
  *   • gated (metadata only) → "Claim to read" — opens the reader's gate-safe
  *     surface (the record + a bounded, server-gated preview; the reader passes
  *     `assetId=null` for a gated work so its column is untagged and no attention
@@ -27,7 +29,7 @@ import { servabilityLabel, UNKNOWN_RIGHTS_LABEL } from "../../api/books";
 
 export interface WorkCardProps {
   work: BookSummary;
-  /** Open a servable work in the reader. */
+  /** The reader endpoint, not this card, decides body access. */
   onRead?: (documentId: string) => void;
   /** Surface the gated work's metadata + claim affordance (NO body request). */
   onClaim?: (documentId: string) => void;
@@ -51,6 +53,8 @@ function sourceLine(work: BookSummary): string {
       return "Removed from the shelf";
     case "personal_readable":
       return "Your document";
+    case "private_authored":
+      return "Your private document";
     default: {
       // Exhaustive at compile time; a runtime value from a newer backend
       // renders a neutral line instead of an empty one (A-01).
@@ -65,21 +69,22 @@ export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
   const { label, colour } = servabilityLabel(work.servability);
   const title = work.title ?? work.document_id;
   const spine = placeholderSpine(work.document_id);
-  const servable = work.servable_full_text;
+  const canOpenReader = work.servable_full_text || work.servability === "private_authored";
   const removed = work.taken_down || work.servability === "taken_down";
 
   const action = () => {
     if (removed) return;
-    if (servable) onRead?.(work.document_id);
+    if (canOpenReader) onRead?.(work.document_id);
     else onClaim?.(work.document_id);
   };
 
-  const actionLabel = removed ? "Removed" : servable ? "Read" : "Claim to read";
+  const actionLabel = removed ? "Removed" : canOpenReader ? "Read" : "Claim to read";
+  const authorSuffix = work.author ? ` by ${work.author}` : "";
   const ariaLabel = removed
     ? `${title} — removed from the shelf`
-    : servable
-      ? `Read ${title}${work.author ? ` by ${work.author}` : ""}`
-      : `View metadata and claim to read ${title}${work.author ? ` by ${work.author}` : ""}`;
+    : canOpenReader
+      ? `Read ${title}${authorSuffix}`
+      : `View metadata and claim to read ${title}${authorSuffix}`;
 
   return (
     <button

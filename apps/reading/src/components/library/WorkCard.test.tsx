@@ -47,9 +47,57 @@ const removed: BookSummary = {
   taken_down: true,
 };
 
+const privateAuthored: BookSummary = {
+  ...gated,
+  document_id: "doc-private",
+  title: "Private Field Notes",
+  author: null,
+  servability: "private_authored",
+  ip_holder_id: null,
+};
+
 afterEach(cleanup);
 
 describe("WorkCard", () => {
+  it("offers Read for private metadata without public full-text permission", () => {
+    const onRead = vi.fn();
+    const onClaim = vi.fn();
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Unexpected card request"));
+    try {
+      render(<WorkCard work={privateAuthored} onRead={onRead} onClaim={onClaim} />);
+      expect(screen.getByText("Private authored")).toBeTruthy();
+      expect(screen.getByText("Your private document")).toBeTruthy();
+      expect(screen.getByText("Read")).toBeTruthy();
+      expect(screen.queryByText("Claim to read")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Read Private Field Notes" }));
+      expect(onRead).toHaveBeenCalledOnce();
+      expect(onRead).toHaveBeenCalledWith("doc-private");
+      expect(onClaim).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(privateAuthored.servable_full_text).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("names the private Read action with the author when present", () => {
+    render(<WorkCard work={{ ...privateAuthored, author: "Ada Author" }} />);
+    expect(screen.getByRole("button", { name: "Read Private Field Notes by Ada Author" })).toBeTruthy();
+  });
+
+  it("keeps a taken-down private work non-actionable", () => {
+    const onRead = vi.fn();
+    const onClaim = vi.fn();
+    render(<WorkCard work={{ ...privateAuthored, taken_down: true }} onRead={onRead} onClaim={onClaim} />);
+    const button = screen.getByRole("button", { name: "Private Field Notes — removed from the shelf" });
+    expect(button).toBeInstanceOf(HTMLButtonElement);
+    expect(button).toHaveProperty("disabled", true);
+    expect(screen.getByText("Removed")).toBeTruthy();
+    fireEvent.click(button);
+    expect(onRead).not.toHaveBeenCalled();
+    expect(onClaim).not.toHaveBeenCalled();
+  });
+
   it("shows title, author, source and servability for a servable work", () => {
     render(<WorkCard work={servable} />);
     // The title renders twice (the decorative cover spine + the caption); both
