@@ -5,6 +5,7 @@ import { LemonModal } from "../components/lemon/LemonModal";
 import ThreadIsland from "../modes/Reading/island/ThreadIsland";
 import type { IslandThreadState } from "../modes/Reading/island/useIslandThread";
 import { WorkspaceWindow } from "../components/windows/WorkspaceWindow";
+import { PanelHandle } from "./PanelHandle";
 import { installShortcuts } from "./shortcuts";
 import { useWindows } from "./windowsStore";
 import { useWorkspace } from "./WorkspaceStore";
@@ -93,6 +94,7 @@ describe("window cycle ownership and retention", () => {
   it("keeps panels isolated while cycling frames, and windows isolated outside a frame", async () => {
     await mount(); const ws = useWorkspace.getState();
     act(() => { ws.open("Notes", {}, { id: "left", mode: "docked-left" }); ws.open("Notes", {}, { id: "right", mode: "docked-right" }); ws.focus("left"); });
+    render(<><PanelHandle id="left" draggable={false} /><PanelHandle id="right" draggable={false} /></>);
     press(frame("c")); expect(state().focusedId).toBe("b"); expect(useWorkspace.getState().focusedPanelId).toBe("left");
     const outside = document.createElement("button"); document.body.appendChild(outside); outside.focus();
     press(outside); expect(useWorkspace.getState().focusedPanelId).toBe("right"); expect(state().focusedId).toBe("b");

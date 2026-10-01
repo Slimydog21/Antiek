@@ -86,7 +86,7 @@ export type WorkspaceActions = {
   reset: () => void;
 };
 
-type Store = WorkspaceSnapshot & CockpitChrome & WorkspaceActions;
+type Store = WorkspaceSnapshot & CockpitChrome & WorkspaceActions & { panelCycleOrder: string[] };
 
 function uniqueId(prefix: string): string {
   return `${prefix}:${Math.random().toString(36).slice(2, 10)}`;
@@ -142,6 +142,7 @@ function hiddenByFullscreen(s: CockpitChrome, mode: PanelMode): boolean {
 
 export const useWorkspace = create<Store>()((set, get) => ({
   ...EMPTY_SNAPSHOT,
+  panelCycleOrder: [],
   // Cockpit chrome (C2): the persisted preset (default "docked" — nothing
   // changes until the operator chooses the inset); the pane states are
   // transient, never written to disk.
@@ -174,6 +175,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
       return {
         ...s,
         panels: { ...s.panels, [id]: desc },
+        panelCycleOrder: mode === "popout" ? s.panelCycleOrder : [...s.panelCycleOrder, id],
         dockLeftIds: inserted.dockLeftIds ?? s.dockLeftIds,
         dockRightIds: inserted.dockRightIds ?? s.dockRightIds,
         dockBottomIds: inserted.dockBottomIds ?? s.dockBottomIds,
@@ -201,6 +203,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
       return {
         ...s,
         panels: rest,
+        panelCycleOrder: s.panelCycleOrder.filter((member) => member !== id),
         dockLeftIds: cleaned.dockLeftIds!,
         dockRightIds: cleaned.dockRightIds!,
         dockBottomIds: cleaned.dockBottomIds!,
@@ -230,6 +233,8 @@ export const useWorkspace = create<Store>()((set, get) => ({
       return {
         ...s,
         panels: { ...s.panels, [id]: { ...p, mode, zIndex: z } },
+        panelCycleOrder: mode === "popout" ? s.panelCycleOrder.filter((member) => member !== id)
+          : s.panelCycleOrder.includes(id) ? s.panelCycleOrder : [...s.panelCycleOrder, id],
         dockLeftIds: inserted.dockLeftIds ?? s.dockLeftIds,
         dockRightIds: inserted.dockRightIds ?? s.dockRightIds,
         dockBottomIds: inserted.dockBottomIds ?? s.dockBottomIds,
@@ -356,7 +361,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
       pendingWrite = null;
     }
     suppressPersistAfterReset = true;
-    set({ ...EMPTY_SNAPSHOT, fullscreenPane: null, focusedPane: null });
+    set({ ...EMPTY_SNAPSHOT, panelCycleOrder: [], fullscreenPane: null, focusedPane: null });
   },
 }));
 
@@ -404,6 +409,10 @@ export function enablePersistence(): void {
 let hydrationGeneration = 0;
 export function markHydrated(): void {
   hydrationGeneration += 1;
+  const state = useWorkspace.getState();
+  const visible = [...state.dockLeftIds, ...state.floatingIds, ...state.dockBottomIds, ...state.dockRightIds];
+  useWorkspace.setState({ panelCycleOrder: [...new Set(visible)].filter((id) =>
+    Object.hasOwn(state.panels, id) && state.panels[id].mode !== "popout") });
 }
 export function getHydrationGeneration(): number {
   return hydrationGeneration;

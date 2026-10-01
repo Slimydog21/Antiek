@@ -11,6 +11,9 @@
  *  4. Fuzz: every row of the table, pressed from every focus context, reaches
  *     at most one handler, and from the page body exactly its own.
  */
+import { createElement, Fragment } from "react";
+import { cleanup, render } from "@testing-library/react";
+import { PanelHandle } from "./PanelHandle";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { KEYMAP, isActiveOn, parseCombo, readPrefix, type KeymapRow, type Platform } from "../components/hotkeys/keymap";
@@ -23,6 +26,7 @@ import { countingHandlers, keyInit, pinPlatform, press, pressKey, unpinPlatform 
 let uninstall: (() => void) | null = null;
 
 afterEach(() => {
+  cleanup();
   uninstall?.();
   uninstall = null;
   unpinPlatform();
@@ -59,6 +63,9 @@ function legacyProbe(row: KeymapRow): Probe {
       ws().open("Notes", {}, { mode: "docked-left", id: "p:a" });
       ws().open("Notes", {}, { mode: "docked-right", id: "p:b" });
       ws().focus("p:a");
+      render(createElement(Fragment, null,
+        createElement(PanelHandle, { id: "p:a", draggable: false }),
+        createElement(PanelHandle, { id: "p:b", draggable: false })));
     }
     if (row.action === "panel.closeFloating") {
       ws().open("Notes", {}, { mode: "floating", id: "p:float" });
