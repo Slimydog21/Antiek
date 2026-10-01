@@ -1,0 +1,17 @@
+{
+  "source": "h-b-magenta-court.png",
+  "source_sha256": "1be9d5a59aca85843b75f2022d3d31dc84515b4e1e8e60ff687c4d29081efbf6",
+  "output": "b-magenta-943D4A.png",
+  "output_sha256": "c837f78a542fda428b07fefdcee4ec19299a07afc99ef7834cb6d68654708718",
+  "requested_magenta": "#943D4A",
+  "exact_rgb": [
+    148,
+    61,
+    74
+  ],
+  "edited_pixel_count": 16706,
+  "method": "deterministic palette correction of existing magenta material fills",
+  "selection": "r > 1.3*g, b > g+5, r < 210, g < 125; warm brown keylines and coral/green/cream excluded",
+  "verification": "all selected fill pixels are exactly RGB(148,61,74); all other RGBA pixels are byte-identical to source",
+  "status": "color proof, font refinement pending"
+}

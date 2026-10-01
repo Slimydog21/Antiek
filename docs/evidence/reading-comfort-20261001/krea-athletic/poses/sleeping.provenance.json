@@ -1,0 +1,17 @@
+{
+  "asset_id": "cc0d638c-6808-490e-ab99-9852fa295bbd",
+  "label": "ai-generated",
+  "provider": "Krea API",
+  "model": "google/nano-banana-pro",
+  "source": "apps/reading/src/brand/mascot-brain/authored/mascot_sleeping_v1_transparent.png",
+  "source_sha256": "a70b3a91d9662f40ea96c0b9c840fda9dfab52451029a626cdca9c479c2a8fe8",
+  "reference_job_id": "d69e1cd7-3680-4076-bb22-c89459bcc189",
+  "prompt": "Image 1 is the EXACT EXISTING Antiek mascot pose to edit. Image 2 is ONLY the approved headband and B sneaker reference. Edit image 1, do NOT substitute the character or pose from image 2. KEEP the existing image 1 coral brain shape, face, expression, hands, gesture, posture, props, outlines, proportions, placement, framing and style. Every prop and both hands must remain exactly present. Make the SAME IMAGE with only these athletic accessories added naturally into the illustration: a narrow green-teal #6ECB8F continuous basketball sweatband across the upper forehead above the eyes, like Alex Caruso, no knots or tails. The headband must say exactly Antiek, bold, fun, simple dark warm-ink hand-drawn lettering integrated into the fabric, like image 2. Full slim legs are muted magenta #943D4A. Give each foot the EXACT B low-profile court sneaker shown in image 2, retaining its cream toe and cream sole, green-teal side panel, original warm-ink A monogram, and muted magenta #943D4A secondary heel, tongue and laces. Keep the shoes small with the same hand-drawn linework, adapt only their angle to the existing pose. Both shoes must remain fully visible. No shoe redesign, extra colors, detached objects, duplicate limbs, floor or shadow. Use a completely FLAT solid warm cream #FC EF DD background, without grain, gradients, shadows or vignette, for precise transparent extraction. The actual mascot linework and shading retain the original illustration quality. Preserve any eye occlusion by props. Keep BOTH eyes CLOSED and sleepy smile exactly like image 1.",
+  "requested_at": "2026-10-01T06:26:28.664837+00:00",
+  "preview_only": true,
+  "job_id": "7f63cf9b-8f07-49de-b838-88888d570009",
+  "status": "completed",
+  "output": "sleeping-krea-b.png",
+  "generated_at": "2026-10-01T06:26:51.501Z",
+  "sha256": "ece59a06cad2668ebaeb230412160a7523448ea066f16c5b8f99556b6a137b0e"
+}
