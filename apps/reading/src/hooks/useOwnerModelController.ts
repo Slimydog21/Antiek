@@ -63,6 +63,7 @@ export type PreparedModelLaunch =
     }>;
 export interface OwnerModelController {
   inventory: ModelInventory;
+  isInventoryCurrent(snapshot: ModelInventory): boolean;
   selection: ModelChoice;
   select(choice: Extract<ModelChoice, { kind: "house" | "saved" }>): void;
   prepareLaunch(input: { semanticKey: string }): PreparedModelLaunch;
@@ -322,6 +323,18 @@ export function useOwnerModelController({
       ? latest
       : null;
   }, [renderedScope, scopeIsCurrent, optionToken, inventory]);
+  const isInventoryCurrent = useCallback(
+    (snapshot: ModelInventory): boolean =>
+      mountedRef.current &&
+      committedOptionsRef.current === optionToken &&
+      snapshot === inventory &&
+      snapshot === inventoryRef.current &&
+      snapshot.kind !== "suspended" &&
+      renderedScope.kind === "ready" &&
+      snapshot.scope === renderedScope &&
+      scopeIsCurrent(renderedScope),
+    [inventory, optionToken, renderedScope, scopeIsCurrent],
+  );
   const select = useCallback(
     (choice: Extract<ModelChoice, { kind: "house" | "saved" }>) => {
       const snapshot = readySnapshot();
@@ -492,6 +505,7 @@ export function useOwnerModelController({
       : UNSELECTED;
   return {
     inventory: visibleInventory,
+    isInventoryCurrent,
     selection: visibleSelection,
     select,
     prepareLaunch,

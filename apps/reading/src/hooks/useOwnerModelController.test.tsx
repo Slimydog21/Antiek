@@ -603,4 +603,39 @@ describe("unused owner model controller", () => {
       "A complete model launch semantic key is required.",
     );
   });
+
+  it("observes only the exact current inventory token across refresh and immediate identity suspension", async () => {
+    await mount();
+    const old = controller;
+    const g1 = controller.inventory;
+    expect(old.isInventoryCurrent(g1)).toBe(true);
+    await act(async () => controller.refresh());
+    const g2 = controller.inventory;
+    expect(controller.isInventoryCurrent(g2)).toBe(true);
+    expect(old.isInventoryCurrent(g1)).toBe(false);
+    expect(old.isInventoryCurrent(g2)).toBe(false);
+    let observed: boolean | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = new URL(String(input), "http://fixture").pathname;
+        if (path === "/auth/me") {
+          observed = controller.isInventoryCurrent(g2);
+          return new Response(JSON.stringify(identity));
+        }
+        if (path === "/settings/models/user")
+          return new Response(
+            JSON.stringify({
+              models: rows,
+              count: rows.length,
+              stale_registered: [],
+              source: "fixture",
+            }),
+          );
+        throw new Error("fixture denies route");
+      }),
+    );
+    await act(async () => auth.refresh());
+    expect(observed).toBe(false);
+  });
 });
