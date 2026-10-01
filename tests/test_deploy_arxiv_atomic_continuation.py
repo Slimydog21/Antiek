@@ -67,7 +67,7 @@ def test_candidate_restart_requires_interrupted_run_and_verified_path(
     jinja = Environment()
     jinja.tests["search"] = lambda value, pattern: re.search(pattern, value) is not None
     rendered = jinja.from_string(expression).render(
-        arxiv_before_pause={"stdout": f"ActiveState={pre_state}\nJob=0\nTimerLastTrigger=123"}
+        arxiv_before_pause={"stdout": f"ActiveState={pre_state}\nJob=\nTimerLastTrigger=123"}
     )
     assert (rendered == "True") is should_resume
     observe = _task(candidate, "observe arxiv timer after candidate verification")
@@ -599,7 +599,12 @@ def test_systemd_run_keeps_the_existing_whole_run_lock() -> None:
 
 @pytest.mark.parametrize("mode,expected_rc,expected_type", [
     ("start", 0, "start"), ("stop", 0, "stop"),
-    ("none", 0, "none"), ("vanished", 1, None), ("replaced", 1, None),
+    ("none", 0, "none"), ("active", 0, "none"),
+    ("activating", 0, "none"), ("failed", 0, "none"),
+    ("missing-job", 1, None), ("missing-state", 1, None),
+    ("missing-time", 1, None), ("duplicate-job", 1, None),
+    ("invalid-job", 1, None), ("zero-job", 1, None),
+    ("invalid-state", 1, None), ("invalid-time", 1, None), ("vanished", 1, None), ("replaced", 1, None),
     ("recaptured", 0, "start"), ("churn", 1, None),
 ])
 def test_capture_real_numeric_job_and_verified_type(tmp_path: Path, mode: str,
@@ -615,8 +620,17 @@ if [ "$1" = list-jobs ]; then
 elif [ "$2" = antiek-arxiv-oai-sync.timer ]; then
   echo 123
 else
+  [[ " $* " == *" --all "* ]] || exit 99
   job=42
-  [ "$MODE" = none ] && job=0
+  state=inactive
+  stamp=9
+  case "$MODE" in
+    none|active|activating|failed|missing-job|missing-state|missing-time|duplicate-job|invalid-state|invalid-time) job= ;;
+    invalid-job) job=garbage ;;
+    zero-job) job=0 ;;
+  esac
+  case "$MODE" in active|activating|failed) state=$MODE ;; invalid-state) state=garbage ;; esac
+  [ "$MODE" = invalid-time ] && stamp=garbage
   if [ "$MODE" = recaptured ] || [ "$MODE" = churn ]; then
     count=0
     [ -f "$COUNT_FILE" ] && count=$(cat "$COUNT_FILE")
@@ -625,7 +639,11 @@ else
     [ "$count" -gt 1 ] && job=43
     if [ "$MODE" = churn ] && [ $((count % 2)) = 1 ]; then job=42; fi
   fi
-  printf 'ActiveState=inactive\\nJob=%s\\nExecMainStartTimestampMonotonic=9\\n' "$job"
+  [ "$MODE" != missing-time ] && printf 'ExecMainStartTimestampMonotonic=%s\\n' "$stamp"
+  [ "$MODE" != missing-state ] && printf 'ActiveState=%s\\n' "$state"
+  [ "$MODE" != missing-job ] && printf 'Job=%s\\n' "$job"
+  [ "$MODE" = duplicate-job ] && echo 'Job='
+  exit 0
 fi
 """)
     fake.chmod(0o755)
@@ -645,7 +663,7 @@ fi
         expression = _task(candidate, "remember whether an arxiv run was interrupted")[
             "ansible.builtin.set_fact"]["arxiv_was_running"]
         assert (jinja.from_string(expression).render(
-            arxiv_before_pause={"stdout": result.stdout}) == "True") is (mode in {"start", "recaptured"})
+            arxiv_before_pause={"stdout": result.stdout}) == "True") is (mode in {"start", "recaptured", "active", "activating"})
 
 
 @pytest.mark.parametrize("failed_result", ["arxiv_rollback_resume", "arxiv_rollback_timer_resume"])

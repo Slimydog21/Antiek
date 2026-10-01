@@ -582,21 +582,39 @@
         - name: capture arxiv service and timer before pause
           ansible.builtin.shell: |
             set -euo pipefail
-            # systemd v255 list-jobs exposes JOB UNIT TYPE STATE; show Job is numeric.
-            # Match both ID and unit, then re-read before accepting the snapshot.
+            # v255 show prints Job= for no job and a numeric positive ID otherwise.
+            # --all retains empty fields; reject missing/duplicate/malformed properties.
+            # list-jobs exposes JOB UNIT TYPE STATE. Match ID/unit and re-read.
             export SYSTEMD_COLORS=0 LC_ALL=C
+            valid_snapshot() {
+              awk '
+                /^ActiveState=(active|activating|inactive|failed|deactivating|reloading)$/ {state++; next}
+                /^Job=([1-9][0-9]*)?$/ {job++; next}
+                /^ExecMainStartTimestampMonotonic=[0-9]*$/ {stamp++; next}
+                {bad++}
+                END {exit !(state == 1 && job == 1 && stamp == 1 && bad == 0)}
+              ' <<< "$1"
+            }
             for attempt in {1..5}; do
-              before=$(systemctl show antiek-arxiv-oai-sync.service --property=ActiveState,Job,ExecMainStartTimestampMonotonic)
+              before=$(systemctl show antiek-arxiv-oai-sync.service --all --property=ActiveState,Job,ExecMainStartTimestampMonotonic)
+              if ! valid_snapshot "$before"; then
+                echo 'Malformed arXiv service snapshot; refusing service pause' >&2
+                exit 1
+              fi
               job=$(sed -n 's/^Job=//p' <<< "$before")
               pending_type=none
               if [[ "$job" =~ ^[1-9][0-9]*$ ]]; then
                 jobs=$(systemctl list-jobs --no-legend --no-pager --plain --full)
                 pending_type=$(awk -v id="$job" '$1 == id && $2 == "antiek-arxiv-oai-sync.service" {print $3}' <<< "$jobs")
-              elif [ "$job" != 0 ]; then
+              elif [ -n "$job" ]; then
                 echo 'Invalid arXiv job identity; refusing service pause' >&2
                 exit 1
               fi
-              after=$(systemctl show antiek-arxiv-oai-sync.service --property=ActiveState,Job,ExecMainStartTimestampMonotonic)
+              after=$(systemctl show antiek-arxiv-oai-sync.service --all --property=ActiveState,Job,ExecMainStartTimestampMonotonic)
+              if ! valid_snapshot "$after"; then
+                echo 'Malformed arXiv service recapture; refusing service pause' >&2
+                exit 1
+              fi
               if [ "$before" = "$after" ] && [[ "$pending_type" =~ ^(none|start|stop)$ ]]; then
                 printf '%s\nPendingJobType=%s\n' "$after" "$pending_type"
                 break
