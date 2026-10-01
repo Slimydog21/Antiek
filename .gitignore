@@ -94,3 +94,12 @@ docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/
 .harden/
 .venv314
 .antiek-home/
+
+# Cloudflare tunnel credentials must never be committed.
+# This pattern exists because a credentials file of exactly this shape reached git history. The
+# incident and the affected branch are recorded in the operator's private notes, deliberately NOT
+# here: naming the location inside a public repository points readers at a credential that must be
+# rotated rather than merely deleted -- removing a file does not un-publish a secret.
+# Secrets belong in Ansible Vault or an env file on the host, never in git.
+cloudflared-creds.yml
+*cloudflared*creds*
