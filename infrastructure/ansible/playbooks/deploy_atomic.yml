@@ -1052,7 +1052,7 @@
             arxiv_timer_was_active: "{{ 'ActiveState=active' in arxiv_timer_pause_result.stdout_lines }}"
           when:
             - arxiv_timer_pause_result is defined
-            - arxiv_timer_pause_result.stdout is defined
+            - arxiv_timer_pause_result.stdout_lines is defined
             - arxiv_timer_pause_result.stdout is search('(?m)^UnitFileState=(enabled|disabled)$')
             - arxiv_timer_pause_result.stdout is search('(?m)^ActiveState=(active|inactive)$')
           tags: [rollback]
@@ -1064,7 +1064,7 @@
             state: "{{ 'started' if arxiv_timer_was_active else 'stopped' }}"
           when:
             - arxiv_timer_pause_result is defined
-            - arxiv_timer_pause_result.stdout is defined
+            - arxiv_timer_pause_result.stdout_lines is defined
             - arxiv_timer_pause_result.stdout is search('(?m)^UnitFileState=(enabled|disabled)$')
             - arxiv_timer_pause_result.stdout is search('(?m)^ActiveState=(active|inactive)$')
             - not (arxiv_service_pause_attempted | default(false) | bool)
