@@ -32,6 +32,8 @@ import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { ESC_OVERLAY_PROPS } from "../../workspace/escapeOverlay";
 import { WRITE_OUTLINE_PANEL_ID } from "../../workspace/writeOutlineStore";
 import { sectionScopeFor, useWriteTreeSync } from "../../workspace/writeTreeSync";
+import RetainedContent from "../../shared/RetainedContent";
+import { discardDeliverableProse } from "./sectionProse";
 
 /** The block repository's id (the Blocks toggle controls it). */
 const BLOCK_REPOSITORY_ID = "write-block-repository";
@@ -41,6 +43,8 @@ interface LoadedPiece {
   deliverableId: string;
   contextEpoch: number;
   projectId: string | null;
+  request: number;
+  authorizationVersion: number;
 }
 
 function useScopedDeliverable(deliverableId: string | undefined) {
@@ -48,11 +52,23 @@ function useScopedDeliverable(deliverableId: string | undefined) {
   const projectId = useTabTrees((s) => s.projectId);
   const dispatchAllowed = useTabTrees((s) => s.dispatchAllowed);
   const [loadedPiece, setLoadedPiece] = useState<LoadedPiece | null>(null);
-  const detail = dispatchAllowed && loadedPiece?.contextEpoch === contextEpoch &&
+  const retainedDetail = loadedPiece?.contextEpoch === contextEpoch &&
     loadedPiece.projectId === projectId && loadedPiece.deliverableId === deliverableId
     ? loadedPiece.detail : null;
   const [loading, setLoading] = useState(false);
   const detailRequest = useRef(0);
+  const [authorizationVersion, setAuthorizationVersion] = useState(0);
+  const detail = dispatchAllowed && loadedPiece?.request === detailRequest.current &&
+    loadedPiece.authorizationVersion === authorizationVersion ? retainedDetail : null;
+
+  useEffect(() => useTabTrees.subscribe((state, previous) => {
+    // Invalidate synchronously even when suspension/resume share a React
+    // batch. A fresh read must precede exposing the retained piece again.
+    if (!state.dispatchAllowed && previous.dispatchAllowed) {
+      detailRequest.current++;
+      setAuthorizationVersion((version) => version + 1);
+    }
+  }), []);
 
   const refresh = useCallback(async () => {
     const request = ++detailRequest.current;
@@ -62,7 +78,6 @@ function useScopedDeliverable(deliverableId: string | undefined) {
         state.projectId === projectId && state.dispatchAllowed;
     };
     if (!deliverableId || !dispatchAllowed) {
-      setLoadedPiece(null);
       setLoading(false);
       return;
     }
@@ -71,20 +86,23 @@ function useScopedDeliverable(deliverableId: string | undefined) {
       await useTabTrees.getState().ensureMothership("writing");
       if (!current()) return;
       const next = await getDeliverable(deliverableId);
-      if (current()) setLoadedPiece(next ? { detail: next, deliverableId, contextEpoch, projectId } : null);
-    } catch {
-      if (current()) setLoadedPiece(null);
+      if (current()) setLoadedPiece(next ? { detail: next, deliverableId, contextEpoch, projectId, request, authorizationVersion } : null);
+    } catch (error) {
+      if (current() && error instanceof ApiError && [401, 403, 404].includes(error.status)) {
+        discardDeliverableProse(deliverableId);
+        setLoadedPiece(null);
+      }
     } finally {
       setLoading((busy) => current() ? false : busy);
     }
-  }, [deliverableId, contextEpoch, projectId, dispatchAllowed]);
+  }, [deliverableId, contextEpoch, projectId, dispatchAllowed, authorizationVersion]);
 
   useEffect(() => {
     void refresh();
     return () => { detailRequest.current++; };
   }, [refresh]);
 
-  return { detail, loading, refresh };
+  return { detail, retainedDetail, loading, refresh, scopeKey: JSON.stringify([contextEpoch, projectId, deliverableId]) };
 }
 
 /**
@@ -113,7 +131,7 @@ export default function WriteHome() {
   const fromInvestigation = (searchParams.get("investigation") || "").trim() || null;
   const titleFromQuery = (searchParams.get("title") || "").trim();
 
-  const { detail, loading, refresh } = useScopedDeliverable(deliverableId);
+  const { detail: authorizedDetail, retainedDetail: detail, loading, refresh, scopeKey } = useScopedDeliverable(deliverableId);
   const [pieces, setPieces] = useState<DeliverableSummary[]>([]);
   const [onRamp, setOnRamp] = useState<"idea" | "context" | null>(null);
   // The piece-view surface: the outline loop, or the imported research canvas
@@ -144,7 +162,7 @@ export default function WriteHome() {
   // C5: seed the writing document tree — the full body as tab 1, one child
   // tab per section (1.1, 1.2, …) — and surface the outline pane in the
   // docked preset (in the inset preset the right pane IS the outline).
-  useWriteTreeSync(detail);
+  useWriteTreeSync(authorizedDetail);
   // Keyed on the preset too: a piece opened in the inset and then toggled
   // to docked gets its outline panel (B3-2: it had none). The inset never
   // renders that panel (its right pane is the outline), so the outline is
@@ -381,6 +399,7 @@ export default function WriteHome() {
   // the honest choice is solid, exactly like the /inv/:id research IDE.
   return (
     <GlassSurface variant="solid" className="container-write relative flex h-full min-h-0">
+      <RetainedContent key={scopeKey} blocked={!authorizedDetail}>
       <main className="flex min-w-0 flex-1 flex-col px-6 py-5">
         {/* The header answers to the PANE (container-write), not the
             viewport: stacked until the piece is write-md wide, so the title
@@ -484,6 +503,7 @@ export default function WriteHome() {
               onChanged={refresh}
               registerAddHandler={registerAddHandler}
               investigationId={detail.investigation_root_id}
+              interactive={Boolean(authorizedDetail)}
             />
           )
         ) : (
@@ -511,6 +531,11 @@ export default function WriteHome() {
       >
         <BlockRepository onAdd={(hit) => addHandler.current(hit)} deliverableId={deliverableId ?? null} />
       </aside>
+      </RetainedContent>
+      {!authorizedDetail && <div role="status" className="p-6 text-sm text-ink-mute dark:text-moonlight">
+        <p>{loading ? "Opening the piece…" : "That piece isn't available."}</p>
+        {!loading && <button type="button" disabled={!useTabTrees.getState().dispatchAllowed} onClick={() => void refresh()} className="mt-2 underline">Try again</button>}
+      </div>}
     </GlassSurface>
   );
 }

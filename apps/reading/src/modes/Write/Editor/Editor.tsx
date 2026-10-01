@@ -1,7 +1,7 @@
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 
 import { postTypedEvent } from "../../../lib/api";
 import type { TypedPayload } from "../../../generated/types";
@@ -12,6 +12,8 @@ import type { EditorBlock } from "./locator";
 import { newBlockId } from "./locator";
 import { InlineComplete } from "./InlineComplete";
 import { BlockId, docToBlocks } from "./tiptapAdapter";
+import { getSectionProseOwner } from "../sectionProseOwner";
+import { useTabTrees } from "../../../workspace/tabTreeStore";
 
 /**
  * The Write structured block editor (specs/write/ SPR-04).
@@ -55,6 +57,7 @@ export interface WriteEditorProps {
    *  change as a real transaction — captured, undoable and autosaved the way
    *  a keystroke is — instead of beside the editor where it would be lost. */
   editorRef?: MutableRefObject<Editor | null>;
+  editingAllowed?: boolean;
 }
 
 export function WriteEditor({
@@ -67,6 +70,7 @@ export function WriteEditor({
   className,
   onContentChange,
   editorRef,
+  editingAllowed = true,
 }: WriteEditorProps) {
   // Snapshot of the section's blocks after the last captured update.
   const prevBlocks = useRef<EditorBlock[]>([]);
@@ -74,6 +78,14 @@ export function WriteEditor({
   // flags reverted edits (coordination point — reverts are not signal).
   const nextUpdateIsRevert = useRef<boolean>(false);
   const session = useRef<string>(sessionId ?? newBlockId());
+  const [scope] = useState(() => ({ owner: getSectionProseOwner(), contextEpoch: useTabTrees.getState().contextEpoch, projectId: useTabTrees.getState().projectId }));
+  const canEdit = useCallback(() => {
+    const currentOwner = getSectionProseOwner();
+    const tabs = useTabTrees.getState();
+    return editingAllowed && scope.owner.owner !== null && currentOwner.owner === scope.owner.owner &&
+      currentOwner.epoch === scope.owner.epoch && !currentOwner.suspended && tabs.dispatchAllowed &&
+      tabs.contextEpoch === scope.contextEpoch && tabs.projectId === scope.projectId;
+  }, [editingAllowed, scope]);
 
   const emitEdits = useCallback(
     (next: EditorBlock[], isUndo: boolean) => {
@@ -116,12 +128,19 @@ export function WriteEditor({
       prevBlocks.current = docToBlocks(ed.getJSON());
     },
     onUpdate: ({ editor: ed }) => {
+      if (!canEdit() || !ed.isEditable) {
+        prevBlocks.current = docToBlocks(ed.getJSON());
+        nextUpdateIsRevert.current = false;
+        return;
+      }
       const isUndo = nextUpdateIsRevert.current;
       nextUpdateIsRevert.current = false;
       emitEdits(docToBlocks(ed.getJSON()), isUndo);
       onContentChange?.(ed.getText());
     },
   });
+
+  useEffect(() => { editor?.setEditable(canEdit(), false); }, [editor, canEdit]);
 
   useEffect(() => {
     if (!editorRef) return;
@@ -137,13 +156,13 @@ export function WriteEditor({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "z") {
+      if (mod && e.key.toLowerCase() === "z" && canEdit() && editor?.view.dom.contains(document.activeElement)) {
         nextUpdateIsRevert.current = true;
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
+  }, [editor, canEdit]);
 
   return <EditorContent editor={editor} className={className} />;
 }

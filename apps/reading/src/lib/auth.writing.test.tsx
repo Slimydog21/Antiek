@@ -169,7 +169,8 @@ describe("AuthProvider and the writing mutation lifetime", () => {
     edit("A queued");
     let signingOut = Promise.resolve();
     act(() => { signingOut = auth().signOut(); });
-    expect(screen.getByRole("textbox", { name: "Draft" }).hasAttribute("disabled")).toBe(true);
+    // Explicit logout removes protected content before its HTTP reply.
+    expect(screen.queryByRole("textbox", { name: "Draft" })).toBeNull();
     await act(async () => { first.resolve(response(200)); });
     await tick(1000);
     expect(sentProse).toEqual(["A sent"]);

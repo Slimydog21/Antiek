@@ -2,6 +2,7 @@ import type { JSONContent } from "@tiptap/core";
 import { ApiError, updateSectionProse } from "../../lib/api";
 import { generateSection, type GenerationResult } from "./writeApi";
 import { getSectionProseOwner, subscribeSectionProseOwner } from "./sectionProseOwner";
+import { useTabTrees } from "../../workspace/tabTreeStore";
 export { setSectionProseOwner, suspendSectionProseDispatch } from "./sectionProseOwner";
 
 type SaveState =
@@ -41,6 +42,11 @@ subscribeSectionProseOwner(() => {
     }
   }
 });
+useTabTrees.subscribe((next, previous) => {
+  if (next.contextEpoch === previous.contextEpoch && next.projectId === previous.projectId) return;
+  for (const section of sections.values()) section.dispose();
+  sections.clear();
+});
 
 function trimCleanCache(): void {
   const idle = [...sections].filter(([, section]) => section.evictable);
@@ -63,10 +69,18 @@ export function sectionProse(
     sections.set(key, existing);
     return existing;
   }
-  const session = new SectionProse(key, sectionId, prose, provenance);
+  const session = new SectionProse(key, deliverableId, sectionId, prose, provenance);
   if (getSectionProseOwner().owner === null) session.dispose();
   else sections.set(key, session);
   return session;
+}
+
+export function discardDeliverableProse(deliverableId: string): void {
+  for (const [key, section] of sections) {
+    if (section.deliverableId !== deliverableId) continue;
+    section.dispose();
+    sections.delete(key);
+  }
 }
 
 /** One owner/section mutation lifetime, shared by every mounted view of that section. */
@@ -76,9 +90,14 @@ class SectionProse {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private saving: Promise<boolean> | null = null;
   private locallyChanged = false;
+  // null keeps the existing owner-only policy for consumers without a
+  // scoped detail view. Outline enrolls its sessions in detail validation.
+  private scopedAuthorization: boolean | null = null;
   private readonly epoch = ownerEpoch;
+  private readonly contextEpoch = useTabTrees.getState().contextEpoch;
+  private readonly projectId = useTabTrees.getState().projectId;
 
-  constructor(private readonly key: string, private readonly sectionId: string, prose: string | null, provenance: Record<string, string[]>) {
+  constructor(private readonly key: string, readonly deliverableId: string, private readonly sectionId: string, prose: string | null, provenance: Record<string, string[]>) {
     this.snapshot = {
       available: true, dispatchAllowed: getSectionProseOwner().owner !== null && !getSectionProseOwner().suspended, draft: prose, document: null, saved: prose, provenance, revision: 0,
       save: { status: "idle" }, generation: { status: "idle" },
@@ -88,19 +107,29 @@ class SectionProse {
   getSnapshot = (): ProseSnapshot => this.snapshot;
 
   private current(): boolean {
-    return this.snapshot.available && this.epoch === getSectionProseOwner().epoch && getSectionProseOwner().owner !== null;
+    const tabs = useTabTrees.getState();
+    return this.snapshot.available && this.epoch === getSectionProseOwner().epoch && getSectionProseOwner().owner !== null &&
+      tabs.contextEpoch === this.contextEpoch && tabs.projectId === this.projectId;
   }
 
-  private canDispatch(): boolean { return this.current() && !getSectionProseOwner().suspended; }
+  private canDispatch(): boolean { return this.current() && !getSectionProseOwner().suspended && this.scopedAuthorization !== false; }
+
+  setScopedAuthorization(authorized: boolean): void {
+    if (this.scopedAuthorization === authorized) return;
+    this.scopedAuthorization = authorized;
+    if (authorized) this.resume();
+    else this.pause();
+  }
 
   pause(): void {
+    if (this.scopedAuthorization !== null) this.scopedAuthorization = false;
     this.clearTimer();
     this.publish({ dispatchAllowed: false, ...(this.snapshot.draft !== this.snapshot.saved ? { save: { status: "paused" } } : {}) });
   }
 
   resume(): void {
     if (!this.current()) return;
-    this.publish({ dispatchAllowed: true });
+    this.publish({ dispatchAllowed: this.canDispatch() });
     void (this.saving ?? Promise.resolve()).then(() => {
       if (this.canDispatch() && this.snapshot.draft !== this.snapshot.saved) void this.flush();
     });
