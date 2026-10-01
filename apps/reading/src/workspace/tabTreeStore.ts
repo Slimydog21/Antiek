@@ -49,10 +49,10 @@ import {
   rebase,
   restoreClosed,
   setActive,
+  setPaneActive,
   spawnChild,
   toSnapshot,
   undo,
-  visitChild,
   type CloseMode,
   type Mothership,
   type SpawnInput,
@@ -65,6 +65,8 @@ import {
 } from "./tabTree";
 import { getTabOwner, subscribeTabOwner } from "./tabTreeOwner";
 import { createHttpTabTreeAdapter } from "./tabTreeHttpAdapter";
+import { projectFromSearch } from "./projectSelection";
+import { installCompanionTreeBinding, resetCompanionMode } from "./companionTreeBinding";
 
 /** The key the in-memory adapter files session trees under. It never
  *  reaches a server: a server-bound store uses the active project's id. */
@@ -122,10 +124,14 @@ export const PROJECT_RETRY_DELAYS_MS: readonly number[] = [1_000, 4_000, 15_000]
  *  (an ApiError 404 means GET /projects is not deployed). */
 export type ActiveProjectSource = (signal?: AbortSignal) => Promise<string | null>;
 
-/** The default source: the first non-archived project GET /projects lists. */
-export async function firstOpenProject(signal?: AbortSignal): Promise<string | null> {
+/** An explicit URL selection, validated against this request owner's registry. */
+export async function selectedOpenProject(signal?: AbortSignal): Promise<string | null> {
+  const selected = projectFromSearch(typeof window === "undefined" ? "" : window.location.search);
+  if (!selected) return null;
   const projects = await listProjects({ signal });
-  return projects.find((p) => p.archived_at === null)?.project_id ?? null;
+  const project = projects.find((p) => p.project_id === selected && p.archived_at === null);
+  if (!project) throw new ApiError("Selected project is unavailable", 404, "");
+  return project.project_id;
 }
 
 /** The HTTP adapter the store binds with: titles come from the tabTitles
@@ -224,8 +230,8 @@ interface TabTreeState {
   persistenceIssue: PersistenceIssue | null;
 
   setTabTreeAdapter: (adapter: TabTreeAdapter) => void;
-  /** Bind the trees to the active project (default source: the first
-   *  non-archived project). A network error is retried (PROJECT_RETRY_DELAYS_MS)
+  /** Bind the trees to the explicitly selected, owner-validated URL project.
+   *  A network error is retried (PROJECT_RETRY_DELAYS_MS)
    *  before giving up. A 404 from GET /projects, a 200 that is not JSON (the
    *  route is absent), no project, or any other failure keeps the in-memory
    *  adapter ("session"). A load waits for a binding in flight, retries
@@ -245,6 +251,8 @@ interface TabTreeState {
     source?: ActivationSource,
   ) => SpawnTabResult;
   activateTab: (mothership: Mothership, tabId: string | null, source?: ActivationSource) => void;
+  activateRightTab: (mothership: Mothership, tabId: string | null) => void;
+  restoreRightTab: (mothership: Mothership, tabId: string) => boolean;
   /** The strip took the intent `seq` (a newer one stays pending). */
   consumeNavIntent: (seq: number) => void;
   goToParent: (mothership: Mothership) => void;
@@ -659,7 +667,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
   function closeMessage(tree: TabTree, tabId: string, mode: CloseMode, closedCount: number): string {
     const tab = tree.nodes[tabId];
     const parent = tab.parent_tab_id ? tree.nodes[tab.parent_tab_id] : null;
-    const label = labelForTab(tab, parent, useTabTitles.getState().entries[titleKey(tab.kind, tab.ref)]).text;
+    const label = tab.side === "right" && tab.title.trim() ? tab.title : labelForTab(tab, parent, useTabTitles.getState().entries[titleKey(tab.kind, tab.ref)]).text;
     const name = `${tab.hier_number} · ${label}`;
     if (mode === "prune" && closedCount > 1) {
       const under = closedCount - 1;
@@ -719,7 +727,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       });
     },
 
-    bindActiveProject: (source = firstOpenProject, makeAdapter = serverAdapter) => {
+    bindActiveProject: (source = selectedOpenProject, makeAdapter = serverAdapter) => {
       if (binding) return binding;
       const epoch = get().contextEpoch;
       const owner = getTabOwner();
@@ -838,11 +846,37 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     activateTab: (mothership, tabId, source = "user") => {
       const tree = get().trees[mothership];
       if (!tree) return;
+      if (tabId && tree.nodes[tabId]?.side === "right") {
+        get().activateRightTab(mothership, tabId);
+        return;
+      }
       const result = setActive(tree, tabId);
       // A user activation asks to be shown even when the tab was already
       // active: the route may have moved on (a click on the selected tab
       // from /library goes back to it).
       if (result.ok) apply(mothership, result.tree, result.op, source === "user");
+    },
+
+    activateRightTab: (mothership, tabId) => {
+      const tree = get().trees[mothership];
+      if (!tree || tree.active_right === tabId) return;
+      const result = setPaneActive(tree, "right", tabId);
+      if (result.ok) apply(mothership, result.tree, result.op);
+    },
+
+    restoreRightTab: (mothership, tabId) => {
+      const held = get().heldClose;
+      if (held?.mothership === mothership && held.token.tab_id === tabId) {
+        get().undoClose(held.token.close_id);
+        get().activateRightTab(mothership, tabId);
+        return true;
+      }
+      const tree = get().trees[mothership];
+      if (!tree || tree.history[tabId]?.node.side !== "right") return false;
+      const result = restoreClosed(tree, tabId, undefined, true);
+      if (!result.ok) return false;
+      apply(mothership, result.tree, result.op);
+      return true;
     },
 
     consumeNavIntent: (seq) => {
@@ -853,7 +887,8 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       const tree = get().trees[mothership];
       const active = tree?.active_tab_id;
       if (!tree || !active) return;
-      const parent = tree.nodes[active]?.parent_tab_id ?? null;
+      let parent = tree.nodes[active]?.parent_tab_id ?? null;
+      while (parent && tree.nodes[parent]?.side !== "left") parent = tree.nodes[parent]?.parent_tab_id ?? null;
       if (parent === null) return; // a root has no parent — honest no-op
       get().activateTab(mothership, parent);
     },
@@ -862,8 +897,11 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       const tree = get().trees[mothership];
       const active = tree?.active_tab_id;
       if (!tree || !active) return;
-      const result = visitChild(tree, active);
-      if (result.ok) apply(mothership, result.tree, result.op, true);
+      const node = tree.nodes[active];
+      if (!node) return;
+      const left = node.child_order.filter((id) => tree.nodes[id]?.side === "left");
+      const child = left.find((id) => id === node.last_visited_child_id) ?? left[0];
+      if (child) get().activateTab(mothership, child);
       // no_children is an honest no-op, never an error surface
     },
 
@@ -873,10 +911,10 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
       if (!tree || !active) return;
       const node = tree.nodes[active];
       if (!node) return;
-      const siblings =
+      const siblings = (
         node.parent_tab_id === null
           ? tree.root_order
-          : (tree.nodes[node.parent_tab_id]?.child_order ?? []);
+          : (tree.nodes[node.parent_tab_id]?.child_order ?? [])).filter((id) => tree.nodes[id]?.side === "left");
       if (siblings.length < 2) return; // nowhere to cycle — honest no-op
       const cur = siblings.indexOf(active);
       const next = (cur + direction + siblings.length) % siblings.length;
@@ -974,6 +1012,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     setSubtreeFocus: (tabId) => set({ subtreeFocusId: tabId }),
 
     resetTabTrees: () => {
+      resetCompanionMode();
       if (holdTimer !== null) clearTimeout(holdTimer);
       holdTimer = null;
       cancelRequests();
@@ -1011,6 +1050,7 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
 // The keyboard dispatcher (entry chunk) reaches the store through this
 // handle; the store itself loads with the lazy strip.
 tabTreeHandle.store = useTabTrees;
+installCompanionTreeBinding(useTabTrees);
 
 let ownerEpoch = getTabOwner().epoch;
 subscribeTabOwner(() => {

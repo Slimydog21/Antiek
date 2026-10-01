@@ -1,4 +1,5 @@
 import type { Mothership } from "./tabTree";
+import { projectFromSearch, withProject } from "./projectSelection";
 
 /**
  * Which tab tree the current route files under. Kept apart from
@@ -40,6 +41,7 @@ export const MODE_HOME: Record<Mothership, string> = {
  * returned unchanged.
  */
 export function inMode(to: string, fromSearch: string, fromPathname?: string): string {
+  to = withProject(to, projectFromSearch(fromSearch));
   const pinned = /[?&]m=(research|writing|reading)(?:&|$)/.exec(fromSearch)?.[1] as Mothership | undefined;
   const mode = pinned ?? (fromPathname === undefined ? undefined : mothershipForPath(fromPathname));
   if (!mode) return to;

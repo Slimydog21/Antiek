@@ -4,19 +4,19 @@
  * surface as DATA: islands (unit 2) and diligence (unit 7) slot in later as
  * new entries without restructuring the pane.
  */
-import { useState } from "react";
-
+import { useEffect, useState, useSyncExternalStore } from "react";
 import AIActionFailure from "../shared/AIActionFailure";
 import LemonButton from "../components/lemon/LemonButton";
-import { ApiError } from "../lib/api";
-import type { InvestigationSummary } from "../lib/api";
+import { ApiError, getInvestigationStatus } from "../lib/api";
+import type { InvestigationSummary, InvestigationStatus } from "../lib/api";
 import {
   researchStateLabel,
   researchStateStyle,
 } from "../shared/researchState";
 import { thoughtPartnerOnce } from "../components/ai/thoughtPartnerOnce";
-import type { ThoughtPartnerOnceReply } from "../components/ai/thoughtPartnerOnce";
-import { sourceDocumentOf, type AgentTabDescriptor } from "./companionStore";
+import { sourceDocumentOf, useCompanion, type AgentTabDescriptor } from "./companionStore";
+import { getTabOwner, subscribeTabOwner } from "./tabTreeOwner";
+import { useTabTrees } from "./tabTreeStore";
 import { openDocumentInLeftPane } from "./crossPane";
 import { ModeLink } from "./ModeLink";
 
@@ -25,6 +25,7 @@ export interface AgentSurfaceProps {
   /** The pane-resolved summary for research-thread tabs (undefined while
    *  the list loads or when the thread is outside the fetched page). */
   summary?: InvestigationSummary;
+  summaryMissing?: boolean;
 }
 
 /** The ambient scope the companion's dialogue exchanges are bucketed under —
@@ -33,9 +34,9 @@ export const COMPANION_DIALOGUE_SCOPE = "__companion__";
 
 // ─── research thread ─────────────────────────────────────────────────────
 
-export function ResearchThreadSurface({ tab, summary }: AgentSurfaceProps) {
+export function ResearchThreadSurface({ tab, summary, summaryMissing }: AgentSurfaceProps) {
   if (!summary) {
-    return (
+    return summaryMissing && tab.investigationId ? <SavedThreadStatus tab={tab} threadId={tab.investigationId} /> : (
       <div className="p-3 text-sm text-ink-soft dark:text-moonlight" data-agent-surface="research-thread">
         Loading this thread’s status…
       </div>
@@ -102,34 +103,62 @@ export function ResearchThreadSurface({ tab, summary }: AgentSurfaceProps) {
   );
 }
 
+/** A restored thread may be outside the list's newest 50. Its real status
+ * endpoint supplies status only; never manufacture question, cost or source. */
+function SavedThreadStatus({ tab, threadId }: { tab: AgentTabDescriptor; threadId: string }) {
+  const owner = useSyncExternalStore(subscribeTabOwner, getTabOwner);
+  const epoch = useTabTrees((state) => state.contextEpoch);
+  const key = `${owner.epoch}:${epoch}:${threadId}`;
+  const [attempt, setAttempt] = useState(0);
+  const [result, setResult] = useState<{ key: string; status: InvestigationStatus["status"] | null } | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    if (owner.suspended) return () => controller.abort();
+    void getInvestigationStatus(threadId, controller.signal).then((reply) => {
+      if (!controller.signal.aborted && getTabOwner().epoch === owner.epoch && useTabTrees.getState().contextEpoch === epoch) {
+        const status = ["in_progress", "completed", "failed", "not_found"].includes(reply.status) ? reply.status : null;
+        setResult({ key, status });
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted && getTabOwner().epoch === owner.epoch && useTabTrees.getState().contextEpoch === epoch) setResult({ key, status: null });
+    });
+    return () => controller.abort();
+  }, [threadId, owner.epoch, owner.suspended, epoch, key, attempt]);
+  const loaded = result?.key === key;
+  const status = loaded ? result.status : null;
+  return <div className="p-3 flex flex-col gap-2 text-sm text-2" data-agent-surface="research-thread">
+    <p>{!loaded ? "Loading this thread’s status…" : status && status !== "not_found" ? researchStateLabel(researchStateStyle(status).state) : "This thread's status is unavailable for this account."}</p>
+    <p className="font-serif">{tab.title || "Research thread"}</p>
+    <ModeLink to={`/inv/${encodeURIComponent(threadId)}`} className="text-xs text-sun-deep hover:underline">Open research →</ModeLink>
+    {loaded && !status && <button type="button" onClick={() => { setResult(null); setAttempt((value) => value + 1); }} className="text-xs underline">Retry thread status</button>}
+  </div>;
+}
+
 // ─── dialogue (one-shot thought partner — never a chat) ──────────────────
 
 export function DialogueSurface({ tab }: AgentSurfaceProps) {
-  const [prompt, setPrompt] = useState("");
-  const [pending, setPending] = useState(false);
-  const [exchange, setExchange] = useState<ThoughtPartnerOnceReply | null>(null);
-  const [failure, setFailure] = useState<{ reason: string | null } | null>(null);
+  const { prompt, pending, exchange, failure } = useCompanion((state) => state.dialogue);
+  const setDraft = useCompanion((state) => state.setDialogue);
 
   async function ask() {
     const p = prompt.trim();
     if (p.length < 3) return;
-    setPending(true);
-    setExchange(null);
-    setFailure(null);
+    const ownerEpoch = getTabOwner().epoch;
+    setDraft({ pending: true, exchange: null, failure: null });
     try {
       const reply = await thoughtPartnerOnce({
         investigationId: COMPANION_DIALOGUE_SCOPE,
         prompt: p,
       });
-      setExchange(reply);
+      if (getTabOwner().epoch === ownerEpoch && !getTabOwner().suspended) setDraft({ exchange: reply });
     } catch (e) {
       // No-key 503 → null reason → AIActionFailure's "provider isn't
       // configured" sentence (the VoiceChaseButton.tsx:56 pattern). Honest,
       // never a fabricated reply.
       const status = e instanceof ApiError ? e.status : 0;
-      setFailure({ reason: status === 503 ? null : e instanceof Error ? e.message : String(e) });
+      if (getTabOwner().epoch === ownerEpoch && !getTabOwner().suspended) setDraft({ failure: { reason: status === 503 ? null : e instanceof Error ? e.message : String(e) } });
     } finally {
-      setPending(false);
+      if (getTabOwner().epoch === ownerEpoch) setDraft({ pending: false });
     }
   }
 
@@ -139,7 +168,7 @@ export function DialogueSurface({ tab }: AgentSurfaceProps) {
         <AIActionFailure
           title="Couldn’t get a reply"
           reason={failure.reason}
-          onRetry={() => setFailure(null)}
+          onRetry={() => setDraft({ failure: null })}
           retryLabel="Try again"
         />
       ) : null}
@@ -165,7 +194,7 @@ export function DialogueSurface({ tab }: AgentSurfaceProps) {
       ) : null}
       <textarea
         value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
+        onChange={(e) => setDraft({ prompt: e.target.value })}
         placeholder="Ask the thought partner (one-shot)…"
         rows={3}
         aria-label="Ask the thought partner"
@@ -180,7 +209,7 @@ export function DialogueSurface({ tab }: AgentSurfaceProps) {
         >
           {pending ? "Asking…" : exchange ? "Ask again" : "Ask"}
         </LemonButton>
-        <span className="text-xxs text-moonlight">One-shot reply (not a chat).</span>
+        <span className="text-xxs text-moonlight">One-shot reply · session only.</span>
       </div>
     </div>
   );

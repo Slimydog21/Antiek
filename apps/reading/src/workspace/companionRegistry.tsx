@@ -52,4 +52,19 @@ export const AGENT_TAB_KINDS: Record<AgentTabKind, AgentTabKindMeta> = {
     // A dialogue is one-shot: no run state to glyph — a steady brand dot.
     glyph: () => ({ className: "bg-sun", label: "dialogue" }),
   },
+  "durable-thread": {
+    label: "thread",
+    Surface: ({ tab }) => <div className="p-3 text-sm text-2">This {tab.threadKind} thread is saved with this project. Its interactive surface is not available yet.</div>,
+    glyph: () => ({ className: "bg-[var(--state-muted)]", label: "saved thread" }),
+  },
+  "project-tool": {
+    label: "project tool",
+    Surface: () => <div className="p-3 text-sm text-2">This saved project tool's interactive surface is not available yet.</div>,
+    glyph: () => ({ className: "bg-[var(--state-muted)]", label: "saved project tool" }),
+  },
+  "writing-block": {
+    label: "writing block",
+    Surface: () => <div className="p-3 text-sm text-2">This saved writing block's interactive surface is not available here yet.</div>,
+    glyph: () => ({ className: "bg-[var(--state-muted)]", label: "saved writing block" }),
+  },
 };

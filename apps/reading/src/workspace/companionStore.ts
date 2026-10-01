@@ -1,11 +1,12 @@
 /**
  * companionStore.ts — the companion right pane's agent tabs (cockpit C4).
  *
- * One agent = one tab. Tab semantics (ratified):
- *   - stable per-agent ids: re-activating an existing agent FOCUSES its tab,
- *     never duplicates (a research thread is `agent:thread:<investigationId>`;
- *     the dialogue agent is the single `agent:dialogue` — it is one-shot, so
- *     one instance is the honest model);
+ * Research and imported durable nodes are projections of the lazy tab tree.
+ * Commands delegate to that tree's allocation, CAS, close and restore path.
+ * Re-opening a research reference focuses its opaque ID in this mode/project.
+ * The single `agent:dialogue` is explicitly session-only. It has no durable
+ * thread reference and never enters a server snapshot.
+ * Tab semantics (ratified):
  *   - close removes the TAB only — the agent/thread it pointed at is
  *     untouched (closing is a view act, never a lifecycle act);
  *   - tab order is activation order (a monotonic seq, never renumbered);
@@ -21,15 +22,14 @@ import { create } from "zustand";
 
 import { toast } from "../components/lemon/LemonToast";
 import { useWorkspace } from "./WorkspaceStore";
+import { getTabOwner, subscribeTabOwner } from "./tabTreeOwner";
+import type { ThoughtPartnerOnceReply } from "../components/ai/thoughtPartnerOnce";
 
-export type AgentTabKind = "research-thread" | "dialogue";
+export type AgentTabKind = "research-thread" | "dialogue" | "durable-thread" | "project-tool" | "writing-block";
 
-export interface AgentTabDescriptor {
+interface AgentTabBase {
   id: string;
-  kind: AgentTabKind;
   title: string;
-  /** research-thread tabs: the thread they watch. */
-  investigationId?: string;
   /** The document the thread was born from, when the opening surface knew
    *  it — the cross-pane seam's payload (crossPane.ts). Absent when unknown:
    *  no "open source document" affordance, never a guessed one. */
@@ -38,12 +38,18 @@ export interface AgentTabDescriptor {
   seq: number;
 }
 
-export interface OpenAgentTabInput {
-  kind: AgentTabKind;
+export type AgentTabDescriptor = AgentTabBase & (
+  | { kind: "research-thread"; investigationId: string; persistence: "tree"; publicNumber: number | null; threadKind: "research" }
+  | { kind: "dialogue"; investigationId?: never; persistence: "session"; publicNumber?: never; threadKind?: never }
+  | { kind: "durable-thread"; investigationId: string; persistence: "tree"; publicNumber: number | null; threadKind: "dialogue" | "reformat" | "diligence" | "island" }
+  | { kind: "project-tool"; investigationId?: never; projectId: string; persistence: "tree"; publicNumber: number | null; threadKind?: never; toolKind: "findings" | "flags" }
+  | { kind: "writing-block"; investigationId?: never; blockId: string; persistence: "tree"; publicNumber: number | null; threadKind?: never }
+);
+
+export type OpenAgentTabInput = {
   title?: string;
-  investigationId?: string;
   documentId?: string;
-}
+} & ({ kind: "research-thread"; investigationId: string } | { kind: "dialogue"; investigationId?: never });
 
 import { COMPANION_PANEL_ID } from "./companionVisibility";
 
@@ -86,12 +92,26 @@ export function sourceDocumentOf(
   return parent.slice(READING_THREAD_PREFIX.length).trim() || null;
 }
 
-function agentTabId(input: OpenAgentTabInput): string {
-  if (input.kind === "research-thread") {
-    return `agent:thread:${input.investigationId ?? ""}`;
-  }
-  return "agent:dialogue";
+/** Installed by the lazy tree store. Durable tabs are a projection, never
+ * a second persistence authority in this entry-chunk store. */
+export interface CompanionTreePort {
+  open: (input: OpenAgentTabInput) => string;
+  activate: (id: string) => void;
+  close: (id: string) => void;
+  restore: (id: string) => boolean;
+  reopen: () => boolean;
+  owns: (id: string) => boolean;
 }
+let treePort: CompanionTreePort | null = null;
+export function setCompanionTreePort(port: CompanionTreePort): void { treePort = port; }
+
+export interface DialogueDraft {
+  prompt: string;
+  pending: boolean;
+  exchange: ThoughtPartnerOnceReply | null;
+  failure: { reason: string | null } | null;
+}
+const emptyDialogue = (): DialogueDraft => ({ prompt: "", pending: false, exchange: null, failure: null });
 
 
 /** A closed agent tab, kept so it can come back where it was. */
@@ -111,6 +131,8 @@ export interface CompanionState {
   retired: RetiredAgentTab[];
   activeTabId: string | null;
   seq: number;
+  dialogue: DialogueDraft;
+  setDialogue: (patch: Partial<DialogueDraft>) => void;
   /** Open (or focus) an agent's tab. Returns the stable id. In the docked
    *  preset, spawning an agent surfaces the companion panel — the pane must
    *  exist for the tab to be seen. */
@@ -141,24 +163,34 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
   retired: [],
   activeTabId: null,
   seq: 0,
+  dialogue: emptyDialogue(),
+  setDialogue: (patch) => set((s) => ({ dialogue: { ...s.dialogue, ...patch } })),
 
   openAgentTab: (input) => {
-    const id = agentTabId(input);
+    if (input.kind === "research-thread") {
+      if (!treePort) return "";
+      const id = treePort.open(input);
+      if (id) {
+        const ws = useWorkspace.getState();
+        if (ws.layoutPreset === "docked" && !ws.panels[COMPANION_PANEL_ID]) ws.open("Companion", {}, { mode: "docked-right", id: COMPANION_PANEL_ID, title: "Companion" });
+      }
+      return id;
+    }
+    const id = "agent:dialogue";
     const existing = get().tabs.find((t) => t.id === id);
     if (existing) {
       set({ activeTabId: id });
     } else {
       const seq = get().seq + 1;
-      const tab: AgentTabDescriptor = {
+      const base: AgentTabBase = {
         id,
-        kind: input.kind,
         title:
           input.title?.trim() ||
-          (input.kind === "research-thread" ? "research" : "dialogue"),
-        investigationId: input.investigationId,
+          "dialogue",
         documentId: input.documentId,
         seq,
       };
+      const tab: AgentTabDescriptor = { ...base, kind: "dialogue", persistence: "session" };
       set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id, seq }));
     }
     // The docked-preset mount: the companion is a right-dock panel; spawning
@@ -170,7 +202,8 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
     return id;
   },
 
-  closeAgentTab: (id) =>
+  closeAgentTab: (id) => {
+    if (treePort?.owns(id)) { treePort.close(id); return; }
     set((s) => {
       const idx = s.tabs.findIndex((t) => t.id === id);
       if (idx === -1) return s;
@@ -182,40 +215,48 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
         activeTabId = tabs[idx - 1]?.id ?? tabs[idx]?.id ?? null;
       }
       return { tabs, activeTabId };
-    }),
+    });
+  },
 
-  restoreAgentTab: (tab, index, activate) =>
+  restoreAgentTab: (tab, index, activate) => {
+    if (tab.persistence === "tree") { treePort?.restore(tab.id); return; }
     set((s) => {
       if (s.tabs.some((t) => t.id === tab.id)) return s;
       const tabs = [...s.tabs];
       tabs.splice(Math.max(0, Math.min(index, tabs.length)), 0, tab);
       return { tabs, activeTabId: activate ? tab.id : s.activeTabId };
-    }),
+    });
+  },
 
-  activateAgentTab: (id) =>
-    set((s) => (s.tabs.some((t) => t.id === id) ? { activeTabId: id } : s)),
+  activateAgentTab: (id) => {
+    if (!get().tabs.some((t) => t.id === id)) return;
+    set({ activeTabId: id });
+    if (treePort?.owns(id)) treePort.activate(id);
+  },
 
-  cycleAgentTab: (direction) =>
-    set((s) => {
-      if (s.tabs.length === 0) return s;
+  cycleAgentTab: (direction) => {
+      const s = get();
+      if (s.tabs.length === 0) return;
       const cur = s.activeTabId
         ? s.tabs.findIndex((t) => t.id === s.activeTabId)
         : -1;
       const next = (cur + direction + s.tabs.length) % s.tabs.length;
-      return { activeTabId: s.tabs[next].id };
-    }),
+      s.activateAgentTab(s.tabs[next].id);
+  },
 
   closeAgentTabWithUndo: (id, title) => {
     const s = get();
     const index = s.tabs.findIndex((t) => t.id === id);
     if (index === -1) return;
     const tab = s.tabs[index];
+    if (treePort?.owns(id)) { treePort.close(id); return; }
     const wasActive = s.activeTabId === id;
+    const ownerEpoch = getTabOwner().epoch;
     s.closeAgentTab(id);
     set((st) => ({ retired: [...st.retired, { tab, index, wasActive }].slice(-RETIRED_AGENT_TABS_KEPT) }));
-    toast.undo(`Closed ${title ?? tab.title}. The agent itself is untouched.`, () =>
-      get().restoreAgentTab(tab, index, wasActive),
-    );
+    toast.undo(`Closed ${title ?? tab.title}. The agent itself is untouched.`, () => {
+      if (getTabOwner().epoch === ownerEpoch) get().restoreAgentTab(tab, index, wasActive);
+    });
   },
 
   closeActiveAgentTab: () => {
@@ -233,7 +274,7 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
     while (at >= 0 && open.has(retired[at].tab.id)) at--;
     if (at < 0) {
       if (retired.length > 0) set({ retired: [] });
-      return false;
+      return treePort?.reopen() ?? false;
     }
     const { tab, index } = retired[at];
     set({ retired: retired.slice(0, at) });
@@ -242,5 +283,12 @@ export const useCompanion = create<CompanionState>()((set, get) => ({
     return true;
   },
 
-  reset: () => set({ tabs: [], retired: [], activeTabId: null, seq: 0 }),
+  reset: () => set({ tabs: [], retired: [], activeTabId: null, seq: 0, dialogue: emptyDialogue() }),
 }));
+
+let ownerEpoch = getTabOwner().epoch;
+subscribeTabOwner(() => {
+  if (ownerEpoch === getTabOwner().epoch) return;
+  ownerEpoch = getTabOwner().epoch;
+  useCompanion.getState().reset();
+});

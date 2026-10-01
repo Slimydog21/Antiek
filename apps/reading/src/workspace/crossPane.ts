@@ -18,6 +18,7 @@ import { adoptRoute } from "./routeSync";
 import { newTabId } from "./tabId";
 import { setTabTitle } from "./tabTitles";
 import { locationStamp, useTabTrees } from "./tabTreeStore";
+import { getTabOwner } from "./tabTreeOwner";
 
 export interface OpenDocumentOrigin {
   /** Where the request was born (e.g. "companion"). Metadata only. */
@@ -49,6 +50,17 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
   const requestedAt = locationStamp();
   const store = useTabTrees.getState();
   const contextEpoch = store.contextEpoch;
+  const ownerEpoch = getTabOwner().epoch;
+  const projectId = store.projectId;
+  const companionOrigin = req.origin.from === "companion" && req.origin.agentTabId;
+  const authorizedAgent = () => {
+    if (!companionOrigin) return true;
+    const state = useTabTrees.getState();
+    const agent = state.trees[mothership]?.nodes[companionOrigin];
+    return state.contextEpoch === contextEpoch && state.projectId === projectId && getTabOwner().epoch === ownerEpoch && !getTabOwner().suspended &&
+      agent?.side === "right" && agent.ref === req.origin.investigationId && agent.kind === req.origin.agentKind;
+  };
+  if (!authorizedAgent()) return;
   // When the strip has loaded, resolve the route now: the active tab can
   // change even before ensureMothership's already-resolved promise settles.
   adoptRoute(mothership, pathname);
@@ -59,6 +71,9 @@ function spawnDocumentTab(req: OpenDocumentRequest): void {
   });
   void store.ensureMothership(mothership).then(() => {
     const s = useTabTrees.getState();
+    // A source agent's authority ends with its owner/project binding or
+    // tab. Never offer a retry that copies that provenance into another row.
+    if (!authorizedAgent()) return;
     if (s.contextEpoch !== contextEpoch) {
       offerOpen();
       return;

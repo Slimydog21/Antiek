@@ -30,6 +30,13 @@ import { sourceDocumentOf, useCompanion } from "./companionStore";
 import type { AgentTabDescriptor, OpenAgentTabInput } from "./companionStore";
 import { EdgeFades, scrollStripOnWheel, useStripOverflow } from "./stripOverflow";
 import { topModal } from "./escapeOverlay";
+import { useInRouterContext, useLocation } from "react-router-dom";
+import { useSyncExternalStore } from "react";
+import { getTabOwner, subscribeTabOwner } from "./tabTreeOwner";
+import { mothershipForPath } from "./mothershipForPath";
+import { setCompanionMode } from "./companionTreeBinding";
+import { useTabTrees } from "./tabTreeStore";
+import { projectFromSearch } from "./projectSelection";
 
 /** Past this many agents the overflow menu gets a search box: scanning a
  *  longer list is not navigation (DESIGN-MODEL §1, the switcher's rule). */
@@ -40,11 +47,28 @@ const AGENT_MENU_SEARCH_AFTER = 8;
 const NEW_AGENT_WORKING_FIRST = 6;
 
 export default function CompanionPane() {
-  const tabs = useCompanion((s) => s.tabs);
+  if (!useInRouterContext()) return <CompanionPaneContent />;
+  return <RoutedCompanionPane />;
+}
+
+function RoutedCompanionPane() {
+  const location = useLocation();
+  const mode = mothershipForPath(location.pathname, location.search);
+  const projectId = useTabTrees((state) => state.projectId);
+  const requestedProject = projectFromSearch(location.search);
+  useEffect(() => { setCompanionMode(mode); void useTabTrees.getState().ensureMothership(mode); }, [mode]);
+  return <CompanionPaneContent showDurable={!requestedProject || requestedProject === projectId} />;
+}
+
+function CompanionPaneContent({ showDurable = true }: { showDurable?: boolean }) {
+  const owner = useSyncExternalStore(subscribeTabOwner, getTabOwner);
+  const contextEpoch = useTabTrees((state) => state.contextEpoch);
+  const projectedTabs = useCompanion((s) => s.tabs);
+  const tabs = showDurable ? projectedTabs : projectedTabs.filter((tab) => tab.kind === "dialogue");
   const activeTabId = useCompanion((s) => s.activeTabId);
   const activateAgentTab = useCompanion((s) => s.activateAgentTab);
   const openAgentTab = useCompanion((s) => s.openAgentTab);
-  const { investigations } = useInvestigationList();
+  const { investigations, loading } = useInvestigationList({ scopeKey: `${owner.epoch}:${contextEpoch}` });
 
   const summaryOf = (tab: AgentTabDescriptor): InvestigationSummary | undefined =>
     tab.kind === "research-thread"
@@ -88,6 +112,7 @@ export default function CompanionPane() {
       data-companion-pane
       className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden"
     >
+      {tabs.some((tab) => tab.persistence === "tree") && <span className="px-2 text-xxs text-3">{useTabTrees.getState().tabsPersistence === "server" ? "Project agent tabs" : "Agent tabs are session only"}</span>}
       <div
         data-agent-strip-row
         className="flex items-center gap-1 shrink-0 min-w-0 border-b border-hairline px-1.5 py-1"
@@ -143,7 +168,7 @@ export default function CompanionPane() {
             onActivate={activateAgentTab}
           />
         ) : null}
-        <NewAgentButton investigations={investigations} onPick={openAgentTab} />
+        <NewAgentButton investigations={showDurable ? investigations : []} unavailable={!showDurable} onPick={openAgentTab} />
       </div>
 
       <div
@@ -152,7 +177,7 @@ export default function CompanionPane() {
         {...(active ? { role: "tabpanel", "aria-labelledby": agentTabDomId(active.id) } : {})}
       >
         {active ? (
-          <ActiveAgentSurface tab={active} summary={summaryOf(active)} />
+          <ActiveAgentSurface tab={active} summary={summaryOf(active)} summaryMissing={!loading} />
         ) : (
           <div className="p-3" data-companion-empty>
             <EmptyState
@@ -178,13 +203,15 @@ function agentTabDomId(tabId: string): string {
 function ActiveAgentSurface({
   tab,
   summary,
+  summaryMissing,
 }: {
   tab: AgentTabDescriptor;
   summary?: InvestigationSummary;
+  summaryMissing?: boolean;
 }) {
   const meta = AGENT_TAB_KINDS[tab.kind];
   const Surface = meta.Surface;
-  return <Surface tab={tab} summary={summary} />;
+  return <Surface tab={tab} summary={summary} summaryMissing={summaryMissing} />;
 }
 
 /** Close an agent tab (a view act: the agent itself is untouched) behind
@@ -241,6 +268,7 @@ function AgentTab({
         }}
         className="flex items-center gap-1 min-w-0 pl-1.5 py-0.5 text-left rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun"
       >
+        {tab.persistence === "tree" && <span className="font-mono text-xxs text-3 mr-1" aria-label={tab.publicNumber == null ? "Agent tab number not assigned" : `Agent tab ${tab.publicNumber}`}>{tab.publicNumber ?? "·"}</span>}
         <span
           role="img"
           className={`inline-block w-2 h-2 rounded-full shrink-0 ${glyph.className}`}
@@ -390,9 +418,11 @@ function OverflowMenu({
 function NewAgentButton({
   investigations,
   onPick,
+  unavailable = false,
 }: {
   investigations: InvestigationSummary[];
   onPick: (input: OpenAgentTabInput) => string;
+  unavailable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -465,12 +495,12 @@ function NewAgentButton({
                 setOpen(false);
               }}
             >
-              {inv.question ?? inv.investigation_id}
+              {inv.question ?? "Research thread"}
             </button>
           ))}
           {offered.length === 0 ? (
             <p className="px-2 py-1 text-xxs text-shadow-1 dark:text-moonlight">
-              No research threads yet.
+              {unavailable ? "Choose an available project to open research here." : "No research threads yet."}
             </p>
           ) : null}
         </div>

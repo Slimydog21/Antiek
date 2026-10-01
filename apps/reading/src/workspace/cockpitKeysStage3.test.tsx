@@ -69,6 +69,17 @@ let uninstall: (() => void) | null = null;
 const ws = () => useWorkspace.getState();
 const tabs = () => useTabTrees.getState();
 const comp = () => useCompanion.getState();
+// Lookup by the thread field: IDs are opaque and survive close/restore.
+function agentId(thread: string): string {
+  const open = comp().tabs.find((tab) => tab.investigationId === thread);
+  if (open) return open.id;
+  for (const tree of Object.values(useTabTrees.getState().trees)) {
+    const retired = tree && Object.values(tree.history).find((entry) => entry.node.side === "right" && entry.node.ref === thread);
+    if (retired) return retired.node.tab_id;
+  }
+  throw new Error(`Missing agent fixture ${thread}`);
+}
+
 const M = () => mothershipForPath(window.location.pathname, window.location.search);
 const activeDoc = () => tabs().trees[M()]?.active_tab_id ?? null;
 
@@ -133,7 +144,7 @@ async function seedCockpit(preset: "omarchy-inset" | "docked" = "omarchy-inset")
     comp().openAgentTab({ kind: "research-thread", investigationId: "inv-b", title: "Question B" });
   });
   expect(activeDoc()).toBe("c1");
-  expect(comp().activeTabId).toBe("agent:thread:inv-b");
+  expect(comp().activeTabId).toBe(agentId("inv-b"));
   return { m };
 }
 
@@ -149,7 +160,7 @@ describe("n/p and ctrl+alt+]/[ cycle the tabs of the FOCUSED pane", () => {
     expect(activeDoc()).toBe("c1");
     // The agent tabs did not move.
     await act(async () => {});
-    expect(comp().activeTabId).toBe("agent:thread:inv-b");
+    expect(comp().activeTabId).toBe(agentId("inv-b"));
   });
 
   it("left pane focused: prefix n/p and the bracket chords cycle the document tabs", async () => {
@@ -164,20 +175,20 @@ describe("n/p and ctrl+alt+]/[ cycle the tabs of the FOCUSED pane", () => {
     prefixed("p");
     expect(activeDoc()).toBe("c1");
     await act(async () => {});
-    expect(comp().activeTabId).toBe("agent:thread:inv-b");
+    expect(comp().activeTabId).toBe(agentId("inv-b"));
   });
 
   it("right pane focused: the same keys cycle the AGENT tabs and never the document tabs", async () => {
     await seedCockpit();
     act(() => ws().setFocusedPane("right"));
     prefixed("n"); // wraps from the last agent tab to the first
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-a"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-a")));
     key(document.body, "ctrl+alt+]");
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-b"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-b")));
     key(document.body, "ctrl+alt+[");
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-a"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-a")));
     prefixed("p");
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-b"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-b")));
     expect(activeDoc()).toBe("c1");
   });
 
@@ -188,13 +199,13 @@ describe("n/p and ctrl+alt+]/[ cycle the tabs of the FOCUSED pane", () => {
     act(() => right.focus());
     expect(ws().focusedPane).toBe("right");
     key(document.body, "ctrl+alt+]");
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-a"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-a")));
     expect(activeDoc()).toBe("c1");
     act(() => left.focus());
     expect(ws().focusedPane).toBe("left");
     key(document.body, "ctrl+alt+]");
     expect(activeDoc()).toBe("c2");
-    expect(comp().activeTabId).toBe("agent:thread:inv-a");
+    expect(comp().activeTabId).toBe(agentId("inv-a"));
   });
 
   it("docked preset: a focused companion panel is the right pane; any other focus is the left", async () => {
@@ -204,7 +215,7 @@ describe("n/p and ctrl+alt+]/[ cycle the tabs of the FOCUSED pane", () => {
       ws().focus(COMPANION_PANEL_ID);
     });
     prefixed("n");
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-a"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-a")));
     expect(activeDoc()).toBe("c1");
     // Focus moves to a left-dock panel: the keys go back to the left.
     act(() => {

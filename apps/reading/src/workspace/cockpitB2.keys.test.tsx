@@ -77,6 +77,17 @@ import { pinPlatform, press, unpinPlatform } from "./keymapTestKit";
 const ws = () => useWorkspace.getState();
 const tabs = () => useTabTrees.getState();
 const comp = () => useCompanion.getState();
+// Lookup by the thread field: IDs are opaque and survive close/restore.
+function agentId(thread: string): string {
+  const open = comp().tabs.find((tab) => tab.investigationId === thread);
+  if (open) return open.id;
+  for (const tree of Object.values(useTabTrees.getState().trees)) {
+    const retired = tree && Object.values(tree.history).find((entry) => entry.node.side === "right" && entry.node.ref === thread);
+    if (retired) return retired.node.tab_id;
+  }
+  throw new Error(`Missing agent fixture ${thread}`);
+}
+
 const M = () => mothershipForPath(window.location.pathname, window.location.search);
 const activeDoc = () => tabs().trees[M()]?.active_tab_id ?? null;
 const navRef: { current: NavigateFunction | null } = { current: null };
@@ -179,17 +190,17 @@ describe("B2-1 prefix+shift+x closes the focused pane's tab", () => {
     const undoSpy = vi.spyOn(toast, "undo");
     act(() => ws().setFocusedPane("right"));
     prefixed("shift+x");
-    await waitFor(() => expect(comp().tabs.map((t) => t.id)).toEqual(["agent:thread:inv-a"]));
+    await waitFor(() => expect(comp().tabs.map((t) => t.id)).toEqual([agentId("inv-a")]));
     // Never a prune of the left tab.
     expect(tabs().trees[m]!.nodes["c1"]).toBeTruthy();
     expect(activeDoc()).toBe("c1");
-    expect(tabs().heldClose).toBeNull();
+    expect(tabs().heldClose?.token.tab_id).toBe(agentId("inv-b"));
     // The same 10 s Undo the strip's close offers, and it puts the tab back.
     expect(undoSpy).toHaveBeenCalledTimes(1);
     expect(undoSpy.mock.calls[0][0]).toMatch(/Question B/);
     act(() => undoSpy.mock.calls[0][1]());
-    expect(comp().tabs.map((t) => t.id)).toEqual(["agent:thread:inv-a", "agent:thread:inv-b"]);
-    expect(comp().activeTabId).toBe("agent:thread:inv-b");
+    expect(comp().tabs.map((t) => t.id)).toEqual([agentId("inv-a"), agentId("inv-b")]);
+    expect(comp().activeTabId).toBe(agentId("inv-b"));
   });
 
   it("docked: a focused companion panel is the right pane, so the agent tab closes", async () => {
@@ -199,7 +210,7 @@ describe("B2-1 prefix+shift+x closes the focused pane's tab", () => {
       ws().focus(COMPANION_PANEL_ID);
     });
     prefixed("shift+x");
-    await waitFor(() => expect(comp().tabs.map((t) => t.id)).toEqual(["agent:thread:inv-a"]));
+    await waitFor(() => expect(comp().tabs.map((t) => t.id)).toEqual([agentId("inv-a")]));
     expect(tabs().trees[m]!.nodes["c1"]).toBeTruthy();
   });
 
@@ -505,14 +516,14 @@ describe("B2-6 prefix+shift+t reopens the focused pane's last closed tab", () =>
   it("right pane focused: it brings back the last closed agent tab, in place", async () => {
     await seedCockpit();
     act(() => ws().setFocusedPane("right"));
-    act(() => comp().activateAgentTab("agent:thread:inv-a"));
+    act(() => comp().activateAgentTab(agentId("inv-a")));
     prefixed("shift+x");
-    await waitFor(() => expect(comp().tabs.map((t) => t.id)).toEqual(["agent:thread:inv-b"]));
+    await waitFor(() => expect(comp().tabs.map((t) => t.id)).toEqual([agentId("inv-b")]));
     prefixed("shift+t");
     await waitFor(() =>
-      expect(comp().tabs.map((t) => t.id)).toEqual(["agent:thread:inv-a", "agent:thread:inv-b"]),
+      expect(comp().tabs.map((t) => t.id)).toEqual([agentId("inv-a"), agentId("inv-b")]),
     );
-    expect(comp().activeTabId).toBe("agent:thread:inv-a");
+    expect(comp().activeTabId).toBe(agentId("inv-a"));
   });
 
   it("with nothing closed it is an honest no-op", async () => {
@@ -631,7 +642,7 @@ describe("A1c agent-tab close focus", () => {
 
   it("closing the last focused agent tab focuses New agent", async () => {
     await seedCockpit();
-    act(() => comp().closeAgentTabWithUndo("agent:thread:inv-a"));
+    act(() => comp().closeAgentTabWithUndo(agentId("inv-a")));
     const tab = screen.getByRole("tab", { name: /Question B/ });
     tab.focus();
     fireEvent.keyDown(tab, { key: "Delete" });

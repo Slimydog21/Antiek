@@ -649,9 +649,11 @@ export interface InvestigationStatus {
 /** GET /investigations/{id} — fetch terminal-state status. */
 export async function getInvestigationStatus(
   investigationId: string,
+  signal?: AbortSignal,
 ): Promise<InvestigationStatus> {
   const resp = await apiFetch(
     `${API_BASE}/investigations/${encodeURIComponent(investigationId)}`,
+    { signal },
   );
   if (!resp.ok) {
     throw new ApiError(

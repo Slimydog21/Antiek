@@ -97,6 +97,17 @@ vi.mock("./useViewportTier", () => ({ useViewportTier: () => tierRef.current }))
 let uninstall: (() => void) | null = null;
 const ws = () => useWorkspace.getState();
 const comp = () => useCompanion.getState();
+// Lookup by the thread field: IDs are opaque and survive close/restore.
+function agentId(thread: string): string {
+  const open = comp().tabs.find((tab) => tab.investigationId === thread);
+  if (open) return open.id;
+  for (const tree of Object.values(useTabTrees.getState().trees)) {
+    const retired = tree && Object.values(tree.history).find((entry) => entry.node.side === "right" && entry.node.ref === thread);
+    if (retired) return retired.node.tab_id;
+  }
+  throw new Error(`Missing agent fixture ${thread}`);
+}
+
 
 function key(target: EventTarget, spec: string) {
   act(() => {
@@ -244,7 +255,7 @@ describe("B3-1 the agent tab strip at the pane width", () => {
     expect(items.every((t) => /agent 1/.test(t ?? ""))).toBe(true);
     expect(items).toHaveLength(3); // agent 1, agent 10, agent 11
     fireEvent.click(screen.getByRole("menuitem", { name: /agent 10/ }));
-    expect(comp().activeTabId).toBe("agent:thread:inv-10");
+    expect(comp().activeTabId).toBe(agentId("inv-10"));
   });
 
   it("eight agents or fewer: the menu lists them with no search box", () => {
@@ -259,11 +270,11 @@ describe("B3-1 the agent tab strip at the pane width", () => {
   it("arrow keys rove across every agent, not a visible five", () => {
     openAgents(7);
     mountPane();
-    act(() => comp().activateAgentTab("agent:thread:inv-5"));
+    act(() => comp().activateAgentTab(agentId("inv-5")));
     const active = document.querySelector<HTMLElement>("[role='tab'][aria-selected='true']")!;
     act(() => active.focus());
     fireEvent.keyDown(active, { key: "ArrowRight" });
-    expect(comp().activeTabId).toBe("agent:thread:inv-6");
+    expect(comp().activeTabId).toBe(agentId("inv-6"));
   });
 });
 

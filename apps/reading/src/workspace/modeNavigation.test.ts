@@ -13,6 +13,11 @@ import { describe, expect, it } from "vitest";
 import { inMode } from "./mothershipForPath";
 
 describe("inMode: the one mode-preserving path helper", () => {
+  it("carries the selected project through mode links without replacing an explicit target selection", () => {
+    expect(inMode("/inv/thread", "?project=chosen", "/read/doc")).toBe("/inv/thread?project=chosen&m=reading");
+    expect(inMode("/read/doc#page", "?project=chosen", "/read/source")).toBe("/read/doc?project=chosen#page");
+    expect(inMode("/inv/thread?project=other", "?project=chosen", "/inv/source")).toBe("/inv/thread?project=other");
+  });
   it("carries ?m to a route whose own mode differs", () => {
     expect(inMode("/inv/child-1", "?m=reading")).toBe("/inv/child-1?m=reading");
     expect(inMode("/notebook/auto/inv-1", "?m=writing")).toBe("/notebook/auto/inv-1?m=writing");

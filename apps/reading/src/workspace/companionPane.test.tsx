@@ -93,6 +93,17 @@ vi.mock("./useViewportTier", () => ({
 let uninstall: (() => void) | null = null;
 const ws = () => useWorkspace.getState();
 const comp = () => useCompanion.getState();
+// Lookup by the thread field: IDs are opaque and survive close/restore.
+function agentId(thread: string): string {
+  const open = comp().tabs.find((tab) => tab.investigationId === thread);
+  if (open) return open.id;
+  for (const tree of Object.values(useTabTrees.getState().trees)) {
+    const retired = tree && Object.values(tree.history).find((entry) => entry.node.side === "right" && entry.node.ref === thread);
+    if (retired) return retired.node.tab_id;
+  }
+  throw new Error(`Missing agent fixture ${thread}`);
+}
+
 
 function key(target: EventTarget, spec: string): KeyboardEvent {
   let e = new KeyboardEvent("keydown");
@@ -246,25 +257,25 @@ describe("the tab strip", () => {
     await screen.findByText("needs attention");
     expect(screen.getByText("Is the gate safe?")).toBeTruthy();
     // Working: the ambient pulse, reduced-motion honored by the class itself.
-    const liveTab = document.querySelector('[data-agent-tab="agent:thread:inv-live"]')!;
+    const liveTab = document.querySelector(`[data-agent-tab="${agentId("inv-live")}"]`)!;
     expect(liveTab.querySelector(".animate-pulse")).toBeTruthy();
     expect(liveTab.querySelector(".animate-pulse")!.className).toContain("motion-reduce:animate-none");
     // Done: the success dot, no pulse. Failed: "needs attention", no pulse —
     // terminal states are honest, never a spinner forever.
-    const doneTab = document.querySelector('[data-agent-tab="agent:thread:inv-done"]')!;
+    const doneTab = document.querySelector(`[data-agent-tab="${agentId("inv-done")}"]`)!;
     expect(doneTab.querySelector(".bg-\\[var\\(--state-done\\)\\]")).toBeTruthy();
     expect(doneTab.querySelector(".animate-pulse")).toBeNull();
-    const failTab = document.querySelector('[data-agent-tab="agent:thread:inv-fail"]')!;
+    const failTab = document.querySelector(`[data-agent-tab="${agentId("inv-fail")}"]`)!;
     expect(failTab.querySelector(".bg-\\[var\\(--state-blocked\\)\\]")).toBeTruthy();
     expect(failTab.querySelector(".animate-pulse")).toBeNull();
     expect(failTab.querySelector('[aria-label="needs attention"]')).toBeTruthy();
   });
 
   it("the active surface is the shared thread card; close removes the tab", async () => {
-    openThreadTab("inv-done");
     // Beside a reader: the research opens in the reading tree (the mode is
     // kept, R2-H1), never by switching the operator into research.
     mountPane("/read/origin-of-species");
+    openThreadTab("inv-done");
     await screen.findByText("What breaks on retry?");
     expect(await screen.findByText("done")).toBeTruthy();
     expect(screen.getByText(/found by the loop/)).toBeTruthy();
@@ -298,7 +309,7 @@ describe("the tab strip", () => {
     const menu = screen.getByRole("menu", { name: "All agents" });
     expect(menu.querySelectorAll("[role='menuitem']")).toHaveLength(7);
     fireEvent.click(within(menu).getByText("extra 1"));
-    expect(comp().activeTabId).toBe("agent:thread:inv-x1");
+    expect(comp().activeTabId).toBe(agentId("inv-x1"));
   });
 
   it("+ new agent offers a one-shot dialogue and the open investigations", async () => {
@@ -306,7 +317,7 @@ describe("the tab strip", () => {
     await screen.findByText(/No agents yet/);
     fireEvent.click(screen.getByLabelText("New agent"));
     fireEvent.click(screen.getByText("Is the gate safe?"));
-    expect(comp().tabs.map((t) => t.id)).toContain("agent:thread:inv-live");
+    expect(comp().tabs.map((t) => t.id)).toContain(agentId("inv-live"));
     fireEvent.click(screen.getByLabelText("New agent"));
     fireEvent.click(screen.getByText("One-shot dialogue"));
     expect(comp().tabs.map((t) => t.kind)).toContain("dialogue");
@@ -329,13 +340,13 @@ describe("the companion tab keys (prefix n/p + chord twins)", () => {
     // change lands a microtask after the key.
     key(document.body, "ctrl+b");
     key(document.body, "n");
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-live")));
     key(document.body, "ctrl+b");
     key(document.body, "n");
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-done"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-done")));
     key(document.body, "ctrl+b");
     key(document.body, "p");
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-live")));
   });
 
   it("the chord twins ctrl+alt+] / ctrl+alt+[ cycle too, with the right pane focused", async () => {
@@ -344,9 +355,9 @@ describe("the companion tab keys (prefix n/p + chord twins)", () => {
     mountInsetLayout();
     act(() => ws().setFocusedPane("right"));
     key(document.body, "ctrl+alt+]");
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-live"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-live")));
     key(document.body, "ctrl+alt+[");
-    await waitFor(() => expect(comp().activeTabId).toBe("agent:thread:inv-done"));
+    await waitFor(() => expect(comp().activeTabId).toBe(agentId("inv-done")));
   });
 
   it("in the docked preset WITHOUT the companion panel the keys are an honest no-op", () => {
@@ -373,7 +384,7 @@ describe("the companion tab keys (prefix n/p + chord twins)", () => {
       const e = key(input, k);
       expect(e.defaultPrevented, `'${k}' must reach the field as a character`).toBe(false);
     }
-    expect(comp().activeTabId).toBe("agent:thread:inv-done");
+    expect(comp().activeTabId).toBe(agentId("inv-done"));
   });
 });
 
@@ -434,7 +445,7 @@ describe("the dialogue surface", () => {
     expect(document.querySelector("blockquote")!.textContent).toContain("Stress-test this plan");
     expect(screen.getByText("AI reply")).toBeTruthy();
     expect(screen.getByTestId("dialogue-shape").textContent).toBe("CHALLENGE");
-    expect(screen.getByText(/One-shot reply \(not a chat\)/)).toBeTruthy();
+    expect(screen.getByText(/One-shot reply · session only/)).toBeTruthy();
   });
 
   it("a 503 (no provider) surfaces the honest failure state, never a fabricated reply", async () => {

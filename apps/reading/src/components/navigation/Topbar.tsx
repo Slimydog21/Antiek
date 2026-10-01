@@ -11,6 +11,7 @@ import "./topbar.css";
 // A record crumb is named like its tab (title via tabTitles + labelForTab),
 // which loads with the tab-tree chunk, never the entry chunk.
 const RecordCrumb = lazy(() => import("../../workspace/RecordCrumb"));
+const ProjectSelector = lazy(() => import("../../workspace/ProjectSelector"));
 
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
@@ -111,6 +112,10 @@ export function Topbar() {
           ))}
         </ol>
       </nav>
+
+      <Suspense fallback={<span aria-hidden="true" className="w-24" />}>
+        <ProjectSelector />
+      </Suspense>
 
       {/* Search lives on the NavRail (⌕ · ⌘K), the single canonical
           entry to the CommandPalette. The Topbar no longer carries a

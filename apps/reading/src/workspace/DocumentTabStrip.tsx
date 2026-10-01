@@ -50,6 +50,7 @@ import { DOCUMENT_PANEL_ID, domIdFor } from "./tabStripParts";
 import { requestTabTitle, titleKey, useTabTitles, type TitleEntry } from "./tabTitles";
 import { pathTo, type TabNode, type TabTree } from "./tabTree";
 import { locationStamp, useTabTrees } from "./tabTreeStore";
+import { projectFromSearch, retryProjectSelection, useProjectSelection, withProject } from "./projectSelection";
 
 export { labelForTab };
 
@@ -75,8 +76,13 @@ function DocumentTabStripInner() {
   const navigate = useNavigate();
   const mothership = mothershipForPath(location.pathname, location.search);
 
-  const tree = useTabTrees((s) => s.trees[mothership]);
+  const boundTree = useTabTrees((s) => s.trees[mothership]);
   const contextEpoch = useTabTrees((s) => s.contextEpoch);
+  const projectId = useTabTrees((s) => s.projectId);
+  const projectStatus = useProjectSelection((s) => s.status);
+  const requestedProject = projectFromSearch(location.search);
+  const projectReady = !requestedProject || (projectStatus === "ready" && projectId === requestedProject);
+  const tree = projectReady ? boundTree : null;
   const loadError = useTabTrees((s) => s.loadError[mothership]);
   const treePanelOpen = useTabTrees((s) => s.treePanelOpen);
   const subtreeFocusId = useTabTrees((s) => s.subtreeFocusId);
@@ -86,10 +92,11 @@ function DocumentTabStripInner() {
   // on screen elsewhere still files under its parent.
   const intent = branchIntentOf(location.state);
   useEffect(() => {
+    if (!projectReady) return;
     void syncRouteToTree(mothership, location.pathname, intent);
     // `intent` is derived from the entry `location.key` names.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, location.key, mothership, contextEpoch]);
+  }, [location.pathname, location.key, mothership, contextEpoch, projectReady]);
 
   // tree → route: a USER activation's intent, taken once. An intent left
   // behind by a newer activation, or by a tab the route sync has since moved
@@ -109,7 +116,7 @@ function DocumentTabStripInner() {
     // left on screen under "No open tabs".
     if (navIntent.tabId === null) {
       const home = MODE_HOME[navIntent.mothership];
-      if (location.pathname + location.search !== home) navigate(home);
+      if (location.pathname + location.search !== home) navigate(withProject(home, projectId));
       return;
     }
     // A Write section navigates to its piece (it scopes that piece in place),
@@ -118,8 +125,8 @@ function DocumentTabStripInner() {
     if (!holder) return;
     if (navIntent.mothership === mothership && tabShowsPath(holder, location.pathname)) return;
     const route = routeForTab(holder);
-    if (route) navigate(route);
-  }, [navIntent, mothership, location.pathname, location.search, navigate]);
+    if (route) navigate(withProject(route, projectId));
+  }, [navIntent, mothership, location.pathname, location.search, navigate, projectId]);
 
   // Activation only moves the tree; the effect above does the navigating,
   // so a click, a key and the cross-pane seam take one path.
@@ -163,15 +170,17 @@ function DocumentTabStripInner() {
     };
   }, [selectedDomId]);
 
-  const status: StripStatus = tree ? "ready" : loadError ? "error" : "loading";
+  const projectUnavailable = Boolean(requestedProject && (projectStatus === "missing" || projectStatus === "unavailable"));
+  const status: StripStatus = tree ? "ready" : loadError || projectUnavailable ? "error" : "loading";
 
   return (
     <>
     {status === "ready" && <TabPersistenceStatus mothership={mothership} />}
     <DocumentTabStripView
       status={status}
-      errorDetail={loadError}
+      errorDetail={projectUnavailable ? "The selected project's saved tabs are unavailable. Retry projects or choose another project." : loadError}
       onRetry={() => {
+        if (projectUnavailable) { retryProjectSelection(); return; }
         void useTabTrees
           .getState()
           .retryLoad(mothership)
@@ -198,10 +207,10 @@ function isSectionTab(tab: TabNode): boolean {
 
 function siblingsOf(tree: TabTree | null | undefined): readonly string[] {
   const active = tree?.active_tab_id ? tree.nodes[tree.active_tab_id] : null;
-  if (!tree || !active) return tree ? tree.root_order : [];
-  return active.parent_tab_id === null
+  if (!tree || !active) return tree ? tree.root_order.filter((id) => tree.nodes[id].side === "left") : [];
+  return (active.parent_tab_id === null
     ? tree.root_order
-    : (tree.nodes[active.parent_tab_id]?.child_order ?? []);
+    : (tree.nodes[active.parent_tab_id]?.child_order ?? [])).filter((id) => tree.nodes[id].side === "left");
 }
 
 export type StripStatus = "loading" | "error" | "ready";

@@ -76,12 +76,14 @@ function networkDown() {
 }
 
 beforeEach(() => {
+  window.history.replaceState({}, "", "/?project=p1");
   setTabOwner(null);
   setTabOwner("a2-fixture-owner");
   apiFetchMock.mockReset();
   tabs().resetTabTrees();
 });
 afterEach(() => {
+  window.history.replaceState({}, "", "/");
   setTabOwner(null);
   vi.useRealTimers();
   vi.restoreAllMocks();

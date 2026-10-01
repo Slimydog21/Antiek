@@ -18,10 +18,14 @@ interface UseInvestigationListState {
 export function useInvestigationList(opts?: {
   limit?: number;
   pollIntervalMs?: number;
+  /** Invalidate a mounted list when authenticated owner or context changes. */
+  scopeKey?: string;
 }): UseInvestigationListState {
   const limit = opts?.limit ?? 50;
   const pollMs = opts?.pollIntervalMs ?? 30_000;
+  const scopeKey = opts?.scopeKey ?? "";
   const [investigations, setInvestigations] = useState<InvestigationSummary[]>([]);
+  const [loadedScope, setLoadedScope] = useState(scopeKey);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -30,11 +34,13 @@ export function useInvestigationList(opts?: {
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     void (async () => {
       try {
         const resp = await listInvestigations({ limit });
         if (!cancelled) {
           setInvestigations(resp.investigations);
+          setLoadedScope(scopeKey);
           setError(null);
         }
       } catch (e) {
@@ -46,7 +52,7 @@ export function useInvestigationList(opts?: {
     return () => {
       cancelled = true;
     };
-  }, [tick, limit]);
+  }, [tick, limit, scopeKey]);
 
   // Polling — only when visible.
   useEffect(() => {
@@ -65,5 +71,5 @@ export function useInvestigationList(opts?: {
     };
   }, [pollMs, refetch]);
 
-  return { investigations, loading, error, refetch };
+  return { investigations: loadedScope === scopeKey ? investigations : [], loading: loadedScope !== scopeKey || loading, error: loadedScope === scopeKey ? error : null, refetch };
 }

@@ -197,8 +197,7 @@ export interface TabTree {
   root_order: readonly string[];
   /** The focused tab. On the wire it is `active.left` when it is a left tab. */
   active_tab_id: string | null;
-  /** The server's `active.right`, held unchanged until agent tabs move into
-   *  the tree (A14); cleared when that tab closes. */
+  /** The companion's selection, independent of document navigation focus. */
   active_right: string | null;
   active_left: string | null;
   /** Closed and pruned tabs by tab_id (soft close: recoverable, numbers kept). */
@@ -282,9 +281,10 @@ export type TabOp =
   | { type: "spawn"; parent_tab_id: string | null; input: SpawnInput; hier_number: string }
   | { type: "close"; close_id: string; tab_id: string; mode: CloseMode; now: string; seen_tab_ids: readonly string[] }
   | { type: "undo"; token: UndoToken; restore_retired?: boolean }
-  | { type: "restore"; tab_id: string; close_id: string }
+  | { type: "restore"; tab_id: string; close_id: string; preserve_focus?: boolean }
   | { type: "assign_public_number"; tab_id: string; public_number: number }
-  | { type: "set_active"; tab_id: string | null };
+  | { type: "set_active"; tab_id: string | null }
+  | { type: "set_pane_active"; side: TabSide; tab_id: string | null };
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -829,6 +829,7 @@ export function restoreClosed(
   tree: TabTree,
   tabId: string,
   closeId?: string,
+  preserveFocus = false,
 ): TabTreeResult<{ tree: TabTree; op: TabOp }> {
   const entry = closedTab(tree, tabId);
   if (!entry || (closeId !== undefined && entry.close_id !== closeId)) {
@@ -864,7 +865,7 @@ export function restoreClosed(
   const restoring = { ...tree.restoring };
   for (const id of restore) restoring[id] = tree.history[id].node;
   const next = activate({ ...tree, nodes, root_order: rootOrder, history, restoring }, tabId);
-  return { ok: true, tree: next, op: { type: "restore", tab_id: tabId, close_id: entry.close_id } };
+  return { ok: true, tree: preserveFocus ? { ...next, active_tab_id: tree.active_tab_id } : next, op: { type: "restore", tab_id: tabId, close_id: entry.close_id, ...(preserveFocus ? { preserve_focus: true } : {}) } };
 }
 
 /** Focus a tab (or nothing), remembering the path to it: every ancestor's
@@ -872,6 +873,16 @@ export function restoreClosed(
 export function setActive(tree: TabTree, tabId: string | null): TabTreeResult<{ tree: TabTree; op: TabOp }> {
   if (tabId !== null && !openNode(tree, tabId)) return fail("tab_not_open", `tab ${tabId} is not open`);
   return { ok: true, tree: activate(tree, tabId), op: { type: "set_active", tab_id: tabId } };
+}
+
+/** Select a pane's tab without changing the document navigation focus. */
+export function setPaneActive(tree: TabTree, side: TabSide, tabId: string | null): TabTreeResult<{ tree: TabTree; op: TabOp }> {
+  if (tabId !== null && openNode(tree, tabId)?.side !== side) return fail("tab_not_open", `tab ${tabId} is not open in ${side}`);
+  return {
+    ok: true,
+    tree: { ...tree, [side === "right" ? "active_right" : "active_left"]: tabId },
+    op: { type: "set_pane_active", side, tab_id: tabId },
+  };
 }
 
 /** `prefix+o`: focus the last-visited child of `tabId`, else its first child. */
@@ -961,7 +972,7 @@ export function rebase(remote: TabTree, pending: readonly TabOp[]): RebaseResult
         break;
       }
       case "restore": {
-        const r = restoreClosed(tree, op.tab_id, op.close_id);
+        const r = restoreClosed(tree, op.tab_id, op.close_id, op.preserve_focus);
         if (!r.ok) dropped.push({ op, reason: r.error.code });
         else tree = r.tree;
         break;
@@ -974,6 +985,12 @@ export function rebase(remote: TabTree, pending: readonly TabOp[]): RebaseResult
       }
       case "set_active": {
         const r = setActive(tree, op.tab_id);
+        if (!r.ok) dropped.push({ op, reason: r.error.code });
+        else tree = r.tree;
+        break;
+      }
+      case "set_pane_active": {
+        const r = setPaneActive(tree, op.side, op.tab_id);
         if (!r.ok) dropped.push({ op, reason: r.error.code });
         else tree = r.tree;
         break;

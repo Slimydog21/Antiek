@@ -27,7 +27,7 @@ import {
 } from "./tabTree";
 import { tabTreeHandle } from "./tabTreeHandle";
 import { resetTabTitles, setTabTitle } from "./tabTitles";
-import { firstOpenProject, useTabTrees } from "./tabTreeStore";
+import { selectedOpenProject, useTabTrees } from "./tabTreeStore";
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
 
@@ -74,12 +74,14 @@ const emptyWire = (version = 0) => ({
 });
 
 beforeEach(() => {
+  window.history.replaceState({}, "", "/?project=p1");
   setTabOwner(null);
   setTabOwner("a2-fixture-owner");
   apiFetchMock.mockReset();
   tabs().resetTabTrees();
 });
 afterEach(() => {
+  window.history.replaceState({}, "", "/");
   setTabOwner(null);
   vi.restoreAllMocks();
   tabTreeHandle.bindOnLoad = false;
@@ -259,13 +261,15 @@ describe("binding to the active project (A2a item 6)", () => {
     expect(tabs().tabsPersistence).toBe("session");
   });
 
-  it("the default getter picks the first non-archived project, else null", async () => {
+  it("the default getter validates the explicit selected project", async () => {
+    window.history.replaceState({}, "", "/?project=live");
     respond(200, { projects: [project("old", "2026-09-01T00:00:00Z"), project("live"), project("later")] });
-    await expect(firstOpenProject()).resolves.toBe("live");
+    await expect(selectedOpenProject()).resolves.toBe("live");
     respond(200, { projects: [project("old", "2026-09-01T00:00:00Z")] });
-    await expect(firstOpenProject()).resolves.toBeNull();
+    await expect(selectedOpenProject()).rejects.toBeInstanceOf(ApiError);
     respond(404, { detail: "Not Found" });
-    await expect(firstOpenProject()).rejects.toBeInstanceOf(ApiError);
+    await expect(selectedOpenProject()).rejects.toBeInstanceOf(ApiError);
+    window.history.replaceState({}, "", "/");
   });
 
   it("the boot flag binds on the first load: GET /projects, then the project's tab row", async () => {
