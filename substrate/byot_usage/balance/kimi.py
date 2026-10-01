@@ -36,7 +36,6 @@ _BALANCE_PATH = "/users/me/balance"
 _DOCUMENTED_BASE_URL = "https://api.moonshot.ai/v1"
 
 # Source: https://platform.kimi.ai/docs/api/balance
-# Polled every 60 s per spec §5.F.
 
 
 def _usd_number(raw: object) -> float:

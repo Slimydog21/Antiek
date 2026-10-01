@@ -37,7 +37,6 @@ _CURRENCIES = frozenset({"CNY", "USD"})
 _AMOUNT_PATTERN = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?\Z")
 
 # Source: https://api-docs.deepseek.com/api/get-user-balance/
-# Polled every 60 s per spec §5.F.
 
 
 def _decimal_amount(raw: object) -> str:
