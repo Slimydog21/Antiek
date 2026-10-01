@@ -66,11 +66,24 @@ def test_deploy_renders_and_verifies_the_health_probe_topology() -> None:
     assert "/etc/systemd/system/antiek-health-probe.timer" in verify
 
 
+def _declared_consumers() -> list[str]:
+    """The pause loop reads ONE declared list (deploy_atomic.yml
+    `release_path_consumers`), so the assertion resolves that list instead of
+    searching the loop expression. Prod 2026-10-01: the loop was inlined as a
+    literal and every test that grepped it would have gone stale silently the
+    moment it moved."""
+    document = yaml.safe_load(DEPLOY_PATH.read_text(encoding="utf-8"))
+    play = next(play for play in document if "release_path_consumers" in (play.get("vars") or {}))
+    return list(play["vars"]["release_path_consumers"])
+
+
 def test_deploy_quiesces_and_resumes_the_health_probe_around_cutover() -> None:
     pause = _task("pause every release-path consumer before cutover")
     resume = _task("resume background consumers after candidate is active")
-    assert "antiek-health-probe.service" in pause["loop"]
-    assert "antiek-health-probe.timer" in pause["loop"]
+    assert pause["loop"] == "{{ release_path_consumers }}"
+    consumers = _declared_consumers()
+    assert "antiek-health-probe.service" in consumers
+    assert "antiek-health-probe.timer" in consumers
     assert "antiek-health-probe.timer" in resume["loop"]
     assert _tasks().index(pause) < _tasks().index(resume)
 

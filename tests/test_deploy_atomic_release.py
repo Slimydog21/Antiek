@@ -35,6 +35,17 @@ def _names(tasks: list[dict[str, Any]]) -> list[str]:
     return [task.get("name", "") for task in tasks]
 
 
+def _all_strings(node: Any) -> list[str]:
+    """Every string value in the parsed playbook (comments are not values)."""
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, dict):
+        return [item for value in node.values() for item in _all_strings(value)]
+    if isinstance(node, list):
+        return [item for entry in node for item in _all_strings(entry)]
+    return []
+
+
 def test_deploy_workflow_uses_the_atomic_release_playbook() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     steps = workflow["jobs"]["deploy"]["steps"]
@@ -134,9 +145,10 @@ def test_database_snapshot_precedes_candidate_schema_migration() -> None:
 
 
 def test_every_release_path_consumer_is_quiesced() -> None:
-    tasks = _walk(_load()[1]["tasks"])
+    play = _load()[1]
+    tasks = _walk(play["tasks"])
     stop = next(task for task in tasks if "pause every release-path consumer" in task.get("name", ""))
-    assert set(stop["loop"]) == {
+    expected = {
         "antiek-continuous-research.service",
         "antiek-arxiv-oai-sync.timer",
         "antiek-arxiv-oai-sync.service",
@@ -147,6 +159,79 @@ def test_every_release_path_consumer_is_quiesced() -> None:
         "antiek-backup-freshness.service",
         "antiek-backup-freshness.timer",
     }
+    # The pause loop and the "require complete consumer pause" post-condition
+    # both read ONE declared list, so the post-condition cannot drift from what
+    # was actually paused. Pin both halves: the loop reads the var, and the var
+    # is still exactly the release-path consumer set.
+    assert stop["loop"] == "{{ release_path_consumers }}"
+    assert set(play["vars"]["release_path_consumers"]) == expected
+
+
+def test_the_consumer_pause_post_condition_is_state_based_not_result_shaped() -> None:
+    """Prod 2026-10-01: `selectattr('skipped', 'equalto', true)` over a loop
+    result raised `object of type 'dict' has no attribute 'skipped'` — once in
+    the pause assert and again in the rescue's classifier, which is why the
+    rescue never ran and the box stayed dark. The post-condition must ask the
+    BOX for unit state, which is both safer and strictly stronger."""
+    # Scan the PARSED playbook, not the file text: a comment describing the
+    # defect must not satisfy (or trip) the gate.
+    offenders = [
+        expr
+        for expr in _all_strings(_load())
+        if "selectattr('skipped'" in expr or "rejectattr('skipped'" in expr
+    ]
+    assert offenders == [], f"version-coupled loop-result introspection returned: {offenders}"
+
+    tasks = _walk(_load()[1]["tasks"])
+    probe = next(
+        task for task in tasks
+        if "observe every release-path consumer state after the pause" in task.get("name", "")
+    )
+    assert probe["ansible.builtin.command"]["argv"][-1] == "--property=ActiveState"
+    assert probe["loop"] == "{{ release_path_consumers }}"
+
+    assert_task = next(
+        task for task in tasks
+        if "require complete consumer pause before schema or cutover" in task.get("name", "")
+    )
+    assertions = assert_task["ansible.builtin.assert"]["that"]
+    joined = "\n".join(assertions)
+    assert "consumer_pause_states.results | map(attribute='stdout')" in joined
+    assert "ActiveState=inactive" in joined and "ActiveState=failed" in joined
+
+
+def test_a_failed_deploy_cannot_leave_monitoring_or_backups_stopped() -> None:
+    """Prod 2026-10-01: the deploy died on the consumer-pause assert and its
+    rescue died on the same conditional, so antiek-backup.timer,
+    antiek-backup-freshness.timer, antiek-health-probe.timer and
+    antiek-continuous-research.service were left stopped with no later task to
+    notice — a failed deploy silently unscheduled the operator's backups.
+    The block must therefore carry an `always` that restarts them: `always`
+    runs after a failing rescue too, which a rescue's own task list does not."""
+    tasks = _walk(_load()[1]["tasks"])
+    guard = next(
+        task for task in tasks
+        if "never leave release-path monitoring or backups stopped" in task.get("name", "")
+    )
+    assert set(guard["loop"]) == {
+        "antiek-continuous-research.service",
+        "antiek-backup.timer",
+        "antiek-health-probe.timer",
+        "antiek-backup-freshness.timer",
+    }
+    assert guard["ansible.builtin.systemd"] == {
+        "name": "{{ item }}",
+        "enabled": True,
+        "state": "started",
+    }
+    assert guard["failed_when"] is False
+
+    containers = [task for task in tasks if "always" in task]
+    assert containers, "the release block no longer has an always section"
+    assert any(
+        any(inner.get("name") == guard["name"] for inner in container["always"])
+        for container in containers
+    ), "the monitoring guard is not inside an always section"
 
 
 def test_failure_rescue_restores_and_verifies_the_previous_release() -> None:
@@ -204,3 +289,39 @@ def test_published_release_is_receipt_gated_and_write_frozen() -> None:
     )
     freeze = next(task for task in tasks if task.get("name") == "freeze release permissions after all writes")
     assert freeze["ansible.builtin.command"]["argv"] == ["chmod", "-R", "a-w", "{{ antiek_release_dir }}"]
+
+
+def test_duckdb_pre_migration_snapshots_are_pruned_with_the_three_live_ones_protected() -> None:
+    """Prod 2026-10-01: the playbook wrote one ~940 MB
+    ``antiek.duckdb.pre-atomic-<sha>`` per deploy and NOTHING pruned them —
+    46 copies / 40.6 GB in six days (17 in one day) on a 150 GB disk with
+    72 GB free, while release directories WERE pruned to a retention count.
+    A deploy must not be a net drain on the operator's disk."""
+    play = _load()[1]
+    tasks = _walk(play["tasks"])
+    retention = play["vars"]["antiek_duckdb_snapshot_retention_count"]
+    assert isinstance(retention, int) and retention >= 2, retention
+
+    prune = next(
+        task for task in tasks
+        if "prune DuckDB pre-migration snapshots" in task.get("name", "")
+    )
+    script = prune["ansible.builtin.shell"]
+    # Only the one file family, this filesystem, never a directory.
+    assert "-name 'antiek.duckdb.pre-atomic-*'" in script
+    assert "-type f" in script
+    assert "--one-file-system" in script
+    # The three SHAs the playbook can still need, named explicitly.
+    for protected in ('"$keep"', '"$previous"', '"$current"'):
+        assert protected in script, protected
+    assert 'keep="{{ antiek_target_sha }}"' in script
+    assert 'previous="{{ antiek_previous_sha }}"' in script
+    assert 'current=$(basename "$(readlink -f "{{ antiek_public_dir }}")")' in script
+    # Newest-first, same discipline as the release prune beside it.
+    assert "sort -nr" in script
+    assert 'count" -gt "{{ antiek_duckdb_snapshot_retention_count }}"' in script
+    # It runs only on a SUCCESSFUL deploy: it is a sibling task after the
+    # block, not an always/rescue task, so a failed deploy never deletes the
+    # snapshot an operator may be about to restore from.
+    assert "always" not in prune and "rescue" not in prune
+    assert "always" not in play["tasks"][-1]
