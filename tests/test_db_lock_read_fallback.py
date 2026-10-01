@@ -117,7 +117,11 @@ def test_connect_read_external_writer_retry_is_opt_in(
         )
 
     monkeypatch.setattr(duckdb, "connect", locked)
-    with pytest.raises(duckdb.IOException, match="Conflicting lock"):
+    # Immediate mode (external_lock_timeout_s=0) never waits — exactly one
+    # open attempt — but it now fails as the TYPED conflict error so the
+    # app-level handler can map it to 503 instead of an uncaught 500
+    # (read-open audit, 2026-10-01).
+    with pytest.raises(db_lock.ReadLockTimeout, match="External lock conflict"):
         db_lock.connect_read("held.duckdb")
     assert calls == [True]
 
