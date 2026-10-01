@@ -140,10 +140,10 @@ export function useVoiceCapture(): UseVoiceCapture {
       };
       // Stop the recorder and wait for the blob. useVoiceRecorder finalizes
       // the blob asynchronously on MediaRecorder.onstop; poll its ref via a
-      // microtask loop bounded by a short deadline so we don't hang if the
+      // polling loop bounded by a short deadline so we don't hang if the
       // recorder never produced data.
       recorder.stop();
-      const blob = await waitForBlob(() => recorder.blob);
+      const blob = await waitForBlob(recorder.getBlob);
       if (!admitted()) return null;
 
       if (!blob || blob.size === 0) {

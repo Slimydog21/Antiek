@@ -13,6 +13,8 @@ export interface UseVoiceRecorder {
   state: RecorderState;
   error: string | null;
   blob: Blob | null;
+  /** Awaited callers need the native completion, even from an older render. */
+  getBlob: () => Blob | null;
   start: () => Promise<void>;
   stop: () => void;
   reset: () => void;
@@ -23,6 +25,7 @@ export function useVoiceRecorder(): UseVoiceRecorder {
   const [error, setError] = useState<string | null>(null);
   const [blob, setBlob] = useState<Blob | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const blobRef = useRef<Blob | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const mountedRef = useRef(true);
@@ -36,6 +39,7 @@ export function useVoiceRecorder(): UseVoiceRecorder {
   const start = useCallback(async () => {
     const attempt = ++startAttemptRef.current;
     setError(null);
+    blobRef.current = null;
     setBlob(null);
     chunksRef.current = [];
     try {
@@ -52,7 +56,9 @@ export function useVoiceRecorder(): UseVoiceRecorder {
       };
       rec.onstop = () => {
         if (mountedRef.current) {
-          setBlob(new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" }));
+          const captured = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+          blobRef.current = captured;
+          setBlob(captured);
           setState("stopped");
         }
         stopTracks();
@@ -84,6 +90,7 @@ export function useVoiceRecorder(): UseVoiceRecorder {
     startAttemptRef.current += 1;
     setState("idle");
     setError(null);
+    blobRef.current = null;
     setBlob(null);
     chunksRef.current = [];
   }, []);
@@ -101,5 +108,6 @@ export function useVoiceRecorder(): UseVoiceRecorder {
     };
   }, [stopTracks]);
 
-  return { state, error, blob, start, stop, reset };
+  const getBlob = useCallback(() => blobRef.current, []);
+  return { state, error, blob, getBlob, start, stop, reset };
 }

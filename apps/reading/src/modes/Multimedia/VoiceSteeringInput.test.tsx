@@ -20,7 +20,7 @@ beforeEach(() => {
   stop.mockReset();
   reset.mockReset();
   mockTranscribe.mockReset();
-  recorderState = { state: "idle", error: null, blob: null, start, stop, reset };
+  recorderState = { state: "idle", error: null, blob: null, getBlob: () => recorderState.blob, start, stop, reset };
   mockRecorder.mockImplementation(() => recorderState);
 });
 

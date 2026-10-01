@@ -30,6 +30,7 @@ const recorderStub = {
     return fakeState;
   },
   error: null as string | null,
+  getBlob: () => fakeBlob,
   get blob() {
     return fakeBlob;
   },
@@ -221,7 +222,7 @@ describe("useVoiceCapture — transcription 503 (rigor #3c)", () => {
 });
 
 
-describe("useVoiceCapture — live destination admission", () => {
+describe("useVoiceCapture: live destination admission", () => {
   it("does not admit ASR after blob readiness when the destination was revoked", async () => {
     vi.useFakeTimers();
     let admitted = true;

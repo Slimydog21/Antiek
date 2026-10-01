@@ -137,6 +137,7 @@ afterEach(() => {
 
 const { recorderStub } = vi.hoisted(() => ({ recorderStub: {
   state: "recording", error: null, blob: { size: 24, type: "audio/webm" },
+  getBlob: () => ({ size: 24, type: "audio/webm" }),
   start: vi.fn(async () => {}), stop: vi.fn(), reset: vi.fn(),
 } }));
 vi.mock("../../hooks/useVoiceRecorder", () => ({ useVoiceRecorder: () => recorderStub }));
