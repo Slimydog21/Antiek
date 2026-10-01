@@ -22,10 +22,16 @@ import type { PanelKind } from "./panel.types";
  *   - S4: ProjectTree
  */
 
-// S3 demo renderers (eagerly imported because they are small fake panels)
-import { FakeChat } from "./__fakes__/FakeChat";
-import { FakeNotebook } from "./__fakes__/FakeNotebook";
-import { FakeSidebar } from "./__fakes__/FakeSidebar";
+// S3 demo renderers: only the Workspace/Demo story opens them, so they load
+// on demand instead of riding the entry chunk (~3.4 KB of fakes it shipped
+// to every page load; the entry has a hard gzip budget).
+const FakeChat = lazy(() => import("./__fakes__/FakeChat").then((m) => ({ default: m.FakeChat })));
+const FakeNotebook = lazy(() =>
+  import("./__fakes__/FakeNotebook").then((m) => ({ default: m.FakeNotebook })),
+);
+const FakeSidebar = lazy(() =>
+  import("./__fakes__/FakeSidebar").then((m) => ({ default: m.FakeSidebar })),
+);
 
 // Eager imports for renderers that ALSO appear as direct main-slot
 // children of routes (RW imports MasterMdViewer + TrajectoryView,
@@ -85,6 +91,14 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   // S4 — project-tree side rail panel (NavRail is separate, not a panel).
   // SPR-04: now the workflow-scoped content-first tree at shell/.
   ProjectTree: lazy(() => import("../shell/ProjectTree")),
+
+  // Cockpit C4 — the companion (AI agents as tabs). Lazy, like the inset
+  // right pane's copy (RightPaneForMode): it loads on first show.
+  Companion: lazy(() => import("./CompanionPane")),
+
+  // Cockpit C5 — the Write outline (block tabs + source DnD). Lazy for the
+  // same reason as the companion.
+  WriteOutline: lazy(() => import("./WriteOutlinePane")),
 
   // S10 — Stats is also a lazy route; the panel shares its deferred chunk.
   Stats: lazy(() => import("../modes/Stats")),

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
 
 import ModelUsagePicker from "../../components/ai/ModelUsagePicker";
 import LemonButton from "../../components/lemon/LemonButton";
@@ -40,7 +40,7 @@ export default function ChatInputArea({
   const [question, setQuestion] = useState(spawnContext ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
+  const navigate = useModeNavigate();
   const model = useOwnerModelChoice("chat");
   const { launchFields } = model;
   // An owner-chosen route is accepted only on a ROOT research: the server

@@ -24,6 +24,7 @@ SCRIPT = ROOT / "tools" / "deploy" / "require_green.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "deploy_backend.yml"
 SHA = "0123456789abcdef0123456789abcdef01234567"
 SHARD_AND_BASE_CONTEXTS = [
+    "dependency lock",
     "tsc", "vitest", "keystone",
     "mypy --strict + ruff (declared scope, baselined)",
     "pytest shard 0 of 4", "pytest shard 1 of 4", "pytest shard 2 of 4", "pytest shard 3 of 4",
@@ -100,10 +101,10 @@ def _green(names=REQUIRED, started="2026-09-22T20:00:00Z"):
     return [{"name": n, "status": "completed", "conclusion": "success", "started_at": started} for n in names]
 
 
-def test_all_nine_green_exits_0(tmp_path):
+def test_all_ten_green_exits_0(tmp_path):
     rc, out, _, calls = _run(tmp_path, _green())
     assert rc == 0, out
-    assert "all 9 required contexts are success" in out
+    assert "all 10 required contexts are success" in out
     assert calls == [
         f"repos/Slimydog21/Antiek/compare/{SHA}...main",
         f"repos/Slimydog21/Antiek/commits/{SHA}/check-runs?per_page=100",
@@ -126,7 +127,7 @@ def test_every_repo_spelling_queries_the_same_path(tmp_path, repo):
 
 def test_one_pending_exits_1(tmp_path):
     runs = _green()
-    runs[1] = {"name": "vitest", "status": "in_progress", "conclusion": None, "started_at": "2026-09-22T20:00:00Z"}
+    runs[2] = {"name": "vitest", "status": "in_progress", "conclusion": None, "started_at": "2026-09-22T20:00:00Z"}
     rc, out, _, _ = _run(tmp_path, runs)
     assert rc == 1
     assert "NOT GREEN: 'vitest' => pending" in out
@@ -134,7 +135,7 @@ def test_one_pending_exits_1(tmp_path):
 
 def test_one_failure_exits_1(tmp_path):
     runs = _green()
-    runs[4]["conclusion"] = "failure"
+    runs[5]["conclusion"] = "failure"
     rc, out, _, _ = _run(tmp_path, runs)
     assert rc == 1
     assert "NOT GREEN: 'pytest shard 0 of 4' => failure" in out
@@ -151,7 +152,7 @@ def test_absent_context_exits_1(tmp_path):
     {"name": "pytest", "status": "in_progress", "conclusion": None, "started_at": "2026-09-22T20:00:00Z"},
     {"name": "pytest", "status": "completed", "conclusion": "failure", "started_at": "2026-09-22T20:00:00Z"},
 ])
-def test_eight_base_and_shard_contexts_green_but_pytest_rollup_not_green_exits_1(tmp_path, rollup):
+def test_nine_base_and_shard_contexts_green_but_pytest_rollup_not_green_exits_1(tmp_path, rollup):
     runs = _green(SHARD_AND_BASE_CONTEXTS)
     if rollup is not None:
         runs.append(rollup)
@@ -298,6 +299,51 @@ def test_deploy_pins_the_exact_sha_verified_by_the_gate():
         if task["name"] == "check out the gated SHA at its final release path"
     )
     assert checkout["ansible.builtin.git"]["version"] == "{{ antiek_target_sha }}"
+
+
+def test_deploy_pause_captures_arxiv_service_after_durable_timer_pause():
+    """Capture an interrupted crawl only after preventing a timer race."""
+    tasks = _deploy_playbook_tasks()
+    stop = next(task for task in tasks if task.get("register") == "arxiv_timer_pause_result")
+    capture = next(task for task in tasks if task.get("register") == "arxiv_before_pause")
+    pause = next(task for task in tasks if task["name"] == "pause every release-path consumer before cutover")
+    shell = stop["ansible.builtin.shell"]
+    assert shell.index("systemctl show") < shell.index("systemctl disable --now")
+    assert "antiek-arxiv-oai-sync.service" in capture["ansible.builtin.shell"]
+    assert "ActiveState,Job" in capture["ansible.builtin.shell"]
+    assert capture["changed_when"] is False
+    assert tasks.index(stop) < tasks.index(capture) < tasks.index(pause)
+    assert "antiek-arxiv-oai-sync.timer" in pause["loop"]
+    assert "antiek-arxiv-oai-sync.service" in pause["loop"]
+
+
+def test_deploy_resume_enqueues_interrupted_arxiv_after_public_parity():
+    """A six-hour oneshot must not block deployment verification."""
+    tasks = _deploy_playbook_tasks()
+    pause = next(task for task in tasks if task["name"] == "pause every release-path consumer before cutover")
+    parity = next(task for task in tasks if task["name"] == "run blocking public parity on the candidate")
+    resume = next(task for task in tasks if task["name"] == "resume the interrupted arxiv run on the verified candidate")
+    systemd = resume["ansible.builtin.systemd"]
+    assert systemd["name"] == "antiek-arxiv-oai-sync.service"
+    assert systemd["state"] == "started"
+    assert systemd["no_block"] is True
+    assert "arxiv_was_running | default(false) | bool" in resume["when"]
+    fact = next(task for task in tasks if task["name"] == "remember whether an arxiv run was interrupted")
+    assert "active|activating" in fact["ansible.builtin.set_fact"]["arxiv_was_running"]
+    assert tasks.index(pause) < tasks.index(parity) < tasks.index(resume)
+
+
+def test_deploy_resume_never_starts_the_backup_service():
+    """Backup remains timer-driven; starting the service would run off schedule."""
+    tasks = _deploy_playbook_tasks()
+    starters = [
+        task
+        for task in tasks
+        if (task.get("ansible.builtin.systemd") or {}).get("name")
+        == "antiek-backup.service"
+        and (task.get("ansible.builtin.systemd") or {}).get("state") == "started"
+    ]
+    assert starters == []
 
 
 def _resolve_step_run(env: dict[str, str]) -> subprocess.CompletedProcess:

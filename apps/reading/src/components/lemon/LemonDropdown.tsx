@@ -47,7 +47,11 @@ export function LemonDropdown({
       if (!rootRef.current?.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      // The Esc is the menu's alone (escapeOverlay.ts).
+      if (e.key === "Escape" && !e.defaultPrevented) {
+        e.preventDefault();
+        close();
+      }
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -109,6 +113,7 @@ export function LemonDropdown({
             "py-1 " + menuClassName
           }
           role="menu"
+          data-esc-overlay=""
         >
           {children({ close })}
         </div>

@@ -236,6 +236,9 @@ afterEach(() => {
 
 async function digFromTheIsland() {
   await screen.findByText("The ope");
+  await waitFor(() =>
+    expect(document.querySelector('[data-island-id="a-island"]')).toBeTruthy(),
+  );
   fireEvent.click(document.querySelector('[data-island-id="a-island"]')!);
   await screen.findByText("Open research →");
   fireEvent.click(document.querySelector("[data-island-dig-deeper]")!);

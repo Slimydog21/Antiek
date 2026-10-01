@@ -7,7 +7,9 @@
 > handler and mounts `account_memory_router` (`/account/memory`) into the app — cited as
 > `app.py:6178` and `app.py:7162` in the SPR-11 recon, `:6430` and `:7476` at this
 > writing; re-derive with `grep -n 'account_memory_context(request\|include_router(account_memory_router)'`
-> rather than trusting either number. `tools/lints/baselines/reachability_py.json` no
+> rather than trusting either number. The package has two further non-test importers:
+> `interfaces/research/api/account_memory_routes.py:16` and
+> `acquisition/doc_to_html/converter.py:38`. `tools/lints/baselines/reachability_py.json` no
 > longer lists `substrate/memory` at all, so the gate already asserts its reachability
 > for real. The `substrate/agent_skills` half is NOT superseded: its baseline entry
 > (`package:unimported:agent_skills`) is still present and its reconsider-if still stands.
@@ -23,8 +25,9 @@
 ## Context
 The swarm shipped `substrate/memory/` (account-level memory substrate + recall/router,
 PRs #2989/#2990) and `substrate/agent_skills/` (DuckDB/Python/Processing kernel skills, #2987).
-Both are built + tested but imported by **zero product-loop code** (the reachability gate's
+Both are built + tested but imported by zero product-loop code (the reachability gate's
 "wiring is the constraint" doctrine), so the gate fails them as NEW unreachable packages.
+*(No longer true of `substrate/memory` — see the superseded banner above.)*
 
 ## Decision
 Add both to `tools/lints/baselines/reachability_py.json` — the gate's own sanctioned registry of
@@ -41,7 +44,9 @@ declaration that these packages are staged ahead of their wiring.
   migration: `substrate/graph/migrate_v10_account_memory.py` is an explicit, operator-run
   script with no caller in any `.py`, `.yml` or `.sh` (`git grep -rn migrate_v10` finds
   only the module and its test) — an engineering gap, not a gate. The wiring itself has
-  since landed; see the banner at the top of this record.
+  since landed; see the banner at the top of this record. (`substrate/graph/schema.py:109`
+  still repeats the "operator-gated" wording in a comment; that comment is wrong for the
+  same reason.)
 - `substrate/agent_skills` → its prime-agent kernel wiring is a later lane; the skills are
   callable stand-alone today.
 

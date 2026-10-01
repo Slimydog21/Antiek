@@ -33,13 +33,30 @@ FAILURE TAXONOMY (BYOT UX states)
   (terminal; quarantine tokens, require re-onboard).
 - 429/5xx → ``anthropic_transient`` (retry; never quarantine).
 
-GO-LIVE PREREQUISITE
---------------------
-This module reuses the Claude Code client_id registration
-(``9d1c250a-e61b-44d9-88ed-5944d1962f5e``).  For a production deployment the
-operator MUST register their own OAuth application at console.anthropic.com to
-obtain a dedicated client_id and approved redirect URIs.  See
-``docs/specs/byot-oauth-2026-08-12.md`` for the go-live checklist.
+GO-LIVE PREREQUISITE AND FEATURE GATE
+-------------------------------------
+This module performs a Claude.ai credential flow, so it is DISABLED by default:
+
+- ``ANTIEK_BYOK_CLAUDE=1`` enables it.  Absent, or any other value, means every
+  credential-accepting entry point raises ``anthropic_capability_disabled``
+  (terminal).  The gate fails closed: no token row is created and no
+  authorization code is accepted, and the refusal is a typed error rather than
+  a silent no-op.
+- Enabled means the operator MUST supply their OWN OAuth application
+  registration, because Anthropic's terms do not permit collecting, storing or
+  intermediating Claude.ai credentials:
+
+      ANTIEK_ANTHROPIC_OAUTH_CLIENT_ID
+      ANTIEK_ANTHROPIC_OAUTH_CLIENT_SECRET
+
+  Register the application at console.anthropic.com.  A missing variable raises
+  ``anthropic_client_id_not_registered``, which names that registration step
+  instead of surfacing a generic auth failure.  See
+  ``docs/specs/byot-oauth-2026-08-12.md`` for the go-live checklist.
+
+Cleanup never needs the flag: :func:`find_anthropic_cred_id`,
+:func:`delete_anthropic_tokens` and :func:`quarantine_anthropic_tokens` stay
+callable with the capability off, so retiring it cannot strand stored rows.
 """
 
 from __future__ import annotations
@@ -47,8 +64,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import secrets
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -56,17 +75,120 @@ from urllib.parse import urlencode, urlparse
 
 import httpx
 
-# ─── Anthropic OAuth constants (from Claude Code registration) ──────────────
+# ─── Anthropic OAuth constants ──────────────────────────────────────────────
+# NOTE: this module deliberately carries NO client_id.  The Claude Code
+# registration is not ours to reuse, so the identifier is resolved at call time
+# from the operator's own OAuth application; see the gate below.
 ANTHROPIC_ISSUER: str = "https://console.anthropic.com"
 ANTHROPIC_AUTHORIZE_URL: str = "https://claude.ai/oauth/authorize"
 ANTHROPIC_TOKEN_URL: str = "https://console.anthropic.com/v1/oauth/token"
 ANTHROPIC_REDIRECT_URI: str = "https://console.anthropic.com/oauth/code/callback"
-ANTHROPIC_OAUTH_CLIENT_ID: str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 ANTHROPIC_SCOPE: str = "org:create_api_key user:profile user:inference"
 ANTHROPIC_INFERENCE_BASE: str = "https://api.anthropic.com"
 
+# ─── Capability gate ────────────────────────────────────────────────────────
+# The Claude credential flow is opt-in.  See the module docstring: this is a
+# compliance gate as much as a rollout gate, which is why it fails CLOSED.
+BYOK_CLAUDE_FLAG: str = "ANTIEK_BYOK_CLAUDE"
+BYOK_CLAUDE_CLIENT_ID_ENV: str = "ANTIEK_ANTHROPIC_OAUTH_CLIENT_ID"
+BYOK_CLAUDE_CLIENT_SECRET_ENV: str = "ANTIEK_ANTHROPIC_OAUTH_CLIENT_SECRET"
+
+_ENABLED_VALUE: str = "1"
+_REGISTRATION_POINTER: str = (
+    "register your own OAuth application at https://console.anthropic.com and "
+    f"export {BYOK_CLAUDE_CLIENT_ID_ENV} and {BYOK_CLAUDE_CLIENT_SECRET_ENV}"
+)
+
 # Adaptive skew for token expiry.
 _EXPIRY_SKEW_S: int = 30
+
+
+def byok_claude_enabled(environ: Mapping[str, str] | None = None) -> bool:
+    """True only when ``ANTIEK_BYOK_CLAUDE=1``.
+
+    House convention for feature flags on this codebase: an exact ``"1"``
+    (see ``orchestration/rlm/bridge.py``).  Anything else, including ``"true"``
+    or ``"yes"``, is OFF — an ambiguous value must not arm a credential flow.
+    """
+    env = os.environ if environ is None else environ
+    return env.get(BYOK_CLAUDE_FLAG, "") == _ENABLED_VALUE
+
+
+def require_byok_claude(capability: str, environ: Mapping[str, str] | None = None) -> None:
+    """Raise the typed disabled error unless the capability is enabled.
+
+    Callers must invoke this BEFORE accepting a code, sending a token request,
+    or writing a credential row: the gate's job is that nothing is collected
+    while it is off.
+    """
+    if byok_claude_enabled(environ):
+        return
+    raise AnthropicAuthError(
+        failure=AnthropicAuthFailure.CAPABILITY_DISABLED,
+        status_code=0,  # no HTTP request was made: this is a local refusal
+        detail=(
+            f"Anthropic (Claude) BYOK is disabled: {capability} requires "
+            f"{BYOK_CLAUDE_FLAG}={_ENABLED_VALUE}. The flow is off by default because "
+            "Anthropic's terms do not permit collecting or storing Claude.ai credentials."
+        ),
+        terminal=True,
+    )
+
+
+def resolve_client_id(environ: Mapping[str, str] | None = None) -> str:
+    """Return the operator-supplied OAuth client_id, or raise a typed error.
+
+    Deliberately NOT a default: there is no fallback to anyone else's
+    registration.  A blank or whitespace value counts as missing.
+    """
+    env = os.environ if environ is None else environ
+    client_id = env.get(BYOK_CLAUDE_CLIENT_ID_ENV, "").strip()
+    if not client_id:
+        raise AnthropicAuthError(
+            failure=AnthropicAuthFailure.CLIENT_ID_NOT_REGISTERED,
+            status_code=0,
+            detail=(
+                f"{BYOK_CLAUDE_CLIENT_ID_ENV} is not set, so there is no client_id to "
+                f"authenticate with. To fix: {_REGISTRATION_POINTER}."
+            ),
+            terminal=True,
+        )
+    return client_id
+
+
+def resolve_client_secret(environ: Mapping[str, str] | None = None) -> str:
+    """Return the operator-supplied OAuth client_secret, or raise a typed error.
+
+    The PKCE flow below is a public-client flow and does not transmit the
+    secret; it is required anyway so that enabling the gate proves the operator
+    owns a complete registration rather than borrowing one.
+    """
+    env = os.environ if environ is None else environ
+    secret = env.get(BYOK_CLAUDE_CLIENT_SECRET_ENV, "").strip()
+    if not secret:
+        raise AnthropicAuthError(
+            failure=AnthropicAuthFailure.CLIENT_ID_NOT_REGISTERED,
+            status_code=0,
+            detail=(
+                f"{BYOK_CLAUDE_CLIENT_SECRET_ENV} is not set, so the client registration "
+                f"is incomplete. To fix: {_REGISTRATION_POINTER}."
+            ),
+            terminal=True,
+        )
+    return secret
+
+
+def assert_byok_claude_configured(environ: Mapping[str, str] | None = None) -> None:
+    """Startup check: validate the gate and both registration variables at once.
+
+    Services should call this during boot so a misconfiguration fails at
+    startup with the registration pointer, rather than on a user's first
+    authorization attempt.
+    """
+    if not byok_claude_enabled(environ):
+        return
+    resolve_client_id(environ)
+    resolve_client_secret(environ)
 
 
 # ─── Failure taxonomy ────────────────────────────────────────────────────────
@@ -78,6 +200,9 @@ class AnthropicAuthFailure(Enum):
     TIER_DENIED = "anthropic_tier_denied"  # 403 — terminal, suggest paste key
     RELOGIN_REQUIRED = "anthropic_relogin_required"  # 400/401 — quarantine
     TRANSIENT = "anthropic_transient"  # 429/5xx — retry
+    # Local refusals: no HTTP request is made, so ``status_code`` is 0.
+    CAPABILITY_DISABLED = "anthropic_capability_disabled"  # flag off — fail closed
+    CLIENT_ID_NOT_REGISTERED = "anthropic_client_id_not_registered"  # flag on, env missing
 
 
 @dataclass(frozen=True)
@@ -238,7 +363,7 @@ def build_authorize_url(
     pkce: PkceCodes | None = None,
     authorize_url: str = ANTHROPIC_AUTHORIZE_URL,
     redirect_uri: str = ANTHROPIC_REDIRECT_URI,
-    client_id: str = ANTHROPIC_OAUTH_CLIENT_ID,
+    client_id: str | None = None,
     scope: str = ANTHROPIC_SCOPE,
 ) -> tuple[str, PkceCodes]:
     """Build the authorization URL for the user to open in a browser.
@@ -253,6 +378,9 @@ def build_authorize_url(
     hosted callback page; the authorization code is displayed there for manual
     copy-back to the CLI.
     """
+    require_byok_claude("build_authorize_url")
+    if client_id is None:
+        client_id = resolve_client_id()
     if pkce is None:
         pkce = generate_pkce_pair()
     params = urlencode(
@@ -280,7 +408,7 @@ def exchange_authorization_code(
     redirect_uri: str = ANTHROPIC_REDIRECT_URI,
     client: httpx.Client | None = None,
     token_url: str = ANTHROPIC_TOKEN_URL,
-    client_id: str = ANTHROPIC_OAUTH_CLIENT_ID,
+    client_id: str | None = None,
 ) -> AnthropicTokens:
     """Exchange an authorization code for Anthropic tokens via a JSON POST.
 
@@ -293,6 +421,11 @@ def exchange_authorization_code(
 
     Raises :class:`AnthropicAuthError` on failure.
     """
+    # Gate first: while the capability is off, no code is accepted and no
+    # token request is sent.  Then resolve the operator's own registration.
+    require_byok_claude("exchange_authorization_code")
+    if client_id is None:
+        client_id = resolve_client_id()
     validate_oauth_endpoint(token_url)
     http = client or httpx.Client(timeout=30.0)
     own_client = client is None
@@ -333,7 +466,7 @@ def refresh_anthropic_token(
     *,
     client: httpx.Client | None = None,
     token_url: str = ANTHROPIC_TOKEN_URL,
-    client_id: str = ANTHROPIC_OAUTH_CLIENT_ID,
+    client_id: str | None = None,
 ) -> AnthropicTokens:
     """Refresh an Anthropic OAuth token via a JSON POST.
 
@@ -342,6 +475,9 @@ def refresh_anthropic_token(
 
     Raises :class:`AnthropicAuthError` on failure.
     """
+    require_byok_claude("refresh_anthropic_token")
+    if client_id is None:
+        client_id = resolve_client_id()
     validate_oauth_endpoint(token_url)
     http = client or httpx.Client(timeout=30.0)
     own_client = client is None
@@ -390,7 +526,12 @@ def store_anthropic_tokens(
     Serializes ``(access_token, refresh_token, id_token, expires_at)`` as JSON
     and encrypts via :func:`~runtime.byok.store.store_credential`.  Returns the
     ``cred_id``.  The plaintext tokens are never logged or echoed.
+
+    Gated: with the capability off this raises ``anthropic_capability_disabled``
+    and writes NO row, so a disabled deployment cannot accumulate credential
+    material it is not permitted to hold.
     """
+    require_byok_claude("store_anthropic_tokens")
     from runtime.byok.store import store_credential
 
     payload = json.dumps(
@@ -424,8 +565,15 @@ def load_anthropic_tokens(
     """Load and decrypt a stored Anthropic token set.
 
     Returns :class:`AnthropicTokens`.  Raises ``KeyError`` if ``cred_id`` is
-    unknown.
+    unknown, and ``AnthropicAuthError`` (capability disabled) when the gate is
+    off — a stored token must not be usable while the capability is retired.
+    Cleanup paths use :func:`find_anthropic_cred_id` and
+    :func:`delete_anthropic_tokens`, which are never gated.
+
+    Gate check happens BEFORE the store is touched, so a disabled deployment
+    cannot so much as read a row.
     """
+    require_byok_claude("load_anthropic_tokens")
     from runtime.byok.store import load_credential
 
     secret = load_credential(
@@ -494,15 +642,19 @@ __all__ = [
     "ANTHROPIC_AUTHORIZE_URL",
     "ANTHROPIC_INFERENCE_BASE",
     "ANTHROPIC_ISSUER",
-    "ANTHROPIC_OAUTH_CLIENT_ID",
     "ANTHROPIC_REDIRECT_URI",
     "ANTHROPIC_SCOPE",
     "ANTHROPIC_TOKEN_URL",
     "AnthropicAuthError",
     "AnthropicAuthFailure",
     "AnthropicTokens",
+    "BYOK_CLAUDE_CLIENT_ID_ENV",
+    "BYOK_CLAUDE_CLIENT_SECRET_ENV",
+    "BYOK_CLAUDE_FLAG",
     "PkceCodes",
+    "assert_byok_claude_configured",
     "build_authorize_url",
+    "byok_claude_enabled",
     "compute_expires_at",
     "delete_anthropic_tokens",
     "exchange_authorization_code",
@@ -511,6 +663,9 @@ __all__ = [
     "load_anthropic_tokens",
     "quarantine_anthropic_tokens",
     "refresh_anthropic_token",
+    "require_byok_claude",
+    "resolve_client_id",
+    "resolve_client_secret",
     "store_anthropic_tokens",
     "validate_inference_base_url",
     "validate_oauth_endpoint",

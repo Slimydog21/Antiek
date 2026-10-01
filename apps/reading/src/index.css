@@ -1,6 +1,105 @@
+/* Fonts that actually ship (self-hosted, latin subset, variable weight).
+   Inter 4.001 and JetBrains Mono 2.211 under the SIL Open Font License 1.1;
+   the licence texts sit next to the files in src/assets/fonts. Without these
+   rules the stacks fell through to SF Pro and, for mono, Courier.
+   index.html preloads the Inter file (same hashed URL Vite emits here). */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin-var.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("./assets/fonts/jetbrains-mono-latin-var.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Metric-matched fallbacks, named second in every stack: until a woff2
+   arrives (swap), text sets in a local face scaled to the web face's advance
+   and vertical metrics, so the swap does not re-wrap lines. Values measured in
+   Chromium against the shipped files: Inter's mean advance over UI copy is
+   106.36% of Arial's, ascent 0.96875 em, descent 0.24121 em; JetBrains Mono
+   is 99.66% of Menlo, ascent 1.02002, descent 0.29980. Overrides are divided
+   by size-adjust because the browser scales them by it. The local() lists are
+   metric-compatible families (Liberation, Arimo, Cousine), so one set of
+   numbers holds on macOS, Windows and Linux. Each fallback covers exactly
+   its web face's unicode-range: a glyph the latin subset lacks (≥, →, ⌘)
+   still falls through to the system face, as it did before. */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial"), local("ArialMT"), local("Liberation Sans"), local("Arimo");
+  size-adjust: 106.36%;
+  ascent-override: 91.08%;
+  descent-override: 22.68%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono Fallback";
+  src: local("Menlo"), local("Menlo-Regular"), local("Courier New"), local("CourierNewPSMT"),
+    local("Liberation Mono"), local("Cousine");
+  size-adjust: 99.66%;
+  ascent-override: 102.35%;
+  descent-override: 30.08%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  /* The canvas is the page token in both themes (was Tailwind stone-50). */
+  html,
+  body {
+    background-color: var(--bg-page);
+    color: var(--text-1);
+  }
+
+  /* One focus rule for everything that does not draw its own: a 2px ring in
+     --focus (ink by day, sun by night), offset so it never touches the
+     control's own edge. Utilities (focus:outline-none + a ring) still win. */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  /* Text-entry controls take the card surface, not the browser's white field,
+     so typed text stays readable at night. Zero specificity (:where) so any
+     bg-* utility on the field still wins. */
+  :where(
+      input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"],
+          [type="file"], [type="button"], [type="submit"], [type="reset"], [type="image"]),
+      textarea,
+      select
+    ) {
+    background-color: var(--bg-card);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(var(--text-3-rgb));
+  }
+
+  /* The highlighter: selection is the weathered sun veil everywhere (was
+     browser blue outside three prose selectors), ink stays ink. */
+  ::selection {
+    background-color: var(--mark);
+  }
+}
 
 /* The pdf.js text layer needs to overlay the canvas with transparent
    text so selection works against the rendered glyphs. We position it
@@ -14,29 +113,6 @@
   line-height: 1;
   user-select: text;
 }
-/* Brand spec § 8 — the operator's highlighter uses `--sun` at the
- * day/night opacity rather than the pre-redesign blue. Day uses
- * 0.45 alpha; the night-mode token automatically swaps via the
- * media query in design/tokens.css. */
-.pdf-text-layer ::selection {
-  background: var(--sun-hl-day);
-}
-@media (prefers-color-scheme: dark) {
-  .pdf-text-layer ::selection {
-    background: var(--sun-hl-night);
-  }
-}
-/* Also apply to prose surfaces: MasterMdViewer, notebook editor. */
-.tiptap ::selection,
-article ::selection {
-  background: var(--sun-hl-day);
-}
-@media (prefers-color-scheme: dark) {
-  .tiptap ::selection,
-  article ::selection {
-    background: var(--sun-hl-night);
-  }
-}
 .pdf-text-layer span {
   position: absolute;
   white-space: pre;
@@ -48,3 +124,139 @@ article ::selection {
 html, body, #root {
   height: 100%;
 }
+
+/* Controls revealed on hover need a touch and a keyboard path.
+   tailwind.config.js sets future.hoverOnlyWhenSupported, which wraps every
+   hover: and group-hover: rule in @media (hover: hover) and (pointer: fine)
+   so a hover lift does not stick after a tap. A control hidden until its row
+   is hovered (opacity-0 group-hover:opacity-100: Notebook block move and
+   delete, PlanEditor edit / + sub / remove, ProjectTree pin, the WorkCard
+   read label) would then never show on a touch screen, yet stay tappable.
+   So: on every device where that media query is false, it shows; and on any
+   device it shows while its row holds focus. Plain CSS after the utilities,
+   same specificity as .opacity-0, so source order makes it win. */
+@media not all and (hover: hover), not all and (pointer: fine) {
+  .group-hover\:opacity-100 {
+    opacity: 1;
+  }
+}
+.group:focus-within .group-hover\:opacity-100 {
+  opacity: 1;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   PROSE LAYER (.prose-antiek) — design wave 3 (shell, states, prose).
+   Wave 1 owns everything above this banner; this block is wave 3's.
+
+   One reading voice for the three long-form surfaces: the Notebook editor,
+   the Write editor and the reader (markdown and sanitized HTML). Tailwind's
+   preflight zeroes headings, paragraph gaps and list markers; without this
+   layer an h1 set at 16px/400 like body text and a list had no bullets
+   (audit-type-copy T2). Charter 19px/1.6 capped at 30em: the spec's
+   60-72 characters a line (lines ran 85-142). The cap is in em, not ch:
+   a Charter "0" is wider than its average glyph (0.44em), so 66ch would
+   allow about 83 characters. In @layer components so a
+   utility class on a node view still wins; selectors use :where() to stay
+   at one class of specificity.
+   ════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  .prose-antiek {
+    font-family: Charter, "Iowan Old Style", "Source Serif 4", Georgia, serif;
+    font-size: 1.1875rem;
+    line-height: 1.6;
+    max-width: 30em;
+    color: var(--text-1);
+    overflow-wrap: break-word;
+  }
+  .prose-antiek :where(p, ul, ol, blockquote, pre, table, figure, hr) {
+    margin: 0;
+  }
+  /* Paragraph rhythm: space between blocks, not around them. */
+  .prose-antiek :where(p, ul, ol, blockquote, pre, table, figure, hr) + :where(p, ul, ol, blockquote, pre, table, figure, hr) {
+    margin-top: 0.85em;
+  }
+  .prose-antiek :where(h1, h2, h3, h4) {
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--text-1);
+    margin: 1.5em 0 0.45em;
+    text-wrap: balance;
+  }
+  .prose-antiek :where(h1:first-child, h2:first-child, h3:first-child, h4:first-child) {
+    margin-top: 0;
+  }
+  .prose-antiek :where(h1) {
+    font-size: 1.45em;
+  }
+  .prose-antiek :where(h2) {
+    font-size: 1.15em;
+  }
+  .prose-antiek :where(h3) {
+    font-size: 1.05em;
+  }
+  .prose-antiek :where(h4) {
+    font-size: 1em;
+  }
+  .prose-antiek :where(ul) {
+    list-style: disc;
+    padding-left: 1.4em;
+  }
+  .prose-antiek :where(ol) {
+    list-style: decimal;
+    padding-left: 1.6em;
+  }
+  .prose-antiek :where(li + li) {
+    margin-top: 0.3em;
+  }
+  .prose-antiek :where(li)::marker {
+    color: var(--text-3);
+  }
+  .prose-antiek :where(blockquote) {
+    border-left: 3px solid var(--border-rule);
+    padding-left: 1em;
+    color: var(--text-2);
+  }
+  .prose-antiek :where(code) {
+    font-family: "JetBrains Mono", "JetBrains Mono Fallback", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.84em;
+    padding: 0.1em 0.3em;
+    border-radius: 4px;
+    background: var(--bg-inset);
+  }
+  .prose-antiek :where(pre) {
+    padding: 0.8em 1em;
+    border-radius: 6px;
+    background: var(--bg-inset);
+    overflow-x: auto;
+    line-height: 1.5;
+  }
+  .prose-antiek :where(pre code) {
+    padding: 0;
+    background: none;
+  }
+  .prose-antiek :where(a) {
+    color: var(--teal);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .prose-antiek :where(hr) {
+    border: 0;
+    border-top: 1px solid var(--border-hairline);
+    margin: 1.8em 0;
+  }
+  .prose-antiek :where(img) {
+    max-width: 100%;
+    height: auto;
+  }
+}
+/* The TipTap Placeholder extension marks the empty first block and hands
+   over its text as data-placeholder; nothing drew it until now. Outside
+   @layer so the purge never drops it (the class is added at runtime). */
+.prose-antiek p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: rgb(var(--text-3-rgb));
+}
+/* ═══ end PROSE LAYER ═══ */
