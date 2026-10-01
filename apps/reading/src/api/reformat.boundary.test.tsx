@@ -99,3 +99,23 @@ it("preserves the declared opaque chunk and scalar coordinates in an authorized 
   expect(sent.body.context).toBe("Core passages: source opaque:chunk [5:19]");
   expect(sent.body.spawn_context).toBe("A servable passage");
 });
+
+it.each([
+  { chunk_id: "different:chunk" }, { start_scalar: 4 }, { end_scalar: 20 },
+])("rejects a returned snippet for a different source range: %j", async (mismatch) => {
+  const backend = server(provenance(), snippet({ ...mismatch, text: "WRONG SOURCE SENTINEL" }));
+  mountReview();
+  fireEvent.click(await screen.findByRole("button", { name: "trace" }));
+  fireEvent.click(screen.getByRole("button", { name: "pull the core passage" }));
+  await screen.findByText("Couldn't open that passage. Try again.");
+  expect(document.body.textContent).not.toContain("WRONG SOURCE SENTINEL");
+  expect((screen.getByLabelText("Probe deeper from this bite") as HTMLInputElement).value).toBe("");
+  expect(backend.posts.filter((post) => post.path === "/investigations")).toEqual([]);
+});
+
+it("does not admit provenance for another opaque document identity", async () => {
+  server({ ...provenance(), document_id: "other:derived" });
+  mountReview(); await drain();
+  expect(document.querySelector('[data-reformat-review]')).toBeNull();
+  expect(screen.queryByTestId("review-crash")).toBeNull();
+});

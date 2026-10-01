@@ -778,3 +778,76 @@ describe("fork response admission", () => {
     expect(server.posts.filter((post) => post.url.endsWith("/merge"))).toEqual([]);
   });
 });
+
+describe("Independent regrade reader boundaries", () => {
+  it("does not silently turn an unavailable trace page into the last page", async () => {
+    const server: Server = { posts: [], patches: [], forkReachable: false };
+    route(server);
+    const handler = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation(async (input, init) => String(input).includes("/documents/drv-x1/provenance")
+      ? jsonResponse({ ...PROVENANCE, bites: [{ ...PROVENANCE.bites[1], source_page_hints: [99] }] })
+      : handler(input, init));
+    const { default: BookReader } = await import("./index");
+    const { default: ReformatReview } = await import("./ReformatReview");
+    const id = readerWindowId("doc-1");
+    useWindows.getState().open("reader", { documentId: "doc-1", initialPage: 0 }, { id });
+    function Source() {
+      const win = useWindows((state) => state.windows[id]);
+      return <div data-independent-source><BookReader {...win.payload} /></div>;
+    }
+    render(<MemoryRouter><ReformatReview documentId="drv-x1" /><Source /></MemoryRouter>);
+    await waitFor(() => expect(document.querySelector('[data-independent-source] article')?.textContent).toContain("The opening of the book."));
+    fireEvent.click(await screen.findByRole("button", { name: "trace" }));
+    fireEvent.click(screen.getByRole("button", { name: "open the source page" }));
+    expect(useWindows.getState().windows[id].payload.pageNavigation).toMatchObject({ pageIndex: 99 });
+    expect(document.querySelector('[data-independent-source] article')?.textContent).toContain("The opening of the book.");
+    expect(screen.getByText("That source page isn't available in this document.").getAttribute("role")).toBe("status");
+  });
+
+  it("an unknown-page source open preserves the already-open reader position", async () => {
+    const server: Server = { posts: [], patches: [], forkReachable: false };
+    route(server);
+    const { default: BookReader } = await import("./index");
+    const { openSourceReader } = await import("../../components/windows/openWindow");
+    const id = readerWindowId("doc-1");
+    useWindows.getState().open("reader", { documentId: "doc-1", initialPage: 1 }, { id });
+    function Source() {
+      const win = useWindows((state) => state.windows[id]);
+      return <div data-independent-source><BookReader {...win.payload} /></div>;
+    }
+    render(<MemoryRouter><Source /></MemoryRouter>);
+    await waitFor(() => expect(document.querySelector('[data-independent-source] article')?.textContent).toContain("The second page."));
+    const originalReader = document.querySelector('[data-testid="book-reader-root"]');
+    const { act } = await import("@testing-library/react");
+    act(() => { openSourceReader("doc-1", null, { from: "reformat", id: "opaque:origin" }); });
+    expect(document.querySelector('[data-independent-source] article')?.textContent).toContain("The second page.");
+    expect(document.querySelector('[data-testid="book-reader-root"]')).toBe(originalReader);
+    expect(useWindows.getState().windows[id].payload).not.toHaveProperty("pageNavigation");
+  });
+
+  it("rejects an unavailable page on first open and accepts a later valid jump in the same reader", async () => {
+    const server: Server = { posts: [], patches: [], forkReachable: false };
+    route(server);
+    const { default: BookReader } = await import("./index");
+    const { openSourceReader } = await import("../../components/windows/openWindow");
+    const { act } = await import("@testing-library/react");
+    const id = readerWindowId("doc-1");
+    useWindows.getState().open("reader", {
+      documentId: "doc-1", pageNavigation: { pageIndex: 99, version: 0 },
+    }, { id });
+    function Source() {
+      const win = useWindows((state) => state.windows[id]);
+      return <div data-independent-source><BookReader {...win.payload} /></div>;
+    }
+    render(<MemoryRouter><Source /></MemoryRouter>);
+    await screen.findByText("That source page isn't available in this document.");
+    const source = document.querySelector("[data-independent-source]")!;
+    const originalReader = source.querySelector('[data-testid="book-reader-root"]');
+    expect(source.querySelector("article")?.textContent).toContain("The opening of the book.");
+    act(() => { openSourceReader("doc-1", 1, { from: "reformat", id: "opaque:origin" }); });
+    await waitFor(() => expect(source.querySelector("article")?.textContent).toContain("The second page."));
+    expect(screen.queryByText("That source page isn't available in this document.")).toBeNull();
+    expect(source.querySelector('[data-testid="book-reader-root"]')).toBe(originalReader);
+    expect(useWindows.getState().order).toEqual([id]);
+  });
+});

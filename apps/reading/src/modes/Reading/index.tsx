@@ -201,6 +201,11 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
 
   const appliedNavigation = useRef<{ documentId: string; pageIndex: number; version: number | null } | null>(null);
+  const [unavailableNavigation, setUnavailableNavigation] = useState<{
+    documentId: string;
+    pageIndex: number;
+    version: number | null;
+  } | null>(null);
   const requestedPage = pageNavigation?.pageIndex ?? initialPage;
   const navigationVersion = pageNavigation?.version ?? null;
   useEffect(() => {
@@ -208,7 +213,13 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       requestedPage === null || !Number.isSafeInteger(requestedPage) || requestedPage < 0) return;
     const prior = appliedNavigation.current;
     if (prior?.documentId === documentId && prior.pageIndex === requestedPage && prior.version === navigationVersion) return;
-    appliedNavigation.current = { documentId, pageIndex: requestedPage, version: navigationVersion };
+    const request = { documentId, pageIndex: requestedPage, version: navigationVersion };
+    appliedNavigation.current = request;
+    if (requestedPage >= pages.length) {
+      setUnavailableNavigation(request);
+      return;
+    }
+    setUnavailableNavigation(null);
     setPageIndex(requestedPage);
   }, [loading, loadedDocumentId, documentId, requestedPage, navigationVersion, pages.length, setPageIndex]);
 
@@ -1002,6 +1013,13 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
           bookmark stays reachable mid-read (cockpit R3); only the reading
           body scrolls. */}
       <main className="flex-1 min-w-0 min-h-0 flex flex-col">
+        {unavailableNavigation?.documentId === documentId &&
+          unavailableNavigation.pageIndex === requestedPage &&
+          unavailableNavigation.version === navigationVersion && (
+          <p role="status" className="shrink-0 px-6 pt-3 text-xs text-shadow-1 dark:text-moonlight">
+            That source page isn't available in this document.
+          </p>
+        )}
         <div className="shrink-0 w-full max-w-3xl mx-auto px-6 pt-6">
           <div className="pb-2 border-b border-hairline">
             <header className="flex flex-col items-stretch gap-2 reader-md:flex-row reader-md:items-center reader-md:justify-between reader-md:gap-3">
