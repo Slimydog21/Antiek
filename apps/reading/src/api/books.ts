@@ -7,7 +7,7 @@
  * decides servability — it renders what the gate returns.
  */
 
-import { API_BASE, apiFetch } from "../lib/api";
+import { API_BASE, ApiError, apiFetch } from "../lib/api";
 import { toast } from "../components/lemon/LemonToast";
 import {
   CapacityExhaustedError,
@@ -112,7 +112,10 @@ export async function listBooks(status: CorpusStatus = "servable"): Promise<Book
 export async function getBook(documentId: string): Promise<BookDetail> {
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}`);
   if (resp.status === 404) throw new Error("book_not_found");
-  if (!resp.ok) throw new Error(`GET /books/{id}: HTTP ${resp.status}`);
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new ApiError(`GET /books/{id}: HTTP ${resp.status}`, resp.status, detail);
+  }
   return (await resp.json()) as BookDetail;
 }
 
@@ -130,7 +133,10 @@ export async function getBookFullText(documentId: string): Promise<FullTextRespo
     );
   }
   if (resp.status === 404) throw new Error("book_not_found");
-  if (!resp.ok) throw new Error(`GET /books/{id}/full-text: HTTP ${resp.status}`);
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new ApiError(`GET /books/{id}/full-text: HTTP ${resp.status}`, resp.status, detail);
+  }
   return (await resp.json()) as FullTextResponse;
 }
 
