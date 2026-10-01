@@ -103,7 +103,7 @@ export default function ReadingTypography() {
       <button type="button" ref={trigger} aria-label="Reading type" title="Reading type"
         aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}
         className="shrink-0 min-h-11 min-w-11 rounded border border-rule px-2 py-1 font-serif text-base text-1 hover:bg-inset">
-        Aa
+        Type
       </button>
       <LemonModal open={open} onClose={close} title="Reading type" size="md">
         <div className="reading-typography-dialog"><ReadingTypographyControls /></div>

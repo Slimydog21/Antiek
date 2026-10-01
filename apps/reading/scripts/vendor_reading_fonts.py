@@ -2,7 +2,8 @@
 
 --refresh obtains current CSS and replaces the lock. Default reproduces the
 locked assets. --check validates hashes, font axes and Latin coverage offline.
-Tooling requires fonttools[woff]; the application has no font dependency.
+Install tooling with: python3 -m pip install -r scripts/reading_fonts_requirements.txt
+The application has no font dependency.
 """
 import argparse
 import hashlib

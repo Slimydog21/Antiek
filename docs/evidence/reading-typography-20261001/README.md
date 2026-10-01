@@ -10,7 +10,8 @@ The separate typography candidate implements the [research decision](../../decis
 | Product repo root | `/Users/slimydog/Antiek/worktrees/reading-typography-20261001` |
 | Frontend command cwd | Product root plus `/apps/reading` |
 | Branch | `design/reading-typography-20261001` |
-| Base commit | `b21200200fdace1ec3b7ed0e1a8bde683cd4d81e` |
+| Original evidence base | `b21200200fdace1ec3b7ed0e1a8bde683cd4d81e` |
+| Release comparison base | `f2204666210de555ae6b74066d2a13d35ee5fd5e` |
 | Candidate identity | Original local snapshot below; release preparation at `521d37888c4fef299315d243bc116a90925d4c09` on main `facb9bf28`; hashes in [candidate-source.json](candidate-source.json) |
 | Node / npm | v25.6.1 / 11.9.0 |
 | Python | `/Library/Frameworks/Python.framework/Versions/3.11/bin/python3`, 3.11.2 |
@@ -47,8 +48,8 @@ The regression supplies fixed DOM rectangles and event boundaries. It verifies t
 
 | ID | Path / trigger | Status | Evidence | Live product LLM |
 | --- | --- | --- | --- | --- |
-| T1 | Book Aa dialog and attributed ReadingColumn | tested | `apps/reading/src/components/reader/ReadingTypography.test.tsx:36`; book-reader suite; [mobile](type-mobile.png) | no |
-| T2 | Research manuscript Aa, thesis, claims, rationale, appendix | tested | `apps/reading/src/modes/ResearchWorkstation/MasterMdViewer.tsx:294`; [computed body metrics](manuscript-browser.json); [render](manuscript-desktop.png) | no |
+| T1 | Book Type dialog and attributed ReadingColumn | tested | `apps/reading/src/components/reader/ReadingTypography.test.tsx:36`; book-reader suite; [mobile](type-mobile.png) | no |
+| T2 | Research manuscript Type, thesis, claims, rationale, appendix | tested | `apps/reading/src/modes/ResearchWorkstation/MasterMdViewer.tsx:294`; [computed body metrics](manuscript-browser.json); [render](manuscript-desktop.png) | no |
 | T3 | Appearance settings | tested | `apps/reading/src/modes/Settings/AppearancePanel.tsx:51`; actual component in Settings story; [dark settings](settings-dark.png) | no |
 | T4 | Persistence, cross-tab event, clear, remount, corrupt/blocked storage | tested | `apps/reading/src/lib/readingTypography.test.ts:5`; `apps/reading/src/components/reader/ReadingTypography.test.tsx:63` | no |
 | T5 | Font assets, axes, version, notices, Unicode ranges, true styles | tested | [manifest](../../../apps/reading/public/fonts/reading/manifest.json), [font check](font-check.log), [actual glyph families](portfolio-platform-fonts.json) | no |
@@ -61,7 +62,7 @@ The regression supplies fixed DOM rectangles and event boundaries. It verifies t
 
 ### Explicitly out of scope
 
-Palette, mascot, backend, database, research-provider execution, release, and the proposed human trial.
+Palette, mascot, backend behavior, database changes, research-provider execution, and the proposed human trial. The operator subsequently authorized release, recorded below.
 
 ### Temptations resisted
 
@@ -77,7 +78,7 @@ The Env Card above pins the product checkout and tools. The harness root is `/Us
 
 - Reduced sustained fatigue, better comprehension than paper, or a universally easiest font. The review does not establish these outcomes for this candidate.
 - Safari/Firefox, full screen-reader behavior, every font/script subset, 200% browser zoom, or live backend/provider paths.
-- Integration with the separate reading-comfort branch or a production release. The changes remain uncommitted and local.
+- Integration with the separate reading-comfort branch or a production release. The candidate is published as PR #3603; production verification remains pending.
 
 ### Status
 
@@ -157,8 +158,18 @@ The font manifest captures unmodified binaries and adjacent complete OFL notices
 
 ## Release preparation, 2026-10-01
 
-The original evidence above describes the local candidate on `b21200200`. Implementation commit `521d37888c4fef299315d243bc116a90925d4c09` rebased cleanly onto `facb9bf28`; all 69 original source hashes still match. The separate palette PR #3596 is being coordinated first, with its existing appearance behavior preserved.
+The original evidence above describes the local candidate on `b21200200`. Implementation commit `521d37888c4fef299315d243bc116a90925d4c09` rebased cleanly onto `facb9bf28`; all 69 original source hashes still match. PR #3603 is published against current main `f22046662`. The owners coordinate one merge slot: whichever current-base candidate first completes its gates may land; the second candidate must reconcile the shared consumers and verify the combined revision. No combined-palette runtime result is claimed.
 
 Fresh checks on this revision passed: full frontend **388 files / 3,675 tests**, types, production build and bundle budgets, token/type-scale lint, and locked font integrity. The strict security scan returned **zero REAL findings**, LOW, 18 advisories; these are existing constants and OSV-verified patched dependency floors. Full command output is retained in `release-*.log`. None of these results establishes a production deployment.
 
-Cross-lineage review and intentional visual baseline review are pending before publication. Required contexts are measured from the live ruleset and the exact published head; the dependent pytest rollup also gates deployment. The served Cloudflare production assets and backend build SHA will be verified after merge.
+GLM 5.3 independently reviewed the source and requested changes to the earlier palette-first release plan, duplicate visible Aa controls, and missing retained logs. The standalone release plan is now explicit, Type distinguishes the typography trigger, and all linked logs are retained. A fresh review of the repair revision is pending. All 24 accepted visual references were inspected at all three widths; [baseline receipts](visual-baselines.json) pin the authenticated CI artifact and hashes. Required contexts are measured from the live ruleset and the exact published head; the dependent pytest rollup also gates deployment. The served Cloudflare production assets and backend build SHA will be verified after merge.
+
+### Exact-head CI repairs
+
+Head `d908ef7ac95f33af48a4670416b0997a44bd080b` failed visual references and two existing asynchronous frontend tests. No assertions, timeouts, snapshots of runtime state, or thresholds were weakened. The write-key test now waits for route adoption and section seeding before selecting a child; the reformat test waits for its measured island glyph before clicking it. An independent read-only refuter confirmed that these are real readiness boundaries and that later semantic assertions still catch broken behavior. The focused pair passed 28 tests.
+
+The 12 changed existing screenshot references capture intentional self-hosted serif/prose changes, including the synthetic PDF story whose existing Source Serif fallback now resolves. Twelve new references cover the four typography stories at 1280, 1024 and 768 pixels. The authenticated artifact predates the visible trigger rename from Aa to Type; current-head visual CI must validate the resulting caption/layout against these references. The normal 0.4% pixel threshold is unchanged. Stories now participate in the existing axe audit.
+
+Install the font tooling with `python3 -m pip install -r scripts/reading_fonts_requirements.txt` from the frontend directory before `python3 scripts/vendor_reading_fonts.py --check`. The separate tooling pins do not change application dependencies. [Release source hashes](release-source.json) distinguish this repair from the original [candidate snapshot](candidate-source.json). [Preview receipts](preview-fonts.json) verify every one of the 52 font assets against the published preview, not production. The font availability warning covers regular Latin loading; other subsets/styles may use silent fallback.
+
+The repaired source passed a fresh full frontend run: **388 files / 3,675 tests**, exit 0 ([log](repair-tests.log)). Type checking and production build/bundle checks passed, exit 0 ([types](repair-typecheck.log), [build](repair-build-check.log)). A newly created Python 3.11 virtual environment installed the pinned vendor requirements and passed the offline 52-entry asset check, exit 0 ([tooling](repair-font-tooling.log)).
