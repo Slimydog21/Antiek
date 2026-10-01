@@ -41,6 +41,8 @@ import { useEffect, useRef } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
+import { useWindows } from "./windowsStore";
+import { escOverlayOpen, topModal } from "./escapeOverlay";
 import { companionVisible } from "./companionVisibility";
 import { WRITE_OUTLINE_PANEL_ID, useWriteOutline, writeOutlineVisible } from "./writeOutlineStore";
 import { mothershipForPath } from "./mothershipForPath";
@@ -260,6 +262,40 @@ function cycleFocus(direction: 1 | -1) {
   ws.focus(visible[next]);
 }
 
+type CycleDestination = "panels" | "window" | "refuse";
+
+function cycleDestination(event: KeyboardEvent): CycleDestination {
+  const active = document.activeElement;
+  const target = event.target instanceof Element && event.target !== document.body &&
+    event.target !== document.documentElement ? event.target : active;
+  const frame = target?.closest("[data-workspace-window]");
+  if (!frame) return active?.closest("[data-workspace-window]") ? "refuse" : "panels";
+  if (target !== active || !target?.isConnected ||
+      target.closest('[hidden], [aria-hidden="true"], [inert]') ||
+      event.defaultPrevented || event.isComposing || event.getModifierState("AltGraph") ||
+      event.altKey || event.shiftKey || (event.ctrlKey && event.metaKey) || topModal()) return "refuse";
+  const id = frame.getAttribute("data-workspace-window");
+  if (id === null || !Object.hasOwn(useWindows.getState().windows, id)) return "refuse";
+  const ownTitlebar = target.hasAttribute("data-window-titlebar") && target.parentElement === frame;
+  if (target !== frame && !ownTitlebar) return "refuse";
+  // An open child overlay owns this frame; unrelated nonmodal overlays do not.
+  if (escOverlayOpen(frame)) return "refuse";
+  return "window";
+}
+
+function cycleAtFocus(event: KeyboardEvent, direction: 1 | -1): boolean | void {
+  const destination = cycleDestination(event);
+  switch (destination) {
+    case "refuse": return false;
+    case "window": return useWindows.getState().cycleFocus(direction);
+    case "panels": return cycleFocus(direction);
+    default: {
+      const exhaustive: never = destination;
+      return exhaustive;
+    }
+  }
+}
+
 /**
  * Cockpit pane focus (C3). In the omarchy-inset preset: move DOM focus to
  * the named inset pane and set its focus ring. Honest no-op when that pane
@@ -421,8 +457,8 @@ export function createActionHandlers(navigate: NavigateFunction): Record<ActionI
     },
     "projecttree.toggle": () => toggleProjectTree(),
     "aisidecar.toggle": () => toggleAISidecar(),
-    "panel.focusPrev": () => cycleFocus(-1),
-    "panel.focusNext": () => cycleFocus(1),
+    "panel.focusPrev": (event) => cycleAtFocus(event, -1),
+    "panel.focusNext": (event) => cycleAtFocus(event, 1),
     "panel.closeFloating": () => closeFocusedFloat(),
     "pane.focusLeft": () => focusPane("left"),
     "pane.focusRight": () => focusPane("right"),
