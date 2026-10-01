@@ -1,0 +1,13 @@
+{
+  "method": "existing Antiek border-connected background matte",
+  "source": "h-b-magenta-court.png",
+  "tolerance": 34,
+  "feather": 0.55,
+  "size": [
+    606,
+    632
+  ],
+  "coverage": 0.2421560287475586,
+  "preserves": "interior cream shoe details remain behind character outlines",
+  "source_provenance": "h-b-magenta-court.provenance.json"
+}

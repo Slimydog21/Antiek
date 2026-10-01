@@ -1,0 +1,183 @@
+{
+  "readerReload": {
+    "theme": "dark",
+    "pageLight": "soft",
+    "page": "rgb(33, 30, 25)",
+    "ink": "rgb(199, 187, 167)",
+    "highlight": "rgb(169, 255, 23)",
+    "highlightInk": "rgb(44, 40, 35)",
+    "selection": "rgb(169, 255, 23)",
+    "primary": "#6ECB8F",
+    "danger": "#D49B94",
+    "dangerFill": "#8A403B",
+    "width": 1440,
+    "scrollWidth": 1440
+  },
+  "mobilePointerOpen": {
+    "width": 390,
+    "scrollWidth": 390,
+    "dialog": {
+      "x": 16,
+      "y": 274.25,
+      "width": 358,
+      "height": 295.5
+    },
+    "portalParent": "BODY",
+    "focus": "Close",
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(16, 15, 13) 12px 12px 0px 0px"
+  },
+  "tabFocus": {
+    "tag": "SELECT",
+    "label": "Reading theme"
+  },
+  "escape": {
+    "closed": true,
+    "focus": "Reading appearance"
+  },
+  "environment": {
+    "browser": "local Chrome through browser-harness",
+    "app": "http://127.0.0.1:5191",
+    "api": "read-only invented fixture at localhost:8191",
+    "stateSetup": "theme/page-light visual states set via the app module; pointer opening, Tab and Escape are real CDP input",
+    "screenshots": "Earlier captures await final source/state refresh; reader-paper recaptured loaded at 1440x900 on 2026-10-01"
+  },
+  "verification": {
+    "focusedTests": {
+      "files": 28,
+      "tests": 276,
+      "status": "passed"
+    },
+    "brandTests": {
+      "files": 5,
+      "tests": 28,
+      "status": "passed",
+      "overlap": "includes the 4 BrainMascot tests in the focused run"
+    },
+    "typecheck": "passed",
+    "tokenLint": "passed",
+    "build": "passed with existing large-chunk warning",
+    "reactDoctor": {
+      "score": 78,
+      "changedFiles": 23,
+      "warnings": 1,
+      "warning": "existing BookReader complexity 45 / cognitive 50 / nesting 3, unchanged"
+    }
+  },
+  "paletteEvaluation": {
+    "red": {
+      "hex": "#8A403B",
+      "onPaper": 6.61,
+      "onNightCard": 2.09,
+      "decision": "danger fill / Paper danger text; #D49B94 night text (6.47:1 on card)"
+    },
+    "forest": {
+      "hex": "#3C6731",
+      "onPaper": 5.99,
+      "onNightCard": 2.3,
+      "decision": "compatible light forest family; retain the existing green roles"
+    },
+    "black": {
+      "hex": "#25231A",
+      "onPaper": 14.25,
+      "decision": "compatible neutral; retain the existing walnut/charcoal ramp"
+    },
+    "gold": {
+      "hex": "#8B6324",
+      "onPaper": 4.87,
+      "decision": "declined because operator removed yellow and wants restrained accents"
+    },
+    "cream": {
+      "hex": "#CDC3B5",
+      "onNightCard": 8.75,
+      "redOnCream": 4.19,
+      "decision": "compatible night neutral; retain the lighter existing paper ramp"
+    }
+  },
+  "authoredFilterProbe": {
+    "method": "temporary offscreen React fixture, removed after inspection",
+    "filters": [
+      "url(\"#authored-palette-r4\") drop-shadow(black 1px 2px 0px)",
+      "url(\"#authored-palette-r5\")"
+    ],
+    "distinctIds": true,
+    "historical": true
+  },
+  "releasePreparation": {
+    "base": "facb9bf280a35401c2a873f34b733571768102c6",
+    "mascotChoice": "Approved Krea B cream court sneakers, integrated bold Antiek wordmark; operator: I like it!",
+    "shipAuthorization": "operator explicitly requested main and deployment after final mascot choice",
+    "security": {
+      "status": "PASS",
+      "tool": "hardenx --strict --json",
+      "real": 0,
+      "advisory": 18,
+      "band": "LOW"
+    },
+    "typeScaleLint": "passed",
+    "tokenParity": "passed",
+    "bundleBudgets": "passed",
+    "fullVitest": {
+      "status": "PASS",
+      "files": 387,
+      "tests": 3671,
+      "workers": 4,
+      "concurrent_attempt": "Three reader async timeouts in two files during simultaneous build/art work; bounded rerun passed unchanged tests."
+    },
+    "differentLineageReview": {
+      "theme": "Kimi K3 ACCEPT on exact 24-file scope; hash recheck matches",
+      "mascot": "pending final selected Krea asset/source review"
+    },
+    "main": "not updated",
+    "production": "not deployed",
+    "headband": "Green-teal basketball sweatband with integrated Antiek lettering, fonts as inspiration",
+    "sneakers": "Approved original B cream court colorway; magenta #943D4A secondary",
+    "exactMagenta": {
+      "hex": "#943D4A",
+      "rgb": [
+        148,
+        61,
+        74
+      ],
+      "status": "Verified in all 20 output PNGs",
+      "provenance": "apps/reading/src/brand/mascot-brain/athletic/provenance.json"
+    }
+  },
+  "finalMascot": {
+    "status": "Packaged and visually inspected on Paper/Night",
+    "poses": 20,
+    "bytes": 6009335,
+    "originalBytes": 4587549,
+    "runtimeFilters": false,
+    "textOverlay": false,
+    "originalsRetained": true
+  },
+  "finalMobile": {
+    "viewport": [
+      390,
+      844
+    ],
+    "dialogRect": {
+      "x": 16,
+      "y": 274.25,
+      "width": 358,
+      "height": 295.5
+    },
+    "portal": "BODY",
+    "pointerOpen": true,
+    "escapeFocus": "Reading appearance",
+    "bookTextCharacters": 915
+  },
+  "finalNight": {
+    "viewport": [
+      1440,
+      900
+    ],
+    "theme": "dark",
+    "light": "soft",
+    "page": "rgb(33, 30, 25)",
+    "ink": "rgb(199, 187, 167)",
+    "highlight": "rgb(169, 255, 23)",
+    "bookTextCharacters": 915
+  },
+  "updatedAt": "2026-10-01T06:44:46.361032+00:00"
+}

@@ -24,7 +24,7 @@ const html = document.documentElement;
 let changeListener: (() => void) | null = null;
 
 function boot({ stored = {} as Record<string, string>, osDark = false, blocked = false } = {}) {
-  for (const a of ["data-theme", "data-theme-pref", "data-motion"]) html.removeAttribute(a);
+  for (const a of ["data-theme", "data-theme-pref", "data-motion", "data-reading-light"]) html.removeAttribute(a);
   document.head.innerHTML = '<meta name="theme-color" content="" />';
   window.localStorage.clear();
   for (const [k, v] of Object.entries(stored)) window.localStorage.setItem(k, v);
@@ -56,10 +56,18 @@ afterEach(() => {
   vi.restoreAllMocks();
   changeListener = null;
   window.localStorage.clear();
-  for (const a of ["data-theme", "data-theme-pref", "data-motion"]) html.removeAttribute(a);
+  for (const a of ["data-theme", "data-theme-pref", "data-motion", "data-reading-light"]) html.removeAttribute(a);
 });
 
 describe("index.html boot script (runs before first paint)", () => {
+  it("restores page light before the app paints and ignores invalid or blocked storage", () => {
+    boot({ stored: { "antiek.reading-light": "soft" } });
+    expect(html.getAttribute("data-reading-light")).toBe("soft");
+    boot({ stored: { "antiek.reading-light": "invalid" } });
+    expect(html.getAttribute("data-reading-light")).toBe("standard");
+    boot({ blocked: true });
+    expect(html.getAttribute("data-reading-light")).toBe("standard");
+  });
   it("has exactly one inline script, and it is the theme boot", () => {
     expect(inlineScripts).toHaveLength(1);
     expect(bootSource).toContain("antiek.theme");
