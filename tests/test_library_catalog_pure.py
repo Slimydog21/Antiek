@@ -11,6 +11,7 @@ from interfaces.research.api.library_catalog import (
     matches_search,
     summary_payload_has_no_body,
 )
+from substrate.books.servability import ServabilityStatus
 
 
 def _sum(
@@ -24,7 +25,11 @@ def _sum(
         document_id=doc_id,
         title=title,
         author=author,
-        servability="servable" if servable else "gated",
+        servability=(
+            ServabilityStatus.PUBLIC_DOMAIN
+            if servable
+            else ServabilityStatus.GATED_METADATA_ONLY
+        ),
         servable_full_text=servable,
         page_count=10,
         cover_uri=None,
@@ -124,7 +129,7 @@ def test_register_library_exhausts_bounded_batches(monkeypatch: pytest.MonkeyPat
         document_id = "d1"
         title = "T"
         author = "A"
-        servability = type("S", (), {"value": "servable"})()
+        servability = ServabilityStatus.PUBLIC_DOMAIN
         servable_full_text = True
         page_count = 1
         cover_uri = None
