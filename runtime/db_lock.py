@@ -1044,7 +1044,18 @@ def _connect_write_after_process_gate(
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
         assert open_error is not None
-        if _external_duckdb_lock_conflict(open_error):
+        if _external_duckdb_lock_conflict(
+            open_error
+        ) or _SAME_FILE_DIFFERENT_CONFIG in str(open_error):
+            # BOTH retry conditions above must translate here. The loop retries
+            # the external lock conflict AND the same-file/different-config
+            # error; translating only the first left an exhausted
+            # `_SAME_FILE_DIFFERENT_CONFIG` retry raising a raw
+            # `duckdb.ConnectionException`, which no caller catches —
+            # `ad_routes.frame_telemetry` handles `WriteLockTimeout` and turns it
+            # into a retryable 503, so the raw raise became a 500 instead
+            # (measured on the live box 2026-10-01: 169 x 500 on that route in
+            # 60 minutes, every one ending in this error).
             _log_write_event(
                 db_path,
                 purpose or "-",
