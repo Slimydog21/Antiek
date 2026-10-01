@@ -160,6 +160,10 @@ describe("CR-F1's surviving half: the client half of the revision guard", () => 
     // guard exists to prevent.
     expect(snap.draft).toBe("My kept draft");
     expect(snap.save.status).toBe("error");
+    // `SaveState` is a discriminated union, so narrow before reading `message`.
+    // The build's `tsc -b` covers test files; `tsc --noEmit -p tsconfig.json`
+    // does NOT, which is how this got past an earlier "tsc clean" claim.
+    if (snap.save.status !== "error") throw new Error("expected an error save state");
     // failure.ts:57 - the sentence already written for this case, and until now
     // unreachable because nothing could produce a 409.
     expect(snap.save.message).toContain("changed somewhere else");
