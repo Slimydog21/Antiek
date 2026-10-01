@@ -845,9 +845,9 @@ function ConfidenceChip({
 }) {
   const colorClass =
     confidence === "high"
-      ? "bg-success/15 text-success"
+      ? "bg-success/15 text-1"
       : confidence === "moderate"
-        ? "bg-sun/20 text-sun-deep dark:text-sun"
+        ? "bg-sun/20 text-1"
         : confidence === "low"
           ? "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight"
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
@@ -864,11 +864,11 @@ function ConfidenceChip({
 function RecommendationBadge({ rec }: { rec: Recommendation }) {
   const color =
     rec === "proceed"
-      ? "bg-success/15 text-success"
+      ? "bg-success/15 text-1"
       : rec === "pass"
-        ? "bg-danger/10 text-danger"
+        ? "bg-danger/10 text-1"
         : rec === "conditional"
-          ? "bg-sun/20 text-sun-deep dark:text-sun"
+          ? "bg-sun/20 text-1"
           : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
