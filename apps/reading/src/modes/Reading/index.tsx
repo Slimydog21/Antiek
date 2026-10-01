@@ -12,6 +12,8 @@ import type {
   SelectionProvenance,
 } from "../shared/FloatMenu/useFloatMenuSelection";
 import ReadingColumn from "../../components/reader/ReadingColumn";
+import ReadingTypography from "../../components/reader/ReadingTypography";
+import { useReadingTypography } from "../../lib/readingTypography";
 import { EmptyState, ErrorState, LoadingState } from "../../components/states";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import { useModeNavigate } from "../../workspace/useModeNavigate";
@@ -104,6 +106,7 @@ const ANCHOR_STUB_CTX: ReadingContext = {
 };
 
 export default function BookReader({ documentId: documentIdProp, origin = null, initialPage = null }: BookReaderProps = {}) {
+  const typography = useReadingTypography();
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
   const documentId = documentIdProp ?? routeDocumentId;
   const inWindow = useInWindow();
@@ -286,14 +289,15 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       setIslandRects(next);
     }
     measure();
-    // jsdom has no ResizeObserver: the one measurement per pass stands there
-    // (repagination re-runs this effect anyway); real browsers get live
-    // resize tracking too.
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(main);
-    return () => observer.disconnect();
-  }, [visibleIslands, pageIndex, pages, anchors, anchorMapChunks]);
+    // Glyph positions can move while the root box stays the same size.
+    document.fonts?.addEventListener("loadingdone", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(main);
+    return () => {
+      observer?.disconnect();
+      document.fonts?.removeEventListener("loadingdone", measure);
+    };
+  }, [visibleIslands, pageIndex, pages, anchors, anchorMapChunks, typography]);
 
   const islandLayoutMap = useMemo(
     () => createLayoutMap(baseGeometryFromMap(islandRects)),
@@ -991,7 +995,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
       <main className="flex-1 min-w-0 min-h-0 flex flex-col">
         <div className="shrink-0 w-full max-w-3xl mx-auto px-6 pt-6">
           <div className="pb-2 border-b border-hairline">
-            <header className="flex items-center justify-between gap-3">
+            <header className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 min-w-0">
                 <button
                   type="button"
@@ -1010,6 +1014,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
                 </h1>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {!isArxivT2T3 && <ReadingTypography />}
                 <LemonTag colour={colour} dot>
                   {label}
                 </LemonTag>
@@ -1057,7 +1062,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
                 )}
               </div>
             )}
-            <div className="max-w-3xl mx-auto px-6 pt-2 pb-6 flex flex-col gap-4 min-h-full">
+            <div className="w-full mx-auto px-6 pt-2 pb-6 flex flex-col gap-4 min-h-full">
               {isArxivLinkBack ? (
                 /* arXiv T2/T3 — the gated / unknown-rights tiers. Antiek hosts NO
                    body and serves NO ads here (body-serving + ad-eligibility are
