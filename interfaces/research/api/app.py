@@ -95,9 +95,9 @@ from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
 # Retry-After hint (seconds) served with every 503 mapped from
-# runtime.db_lock.ReadLockTimeout — a cross-process DuckDB read-open
-# conflict. Conservative client backoff hint, not a measured hold time.
-_READ_LOCK_RETRY_AFTER_S = "2"
+# runtime.db_lock.ReadLockTimeout or WriteConfigurationTimeout.
+# Conservative client backoff hint, not a measured hold time.
+_DB_CONNECTION_RETRY_AFTER_S = "2"
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -1641,22 +1641,18 @@ def create_app(
         ),
     )
 
-    # ── Cross-process read-lock honesty (read-open audit, 2026-10-01) ──
-    # runtime.db_lock.connect_read raises ReadLockTimeout whenever another
-    # PROCESS holds the DuckDB file (immediate mode and expired bounded wait
-    # alike). ~128 request paths open the DB through connect_read with no
-    # local handling, so the ONE app-level handler below is what makes the
-    # conflict honest everywhere at once: 503 (retryable) with Retry-After,
-    # never an uncaught 500. Routes that already map the conflict to 503
-    # locally keep working; this handler only sees the ones that would have
-    # leaked the raw exception.
+    # Database admission conflicts share one retryable HTTP response handler.
+    # ReadLockTimeout covers an external file lock; WriteConfigurationTimeout
+    # covers an incompatible same-process handle after the write wait expires.
+    # Separate types preserve existing route-specific WriteLockTimeout handling.
     from fastapi.responses import JSONResponse
 
-    from runtime.db_lock import ReadLockTimeout
+    from runtime.db_lock import ReadLockTimeout, WriteConfigurationTimeout
 
+    @app.exception_handler(WriteConfigurationTimeout)
     @app.exception_handler(ReadLockTimeout)
-    async def _read_lock_timeout(
-        _request: Request, _exc: ReadLockTimeout
+    async def _database_connection_unavailable(
+        _request: Request, _exc: ReadLockTimeout | WriteConfigurationTimeout
     ) -> JSONResponse:
         # Static body: no db path or holder detail leaks to clients. The
         # 2s Retry-After is a conservative client backoff hint, not derived
@@ -1664,9 +1660,13 @@ def create_app(
         return JSONResponse(
             status_code=503,
             content={
-                "detail": "database read is temporarily unavailable; retry shortly"
+                "detail": (
+                    "database read is temporarily unavailable; retry shortly"
+                    if isinstance(_exc, ReadLockTimeout)
+                    else "database connection is temporarily unavailable; retry shortly"
+                )
             },
-            headers={"Retry-After": _READ_LOCK_RETRY_AFTER_S},
+            headers={"Retry-After": _DB_CONNECTION_RETRY_AFTER_S},
         )
 
     # Resolve CORS origins. Vite's dev server runs at :5173 by default;
