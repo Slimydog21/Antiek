@@ -39,12 +39,8 @@ function passive(root: HTMLElement): boolean {
         // Mirror the existing server's passive URL policy. Never repair or
         // relabel an unsafe served body as sanitized HTML.
         const href = attribute.value.replace(/[\u0000-\u001f\u007f]/g, "").trim();
-        try {
-          const url = new URL(href, "https://reader.invalid/");
-          if (url.protocol !== "https:" && url.protocol !== "http:") return false;
-        } catch {
-          return false;
-        }
+        const scheme = href.match(/^[a-z][a-z\d+.-]*:/i)?.[0]?.toLowerCase();
+        if (scheme && scheme !== "https:" && scheme !== "http:") return false;
       }
     }
   }

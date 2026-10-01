@@ -84,6 +84,13 @@ describe("passive HTML section windows", () => {
     expect(pages[0].fragmentIds).toEqual(["safe"]);
   });
 
+  it("does not withhold a safe body merely because its voluntary HTTP link is incomplete", () => {
+    const source = '<h1>Readable</h1><p><a href="https://">Incomplete source link</a></p>';
+    const pages = htmlPages(source);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].text).toContain('href="https://"');
+  });
+
   it("does not advertise duplicate fragment IDs as destinations", () => {
     const pages = htmlPages('<h1 id="same">First</h1><p id="same">Ambiguous</p><h2 id="second">Second</h2><p id="same">Also ambiguous</p>');
     expect(pages[0].fragmentIds).toEqual([]);

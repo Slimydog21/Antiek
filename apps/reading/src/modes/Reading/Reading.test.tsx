@@ -548,6 +548,15 @@ describe("BookReader", () => {
     expect(screen.queryByText(/cannot be displayed safely/)).toBeNull();
   });
 
+  it("keeps a body readable when an incomplete HTTP source link is passive", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "html_section" }));
+    getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1>Readable</h1><p>Safe document prose.</p><a href="https://">Incomplete source link</a>' }));
+    await renderReader();
+    await screen.findByText("Safe document prose.");
+    expect(screen.getByRole("link", { name: "Incomplete source link" }).getAttribute("href")).toBe("https://");
+    expect(screen.queryByText(/cannot be displayed safely/)).toBeNull();
+  });
+
   it("keeps HTML in a non-section scheme as one HTML window and lists unresolvable contents", async () => {
     getBookMock.mockResolvedValue(makeDetail({ pagination_scheme: "unknown", toc: [{ title: "Second", page_index: 1, level: 1 }] }));
     getFullTextMock.mockResolvedValue(makeBody({ content_format: "html", full_text: '<h1>First</h1><h2>Second</h2><p>Whole HTML body.</p>' }));
