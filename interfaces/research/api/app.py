@@ -7608,7 +7608,7 @@ def create_app(
         """List documents in the substrate. Filterable by source_tier
         and investigation_id. Per §13.3 retrieval-time gates the
         listing inherits the substrate's gating posture."""
-        from runtime.db_lock import connect_read
+        from runtime.db_lock import ReadLockTimeout, connect_read
         from substrate.books.model import catalog_is_uninitialized
         from substrate.graph import default_db_path
         from substrate.rights.document_visibility import document_discoverability_sql
@@ -7664,6 +7664,7 @@ def create_app(
                         ),
                     }
                 },
+                headers={"Retry-After": "2"} if isinstance(exc, ReadLockTimeout) else None,
             ) from exc
 
     # ── Sprint 30+ shared-substrate skill rule listing (§13.2) ──

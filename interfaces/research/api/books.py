@@ -1426,7 +1426,7 @@ def register_book_routes(app: FastAPI) -> None:
         request: Request,
         status: Literal["servable", "gated", "all"] = "servable",
     ) -> BookListResponse:
-        from runtime.db_lock import connect_read
+        from runtime.db_lock import ReadLockTimeout, connect_read
         from substrate.graph import default_db_path
 
         try:
@@ -1440,7 +1440,10 @@ def register_book_routes(app: FastAPI) -> None:
             summaries = [BookSummary.from_asset(a) for a in assets]
             return BookListResponse(books=summaries, count=len(summaries))
         except Exception as exc:
-            raise HTTPException(status_code=503, detail="read_unavailable") from exc
+            raise HTTPException(
+                status_code=503, detail="read_unavailable",
+                headers={"Retry-After": "2"} if isinstance(exc, ReadLockTimeout) else None,
+            ) from exc
 
     # Registered BEFORE /books/{document_id} so "curate" is not matched as
     # a document id.

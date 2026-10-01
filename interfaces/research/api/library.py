@@ -37,13 +37,16 @@ def register_library_routes(app: FastAPI) -> None:
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=20, ge=1, le=200),
     ) -> LibraryPage:
-        from runtime.db_lock import connect_read
+        from runtime.db_lock import ReadLockTimeout, connect_read
         from substrate.graph import default_db_path
 
         try:
             con = connect_read(default_db_path())
         except Exception as exc:
-            raise HTTPException(status_code=503, detail="read_unavailable") from exc
+            raise HTTPException(
+                status_code=503, detail="read_unavailable",
+                headers={"Retry-After": "2"} if isinstance(exc, ReadLockTimeout) else None,
+            ) from exc
         transaction_started = False
         try:
             # DuckDB snapshots are transaction-scoped. Keep every offset batch
@@ -66,7 +69,10 @@ def register_library_routes(app: FastAPI) -> None:
             con.execute("COMMIT")
             transaction_started = False
         except Exception as exc:
-            raise HTTPException(status_code=503, detail="read_unavailable") from exc
+            raise HTTPException(
+                status_code=503, detail="read_unavailable",
+                headers={"Retry-After": "2"} if isinstance(exc, ReadLockTimeout) else None,
+            ) from exc
         finally:
             primary_failure = sys.exc_info()[0] is not None
             try:
@@ -85,6 +91,7 @@ def register_library_routes(app: FastAPI) -> None:
                     except Exception as exc:
                         raise HTTPException(
                             status_code=503, detail="read_unavailable",
+                            headers={"Retry-After": "2"} if isinstance(exc, ReadLockTimeout) else None,
                         ) from exc
 
         try:
@@ -97,4 +104,7 @@ def register_library_routes(app: FastAPI) -> None:
                 page_size=page_size,
             )
         except Exception as exc:
-            raise HTTPException(status_code=503, detail="read_unavailable") from exc
+            raise HTTPException(
+                status_code=503, detail="read_unavailable",
+                headers={"Retry-After": "2"} if isinstance(exc, ReadLockTimeout) else None,
+            ) from exc
