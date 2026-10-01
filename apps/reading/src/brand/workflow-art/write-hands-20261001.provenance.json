@@ -1,0 +1,9 @@
+{
+  "date": "2026-10-01",
+  "method": "built-in image_gen edit",
+  "source": "write-512.png",
+  "operator_request": "The write emote lacks hands; all other emotes are perfect.",
+  "prompt": "Add two small rounded coral hands and short arms visibly grasping the existing diagonal pencil. Match warm brown-red outline and shading. Keep original brain silhouette, face, expression, body, pencil angle, leg positions and coral source legs unchanged. Preserve composition and transparent alpha. No new props, text, border, watermark or background. Simple mitt-like grasp readable at 64px.",
+  "generated_source": "exec-0fffbef3-d564-4775-b6c1-4ccb78e608fc.png",
+  "scope": "Initial Write-only hand repair, retained as the source for the Krea athletic Write edit. The final athletic family uses baked PNG material-color preparation, without a CSS/SVG leg filter."
+}
