@@ -1,0 +1,39 @@
+{
+  "scope": "Native Chrome against combined local Storybook source after the keyboard repair; not production or a complete assistive-technology certification",
+  "settings": {
+    "global_theme": "dark",
+    "reading_light": "soft",
+    "font": "literata",
+    "size_px": 24,
+    "measure_ch": 78,
+    "axe": {
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 2
+    },
+    "keyboard_preview": {
+      "tab_index": 0,
+      "client_height": 238,
+      "scroll_height": 294,
+      "before_scroll_top": 0,
+      "page_down_settled_scroll_top": 55.5,
+      "focused": true,
+      "focus_outline": "rgb(169, 255, 23) solid 2px"
+    }
+  },
+  "portfolio": {
+    "global_theme": "dark",
+    "axe": {
+      "violations": 0,
+      "passes": 9,
+      "incomplete": 0
+    }
+  },
+  "repair_reason": "Native axe reported Serious scrollable-region-focusable on the enlarged preview; PageDown now scrolls the named focusable region with a visible focus outline",
+  "limitations": [
+    "Native axe covers these specimens only; two settings findings remain incomplete for manual review.",
+    "The CI axe job is informational and still does not prove its index-based audit executed.",
+    "Storybook does not establish production appearance-boot persistence.",
+    "The 30 accepted authentic screenshots predate the focus repair; default unfocused pixels are unchanged by this repair and exact-head visual CI still gates."
+  ]
+}

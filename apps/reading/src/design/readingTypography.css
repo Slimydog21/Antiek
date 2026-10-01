@@ -59,6 +59,11 @@
   color: var(--text-1);
 }
 
+.reading-font-preview:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .reading-typography-controls select,
 .reading-typography-controls button {
   min-height: 2.75rem;

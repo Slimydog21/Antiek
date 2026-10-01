@@ -75,7 +75,7 @@ export function ReadingTypographyControls() {
           </select>
         </div>
       </div>
-      <div className="reading-font-preview" aria-label="Reading font preview">
+      <div className="reading-font-preview" role="region" tabIndex={0} aria-label="Reading font preview">
         <div className="reading-prose" style={readingTypographyStyle(preferences)}>
           <p>The best place to think is one where you can forget the page and follow the thought. A quiet sentence leaves room for an unexpected idea.</p>
           <p className="mt-3"><em>Read at your own pace.</em> <strong>Keep what matters.</strong></p>
