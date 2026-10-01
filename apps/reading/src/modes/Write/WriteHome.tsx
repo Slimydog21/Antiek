@@ -33,7 +33,7 @@ import { ESC_OVERLAY_PROPS } from "../../workspace/escapeOverlay";
 import { WRITE_OUTLINE_PANEL_ID } from "../../workspace/writeOutlineStore";
 import { sectionScopeFor, useWriteTreeSync } from "../../workspace/writeTreeSync";
 import RetainedContent from "../../shared/RetainedContent";
-import { discardDeliverableProse } from "./sectionProse";
+import { discardDeliverableProse, reconcileDeliverableProse } from "./sectionProse";
 
 /** The block repository's id (the Blocks toggle controls it). */
 const BLOCK_REPOSITORY_ID = "write-block-repository";
@@ -86,7 +86,10 @@ function useScopedDeliverable(deliverableId: string | undefined) {
       await useTabTrees.getState().ensureMothership("writing");
       if (!current()) return;
       const next = await getDeliverable(deliverableId);
-      if (current()) setLoadedPiece(next ? { detail: next, deliverableId, contextEpoch, projectId, request, authorizationVersion } : null);
+      if (current()) {
+        reconcileDeliverableProse(deliverableId, next ? next.sections.map((section) => section.section_id) : []);
+        setLoadedPiece(next ? { detail: next, deliverableId, contextEpoch, projectId, request, authorizationVersion } : null);
+      }
     } catch (error) {
       if (current() && error instanceof ApiError && [401, 403, 404].includes(error.status)) {
         discardDeliverableProse(deliverableId);

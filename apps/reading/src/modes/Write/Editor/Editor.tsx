@@ -57,7 +57,8 @@ export interface WriteEditorProps {
    *  change as a real transaction — captured, undoable and autosaved the way
    *  a keystroke is — instead of beside the editor where it would be lost. */
   editorRef?: MutableRefObject<Editor | null>;
-  editingAllowed?: boolean;
+  /** Reads the host session at dispatch, including revocation before unmount. */
+  editingAllowed?: () => boolean;
 }
 
 export function WriteEditor({
@@ -70,7 +71,7 @@ export function WriteEditor({
   className,
   onContentChange,
   editorRef,
-  editingAllowed = true,
+  editingAllowed,
 }: WriteEditorProps) {
   // Snapshot of the section's blocks after the last captured update.
   const prevBlocks = useRef<EditorBlock[]>([]);
@@ -82,7 +83,7 @@ export function WriteEditor({
   const canEdit = useCallback(() => {
     const currentOwner = getSectionProseOwner();
     const tabs = useTabTrees.getState();
-    return editingAllowed && scope.owner.owner !== null && currentOwner.owner === scope.owner.owner &&
+    return (editingAllowed?.() ?? true) && scope.owner.owner !== null && currentOwner.owner === scope.owner.owner &&
       currentOwner.epoch === scope.owner.epoch && !currentOwner.suspended && tabs.dispatchAllowed &&
       tabs.contextEpoch === scope.contextEpoch && tabs.projectId === scope.projectId;
   }, [editingAllowed, scope]);

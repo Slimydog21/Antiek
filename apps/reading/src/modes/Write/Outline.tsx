@@ -202,6 +202,10 @@ function SectionCard({
   const [projectionError, setProjectionError] = useState<string | null>(null);
   const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
   const editorRef = useRef<Editor | null>(null);
+  const editingAllowed = useCallback(() => {
+    const current = proseSession.getSnapshot();
+    return interactive && current.available && current.dispatchAllowed && current.generation.status !== "generating";
+  }, [proseSession, interactive]);
   const handleContentChange = useCallback((text: string) => {
     proseSession.edit(text, editorRef.current?.getJSON() ?? null);
   }, [proseSession]);
@@ -591,7 +595,7 @@ function SectionCard({
               sectionId={section.section_id}
               initialContent={draftContent}
               investigationId={investigationId}
-              editingAllowed={prose.dispatchAllowed && interactive && !generating}
+              editingAllowed={editingAllowed}
               // SPR-02: persist coarse prose_text on edit (mirrors the shape
               // CreationStudio uses), debounced, with an honest save indicator.
               onContentChange={handleContentChange}

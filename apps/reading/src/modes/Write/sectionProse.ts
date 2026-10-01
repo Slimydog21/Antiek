@@ -75,6 +75,16 @@ export function sectionProse(
   return session;
 }
 
+/** Revoke absent sessions before React can flush their final unsubscribe. */
+export function reconcileDeliverableProse(deliverableId: string, sectionIds: readonly string[]): void {
+  const admitted = new Set(sectionIds);
+  for (const [key, section] of sections) {
+    if (section.deliverableId !== deliverableId || admitted.has(section.sectionId)) continue;
+    section.dispose();
+    sections.delete(key);
+  }
+}
+
 export function discardDeliverableProse(deliverableId: string): void {
   for (const [key, section] of sections) {
     if (section.deliverableId !== deliverableId) continue;
@@ -97,7 +107,7 @@ class SectionProse {
   private readonly contextEpoch = useTabTrees.getState().contextEpoch;
   private readonly projectId = useTabTrees.getState().projectId;
 
-  constructor(private readonly key: string, readonly deliverableId: string, private readonly sectionId: string, prose: string | null, provenance: Record<string, string[]>) {
+  constructor(private readonly key: string, readonly deliverableId: string, readonly sectionId: string, prose: string | null, provenance: Record<string, string[]>) {
     this.snapshot = {
       available: true, dispatchAllowed: getSectionProseOwner().owner !== null && !getSectionProseOwner().suspended, draft: prose, document: null, saved: prose, provenance, revision: 0,
       save: { status: "idle" }, generation: { status: "idle" },

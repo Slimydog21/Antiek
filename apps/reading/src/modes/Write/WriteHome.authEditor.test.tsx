@@ -12,6 +12,7 @@ import { createInMemoryTabTreeAdapter } from "../../workspace/tabTree";
 import { useTabTrees } from "../../workspace/tabTreeStore";
 import { setTabOwner, suspendTabDispatch } from "../../workspace/tabTreeOwner";
 import { setSectionProseOwner, suspendSectionProseDispatch } from "./sectionProseOwner";
+import { sectionProse } from "./sectionProse";
 
 const { editors } = vi.hoisted(() => ({ editors: new Set<Editor>() }));
 vi.mock("@tiptap/react", async (original) => {
@@ -208,6 +209,7 @@ it.each(["unavailable", "inferred"] as const)("initial %s identity never mounts 
 it("stale identity and detail replies cannot expose or overwrite the retained real editor", async () => {
   const { editor, node } = await mount(); await edit(editor);
   const savedDocument = editor.getJSON();
+  const session = sectionProse("piece", "section", ORIGINAL, {});
   const staleIdentity = deferred(); authReply = () => staleIdentity.promise;
   let oldRefresh = Promise.resolve(); act(() => { oldRefresh = auth().refresh(); });
   await refresh(async () => json({}, 503));
@@ -220,7 +222,10 @@ it("stale identity and detail replies cannot expose or overwrite the retained re
   const latestDetail = deferred(); detailReply = () => latestDetail.promise;
   await refresh(async () => identity()); await drain();
   expect(detailRequests).toBe(3);
-  await act(async () => { obsoleteDetail.resolve(json(detail("Obsolete reply."))); }); await drain();
+  // Obsolete membership must not revoke the current retained section.
+  await act(async () => { obsoleteDetail.resolve(json({ ...detail(), sections: [] })); }); await drain();
+  expect(session.getSnapshot().available).toBe(true);
+  expect(node.isConnected).toBe(true);
   expect(node.closest("[hidden][inert]")).toBeTruthy();
   expect(editor.getJSON()).toEqual(savedDocument);
   await act(async () => { latestDetail.resolve(json(detail())); }); await drain();
@@ -238,6 +243,58 @@ it("a fresh authoritative detail refusal destroys the retained editing session",
   expect(editor.isDestroyed).toBe(true);
   expect(node.isConnected).toBe(false);
   expect(screen.queryByText("Sharper sentence. Second sentence.")).toBeNull();
+});
+
+it("fresh detail omission revokes a retained section and its queued writes before the same ID returns", async () => {
+  const { editor, node } = await mount(); vi.useFakeTimers(); await edit(editor);
+  const session = sectionProse("piece", "section", ORIGINAL, {});
+  const admittedPatch = deferred(); patchReply = () => admittedPatch.promise;
+  await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+  expect(proseWrites).toEqual([EDITED]);
+  await act(async () => { editor.view.dispatch(editor.state.tr.insertText("Queued removed section.", 1, editor.state.doc.content.size - 1)); });
+  await refresh(async () => json({}, 503));
+  const fresh = deferred(); detailReply = () => fresh.promise;
+  await refresh(async () => identity()); await drain();
+  expect(detailRequests).toBe(2);
+  expect(session.getSnapshot().available).toBe(true);
+  expect(session.getSnapshot().dispatchAllowed).toBe(false);
+  expect(proseWrites).toEqual([EDITED]);
+  mutations = [];
+  await act(async () => { fresh.resolve(json({ ...detail(), sections: [] })); }); await drain();
+  expect(session.getSnapshot().available).toBe(false);
+  expect(session.getSnapshot().document).toBeNull();
+  await act(async () => { await vi.advanceTimersByTimeAsync(30); });
+  expect(editor.isDestroyed).toBe(true);
+  expect(node.isConnected).toBe(false);
+  expect(mutations).toEqual([]);
+  await act(async () => { admittedPatch.resolve(json({ status: "saved" })); await vi.advanceTimersByTimeAsync(1200); });
+  expect(proseWrites).toEqual([EDITED]);
+  expect(mutations).toEqual([]);
+  // A later accepted response can contain the same ID. It must start a new
+  // session from that response, never resurrect or flush the removed draft.
+  await refresh(async () => json({}, 503));
+  detailReply = async () => json(detail("Fresh returned section."));
+  await refresh(async () => identity()); await drain();
+  const next = [...editors].find((candidate) => candidate !== editor && !candidate.isDestroyed);
+  expect(next?.getText()).toBe("Fresh returned section.");
+  await act(async () => { next?.commands.undo(); await vi.advanceTimersByTimeAsync(1200); });
+  expect(next?.getText()).toBe("Fresh returned section.");
+  expect(proseWrites).toEqual([EDITED]);
+});
+
+it("session revocation blocks actual capture before React disposes the old editor", async () => {
+  const { editor } = await mount(); await edit(editor);
+  expect(mutations).toContain("/events/typed"); mutations = [];
+  const session = sectionProse("piece", "section", ORIGINAL, {});
+  act(() => {
+    session.dispose();
+    // Revocation precedes React's editability effect/unmount. Exercise an
+    // already-held real instance during that gap, with owner/project valid.
+    expect(editor.isEditable).toBe(true);
+    editor.view.dispatch(editor.state.tr.insertText("Late removed section.", 1, editor.state.doc.content.size - 1));
+  });
+  expect(mutations).toEqual([]);
+  expect(session.getSnapshot().draft).toBeNull();
 });
 
 it("direct editor transactions cannot emit granular capture during suspension", async () => {
