@@ -40,6 +40,14 @@ def client(monkeypatch, tmp_path):
     def receipt() -> Response:
         return Response("saved output", headers=RECEIPT_HEADERS)
 
+    @app.get("/cors-retry-after-test")
+    def retry_after() -> Response:
+        return Response("database busy", status_code=503, headers={"Retry-After": "2"})
+
+    @app.get("/cors-no-retry-after-test")
+    def no_retry_after() -> Response:
+        return Response("service unavailable", status_code=503)
+
     return TestClient(app, headers={"Authorization": "Bearer cors-test-token"})
 
 
@@ -67,6 +75,45 @@ def test_disallowed_origin_gets_no_read_permission(client):
     )
     assert response.status_code == 200
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_retry_after_is_exposed_to_allowed_origin(client):
+    response = client.get(
+        "/cors-retry-after-test", headers={"Origin": "https://antiek.ai"},
+    )
+    assert response.status_code == 503
+    assert response.text == "database busy"
+    assert response.headers["retry-after"] == "2"
+    assert response.headers["access-control-allow-origin"] == "https://antiek.ai"
+    assert response.headers["access-control-allow-credentials"] == "true"
+    exposed = {
+        header.strip().lower()
+        for header in response.headers.get("access-control-expose-headers", "").split(",")
+        if header.strip()
+    }
+    assert "retry-after" in exposed
+    assert "*" not in exposed
+
+
+def test_retry_after_disallowed_origin_gets_no_read_permission(client):
+    response = client.get(
+        "/cors-retry-after-test", headers={"Origin": "https://untrusted.example"},
+    )
+    assert response.status_code == 503
+    assert response.text == "database busy"
+    assert response.headers["retry-after"] == "2"
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_does_not_fabricate_retry_after(client):
+    response = client.get(
+        "/cors-no-retry-after-test", headers={"Origin": "https://antiek.ai"},
+    )
+    assert response.status_code == 503
+    assert response.text == "service unavailable"
+    assert "retry-after" not in response.headers
+    assert response.headers["access-control-allow-origin"] == "https://antiek.ai"
+    assert response.headers["access-control-allow-credentials"] == "true"
 
 
 @pytest.mark.parametrize(

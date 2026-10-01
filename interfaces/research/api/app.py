@@ -1991,6 +1991,7 @@ def create_app(
                 "X-Document-ID",
                 "X-Reader-Revision",
                 "ETag",
+                "Retry-After",
             ],
         )
 
