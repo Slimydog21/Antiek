@@ -872,7 +872,7 @@ export default function CommandPalette() {
                   {(() => {
                     const wf = entryWorkflow(e);
                     return wf && wf !== "shared" ? (
-                      <span className="text-xxs uppercase tracking-wider font-mono text-ink bg-sun/70 px-1.5 py-0.5 rounded">
+                      <span className="text-xxs uppercase tracking-wider font-mono text-ink bg-sun/80 px-1.5 py-0.5 rounded">
                         {WORKFLOWS[wf].label}
                       </span>
                     ) : null;

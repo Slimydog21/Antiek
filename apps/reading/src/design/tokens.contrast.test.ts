@@ -32,7 +32,7 @@ import { describe, expect, it } from "vitest";
 
 import { contrastRatio, over, relativeLuminance } from "../../e2e/_ams/visible";
 import { parseTokensCss, resolveTailwindColor, resolveVar, toRgba, type Rgba, type ThemeName } from "./tokenCss";
-import { barAccent, sun, sunLight } from "./tokens";
+import { barAccent, highlighter, semantic, sun, sunLight } from "./tokens";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const APP = join(here, "..", "..");
@@ -102,8 +102,8 @@ describe("UI pairs clear 3:1 (WCAG 1.4.11), both themes", () => {
       }
     });
 
-    it(`${theme}: the keycap edge separates from the sun face it frames`, () => {
-      expect(ratio(tok(theme, "--keycap-edge"), tok(theme, "--sun"))).toBeGreaterThanOrEqual(AA_UI);
+    it(`${theme}: fixed ink keeps a visible boundary on the primary green fill`, () => {
+      expect(ratio(tok(theme, "--fixed-ink"), tok(theme, "--sun"))).toBeGreaterThanOrEqual(AA_UI);
     });
   }
 
@@ -155,10 +155,8 @@ describe("fills: what sits on the sun, on a danger fill, on the fixed ink", () =
   }
 
   for (const theme of THEMES) {
-    it(`${theme}: the brand mark keeps paper lobes under ink folds (BrainMark: fill-ice-0 stroke-ink)`, () => {
-      // It sits on the dock's sun key and on cards in both themes; the folds
-      // are only drawn if the lobes stay paper (UI 3:1, WCAG 1.4.11).
-      expect(ratio(util(theme, "stroke", "ink"), util(theme, "fill", "ice-0"))).toBeGreaterThanOrEqual(AA_UI);
+    it(`${theme}: the brain mark keeps walnut folds legible on its coral lobes`, () => {
+      expect(ratio(tok(theme, "--fixed-ink"), tok(theme, "--mascot-coat"))).toBeGreaterThanOrEqual(AA_UI);
       // ice as a pigment is one colour whatever the utility: text, fill, stroke.
       for (const n of [0, 1, 2, 3, 4]) {
         for (const kind of ["fill", "stroke"] as const) {
@@ -195,9 +193,25 @@ describe("composited: washes and the highlighter", () => {
 
     it(`${theme}: highlighted prose (--mark over page and card) stays AA`, () => {
       for (const bg of ["--bg-page", "--bg-card"]) {
-        expect(contrastRatio(tok(theme, "--text-1"), over(tok(theme, "--mark"), tok(theme, bg)))).toBeGreaterThanOrEqual(AA_TEXT);
+        expect(contrastRatio(tok(theme, "--mark-ink"), over(tok(theme, "--mark"), tok(theme, bg)))).toBeGreaterThanOrEqual(AA_TEXT);
       }
     });
+  }
+});
+
+describe("reading light preserves legibility in both themes", () => {
+  for (const theme of THEMES) {
+    for (const prefix of ["--reading-", "--reading-soft-"]) {
+      it(`${theme}: ${prefix}ink on ${prefix}page clears AA`, () => {
+        expect(ratio(tok(theme, `${prefix}ink`), tok(theme, `${prefix}page`))).toBeGreaterThanOrEqual(AA_TEXT);
+      });
+      it(`${theme}: drifted highlights stay readable on ${prefix}page at 70% opacity`, () => {
+        const page = tok(theme, `${prefix}page`);
+        const ink = over({ ...tok(theme, "--mark-ink"), a: 0.7 }, page);
+        const mark = over({ ...tok(theme, "--mark"), a: 0.7 }, page);
+        expect(contrastRatio(ink, mark)).toBeGreaterThanOrEqual(AA_TEXT);
+      });
+    }
   }
 });
 
@@ -270,16 +284,17 @@ describe("the Tailwind keys call sites actually use, as they render", () => {
   });
 });
 
-describe("AMS-SPR-09 brand invariants (kept)", () => {
-  const hex = (h: string) => toRgba(h)!;
-  const chroma = (c: Rgba) => (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / 255;
-
-  it("the bottom-tab yellow stays the brand lemon by day and a loud glow by night", () => {
-    expect(barAccent.day).toBe(sun.base);
-    expect(barAccent.night).not.toBe(sun.glow.night);
-    expect(chroma(hex(barAccent.night))).toBeGreaterThan(0.6);
-    expect(chroma(hex(barAccent.day))).toBeGreaterThan(chroma(hex(sun.glow.day)));
-    expect(chroma(hex(sunLight.base))).toBeLessThan(chroma(hex(sun.base)));
+describe("the operator's green and lime brand palette", () => {
+  it("primary fills and both selected tabs use the preserved interface green", () => {
+    expect(sun.base).toBe(semantic.dark.success);
+    expect(barAccent.day).toBe(semantic.dark.success);
+    expect(barAccent.night).toBe(semantic.dark.success);
+    for (const theme of THEMES) {
+      expect(resolveVar(sheet, theme, "--sun")).toBe(semantic.dark.success);
+      expect(resolveVar(sheet, theme, "--bar-accent")).toBe(semantic.dark.success);
+      expect(resolveVar(sheet, theme, "--mark")).toBe(highlighter.color);
+    }
+    expect(sunLight.deep).toBe(semantic.light.success);
   });
 
   it("the sun is a fill, never text on paper (the reason --sun-ink exists)", () => {
