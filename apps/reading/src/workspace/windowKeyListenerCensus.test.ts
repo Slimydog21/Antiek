@@ -107,28 +107,63 @@ const DECLARED: Record<string, Row> = {
  *   WriteOutlinePane.tsx  outline-pane keyboard handling
  */
 
-/** Event names in the first argument, with TypeScript assertions removed. */
-function eventNames(argText: string): string[] {
+/**
+ * Local `const NAME = <literal>` bindings, so an event name held in a variable
+ * is still read. A critic planted `const EVENT = "keydown"` and the earlier
+ * matcher, which only looked at the first argument, saw the identifier `EVENT`
+ * and scored nothing.
+ */
+function localStringBindings(source: string): Map<string, string> {
+  const out = new Map<string, string>();
+  // one level of literal initialiser: a string, a no-substitution template, or a
+  // concatenation of those.
+  const re = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+)/g;
+  for (const m of source.matchAll(re)) {
+    const name = m[1];
+    const init = m[2];
+    const parts = [...init.matchAll(/[`'"]([^`'"]*)[`'"]/g)].map((x) => x[1]);
+    if (parts.length === 0) continue;
+    // reject a template with substitutions: the value is not statically known
+    if (/\$\{/.test(init)) continue;
+    out.set(name, parts.join(""));
+  }
+  return out;
+}
+
+/**
+ * Does this first argument name a keyboard event? Three routes, because two
+ * spellings are not enough: the raw text (catches `"key" + "down"`), the string
+ * literals inside it, and — through the file's own const bindings — an
+ * identifier that resolves to one.
+ */
+function mentionsAKey(argText: string, bindings: Map<string, string>): boolean {
   const head = argText.split(/\s+as\s+/)[0].trim();
-  const quoted = [...head.matchAll(/[`'"]([^`'"]+)[`'"]/g)].map((m) => m[1]);
-  if (quoted.length > 0) return quoted;
+  if (/key/i.test(head)) return true;
+  for (const m of head.matchAll(/[`'"]([^`'"]+)[`'"]/g)) {
+    if (/key/i.test(m[1])) return true;
+  }
   const ident = /^([A-Za-z_$][\w$]*)/.exec(head);
-  return ident ? [ident[1]] : [];
+  if (!ident) return false;
+  const resolved = bindings.get(ident[1]);
+  if (resolved !== undefined) return /key/i.test(resolved);
+  return /key/i.test(ident[1]);
 }
 
 /** Every global keyboard registration in a source string. */
 function registrationsIn(source: string): number {
+  const bindings = localStringBindings(source);
   let n = 0;
   for (const m of source.matchAll(GLOBAL_ADD)) {
-    if (eventNames(m[2]).some((e) => /key/i.test(e))) n += 1;
+    if (mentionsAKey(m[2], bindings)) n += 1;
   }
   n += [...source.matchAll(GLOBAL_ONKEYDOWN)].length;
   return n;
 }
 
 function isCapture(source: string): boolean {
+  const bindings = localStringBindings(source);
   for (const m of source.matchAll(GLOBAL_ADD)) {
-    if (!eventNames(m[2]).some((e) => /key/i.test(e))) continue;
+    if (!mentionsAKey(m[2], bindings)) continue;
     if (/,\s*true\s*$/.test(m[2].trim())) return true;
   }
   return false;
@@ -170,19 +205,30 @@ describe("global keyboard handlers: a closed, declared, checked set", () => {
     expect(rows.has("workspace/shortcuts.ts")).toBe(true);
   });
 
-  it("the matcher catches every spelling a critic planted, and ignores types", () => {
+  it("the matcher catches every spelling a critic planted - the whole set", () => {
+    // [1] the four the FIRST critic planted, [2] the const-binding class the
+    // SECOND critic planted and this file previously missed, [3] a concatenation,
+    // which carries no literal event name at all. A test named "catches every
+    // spelling" has to be true as MEASURED, so the count is asserted below rather
+    // than the cases being spot-checked.
     const planted = [
       'window.addEventListener("keydown", h);',
       "globalThis.addEventListener(`key${suffix}`, h);",
       "document.addEventListener(KEYDOWN_EVENT, h);",
       "window.onkeydown = h;",
+      'const EVENT = "keydown";\nwindow.addEventListener(EVENT, h);',
+      'document.addEventListener("key" + "down", h);',
     ];
+    const caught = planted.filter((line) => registrationsIn(line) > 0);
+    expect(caught).toHaveLength(planted.length);
     for (const line of planted) {
       expect(registrationsIn(line), `missed: ${line}`).toBeGreaterThan(0);
     }
-    // Non-key listeners are not counted...
+    // ...and the matcher is not simply matching everything.
     expect(registrationsIn('window.addEventListener("resize", h);')).toBe(0);
-    // ...and a TypeScript assertion is not an event name. `keyof` is the trap
+    expect(registrationsIn("window.addEventListener(ON_RESIZE, h);")).toBe(0);
+    expect(registrationsIn('const EVENT = "resize"; window.addEventListener(EVENT, h);')).toBe(0);
+    // A TypeScript assertion is a type, not an event name. `keyof` is the trap
     // that made an earlier revision of this scan over-count.
     expect(registrationsIn('window.addEventListener("antiek:palette:toggle" as keyof WindowEventMap, h);')).toBe(0);
     // An element-level handler is not a global binding.
