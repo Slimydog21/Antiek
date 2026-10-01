@@ -9,7 +9,7 @@
     "axe": {
       "violations": 0,
       "passes": 29,
-      "incomplete": 2
+      "incomplete": 1
     },
     "keyboard_preview": {
       "tab_index": 0,
@@ -31,9 +31,13 @@
   },
   "repair_reason": "Native axe reported Serious scrollable-region-focusable on the enlarged preview; PageDown now scrolls the named focusable region with a visible focus outline",
   "limitations": [
-    "Native axe covers these specimens only; two settings findings remain incomplete for manual review.",
+    "Native axe covers these specimens only; one existing decorative non-text contrast finding remains incomplete.",
     "The CI axe job is informational and still does not prove its index-based audit executed.",
     "Storybook does not establish production appearance-boot persistence.",
     "The 30 accepted authentic screenshots predate the focus repair; default unfocused pixels are unchanged by this repair and exact-head visual CI still gates."
-  ]
+  ],
+  "manual_review": {
+    "removed_invalid_label": "Native incomplete aria-prohibited-attr identified aria-label on the specimen paragraph; removed it while retaining actual readable characters in the named preview region.",
+    "remaining_incomplete": "Existing Theme and Motion select decorative down-arrow glyphs have non-text content; both controls retain named combobox semantics and visible Dark/System text. No new typography node remains in the incomplete list."
+  }
 }

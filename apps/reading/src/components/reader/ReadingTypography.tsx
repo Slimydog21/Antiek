@@ -79,7 +79,7 @@ export function ReadingTypographyControls() {
         <div className="reading-prose" style={readingTypographyStyle(preferences)}>
           <p>The best place to think is one where you can forget the page and follow the thought. A quiet sentence leaves room for an unexpected idea.</p>
           <p className="mt-3"><em>Read at your own pace.</em> <strong>Keep what matters.</strong></p>
-          <p className="mt-3" aria-label="Letter and number comparison">Il1 · O0 · rn m · é ö ñ · 0123456789</p>
+          <p className="mt-3">Il1 · O0 · rn m · é ö ñ · 0123456789</p>
         </div>
       </div>
       <p className="text-xs text-2">Different readers find different fonts easier. Try a few paragraphs and keep what feels comfortable. Your choices apply across Antiek in this browser.</p>

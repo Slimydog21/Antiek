@@ -1,7 +1,7 @@
 {
   "base": "0fa478338d4950dd8c0c10890f7c50b0d20454fd",
   "previous_reviewed_source": "250cf14f722edfbfd189155177d4d601c8555476",
-  "source_delta": "Named keyboard-focusable preview region and token-based focus-visible outline; all other 77 source/context pins unchanged",
+  "source_delta": "Named keyboard-focusable preview region, token-based focus-visible outline, and removal of unsupported aria-label from a paragraph; other 77 pins unchanged",
   "files": [
     {
       "path": "apps/reading/index.html",
@@ -249,7 +249,7 @@
     },
     {
       "path": "apps/reading/src/components/reader/ReadingTypography.tsx",
-      "sha256": "b73b9adac59d62ffa0ad2a2a3cbf21176498b12f5a1746d17c852ecfd4fd555c"
+      "sha256": "7f0fee365c7963ee1a1f3c9e1dd1d371bec0fc0527c5c80bfb70d8a377a5ecca"
     },
     {
       "path": "apps/reading/src/design/readingFonts.css",
