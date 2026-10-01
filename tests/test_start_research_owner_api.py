@@ -75,6 +75,47 @@ def _start_rows(events: Path) -> list[dict[str, object]]:
     return [row for row in rows if row["action_type"] == "investigation.start_requested"]
 
 
+def test_signed_owner_without_model_choice_cannot_start_or_meter(owner_api, monkeypatch):
+    client, bus, events = owner_api
+
+    def unexpected_acu(*args, **kwargs):
+        pytest.fail("refused launch reached ACU recording")
+
+    monkeypatch.setattr(
+        "interfaces.research.api.compute_capacity_gate.commit_start_acu",
+        unexpected_acu,
+    )
+    monkeypatch.setattr(
+        "interfaces.research.api.compute_capacity_gate.run_capacity_precheck",
+        unexpected_acu,
+    )
+    response = client.post(
+        "/investigations",
+        json={"question": "Which evidence is strongest?", "investigation_id": "inv-no-choice"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "connect_model"}
+    assert _start_rows(events) == []
+    assert bus.events == []
+
+
+def test_machine_without_model_choice_keeps_legacy_start(owner_api, monkeypatch):
+    client, bus, events = owner_api
+    monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", "machine-token")
+    machine = TestClient(client.app)
+
+    response = machine.post(
+        "/investigations",
+        json={"question": "Which evidence is strongest?", "investigation_id": "inv-machine"},
+        headers={"Authorization": "Bearer machine-token"},
+    )
+
+    assert response.status_code == 202, response.text
+    assert len(_start_rows(events)) == 1
+    assert len(bus.events) == 1
+
+
 def test_exact_concurrent_owner_requests_are_one_event_and_one_response(owner_api):
     client, bus, events = owner_api
     with ThreadPoolExecutor(max_workers=8) as pool:
