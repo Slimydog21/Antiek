@@ -859,6 +859,11 @@ class UpdateSectionProseRequest(BaseModel):
     node + CLAIM_ASSERTED_BY_OPERATOR event."""
 
     prose_text: str = Field(..., min_length=1)
+    # Additive compare-and-set guard (CR-F1's surviving half). Absent = the
+    # long-standing blind write, so existing callers are unchanged. Supplied,
+    # it must equal the stored prose or the write is refused with 409
+    # `prose_revision_conflict` and nothing is written.
+    based_on_prose_text: str | None = None
     original_text: str | None = None  # what creative_writer produced
     promote_to_graph: bool = False
     cited_chunk_ids: list[str] = Field(default_factory=list)
@@ -3933,7 +3938,12 @@ def create_app(
         to a first-class operator-asserted claim in the graph (master
         spec §10.4 Option B)."""
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import content_addressed_id, insert_node, update_section_prose
+        from substrate.graph.ops import (
+            ProseRevisionConflict,
+            content_addressed_id,
+            insert_node,
+            update_section_prose,
+        )
         from substrate.schemas import ClaimAssertedByOperatorPayload, GraphNodeInsertedPayload
         from substrate.write.event_outbox import (
             build_typed_envelope,
@@ -3958,9 +3968,22 @@ def create_app(
                 claim_node_id: str | None = None
                 claim_event_id: str | None = None
                 with eventful_transaction(con, req.investigation_id):
-                    update_section_prose(
-                        con, section_id=section_id, prose_text=req.prose_text,
-                    )
+                    try:
+                        update_section_prose(
+                            con, section_id=section_id, prose_text=req.prose_text,
+                            based_on_prose_text=req.based_on_prose_text,
+                        )
+                    except ProseRevisionConflict as exc:
+                        # Nothing is written and nothing is enqueued: the guard
+                        # raises before the UPDATE, inside the caller's
+                        # transaction, so the whole edit rolls back.
+                        raise HTTPException(
+                            status_code=409,
+                            detail="prose_revision_conflict",
+                            headers={
+                                "X-Prose-Updated-At": str(exc.current_updated_at)
+                            },
+                        ) from exc
                     if req.promote_to_graph:
                         label = req.prose_text.strip().splitlines()[0]
                         if len(label) > 160:
