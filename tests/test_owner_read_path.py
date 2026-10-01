@@ -454,6 +454,175 @@ def test_signed_session_owner_model_executes_exact_route_and_refuses_cross_owner
     assert provider.prompts == []
 
 
+def test_signed_two_email_route_cannot_cross_spend_byot_on_public_books(
+    db, stub_embeddings, monkeypatch, tmp_path,
+):
+    """The ask route rejects another owner's key and withholds their book."""
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.account_memory_identity import derive_owner_from_verified_email
+    from interfaces.research.api.app import create_app
+    from interfaces.research.api.settings_models_admin import _UserOpenAICompatProvider
+    from substrate.auth import mint_session_cookie
+    from substrate.byot_usage.ledger import ByotUsageLedger
+    from substrate.dispatch.base import RawProviderResponse
+    from substrate.dispatch.router import reset_provider_registry
+
+    emails = {name: f"{name}@example.test" for name in ("alice", "bob")}
+    owners = {name: derive_owner_from_verified_email(email) for name, email in emails.items()}
+    assert owners["alice"] and owners["bob"] and owners["alice"] != owners["bob"]
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "test-only-auth-secret-at-least-32-bytes")
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", ",".join(emails.values()))
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "master.key"))
+    usage_path = tmp_path / "usage.sqlite3"
+    monkeypatch.setenv("ANTIEK_BYOT_USAGE_DB", str(usage_path))
+
+    for name in emails:
+        doc_id = f"doc-public-{name}"
+        _gated_book(
+            db, doc_id, content_class="public_domain", title=f"{name.title()} public book",
+        )
+        con = connect_write(db, purpose="bind-book-owner")
+        con.execute(
+            "UPDATE documents SET owner_user_id = ? WHERE document_id = ?",
+            [owners[name], doc_id],
+        )
+        con.close()
+
+    ledger = ByotUsageLedger(usage_path)
+    cookies = {
+        name: {"ANTIEK_SESSION": mint_session_cookie(user_id="__operator__", email=email)}
+        for name, email in emails.items()
+    }
+    secrets = {name: f"sk-test-only-{name}-abcdefghijklmnopqrstuvwxyz" for name in emails}
+    sends: list[str] = []
+
+    def offline_call(
+        self: _UserOpenAICompatProvider, *, model: str, prompt: str,
+        max_tokens: int, temperature: float,
+    ) -> RawProviderResponse:
+        sends.append((self.name, self._resolve_api_key()))
+        return RawProviderResponse(
+            text="offline answer",
+            raw_usage={"prompt_tokens": 1000, "completion_tokens": 1000},
+            finish_reason="stop", latency_ms=1,
+        )
+
+    monkeypatch.setattr(_UserOpenAICompatProvider, "call", offline_call)
+    reset_provider_registry()
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    try:
+        with TestClient(app) as client:
+            providers = {}
+            for name in emails:
+                created = client.post(
+                    "/settings/models/user",
+                    json={
+                        "provider_kind": "openai_compat",
+                        "provider_catalog_id": "deepseek",
+                        "model_id": "deepseek-flash-nothink",
+                        "display_name": f"{name.title()} DeepSeek",
+                        "api_key": secrets[name],
+                    },
+                    cookies=cookies[name],
+                )
+                assert created.status_code == 201, created.text
+                providers[name] = created.json()["id"]
+            assert providers["alice"] != providers["bob"]
+
+            def choice(name: str) -> dict[str, str]:
+                return {
+                    "authority": "user_model",
+                    "provider_id": providers[name],
+                    "model_id": "deepseek-flash-nothink",
+                }
+
+            before = {name: ledger.snapshot(owners[name]) for name in owners}
+
+            # Control: Alice's own grounded request using her key goes through
+            # this same production route, sends once, and settles only her ledger.
+            allowed = client.post(
+                "/books/doc-public-alice/ask",
+                cookies=cookies["alice"],
+                json={
+                    "question": "GATEDPROBE quantum passage about entanglement and superposition",
+                    "operation_id": "alice-book-alice-key",
+                    "model_choice": choice("alice"),
+                },
+            )
+            assert allowed.status_code == 200, allowed.text
+            assert allowed.json()["grounded"] is True
+            receipt = allowed.json()["model_receipt"]
+            assert {key: receipt[key] for key in (
+                "authority", "requested_provider_id", "requested_model_id",
+                "actual_provider_id", "actual_model_id",
+            )} == {
+                "authority": "owner_byot",
+                "requested_provider_id": providers["alice"],
+                "requested_model_id": "deepseek-flash-nothink",
+                "actual_provider_id": providers["alice"],
+                "actual_model_id": "deepseek-flash-nothink",
+            }
+            assert len(receipt["authority_digest"]) == 64
+            assert sends == [(providers["alice"], secrets["alice"])]
+            alice_settlement = ledger.operation(owners["alice"], "alice-book-alice-key")
+            assert alice_settlement is not None and alice_settlement.state == "settled"
+            assert alice_settlement.api_key_id == providers["alice"]
+            assert alice_settlement.actual_cents is not None and alice_settlement.actual_cents > 0
+            assert ledger.snapshot(owners["bob"]) == before["bob"]
+
+            # Alice owns this book and has a grounded passage, so the production
+            # route reaches the BYOT authority check and refuses Bob's key.
+            operation_id = "alice-book-bob-key"
+            denied = client.post(
+                "/books/doc-public-alice/ask",
+                cookies=cookies["alice"],
+                json={
+                    "question": "GATEDPROBE quantum passage about entanglement and superposition",
+                    "operation_id": operation_id,
+                    "model_choice": choice("bob"),
+                },
+            )
+            assert denied.status_code == 503, denied.text
+            assert denied.json() == {"detail": "owner_model_unavailable"}
+
+            # Under the two-email retrieval policy, Alice receives no readable
+            # chunks from Bob's book, so this route returns before BYOT authority
+            # is evaluated. Pin that boundary separately; it does not prove the
+            # requested cross-resource dispatch refusal.
+            bob_book = client.post(
+                "/books/doc-public-bob/ask",
+                cookies=cookies["alice"],
+                json={
+                    "question": "GATEDPROBE quantum passage about entanglement and superposition",
+                    "operation_id": "bob-book-alice-key",
+                    "model_choice": choice("alice"),
+                },
+            )
+            assert bob_book.status_code == 200, bob_book.text
+            assert bob_book.json()["grounded"] is False
+            assert bob_book.json()["context_chunk_count"] == 0
+            assert bob_book.json()["model_receipt"] is None
+
+            assert sends == [(providers["alice"], secrets["alice"])]
+            assert ledger.snapshot(owners["bob"]) == before["bob"]
+            assert len(ledger.snapshot(owners["alice"])) == 1
+            assert ledger.operation(owners["bob"], "alice-book-alice-key") is None
+            assert all(ledger.operation(owner, operation_id) is None for owner in owners.values())
+            assert all(
+                ledger.operation(owner, "bob-book-alice-key") is None
+                for owner in owners.values()
+            )
+    finally:
+        reset_provider_registry()
+
+
 def test_local_unauthenticated_operation_endpoints_are_constant_401(
     db, monkeypatch, tmp_path,
 ) -> None:

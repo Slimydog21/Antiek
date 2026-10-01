@@ -17,23 +17,39 @@ Response shape (2026-08 documented)::
       ]
     }
 
-Only the first ``balance_infos`` entry is read.  The adapter returns
-``unavailable`` on any shape drift.
+Every ``balance_infos`` entry retains its reported currency and decimal
+precision. The adapter returns ``unavailable`` on any shape drift.
 """
 
 from __future__ import annotations
 
+import re
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from runtime.byok.secret_str import SecretStr
 
-from .base import BalanceSnapshot
+from .base import BalanceSnapshot, NativeBalance
 
 _CATALOG_ID = "deepseek"
 _BALANCE_PATH = "/user/balance"
+_CURRENCIES = frozenset({"CNY", "USD"})
+_AMOUNT_PATTERN = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?\Z")
 
-# Source: https://api-docs.deepseek.com/quick_start/pricing
+# Source: https://api-docs.deepseek.com/api/get-user-balance/
 # Polled every 60 s per spec §5.F.
+
+
+def _decimal_amount(raw: object) -> str:
+    if not isinstance(raw, str) or len(raw) > 64 or not _AMOUNT_PATTERN.fullmatch(raw):
+        raise ValueError("invalid decimal amount")
+    try:
+        amount = Decimal(raw)
+    except InvalidOperation as exc:
+        raise ValueError("invalid decimal amount") from exc
+    if not amount.is_finite():
+        raise ValueError("non-finite decimal amount")
+    return format(amount, "f")
 
 
 def fetch_deepseek_balance(
@@ -58,30 +74,42 @@ def fetch_deepseek_balance(
         return BalanceSnapshot(
             catalog_id=_CATALOG_ID,
             kind="unavailable",
-            note=f"HTTP/parse error: {type(exc).__name__}: {exc}",
+            note=f"HTTP/parse error: {type(exc).__name__}",
         )
 
     try:
+        if not isinstance(data["is_available"], bool):
+            raise ValueError("invalid availability flag")
         infos = data["balance_infos"]
-        if not isinstance(infos, list) or len(infos) == 0:
-            return BalanceSnapshot(
-                catalog_id=_CATALOG_ID,
-                kind="unavailable",
-                note="balance_infos is empty or not a list",
+        if not isinstance(infos, list) or not 1 <= len(infos) <= 8:
+            raise ValueError("balance_infos is empty, oversized or not a list")
+        balances: list[NativeBalance] = []
+        currencies: set[str] = set()
+        for info in infos:
+            currency = info["currency"]
+            if not isinstance(currency, str) or currency not in _CURRENCIES:
+                raise ValueError("unrecognised balance currency")
+            if currency in currencies:
+                raise ValueError("duplicate balance currency")
+            currencies.add(currency)
+            balances.append(
+                NativeBalance(
+                    currency=currency,
+                    total=_decimal_amount(info["total_balance"]),
+                    granted=_decimal_amount(info["granted_balance"]),
+                    topped_up=_decimal_amount(info["topped_up_balance"]),
+                )
             )
-        info = infos[0]
-        total = float(info["total_balance"])
-        granted = float(info["granted_balance"])
     except (KeyError, TypeError, ValueError, IndexError) as exc:
         return BalanceSnapshot(
             catalog_id=_CATALOG_ID,
             kind="unavailable",
-            note=f"schema drift: {type(exc).__name__}: {exc}",
+            note=f"schema drift: {type(exc).__name__}",
         )
 
     return BalanceSnapshot(
         catalog_id=_CATALOG_ID,
         kind="balance_native",
-        balance_usd=total,
-        granted_usd=granted,
+        native_balances=tuple(balances),
+        native_available=data["is_available"],
     )

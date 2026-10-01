@@ -77,10 +77,10 @@ function formatCents(value: number): string {
   return `$${(value / 100).toFixed(2)}`;
 }
 
-function usageBalanceChip(usage: SettingsUsageKeyEntry): string {
-  if (usage.remaining_cents != null) return formatCents(usage.remaining_cents);
-  if (usage.available_cents != null) return formatCents(usage.available_cents);
-  return "";
+function selectedKeyUsageLabel(usage: SettingsUsageKeyEntry): string {
+  if (usage.limit_cents === null) return "Antiek cap not set";
+  if (usage.available_cents === null) return "Antiek cap snapshot · available unknown";
+  return `Antiek cap snapshot · available ${formatCents(usage.available_cents)} · held ${formatCents(usage.held_cents)}`;
 }
 export default function Settings() {
   const tier = useViewportTier();
@@ -107,7 +107,7 @@ export default function Settings() {
   const [advisorError, setAdvisorError] = useState<string | null>(null);
   const [advising, setAdvising] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "lineup" | "decision">("overview");
-  const [usageByProvider, setUsageByProvider] = useState<
+  const [usageByKeyId, setUsageByKeyId] = useState<
     Record<string, SettingsUsageKeyEntry>
   >({});
 
@@ -143,7 +143,7 @@ export default function Settings() {
           setModels(modelRows);
           if (usageResult.status === "fulfilled") {
             const modelIds = new Set(modelRows.map((row) => row.provider_id));
-            setUsageByProvider(
+            setUsageByKeyId(
               Object.fromEntries(
                 usageResult.value.keys
                   .map((entry) => {
@@ -159,7 +159,7 @@ export default function Settings() {
               ),
             );
           } else {
-            setUsageByProvider({});
+            setUsageByKeyId({});
           }
         } else {
           setModelsError(
@@ -905,7 +905,7 @@ export default function Settings() {
               setInputChars={setInputChars}
               outputTokens={outTokens}
               setOutputTokens={setOutTokens}
-              usageByProvider={usageByProvider}
+              usageByKeyId={usageByKeyId}
             />
           </div>
         )}
@@ -928,13 +928,13 @@ function DecisionTreePanel({
   setInputChars,
   outputTokens,
   setOutputTokens,
-  usageByProvider,
+  usageByKeyId,
 }: {
   inputChars: number;
   setInputChars: (value: number) => void;
   outputTokens: number;
   setOutputTokens: (value: number) => void;
-  usageByProvider: Record<string, SettingsUsageKeyEntry>;
+  usageByKeyId: Record<string, SettingsUsageKeyEntry>;
 }) {
   const [task, setTask] = useState<ModelDecisionTask>("deep_research");
   const [decision, setDecision] = useState<ModelDecisionResponse | null>(null);
@@ -953,14 +953,14 @@ function DecisionTreePanel({
   const [approvingChainId, setApprovingChainId] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<{ chainId: string; message: string } | null>(null);
 
-  const selectedProviderBalance = useMemo(() => {
-    const provider = selected?.provider ?? projection?.chosen_provider ?? null;
-    if (!provider) return null;
-    const usage = usageByProvider[provider];
+  const selectedKeyUsage = useMemo(() => {
+    const routeId = selected?.provider ?? projection?.chosen_provider ?? null;
+    if (!routeId) return null;
+    // A user-model provider route ID is its record ID, also used as api_key_id.
+    const usage = usageByKeyId[routeId];
     if (!usage) return null;
-    const chip = usageBalanceChip(usage);
-    return chip || null;
-  }, [projection, selected, usageByProvider]);
+    return selectedKeyUsageLabel(usage);
+  }, [projection, selected, usageByKeyId]);
 
   useEffect(() => {
     const version = receiptRequestVersion.current + 1;
@@ -1150,7 +1150,7 @@ function DecisionTreePanel({
         projection={projection}
         loading={loading && decision !== null}
         selected={selected}
-        selectedProviderBalance={selectedProviderBalance}
+        selectedKeyUsageLabel={selectedKeyUsage}
         onSelect={(provider, model) => void selectModel(provider, model)}
       />
       {decision && (

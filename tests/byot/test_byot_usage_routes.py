@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -25,7 +26,8 @@ from interfaces.research.api.byot_usage_routes import (
     register_byot_usage_routes,
 )
 from runtime.byok.secret_str import SecretStr
-from substrate.byot_usage.balance.base import BalanceSnapshot
+from substrate.byot_usage.balance.base import BalanceSnapshot, NativeBalance
+from substrate.byot_usage.balance.deepseek import fetch_deepseek_balance
 from substrate.byot_usage.ledger import ByotUsageLedger
 
 # ---------------------------------------------------------------------------
@@ -227,8 +229,11 @@ def test_balance_returns_native_balance(
             return BalanceSnapshot(
                 catalog_id="deepseek",
                 kind="balance_native",
-                balance_usd=42.50,
-                granted_usd=40.00,
+                native_balances=(
+                    NativeBalance(currency="CNY", total="42.50", granted="40.00", topped_up="2.50"),
+                    NativeBalance(currency="USD", total="1.25", granted="0.00", topped_up="1.25"),
+                ),
+                native_available=True,
             )
         return BalanceSnapshot(catalog_id=catalog_id, kind="unavailable")
 
@@ -243,9 +248,52 @@ def test_balance_returns_native_balance(
     assert body.api_key_id == "key-ds"
     assert body.catalog_id == "deepseek"
     assert body.kind == "balance_native"
-    assert body.balance_usd == 42.50
-    assert body.granted_usd == 40.00
+    assert body.balance_usd is None
+    assert body.granted_usd is None
+    assert body.native_balances is not None
+    assert body.native_available is True
+    assert [(entry.currency, entry.total) for entry in body.native_balances] == [
+        ("CNY", "42.50"), ("USD", "1.25"),
+    ]
     assert body.note is None
+
+
+def test_deepseek_provider_payload_crosses_adapter_and_route_without_usd_coercion(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def provider_response(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={
+            "is_available": False,
+            "balance_infos": [
+                {"currency": "CNY", "total_balance": "42.5000", "granted_balance": "40.00", "topped_up_balance": "2.5000"},
+                {"currency": "USD", "total_balance": "1.25", "granted_balance": "0.00", "topped_up_balance": "1.25"},
+            ],
+        })
+
+    def fetch_from_mock_transport(*, catalog_id: str, key: SecretStr, base_url: str, **kwargs: Any) -> BalanceSnapshot:
+        assert catalog_id == "deepseek"
+        with httpx.Client(transport=httpx.MockTransport(provider_response)) as http:
+            return fetch_deepseek_balance(key, base_url=base_url, http=http)
+
+    monkeypatch.setattr(
+        "interfaces.research.api.byot_usage_routes._fetch_balance",
+        fetch_from_mock_transport,
+    )
+    response = client.get("/settings/balance/key-ds")
+    assert response.status_code == 200
+    body = BalanceResponse.model_validate(response.json())
+    assert [(balance.currency, balance.total) for balance in body.native_balances or []] == [
+        ("CNY", "42.5000"), ("USD", "1.25"),
+    ]
+    assert body.native_available is False
+    assert body.balance_usd is None
+    assert len(requests) == 1
+    assert str(requests[0].url) == "https://api.deepseek.com/user/balance"
+    assert requests[0].headers["Authorization"] == "Bearer sk-test-cred-ds"
 
 
 def test_balance_returns_unavailable_on_adapter_degrade(
@@ -272,6 +320,60 @@ def test_balance_returns_unavailable_on_adapter_degrade(
     assert body.kind == "unavailable"
     assert body.balance_usd is None
     assert "schema drift" in (body.note or "")
+
+
+def test_balance_does_not_echo_adapter_diagnostic_with_secret(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _mock_fetch_degrade(*, catalog_id: str, **kwargs: Any) -> BalanceSnapshot:
+        return BalanceSnapshot(
+            catalog_id=catalog_id,
+            kind="unavailable",
+            note="HTTP/parse error: sk-sensitive-test-key",
+        )
+
+    monkeypatch.setattr(
+        "interfaces.research.api.byot_usage_routes._fetch_balance",
+        _mock_fetch_degrade,
+    )
+    response = client.get("/settings/balance/key-ds")
+    assert response.status_code == 200
+    assert "sk-sensitive-test-key" not in response.text
+    assert response.json()["note"] == "Provider balance unavailable."
+
+
+@pytest.mark.parametrize("catalog_id", ["zhipu_glm", "mimo"])
+def test_undocumented_native_balance_does_not_decrypt_or_call_provider(
+    catalog_id: str,
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "interfaces.research.api.byot_usage_routes._find_user_record",
+        lambda api_key_id, owner_user_id: SimpleNamespace(
+            provider_catalog_id=catalog_id,
+            base_url="https://example.invalid/v1",
+            cred_ref="must-not-load",
+        ),
+    )
+
+    def fail_if_called(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Undocumented balance path decrypted a key or called a provider")
+
+    monkeypatch.setattr(
+        "interfaces.research.api.byot_usage_routes._load_key", fail_if_called,
+    )
+    monkeypatch.setattr(
+        "interfaces.research.api.byot_usage_routes._fetch_balance", fail_if_called,
+    )
+
+    response = client.get("/settings/balance/key-undocumented")
+    assert response.status_code == 200
+    body = BalanceResponse.model_validate(response.json())
+    assert body.kind == "unavailable"
+    assert body.balance_usd is None
+    assert body.note == "Provider has not documented a native balance API."
 
 
 def test_balance_cross_user_404(
@@ -318,6 +420,13 @@ def test_balance_returns_spend_history_fallback(
         lambda cred_ref: SecretStr(f"sk-test-{cred_ref}"),
     )
 
+    fresh = client.get("/settings/balance/key-oai")
+    assert fresh.status_code == 200
+    fresh_body = BalanceResponse.model_validate(fresh.json())
+    assert fresh_body.kind == "spend_history"
+    assert fresh_body.spend_usd is None
+    assert fresh_body.note == "no usage recorded for this key"
+
     # Seed some usage so spend_history has data.
     ledger.record_settlement("key-oai", "test-user", 250, "c" * 64)
     ledger.set_limit("key-oai", "test-user", 5000)
@@ -349,3 +458,109 @@ def test_balance_credential_load_failure_returns_unavailable(
     body = BalanceResponse.model_validate(response.json())
     assert body.kind == "unavailable"
     assert "credential load failed" in (body.note or "")
+
+
+def test_verified_operator_sessions_keep_models_usage_and_balance_separate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shared storage sentinel must resolve to a distinct payer per signed person."""
+    from interfaces.research.api.account_memory_identity import derive_owner_from_verified_email
+    from interfaces.research.api.app import create_app
+    from substrate.auth.magic_link import mint_session_cookie
+    from substrate.dispatch.router import reset_provider_registry
+
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "test-only-auth-secret-at-least-32-bytes")
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "user-a@example.test,user-b@example.test")
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "models.json"))
+    monkeypatch.setenv("ANTIEK_BYOK_ARTIFACT", str(tmp_path / "credentials.enc"))
+    monkeypatch.setenv("ANTIEK_BYOK_KEY_FILE", str(tmp_path / "master.key"))
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    monkeypatch.setattr("interfaces.research.api.byot_usage_routes._get_ledger", lambda: ledger)
+    balance_calls: list[tuple[str, str]] = []
+
+    def _offline_balance(*, catalog_id: str, api_key_id: str, owner_user_id: str, **_: Any) -> BalanceSnapshot:
+        balance_calls.append((api_key_id, owner_user_id))
+        return BalanceSnapshot(catalog_id=catalog_id, kind="unavailable")
+
+    monkeypatch.setattr("interfaces.research.api.byot_usage_routes._fetch_balance", _offline_balance)
+    cookies = {
+        name: {"ANTIEK_SESSION": mint_session_cookie(user_id="__operator__", email=f"{name}@example.test")}
+        for name in ("user-a", "user-b")
+    }
+    owners = {
+        name: derive_owner_from_verified_email(f"{name}@example.test")
+        for name in cookies
+    }
+    assert owners["user-a"] and owners["user-b"] and owners["user-a"] != owners["user-b"]
+    body = {
+        "provider_kind": "openai_compat",
+        "provider_catalog_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "display_name": "My DeepSeek",
+    }
+    reset_provider_registry()
+    try:
+        with TestClient(create_app(register_wrestling=False, register_providers=False)) as signed:
+            created = {
+                name: signed.post(
+                    "/settings/models/user",
+                    json={**body, "api_key": f"sk-test-only-{name}-abcdefghijklmnopqrstuvwxyz"},
+                    cookies=cookies[name],
+                )
+                for name in cookies
+            }
+            assert all(response.status_code == 201 for response in created.values())
+            ids = {name: response.json()["id"] for name, response in created.items()}
+            assert ids["user-a"] != ids["user-b"]
+
+            ledger.record_settlement(ids["user-a"], owners["user-a"], 125, "a" * 64)
+            ledger.record_settlement(ids["user-b"], owners["user-b"], 375, "b" * 64)
+            assert signed.post(
+                f"/settings/usage/{ids['user-a']}/limit",
+                json={"limit_cents": 1000}, cookies=cookies["user-a"],
+            ).status_code == 200
+            assert signed.post(
+                f"/settings/usage/{ids['user-a']}/limit",
+                json={"limit_cents": 1}, cookies=cookies["user-b"],
+            ).status_code == 404
+            assert signed.post(
+                f"/settings/usage/{ids['user-b']}/limit",
+                json={"limit_cents": 1}, cookies=cookies["user-a"],
+            ).status_code == 404
+
+            for name, expected_cents in (("user-a", 125), ("user-b", 375)):
+                snapshot = signed.get("/settings/usage", cookies=cookies[name])
+                assert snapshot.status_code == 200
+                assert [(row["api_key_id"], row["used_cents"]) for row in snapshot.json()["keys"]] == [
+                    (ids[name], expected_cents),
+                ]
+                if name == "user-a":
+                    assert snapshot.json()["keys"][0]["limit_cents"] == 1000
+
+            choice = {
+                "authority": "user_model",
+                "provider_id": ids["user-a"],
+                "model_id": "deepseek-chat",
+            }
+            assert signed.post(
+                "/settings/models/user/resolve", json=choice, cookies=cookies["user-b"],
+            ).status_code == 409
+            assert signed.get(
+                f"/settings/balance/{ids['user-a']}", cookies=cookies["user-b"],
+            ).status_code == 404
+            assert signed.get(
+                f"/settings/balance/{ids['user-b']}", cookies=cookies["user-a"],
+            ).status_code == 404
+            assert balance_calls == []
+            own_balance = signed.get(
+                f"/settings/balance/{ids['user-a']}", cookies=cookies["user-a"],
+            )
+            assert own_balance.status_code == 200
+            assert balance_calls == [(ids["user-a"], owners["user-a"])]
+    finally:
+        reset_provider_registry()

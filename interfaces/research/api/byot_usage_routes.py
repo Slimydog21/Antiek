@@ -31,9 +31,7 @@ from runtime.byok.store import load_credential
 from substrate.byot_usage.balance.base import BalanceSnapshot
 from substrate.byot_usage.balance.deepseek import fetch_deepseek_balance
 from substrate.byot_usage.balance.kimi import fetch_kimi_balance
-from substrate.byot_usage.balance.mimo import fetch_mimo_balance
 from substrate.byot_usage.balance.spend_history import fetch_spend_history_balance
-from substrate.byot_usage.balance.zhipu_glm import fetch_zhipu_glm_balance
 from substrate.byot_usage.ledger import ByotUsageLedger, KeyUsageRow
 
 __all__ = [
@@ -93,6 +91,18 @@ BalanceKind = Literal[
     "unavailable",
 ]
 
+_UNDOCUMENTED_NATIVE_BALANCE = frozenset({"mimo", "zhipu_glm"})
+_UNDOCUMENTED_NATIVE_BALANCE_NOTE = "Provider has not documented a native balance API."
+
+
+class NativeBalanceResponse(BaseModel):
+    """Exact provider amount with an explicit currency."""
+
+    currency: str
+    total: str
+    granted: str
+    topped_up: str
+
 
 class BalanceResponse(BaseModel):
     """``GET /settings/balance/{api_key_id}`` response.
@@ -105,6 +115,8 @@ class BalanceResponse(BaseModel):
     api_key_id: str
     catalog_id: str
     kind: BalanceKind
+    native_balances: list[NativeBalanceResponse] | None = None
+    native_available: bool | None = None
     balance_usd: float | None = None
     granted_usd: float | None = None
     spend_usd: float | None = None
@@ -150,18 +162,22 @@ def _fetch_balance(
 ) -> BalanceSnapshot:
     """Dispatch to the right balance adapter by ``catalog_id``.
 
-    Providers with a native balance endpoint get their dedicated adapter;
-    everything else falls back to the spend-history adapter (client-side
-    meter).  Monkeypatch in tests to avoid live net.
+    Documented native endpoints use their adapters. Z.ai and MiMo return
+    unavailable because their balance API contract is unverified. Remaining
+    catalog IDs use Antiek's spend-history meter. Tests inject transport.
     """
-    # Every catalog id NOT listed here (openai, anthropic, xai, custom) reads
-    # Antiek's own spend meter, which the response labels ``spend_history`` so
-    # the chip never presents a meter as provider credit.
+    if catalog_id in _UNDOCUMENTED_NATIVE_BALANCE:
+        return BalanceSnapshot(
+            catalog_id=catalog_id,
+            kind="unavailable",
+            note=_UNDOCUMENTED_NATIVE_BALANCE_NOTE,
+        )
+
+    # Other IDs (openai, anthropic, xai, custom) use Antiek's spend meter.
+    # The chip labels that ``spend_history``, never provider credit.
     native_adapters: dict[str, Any] = {
         "deepseek": fetch_deepseek_balance,
         "kimi": fetch_kimi_balance,
-        "zhipu_glm": fetch_zhipu_glm_balance,
-        "mimo": fetch_mimo_balance,
     }
     adapter_fn = native_adapters.get(catalog_id)
     if adapter_fn is not None:
@@ -175,7 +191,7 @@ def _fetch_balance(
             return BalanceSnapshot(
                 catalog_id=catalog_id,
                 kind="unavailable",
-                note=f"adapter error: {type(exc).__name__}: {exc}",
+                note=f"adapter error: {type(exc).__name__}",
             )
 
     # Fallback: spend-history (client-side meter from the ledger).
@@ -205,6 +221,19 @@ def _find_user_record(api_key_id: str, owner_user_id: str) -> Any:
     if record is None or record.owner_user_id != owner_user_id:
         return None
     return record
+
+
+def _public_balance_note(snapshot: BalanceSnapshot) -> str | None:
+    """Reduce adapter diagnostics to fixed text before crossing the API boundary."""
+    if snapshot.kind == "spend_history":
+        return "no usage recorded for this key" if snapshot.note else None
+    if snapshot.kind != "unavailable":
+        return None
+    if snapshot.note and snapshot.note.startswith("schema drift"):
+        return "Provider balance response changed (schema drift)."
+    if snapshot.note and snapshot.note.startswith("credential load failed"):
+        return "Credential load failed."
+    return "Provider balance unavailable."
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +324,16 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
     ledger = _get_ledger()
     usage = ledger.key_usage(api_key_id, owner_user_id)
 
+    if catalog_id in _UNDOCUMENTED_NATIVE_BALANCE:
+        return BalanceResponse(
+            api_key_id=api_key_id,
+            catalog_id=catalog_id,
+            kind="unavailable",
+            note=_UNDOCUMENTED_NATIVE_BALANCE_NOTE,
+            held_cents=usage.held_cents if usage is not None else 0,
+            available_cents=usage.available_cents if usage is not None else None,
+        )
+
     # Load the decrypted credential for the adapter call.
     try:
         key = _load_key(record.cred_ref)
@@ -303,7 +342,7 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
             api_key_id=api_key_id,
             catalog_id=catalog_id,
             kind="unavailable",
-            note=f"credential load failed: {type(exc).__name__}: {exc}",
+            note=f"credential load failed: {type(exc).__name__}",
             held_cents=usage.held_cents if usage is not None else 0,
             available_cents=usage.available_cents if usage is not None else None,
         )
@@ -320,6 +359,20 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
         api_key_id=api_key_id,
         catalog_id=snapshot.catalog_id,
         kind=snapshot.kind,
+        native_balances=(
+            [
+                NativeBalanceResponse(
+                    currency=balance.currency,
+                    total=balance.total,
+                    granted=balance.granted,
+                    topped_up=balance.topped_up,
+                )
+                for balance in snapshot.native_balances
+            ]
+            if snapshot.native_balances is not None
+            else None
+        ),
+        native_available=snapshot.native_available,
         balance_usd=snapshot.balance_usd,
         granted_usd=snapshot.granted_usd,
         spend_usd=snapshot.spend_usd,
@@ -327,7 +380,7 @@ def get_balance(api_key_id: str, request: Request) -> BalanceResponse:
         utilization=snapshot.utilization,
         window_label=snapshot.window_label,
         resets_at=snapshot.resets_at,
-        note=snapshot.note,
+        note=_public_balance_note(snapshot),
         held_cents=usage.held_cents if usage is not None else 0,
         available_cents=usage.available_cents if usage is not None else None,
     )

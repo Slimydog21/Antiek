@@ -129,19 +129,45 @@ function balanceChip(b?: SettingsBalanceResponse | null, loading?: boolean): Rea
       </span>
     );
   }
-  if (b.kind === "balance_native" && b.balance_usd != null) {
-    const negative = b.balance_usd < 0;
+  if (b.catalog_id === "deepseek" && b.kind === "balance_native") {
+    const entries = b.native_balances;
+    if (!entries?.length) {
+      return <span className="text-xxs text-ink-mute dark:text-moonlight">—</span>;
+    }
     return (
       <span
         data-balance-kind="balance_native"
         className={
           "text-xxs tabular-nums px-1 py-px rounded " +
-          (negative ? "text-danger bg-danger/10" : "text-success bg-success/10")
+          (b.native_available === false
+            ? "text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1"
+            : "text-success bg-success/10")
         }
-        title={`Provider credit reported by ${b.catalog_id}${b.note ? ` · ${b.note}` : ""}`}
+        title={`Provider-reported balance from DeepSeek${b.note ? ` · ${b.note}` : ""}`}
       >
-        {negative ? "" : "+"}${b.balance_usd.toFixed(2)}{" "}
-        <span className="opacity-70">credit</span>
+        {entries.map(({ currency, total }) => `${currency} ${total}`).join(" · ")}
+        {b.native_available === false ? " · insufficient for API calls" : ""}
+      </span>
+    );
+  }
+  if (b.kind === "balance_native" && b.balance_usd != null) {
+    const negative = b.balance_usd < 0;
+    const insufficient = b.native_available === false;
+    return (
+      <span
+        data-balance-kind="balance_native"
+        className={
+          "text-xxs tabular-nums px-1 py-px rounded " +
+          (insufficient
+            ? "text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1"
+            : negative ? "text-danger bg-danger/10" : "text-success bg-success/10")
+        }
+        title={`Provider-reported balance from ${b.catalog_id}${b.note ? ` · ${b.note}` : ""}`}
+      >
+        {insufficient ? "" : negative ? "" : "+"}${b.balance_usd.toFixed(2)}{" "}
+        <span className="opacity-70">
+          {insufficient ? "· insufficient for API calls" : "credit"}
+        </span>
       </span>
     );
   }

@@ -134,8 +134,13 @@ describe("UsagePanel", () => {
           api_key_id: "user-deepseek",
           catalog_id: "deepseek",
           kind: "balance_native",
-          balance_usd: 42.5,
-          granted_usd: 100,
+          balance_usd: null,
+          granted_usd: null,
+          native_balances: [
+            { currency: "CNY", total: "42.5000", granted: "40.0000", topped_up: "2.5000" },
+            { currency: "USD", total: "1.20", granted: "0.00", topped_up: "1.20" },
+          ],
+          native_available: true,
           spend_usd: 57.5,
           budget_usd: null,
           utilization: null,
@@ -152,6 +157,8 @@ describe("UsagePanel", () => {
         kind: "unavailable",
         balance_usd: null,
         granted_usd: null,
+        native_balances: null,
+        native_available: null,
         spend_usd: null,
         budget_usd: null,
         utilization: null,
@@ -179,37 +186,143 @@ describe("UsagePanel", () => {
     const deepseek = await screen.findByTestId("usage-row-user-deepseek");
     expect(within(deepseek).getByText("DeepSeek key")).toBeTruthy();
     expect(within(deepseek).getByText(/used \$1\.20 · cap \$10\.00 · remaining \$8\.80/)).toBeTruthy();
-    expect(within(deepseek).getByText("Live balance $42.50")).toBeTruthy();
+    expect(within(deepseek).getByText("Provider-reported balance: CNY 42.5000 · USD 1.20")).toBeTruthy();
     expect(within(deepseek).getByText("deepseek-chat")).toBeTruthy();
 
     const kimi = await screen.findByTestId("usage-row-user-kimi");
-    expect(within(kimi).getByText("Live balance unavailable")).toBeTruthy();
+    expect(within(kimi).getByText("Provider balance unavailable")).toBeTruthy();
     expect(within(kimi).getByText("provider timeout")).toBeTruthy();
     expect(within(kimi).getByText(/remaining unknown/)).toBeTruthy();
+  });
+
+  it("keeps a reported amount visible when DeepSeek says API calls are insufficient", async () => {
+    const reported = await fetchSettingsBalance("user-deepseek");
+    vi.mocked(fetchSettingsBalance).mockResolvedValue({ ...reported, native_available: false });
+    render(<UsagePanel />);
+    const row = await screen.findByTestId("usage-row-user-deepseek");
+    const label = await within(row).findByText(
+      "Provider-reported balance: CNY 42.5000 · USD 1.20 · insufficient for API calls",
+    );
+    expect(label.className).toContain("text-ink-soft");
+    expect(label.className).not.toContain("text-success");
+  });
+
+  it("marks a documented Kimi USD balance insufficient when no calls remain", async () => {
+    const deepseek = await fetchSettingsBalance("user-deepseek");
+    const kimi = await fetchSettingsBalance("user-kimi");
+    vi.mocked(fetchSettingsBalance).mockImplementation(async (id) =>
+      id === "user-kimi"
+        ? { ...kimi, kind: "balance_native", balance_usd: 0, native_available: false }
+        : deepseek,
+    );
+    render(<UsagePanel />);
+    const row = await screen.findByTestId("usage-row-user-kimi");
+    const label = await within(row).findByText(
+      "Provider-reported balance $0.00 · insufficient for API calls",
+    );
+    expect(label.className).toContain("text-ink-soft");
+    expect(label.className).not.toContain("text-success");
+  });
+
+  it("does not label old-server DeepSeek USD as provider credit", async () => {
+    vi.mocked(fetchSettingsBalance).mockImplementation(async (id) => ({
+      api_key_id: id,
+      catalog_id: "deepseek",
+      kind: "balance_native",
+      balance_usd: 42.5,
+      granted_usd: 100,
+      spend_usd: null,
+      budget_usd: null,
+      utilization: null,
+      window_label: null,
+      resets_at: null,
+      note: null,
+      held_cents: 0,
+      available_cents: 100,
+      native_balances: null,
+      native_available: null,
+    }));
+    render(<UsagePanel />);
+    const deepseek = await screen.findByTestId("usage-row-user-deepseek");
+    expect(within(deepseek).getByText("Provider balance unavailable")).toBeTruthy();
+    expect(within(deepseek).queryByText("Live balance $42.50")).toBeNull();
+  });
+
+  it("never presents local cap headroom as a live provider balance", async () => {
+    const deepseek = await fetchSettingsBalance("user-deepseek");
+    const kimi = await fetchSettingsBalance("user-kimi");
+    vi.mocked(fetchSettingsBalance).mockImplementation(async (id) =>
+      id === "user-kimi"
+        ? { ...kimi, kind: "balance_native", available_cents: 840 }
+        : deepseek,
+    );
+    vi.mocked(fetchSettingsUsage).mockResolvedValue({
+      ...usage,
+      keys: usage.keys.map((entry) =>
+        entry.api_key_id === "user-kimi"
+          ? {
+              ...entry,
+              limit_cents: 1000,
+              remaining_cents: 880,
+              held_cents: 40,
+              available_cents: 840,
+            }
+          : entry,
+      ),
+    });
+    render(<UsagePanel />);
+    const row = await screen.findByTestId("usage-row-user-kimi");
+    expect(within(row).getByText("Provider balance unavailable")).toBeTruthy();
+    expect(
+      within(row).getByText(/remaining \$8\.80 · held \$0\.40 · available \$8\.40/),
+    ).toBeTruthy();
+    expect(within(row).queryByText(/Live available/)).toBeNull();
   });
 
   it("labels a spend_history balance as Antiek's meter, never as a live provider balance", async () => {
     // A key whose provider has no native balance adapter: the backend answers
     // with Antiek's own settled-spend meter against the user's cap.
+    vi.mocked(fetchSettingsUsage).mockResolvedValue({
+      ...usage,
+      keys: usage.keys.map((entry) =>
+        entry.api_key_id === "user-deepseek"
+          ? {
+              ...entry,
+              used_cents: 250,
+              limit_cents: 5000,
+              remaining_cents: 4750,
+              held_cents: 300,
+              available_cents: 4450,
+            }
+          : entry,
+      ),
+    });
     vi.mocked(fetchSettingsBalance).mockImplementation(async (id) => ({
       api_key_id: id,
       catalog_id: id === "user-deepseek" ? "deepseek" : "kimi",
       kind: "spend_history",
       balance_usd: null,
       granted_usd: null,
+      native_balances: null,
+      native_available: null,
       spend_usd: 2.5,
       budget_usd: id === "user-deepseek" ? 50 : null,
       utilization: null,
       window_label: null,
       resets_at: null,
       note: null,
-      held_cents: 0,
-      available_cents: 4750,
+      held_cents: id === "user-deepseek" ? 300 : 0,
+      available_cents: id === "user-deepseek" ? 4450 : null,
     }));
     render(<UsagePanel />);
     const deepseek = await screen.findByTestId("usage-row-user-deepseek");
     expect(
-      within(deepseek).getByText("Antiek meter: $47.50 of $50.00 cap left (not provider credit)"),
+      within(deepseek).getByText(
+        "Antiek meter: $2.50 settled of $50.00 cap; holds excluded (not provider credit)",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(deepseek).getByText(/remaining \$47\.50 · held \$3\.00 · available \$44\.50/),
     ).toBeTruthy();
     expect(within(deepseek).queryByText(/^Live /)).toBeNull();
 
@@ -218,6 +331,59 @@ describe("UsagePanel", () => {
       within(kimi).getByText("Antiek meter: spent $2.50, uncapped (not provider credit)"),
     ).toBeTruthy();
     expect(within(kimi).queryByText(/^Live /)).toBeNull();
+  });
+
+  it.each([0, null])(
+    "does not turn an untracked spend-history row into measured zero (spend %s)",
+    async (spend) => {
+      const deepseek = await fetchSettingsBalance("user-deepseek");
+      const kimi = await fetchSettingsBalance("user-kimi");
+      vi.mocked(fetchSettingsBalance).mockImplementation(async (id) =>
+        id === "user-kimi"
+          ? {
+              ...kimi,
+              kind: "spend_history",
+              spend_usd: spend,
+              note: "no usage recorded for this key",
+            }
+          : deepseek,
+      );
+      vi.mocked(fetchSettingsUsage).mockResolvedValue({
+        keys: usage.keys.filter((entry) => entry.api_key_id !== "user-kimi"),
+        count: 1,
+      });
+      render(<UsagePanel />);
+      const row = await screen.findByTestId("usage-row-user-kimi");
+      expect(
+        within(row).getByText("Antiek meter: no usage recorded (not provider credit)"),
+      ).toBeTruthy();
+      expect(within(row).getByText("No Antiek usage recorded")).toBeTruthy();
+      expect(within(row).queryByText(/spent \$0\.00/)).toBeNull();
+    },
+  );
+
+  it("keeps a tracked zero spend visible as a measured Antiek meter value", async () => {
+    const deepseek = await fetchSettingsBalance("user-deepseek");
+    const kimi = await fetchSettingsBalance("user-kimi");
+    vi.mocked(fetchSettingsBalance).mockImplementation(async (id) =>
+      id === "user-kimi"
+        ? { ...kimi, kind: "spend_history", spend_usd: 0, note: null }
+        : deepseek,
+    );
+    vi.mocked(fetchSettingsUsage).mockResolvedValue({
+      ...usage,
+      keys: usage.keys.map((entry) =>
+        entry.api_key_id === "user-kimi"
+          ? { ...entry, used_cents: 0 }
+          : entry,
+      ),
+    });
+    render(<UsagePanel />);
+    const row = await screen.findByTestId("usage-row-user-kimi");
+    expect(
+      within(row).getByText("Antiek meter: spent $0.00, uncapped (not provider credit)"),
+    ).toBeTruthy();
+    expect(within(row).queryByText("No Antiek usage recorded")).toBeNull();
   });
 
   it("saves and clears spend caps", async () => {
@@ -286,19 +452,64 @@ describe("UsagePanel", () => {
     expect(within(deepseek).getByText("usage unavailable")).toBeTruthy();
     const kimi = screen.getByTestId("usage-row-user-kimi");
     expect(within(kimi).getByText("usage unavailable")).toBeTruthy();
-    // Scoped to the rows: the header itself says "never fabricated as $0.00".
+    // Scoped to the rows: missing usage must not be rendered as zero usage.
     const rows = screen.getByRole("list", { name: "BYOT usage rows" });
     expect(rows.textContent).not.toContain("$0.00");
     expect(document.body.textContent).not.toContain("sk-secret");
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("Can't load usage right now");
     // Live provider balances still render from their own fetch.
-    expect(within(deepseek).getByText("Live balance $42.50")).toBeTruthy();
+    expect(within(deepseek).getByText("Provider-reported balance: CNY 42.5000 · USD 1.20")).toBeTruthy();
 
     // Retry restores real figures and clears the alert.
     vi.mocked(fetchSettingsUsage).mockResolvedValue(usage);
     await user.click(within(alert).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(within(deepseek).getByText(/used \$1\.20 · cap \$10\.00/)).toBeTruthy();
+  });
+
+  it("keeps the failed-snapshot alert accurate after a cap write returns one key's usage", async () => {
+    vi.mocked(fetchSettingsUsage).mockRejectedValueOnce(new Error("ledger unavailable"));
+    render(<UsagePanel />);
+    const deepseek = await screen.findByTestId("usage-row-user-deepseek");
+    expect(within(deepseek).getByText("usage unavailable")).toBeTruthy();
+
+    const user = userEvent.setup();
+    const input = within(deepseek).getByLabelText("Spend cap (USD)");
+    await user.type(input, "25");
+    await user.click(within(deepseek).getByRole("button", { name: "Save cap" }));
+    expect(await within(deepseek).findByText(/used \$1\.20 · cap \$25\.00/)).toBeTruthy();
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("full snapshot is unavailable");
+    expect(alert.textContent).not.toContain("No usage figures are shown for any key");
+  });
+
+  it("does not invent zero usage for a key absent from a successful ledger snapshot", async () => {
+    // A newly connected model can have no ledger row: the API returns only
+    // tracked rows, so absence is not a measured zero.
+    vi.mocked(fetchSettingsUsage).mockResolvedValue({ keys: [], count: 0 });
+    render(<UsagePanel />);
+
+    const deepseek = await screen.findByTestId("usage-row-user-deepseek");
+    expect(within(deepseek).getByText("No Antiek usage recorded")).toBeTruthy();
+    expect(within(deepseek).queryByText(/used \$0\.00/)).toBeNull();
+    expect(within(deepseek).getByText("Provider-reported balance: CNY 42.5000 · USD 1.20")).toBeTruthy();
+    expect(screen.queryByText("Can't load usage right now.")).toBeNull();
+
+    // A successful cap write creates the ledger row and can then report zero.
+    vi.mocked(setSettingsUsageLimit).mockResolvedValueOnce({
+      api_key_id: "user-deepseek",
+      used_cents: 0,
+      limit_cents: 2500,
+      remaining_cents: 2500,
+      held_cents: 0,
+      available_cents: 2500,
+    });
+    const user = userEvent.setup();
+    const input = within(deepseek).getByLabelText("Spend cap (USD)");
+    await user.type(input, "25");
+    await user.click(within(deepseek).getByRole("button", { name: "Save cap" }));
+    expect(await within(deepseek).findByText(/used \$0\.00 · cap \$25\.00/)).toBeTruthy();
   });
 });

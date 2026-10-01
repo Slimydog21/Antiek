@@ -36,16 +36,16 @@ def fetch_spend_history_balance(
 ) -> BalanceSnapshot:
     """Compute remaining budget from the usage ledger.
 
-    If the key has no ledger row or no limit is set, returns
-    ``spend_usd`` with ``budget_usd=None`` (the caller knows the
-    budget is unknown).
+    If the key has no ledger row, spend and budget are both unknown.
+    A tracked key with no limit still returns measured settled spend
+    with ``budget_usd=None``.
     """
     row = ledger.key_usage(api_key_id, owner_user_id)
     if row is None:
         return BalanceSnapshot(
             catalog_id=catalog_id,
             kind="spend_history",
-            spend_usd=0.0,
+            spend_usd=None,
             budget_usd=None,
             note="no usage recorded for this key",
         )

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from runtime.byok.secret_str import SecretStr
+from substrate.byot_usage.balance.base import NativeBalance
 from substrate.byot_usage.balance.deepseek import fetch_deepseek_balance
 from substrate.byot_usage.balance.kimi import fetch_kimi_balance
 from substrate.byot_usage.balance.spend_history import fetch_spend_history_balance
@@ -83,11 +84,70 @@ def test_deepseek_parses_valid_fixture() -> None:
 
     assert result.catalog_id == "deepseek"
     assert result.kind == "balance_native"
-    assert result.balance_usd == 150.50
-    assert result.granted_usd == 100.00
+    assert result.native_balances == (
+        NativeBalance(currency="CNY", total="150.50", granted="100.00", topped_up="50.50"),
+    )
+    assert result.native_available is True
+    assert result.balance_usd is None
+    assert result.granted_usd is None
     assert result.note is None
     assert http.last_url == "https://api.deepseek.com/user/balance"
     assert http.last_headers == {"Authorization": "Bearer sk-test-deepseek-key"}
+
+
+def test_deepseek_preserves_both_currencies_without_conversion() -> None:
+    http = _FakeHTTP(_FakeResponse({
+        "is_available": True,
+        "balance_infos": [
+            {"currency": "CNY", "total_balance": "150.50000001", "granted_balance": "100.00", "topped_up_balance": "50.50000001"},
+            {"currency": "USD", "total_balance": "2.25", "granted_balance": "0.25", "topped_up_balance": "2.00"},
+        ],
+    }))
+
+    result = fetch_deepseek_balance(
+        SecretStr("sk-test-key"), base_url="https://api.deepseek.com", http=http,
+    )
+
+    assert result.kind == "balance_native"
+    assert result.native_balances == (
+        NativeBalance(currency="CNY", total="150.50000001", granted="100.00", topped_up="50.50000001"),
+        NativeBalance(currency="USD", total="2.25", granted="0.25", topped_up="2.00"),
+    )
+    assert result.native_available is True
+    assert result.balance_usd is None
+
+
+def test_deepseek_reports_call_eligibility_separately_from_amount() -> None:
+    http = _FakeHTTP(_FakeResponse({
+        "is_available": False,
+        "balance_infos": [
+            {"currency": "CNY", "total_balance": "0.00", "granted_balance": "0.00", "topped_up_balance": "0.00"},
+        ],
+    }))
+    result = fetch_deepseek_balance(
+        SecretStr("sk-test-key"), base_url="https://api.deepseek.com", http=http,
+    )
+    assert result.kind == "balance_native"
+    assert result.native_available is False
+    assert result.native_balances is not None
+    assert result.native_balances[0].total == "0.00"
+
+
+def test_deepseek_rejects_unknown_currency_duplicate_or_numeric_amount() -> None:
+    valid = {"currency": "CNY", "total_balance": "1.00", "granted_balance": "0.00", "topped_up_balance": "1.00"}
+    invalid_lists = [
+        [{**valid, "currency": "EUR"}],
+        [valid, valid],
+        [{**valid, "total_balance": 1.0}],
+        [{**valid, "total_balance": "NaN"}],
+    ]
+    for infos in invalid_lists:
+        http = _FakeHTTP(_FakeResponse({"is_available": True, "balance_infos": infos}))
+        result = fetch_deepseek_balance(
+            SecretStr("sk-test-key"), base_url="https://api.deepseek.com", http=http,
+        )
+        assert result.kind == "unavailable"
+        assert result.native_balances is None
 
 
 def test_deepseek_unavailable_on_http_error() -> None:
@@ -104,7 +164,8 @@ def test_deepseek_unavailable_on_http_error() -> None:
 
     assert result.kind == "unavailable"
     assert result.note is not None
-    assert "429" in result.note or "Too Many" in result.note
+    assert "HTTP/parse error" in result.note
+    assert "Too Many" not in result.note
 
 
 def test_deepseek_unavailable_on_malformed_json() -> None:
@@ -136,11 +197,13 @@ def test_deepseek_unavailable_on_empty_balance_infos() -> None:
 
 def test_kimi_parses_valid_fixture() -> None:
     fixture = {
-        "status": "ok",
+        "code": 0,
+        "status": True,
+        "scode": "0x0",
         "data": {
-            "available_balance": "75.25",
-            "voucher_balance": "25.00",
-            "cash_balance": "50.25",
+            "available_balance": 75.25001,
+            "voucher_balance": 25.0,
+            "cash_balance": 50.25001,
         },
     }
     http = _FakeHTTP(_FakeResponse(fixture))
@@ -150,10 +213,68 @@ def test_kimi_parses_valid_fixture() -> None:
 
     assert result.catalog_id == "kimi"
     assert result.kind == "balance_native"
-    assert result.balance_usd == 75.25
-    assert result.granted_usd == 50.25
+    assert result.balance_usd == 75.25001
+    assert result.granted_usd is None  # Cash is not a grant.
+    assert result.native_available is True
     assert result.note is None
     assert http.last_url == "https://api.moonshot.ai/v1/users/me/balance"
+
+
+def test_kimi_refuses_noninternational_host_before_revealing_key() -> None:
+    http = _FakeHTTP(_FakeResponse({}))
+    result = fetch_kimi_balance(
+        SecretStr("sk-test-key"), base_url="https://api.moonshot.cn/v1", http=http,
+    )
+    assert result.kind == "unavailable"
+    assert http.last_url is None
+
+
+def test_kimi_rejects_failed_status_even_with_a_balance_number() -> None:
+    http = _FakeHTTP(_FakeResponse({
+        "code": 0,
+        "status": False,
+        "scode": "0x0",
+        "data": {"available_balance": 75.25, "voucher_balance": 25.0, "cash_balance": 50.25},
+    }))
+    result = fetch_kimi_balance(
+        SecretStr("sk-test-key"), base_url="https://api.moonshot.ai/v1", http=http,
+    )
+    assert result.kind == "unavailable"
+    assert result.balance_usd is None
+
+
+def test_kimi_zero_available_is_not_call_eligible() -> None:
+    http = _FakeHTTP(_FakeResponse({
+        "code": 0,
+        "status": True,
+        "scode": "0x0",
+        "data": {"available_balance": 0, "voucher_balance": 0, "cash_balance": -1.25},
+    }))
+    result = fetch_kimi_balance(
+        SecretStr("sk-test-key"), base_url="https://api.moonshot.ai/v1", http=http,
+    )
+    assert result.kind == "balance_native"
+    assert result.balance_usd == 0
+    assert result.granted_usd is None
+    assert result.native_available is False
+
+
+def test_kimi_unbounded_numeric_amount_is_unavailable() -> None:
+    http = _FakeHTTP(_FakeResponse({
+        "code": 0,
+        "status": True,
+        "scode": "0x0",
+        "data": {
+            "available_balance": 10 ** 1000,
+            "voucher_balance": 0,
+            "cash_balance": 0,
+        },
+    }))
+    result = fetch_kimi_balance(
+        SecretStr("sk-test-key"), base_url="https://api.moonshot.ai/v1", http=http,
+    )
+    assert result.kind == "unavailable"
+    assert result.balance_usd is None
 
 
 def test_kimi_unavailable_on_http_error() -> None:
@@ -174,7 +295,7 @@ def test_kimi_unavailable_on_http_error() -> None:
 
 def test_kimi_unavailable_on_schema_drift() -> None:
     # Wrong nesting — "data" is missing
-    http = _FakeHTTP(_FakeResponse({"status": "ok"}))
+    http = _FakeHTTP(_FakeResponse({"code": 0, "status": True, "scode": "0x0"}))
     key = SecretStr("sk-test-key")
 
     result = fetch_kimi_balance(key, base_url="https://api.moonshot.ai/v1", http=http)
@@ -231,7 +352,7 @@ def test_spend_history_no_limit_shows_spend_only(tmp_path: Path) -> None:
     assert result.budget_usd is None
 
 
-def test_spend_history_no_ledger_row_returns_zero_spend(tmp_path: Path) -> None:
+def test_spend_history_no_ledger_row_has_no_measured_spend(tmp_path: Path) -> None:
     db = tmp_path / "usage.sqlite3"
     ledger = ByotUsageLedger(db)
 
@@ -245,9 +366,28 @@ def test_spend_history_no_ledger_row_returns_zero_spend(tmp_path: Path) -> None:
     )
 
     assert result.kind == "spend_history"
-    assert result.spend_usd == 0.0
+    assert result.spend_usd is None
     assert result.budget_usd is None
-    assert result.note is not None
+    assert result.note == "no usage recorded for this key"
+
+
+def test_spend_history_tracked_zero_is_measured_spend(tmp_path: Path) -> None:
+    ledger = ByotUsageLedger(tmp_path / "usage.sqlite3")
+    ledger.set_limit("key-oai", "user-A", 2000)
+
+    result = fetch_spend_history_balance(
+        SecretStr("sk-test"),
+        base_url="https://api.openai.com/v1",
+        http=_FakeHTTP(_FakeResponse({})),
+        ledger=ledger,
+        api_key_id="key-oai",
+        owner_user_id="user-A",
+    )
+
+    assert result.kind == "spend_history"
+    assert result.spend_usd == 0.0
+    assert result.budget_usd == 20.0
+    assert result.note is None
 
 
 def test_spend_history_custom_catalog_id(tmp_path: Path) -> None:
