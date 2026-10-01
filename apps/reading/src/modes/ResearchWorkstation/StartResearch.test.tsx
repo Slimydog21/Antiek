@@ -274,7 +274,7 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
 
   it("selecting Fast changes the submitted tier (SPR-01 M3)", async () => {
     startInvestigationMock.mockResolvedValue({ investigation_id: "inv-fast" });
-    renderStart();
+    await renderStart();
     fireEvent.change(screen.getByLabelText("Research question"), {
       target: { value: "A quick exploratory scan of this topic." },
     });
@@ -292,7 +292,7 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     // Before: "Submit failed: POST /investigations failed: HTTP 500" in 12px
     // mono red under the composer.
     startInvestigationMock.mockRejectedValueOnce(new Error("POST /investigations failed: HTTP 500"));
-    renderStart();
+    await renderStart();
     const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "What drives the thesis?" } });
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
@@ -307,7 +307,7 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
   });
 
   it("sets an error sentence in the interface face, never mono (T5)", async () => {
-    renderStart();
+    await renderStart();
     const input = screen.getByLabelText("Research question");
     fireEvent.change(input, { target: { value: "ab" } });
     fireEvent.keyDown(input, { key: "Enter", metaKey: true });
@@ -453,7 +453,7 @@ describe("StartResearch — owner model authority", () => {
     fetchUserModelsMock.mockRejectedValue(new Error("secret upstream detail"));
     render(<MemoryRouter><StartResearch /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: "Deep research · multiple model calls" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("Can’t load saved models");
+    expect((await screen.findByRole("alert")).textContent).toContain("Can’t load executable models");
     expect(screen.queryByText(/research-[0-9a-f-]+/i)).toBeNull();
     fireEvent.change(screen.getByLabelText("Research question"), { target: { value: "Continue without an owner route." } });
     expect((screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled).toBe(true);

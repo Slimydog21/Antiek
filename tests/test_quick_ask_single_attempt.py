@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -142,8 +143,15 @@ def _quote(client: TestClient, body: dict[str, Any]) -> dict[str, Any]:
     return response.json()
 
 
+@pytest.mark.parametrize("requested_model, canonical_model, thinking", [
+    ("deepseek-chat", "deepseek-flash-nothink", "disabled"),
+    ("deepseek-reasoner", "deepseek-flash", "enabled"),
+    ("deepseek-flash-nothink", "deepseek-flash-nothink", "disabled"),
+    ("deepseek-flash", "deepseek-flash", "enabled"),
+])
 def test_registered_deepseek_current_catalog_completes_one_ask_and_replay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    requested_model: str, canonical_model: str, thinking: str,
 ) -> None:
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
     monkeypatch.setenv("ANTIEK_USER_MODELS_PATH", str(tmp_path / "settings" / "user_models.json"))
@@ -169,29 +177,39 @@ def test_registered_deepseek_current_catalog_completes_one_ask_and_replay(
         registered = client.post("/settings/models/user", json={
             "provider_catalog_id": "deepseek",
             "provider_kind": "openai_compat",
-            "model_id": _MODEL,
+            "model_id": requested_model,
             "display_name": "My DeepSeek",
             "api_key": "test-only-disposable-key",
         })
         assert registered.status_code == 201, registered.json()
         provider_id = registered.json()["id"]
-        fingerprint = app.state.user_model_registration_fingerprints[provider_id]
-        provider = RecordingProvider(fingerprint)
-        provider.name = provider_id
-        register_provider(provider)
+        calls: list[dict[str, Any]] = []
+
+        class FakeTransport:
+            def post(self, url, *, json, headers):
+                assert url == "https://api.deepseek.com/chat/completions"
+                assert headers["Authorization"] == "Bearer test-only-disposable-key"
+                calls.append(json)
+                return httpx.Response(200, request=httpx.Request("POST", url), json={
+                    "choices": [{"message": {"content": "one answer"}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 7, "completion_tokens": 11},
+                })
+
+        monkeypatch.setattr(models_admin._UserOpenAICompatProvider, "_ensure_client", lambda _: FakeTransport())
         ledger.set_limit(provider_id, _OWNER, 100)
 
         inventory = client.get("/research/quick-ask/models")
         assert inventory.status_code == 200, inventory.json()
         assert [(row["provider_id"], row["model_id"]) for row in inventory.json()["models"]] == [
-            (provider_id, _MODEL),
+            (provider_id, canonical_model),
         ]
         body = _body(question="What changed in the current catalog?")
         body["model_choice"]["provider_id"] = provider_id
+        body["model_choice"]["model_id"] = requested_model
         quote = _quote(client, body)
-        assert quote["model_id"] == _MODEL
+        assert quote["model_id"] == canonical_model
         assert quote["price_snapshot"] == inventory.json()["models"][0]["price_snapshot"]
-        assert provider.calls == []
+        assert calls == []
 
         payload = {**body, "quote_digest": quote["quote_digest"]}
         first = client.post("/research/quick-ask", json=payload)
@@ -202,9 +220,13 @@ def test_registered_deepseek_current_catalog_completes_one_ask_and_replay(
         assert replay.status_code == 200, replay.json()
         assert replay.json()["answer"] == "one answer"
         assert replay.json()["replayed"] is True
-        assert provider.calls == [{
-            "model": _MODEL, "prompt": body["question"], "max_tokens": 1024,
-        }]
+        assert len(calls) == 1
+        assert calls[0]["model"] == "deepseek-flash"
+        assert calls[0]["thinking"] == {"type": thinking}
+        assert calls[0]["max_tokens"] == 1024
+        assert calls[0]["messages"] == [{"role": "user", "content": body["question"]}]
+        assert client.get("/research/quick-ask/recent").status_code == 200
+        assert len(calls) == 1
         assert ledger.operation(_OWNER, f"quick-ask:{body['operation_id']}").state == "settled"
 
 

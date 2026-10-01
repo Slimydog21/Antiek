@@ -15,6 +15,7 @@ import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type {
   ResearchSourcePolicy,
+  ResearchTier,
   UserModelChoice,
 } from "../../lib/api";
 import { fetchUserModels, type UserModelRow } from "../../api/settingsModels";
@@ -88,6 +89,11 @@ const isExecutable = (model: UserModelRow) =>
   model.enabled && model.key_present && model.registered && model.route_eligible &&
   model.pricing_status === "known" && model.hard_ceiling_eligible &&
   model.execution_status === "executable";
+
+const RESEARCH_TIER_OPTIONS: ReadonlyArray<{ value: ResearchTier; label: string }> = [
+  { value: "fast", label: "Fast" },
+  { value: "deep", label: "Deep" },
+];
 
 interface PendingOwnerLaunch {
   question: string;
@@ -164,6 +170,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const restoredLaunch = useMemo(readPendingOwnerLaunch, []);
   const [askMode, setAskMode] = useState<"quick" | "deep">(restoredLaunch ? "deep" : "quick");
   const [quickAskSending, setQuickAskSending] = useState(false);
+  const [tier, setTier] = useState<ResearchTier>("deep");
   const [question, setQuestion] = useState(restoredLaunch?.question ?? "");
   const [sourcePolicy, setSourcePolicy] = useState<ResearchSourcePolicy[]>(
     DEFAULT_SOURCE_POLICY,
@@ -236,12 +243,12 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
     if (modelsState !== "ready" || !modelChoice || !selectedModel) return;
     const pending = { question, modelChoice, operationId } satisfies PendingOwnerLaunch;
     window.sessionStorage.setItem(OWNER_LAUNCH_KEY, JSON.stringify(pending));
-    const id = await submit({ question, modelChoice, operationId, sourcePolicy });
+    const id = await submit({ question, modelChoice, operationId, sourcePolicy, researchTier: tier });
     if (id) {
       window.sessionStorage.removeItem(OWNER_LAUNCH_KEY);
       setQuestion("");
     }
-  }, [submit, question, modelChoice, operationId, selectedModel, modelsState, sourcePolicy]);
+  }, [submit, question, modelChoice, operationId, selectedModel, modelsState, sourcePolicy, tier]);
 
   const toggleSourcePolicy = useCallback((value: ResearchSourcePolicy) => {
     setSourcePolicy((current) => {
@@ -714,10 +721,6 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                   aria-label="Model for Ask investigation"
                   fullWidth
                 />
-              ) : modelsState === "error" ? (
-                <p className="text-xs font-mono text-emperor" role="alert">
-                  Can’t load saved models. Retry inventory or check <Link to="/settings" className="underline">Settings</Link>.
-                </p>
               ) : (
                 <p className="text-xs font-mono text-ink-mute dark:text-moonlight" role="status">
                   {modelsState === "loading" ? "Checking saved models…" : "No executable saved model available."}
@@ -743,6 +746,15 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 If none appears, <Link to="/settings" className="underline text-ink dark:text-bright">connect one in Settings</Link> and retry inventory.
               </p>
             ) : null}
+            <div className="flex items-center gap-2" role="radiogroup" aria-label="Research depth">
+              {RESEARCH_TIER_OPTIONS.map((option) => (
+                <button key={option.value} type="button" role="radio" aria-checked={tier === option.value}
+                  onClick={() => setTier(option.value)} disabled={busy}
+                  className={`px-3 py-1 rounded-hog text-xs font-mono border border-rule ${tier === option.value ? "bg-sun text-ink" : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright"}`}>
+                  {option.label}
+                </button>
+              ))}
+            </div>
             {modelsState !== "loading" && (
               <button type="button" onClick={() => void refreshModels()} className="text-xs font-mono underline text-ink dark:text-bright">
                 Retry inventory

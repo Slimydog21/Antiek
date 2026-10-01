@@ -48,12 +48,12 @@ describe("PanelHost inside the app shell", () => {
     expect(useWorkspace.getState().dockLeftIds).toEqual([]);
   });
 
-  it("shows one narrow-screen workspace warning while keeping the route visible", () => {
+  it("keeps the narrow-screen route visible without rendering docks", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
     mountRoute();
 
-    expect(screen.getAllByText(/Antiek is designed for/)).toHaveLength(1);
-    screen.getByText("Research center");
+    expect(screen.queryAllByLabelText("Left dock")).toHaveLength(0);
+    expect(screen.getAllByText("Research center")).toHaveLength(1);
   });
 
   it("retains a pinned starter when its route unmounts", () => {
