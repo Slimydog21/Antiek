@@ -34,7 +34,10 @@ export interface ResearchComposerProps {
   onSubmitted?: (investigationId: string) => void;
 }
 
-type DraftBinding = Readonly<{ scope: ModelExecutionScope; props: object }>;
+type DraftProps = Readonly<
+  Pick<ResearchComposerProps, "parentInvestigationId" | "spawnContext">
+>;
+type DraftBinding = Readonly<{ scope: ModelExecutionScope; props: DraftProps }>;
 const UNCERTAIN_START_MESSAGE =
   "Could not confirm the start. The request may have been accepted or charged.";
 function reportLaunchTelemetry(report: () => void): void {
@@ -64,7 +67,7 @@ function projectComposerState({
   questionBinding: DraftBinding;
   errorBinding: DraftBinding;
   scope: ModelExecutionScope;
-  props: object;
+  props: DraftProps;
   busy: boolean;
   pending: boolean;
   intent: RootResearchIntent | null;
@@ -118,41 +121,44 @@ export function useResearchComposer({
   const navigate = useModeNavigate();
   const { modelExecution } = useAuth();
   const renderedScope = modelExecution.current;
+  const draftToken = useMemo(
+    () => Object.freeze({ parentInvestigationId, spawnContext }),
+    [parentInvestigationId, spawnContext],
+  );
   const propsToken = useMemo(
     () =>
       Object.freeze({
-        parentInvestigationId,
-        spawnContext,
+        ...draftToken,
         onSubmitted,
         navigate,
       }),
-    [parentInvestigationId, spawnContext, onSubmitted, navigate],
+    [draftToken, onSubmitted, navigate],
   );
   const committedPropsRef = useRef<typeof propsToken | null>(null);
   const questionBindingRef = useRef({
     scope: modelExecution.readCurrent(),
-    props: propsToken,
+    props: draftToken,
   });
   const errorBindingRef = useRef({
     scope: modelExecution.readCurrent(),
-    props: propsToken,
+    props: draftToken,
   });
   const setError = useCallback(
     (message: string | null) => {
       errorBindingRef.current = {
         scope: modelExecution.readCurrent(),
-        props: propsToken,
+        props: draftToken,
       };
       setErrorState(message);
     },
-    [modelExecution, propsToken],
+    [modelExecution, draftToken],
   );
   const initialDraftCommittedRef = useRef(false);
   useLayoutEffect(() => {
     const scope = modelExecution.current;
     if (!initialDraftCommittedRef.current && scope.kind === "ready") {
       initialDraftCommittedRef.current = true;
-      questionBindingRef.current = { scope, props: propsToken };
+      questionBindingRef.current = { scope, props: draftToken };
       if (!controller) {
         questionRef.current = spawnContext ?? "";
         setQuestion(spawnContext ?? "");
@@ -162,13 +168,13 @@ export function useResearchComposer({
     }
     if (
       questionBindingRef.current.scope !== scope ||
-      questionBindingRef.current.props !== propsToken
+      questionBindingRef.current.props !== draftToken
     ) {
-      questionBindingRef.current = { scope, props: propsToken };
+      questionBindingRef.current = { scope, props: draftToken };
       questionRef.current = "";
       setQuestion("");
     }
-  }, [controller, modelExecution, propsToken, spawnContext]);
+  }, [controller, modelExecution, draftToken, spawnContext]);
   const mountedRef = useRef(false);
   const intentRef = useRef<ReturnType<
     typeof rootResearchLaunchArchive.createIntent
@@ -343,7 +349,7 @@ export function useResearchComposer({
     questionBinding: questionBindingRef.current,
     errorBinding: errorBindingRef.current,
     scope: observedScope,
-    props: propsToken,
+    props: draftToken,
     busy,
     pending: active?.phase === "pending",
     intent: intentRef.current,
@@ -355,13 +361,13 @@ export function useResearchComposer({
       if (!admitsCurrentRender()) return;
       questionBindingRef.current = {
         scope: modelExecution.readCurrent(),
-        props: propsToken,
+        props: draftToken,
       };
       questionRef.current = value;
       setQuestion(value);
       setError(null);
     },
-    [modelExecution, propsToken, setError, admitsCurrentRender],
+    [modelExecution, draftToken, setError, admitsCurrentRender],
   );
   const startSeparate = useCallback(() => {
     if (!admitsCurrentRender()) return;

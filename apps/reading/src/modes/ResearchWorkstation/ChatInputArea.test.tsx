@@ -12,6 +12,24 @@ import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 
+const archiveSlot = vi.hoisted(() => ({
+  current: null as null | ReturnType<
+    typeof import("./rootResearchLaunch").createRootResearchLaunchArchive
+  >,
+}));
+vi.mock("./rootResearchLaunch", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./rootResearchLaunch")>();
+  return {
+    ...actual,
+    get rootResearchLaunchArchive() {
+      if (archiveSlot.current === null)
+        throw new Error("Chat archive fixture used outside a test");
+      return archiveSlot.current;
+    },
+  };
+});
+
+import { createRootResearchLaunchArchive } from "./rootResearchLaunch";
 import { AuthProvider, useAuth, type AuthContextValue } from "../../lib/auth";
 import ChatInputArea from "./ChatInputArea";
 import { ChatStoryFixture } from "./ChatInputArea.stories";
@@ -103,6 +121,7 @@ function AuthProbe() {
   auth = useAuth();
   return null;
 }
+const unsettledResponses = new Set<Promise<Response>>();
 function deferredResponse() {
   let resolve!: (value: Response) => void;
   let reject!: (error: Error) => void;
@@ -110,7 +129,18 @@ function deferredResponse() {
     resolve = yes;
     reject = no;
   });
-  return { promise, resolve, reject };
+  unsettledResponses.add(promise);
+  return {
+    promise,
+    resolve(value: Response) {
+      unsettledResponses.delete(promise);
+      resolve(value);
+    },
+    reject(error: Error) {
+      unsettledResponses.delete(promise);
+      reject(error);
+    },
+  };
 }
 const receipt = (id: string) =>
   jsonResponse({
@@ -120,6 +150,9 @@ const receipt = (id: string) =>
   });
 
 beforeEach(() => {
+  if (archiveSlot.current !== null)
+    throw new Error("prior Chat archive fixture not cleaned up");
+  archiveSlot.current = createRootResearchLaunchArchive();
   startBodies = [];
   authRead = null;
   startRead = null;
@@ -169,9 +202,13 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+afterEach(async () => {
   cleanup();
+  await act(async () => {});
+  if (unsettledResponses.size > 0)
+    throw new Error("Chat archive fixture has unresolved deferred responses");
+  archiveSlot.current = null;
+  vi.unstubAllGlobals();
 });
 
 function renderComposer(props: Record<string, unknown> = {}) {
@@ -826,6 +863,181 @@ describe("child issued action lifecycle", () => {
   });
 });
 
+describe("callback-only composer rerender", () => {
+  const childProps = {
+    parentInvestigationId: "callback-stable-parent",
+    spawnContext: "",
+  };
+
+  function composerTree(route: string, onSubmitted: (id: string) => void) {
+    return (
+      <AuthProvider>
+        <AuthProbe />
+        <MemoryRouter>
+          <ChatInputArea {...(route === "child" ? childProps : {})} onSubmitted={onSubmitted} />
+        </MemoryRouter>
+      </AuthProvider>
+    );
+  }
+
+  async function readyComposer(route: string, onSubmitted: (id: string) => void) {
+    const view = render(composerTree(route, onSubmitted));
+    await waitFor(() => expect(auth.modelExecution.readCurrent().kind).toBe("ready"));
+    if (route === "root") await chooseDeepSeek();
+    else await acknowledgePriorLaunches();
+    return view;
+  }
+
+  function probeTree(route: string, onSubmitted: (id: string) => void) {
+    return (
+      <AuthProvider>
+        <AuthProbe />
+        <MemoryRouter>
+          {route === "root"
+            ? <ComposerLifecycleProbe onSubmitted={onSubmitted} />
+            : <ChildComposerLifecycleProbe {...childProps} onSubmitted={onSubmitted} />}
+        </MemoryRouter>
+      </AuthProvider>
+    );
+  }
+
+  async function readyProbe(route: string, onSubmitted: (id: string) => void) {
+    const view = render(probeTree(route, onSubmitted));
+    await waitFor(() => expect(auth.modelExecution.readCurrent().kind).toBe("ready"));
+    if (route === "root") {
+      await waitFor(() => expect(probedController.inventory.kind).toBe("ready"));
+      act(() => probedController.select({ kind: "saved", recordId: executableModel.id, modelId: "deepseek-v4-pro" }));
+    }
+    act(() => probedComposer.startSeparate());
+    return view;
+  }
+
+  function expectExactWire(route: string, body: Record<string, unknown>, question: string) {
+    expect(body).toEqual(route === "child"
+      ? { question, parent_investigation_id: childProps.parentInvestigationId, spawn_context: "" }
+      : {
+          question,
+          model_choice: { authority: "user_model", provider_id: executableModel.id, model_id: "deepseek-v4-pro" },
+          operation_id: expect.any(String),
+        });
+  }
+
+  it.each(["root", "child"])("preserves an unsent %s draft and sends it through only the current callback", async (route) => {
+    const oldSubmitted = vi.fn();
+    const currentSubmitted = vi.fn();
+    const view = await readyComposer(route, oldSubmitted);
+    const scope = auth.modelExecution.readCurrent();
+    const field = screen.getByPlaceholderText("What do you want to research?");
+    await userEvent.type(field, "unsent callback stable question");
+    view.rerender(composerTree(route, currentSubmitted));
+    expect(auth.modelExecution.readCurrent()).toBe(scope);
+    expect(field).toHaveProperty("value", "unsent callback stable question");
+    expect(startBodies).toHaveLength(0);
+    await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(currentSubmitted).toHaveBeenCalledWith("inv-started"));
+    expect(currentSubmitted).toHaveBeenCalledTimes(1);
+    expect(oldSubmitted).not.toHaveBeenCalled();
+    expect(startBodies).toHaveLength(1);
+    expectExactWire(route, startBodies[0], "unsent callback stable question");
+    expect(field).toHaveProperty("value", "");
+  });
+
+  it.each(["root", "child"])("keeps a pending %s draft private from both retired and replacement delivery callbacks", async (route) => {
+    const pending = deferredResponse();
+    const oldSubmitted = vi.fn();
+    const currentSubmitted = vi.fn();
+    startRead = () => pending.promise;
+    const view = await readyComposer(route, oldSubmitted);
+    await ask("pending callback stable question");
+    const scope = auth.modelExecution.readCurrent();
+    const field = screen.getByPlaceholderText("What do you want to research?");
+    view.rerender(composerTree(route, currentSubmitted));
+    expect(auth.modelExecution.readCurrent()).toBe(scope);
+    expect(field).toHaveProperty("value", "pending callback stable question");
+    expect(screen.getByRole("button", { name: /^(Ask|…)$/ }).hasAttribute("disabled")).toBe(true);
+    await act(async () => pending.resolve(receipt("retired-callback-receipt")));
+    expect(oldSubmitted).not.toHaveBeenCalled();
+    expect(currentSubmitted).not.toHaveBeenCalled();
+    expect(field).toHaveProperty("value", "pending callback stable question");
+    expect(screen.getByRole("button", { name: "Ask" }).hasAttribute("disabled")).toBe(true);
+    expect(startBodies).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Start a separate research" }));
+    fireEvent.change(field, { target: { value: "separate current callback question" } });
+    startRead = null;
+    await userEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(currentSubmitted).toHaveBeenCalledWith("inv-started"));
+    expect(currentSubmitted).toHaveBeenCalledTimes(1);
+    expect(oldSubmitted).not.toHaveBeenCalled();
+    expect(startBodies).toHaveLength(2);
+    expectExactWire(route, startBodies[1], "separate current callback question");
+    if (route === "root") expect(startBodies[1].operation_id).not.toBe(startBodies[0].operation_id);
+  });
+
+  it.each(["root", "child"])("denies retained %s mutators after callback churn while a current separate action stays pending", async (route) => {
+    const oldResponse = deferredResponse();
+    const currentResponse = deferredResponse();
+    const oldSubmitted = vi.fn();
+    const currentSubmitted = vi.fn();
+    startRead = () => oldResponse.promise;
+    const view = await readyProbe(route, oldSubmitted);
+    act(() => probedComposer.changeQuestion("retained callback private question"));
+    const retired = probedComposer;
+    await act(async () => { void probedComposer.submit(); });
+    const scope = auth.modelExecution.readCurrent();
+    view.rerender(probeTree(route, currentSubmitted));
+    expect(auth.modelExecution.readCurrent()).toBe(scope);
+    expect(probedComposer.question).toBe("retained callback private question");
+    await act(async () => {
+      retired.changeQuestion("retired injected question");
+      retired.startSeparate();
+      void retired.submit();
+      void probedComposer.submit();
+    });
+    expect(startBodies).toHaveLength(1);
+    expect(probedComposer.question).toBe("retained callback private question");
+    expect(probedComposer.submitDisabled).toBe(true);
+    act(() => {
+      probedComposer.startSeparate();
+      probedComposer.changeQuestion("current callback pending question");
+    });
+    startRead = () => currentResponse.promise;
+    await act(async () => { void probedComposer.submit(); });
+    expect(startBodies).toHaveLength(2);
+    expectExactWire(route, startBodies[1], "current callback pending question");
+    await act(async () => {
+      retired.changeQuestion("retired later injected question");
+      retired.startSeparate();
+      void retired.submit();
+      oldResponse.resolve(receipt("old-callback-private"));
+    });
+    expect(probedComposer.question).toBe("current callback pending question");
+    expect(probedComposer.busy).toBe(true);
+    expect(probedComposer.submitDisabled).toBe(true);
+    expect(startBodies).toHaveLength(2);
+    expect(oldSubmitted).not.toHaveBeenCalled();
+    expect(currentSubmitted).not.toHaveBeenCalled();
+    await act(async () => currentResponse.resolve(receipt("current-callback-accepted")));
+    expect(currentSubmitted).toHaveBeenCalledWith("current-callback-accepted");
+    expect(currentSubmitted).toHaveBeenCalledTimes(1);
+    expect(oldSubmitted).not.toHaveBeenCalled();
+  });
+
+  it.each(["root", "child"])("preserves %s validation error and draft across callback-only churn", async (route) => {
+    const oldSubmitted = vi.fn();
+    const currentSubmitted = vi.fn();
+    const view = await readyProbe(route, oldSubmitted);
+    act(() => probedComposer.changeQuestion("x"));
+    await act(async () => { await probedComposer.submit(); });
+    expect(probedComposer.error).toBe("Question is too short. At least 3 characters.");
+    view.rerender(probeTree(route, currentSubmitted));
+    expect(probedComposer.question).toBe("x");
+    expect(probedComposer.error).toBe("Question is too short. At least 3 characters.");
+    expect(startBodies).toHaveLength(0);
+    expect(oldSubmitted).not.toHaveBeenCalled();
+    expect(currentSubmitted).not.toHaveBeenCalled();
+  });
+});
+
 describe("research launch telemetry boundary", () => {
   beforeEach(() => {
     launchTelemetry.enabled = false;
@@ -1160,7 +1372,7 @@ describe("child immediate lifecycle admission", () => {
 let probedComposer: ReturnType<typeof useResearchComposer>;
 let probedController: OwnerModelController;
 const probeSubmitted = () => {};
-function ComposerLifecycleProbe() {
+function ComposerLifecycleProbe({ onSubmitted = probeSubmitted }: Pick<ResearchComposerProps, "onSubmitted">) {
   probedController = useOwnerModelController({
     operationPrefix: "probe",
     policy: "strict-owner",
@@ -1168,7 +1380,7 @@ function ComposerLifecycleProbe() {
   });
   probedComposer = useResearchComposer({
     controller: probedController,
-    onSubmitted: probeSubmitted,
+    onSubmitted,
   });
   return (
     <output data-testid="probed-question">{probedComposer.question}</output>
