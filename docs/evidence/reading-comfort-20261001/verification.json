@@ -120,13 +120,12 @@
       "status": "PASS",
       "files": 387,
       "tests": 3671,
-      "workers": 4,
-      "concurrent_attempt": "Three reader async timeouts in two files during simultaneous build/art work; bounded rerun passed unchanged tests."
+      "workers": 2,
+      "postRepair": true,
+      "firstPostRepairAttempt": "One existing asynchronous useIslandThread completion/loading race failed. The two-worker full rerun passed without source, assertion or timeout changes.",
+      "preRepairAttempt": "Three reader async timeouts during simultaneous build/art work; bounded four-worker rerun passed unchanged tests."
     },
-    "differentLineageReview": {
-      "theme": "Kimi K3 ACCEPT on exact 24-file scope; hash recheck matches",
-      "mascot": "pending final selected Krea asset/source review"
-    },
+    "differentLineageReview": "Actual Kimi K3 theme ACCEPT, actual GLM5.3 final mascot/runtime/packaging/docs ACCEPT, and actual GLM5.3 three-source CSP repair plus revised documentation ACCEPT; exact source hashes match. Final CI and repaired preview proof pending.",
     "main": "not updated",
     "production": "not deployed",
     "headband": "Green-teal basketball sweatband with integrated Antiek lettering, fonts as inspiration",
@@ -179,5 +178,38 @@
     "highlight": "rgb(169, 255, 23)",
     "bookTextCharacters": 915
   },
-  "updatedAt": "2026-10-01T06:44:46.361032+00:00"
+  "updatedAt": "2026-10-01T07:25:35.063400+00:00",
+  "cspBootstrapRepair": {
+    "oldPreview": "https://6b17f07f.antiek.pages.dev",
+    "observed": "Stored dark theme and soft page light survive in localStorage but root appearance attributes remain absent after reload because script-src self blocks the inline boot.",
+    "repair": "A blocking same-origin public/appearance-boot.js script with a versioned URL, no CSP changes.",
+    "focusedTests": {
+      "files": 2,
+      "tests": 12,
+      "status": "PASS"
+    },
+    "buildBudget": "PASS",
+    "deployedRepairVerification": "PENDING",
+    "localReload": {
+      "dataTheme": "dark",
+      "dataReadingLight": "soft",
+      "themeColor": "#211E19",
+      "readerPage": "rgb(33, 30, 25)",
+      "readerInk": "rgb(199, 187, 167)",
+      "bootSha256": "e6635ce36cdd62cdacb71a0a42b48b4bb86f0b82fae03439e77994932402529f"
+    }
+  },
+  "visualBaselineUpdate": {
+    "sourceHead": "7afafbaafe0b5b5d767868a891a92cffdee43957",
+    "run": 36827315751,
+    "artifactId": 11146356848,
+    "shots": 816,
+    "aboveThresholdDiffs": 786,
+    "allDimensionsMatch": true,
+    "allDecode": true,
+    "acceptedShots": 786,
+    "visuallyInspectedAllShots": false,
+    "decision": "Accept only the 786 above-threshold Ubuntu Chromium renders of the operator-approved warm Paper/Night palette, green controls and athletic mascot. All 816 images decode and retain original dimensions. Forty-two before/after sample pairs were visually inspected across reading, mascot, Lemon controls, Paper/Night document chrome and research/write/speak surfaces. No broken layout or error rendering appeared in those samples. The 30 within-threshold baselines remain unchanged. The 0.004 threshold, shot selection and workflow are unchanged. The CSP repair does not change Storybook rendering sources.",
+    "finalCI": "PENDING"
+  }
 }

@@ -1,5 +1,5 @@
 /**
- * The pre-paint boot script in index.html, run as written. It is the only
+ * The pre-paint boot script referenced by index.html, run as written. It is the only
  * code that runs before first paint, so it must resolve the same theme the
  * React side (theme.ts) would, survive blocked storage, and paint the browser
  * chrome in the page ground the tokens define.
@@ -14,11 +14,9 @@ import { semantic } from "./tokens";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const indexHtml = readFileSync(join(here, "..", "..", "index.html"), "utf8");
-/** Every <script> without a src, whatever its attributes: code that runs before the app. */
-const inlineScripts = [...indexHtml.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
-  .filter((m) => !/\bsrc\s*=/.test(m[1]))
-  .map((m) => m[2]);
-const bootSource = inlineScripts[0] ?? "";
+const indexDocument = new DOMParser().parseFromString(indexHtml, "text/html");
+const bootScript = indexDocument.head.querySelector('script[src^="/appearance-boot.js"]');
+const bootSource = readFileSync(join(here, "..", "..", "public", "appearance-boot.js"), "utf8");
 
 const html = document.documentElement;
 let changeListener: (() => void) | null = null;
@@ -68,8 +66,12 @@ describe("index.html boot script (runs before first paint)", () => {
     boot({ blocked: true });
     expect(html.getAttribute("data-reading-light")).toBe("standard");
   });
-  it("has exactly one inline script, and it is the theme boot", () => {
-    expect(inlineScripts).toHaveLength(1);
+  it("restores appearance with a blocking same-origin script allowed by the strict CSP", () => {
+    expect(bootScript?.getAttribute("src")).toBe("/appearance-boot.js?v=library-20261001");
+    expect(bootScript?.hasAttribute("async")).toBe(false);
+    expect(bootScript?.hasAttribute("defer")).toBe(false);
+    expect(bootScript?.getAttribute("type")).not.toBe("module");
+    expect(indexDocument.querySelectorAll("script:not([src])")).toHaveLength(0);
     expect(bootSource).toContain("antiek.theme");
     expect(bootSource).toContain("antiek.motion");
   });
