@@ -104,11 +104,19 @@ def partition_nodeids(
 
     # Unmeasured files must still carry weight, but in the SAME unit as the
     # measured ones. Pricing them by test count mixes currencies: a measured
-    # 349-second file and an unmeasured 40-test file are then compared as 349
-    # and 40. That is not a corner case here — 854 of 975 test files carry a
-    # duration, so the remaining 121 are priced in the wrong unit. Stating them
-    # in seconds takes the shard spread from 1.29x to 1.00x and moves the
-    # critical path from 11.4 to 9.9 minutes.
+    # 47-second file and an unmeasured 40-test file are then compared as 47
+    # and 40.
+    #
+    # The current map, rebuilt from CI logs by tools/rebuild_shard_durations.py,
+    # covers 971 of 977 test files, so this fallback carries about six files plus
+    # anything newly added. It mattered more when the map was hand-maintained and
+    # covered 854 of 975: pricing 121 files in the wrong unit was worth 1.29x of
+    # shard spread, against 1.00x with consistent seconds.
+    #
+    # An earlier version of this comment cited a "349-second file" as the
+    # example. That figure came from the hand-maintained map and was wrong by
+    # 7.4x -- the file costs 47.4s. The example now uses a number this file can
+    # be held to.
     seconds_per_test = _median_seconds_per_test(weights, by_file)
 
     def cost(source_file: str, file_nodeids: list[str]) -> float:
