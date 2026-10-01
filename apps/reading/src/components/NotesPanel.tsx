@@ -38,8 +38,12 @@ interface NotesPanelProps {
  * in view. Chat input pinned at the bottom; uses the most recently
  * selected region as the question's scope.
  */
+/** The feed of a panel opened with no events (the registry may open a
+ *  "Notes" panel with bare props): empty, and one stable reference. */
+const NO_EVENTS: Event[] = [];
+
 export default function NotesPanel({
-  events,
+  events = NO_EVENTS,
   status,
   reconnects,
   investigationId,

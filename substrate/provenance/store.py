@@ -21,6 +21,17 @@ from substrate.provenance.schema import (
     provenance_tables_exist,
 )
 
+__all__ = [
+    "BiteRow",
+    "GenerationRecordRow",
+    "ProvenanceStore",
+    "init_provenance_schema",
+    "make_bite_id",
+    "mint_generation_id",
+    "provenance_tables_exist",
+    "text_sha256",
+]
+
 
 def mint_generation_id() -> str:
     return f"gen-{secrets.token_hex(8)}"

@@ -24,6 +24,7 @@ import {
 } from "../../api/ownYourMind";
 import { createTierOverride, getTierOverrides } from "../../api/tiers";
 import { useServedImpression } from "../../lib/servedImpression";
+import { LoadingState } from "../../components/states";
 
 /**
  * Explain — the "why this claim" provenance panel (Own Your Mind P0, D1).
@@ -814,7 +815,7 @@ export function Explain() {
           )}
 
           {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+            <LoadingState variant="inline" label="Opening the explanation" />
           )}
 
           {data && kind === "claim" && (

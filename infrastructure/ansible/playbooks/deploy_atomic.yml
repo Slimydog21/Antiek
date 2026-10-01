@@ -556,6 +556,14 @@
             antiek_previous_sha: "{{ current_release_lookup.stdout | trim }}"
           tags: [code]
 
+        - name: record whether an arXiv crawl was in flight before pause
+          ansible.builtin.command:
+            cmd: systemctl is-active antiek-arxiv-oai-sync.service
+          register: arxiv_sync_pre_pause
+          failed_when: false
+          changed_when: false
+          tags: [code]
+
         - name: pause every release-path consumer before cutover
           ansible.builtin.systemd:
             name: "{{ item }}"
@@ -777,6 +785,17 @@
             - antiek-backup.timer
             - antiek-health-probe.timer
             - antiek-backup-freshness.timer
+          tags: [code]
+
+        # A deploy intentionally interrupts a running oneshot crawl. Restart
+        # only that interrupted unit after the candidate is healthy; do not
+        # turn a deploy into an unscheduled crawl. Backup is deliberately
+        # timer-only.
+        - name: resume the interrupted arXiv sync crawl, if any
+          ansible.builtin.systemd:
+            name: antiek-arxiv-oai-sync.service
+            state: started
+          when: (arxiv_sync_pre_pause.stdout | default('inactive')) in ["active", "activating"]
           tags: [code]
 
         - name: GET public health from the candidate

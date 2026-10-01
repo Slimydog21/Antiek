@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useModeNavigate } from "../../workspace/useModeNavigate";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
@@ -35,7 +35,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
   const [busy, setBusy] = useState(false);
   const [spawnedId, setSpawnedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
+  const navigate = useModeNavigate();
 
   // If the spawnContext changes mid-life (operator reopens with a new
   // selection), reset the form.
