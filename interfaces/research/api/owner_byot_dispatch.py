@@ -128,6 +128,10 @@ def dispatch_talk_to_book_byot(
     usage_ledger: ByotUsageLedger | None = None,
     role: str = "thought_partner",
     action: str = _ACTION,
+    expected_authority_digest: str | None = None,
+    require_reported_usage: bool = False,
+    request_digest: str | None = None,
+    quote_estimate_usd: str | None = None,
 ) -> tuple[DispatchResult, DispatchAuthority]:
     """Revalidate, freeze, and execute exactly one owner-paid model rung.
 
@@ -137,6 +141,11 @@ def dispatch_talk_to_book_byot(
     rung is not a second partner personality. Loop One callers pass their
     own role explicitly."""
     try:
+        if (
+            (request_digest is None) != (quote_estimate_usd is None)
+            or (require_reported_usage != (request_digest is not None))
+        ):
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
         authority, exact_config, frozen_route = _freeze_current_authority(
             app=app,
             request_owner_user_id=request_owner_user_id,
@@ -150,12 +159,33 @@ def dispatch_talk_to_book_byot(
             role=role,
             action=action,
         )
+        if (
+            expected_authority_digest is not None
+            and authority.digest() != expected_authority_digest
+        ):
+            raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
         rung = authority.fallback_manifest[0]
         if not isinstance(rung.credential, OwnerCredentialBinding):
             raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable")
         ledger = usage_ledger or ByotUsageLedger()
         existing = ledger.operation(request_owner_user_id, logical_operation_id)
         if existing is not None:
+            if (
+                require_reported_usage and existing.state == "unknown"
+                and existing.authority_digest == authority.digest()
+                and existing.result_text is not None
+                and existing.provider_id == rung.provider_id
+                and existing.model_id == rung.model_id
+            ):
+                return DispatchResult(
+                    text=existing.result_text,
+                    usage=NormalizedUsage(0, 0, reported=False),
+                    cost_usd=0.0, latency_ms=0,
+                    provider=rung.provider_id, model=rung.model_id,
+                    tier="owner-replay", finish_reason="charge_unknown_replay",
+                    fallback_chain_index=0,
+                    event_id=existing.dispatch_event_id,
+                ), authority
             if existing.state == "settled" and existing.authority_digest == authority.digest():
                 return DispatchResult(
                     text=existing.result_text or "", usage=NormalizedUsage(0, 0),
@@ -170,6 +200,8 @@ def dispatch_talk_to_book_byot(
             ledger.prepare_operation(
                 rung.credential.user_model_id, request_owner_user_id,
                 logical_operation_id, rung.projected_max_cents, authority.digest(),
+                request_digest=request_digest,
+                quote_estimate_usd=quote_estimate_usd,
             )
         except OperationConflict:
             raise OwnerByotDispatchUnavailable("owner_byot_dispatch_unavailable") from None
@@ -227,6 +259,25 @@ def dispatch_talk_to_book_byot(
             if (result.provider, result.model) != (rung.provider_id, rung.model_id):
                 ledger.mark_operation_unknown(request_owner_user_id, logical_operation_id)
                 raise OwnerByotOutcomeUnknown("owner_byot_outcome_unknown")
+            if require_reported_usage and not result.usage.reported:
+                ledger.record_unknown_result(
+                    request_owner_user_id, logical_operation_id,
+                    result_text=result.text, dispatch_event_id=result.event_id,
+                    provider_id=result.provider, model_id=result.model,
+                    finish_reason=result.finish_reason,
+                )
+                return result, authority
+            if require_reported_usage and result.event_id is None:
+                ledger.record_unknown_result(
+                    request_owner_user_id, logical_operation_id,
+                    result_text=result.text, dispatch_event_id=None,
+                    provider_id=result.provider, model_id=result.model,
+                    finish_reason=result.finish_reason,
+                )
+                return replace(
+                    result, usage=NormalizedUsage(0, 0, reported=False),
+                    cost_usd=0.0,
+                ), authority
             actual_cents = int(
                 (Decimal(str(result.cost_usd)) * 100).to_integral_value(
                     rounding=ROUND_CEILING,
@@ -251,6 +302,8 @@ def dispatch_talk_to_book_byot(
                 actual_cents=actual_cents, evidence_sha256=evidence,
                 dispatch_event_id=result.event_id, provider_id=result.provider,
                 model_id=result.model, result_text=result.text,
+                finish_reason=result.finish_reason,
+                cost_usd_estimate=(str(result.cost_usd) if require_reported_usage else None),
             )
             ledger.settle_operation(
                 request_owner_user_id, logical_operation_id, actual_cents, evidence,
@@ -384,6 +437,8 @@ def _budget_and_exact_config(
         "projected_max_cents": projected_cents,
         "provider_id": record.id,
         "rate_snapshot": variant.snapshot,
+        "input_rate_usd_per_token": str(rates["input_token"]),
+        "output_rate_usd_per_token": str(rates["output_token"]),
     }
     digest = hashlib.sha256(
         json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode()

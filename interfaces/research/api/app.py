@@ -2457,7 +2457,9 @@ def create_app(
     # ── POST typed event ────────────────────────────────────────
 
     @app.post("/events/typed", response_model=EmittedEventResponse, status_code=201)
-    async def post_typed_event(envelope: TypedEventEnvelope) -> EmittedEventResponse:
+    async def post_typed_event(
+        envelope: TypedEventEnvelope, request: Request
+    ) -> EmittedEventResponse:
         # The wrestling-vs-non-wrestling document_id requirement is
         # enforced by the Event model_validator when we construct the
         # Event for broadcast — but the emit path validates the same
@@ -2465,6 +2467,11 @@ def create_app(
         # a 422. Catch the obvious case early for a cleaner error.
         action_type = envelope.payload.action_type
         action_value = action_type.value if hasattr(action_type, "value") else str(action_type)
+        if (
+            action_value == "investigation.start_requested"
+            and getattr(request.state, "auth_method", None) == "antiek_session_cookie"
+        ):
+            raise HTTPException(status_code=409, detail="connect_model")
         if action_value in WRESTLING_ACTION_TYPES and not envelope.document_id:
             raise HTTPException(
                 status_code=422,
@@ -2774,6 +2781,14 @@ def create_app(
             warning_body,
         )
 
+        if (req.model_choice is None) != (req.operation_id is None):
+            raise HTTPException(status_code=422, detail="model_selection_invalid")
+        if (
+            getattr(request.state, "auth_method", None) == "antiek_session_cookie"
+            and req.model_choice is None
+        ):
+            raise HTTPException(status_code=409, detail="connect_model")
+
         # Antiek-hosted ACU gate (1 ACU / start). Hard refuse only when
         # ANTIEK_COMPUTE_CAPACITY_ENFORCEMENT=hard and used >= limit.
         capacity_gate = run_capacity_precheck(request)
@@ -2791,8 +2806,6 @@ def create_app(
         owner_user_id: str | None = None
         parsed_choices: dict[str, dict[str, str]] | None = None
         operation_id: str | None = None
-        if (req.model_choice is None) != (req.operation_id is None):
-            raise HTTPException(status_code=422, detail="model_selection_invalid")
         launch_digest: str | None = None
         if req.model_choice is not None:
             from .owner_byot_dispatch import (
@@ -7758,6 +7771,9 @@ def create_app(
     #    docs/decisions/speak_workflow.md.
     from interfaces.research.api.speak_routes import speak_router
     app.include_router(speak_router)
+
+    from interfaces.research.api.quick_ask import quick_ask_router
+    app.include_router(quick_ask_router)
 
     # Cross-workflow thread navigation (antiek-unified SPR-06). Read-only:
     # GET /thread/{node_id} reconstructs an entity's cross-workflow trajectory
