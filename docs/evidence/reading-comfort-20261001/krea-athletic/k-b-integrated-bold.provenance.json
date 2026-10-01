@@ -1,0 +1,14 @@
+{
+  "label": "ai-generated",
+  "tool": "Krea API",
+  "model": "google/nano-banana-pro",
+  "reference_job_id": "ab887cec-2b86-43da-b004-7e32e57fa7fa",
+  "prompt": "Edit ONLY the word Antiek on the green basketball headband in this selected mascot image. The current word already fits the illustration: keep its integrated hand-drawn embroidered feel and exact same position and size, but make it a little BOLDER, more fun and confident while remaining simple. Take inspiration from strong Inter bold letterforms and the warm bookish character of Source Serif 4, without making it look like typeset text pasted over an image. Spell exactly \"Antiek\", capital A and lowercase ntiek, clearly readable, dark warm ink. The word must feel naturally painted or embroidered into this same cloth, with the existing subtle illustration texture. Do not alter the band shape, color, placement or edges. PRESERVE EVERYTHING ELSE PIXEL-CONSISTENT with the reference: the brain, face, outlines, magenta legs, original B cream court sneakers, magenta shoe panels and laces, each original shoe A mark, size, palette, pose, framing and background. The shoes are already perfect: no change to any part of either shoe. No extra details or objects, no new text, no overlay label or patch, no font specimen. ",
+  "requested_at": "2026-10-01T06:01:34.864483+00:00",
+  "status": "completed",
+  "preview_only": true,
+  "job_id": "d69e1cd7-3680-4076-bb22-c89459bcc189",
+  "generated_at": "2026-10-01T06:01:57.335Z",
+  "output": "k-b-integrated-bold.png",
+  "bytes": 798977
+}

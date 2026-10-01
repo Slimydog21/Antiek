@@ -1,0 +1,17 @@
+{
+  "asset_id": "8609cf51-930c-4b02-b8ec-c323c0d839fc",
+  "label": "ai-generated",
+  "provider": "Krea API",
+  "model": "google/nano-banana-pro",
+  "source": "apps/reading/src/brand/workflow-art/wrestler-512.png",
+  "source_sha256": "6bbb7af5737f70188b3695c8c89ff0a2427cfa80dc5fe24ba259b2e08d3acc31",
+  "reference_job_id": "d69e1cd7-3680-4076-bb22-c89459bcc189",
+  "prompt": "Image 1 is the EXACT EXISTING Antiek mascot pose to edit. Image 2 is ONLY the approved headband and B sneaker reference. Edit image 1, do NOT substitute the character or pose from image 2. KEEP the existing image 1 coral brain shape, face, expression, hands, gesture, posture, props, outlines, proportions, placement, framing and style. Every prop and both hands must remain exactly present. Make the SAME IMAGE with only these athletic accessories added naturally into the illustration: a narrow green-teal #6ECB8F continuous basketball sweatband across the upper forehead above the eyes, like Alex Caruso, no knots or tails. The headband must say exactly Antiek, bold, fun, simple dark warm-ink hand-drawn lettering integrated into the fabric, like image 2. Full slim legs are muted magenta #943D4A. Give each foot the EXACT B low-profile court sneaker shown in image 2, retaining its cream toe and cream sole, green-teal side panel, original warm-ink A monogram, and muted magenta #943D4A secondary heel, tongue and laces. Keep the shoes small with the same hand-drawn linework, adapt only their angle to the existing pose. Both shoes must remain fully visible. No shoe redesign, extra colors, detached objects, duplicate limbs, floor or shadow. Use a completely FLAT solid warm cream #FC EF DD background, without grain, gradients, shadows or vignette, for precise transparent extraction. The actual mascot linework and shading retain the original illustration quality. Preserve any eye occlusion by props. Keep the exact existing props and expression of image 1.",
+  "requested_at": "2026-10-01T06:27:27.108461+00:00",
+  "preview_only": true,
+  "job_id": "c090a97a-d700-4e17-948a-c41627bef355",
+  "status": "completed",
+  "output": "wrestler-krea-b.png",
+  "generated_at": "2026-10-01T06:27:48.768Z",
+  "sha256": "a4fe6801913e72b3c02aa1fbfdbe47edeaaf0826dea37d22c30a0a29fa59c30c"
+}

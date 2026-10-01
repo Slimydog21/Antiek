@@ -1,5 +1,6 @@
 /**
- * Antiek design tokens: "paper, ink, and one sun".
+ * Antiek design tokens: parchment, walnut ink, and a library at night.
+ * Reading comfort rationale: docs/decisions/reading-comfort-20261001.md.
  *
  * The TS mirror of src/design/tokens.css. Three layers, as in the CSS:
  *
@@ -20,24 +21,26 @@ export type Theme = "light" | "dark";
 
 /** Theme-invariant palette. Mirrors tokens.css section 1. */
 export const primitive = {
-  sun: "#F5DF24",
-  sunHover: "#F6E33C",
-  sunPress: "#EFD80B",
-  fixedInk: "#0F1419",
-  fixedInk2: "#384858",
-  fixedInk3: "#4F5F70",
+  sun: "#6ECB8F",
+  sunHover: "#82D59F",
+  sunPress: "#5CBD7D",
+  fixedInk: "#2C2823",
+  fixedInk2: "#4B4338",
+  fixedInk3: "#5D5448",
   fixedPaper: "#FFFFFF",
-  dangerFill: "#B82E1C",
-  void: "#040508",
-  space1: "#080A10",
-  space2: "#0D1019",
-  charcoal1: "#13171F",
-  charcoal2: "#1B202A",
-  slate1: "#252B36",
-  slate2: "#323845",
-  moonlight: "#858F9F",
-  starlight: "#C4CCD7",
-  bright: "#EEF1F6",
+  dangerFill: "#8A403B",
+  mascotCoral: "#FF9273",
+  mascotMagenta: "#943D4A",
+  void: "#100F0D",
+  space1: "#171511",
+  space2: "#211E19",
+  charcoal1: "#24211B",
+  charcoal2: "#29251F",
+  slate1: "#332D25",
+  slate2: "#3B342A",
+  moonlight: "#ADA392",
+  starlight: "#CFC5B3",
+  bright: "#E6DECE",
 } as const;
 
 export type SemanticTokens = {
@@ -60,91 +63,108 @@ export type SemanticTokens = {
   notRun: string;
   focus: string;
   wash: string;
+  readingPage: string;
+  readingInk: string;
+  readingSoftPage: string;
+  readingSoftInk: string;
 };
 
 /**
  * The semantic layer, per theme. Day is PAPER; the `light` object is the one
- * place to edit to change the day ground (glacial return values are listed in
- * tokens.css). Mirrors tokens.css sections 2 / 2b.
+ * place to edit to change the day ground. Mirrors tokens.css sections 2 / 2b.
  */
 export const semantic: Record<Theme, SemanticTokens> = {
   light: {
-    bgPage: "#FBF9F4",
-    bgCard: "#FFFEFB",
-    bgInset: "#F4F1E8",
-    borderHairline: "#E6E0D2",
-    borderRule: "#8A8473",
+    bgPage: "#F3EBDD",
+    bgCard: "#F9F3E8",
+    bgInset: "#EAE0CD",
+    borderHairline: "#D8CBB5",
+    borderRule: "#7E6F5D",
     text1: primitive.fixedInk,
     text2: primitive.fixedInk3,
-    text3: "#5F6B79",
-    sunInk: "#75620F",
-    sunDeep: "#9C8636",
+    text3: "#6C6252",
+    sunInk: "#237242",
+    sunDeep: "#237242",
     keycapEdge: primitive.fixedInk,
-    teal: "#0B7A7A",
-    aurora: "#16C2C2",
+    teal: "#237242",
+    aurora: "#6ECB8F",
     danger: primitive.dangerFill,
     success: "#237242",
-    stale: "#8A5A00",
-    notRun: "#5B4BB7",
+    stale: "#6C6252",
+    notRun: "#6C6252",
     focus: primitive.fixedInk,
-    wash: "rgba(15,20,25,0.06)",
+    wash: "rgba(44,40,35,0.06)",
+    readingPage: "#F9F3E8",
+    readingInk: primitive.fixedInk,
+    readingSoftPage: "#E8DFCF",
+    readingSoftInk: primitive.fixedInk,
   },
   dark: {
     bgPage: primitive.space2,
     bgCard: primitive.charcoal2,
     bgInset: primitive.charcoal1,
-    borderHairline: "#262C38",
-    borderRule: "#6A7689",
+    borderHairline: "#463E32",
+    borderRule: "#8F816E",
     text1: primitive.bright,
-    text2: "#9AA3B2",
+    text2: "#C3BAAA",
     text3: primitive.moonlight,
     sunInk: primitive.sun,
-    sunDeep: "#84722F",
-    keycapEdge: "#84722F",
-    teal: "#3FE0DC",
-    aurora: "#3FE0DC",
-    danger: "#FF6155",
+    sunDeep: "#6ECB8F",
+    keycapEdge: "#8F816E",
+    teal: "#6ECB8F",
+    aurora: "#6ECB8F",
+    danger: "#D49B94",
     success: "#6ECB8F",
-    stale: "#E0A84A",
-    notRun: "#A99BFF",
-    focus: primitive.sun,
-    wash: "rgba(238,241,246,0.08)",
+    stale: "#C3BAAA",
+    notRun: "#ADA392",
+    focus: "#A9FF17",
+    wash: "rgba(230,222,206,0.08)",
+    readingPage: primitive.charcoal2,
+    readingInk: primitive.bright,
+    readingSoftPage: primitive.space2,
+    readingSoftInk: "#C7BBA7",
   },
 } as const;
 
 const L = semantic.light;
 const D = semantic.dark;
 
+/** The operator's highlighter. Dark ink stays legible in either theme. */
+export const highlighter = {
+  color: "#A9FF17",
+  ink: primitive.fixedInk,
+  faint: "rgba(169,255,23,0.16)",
+} as const;
+
 /**
- * The brand. `base` is the constant (bottom tab, Brain bill, primary fill);
- * `deep` is the weathered ochre EDGE (>= 3:1 as a line); text in the brand
- * colour uses `semantic.*.sunInk`, never `deep` (3.3:1 as text).
+ * Legacy sun names carry green primary fills and pale green surfaces.
+ * Green text reads through `sunInk`; lime remains the highlighter.
  */
 export const sun = {
   base: primitive.sun,
   hover: primitive.sunHover,
   press: primitive.sunPress,
   deep: { day: L.sunDeep, night: D.sunDeep },
-  glow: { day: "#F1E08F", night: "#F2DE9A" },
+  glow: { day: "#D4ECDD", night: "#355B42" },
   highlight: {
-    faint: "rgba(232,217,140,0.18)", // model-suggested highlights
-    day: "rgba(232,217,140,0.45)", // operator highlighter, day
-    night: "rgba(242,222,154,0.30)", // operator highlighter, night (== glow.night rgb)
+    faint: highlighter.faint,
+    day: highlighter.color,
+    night: highlighter.color,
   },
 } as const;
 
-/** The weathered "light" sun family (AMS-SPR-09). Theme-invariant. */
+/** Pale green surfaces. Theme-invariant. */
 export const sunLight = {
-  base: "#E8D98C",
-  soft: "#F0E6B8",
-  deep: L.sunDeep, // one weathered ochre, two names
+  base: "#BFE4CD",
+  soft: "#D4ECDD",
+  deep: L.sunDeep, // one forest green, two names
 } as const;
 
 /** The meaningful boundary line (fields, keycap edges, tables). */
 export const rule = { day: L.borderRule, night: D.borderRule } as const;
 
 /** The bottom-bar accent. Stays LOUD in both themes (AMS-SPR-09). */
-export const barAccent = { day: primitive.sun, night: "#FFEC5F" } as const;
+export const barAccent = { day: primitive.sun, night: "#6ECB8F" } as const;
 
 /** The media well: dark in both themes so letterboxed media recedes. */
 export const mediaWell = { day: primitive.charcoal2, night: primitive.void } as const;
@@ -156,15 +176,15 @@ export const mediaWell = { day: primitive.charcoal2, night: primitive.void } as 
  */
 export const glass = {
   day: {
-    bg: "rgba(255,254,251,0.72)", // bgCard @ 0.72
+    bg: "rgba(249,243,232,0.72)", // bgCard @ 0.72
     bgSolid: L.bgCard,
-    border: "rgba(15,20,25,0.12)", // fixed ink @ 0.12
+    border: "rgba(44,40,35,0.12)", // fixed ink @ 0.12
     blur: "12px",
   },
   night: {
-    bg: "rgba(27,32,42,0.66)", // charcoal-2 @ 0.66
+    bg: "rgba(41,37,31,0.66)", // charcoal-2 @ 0.66
     bgSolid: D.bgCard,
-    border: "rgba(238,241,246,0.14)", // bright @ 0.14
+    border: "rgba(230,222,206,0.14)", // bright @ 0.14
     blur: "12px",
   },
 } as const;
@@ -234,48 +254,40 @@ export function aliasFor(m: Mode): SurfaceAliases {
 export const inkSoft = { day: L.text2, night: D.text2 } as const;
 export const inkMute = { day: L.text3, night: D.text3 } as const;
 
-/** Chunky offset shadows: ink-cast by day, sun-deep-cast by night. */
+/** Offset shadows: walnut by day, near-black by night. */
 export const shadow = {
   day: {
-    z1: "3px 3px 0 0 #0F1419",
-    z2: "5px 5px 0 0 #0F1419",
-    z3: "8px 8px 0 0 #0F1419",
-    lift: "12px 12px 0 0 #0F1419",
+    z1: "3px 3px 0 0 #2C2823",
+    z2: "5px 5px 0 0 #2C2823",
+    z3: "8px 8px 0 0 #2C2823",
+    lift: "12px 12px 0 0 #2C2823",
   },
   night: {
-    z1: "3px 3px 0 0 #84722F",
-    z2: "5px 5px 0 0 #84722F",
-    z3: "8px 8px 0 0 #84722F",
-    lift: "12px 12px 0 0 #84722F",
+    z1: "3px 3px 0 0 #100F0D",
+    z2: "5px 5px 0 0 #100F0D",
+    z3: "8px 8px 0 0 #100F0D",
+    lift: "12px 12px 0 0 #100F0D",
   },
 } as const;
 
 export type ShadowKey = keyof (typeof shadow)["day"];
 
-/** Brain mascot palette. Bill + feet lock to the sun. */
-export const mascot = {
-  day: {
-    coat: primitive.fixedInk,
-    belly: "#FBFCFD",
-    bill: sun.base,
-    foot: sun.base,
-    eye: primitive.fixedInk,
-  },
-  night: {
-    coat: "#0A0D14",
-    belly: "#DCE2EA",
-    bill: sun.base,
-    foot: sun.base,
-    eye: "#DCE2EA",
-  },
+/** Original coral body and magenta legs, shared across both themes. */
+const mascotPalette = {
+  coat: primitive.mascotCoral,
+  belly: primitive.bright,
+  bill: primitive.mascotMagenta,
+  foot: primitive.mascotMagenta,
+  eye: primitive.fixedInk,
 } as const;
+export const mascot = { day: mascotPalette, night: mascotPalette } as const;
 
 /** Exactly the four moods the restraint rule permits. */
 export type MascotMood = "idle" | "thinking" | "empty" | "celebrate";
 
 /**
- * Reserved accents. `aurora` is the AI-cognition FILL (never text: 2.2:1 on
- * paper; text uses `teal`). `emperor` is danger (one red, one name).
+ * Legacy accents. AI fills use green, links use readable green ink,
+ * and danger uses muted red with its existing labels.
  */
 export const accent = {
   aurora: { day: L.aurora, night: D.aurora },
