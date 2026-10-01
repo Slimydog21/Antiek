@@ -89,13 +89,25 @@ export default function SubActionList({ workflow, __windowId }: SubActionListPro
       data-subaction-list={workflow ?? "unknown"}
       className={`flex flex-col h-full ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}
     >
-      <div className="px-5 py-4 space-y-4 overflow-y-auto">
+      <div className="p-[18px] space-y-4 overflow-y-auto">
+        <nav aria-label="Product location" className="flex items-center gap-3 font-mono text-xs text-shadow-1 dark:text-moonlight">
+          <button
+            type="button"
+            aria-label="Back to mothership"
+            disabled={!__windowId}
+            onClick={() => { if (__windowId) closeWindow(__windowId); }}
+            className="shrink-0 border border-rule dark:border-glass px-2 py-1 text-ink dark:text-bright hover:bg-sun/20 dark:hover:bg-sun/10 disabled:opacity-50"
+          >
+            <span aria-hidden="true">← </span>Back
+          </button>
+          <span className="min-w-0 truncate">All products / {meta?.label ?? "Workflow"}</span>
+        </nav>
         <header className="flex items-start gap-3">
           {/* The mascot doing this product's verb. Decorative — the label and
               tagline beside it carry the meaning. */}
-          <WorkflowArt workflow={workflow} size={56} className="shrink-0 -mt-1" />
+          <WorkflowArt workflow={workflow} size={32} className="shrink-0" />
           <div className="min-w-0">
-          <h2 className="font-serif text-lg text-ink dark:text-bright">
+          <h2 className="font-mono text-sm text-ink dark:text-bright">
             {meta?.label ?? "Workflow"}
           </h2>
           {meta && (
@@ -129,7 +141,7 @@ export default function SubActionList({ workflow, __windowId }: SubActionListPro
                     onClick={() => onRow(m)}
                     title={m.blurb}
                     className={
-                      "w-full text-left px-2.5 py-1.5 rounded flex items-center gap-2 " +
+                      "w-full min-h-[50px] text-left px-2.5 py-1.5 flex items-center gap-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sun " +
                       (enabled
                         ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
                         : "text-ink-mute dark:text-moonlight cursor-default opacity-70")

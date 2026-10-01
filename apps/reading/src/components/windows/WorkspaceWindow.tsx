@@ -82,7 +82,7 @@ export function WorkspaceWindow({
     if (isFocused && root && !root.contains(document.activeElement)) {
       root.focus();
     }
-  }, [isFocused]);
+  }, [isFocused, win?.z]);
 
   const onDragDown = useCallback(
     (e: React.PointerEvent) => {
