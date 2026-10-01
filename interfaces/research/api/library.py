@@ -8,10 +8,12 @@ metadata-only; bodies only via ``/books/{id}/full-text``.
 from __future__ import annotations
 
 import contextlib
+import functools
 import sys
 from typing import Literal
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
+from starlette.concurrency import run_in_threadpool
 
 from substrate.books.model import list_book_assets
 
@@ -22,6 +24,20 @@ from .library_catalog import LibraryPage, build_library_page
 # exhausts the iterator before computing ``total``; this is a memory trade-off
 # while title/author filtering remains pure, but never an arbitrary corpus cap.
 _CATALOG_BATCH_SIZE = 1_000
+
+# An arXiv bulk pass holds antiek.duckdb ~97% of the time - one ~15s batch, then
+# a 0.5s yield - so a read that gives up the instant another process holds the
+# file answers 500 for the whole ingest. Wait a bounded 8s instead: about half
+# the batch period, which both turns a good share of those failures into a
+# success and, when it still loses, leaves a retryable 503 rather than a 500.
+# A reader cannot currently shorten that lottery, because only writers publish a
+# handoff token (runtime/db_lock.py:376); see PR #3589's review thread.
+_LOCK_WAIT_S = 8.0
+
+# Clients already retry this route; 503 + Retry-After is the contract they can
+# act on, and unlike a raw 500 it leaves through the app's error handler, so the
+# CORS middleware decorates it and the browser can read the status.
+_RETRY_AFTER_S = 1
 
 __all__ = ["LibraryPage", "build_library_page", "register_library_routes"]
 
@@ -36,10 +52,24 @@ def register_library_routes(app: FastAPI) -> None:
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=20, ge=1, le=200),
     ) -> LibraryPage:
-        from runtime.db_lock import connect_read
+        from runtime.db_lock import ReadLockTimeout, connect_read
 
         db = _resolve_db_path()
-        con = connect_read(db)
+        try:
+            # The wait is synchronous, so it must not run on the event loop: a
+            # contended read would otherwise block every other request and the
+            # health probe with it.
+            con = await run_in_threadpool(
+                functools.partial(connect_read, db, external_lock_timeout_s=_LOCK_WAIT_S)
+            )
+        except ReadLockTimeout as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Library catalog is busy: another process holds the database. Retry shortly."
+                ),
+                headers={"Retry-After": str(_RETRY_AFTER_S)},
+            ) from exc
         transaction_started = False
         try:
             # DuckDB snapshots are transaction-scoped. Keep every offset batch
