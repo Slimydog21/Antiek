@@ -9,6 +9,11 @@ const tier = vi.hoisted(() => ({ current: "xl" }));
 vi.mock("./useViewportTier", () => ({ useViewportTier: () => tier.current }));
 vi.mock("./DocumentTabStrip", () => ({ DocumentTabStrip: () => null }));
 vi.mock("./ProjectTreeOverlay", () => ({ default: () => null }));
+vi.mock("../components/NotesPanel", () => ({ default: function DockDraft() {
+  const [draft, setDraft] = useState("");
+  return <input aria-label="Dock draft" value={draft} onChange={(event) => setDraft(event.target.value)} />;
+} }));
+vi.mock("./CompanionPane", () => ({ default: () => <p>Duplicate companion renderer</p> }));
 vi.mock("./RightPaneForMode", () => ({
   default: function RightDraft() {
     const [draft, setDraft] = useState("");
@@ -138,6 +143,153 @@ describe("inset pane resizing", () => {
     expect(screen.queryByRole("region", { name: "Agents pane" })).toBeNull();
     tier.current = "xl"; view.rerender(<PanelLayout mainSlot={<PrimaryDraft />} />);
     expect(right().style.width).toBe("336px");
+  });
+
+  it("collapses a fixed left dock before it clips the document in a narrow actual container", () => {
+    useWorkspace.getState().open("Notes", {}, { mode: "docked-left", id: "left-notes", title: "Notes" });
+    mount();
+    const descriptor = useWorkspace.getState().panels["left-notes"];
+    const dock = screen.getByLabelText("Left dock");
+    resizeContainer(450);
+    expect(dock.hidden).toBe(true);
+    expect(dock.style.width).toBe("0px");
+    const paneWidth = right().style.width;
+    expect(Number.parseFloat(paneWidth)).toBeGreaterThan(180);
+    expect(Number.parseFloat(paneWidth)).toBeLessThan(220);
+    fireEvent.click(screen.getByRole("button", { name: "Show left dock" }));
+    expect(dock.hidden).toBe(false);
+    expect(dock.style.position).toBe("absolute");
+    expect(right().style.width).toBe(paneWidth);
+    expect(useWorkspace.getState().panels["left-notes"]).toBe(descriptor);
+    fireEvent.click(screen.getByRole("button", { name: "Hide left dock" }));
+    expect(dock.hidden).toBe(true);
+    resizeContainer(1200);
+    expect(screen.getByLabelText("Left dock")).toBe(dock);
+    expect(dock.hidden).toBe(false);
+    expect(dock.style.width).toBe("320px");
+    expect(screen.queryByRole("button", { name: "Show left dock" })).toBeNull();
+  });
+
+  it("retains one right-content owner and its draft across presets, including the canonical dock panel", () => {
+    useWorkspace.getState().open("Companion", {}, { mode: "docked-right", id: "companion:main", title: "Companion" });
+    mount();
+    const companion = screen.getByRole("textbox", { name: "Right draft" });
+    fireEvent.change(companion, { target: { value: "agent edit" } });
+    const descriptor = useWorkspace.getState().panels["companion:main"];
+    act(() => useWorkspace.getState().setLayoutPreset("docked"));
+    expect(screen.getByRole("textbox", { name: "Right draft" })).toBe(companion);
+    expect(companion).toHaveProperty("value", "agent edit");
+    expect(screen.queryByText("Duplicate companion renderer")).toBeNull();
+    expect(useWorkspace.getState().panels["companion:main"]).toBe(descriptor);
+    act(() => useWorkspace.getState().setLayoutPreset("omarchy-inset"));
+    expect(screen.getByRole("textbox", { name: "Right draft" })).toBe(companion);
+    expect(companion).toHaveProperty("value", "agent edit");
+  });
+
+  it("keeps primary and opened right content mounted through phone crossings", () => {
+    const view = mount();
+    const primary = screen.getByRole("textbox", { name: "Primary draft" });
+    const companion = screen.getByRole("textbox", { name: "Right draft" });
+    fireEvent.change(primary, { target: { value: "primary edit" } });
+    fireEvent.change(companion, { target: { value: "agent edit" } });
+    tier.current = "sm"; view.rerender(<PanelLayout mainSlot={<PrimaryDraft />} />);
+    expect(screen.getByRole("textbox", { name: "Primary draft" })).toBe(primary);
+    expect(screen.queryByRole("textbox", { name: "Right draft" })).toBeNull();
+    expect(document.contains(companion)).toBe(true);
+    tier.current = "xl"; view.rerender(<PanelLayout mainSlot={<PrimaryDraft />} />);
+    expect(screen.getByRole("textbox", { name: "Primary draft" })).toBe(primary);
+    expect(screen.getByRole("textbox", { name: "Right draft" })).toBe(companion);
+    expect(primary).toHaveProperty("value", "primary edit");
+    expect(companion).toHaveProperty("value", "agent edit");
+  });
+
+  it("does not mount unopened right content in docked or phone layouts", () => {
+    useWorkspace.getState().setLayoutPreset("docked");
+    const view = mount();
+    expect(screen.queryByRole("textbox", { name: "Right draft", hidden: true })).toBeNull();
+    tier.current = "sm"; view.rerender(<PanelLayout mainSlot={<PrimaryDraft />} />);
+    expect(screen.queryByRole("textbox", { name: "Right draft", hidden: true })).toBeNull();
+    useWorkspace.getState().setLayoutPreset("omarchy-inset");
+    view.rerender(<PanelLayout mainSlot={<PrimaryDraft />} />);
+    expect(screen.queryByRole("textbox", { name: "Right draft", hidden: true })).toBeNull();
+  });
+
+  it("keeps the canonical close, focus and tab behavior with custom right panels", () => {
+    useWorkspace.getState().open("Companion", {}, { mode: "docked-right", id: "companion:main", title: "Companion" });
+    useWorkspace.getState().open("Notes", {}, { mode: "docked-right", id: "custom-notes", title: "Right notes" });
+    const view = mount();
+    const companion = screen.getByRole("textbox", { name: "Right draft" });
+    const notes = screen.getByRole("textbox", { name: "Dock draft" });
+    fireEvent.change(companion, { target: { value: "agent edit" } });
+    fireEvent.change(notes, { target: { value: "notes edit" } });
+    const descriptor = useWorkspace.getState().panels["custom-notes"];
+    act(() => useWorkspace.getState().setLayoutPreset("docked"));
+    fireEvent.mouseDown(companion);
+    expect(useWorkspace.getState().focusedPanelId).toBe("companion:main");
+    companion.focus();
+    fireEvent.keyDown(companion, { key: "Tab" });
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Pin");
+    const close = screen.getByRole("region", { name: "Companion" }).querySelector<HTMLButtonElement>("[data-handle-action='close']");
+    expect(close).not.toBeNull();
+    if (close) { close.focus(); fireEvent.click(close); }
+    expect(useWorkspace.getState().panels["companion:main"]).toBeUndefined();
+    expect(screen.queryByRole("textbox", { name: "Right draft" })).toBeNull();
+    expect(document.activeElement?.hasAttribute("data-cockpit-content")).toBe(true);
+    expect(screen.getByRole("textbox", { name: "Dock draft" })).toBe(notes);
+    expect(useWorkspace.getState().panels["custom-notes"]).toBe(descriptor);
+    act(() => useWorkspace.getState().open("Companion", {}, { mode: "docked-right", id: "companion:main", title: "Companion" }));
+    expect(screen.getByRole("textbox", { name: "Right draft" })).toBe(companion);
+    expect(companion).toHaveProperty("value", "agent edit");
+    notes.focus();
+    tier.current = "sm"; view.rerender(<PanelLayout mainSlot={<PrimaryDraft />} />);
+    expect(document.contains(notes)).toBe(true);
+    expect(screen.queryByRole("textbox", { name: "Dock draft" })).toBeNull();
+    expect(document.activeElement?.hasAttribute("data-cockpit-content")).toBe(true);
+    tier.current = "xl"; view.rerender(<PanelLayout mainSlot={<PrimaryDraft />} />);
+    act(() => useWorkspace.getState().setLayoutPreset("omarchy-inset"));
+    expect(screen.getByRole("textbox", { name: "Dock draft" })).toBe(notes);
+    expect(notes).toHaveProperty("value", "notes edit");
+  });
+
+  it("gives a collapsed left dock one Escape owner and restores the toggle focus", () => {
+    useWorkspace.getState().open("Notes", {}, { mode: "docked-left", id: "left-notes", title: "Notes" });
+    mount();
+    resizeContainer(450);
+    fireEvent.click(screen.getByRole("button", { name: "Show left dock" }));
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Pin");
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    const toggle = screen.getByRole("button", { name: "Show left dock" });
+    expect(document.activeElement).toBe(toggle);
+    expect(screen.getByLabelText("Left dock").hidden).toBe(true);
+    fireEvent.click(toggle);
+    const notes = screen.getByRole("textbox", { name: "Dock draft" });
+    notes.focus();
+    fireEvent.keyDown(notes, { key: "Escape" });
+    expect(screen.getByLabelText("Left dock").hidden).toBe(false);
+  });
+
+  it("hands the canonical surface to its existing floating owner without a hidden duplicate", async () => {
+    useWorkspace.getState().open("Companion", {}, { mode: "docked-right", id: "companion:main", title: "Companion" });
+    mount();
+    act(() => useWorkspace.getState().setMode("companion:main", "floating"));
+    await screen.findByText("Duplicate companion renderer");
+    expect(screen.queryByRole("textbox", { name: "Right draft", hidden: true })).toBeNull();
+    act(() => useWorkspace.getState().setMode("companion:main", "docked-right"));
+    expect(screen.getAllByRole("textbox", { name: "Right draft", hidden: true })).toHaveLength(1);
+    expect(screen.queryByText("Duplicate companion renderer")).toBeNull();
+  });
+
+  it("restores a compact dock when primary fullscreen gives it enough room", () => {
+    useWorkspace.getState().open("Notes", {}, { mode: "docked-left", id: "left-notes", title: "Notes" });
+    mount();
+    const dock = screen.getByLabelText("Left dock");
+    resizeContainer(800);
+    expect(dock.hidden).toBe(true);
+    act(() => useWorkspace.getState().setFullscreenPane("left"));
+    expect(dock.hidden).toBe(false);
+    expect(dock.style.width).toBe("320px");
+    act(() => useWorkspace.getState().setFullscreenPane(null));
+    expect(dock.hidden).toBe(true);
   });
 
 });

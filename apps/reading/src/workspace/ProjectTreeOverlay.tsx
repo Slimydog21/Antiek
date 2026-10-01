@@ -12,7 +12,8 @@ export default function ProjectTreeOverlay() {
   useEffect(() => () => {
     const modal = topModal();
     const originVisible = origin instanceof HTMLElement && origin !== document.body &&
-      origin.isConnected && !origin.closest('[hidden], [aria-hidden="true"]');
+      origin.isConnected && !origin.closest('[hidden], [aria-hidden="true"]') &&
+      origin.matches("button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex], [contenteditable='true']");
     const target = modal ?? (originVisible ? origin :
       Array.from(document.querySelectorAll<HTMLElement>('[data-pane], [data-cockpit-content]'))
         .find((el) => !el.closest('[hidden], [aria-hidden="true"]')));

@@ -13,19 +13,20 @@ export function useInsetPaneResize({
   defaultWidth,
   reservedWidth,
   primaryDockWidth,
+  primaryOnly,
 }: {
   containerRef: RefObject<HTMLDivElement>;
   enabled: boolean;
   defaultWidth: number;
   reservedWidth: number;
   primaryDockWidth: number;
+  primaryOnly: boolean;
 }) {
   const [preferredWidth, setPreferredWidth] = useState<number | null>(null);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
   const drag = useRef<{ pointerId: number; x: number; width: number } | null>(null);
 
   useLayoutEffect(() => {
-    if (!enabled) return;
     const container = containerRef.current;
     if (!container) return;
     const measure = () => {
@@ -37,14 +38,16 @@ export function useInsetPaneResize({
     observer?.observe(container);
     window.addEventListener("resize", measure);
     return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
-  }, [containerRef, enabled]);
+  }, [containerRef]);
 
   useEffect(() => { if (!enabled) drag.current = null; }, [enabled]);
 
   const available = containerWidth === null ? null : Math.max(0, containerWidth - reservedWidth);
   // An embedded cockpit can be narrower than the viewport tier. Preserve
   // both panes there rather than overflowing their actual container.
-  const primaryMinimum = MIN_PRIMARY_WIDTH + primaryDockWidth;
+  const dockWidth = available !== null && available < MIN_PRIMARY_WIDTH + (primaryOnly ? 0 : MIN_RIGHT_WIDTH) + primaryDockWidth
+    ? 0 : primaryDockWidth;
+  const primaryMinimum = MIN_PRIMARY_WIDTH + dockWidth;
   const minimum = available === null ? MIN_RIGHT_WIDTH : Math.min(MIN_RIGHT_WIDTH, available * MIN_RIGHT_WIDTH / (MIN_RIGHT_WIDTH + primaryMinimum));
   const maximum = available === null ? Math.max(defaultWidth, preferredWidth ?? defaultWidth)
     : Math.max(minimum, available - Math.min(primaryMinimum, available - minimum));
@@ -83,7 +86,7 @@ export function useInsetPaneResize({
     event.stopPropagation();
   };
 
-  return { width, minimum: Math.round(minimum), maximum: Math.round(maximum),
+  return { width, primaryDockWidth: dockWidth, containerWidth, minimum: Math.round(minimum), maximum: Math.round(maximum),
     onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd,
     onLostPointerCapture: onPointerEnd, onKeyDown };
 }

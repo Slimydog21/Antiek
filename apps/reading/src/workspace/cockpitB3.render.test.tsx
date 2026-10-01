@@ -297,14 +297,17 @@ describe("B3-2 writing: a preset round trip leaves exactly one outline", () => {
   it.each(["docked", "omarchy-inset"] as const)("starting %s: one outline, after one toggle and after two", async (start) => {
     mountWrite(start);
     await waitFor(() => expect(outlines()).toBe(1));
+    const outline = document.querySelector("[data-write-outline]");
     await togglePreset();
     expect(ws().layoutPreset).not.toBe(start);
     await waitFor(() => expect(outlines()).toBe(1));
+    expect(document.querySelector("[data-write-outline]")).toBe(outline);
     // And it stays one (no late second mount).
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(outlines()).toBe(1);
+    expect(document.querySelector("[data-write-outline]")).toBe(outline);
     await togglePreset();
     expect(ws().layoutPreset).toBe(start);
     await waitFor(() => expect(outlines()).toBe(1));
@@ -312,6 +315,13 @@ describe("B3-2 writing: a preset round trip leaves exactly one outline", () => {
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(outlines()).toBe(1);
+    expect(document.querySelector("[data-write-outline]")).toBe(outline);
+    act(() => { tierRef.current = "sm"; ws().setFocusedPane("left"); });
+    expect(document.querySelector("[data-write-outline]")).toBe(outline);
+    expect(outline?.closest("[hidden]")).not.toBeNull();
+    act(() => { tierRef.current = "xl"; ws().setFocusedPane("right"); });
+    expect(document.querySelector("[data-write-outline]")).toBe(outline);
+    expect(outline?.closest("[hidden]")).toBeNull();
   });
 });
 

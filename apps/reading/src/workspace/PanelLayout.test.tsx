@@ -34,7 +34,7 @@ describe("PanelLayout viewport crossing", () => {
 
     screen.getByText("Route remains mounted");
     expect(screen.queryByText(/Antiek is designed for/)).toBeNull();
-    expect(screen.queryByLabelText("Left dock")).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Left dock" })).toBeNull();
 
     resizeTo(768);
     screen.getByText("Route remains mounted");
@@ -44,6 +44,6 @@ describe("PanelLayout viewport crossing", () => {
     resizeTo(767);
     screen.getByText("Route remains mounted");
     expect(screen.queryByText(/Antiek is designed for/)).toBeNull();
-    expect(screen.queryByLabelText("Left dock")).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Left dock" })).toBeNull();
   });
 });

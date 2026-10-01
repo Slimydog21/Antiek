@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { MutableRefObject, ReactNode, RefObject } from "react";
 
 import { opaquePanelShadowClasses } from "../design/elevation";
 import { surfaceSpring } from "../design/motion";
@@ -10,6 +10,7 @@ import { PanelHandle } from "./PanelHandle";
 import { PanelRegistry } from "./PanelRegistry";
 import { useWorkspace } from "./WorkspaceStore";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
+import type { PanelDescriptor } from "./panel.types";
 
 /**
  * Hook: subscribe to a panel's actual rendered size, debounced so it
@@ -65,9 +66,9 @@ export function usePanelSizeStable<T extends HTMLElement = HTMLDivElement>(
  *     S9 implements the actual window.open + cross-window sync.
  *     S3 stubs this — the panel just doesn't render in-tab.
  */
-type Props = { id: string };
+type Props = { id: string; content?: ReactNode; bare?: boolean };
 
-export function PanelLayoutPanel({ id }: Props) {
+export function PanelLayoutPanel({ id, content, bare = false }: Props) {
   const panel = useWorkspace((s) => s.panels[id]);
   const isFocused = useWorkspace((s) => s.focusedPanelId === id);
   const bringToFront = useWorkspace((s) => s.bringToFront);
@@ -112,112 +113,115 @@ export function PanelLayoutPanel({ id }: Props) {
   // pressing Tab wraps back to the first (and vice versa for Shift+
   // Tab on the first). The operator switches panels via ⌘[ / ⌘].
   const rootRef = useRef<HTMLElement | null>(null);
+  usePanelFocusTrap(rootRef, panel);
+
+  if (!panel && content === undefined) return null;
+  const Renderer = panel ? PanelRegistry[panel.kind] : null;
+  const body = content === undefined ? (Renderer && panel ? <Renderer {...panel.props} /> : null) : content;
+
+  // popout — rendering is owned by the popout window (S9).
+  if (!bare && panel?.mode === "popout") return null;
+
+  // floating
+  if (!bare && panel?.mode === "floating") {
+    return <FloatingPanelFrame panel={panel} isFocused={isFocused} reduceMotion={reduceMotion}
+      rootRef={rootRef} onMouseDown={onMouseDownRaise}>{body}</FloatingPanelFrame>;
+  }
+
+  return <DockedPanelFrame panel={panel} bare={bare} isFocused={isFocused} rootRef={rootRef}>{body}</DockedPanelFrame>;
+}
+
+function FloatingPanelFrame({ panel, isFocused, reduceMotion, rootRef, onMouseDown, children }: {
+  panel: PanelDescriptor;
+  isFocused: boolean;
+  reduceMotion: boolean;
+  rootRef: MutableRefObject<HTMLElement | null>;
+  onMouseDown: () => void;
+  children: ReactNode;
+}) {
+  const shadow = opaquePanelShadowClasses(panel.zIndex, isFocused);
+  return (
+    <motion.div layout={false}
+      initial={reduceMotion ? false : { scale: 0.96, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      exit={reduceMotion ? undefined : { scale: 0.96, opacity: 0 }}
+      transition={reduceMotion ? { duration: 0 } : surfaceSpring}
+      style={{ position: "absolute", top: panel.rect.y, left: panel.rect.x,
+        width: panel.rect.width, height: panel.rect.height, zIndex: panel.zIndex }}
+      className={"bg-ice-0 dark:bg-charcoal-2 border border-rule rounded-hog flex flex-col overflow-hidden " +
+        shadow + (isFocused ? " outline outline-2 outline-offset-[3px] outline-sun" : " opacity-95")}
+      onMouseDownCapture={onMouseDown} role="region" aria-label={panel.title}
+      {...(isFocused ? ESC_OVERLAY_PROPS : {})}
+      ref={(element) => { rootRef.current = element; }}>
+      <PanelHandle id={panel.id} draggable resizable />
+      <div className="flex-1 min-h-0 overflow-auto">
+        <Suspense fallback={<PanelLoading />}>{children}</Suspense>
+      </div>
+    </motion.div>
+  );
+}
+
+function DockedPanelFrame({ panel, bare, isFocused, rootRef, children }: {
+  panel: PanelDescriptor | undefined;
+  bare: boolean;
+  isFocused: boolean;
+  rootRef: MutableRefObject<HTMLElement | null>;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={
+        "flex flex-col " +
+        (bare ? "flex-1 min-h-0 " : "bg-ice-0 dark:bg-charcoal-2 " + (panel?.mode === "docked-bottom"
+          ? "h-full"
+          : "border-b border-rule dark:border-charcoal-1 min-h-[140px] flex-1 ")) +
+        "overflow-hidden " +
+        (bare || isFocused ? "" : "opacity-95")
+      }
+      onMouseDownCapture={panel ? () => useWorkspace.getState().focus(panel.id) : undefined}
+      role={bare ? undefined : "region"}
+      aria-label={bare ? undefined : panel?.title}
+      ref={(el) => {
+        rootRef.current = el;
+      }}
+    >
+      {!bare && panel ? <PanelHandle id={panel.id} draggable={false} resizable={false} /> : null}
+      <div className="flex-1 min-h-0 overflow-auto">
+        <Suspense fallback={<PanelLoading />}>
+          {children}
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+function usePanelFocusTrap(rootRef: MutableRefObject<HTMLElement | null>, panel: PanelDescriptor | undefined) {
   useEffect(() => {
     if (!panel) return;
     const root = rootRef.current;
     if (!root) return;
-    const FOCUSABLE =
+    const focusable =
       'a[href], button:not([disabled]), textarea:not([disabled]), ' +
       'input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-      if (!root.contains(document.activeElement)) return;
-      const nodes = Array.from(
-        root.querySelectorAll<HTMLElement>(FOCUSABLE),
-      ).filter((el) => !el.hasAttribute("disabled"));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !root.contains(document.activeElement)) return;
+      const nodes = Array.from(root.querySelectorAll<HTMLElement>(focusable))
+        .filter((element) => !element.hasAttribute("disabled"));
       if (nodes.length === 0) return;
       const first = nodes[0];
       const last = nodes[nodes.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      if (e.shiftKey && active === first) {
-        e.preventDefault();
+      const active = document.activeElement;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
         first.focus();
       }
     };
     root.addEventListener("keydown", onKey);
     return () => root.removeEventListener("keydown", onKey);
-  }, [panel]);
-
-  if (!panel) return null;
-  const Renderer = PanelRegistry[panel.kind];
-
-  // popout — rendering is owned by the popout window (S9).
-  if (panel.mode === "popout") return null;
-
-  // floating
-  if (panel.mode === "floating") {
-    const shadow = opaquePanelShadowClasses(panel.zIndex, isFocused);
-    return (
-      <motion.div
-        layout={false}
-        initial={reduceMotion ? false : { scale: 0.96, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={reduceMotion ? undefined : { scale: 0.96, opacity: 0 }}
-        transition={reduceMotion ? { duration: 0 } : surfaceSpring}
-        style={{
-          position: "absolute",
-          top: panel.rect.y,
-          left: panel.rect.x,
-          width: panel.rect.width,
-          height: panel.rect.height,
-          zIndex: panel.zIndex,
-        }}
-        className={
-          "bg-ice-0 dark:bg-charcoal-2 " +
-          "border border-rule rounded-hog " +
-          "flex flex-col overflow-hidden " +
-          shadow +
-          (isFocused
-            ? " outline outline-2 outline-offset-[3px] outline-sun"
-            : " opacity-95")
-        }
-        onMouseDownCapture={onMouseDownRaise}
-        role="region"
-        aria-label={panel.title}
-        {...(isFocused ? ESC_OVERLAY_PROPS : {})}
-        ref={(el) => {
-          rootRef.current = el;
-        }}
-      >
-        <PanelHandle id={id} draggable resizable />
-        <div className="flex-1 min-h-0 overflow-auto">
-          <Suspense fallback={<PanelLoading />}>
-            <Renderer {...panel.props} />
-          </Suspense>
-        </div>
-      </motion.div>
-    );
-  }
-
-  // docked-left / docked-right / docked-bottom — flat, sit in the dock column
-  return (
-    <div
-      className={
-        "flex flex-col bg-ice-0 dark:bg-charcoal-2 " +
-        (panel.mode === "docked-bottom"
-          ? "h-full"
-          : "border-b border-rule dark:border-charcoal-1 min-h-[140px] flex-1 ") +
-        "overflow-hidden " +
-        (isFocused ? "" : "opacity-95")
-      }
-      onMouseDownCapture={() => useWorkspace.getState().focus(id)}
-      role="region"
-      aria-label={panel.title}
-      ref={(el) => {
-        rootRef.current = el;
-      }}
-    >
-      <PanelHandle id={id} draggable={false} resizable={false} />
-      <div className="flex-1 min-h-0 overflow-auto">
-        <Suspense fallback={<PanelLoading />}>
-          <Renderer {...panel.props} />
-        </Suspense>
-      </div>
-    </div>
-  );
+  }, [panel, rootRef]);
 }
 
 function PanelLoading() {

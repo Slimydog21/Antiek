@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useContext, useEffect, useId, useRef } from "react";
+import { Suspense, lazy, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { UNSAFE_LocationContext, useInRouterContext } from "react-router-dom";
@@ -13,7 +13,7 @@ import { DOCUMENT_PANEL_ID } from "./documentPanel";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import ProjectTreeOverlay from "./ProjectTreeOverlay";
 import { useWorkspace } from "./WorkspaceStore";
-import { escOverlayOpen } from "./escapeOverlay";
+import { escOverlayOpen, ESC_OVERLAY_PROPS } from "./escapeOverlay";
 import { isTextEditing } from "./shortcuts";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useInsetPaneResize } from "./useInsetPaneResize";
@@ -75,11 +75,8 @@ const DOCK_WIDTH = 320;
 const INSET_GAP = 12;
 
 /**
- * The docked preset's mounts of what the inset's right pane IS: the
- * companion and the Write outline open as right-dock panels there. In the
- * inset the pane itself renders them (RightPaneForMode), so the dock inside
- * it skips these two; rendering both drew the outline twice after a preset
- * round trip (B3-2).
+ * These canonical descriptors use the mode pane's single content owner.
+ * Other right-dock panels retain their ordinary registry renderers.
  */
 const PANE_CONTENT_PANEL_IDS: ReadonlySet<string> = new Set([COMPANION_PANEL_ID, WRITE_OUTLINE_PANEL_ID]);
 
@@ -109,12 +106,29 @@ export function PanelLayout({ mainSlot }: Props) {
   const tier = useViewportTier();
   const layoutRef = useRef<HTMLDivElement>(null);
   const rightPaneId = useId();
+  const leftDockId = useId();
+  const leftDockRef = useRef<HTMLElement>(null);
+  const dockToggleRef = useRef<HTMLButtonElement>(null);
+  const modePaneRef = useRef<HTMLDivElement>(null);
+  const modePaneHadFocus = useRef(false);
+  const [dockOverlayOpen, setDockOverlayOpen] = useState(false);
+  const phone = tier === "sm";
+  const [desktopOpened, setDesktopOpened] = useState(!phone);
+  useEffect(() => { if (!phone) setDesktopOpened(true); }, [phone]);
+  useEffect(() => {
+    const active = document.activeElement;
+    if (phone && active instanceof HTMLElement && layoutRef.current?.contains(active) && active.closest("[hidden]")) {
+      layoutRef.current.querySelector<HTMLElement>("[data-cockpit-content]")?.focus();
+    }
+  }, [phone]);
+  const inset = !phone && layoutPreset === "omarchy-inset";
   const paneResize = useInsetPaneResize({
     containerRef: layoutRef,
     enabled: layoutPreset === "omarchy-inset" && tier !== "sm" && fullscreenPane === null,
     defaultWidth: tier === "md" ? RIGHT_PANE_MD_WIDTH : DOCK_WIDTH,
-    reservedWidth: INSET_GAP * 3,
+    reservedWidth: INSET_GAP * (fullscreenPane === null ? 3 : 2),
     primaryDockWidth: dockLeftIds.length > 0 && tier !== "md" ? DOCK_WIDTH : 0,
+    primaryOnly: inset && fullscreenPane === "left",
   });
   const projectTreeOverlay = tier === "md" && dockLeftIds.includes("shortcuts:projecttree");
   // What the right pane holds follows the route's mothership (the outline in
@@ -122,6 +136,30 @@ export function PanelLayout({ mainSlot }: Props) {
   // router's location context: PanelLayout also renders without a router.
   const location = useContext(UNSAFE_LocationContext)?.location;
   const writing = location ? mothershipForPath(location.pathname, location.search) === "writing" : false;
+  const modePanelId = writing ? WRITE_OUTLINE_PANEL_ID : COMPANION_PANEL_ID;
+  const modePanel = useWorkspace((s) => s.panels[modePanelId]);
+  const modePaneElsewhere = Boolean(modePanel && modePanel.mode !== "docked-right");
+  const modePaneVisible = !phone && !modePaneElsewhere && (inset || dockRightIds.includes(modePanelId));
+  const [openedModePanel, setOpenedModePanel] = useState<string | null>(null);
+  useEffect(() => { if (modePaneVisible) setOpenedModePanel(modePanelId); }, [modePaneVisible, modePanelId]);
+  const retainModePane = !modePaneElsewhere && (openedModePanel === modePanelId || modePaneVisible);
+  const compactLeftDock = inset && dockLeftIds.length > 0 && tier !== "md" && paneResize.primaryDockWidth === 0;
+  const dockOverlayVisible = compactLeftDock && dockOverlayOpen && fullscreenPane === null;
+  useEffect(() => { if (!compactLeftDock) setDockOverlayOpen(false); }, [compactLeftDock]);
+  useEffect(() => {
+    if (!dockOverlayVisible) return;
+    const first = leftDockRef.current?.querySelector<HTMLElement>("button, input, textarea, select, a[href], [tabindex='0']");
+    first?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || escOverlayOpen(document, leftDockRef.current)) return;
+      if (event.target instanceof Element && isTextEditing(event.target)) return;
+      event.preventDefault();
+      setDockOverlayOpen(false);
+      dockToggleRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [dockOverlayVisible]);
 
   // S11 (the docked preset) — at tier "lg" the two side docks can't both be
   // visible; if both have panels we collapse the right one (operator can
@@ -168,10 +206,7 @@ export function PanelLayout({ mainSlot }: Props) {
     prevTierRef.current = tier;
   }, [tier, dockLeftIds.length, dockRightIds.length, layoutPreset]);
 
-  // Pointer-event-based vertical resize of the bottom dock. Every hook in
-  // this component runs before the tier `sm` early return below: a hook
-  // after it changes the hook count when the viewport crosses 768 px, and
-  // React throws ("Rendered more hooks than during the previous render").
+  // Pointer-event-based vertical resize of the bottom dock.
   const startRef = useRef<{ y: number; h: number } | null>(null);
   const onResizeDown = useCallback(
     (e: React.PointerEvent) => {
@@ -217,37 +252,38 @@ export function PanelLayout({ mainSlot }: Props) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [fullscreenPane, setFullscreenPane]);
 
-  // Tier `sm` (< 768px) is the phone layout: one column, the route view
-  // alone and scrollable. The docks and floating panels stay out of it (a
-  // 320px dock cannot fit), and there is no "use a larger screen" banner:
-  // the shell around it (5-key dock, quiet header) is the phone design.
-  if (tier === "sm") {
-    return <div data-cockpit-content tabIndex={-1} className="h-full w-full overflow-auto">{mainSlot}</div>;
-  }
-
-  const inset = layoutPreset === "omarchy-inset";
-
   // Fullscreen in the docked preset hides the bottom dock too (dockSide
   // already zeroes the side docks); the default state is untouched.
   const hideBottomDock = !inset && fullscreenPane !== null;
 
-  // The centre column is IDENTICAL in both presets — one JSX value, so the
+  // The centre column is identical in both presets and on phone, so the
   // inset preset cannot drift from the docked one. The document tab strip
   // (D6) mounts here once, so the inset left pane and the docked main
   // surface share it (router-guarded: it renders nothing without a Router
   // context).
   const centreColumn = (
     <div className="flex-1 min-w-0 flex flex-col">
-      <Suspense fallback={inRouter ? <DocumentStripFallback /> : null}>
-        <DocumentTabStrip />
-      </Suspense>
+      <div hidden={!compactLeftDock || fullscreenPane !== null || undefined}
+        className={compactLeftDock && fullscreenPane === null ? "shrink-0 flex items-center px-2 py-1 border-b border-hairline" : "hidden"}>
+        <button ref={dockToggleRef} type="button" aria-label={dockOverlayVisible ? "Hide left dock" : "Show left dock"}
+          aria-expanded={dockOverlayVisible} aria-controls={leftDockId}
+          onClick={() => setDockOverlayOpen((open) => !open)}
+          className="rounded border border-hairline bg-ice-1 dark:bg-charcoal-1 px-2 py-1 text-xs text-ink dark:text-bright focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus">
+          {dockOverlayVisible ? "Hide dock" : "Left dock"}
+        </button>
+      </div>
+      <div hidden={phone || undefined} className={phone ? "hidden" : "contents"}>
+        <Suspense fallback={inRouter ? <DocumentStripFallback /> : null}>
+          {desktopOpened || !phone ? <DocumentTabStrip /> : null}
+        </Suspense>
+      </div>
       <main data-cockpit-content tabIndex={-1} className="flex-1 min-w-0 relative overflow-hidden">
         {/* Underlying mainSlot — the route content (the document tabs'
             tabpanel while the strip is mounted) */}
         <div id={DOCUMENT_PANEL_ID} className="absolute inset-0 overflow-auto">{mainSlot}</div>
 
         {/* Floating layer — pointer-events:none container, panels opt back in */}
-        <div className="absolute inset-0 pointer-events-none">
+        <div hidden={phone || undefined} className={phone ? "hidden" : "absolute inset-0 pointer-events-none"}>
           {floatingIds.map((id) => (
             <div key={id} className="pointer-events-auto">
               <PanelLayoutPanel id={id} />
@@ -259,8 +295,8 @@ export function PanelLayout({ mainSlot }: Props) {
       {/* BOTTOM DOCK — kept mounted while fullscreen hides it */}
       {dockBottomIds.length > 0 && (
         <aside
-          hidden={hideBottomDock || undefined}
-          className={`${hideBottomDock ? "hidden" : "flex"} flex-row shrink-0 border-t border-hairline bg-ice-1 dark:bg-charcoal-1 relative`}
+          hidden={phone || hideBottomDock || undefined}
+          className={`${phone || hideBottomDock ? "hidden" : "flex"} flex-row shrink-0 border-t border-hairline bg-ice-1 dark:bg-charcoal-1 relative`}
           style={{ height: dockBottomHeight }}
           aria-label="Bottom dock"
         >
@@ -285,7 +321,7 @@ export function PanelLayout({ mainSlot }: Props) {
     </div>
   );
 
-  // ── ONE stable tree for both presets and every fullscreen state ─────────
+  // One stable tree across presets, fullscreen and phone crossings.
   // The route (mainSlot), the strip and every docked panel sit at the SAME
   // position in the element tree whichever preset is on and whichever pane
   // is fullscreen: the inset's pane shells are `display: contents` wrappers
@@ -308,19 +344,26 @@ export function PanelLayout({ mainSlot }: Props) {
   const rightHidden = shownAlone === "left";
   const rightFull = shownAlone === "right";
   const rightPaneWidth = paneResize.width;
-  const rightDockPanelIds = inset ? dockRightIds.filter((id) => !PANE_CONTENT_PANEL_IDS.has(id)) : dockRightIds;
+  const rightDockPanelIds = dockRightIds.filter((id) => inset ? !PANE_CONTENT_PANEL_IDS.has(id) : id !== modePanelId);
   const leftDockWidth = inset
     ? dockLeftIds.length === 0 || tier === "md"
       ? 0
-      : DOCK_WIDTH
+      : paneResize.primaryDockWidth
     : dockSide("left", dockLeftIds.length);
   const rightDockWidth = dockSide("right", dockRightIds.length);
   const paneShell = (side: "left" | "right"): string =>
     "flex flex-col min-w-0 min-h-0 overflow-hidden border border-hairline " +
     "bg-ice-1 dark:bg-charcoal-1" +
     (focusedPane === side ? " ring-2 ring-inset ring-focus" : "");
-  const leftDockHidden = inset && leftDockWidth === 0;
-  const rightDockHidden = inset && rightDockPanelIds.length === 0;
+  const leftDockHidden = phone || (inset && leftDockWidth === 0 && !dockOverlayVisible);
+  const rightDockHidden = phone || rightHidden || (!inset && rightDockWidth === 0);
+  const modePaneOnScreen = modePaneVisible && !rightDockHidden;
+  useEffect(() => {
+    if (!modePaneOnScreen && modePaneHadFocus.current) {
+      layoutRef.current?.querySelector<HTMLElement>("[data-cockpit-content]")?.focus();
+      modePaneHadFocus.current = false;
+    }
+  }, [modePaneOnScreen]);
 
   return (
     <div
@@ -342,19 +385,25 @@ export function PanelLayout({ mainSlot }: Props) {
             }
           : {})}
         hidden={leftHidden || undefined}
-        className={inset ? (leftHidden ? "hidden" : `flex-1 ${paneShell("left")}`) : "contents"}
+        className={inset ? (leftHidden ? "hidden" : `flex-1 ${paneShell("left")}${dockOverlayVisible ? " !overflow-visible" : ""}`) : "contents"}
       >
-        <div className={inset ? "relative flex-1 min-h-0 w-full flex overflow-hidden" : "contents"}>
+        <div className={inset ? `${dockOverlayVisible ? "" : "relative "}flex-1 min-h-0 w-full flex ${dockOverlayVisible ? "overflow-visible" : "overflow-hidden"}` : "contents"}>
           {/* LEFT DOCK */}
           <aside
+            ref={leftDockRef}
+            id={leftDockId}
+            {...(dockOverlayVisible ? ESC_OVERLAY_PROPS : {})}
             hidden={leftDockHidden || undefined}
             className={
               leftDockHidden
                 ? "hidden"
                 : `flex flex-col shrink-0 min-w-0 ${dockTransition}` +
-                  (inset ? "" : ` ${dockLeftIds.length ? "border-r border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1`)
+                  (dockOverlayVisible ? " z-20 border border-hairline rounded-lg bg-ice-1 dark:bg-charcoal-1 shadow-z2" : inset ? "" : ` ${dockLeftIds.length ? "border-r border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1`)
             }
-            style={{ width: leftDockWidth }}
+            style={dockOverlayVisible ? {
+              position: "absolute", top: INSET_GAP * 4, bottom: INSET_GAP, left: INSET_GAP,
+              width: Math.min(DOCK_WIDTH, Math.max(0, (paneResize.containerWidth ?? DOCK_WIDTH + INSET_GAP * 2) - INSET_GAP * 2)),
+            } : { width: leftDockWidth }}
             aria-label="Left dock"
           >
             {dockLeftIds.filter((id) => !projectTreeOverlay || id !== "shortcuts:projecttree").map((id) => (
@@ -412,40 +461,48 @@ export function PanelLayout({ mainSlot }: Props) {
               onFocusCapture: () => setFocusedPane("right"),
             }
           : {})}
-        hidden={rightHidden || undefined}
+        hidden={phone || rightHidden || undefined}
         className={
-          inset
+          phone ? "hidden" : inset
             ? rightHidden
               ? "hidden"
               : `${rightFull ? "flex-1" : "shrink-0"} ${paneShell("right")}`
             : "contents"
         }
       >
-        {inset ? <RightPaneForMode /> : null}
         {/* RIGHT DOCK */}
         <aside
           hidden={rightDockHidden || undefined}
           className={
-            inset
-              ? rightDockHidden
-                ? "hidden"
-                : "flex flex-col shrink-0 min-w-0 max-h-[50%] border-t border-hairline"
+            rightDockHidden ? "hidden" : inset
+              ? "flex flex-col flex-1 min-h-0 min-w-0"
               : `flex flex-col shrink-0 ${dockRightIds.length ? "border-l border-hairline" : ""} bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`
           }
           style={inset ? undefined : { width: rightDockWidth }}
-          aria-label="Right dock"
+          aria-label={inset ? "Right pane content" : "Right dock"}
         >
-          {rightDockPanelIds.map((id) => (
-            <PanelLayoutPanel key={id} id={id} />
-          ))}
+          <div ref={modePaneRef} hidden={!modePaneVisible || undefined}
+            onFocusCapture={() => { modePaneHadFocus.current = true; }}
+            onBlurCapture={(event) => {
+              if (event.relatedTarget instanceof Node && !modePaneRef.current?.contains(event.relatedTarget)) modePaneHadFocus.current = false;
+            }}
+            className={modePaneVisible ? "flex flex-col flex-1 min-h-0 min-w-0" : "hidden"}>
+            {retainModePane ? <PanelLayoutPanel id={modePanelId} bare={inset || !modePanel} content={<RightPaneForMode />} /> : null}
+          </div>
+          <aside aria-label={inset ? "Right dock" : "Additional right panels"} hidden={rightDockPanelIds.length === 0 || undefined}
+            className={rightDockPanelIds.length === 0 ? "hidden" : `flex flex-col flex-1 min-h-0 min-w-0${inset && modePaneVisible ? " max-h-[50%] border-t border-hairline" : ""}`}>
+            {rightDockPanelIds.map((id) => (
+              <PanelLayoutPanel key={id} id={id} />
+            ))}
+          </aside>
         </aside>
       </div>
 
-      {projectTreeOverlay && <ProjectTreeOverlay />}
+      {projectTreeOverlay && !phone && <ProjectTreeOverlay />}
 
       {/* Fullscreen is never invisible state: a chip says it is on and is
           the pointer path back (Esc restores from any focus too). */}
-      {fullscreenPane ? (
+      {!phone && fullscreenPane ? (
         <button
           type="button"
           data-fullscreen-chip
