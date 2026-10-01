@@ -2,13 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import ConnectResearch from "./ConnectResearch";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { setTabOwner } from "../../workspace/tabTreeOwner";
+import { useTabTrees } from "../../workspace/tabTreeStore";
+import WriteHome from "./WriteHome";
 
 /**
  * ConnectResearch.modelChoice.test — the backing folder runs on the chosen
  * route.
  *
- * "Start without a project" spawns a real research, so it spends. This file
+ * The explicit "Start research first" action can spend. This file
  * asserts the choice at the transport: `fetch` is stubbed and the serialized
  * POST /investigations body is read back. The sibling ConnectResearch.test
  * covers the connect/spawn behaviour itself and mocks the API wrapper; this
@@ -45,11 +48,18 @@ function jsonResponse(payload: unknown): Response {
 let startBodies: Record<string, unknown>[] = [];
 
 beforeEach(() => {
+  setTabOwner(null); setTabOwner("writer"); useTabTrees.getState().resetTabTrees();
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
   startBodies = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/write/deliverables/from-investigation")) {
+        return new Response(JSON.stringify({ detail: "no_synthesis" }), { status: 404 });
+      }
+      if (url.endsWith("/deliverables") && init?.method === "POST") return jsonResponse({ deliverable_id: "new-piece" });
+      if (url.endsWith("/deliverables")) return jsonResponse({ count: 0, deliverables: [] });
       if (init?.method === "POST" && url.includes("/investigations")) {
         startBodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
         return jsonResponse({
@@ -88,20 +98,28 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   cleanup();
+  setTabOwner(null); useTabTrees.getState().resetTabTrees();
 });
 
-describe("ConnectResearch — the picked model backs the spawned folder", () => {
+function mount() {
+  render(<MemoryRouter initialEntries={["/write?title=My%20memo"]}><Routes>
+    <Route path="/write" element={<WriteHome />} />
+    <Route path="/write/:deliverableId" element={<p>Created</p>} />
+  </Routes></MemoryRouter>);
+}
+
+describe("ConnectResearch: the explicit research launch uses the picked model", () => {
   it("puts the choice and its operation id in the spawn body", async () => {
-    render(<ConnectResearch pieceTitle="My memo" onConnect={() => {}} />);
+    mount();
 
     const trigger = await screen.findByRole("button", {
-      name: "Model for the backing research",
+      name: "Model for new research",
     });
     await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
     await userEvent.click(trigger);
     await userEvent.click(await screen.findByText("Kimi K2.5"));
 
-    await userEvent.click(await screen.findByText(/start without a project/i));
+    await userEvent.click(await screen.findByText(/start research first/i));
     await waitFor(() => expect(startBodies).toHaveLength(1));
 
     expect(startBodies[0].model_choice).toEqual({
@@ -113,16 +131,27 @@ describe("ConnectResearch — the picked model backs the spawned folder", () => 
   });
 
   it("spawns on the house route when the picker is untouched", async () => {
-    render(<ConnectResearch pieceTitle="My memo" onConnect={() => {}} />);
+    mount();
     const trigger = await screen.findByRole("button", {
-      name: "Model for the backing research",
+      name: "Model for new research",
     });
     await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
 
-    await userEvent.click(await screen.findByText(/start without a project/i));
+    await userEvent.click(await screen.findByText(/start research first/i));
     await waitFor(() => expect(startBodies).toHaveLength(1));
 
     expect(startBodies[0]).not.toHaveProperty("model_choice");
     expect(startBodies[0]).not.toHaveProperty("operation_id");
+  });
+
+  it("choosing a model does not turn empty creation into a research launch", async () => {
+    mount();
+    const trigger = await screen.findByRole("button", { name: "Model for new research" });
+    await waitFor(() => expect(trigger.hasAttribute("disabled")).toBe(false));
+    await userEvent.click(trigger);
+    await userEvent.click(await screen.findByText("Kimi K2.5"));
+    await userEvent.click(screen.getByRole("button", { name: /start empty/i }));
+    await screen.findByText("Created");
+    expect(startBodies).toEqual([]);
   });
 });

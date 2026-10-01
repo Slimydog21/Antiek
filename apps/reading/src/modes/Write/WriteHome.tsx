@@ -6,6 +6,7 @@ import {
   createDeliverable,
   getDeliverable,
   listDeliverables,
+  startInvestigation,
   type DeliverableDetailResponse,
   type DeliverableKind,
   type DeliverableSummary,
@@ -14,7 +15,7 @@ import GlassSurface from "../../shell/GlassSurface";
 import { toast } from "../../components/lemon/LemonToast";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import BlockRepository from "./BlockRepository";
-import ConnectResearch from "./ConnectResearch";
+import ConnectResearch, { type WritingStartChoice } from "./ConnectResearch";
 import { ContextWindow } from "./ContextWindow/ContextWindow";
 import { IdeaDump } from "./Brainstorm/IdeaDump";
 import Outline from "./Outline";
@@ -28,6 +29,8 @@ import {
 } from "./writeApi";
 import { useBranchTo } from "../../workspace/useBranchTo";
 import { useTabTrees } from "../../workspace/tabTreeStore";
+import { getTabOwner } from "../../workspace/tabTreeOwner";
+import { withProject } from "../../workspace/projectSelection";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { ESC_OVERLAY_PROPS } from "../../workspace/escapeOverlay";
 import { WRITE_OUTLINE_PANEL_ID } from "../../workspace/writeOutlineStore";
@@ -106,6 +109,148 @@ function useScopedDeliverable(deliverableId: string | undefined) {
   }, [refresh]);
 
   return { detail, retainedDetail, loading, refresh, scopeKey: JSON.stringify([contextEpoch, projectId, deliverableId]) };
+}
+
+type CreationState =
+  | { status: "idle" }
+  | { status: "creating" }
+  | { status: "error"; message: string }
+  | { status: "created"; deliverableId: string };
+
+/** A scope-keyed form keeps creation attempts separate from retained editors. */
+function StartPiece({ fromInvestigation, titleFromQuery }: {
+  fromInvestigation: string | null;
+  titleFromQuery: string;
+}) {
+  const navigate = useNavigate();
+  const contextEpoch = useTabTrees((state) => state.contextEpoch);
+  const projectId = useTabTrees((state) => state.projectId);
+  const dispatchAllowed = useTabTrees((state) => state.dispatchAllowed);
+  const ownerEpoch = getTabOwner().epoch;
+  const [newTitle, setNewTitle] = useState(titleFromQuery);
+  const [projectType, setProjectType] = useState<{ freeform: string; kind: DeliverableKind }>(
+    { freeform: "", kind: "general_essay" },
+  );
+  const [creation, setCreation] = useState<CreationState>({ status: "idle" });
+  const [startedResearch, setStartedResearch] = useState<Extract<WritingStartChoice, { kind: "research" }> | null>(null);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  const revision = useRef(0);
+  const [authorizationVersion, setAuthorizationVersion] = useState(0);
+
+  useEffect(() => {
+    mounted.current = true;
+    const unsubscribe = useTabTrees.subscribe((state, previous) => {
+      if (state.contextEpoch !== previous.contextEpoch || state.projectId !== previous.projectId ||
+          (!state.dispatchAllowed && previous.dispatchAllowed)) {
+        revision.current++;
+        setAuthorizationVersion(revision.current);
+      }
+    });
+    return () => { mounted.current = false; unsubscribe(); };
+  }, []);
+
+  const sameScope = useCallback(() => {
+    const state = useTabTrees.getState();
+    return mounted.current && getTabOwner().epoch === ownerEpoch &&
+      state.contextEpoch === contextEpoch && state.projectId === projectId;
+  }, [ownerEpoch, contextEpoch, projectId]);
+  const canDispatch = useCallback(() => sameScope() && revision.current === authorizationVersion &&
+    getTabOwner().owner !== null && !getTabOwner().suspended && useTabTrees.getState().dispatchAllowed,
+  [sameScope, authorizationVersion]);
+
+  async function createPiece(choice: WritingStartChoice) {
+    const title = newTitle.trim();
+    if (!title || pending.current || creation.status === "created" || !canDispatch()) return;
+    pending.current = true;
+    setCreation({ status: "creating" });
+    const current = () => canDispatch();
+    const complete = (deliverableId: string) => {
+      // Preserve the truthful acknowledgment for this scope, but uncertainty
+      // revokes follow-up navigation even if the same owner already recovered.
+      if (sameScope()) setCreation({ status: "created", deliverableId });
+      if (current()) navigate(withProject(`/write/${encodeURIComponent(deliverableId)}`, projectId));
+    };
+    let stage: "research" | "piece" = "piece";
+    try {
+      if (choice.kind === "empty") {
+        const piece = await createDeliverable({ title, deliverable_kind: projectType.kind });
+        complete(piece.deliverable_id);
+        return;
+      }
+      let research = choice.kind === "research" ? choice : startedResearch;
+      if (!research && choice.kind === "new-research") {
+        stage = "research";
+        const started = await startInvestigation(choice.request);
+        research = { kind: "research", investigationId: started.investigation_id, label: "started research" };
+        if (sameScope()) setStartedResearch(research);
+        if (!current()) return;
+      }
+      if (!research || !current()) return;
+      stage = "piece";
+      try {
+        const promoted = await createDeliverableFromInvestigation({
+          investigation_id: research.investigationId,
+          deliverable_kind: projectType.kind,
+          title,
+        });
+        complete(promoted.deliverable_id);
+        return;
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 404)) throw error;
+      }
+      if (!current()) return;
+      const piece = await createDeliverable({
+        title, deliverable_kind: projectType.kind, investigation_root_id: research.investigationId,
+      });
+      complete(piece.deliverable_id);
+    } catch (error) {
+      if (sameScope()) setCreation({ status: "error", message: error instanceof ApiError
+        ? stage === "research"
+          ? "Couldn't start research. Your title and type are still here. Try again."
+          : "Couldn't create the piece. Your title and type are still here. Try again."
+        : stage === "research"
+          ? "We couldn't confirm whether research started. Your title and type are still here."
+          : "We couldn't confirm whether the piece was created. Your title and type are still here." });
+    } finally {
+      pending.current = false;
+      if (mounted.current) setCreation((state) => state.status === "creating" ? { status: "idle" } : state);
+    }
+  }
+
+  const disabled = creation.status === "creating" || creation.status === "created" || !dispatchAllowed;
+  return <div data-writing-start className="space-y-3">
+    <input
+      value={newTitle}
+      onChange={(event) => setNewTitle(event.target.value)}
+      disabled={disabled}
+      aria-label="Piece title"
+      placeholder="What are you writing? (a title)"
+      className="w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1"
+    />
+    <ProjectTypeField value={projectType} onChange={setProjectType} disabled={disabled} />
+    {fromInvestigation && <p data-testid="write-from-notebook-banner" className="rounded border border-sun/40 bg-ice-1 px-3 py-2 text-xs text-ink dark:bg-charcoal-1 dark:text-bright">
+      From your notebook. Choose its research below to bring the available outline into this piece.
+    </p>}
+    {newTitle.trim() ? <ConnectResearch
+      pieceTitle={newTitle}
+      disabled={disabled}
+      preferredInvestigationId={fromInvestigation}
+      startedResearch={startedResearch}
+      onConnect={(choice) => void createPiece(choice)}
+    /> : <p className="text-xs italic text-ink-mute dark:text-moonlight">
+      Name the piece to start empty or choose research.
+    </p>}
+    {creation.status === "creating" && <p role="status" className="text-xs text-sun-deep">Creating your piece…</p>}
+    {creation.status === "error" && <p role="alert" className="text-xs text-emperor">{creation.message}</p>}
+    {creation.status === "created" && <div role="status" className="text-xs text-ink-soft dark:text-moonlight">
+      <p>Your piece was created. Open it when you're ready.</p>
+      <button type="button" disabled={!dispatchAllowed} className="mt-1 underline"
+        onClick={() => { if (canDispatch()) navigate(withProject(`/write/${encodeURIComponent(creation.deliverableId)}`, projectId)); }}>
+        Open your piece
+      </button>
+    </div>}
+  </div>;
 }
 
 /**
@@ -235,56 +380,6 @@ export default function WriteHome() {
     });
   }, [branchTo]);
 
-  // The "start a piece" action — the obvious way to begin (WX-01). SPR-09 M1:
-  // it now runs title → project-type → connect-to-research, so a piece is
-  // created WITH its backing investigation_root_id set (the link is set at
-  // creation; M1 reads it back to verify it exists).
-  const [starting, setStarting] = useState(false);
-  const [newTitle, setNewTitle] = useState(titleFromQuery);
-  // Open-ended project type (M4): freeform text the AI interprets; presets seed.
-  const [projectType, setProjectType] = useState<{ freeform: string; kind: DeliverableKind }>(
-    { freeform: "", kind: "general_essay" },
-  );
-
-  // AutoNotebook → Write continuity: honor ?title= from notebook handoff.
-  useEffect(() => {
-    if (!titleFromQuery) return;
-    setNewTitle((prev) => (prev.trim() ? prev : titleFromQuery));
-  }, [titleFromQuery]);
-
-  async function createWithConnection(resolved: { investigationId: string; label: string }) {
-    if (!newTitle.trim()) return;
-    setStarting(true);
-    try {
-      // Daily-loop outline→Write auto-import: promote depositable synthesis
-      // into a seeded outline (POST /write/deliverables/from-investigation).
-      // Honest fallback when no synthesis: empty linked piece (ConnectResearch).
-      try {
-        const promoted = await createDeliverableFromInvestigation({
-          investigation_id: resolved.investigationId,
-          deliverable_kind: projectType.kind,
-          title: newTitle.trim(),
-        });
-        navigate(`/write/${promoted.deliverable_id}`);
-        return;
-      } catch (e) {
-        if (!(e instanceof ApiError && e.status === 404)) throw e;
-      }
-      const d = await createDeliverable({
-        title: newTitle.trim(),
-        // The freeform type resolves to the closest kind (ProjectType.resolveKind);
-        // a novel type falls to general_essay — never gated, never crashes.
-        deliverable_kind: projectType.kind,
-        // M1: the piece↔research link, set at creation (deliverables.
-        // investigation_root_id; reused, not a new column — see decision D-1).
-        investigation_root_id: resolved.investigationId,
-      });
-      navigate(`/write/${d.deliverable_id}`);
-    } finally {
-      setStarting(false);
-    }
-  }
-
   // ── Home (no piece selected): start one, pick one, or brainstorm. ──
   if (!deliverableId) {
     return (
@@ -299,55 +394,14 @@ export default function WriteHome() {
             Write a piece
           </h1>
           <p className="mt-1 text-sm text-ink-soft dark:text-moonlight">
-            Pull your research notes into an outline, generate a first draft
-            from them, then edit. Or dump a raw idea and let the blocks fall out.
+            Start with a blank piece, or bring an outline from your research.
+            Build your sections and edit at your own pace.
           </p>
         </header>
 
         <GlassSurface className="mb-6 space-y-3 rounded-md p-3">
-          <input
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="What are you writing? (a title)"
-            className="w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1"
-          />
-          {/* M4: open-ended project type — presets seed, do not gate. */}
-          <ProjectTypeField
-            value={projectType}
-            onChange={setProjectType}
-            disabled={starting}
-          />
-          {/* M1: the connect-to-research step. Pick a project (imports its
-              blocks onto the canvas) or none (auto-spawns + links a folder).
-              Either way the piece is created WITH investigation_root_id set. */}
-          {fromInvestigation ? (
-            <p
-              data-testid="write-from-notebook-banner"
-              className="rounded border border-sun/40 bg-ice-1 px-3 py-2 text-xs text-ink dark:bg-charcoal-1 dark:text-bright"
-            >
-              Continuing from auto-notebook — title is prefilled when the notebook
-              sent one. Connect the highlighted research to import its outline when
-              a depositable synthesis exists (else an empty linked piece). No
-              invented sections.
-            </p>
-          ) : null}
-          {newTitle.trim() ? (
-            <ConnectResearch
-              pieceTitle={newTitle}
-              disabled={starting}
-              preferredInvestigationId={fromInvestigation}
-              onConnect={(resolved) => void createWithConnection(resolved)}
-            />
-          ) : (
-            <p className="text-xs italic text-ink-mute dark:text-moonlight">
-              {fromInvestigation
-                ? "Name the piece (or keep editing the prefilled title) to connect and import the outline."
-                : "Name the piece to choose a research project to connect it to."}
-            </p>
-          )}
-          {starting && (
-            <p className="text-xs text-sun-deep">Starting your piece…</p>
-          )}
+          <StartPiece key={JSON.stringify([scopeKey, fromInvestigation, titleFromQuery])}
+            fromInvestigation={fromInvestigation} titleFromQuery={titleFromQuery} />
           <button
             type="button"
             onClick={() => setOnRamp((v) => (v === "idea" ? null : "idea"))}

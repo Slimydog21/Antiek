@@ -48,8 +48,11 @@ vi.mock("./writeApi", async (orig) => ({
 
 import { ApiError } from "../../lib/api";
 import WriteHome from "./WriteHome";
+import { setTabOwner } from "../../workspace/tabTreeOwner";
+import { useTabTrees } from "../../workspace/tabTreeStore";
 
 beforeEach(() => {
+  setTabOwner(null); setTabOwner("writer"); useTabTrees.getState().resetTabTrees();
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   getDeliverableMock.mockReset().mockResolvedValue(null);
   getTraceTargetMock.mockReset();
@@ -84,7 +87,7 @@ beforeEach(() => {
     }),
   });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); setTabOwner(null); useTabTrees.getState().resetTabTrees(); });
 
 function mountAt(path: string) {
   return render(
@@ -126,22 +129,17 @@ describe("WriteHome — the re-homed door", () => {
     expect(screen.getByText(/brainstorm from an idea/i)).toBeTruthy();
   });
 
-  it("M1 — 'none' auto-spawns a research folder and creates the piece linked to it", async () => {
+  it("starting empty creates a piece without starting or importing research", async () => {
     mountAt("/write");
-    // Naming the piece reveals the connect-to-research step (M1).
     const title = await screen.findByPlaceholderText(/what are you writing/i);
     await userEvent.type(title, "A margins memo");
-    // Choose "none" → auto-spawn + link.
-    await userEvent.click(await screen.findByText(/start without a project/i));
+    await userEvent.click(await screen.findByRole("button", { name: /start empty/i }));
     await waitFor(() => expect(createDeliverableMock).toHaveBeenCalled());
-    // The piece is created WITH the spawned investigation_root_id (the link is
-    // set at creation — verified by the create call carrying it, not a UI claim).
-    expect(createDeliverableMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "A margins memo",
-        investigation_root_id: "inv-spawned",
-      }),
-    );
+    expect(createDeliverableMock).toHaveBeenCalledWith({
+      title: "A margins memo", deliverable_kind: "general_essay",
+    });
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+    expect(createFromInvestigationMock).not.toHaveBeenCalled();
   });
 
   it("routes a servable trace-to-source to the source reader", async () => {

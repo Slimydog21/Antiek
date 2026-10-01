@@ -7,8 +7,8 @@ import userEvent from "@testing-library/user-event";
  *
  * Mechanically checked:
  *  - picking an existing project connects the piece to it (resolves its id);
- *  - "none" AUTO-SPAWNS a research folder (startInvestigation) and connects to
- *    the spawned id — the bridge that keeps Write net-new but always backed.
+ *  - starting empty resolves an explicit no-research choice;
+ *  - research starts only through the separately named research choice.
  */
 
 const { listInvestigationsMock, startInvestigationMock } = vi.hoisted(() => ({
@@ -41,7 +41,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("ConnectResearch — M1 connect or auto-spawn", () => {
+describe("ConnectResearch: empty or explicit research", () => {
   it("picking an existing project resolves its investigation id", async () => {
     const onConnect = vi.fn();
     render(<ConnectResearch pieceTitle="My memo" onConnect={onConnect} />);
@@ -53,27 +53,29 @@ describe("ConnectResearch — M1 connect or auto-spawn", () => {
     expect(startInvestigationMock).not.toHaveBeenCalled();
   });
 
-  it('"none" auto-spawns a folder and connects to the spawned id', async () => {
+  it("starting empty never launches research", async () => {
     const onConnect = vi.fn();
     render(<ConnectResearch pieceTitle="My memo" onConnect={onConnect} />);
-    await userEvent.click(await screen.findByText(/start without a project/i));
-    await waitFor(() =>
-      expect(onConnect).toHaveBeenCalledWith(
-        expect.objectContaining({ investigationId: "inv-spawned" }),
-      ),
-    );
-    // The spawned folder is seeded with the piece title (legible, not blank).
-    expect(startInvestigationMock).toHaveBeenCalledWith(
-      expect.objectContaining({ question: "My memo" }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: /start empty/i }));
+    expect(onConnect).toHaveBeenCalledWith({ kind: "empty" });
+    expect(startInvestigationMock).not.toHaveBeenCalled();
   });
 
-  it("a failed spawn is surfaced, never a silent connect", async () => {
-    startInvestigationMock.mockRejectedValue(new Error("provider down"));
+  it("a failed list is surfaced while starting empty remains available", async () => {
+    listInvestigationsMock.mockRejectedValue(new Error("list unavailable"));
     const onConnect = vi.fn();
     render(<ConnectResearch pieceTitle="My memo" onConnect={onConnect} />);
-    await userEvent.click(await screen.findByText(/start without a project/i));
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
-    expect(onConnect).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole("button", { name: /start empty/i }));
+    expect(onConnect).toHaveBeenCalledWith({ kind: "empty" });
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+  });
+
+  it("only the explicit research-first choice requests a launch", async () => {
+    const onConnect = vi.fn();
+    render(<ConnectResearch pieceTitle="My memo" onConnect={onConnect} />);
+    await userEvent.click(await screen.findByText(/start research first/i));
+    expect(onConnect).toHaveBeenCalledWith({ kind: "new-research", request: expect.objectContaining({ question: "My memo" }) });
+    expect(startInvestigationMock).not.toHaveBeenCalled();
   });
 });
