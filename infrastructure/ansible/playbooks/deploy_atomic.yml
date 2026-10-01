@@ -39,12 +39,39 @@
 
   vars:
     antiek_public_dir: "{{ antiek_install_dir }}"
+    # Single source of truth for the release-path consumers, and WHY (prod
+    # incident 2026-10-01). The deploy stops these before schema migrate and
+    # starts them again afterwards. The pause loop and the "require complete
+    # consumer pause" post-condition both read THIS list, so the post-condition
+    # cannot drift from what was actually paused. The 2026-10-01 deploy died on
+    # a later assert whose conditional raised `object of type 'dict' has no
+    # attribute 'skipped'`; its rescue raised the same error, so the box was
+    # left with backups, the health probe, backup-freshness and
+    # continuous-research all stopped. Nothing in the play noticed.
+    release_path_consumers:
+      - antiek-continuous-research.service
+      - antiek-arxiv-oai-sync.timer
+      - antiek-arxiv-oai-sync.service
+      - antiek-backup.timer
+      - antiek-backup.service
+      - antiek-health-probe.service
+      - antiek-health-probe.timer
+      - antiek-backup-freshness.service
+      - antiek-backup-freshness.timer
     antiek_release_root: "/opt/antiek-releases"
     antiek_release_dir: "{{ antiek_release_root }}/{{ antiek_target_sha }}"
     antiek_release_receipt: "{{ antiek_release_dir }}/.release-receipt"
     antiek_previous_sha: ""
     antiek_release_min_free_gb: 12
     antiek_release_retention_count: 4
+    # The pre-migration DuckDB snapshot is ~940 MB per deploy and NOTHING
+    # pruned it until this task existed: measured 2026-10-01 on prod, 46
+    # copies / 40.6 GB across six days (17 in one day, 14.9 GB) on a 150 GB
+    # disk with 72 GB free. The release directories were already pruned to
+    # `antiek_release_retention_count`; the database copies the same playbook
+    # created were not. Retention keeps the newest N, and the task always
+    # protects the three the playbook can still need.
+    antiek_duckdb_snapshot_retention_count: 4
 
   pre_tasks:
     # The gate is tagged `always`, and only `always`. Every --tags selection
@@ -659,22 +686,32 @@
           ansible.builtin.systemd:
             name: "{{ item }}"
             state: stopped
-          loop:
-            - antiek-continuous-research.service
-            - antiek-arxiv-oai-sync.timer
-            - antiek-arxiv-oai-sync.service
-            - antiek-backup.timer
-            - antiek-backup.service
-            - antiek-health-probe.service
-            - antiek-health-probe.timer
-            - antiek-backup-freshness.service
-            - antiek-backup-freshness.timer
+          loop: "{{ release_path_consumers }}"
           when:
             - arxiv_timer_was_enabled is defined
             - arxiv_timer_was_active is defined
             - (arxiv_timer_pause_result | default({})).rc | default(1) == 0
             - (arxiv_service_pause_result | default({})).rc | default(1) == 0
           register: arxiv_pause_result
+          tags: [code]
+
+        - name: observe every release-path consumer state after the pause
+          # Ask the BOX what happened rather than parsing the bookkeeping of a
+          # loop result. `selectattr('skipped', ...)` over loop results is
+          # version-coupled (a result for a non-skipped item carries no
+          # `skipped` key) and it is what killed the 2026-10-01 deploy. A state
+          # probe is both safer and strictly stronger: it proves the pause
+          # happened, not that the task reported it.
+          ansible.builtin.command:
+            argv:
+              - systemctl
+              - show
+              - "{{ item }}"
+              - --property=ActiveState
+          loop: "{{ release_path_consumers }}"
+          register: consumer_pause_states
+          changed_when: false
+          failed_when: false
           tags: [code]
 
         - name: require complete consumer pause before schema or cutover
@@ -684,10 +721,18 @@
               - arxiv_timer_was_active is defined
               - (arxiv_timer_pause_result | default({})).rc | default(1) == 0
               - (arxiv_service_pause_result | default({})).rc | default(1) == 0
-              - (arxiv_pause_result | default({})).results | default([]) | length > 0
+              - (consumer_pause_states | default({})).results | default([]) | length
+                == (release_path_consumers | length)
+              # Every consumer must be affirmatively inactive (or failed, which
+              # is still stopped): an empty or unknown ActiveState does not pass.
               - >-
-                (arxiv_pause_result | default({})).results | default([])
-                | selectattr('skipped', 'equalto', true) | list | length == 0
+                (consumer_pause_states.results | map(attribute='stdout') | map('trim')
+                 | reject('equalto', 'ActiveState=inactive')
+                 | reject('equalto', 'ActiveState=failed') | list | length) == 0
+            fail_msg: >-
+              Release-path consumers are not all stopped: {{ consumer_pause_states.results
+              | map(attribute='stdout') | map('trim') | list }}.
+              Refusing to migrate the schema or cut over while a consumer is live.
           tags: [code]
 
         - name: stop antiek before schema migrate
@@ -1033,17 +1078,36 @@
 
       rescue:
         - name: classify arxiv service pause stage
+          # This task is the RESCUE's classifier: if it raises, no rollback task
+          # runs at all and the paused consumers stay dark (prod 2026-10-01).
+          # `rejectattr('skipped', ...)` is what raised: a loop result for an
+          # item that RAN carries no `skipped` key, and strict undefined makes
+          # that an error rather than a miss. `map(attribute=..., default=...)`
+          # supplies the missing key explicitly, so "ran" and "skipped" are
+          # both values and neither can raise.
+          #
+          # The semantics are deliberately precise, not merely safe: these two
+          # facts answer "was THIS unit actually stopped", not "did the loop
+          # run". The loop pauses nine units; an arxiv item that was skipped
+          # must not read as attempted.
+          #
+          # Idiom and the stdout_lines guard below came from the sibling lane's
+          # PR #3585 (2026-10-01T05:43Z), which diagnosed the same deploy
+          # failure independently; they are folded in here so the two fixes
+          # cannot lose each other.
           ansible.builtin.set_fact:
             arxiv_service_pause_attempted: >-
               {{ (arxiv_service_pause_result | default({})).stdout | default('')
                  is search('(?m)^ServicePauseAttempted=1$')
                  or ((arxiv_pause_result | default({})).results | default([])
                      | selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.service')
-                     | rejectattr('skipped', 'equalto', true) | list | length > 0) }}
+                     | map(attribute='skipped', default=false)
+                     | select('equalto', false) | list | length > 0) }}
             arxiv_loop_timer_pause_attempted: >-
               {{ (arxiv_pause_result | default({})).results | default([])
                  | selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.timer')
-                 | rejectattr('skipped', 'equalto', true) | list | length > 0 }}
+                 | map(attribute='skipped', default=false)
+                 | select('equalto', false) | list | length > 0 }}
           tags: [rollback]
 
         - name: recover arxiv timer policy from attempted stop
@@ -1052,7 +1116,13 @@
             arxiv_timer_was_active: "{{ 'ActiveState=active' in arxiv_timer_pause_result.stdout_lines }}"
           when:
             - arxiv_timer_pause_result is defined
+            # stdout_lines is what the task BODY reads; guarding only
+            # `stdout` let a registered result without stdout_lines through the
+            # `when` and raise inside the body. Found by the sibling lane on PR
+            # #3585 (2026-10-01T05:43Z) against the same deploy failure; folded
+            # in here so the two fixes cannot lose each other.
             - arxiv_timer_pause_result.stdout is defined
+            - arxiv_timer_pause_result.stdout_lines is defined
             - arxiv_timer_pause_result.stdout is search('(?m)^UnitFileState=(enabled|disabled)$')
             - arxiv_timer_pause_result.stdout is search('(?m)^ActiveState=(active|inactive)$')
           tags: [rollback]
@@ -1064,7 +1134,13 @@
             state: "{{ 'started' if arxiv_timer_was_active else 'stopped' }}"
           when:
             - arxiv_timer_pause_result is defined
+            # stdout_lines is what the task BODY reads; guarding only
+            # `stdout` let a registered result without stdout_lines through the
+            # `when` and raise inside the body. Found by the sibling lane on PR
+            # #3585 (2026-10-01T05:43Z) against the same deploy failure; folded
+            # in here so the two fixes cannot lose each other.
             - arxiv_timer_pause_result.stdout is defined
+            - arxiv_timer_pause_result.stdout_lines is defined
             - arxiv_timer_pause_result.stdout is search('(?m)^UnitFileState=(enabled|disabled)$')
             - arxiv_timer_pause_result.stdout is search('(?m)^ActiveState=(active|inactive)$')
             - not (arxiv_service_pause_attempted | default(false) | bool)
@@ -1494,6 +1570,35 @@
               {% endif %}
           tags: [rollback]
 
+      always:
+        # THE INVARIANT THIS ENCODES (prod incident 2026-10-01): a deploy
+        # attempt must never end with the operator's data protection dark. That
+        # day the play died before cutover and its rescue died on the same
+        # conditional, leaving antiek-backup.timer, antiek-backup-freshness.timer,
+        # antiek-health-probe.timer and antiek-continuous-research.service all
+        # stopped with no further task to notice. `always` runs after a
+        # successful block AND after a rescue that itself failed, so no failure
+        # path can skip it. Each unit is started with the policy the design
+        # intends (enabled), and `failed_when: false` keeps a wedged unit from
+        # masking the real failure the rescue is about to report.
+        #
+        # The arXiv timer is deliberately NOT here: its post-deploy policy is
+        # release-dependent (enabled only when the candidate or the rollback
+        # target proved compatibility), and both the success path and the rescue
+        # already set it explicitly.
+        - name: never leave release-path monitoring or backups stopped
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          loop:
+            - antiek-continuous-research.service
+            - antiek-backup.timer
+            - antiek-health-probe.timer
+            - antiek-backup-freshness.timer
+          failed_when: false
+          tags: [code, rollback]
+
     - name: prune only unreferenced complete releases beyond retention
       ansible.builtin.shell: |
         set -euo pipefail
@@ -1509,6 +1614,51 @@
             rm -rf --one-file-system "$release"
           fi
         done < <(find "{{ antiek_release_root }}" -mindepth 1 -maxdepth 1 -type d           -regextype posix-extended -regex '.*/[0-9a-f]{40}' -printf '%T@ %p\n'           | sort -nr | cut -d' ' -f2-)
+      args:
+        executable: /bin/bash
+      changed_when: true
+      tags: [code]
+
+    - name: prune DuckDB pre-migration snapshots beyond retention
+      # WHY THIS EXISTS (measured 2026-10-01): `snapshot the quiesced DuckDB
+      # before migration` writes {{ antiek_state_dir }}/antiek.duckdb.pre-atomic-<sha>
+      # on every deploy and nothing ever removed one. Prod held 46 of them
+      # (40.6 GB across six days, one day alone 17 copies / 14.9 GB) on a 150 GB
+      # disk with 72 GB free, i.e. ~6.6 GB/day against a nightly backup that
+      # also writes to this host. The same playbook already prunes RELEASE
+      # directories to a retention count; the database copies it created were
+      # the untracked half of the same leak. This task closes it with the same
+      # discipline: sort by mtime, keep the newest
+      # `antiek_duckdb_snapshot_retention_count`, and always protect the three
+      # SHAs the playbook can still reach for -- the snapshot it just took
+      # (`keep`), the one that predates the release being replaced
+      # (`previous`, the operator's before-state for a release rollback), and
+      # the release currently pointed at by the public path (`current`).
+      #
+      # Safety: `-name 'antiek.duckdb.pre-atomic-*'` can only match that one
+      # family, `--one-file-system` keeps rm on this filesystem, and an EMPTY
+      # match is a no-op. The find error abort under `set -euo pipefail` means
+      # a missing state directory fails the task rather than silently
+      # pretending the disk was swept.
+      ansible.builtin.shell: |
+        set -euo pipefail
+        state="{{ antiek_state_dir }}"
+        keep="{{ antiek_target_sha }}"
+        previous="{{ antiek_previous_sha }}"
+        current=$(basename "$(readlink -f "{{ antiek_public_dir }}")")
+        count=0
+        while IFS= read -r snapshot; do
+          sha="${snapshot##*antiek.duckdb.pre-atomic-}"
+          count=$((count + 1))
+          if [ "$sha" = "$keep" ] || [ "$sha" = "$previous" ] || [ "$sha" = "$current" ]; then
+            continue
+          fi
+          if [ "$count" -gt "{{ antiek_duckdb_snapshot_retention_count }}" ]; then
+            rm -f --one-file-system "$snapshot"
+          fi
+        done < <(find "$state" -mindepth 1 -maxdepth 1 \
+                   -name 'antiek.duckdb.pre-atomic-*' -type f \
+                   -printf '%T@ %p\n' | sort -nr | cut -d' ' -f2-)
       args:
         executable: /bin/bash
       changed_when: true
