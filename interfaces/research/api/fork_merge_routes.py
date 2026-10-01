@@ -89,6 +89,9 @@ class MergeConflictOut(BaseModel):
     item_refs: list[list[str]]
     detail: str
     anchor_id: str | None
+    """The pinned passage's quote for the side-by-side picker (null for a
+    withheld pin — never text the gates don't serve)."""
+    anchor_quote: str | None
 
 
 class MergePreviewOut(BaseModel):
@@ -137,6 +140,7 @@ def _preview_out(
                 item_refs=[list(ref) for ref in c.item_refs],
                 detail=c.detail,
                 anchor_id=c.anchor_id,
+                anchor_quote=c.anchor_quote,
             )
             for c in receipt.conflicts
         ],

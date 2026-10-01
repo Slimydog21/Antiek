@@ -182,6 +182,10 @@ class MergeConflict:
     item_refs: tuple[tuple[str, str], ...]
     detail: str
     anchor_id: str | None
+    """The pinned passage's quote, when the anchor was pinned servable —
+    the conflict picker's fork side. Never text from a withheld pin (the
+    anchors CHECK keeps quote NULL there)."""
+    anchor_quote: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -363,13 +367,13 @@ def _detect_conflicts(
     # degradation).
     if highlights_table_exists(con):
         anchors = con.execute(
-            "SELECT anchor_id, investigation_id, anchor_node_text_sha256 "
-            "FROM anchored_highlights "
+            "SELECT anchor_id, investigation_id, anchor_node_text_sha256, "
+            "anchor_quote FROM anchored_highlights "
             "WHERE document_id = ? AND owner_user_id = ? AND status = 'active' "
             "AND investigation_id IS NOT NULL",
             [fork_document_id, owner_user_id],
         ).fetchall()
-        for anchor_id, anchor_inv, anchor_hash in anchors:
+        for anchor_id, anchor_inv, anchor_hash, anchor_quote in anchors:
             for item in items:
                 if item.investigation_id != str(anchor_inv):
                     continue
@@ -391,6 +395,9 @@ def _detect_conflicts(
                             "than this item"
                         ),
                         anchor_id=str(anchor_id),
+                        anchor_quote=(
+                            None if anchor_quote is None else str(anchor_quote)
+                        ),
                     )
                 )
 
@@ -618,6 +625,7 @@ def commit_fork_merge(
                     item_refs=tuple(tuple(ref) for ref in c["item_refs"]),
                     detail=str(c["detail"]),
                     anchor_id=c.get("anchor_id"),
+                    anchor_quote=c.get("anchor_quote"),
                 )
                 for c in json.loads(conflicts_json)
             ],
@@ -754,6 +762,7 @@ def commit_fork_merge(
                             "item_refs": [list(ref) for ref in c.item_refs],
                             "detail": c.detail,
                             "anchor_id": c.anchor_id,
+                            "anchor_quote": c.anchor_quote,
                         }
                         for c in preview.conflicts
                     ],

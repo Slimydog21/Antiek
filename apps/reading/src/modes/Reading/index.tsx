@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { List as ListIcon } from "lucide-react";
 
@@ -26,6 +26,10 @@ import Attribution from "./Attribution";
 import ReadingCompanion from "./ReadingCompanion";
 import ForkProvenance from "./ForkProvenance";
 import ResearchThis from "./ResearchThis";
+
+// SPR-03 (thread-merge + document fork): the composed evidence view is a
+// heavy overlay — lazy, never in the entry chunk.
+const ComposeView = lazy(() => import("../DeepResearchWorkspace/ComposeView"));
 import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
@@ -117,6 +121,13 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   const [housePool, setHousePool] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // SPR-03: the composed evidence view overlay, opened from the fork's
+  // "bring in outcomes" surface (the companion knows the threads + fork).
+  const [composeOverlay, setComposeOverlay] = useState<{
+    investigationIds: string[];
+    forkId: string;
+    forkDocumentId: string;
+  } | null>(null);
 
   const loadBook = useCallback(async (isCancelled: () => boolean) => {
     setLoading(true);
@@ -1244,8 +1255,41 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
           title={book.title}
           readingThreadId={readingThreadId}
           pageIndex={pageIndex}
+          onComposeOutcomes={setComposeOverlay}
         />
       </div>
+
+      {/* SPR-03: the composed evidence view as an overlay over the reader —
+          review outcomes from the book's threads side by side and merge the
+          chosen ones into this fork. A committed merge reloads the book (the
+          fork's body changed). */}
+      {composeOverlay && (
+        <div
+          data-compose-overlay
+          className="fixed inset-0 z-30 overflow-y-auto bg-ice-0/95 dark:bg-charcoal-2/95"
+        >
+          <div className="mx-auto max-w-4xl px-6 py-6">
+            <Suspense
+              fallback={
+                <p role="status" className="font-serif text-sm text-ink-mute dark:text-moonlight">
+                  Opening the side-by-side review…
+                </p>
+              }
+            >
+              <ComposeView
+                investigationIds={composeOverlay.investigationIds}
+                fork={{
+                  forkId: composeOverlay.forkId,
+                  documentId: composeOverlay.forkDocumentId,
+                  title: book.title,
+                }}
+                onClose={() => setComposeOverlay(null)}
+                onMerged={reload}
+              />
+            </Suspense>
+          </div>
+        </div>
+      )}
 
     </div>
   );
