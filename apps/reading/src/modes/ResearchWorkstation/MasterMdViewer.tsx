@@ -284,10 +284,10 @@ export default function MasterMdViewer({
   }, [synthesis]);
 
   return (
-    <div className="bg-ice-0 dark:bg-charcoal-2">
+    <div className="reading-page">
       <article
         ref={articleRef}
-        className="max-w-3xl mx-auto px-6 py-10 font-serif text-ink dark:text-bright">
+        className="max-w-3xl mx-auto px-6 py-10 font-serif">
         {/* Header band */}
         <header className="mb-8 pb-6 border-b border-rule dark:border-charcoal-1">
           {synthesis.question && (
@@ -1128,4 +1128,3 @@ function ReusedInsightLink({ insight }: { insight: ReusedInsight }) {
   }
   return <span className="text-ink-soft dark:text-starlight">{label}</span>;
 }
-
