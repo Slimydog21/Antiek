@@ -958,6 +958,17 @@
           become: false
           tags: [verify]
 
+        # antiek_target_sha is validated as a full commit SHA in the pre_tasks,
+        # then used as the release identity this play checks out and publishes.
+        # The post-cutover /health check above and this parity check both require
+        # production to report that same SHA; use check.py's exact-equality mode
+        # (its default when --max-lag-hours is omitted).
+        #
+        # Do NOT resolve or compare against a moving origin/main tip here. Main
+        # may advance after this release was gated, and a tip comparison would
+        # make an unrelated merge fail a healthy deploy and enter rollback. The
+        # scheduled prod_parity.yml alarm owns the lag budget; this deploy gate
+        # verifies only that the release this play pulled is the release served.
         - name: run blocking public parity on the candidate
           ansible.builtin.command:
             cmd: >-
