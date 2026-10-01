@@ -1,0 +1,21 @@
+{
+  "provider": "Krea API",
+  "colorway_source": "h-b-magenta-court.png",
+  "wordmark_source": "k-b-integrated-bold.png",
+  "integrated_wordmark_region": [
+    345,
+    326,
+    532,
+    389
+  ],
+  "magenta": "#943D4A",
+  "rgb": [
+    148,
+    61,
+    74
+  ],
+  "exact_material_pixels": 16706,
+  "shoe_geometry": "All original B shoe pixels outside the exact magenta material correction remain unchanged.",
+  "typography": "Image-integrated lettering inspired by the standard fonts; no vector or text overlay.",
+  "excluded": "Direct font-glyph previews and manual accessory compositor outputs are not selected."
+}

@@ -1,0 +1,17 @@
+{
+  "asset_id": "24765bdf-11b1-47d9-ba14-90514c6dda22",
+  "label": "ai-generated",
+  "provider": "Krea API",
+  "model": "google/nano-banana-pro",
+  "source": "apps/reading/src/brand/workflow-art/interviews-512.png",
+  "source_sha256": "28e4eb327c202df4b7ccee0764f076d9107f777a4c8b902aef6945557bfa1435",
+  "reference_job_id": "d69e1cd7-3680-4076-bb22-c89459bcc189",
+  "prompt": "Image 1 is the EXACT EXISTING Antiek mascot pose to edit. Image 2 is ONLY the approved headband and B sneaker reference. Edit image 1, do NOT substitute the character or pose from image 2. KEEP the existing image 1 coral brain shape, face, expression, hands, gesture, posture, props, outlines, proportions, placement, framing and style. Every prop and both hands must remain exactly present. Make the SAME IMAGE with only these athletic accessories added naturally into the illustration: a narrow green-teal #6ECB8F continuous basketball sweatband across the upper forehead above the eyes, like Alex Caruso, no knots or tails. The headband must say exactly Antiek, bold, fun, simple dark warm-ink hand-drawn lettering integrated into the fabric, like image 2. Full slim legs are muted magenta #943D4A. Give each foot the EXACT B low-profile court sneaker shown in image 2, retaining its cream toe and cream sole, green-teal side panel, original warm-ink A monogram, and muted magenta #943D4A secondary heel, tongue and laces. Keep the shoes small with the same hand-drawn linework, adapt only their angle to the existing pose. Both shoes must remain fully visible. No shoe redesign, extra colors, detached objects, duplicate limbs, floor or shadow. Use a completely FLAT solid warm cream #FC EF DD background, without grain, gradients, shadows or vignette, for precise transparent extraction. The actual mascot linework and shading retain the original illustration quality. Preserve any eye occlusion by props. Keep the exact existing props and expression of image 1.",
+  "requested_at": "2026-10-01T06:27:56.626278+00:00",
+  "preview_only": true,
+  "job_id": "3b51f0f7-3d17-4d79-8f19-f0e0d6c4500a",
+  "status": "completed",
+  "output": "interviews-krea-b.png",
+  "generated_at": "2026-10-01T06:28:19.197Z",
+  "sha256": "3b85b12917faec5bd8a2c3c325f85aaefbf700b136a35e768fc0711b063550c7"
+}
