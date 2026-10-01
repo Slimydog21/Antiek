@@ -1,9 +1,16 @@
+import { Suspense, lazy } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
 import LemonButton from "../lemon/LemonButton";
 import { toast } from "../lemon/LemonToast";
 import { useAuth } from "../../lib/auth";
+import { rootRefForPath } from "../../workspace/routeRef";
+import "./topbar.css";
+
+// A record crumb is named like its tab (title via tabTitles + labelForTab),
+// which loads with the tab-tree chunk, never the entry chunk.
+const RecordCrumb = lazy(() => import("../../workspace/RecordCrumb"));
 
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
@@ -22,7 +29,7 @@ import { useAuth } from "../../lib/auth";
  * S4 ships the default-derived crumbs only; per-route overrides come
  * online as S5+ mode ports happen.
  */
-export type Crumb = { label: string; to?: string };
+export type Crumb = { label: string; to?: string; id?: boolean; record?: boolean };
 
 /** Generate breadcrumbs from the current pathname. */
 function defaultBreadcrumbsFor(pathname: string): Crumb[] {
@@ -30,81 +37,75 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
     return [{ label: "Research" }];
 
   const segments = pathname.split("/").filter(Boolean);
+  // Only labels the slug cannot spell itself. Every other route word reads
+  // as its sentence-case form ("my-research" → "My research", "skill-rules"
+  // → "Skill rules"); a segment with digits is a record id and stays data.
   const known: Record<string, string> = {
-    wrestle: "Wrestle",
-    sources: "Sources",
-    create: "Create",
-    brainstorm: "Brainstorm",
-    notebooks: "Notebooks",
-    notebook: "Notebook",
-    documents: "Documents",
-    billing: "Billing",
-    stats: "Stats",
-    map: "Map",
-    backtest: "Backtest",
-    privacy: "Privacy",
-    pricing: "Pricing",
-    operator: "Operator",
-    outcomes: "Outcomes",
-    replay: "Replay",
-    interview: "Interview",
-    interviews: "Interviews",
     "loop-3": "Loop 3",
-    "skill-rules": "Skill Rules",
-    federation: "Federation",
     "cross-graph": "Cross-graph",
-    citations: "Citations",
-    investigations: "Investigations",
-    payouts: "Payouts",
     trust: "Trust Center",
     inv: "Investigation",
-    // Own Your Mind P0 — the three read-only surfaces (10-p0-implementation-brief.md).
-    explain: "Explain",
-    objective: "Objective",
-    signals: "Signals",
   };
+
+  // A record route's last segment names a record (an investigation, a
+  // book, a piece): it is named like the record's tab, never by its slug
+  // ("inv-finches" read as "Inv finches"). RecordCrumb renders it.
+  const record = rootRefForPath(pathname) !== null;
   const crumbs: Crumb[] = [];
   let acc = "";
-  for (const seg of segments) {
+  for (const [i, seg] of segments.entries()) {
     acc += "/" + seg;
-    const label = known[seg] ?? seg;
-    crumbs.push({ label, to: acc });
+    if (record && i === segments.length - 1) {
+      crumbs.push({ label: seg, to: acc, record: true });
+      continue;
+    }
+    // A route word reads as a sentence-case label ("my-research" → "My
+    // research"); a segment carrying digits is a record id and stays
+    // verbatim, set as data.
+    const id = !known[seg] && /\d/.test(seg);
+    const label = known[seg] ?? (id ? seg : seg[0].toUpperCase() + seg.slice(1).replace(/-/g, " "));
+    crumbs.push({ label, to: acc, id });
   }
   return crumbs;
 }
 
 export function Topbar() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { state, signOut } = useAuth();
   const crumbs = defaultBreadcrumbsFor(pathname);
+  // The account shows the first letter of the signed-in email; with no
+  // email, a drawn person glyph. Never an emoji (they render per-OS).
+  const email = state.status === "authenticated" ? state.identity.email : null;
+  const initial = email?.trim()[0]?.toUpperCase();
 
   return (
     <header
-      className="h-11 shrink-0 flex items-center gap-3 px-4 bg-ice-1 dark:bg-charcoal-2 border-b-edge border-sun"
+      className="h-11 shrink-0 flex items-center gap-3 px-4 bg-card border-b border-hairline"
       role="banner"
     >
-      {/* breadcrumbs */}
+      {/* breadcrumbs: the page named in words (sans); ids stay data (mono) */}
       <nav aria-label="Breadcrumb" className="flex-1 min-w-0">
-        <ol className="flex items-center gap-1.5 text-xs font-mono text-ink-soft dark:text-moonlight overflow-x-auto whitespace-nowrap">
+        <ol className="flex items-center gap-1.5 text-sm text-2 overflow-x-auto whitespace-nowrap">
           {crumbs.map((c, i) => (
             <li key={i} className="flex items-center gap-1.5">
               {i > 0 && (
-                <span aria-hidden="true" className="text-ink-mute dark:text-moonlight/60">
+                <span aria-hidden="true" className="text-3">
                   ›
                 </span>
               )}
-              {c.to && i < crumbs.length - 1 ? (
-                <Link
-                  to={c.to}
-                  className="text-ink dark:text-bright hover:underline"
-                >
+              {c.record ? (
+                // While its chunk loads the crumb holds its place, quietly;
+                // never the slug.
+                <Suspense fallback={<span className="text-3" aria-hidden="true">…</span>}>
+                  <RecordCrumb pathname={pathname} search={search} />
+                </Suspense>
+              ) : c.to && i < crumbs.length - 1 ? (
+                <Link to={c.to} className={`hover:text-1 hover:underline ${c.id ? "font-mono text-xs" : ""}`}>
                   {c.label}
                 </Link>
               ) : (
-                <span className="text-ink dark:text-bright font-semibold">
-                  {c.label}
-                </span>
+                <span className={`text-1 font-medium ${c.id ? "font-mono text-xs" : ""}`}>{c.label}</span>
               )}
             </li>
           ))}
@@ -121,8 +122,14 @@ export function Topbar() {
       <LemonDropdown
         align="below-right"
         trigger={
-          <LemonButton variant="tertiary" size="sm" aria-label="Account">
-            👤
+          <LemonButton variant="tertiary" size="sm" aria-label="Account" className="!px-1">
+            {initial ? (
+              <span className="grid h-6 w-6 place-items-center rounded-full bg-inset font-sans text-xs font-semibold text-1">
+                {initial}
+              </span>
+            ) : (
+              <span className="acct-glyph" aria-hidden="true" />
+            )}
           </LemonButton>
         }
       >

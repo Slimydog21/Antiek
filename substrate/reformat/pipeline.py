@@ -136,11 +136,16 @@ def _source_blocks(con: Any, document_id: str, served_text: str) -> list[SourceB
     index = 0
     for chunk in anchor_map.chunks:
         chunk_text = body[chunk.body_start : chunk.body_end]
-        cursor = 0
-        for raw in _WS_PARAGRAPHS.split(chunk_text):
-            start = cursor
-            end = cursor + len(raw)
-            cursor = end + 2
+        # Split on paragraph separators of ANY length (a run of \n{2,}),
+        # advancing by the separator's ACTUAL span so later blocks' scalars
+        # never drift — a citation must slice exactly the text it names.
+        parts: list[tuple[int, str]] = []
+        last = 0
+        for separator in _WS_PARAGRAPHS.finditer(chunk_text):
+            parts.append((last, chunk_text[last : separator.start()]))
+            last = separator.end()
+        parts.append((last, chunk_text[last:]))
+        for start, raw in parts:
             stripped = raw.strip()
             if not stripped or stripped.startswith("## "):
                 continue
@@ -234,6 +239,10 @@ def reformat_document(
         raise ReformatError(f"unknown reformat mode: {mode}")
     params = dict(params or {})
     generate = generate_fn or _dispatch_generate
+    # Minted EARLY: the generation's dispatch events carry the thread id
+    # (reformat:{generation_id}) — the engagement that stays in the pane.
+    generation_id = mint_generation_id()
+    params.setdefault("thread_id", f"reformat:{generation_id}")
 
     # 1. The gated read — the ONLY way source text enters the pipeline.
     rcon = connect_read(db_path)
@@ -264,7 +273,6 @@ def reformat_document(
 
     # 3. Verify + class honestly, then write in ONE bounded atomic scope.
     by_index = {b.index: b for b in blocks}
-    generation_id = mint_generation_id()
     derived_document_id = f"drv-{generation_id[4:]}"
 
     out_bites: list[BiteRow] = []
@@ -287,7 +295,8 @@ def reformat_document(
                     f"a bite refs source block {e} which does not exist"
                 ) from e
             source_refs = [
-                json.dumps(b.anchor_ref, sort_keys=True) for b in span_blocks
+                f"corespan:{source_document_id}:{b.chunk_id}:{b.start_scalar}:{b.end_scalar}"
+                for b in span_blocks
             ]
             source_sha = text_sha256(
                 "\n\n".join(b.text for b in span_blocks)
@@ -340,6 +349,19 @@ def reformat_document(
     mostly_generated = null_share > NOVELTY_CEILING_SHARE
 
     with connect_write(db_path, purpose="reformat/write-derived") as con, con.transaction():
+        # The derived id is freshly minted; a row already carrying it is an
+        # anomaly (a pre-seeded or collided id). Refuse the WHOLE write —
+        # never attach chunks or a generation record to a foreign document
+        # through insert-on-conflict's silent skip.
+        collision = con.execute(
+            "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1",
+            [derived_document_id],
+        ).fetchone()
+        if collision is not None:
+            raise ReformatError(
+                f"derived document id collision: {derived_document_id} — "
+                "nothing was written"
+            )
         # The derived document: registered through the rights chokepoint
         # with the parent's rights posture inherited (deny-by-default).
         from substrate.graph.ops import insert_document
@@ -353,12 +375,13 @@ def reformat_document(
             title=f"{source_title or 'A document'} — reformatted",
             raw_text="\n\n".join(derived_paragraphs),
             content_class=source_content_class,
+            owner_user_id=owner_user_id,
             metadata={
                 "derived_from_document_id": source_document_id,
                 "generation_id": generation_id,
                 "provisional": True,
             },
-            on_conflict="ignore",
+            on_conflict="error",
         )
         register_source_document(
             con,

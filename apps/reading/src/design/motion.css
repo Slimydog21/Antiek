@@ -8,7 +8,9 @@
    when the operator has asked the OS to reduce motion, every transition
    and CSS animation collapses to near-zero duration so state changes are
    instant. Function is never lost — the :hover/:active/[data-enter]
-   *end states* still apply, they just stop travelling.
+   *end states* still apply, they just stop travelling. The in-app Motion
+   setting (src/design/theme.ts) can force this on ("Reduce") or lift it
+   ("Full"); other CSS files keep their own OS-level fallbacks.
 
    Brain's pose keyframes (mascot/animated/animations.css) have their own,
    more expressive reduced-motion fallbacks (a static-but-recognisable
@@ -20,13 +22,25 @@
    (the motion scale) + tokens.css (--motion-* vars).
    ============================================================ */
 
+/* The OS asks for less motion, and the in-app Motion setting is not "Full". */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :root:not([data-motion="full"]) *,
+  :root:not([data-motion="full"]) *::before,
+  :root:not([data-motion="full"]) *::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* The in-app Motion setting is "Reduce" (Settings > Appearance; <html
+   data-motion="reduce"), whatever the OS says. */
+:root[data-motion="reduce"] *,
+:root[data-motion="reduce"] *::before,
+:root[data-motion="reduce"] *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
 }

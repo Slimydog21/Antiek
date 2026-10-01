@@ -13,6 +13,7 @@ import type {
   ProjectMatch,
 } from "../../../api/books";
 import { acceptFiling, suggestFiling } from "../../../lib/researchSuggestion";
+import { LoadingState } from "../../../components/states";
 
 /**
  * PersonalSpace — the reader's "personal bed of information that labels itself"
@@ -150,7 +151,7 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
           )}
 
           {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+            <LoadingState variant="inline" label="Opening your readings" />
           )}
 
           {/* M1 empty state — guides the user (rigor #3 a: no crash, no phantom). */}

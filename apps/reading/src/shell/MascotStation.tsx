@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { clampRectToViewport } from "../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import { useViewportTier } from "../workspace/useViewportTier";
 import {
   createMascotStage,
   EmoteView,
@@ -109,6 +110,17 @@ function initialMascotPos(): { x: number; y: number } {
   );
 }
 
+/** The dock's reserved station (NavRail renders `[data-mascot-station]`, a
+ *  64px slot at its trailing end): Brain sits in chrome, never over the
+ *  working area, where he used to cover inputs, cards and the breadcrumb
+ *  (design wave 3). Null outside the shell (stories, tests), where the
+ *  seeded corner above still applies. */
+function dockStation(): { x: number; y: number } | null {
+  // The slot is exactly the mascot's 64px footprint, so its corner is his.
+  const r = document.querySelector("[data-mascot-station]")?.getBoundingClientRect();
+  return r?.width ? { x: Math.round(r.left), y: Math.round(r.top) } : null;
+}
+
 export function MascotStation() {
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
@@ -129,6 +141,9 @@ export function MascotStation() {
   // operator drags him, re-clamped on resize. This is where he lives and where
   // a directed excursion returns him to.
   const stationPos = useRef(initialMascotPos());
+  // TRUE while Brain lives in the dock's station; a drag re-stations him
+  // wherever the operator drops him and ends docking for this session.
+  const docked = useRef(true);
   // The LIVE rendered position (the one source of record). Equal to the station
   // at rest; equals the target button during a choreography excursion; written
   // straight to the DOM during a drag (pointer-capture, like PanelHandle) so
@@ -176,6 +191,11 @@ export function MascotStation() {
   const restGaitRef = useRef<(() => void) | null>(null);
 
   const openTree = useWorkspace((s) => s.open);
+  // The station's element changes with the layout: the inset at lg/xl puts
+  // the rail on the left (DECISIONS C2), which replaces the dock's slot. The
+  // seat effect below re-runs on either, so Brain follows at once.
+  const layoutPreset = useWorkspace((s) => s.layoutPreset);
+  const tier = useViewportTier();
   const setMode = useWorkspace((s) => s.setMode);
   const treeExists = useWorkspace((s) =>
     Boolean(s.panels[PROJECT_TREE_PANEL_ID]),
@@ -202,7 +222,7 @@ export function MascotStation() {
     if (typeof window === "undefined") return;
     const onResize = () => {
       const bounds = { width: window.innerWidth, height: window.innerHeight };
-      stationPos.current = clampRectToViewport(
+      stationPos.current = (docked.current && dockStation()) || clampRectToViewport(
         { ...stationPos.current, width: MASCOT_SIZE, height: MASCOT_SIZE },
         bounds,
       );
@@ -219,6 +239,27 @@ export function MascotStation() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [applyPos]);
+
+  // Seat Brain on the dock's station once the shell has laid out (the slot
+  // does not exist during this component's first render). Layout effect, so
+  // the first painted frame already shows him docked. The dock is observed
+  // too: the shell can settle after mount (or a phone's URL bar can change
+  // the viewport) without a window resize, and he must stay seated.
+  useLayoutEffect(() => {
+    const seat = () => {
+      const d = docked.current && dockStation();
+      if (!d || dragStart.current) return;
+      stationPos.current = d;
+      if (!roamPaused.current) pos.current = { ...d };
+      applyPos();
+    };
+    seat();
+    const dock = document.querySelector("[data-mascot-station]")?.parentElement;
+    if (!dock || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(seat);
+    ro.observe(dock);
+    return () => ro.disconnect();
+  }, [applyPos, layoutPreset, tier]);
 
   // ── The stroll primitive (shared by directed excursions + return-home). ──
   // Walk Brain to (x,y) over `durationMs`, gait on, position eased. The SINGLE
@@ -503,6 +544,7 @@ export function MascotStation() {
       // Commit the drop as the new STATION home (re-station), so Brain lives
       // where the operator put him and future excursions return there.
       stationPos.current = { ...pos.current };
+      if (moved.current) docked.current = false;
     }
     dragStart.current = null;
   }, []);

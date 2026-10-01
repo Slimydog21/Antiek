@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { LemonButton } from "../../components/lemon";
 import { ErrorBanner } from "../../components/lemon/ErrorBanner";
 
 /**
@@ -32,8 +33,11 @@ interface SkillRule {
 const CONFIDENCE_ORDER = ["high", "moderate", "low"] as const;
 
 export default function SkillRules() {
-  const [rules, setRules] = useState<SkillRule[]>([]);
+  // null until the listing answers, and again after a failed load: the
+  // counters and the list are unknown then, never zero or empty.
+  const [rules, setRules] = useState<SkillRule[] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  // Raw failure detail; shown only as a title, never as the sentence.
   const [error, setError] = useState<string | null>(null);
   const [domain, setDomain] = useState<string>("");
   const [confidence, setConfidence] = useState<string>("");
@@ -55,6 +59,7 @@ export default function SkillRules() {
       const data = await resp.json();
       setRules(data.rules ?? []);
     } catch (e: unknown) {
+      setRules(null);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
@@ -66,6 +71,7 @@ export default function SkillRules() {
   }, [reload]);
 
   const counts = useMemo(() => {
+    if (rules === null) return null;
     const acc = { high: 0, moderate: 0, low: 0 } as Record<string, number>;
     for (const r of rules) {
       acc[r.confidence] = (acc[r.confidence] ?? 0) + 1;
@@ -98,7 +104,7 @@ export default function SkillRules() {
                 className="border border-rule dark:border-charcoal-1 rounded-md px-4 py-3 text-center"
               >
                 <p className="text-2xl font-serif text-ink dark:text-bright">
-                  {counts[c] ?? 0}
+                  {counts ? (counts[c] ?? 0) : loading ? "…" : "—"}
                 </p>
                 <p className="text-xxs font-mono text-shadow-1 dark:text-moonlight uppercase">
                   {c} confidence
@@ -153,8 +159,11 @@ export default function SkillRules() {
           </section>
 
           {error && (
-            <ErrorBanner>
-              {error}
+            <ErrorBanner className="flex flex-wrap items-center justify-between gap-3">
+              <span title={error}>Skill rules didn't load.</span>
+              <LemonButton variant="secondary" size="sm" type="button" onClick={() => void reload()}>
+                Try again
+              </LemonButton>
             </ErrorBanner>
           )}
 
@@ -162,7 +171,7 @@ export default function SkillRules() {
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
-          {!loading && rules.length === 0 && (
+          {!loading && rules !== null && rules.length === 0 && (
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">
               No promoted rules yet. The accumulator needs at least
               3 distinct contributors before a rule clears the
@@ -171,7 +180,7 @@ export default function SkillRules() {
           )}
 
           <section className="space-y-3">
-            {rules.map((r) => (
+            {rules?.map((r) => (
               <Link
                 key={r.rule_id}
                 to={`/skill-rules/${encodeURIComponent(r.rule_id)}`}

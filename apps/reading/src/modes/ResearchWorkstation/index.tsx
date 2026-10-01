@@ -116,6 +116,11 @@ export default function ResearchWorkstation() {
       : []),
   ];
 
+  // "/" and "/inv/:investigationId" render this component at the same tree
+  // position, so React keeps ONE instance across /inv/a → /inv/b. PanelHost
+  // keys its starters on the route params (MS-01 F5 generalized into
+  // PanelHost, GAPS §8 G-X1): the old investigation's chat closes and the
+  // new one's opens without a per-route React key here.
   return (
     <PanelHost starters={starters}>
       {investigationId ? (

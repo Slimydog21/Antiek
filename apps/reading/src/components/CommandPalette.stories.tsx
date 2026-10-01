@@ -10,8 +10,8 @@ import CommandPalette, { rankEntries, type PaletteEntry } from "./CommandPalette
  * operator types to fuzzy-search, arrow-keys to navigate, Enter to
  * dispatch.
  *
- * Stories use a tiny dispatcher that fires the keyboard shortcut on
- * mount so the palette renders open. Real interaction (typing, arrow
+ * Stories dispatch the palette's toggle event on mount so the palette
+ * renders open. Real interaction (typing, arrow
  * keys, Enter) works in the Storybook canvas without any extra wiring.
  *
  * Per master-spec §13.3 retrieval-time gates: the palette only sees
@@ -20,12 +20,9 @@ import CommandPalette, { rankEntries, type PaletteEntry } from "./CommandPalette
  */
 function AutoOpen() {
   useEffect(() => {
-    const evt = new KeyboardEvent("keydown", {
-      key: "k",
-      metaKey: true,
-      bubbles: true,
-    });
-    window.dispatchEvent(evt);
+    // The shell's keymap owns ⌘K and dispatches this event; there is no
+    // AppShell in a story, so dispatch it directly.
+    window.dispatchEvent(new CustomEvent("antiek:palette:toggle"));
   }, []);
   return null;
 }
