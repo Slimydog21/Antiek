@@ -1044,29 +1044,49 @@ def _connect_write_after_process_gate(
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
         assert open_error is not None
-        if _external_duckdb_lock_conflict(
-            open_error
-        ) or _SAME_FILE_DIFFERENT_CONFIG in str(open_error):
-            # BOTH retry conditions above must translate here. The loop retries
-            # the external lock conflict AND the same-file/different-config
-            # error; translating only the first left an exhausted
-            # `_SAME_FILE_DIFFERENT_CONFIG` retry raising a raw
-            # `duckdb.ConnectionException`, which no caller catches —
-            # `ad_routes.frame_telemetry` handles `WriteLockTimeout` and turns it
-            # into a retryable 503, so the raw raise became a 500 instead
-            # (measured on the live box 2026-10-01: 169 x 500 on that route in
-            # 60 minutes, every one ending in this error).
+        external_conflict = _external_duckdb_lock_conflict(open_error)
+        # BOTH retry conditions above must translate here. The loop retries the
+        # external lock conflict AND the same-file/different-config error;
+        # translating only the first left an exhausted
+        # `_SAME_FILE_DIFFERENT_CONFIG` retry raising a raw
+        # `duckdb.ConnectionException`, which no caller catches —
+        # `ad_routes.frame_telemetry` handles `WriteLockTimeout` and turns it
+        # into a retryable 503, so the raw raise became a 500 instead (measured
+        # on the live box 2026-10-01: 169 x 500 on that route in 60 minutes,
+        # every one ending in this error).
+        #
+        # The two conditions are NOT the same fault, and the message must say
+        # which one fired. `_SAME_FILE_DIFFERENT_CONFIG` is raised by DuckDB's
+        # in-process instance cache: the conflicting handle is INSIDE THIS
+        # PROCESS (a read-only sibling, a leaked handle, or a differently
+        # configured one), so "another process" sends an operator to `lsof` for
+        # a process that does not exist. Only the external conflict names a
+        # peer — and DuckDB's own message for that case carries its PID. The
+        # distinction also belongs in the write_log event: "file lock timeout"
+        # conflated the two (finding verified by experiment in review).
+        if external_conflict or _SAME_FILE_DIFFERENT_CONFIG in str(open_error):
             _log_write_event(
                 db_path,
                 purpose or "-",
                 time.monotonic() - acquire_start,
                 success=False,
-                error=f"DuckDB file lock timeout after {timeout_s}s",
+                error=(
+                    f"DuckDB file lock timeout after {timeout_s}s"
+                    if external_conflict
+                    else f"DuckDB in-process handle conflict after {timeout_s}s"
+                ),
                 max_wait_s=0.0,
             )
+            if external_conflict:
+                raise WriteLockTimeout(
+                    f"Could not acquire DuckDB file lock on {db_path} within "
+                    f"{timeout_s}s; another process holds a conflicting "
+                    f"connection."
+                ) from open_error
             raise WriteLockTimeout(
-                f"Could not acquire DuckDB file lock on {db_path} within "
-                f"{timeout_s}s; another process holds a conflicting connection."
+                f"Could not open DuckDB for write on {db_path} within "
+                f"{timeout_s}s; this process already holds a conflicting "
+                f"DuckDB handle."
             ) from open_error
         raise open_error
     return LockedConnection(
