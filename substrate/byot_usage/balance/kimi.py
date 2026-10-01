@@ -88,7 +88,8 @@ def fetch_kimi_balance(
             raise ValueError("balance request failed")
         info = data["data"]
         available = _usd_number(info["available_balance"])
-        _usd_number(info["voucher_balance"])
+        if _usd_number(info["voucher_balance"]) < 0:
+            raise ValueError("negative voucher balance")
         _usd_number(info["cash_balance"])
     except (KeyError, TypeError, ValueError) as exc:
         return BalanceSnapshot(

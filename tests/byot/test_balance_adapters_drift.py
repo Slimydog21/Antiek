@@ -259,6 +259,20 @@ def test_kimi_zero_available_is_not_call_eligible() -> None:
     assert result.native_available is False
 
 
+def test_kimi_negative_voucher_is_unavailable() -> None:
+    http = _FakeHTTP(_FakeResponse({
+        "code": 0,
+        "status": True,
+        "scode": "0x0",
+        "data": {"available_balance": 75.25, "voucher_balance": -1.0, "cash_balance": 76.25},
+    }))
+    result = fetch_kimi_balance(
+        SecretStr("sk-test-key"), base_url="https://api.moonshot.ai/v1", http=http,
+    )
+    assert result.kind == "unavailable"
+    assert result.balance_usd is None
+
+
 def test_kimi_unbounded_numeric_amount_is_unavailable() -> None:
     http = _FakeHTTP(_FakeResponse({
         "code": 0,
