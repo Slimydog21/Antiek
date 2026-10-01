@@ -255,7 +255,7 @@ export default function TalkToBook({
         data-testid="talk-to-book-bookmark"
         onClick={() => setOpen(true)}
         title="Thought partner — this book"
-        className="fixed bottom-6 right-6 z-30 flex min-h-11 items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-serif text-white shadow-z3 hover:opacity-90 dark:bg-bright dark:text-ink dark:shadow-z3-night"
+        className="flex min-h-11 sm:min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-ink px-3 py-1 text-xs font-serif text-white hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun dark:bg-bright dark:text-ink"
       >
         Thought partner
         {turnCount > 0 && (
@@ -270,7 +270,7 @@ export default function TalkToBook({
   return (
     <aside
       data-testid="talk-to-book"
-      className="fixed bottom-3 left-3 right-3 z-30 flex max-h-[75vh] flex-col rounded-hog-lg border border-rule bg-ice-0 shadow-z3 dark:border-charcoal-1 dark:bg-charcoal-2 dark:shadow-z3-night sm:bottom-6 sm:left-auto sm:right-6 sm:w-96"
+      className="absolute bottom-3 left-3 right-3 z-30 flex max-h-[75%] flex-col rounded-hog-lg border border-rule bg-ice-0 shadow-z3 dark:border-charcoal-1 dark:bg-charcoal-2 dark:shadow-z3-night reader-md:bottom-6 reader-md:left-auto reader-md:right-6 reader-md:w-96"
       aria-label="Thought partner for this book"
     >
       <header className="flex items-center justify-between gap-2 border-b border-rule dark:border-charcoal-1 px-3 py-2">

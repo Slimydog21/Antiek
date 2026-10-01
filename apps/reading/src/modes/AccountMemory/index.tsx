@@ -176,7 +176,7 @@ export default function AccountMemory() {
 
           {error && (
             <p
-              className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded"
+              className="text-sm text-emperor border border-red-200 bg-red-50 dark:border-danger/40 dark:bg-danger/10 px-3 py-2 rounded"
               data-testid="memory-error"
               role="alert"
             >

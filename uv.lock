@@ -293,7 +293,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'embedding'", specifier = ">=3.0" },
     { name = "structlog", specifier = ">=24.1" },
     { name = "tenacity", specifier = ">=9.0" },
-    { name = "turbopuffer", marker = "extra == 'turbopuffer-shadow'", specifier = "==2.9.0" },
+    { name = "turbopuffer", marker = "extra == 'turbopuffer-shadow'", specifier = "==2.10.1" },
     { name = "types-python-dateutil", marker = "extra == 'dev'" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "types-requests", marker = "extra == 'dev'" },
@@ -3901,7 +3901,7 @@ wheels = [
 
 [[package]]
 name = "turbopuffer"
-version = "2.9.0"
+version = "2.10.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -3915,9 +3915,9 @@ dependencies = [
     { name = "typing-extensions", version = "4.15.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
     { name = "typing-extensions", version = "4.16.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.15'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/c1/7f9b85af2abeb5c48d946ebe98c364b00b336d27e0437c37dd4a626f1ac7/turbopuffer-2.9.0.tar.gz", hash = "sha256:3508a93cf6fea63ad865c71a69ec2b7ec0d9a82f431982bfeb5f09e5941438dc", size = 353969, upload-time = "2026-08-21T14:15:41.685Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c5/9c/0a8de2b0e8e6f8fecea4c9f06b3f80f5e9a21baaccbd5295510d15e94131/turbopuffer-2.10.1.tar.gz", hash = "sha256:2d0cbd0c4aa4a146c5530bb503beec5b05c75b99276f1fa7d39fffd4fca91f24", size = 358180, upload-time = "2026-09-19T14:42:25.816Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/46/24c688527bb41a5780edbc58311e7f653ff4675254e15c4d3afef3f94114/turbopuffer-2.9.0-py3-none-any.whl", hash = "sha256:2eb501184b2d52ce6b8210ec41cba9912c5589c311d971fcbacaffcf82460981", size = 141745, upload-time = "2026-08-21T14:15:40.64Z" },
+    { url = "https://files.pythonhosted.org/packages/75/39/0ddb9fc1f0ffaba7d62d80ab2925e45b0912e5c6ea88d183cbea80924cf5/turbopuffer-2.10.1-py3-none-any.whl", hash = "sha256:5c9932533bb9869deeb6daf38f66fe69771c1ddc10e2941b0f5a43f87920a570", size = 147404, upload-time = "2026-09-19T14:42:27.088Z" },
 ]
 
 [[package]]
