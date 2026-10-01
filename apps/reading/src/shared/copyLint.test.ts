@@ -45,9 +45,28 @@ const SCAN_DIRS = ["modes", "shell", "components"].map((d) => join(ROOT, d));
  * Comparison is by `(relpath, rule, matched)` with MULTIPLICITY preserved: the first N
  * occurrences of a triple are grandfathered and any beyond are new, so a genuinely
  * duplicated leak still fails.
+ *
+ * ── WHAT THIS DOES *NOT* MAKE INSENSITIVE, stated because a critic found the header
+ *    narrower than the behaviour ────────────────────────────────────────────────
+ * The PATH is still part of the key. Moving a grandfathered leak from one file to
+ * another therefore still reports it as NEW, and that is deliberate: relocating a
+ * leak is a different decision about a different file, and silently following it
+ * would let a leak migrate into a file with no baseline entry. It is only the LINE
+ * that is ignored. A reader who takes "line-insensitive" to mean "location-
+ * insensitive" will be surprised, so it is said here instead of inferred.
+ *
+ * A TAB inside a matched value would truncate the key and the report line, as the
+ * same critic noted. No live baseline entry contains one; if the patterns ever
+ * start matching across a tab, re-mint and split on the first two tabs instead.
  */
 
-/** The line-insensitive key: `relpath\t<rule>\t<matched>`. */
+/**
+ * The line-insensitive key: `relpath\t<rule>\t<matched>`.
+ *
+ * Splits on the LAST colon, which is correct for a POSIX `path:line` locator and
+ * would be wrong for a path containing a colon. The scan roots are relative paths
+ * under src/, so none does; noted rather than guarded.
+ */
 function keyOf(entry: string): string {
   const [loc, ruleId, matched] = entry.split("\t");
   const path = loc.slice(0, loc.lastIndexOf(":"));
