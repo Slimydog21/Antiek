@@ -390,12 +390,8 @@ function scan(): Finding[] {
  * by line, so edits nearby do not churn it.
  */
 const PRE_EXISTING = new Set([
-  "components/ChatInput.tsx | dark:text-moonlight on dark:bg-slate-1", // [3.05] now 4.35
-  "components/ModelPicker.tsx | dark:text-moonlight on dark:bg-charcoal-1 > dark:bg-sun/10", // [3.08] now 4.39
   "components/ModelPicker.tsx | dark:text-moonlight on dark:bg-charcoal-1 > dark:bg-sun/10 > bg-moonlight/15", // [2.63] now 3.54
   "modes/Multimedia/index.tsx | text-ink on dark:bg-charcoal-2 > bg-sun/10", // [1.44] now 1.44
-  "modes/Notebook/SlashMenu.tsx | dark:text-moonlight on dark:bg-charcoal-2 > dark:bg-sun/15", // [2.39] now 3.41
-  "modes/Reading/PersonalSpace/index.tsx | dark:text-moonlight on dark:bg-charcoal-2 > bg-sun/10", // [2.75] now 3.92
   // interaction states
   "components/AdSlot/AdSlot.tsx | hover:text-ink on dark:bg-charcoal-2", // [1.13] now 1.13
   "components/ChatInput.tsx | dark:text-moonlight on hover:bg-shadow-2", // [2.02] now 2.87

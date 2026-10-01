@@ -1,0 +1,17 @@
+{
+  "asset_id": "cf31aa6b-52da-4676-9d66-fc358d02a02a",
+  "label": "ai-generated",
+  "provider": "Krea API",
+  "model": "google/nano-banana-pro",
+  "source": "apps/reading/src/brand/mascot-brain/blink_closed_transparent.png",
+  "source_sha256": "61c8421b2b950829f696f5d614cb250e78dad45ecfb1346545cd96cb3b2e3c93",
+  "reference_job_id": "d69e1cd7-3680-4076-bb22-c89459bcc189",
+  "prompt": "Image 1 is the EXACT EXISTING Antiek mascot pose to edit. Image 2 is ONLY the approved headband and B sneaker reference. Edit image 1, do NOT substitute the character or pose from image 2. KEEP the existing image 1 coral brain shape, face, expression, hands, gesture, posture, props, outlines, proportions, placement, framing and style. Every prop and both hands must remain exactly present. Make the SAME IMAGE with only these athletic accessories added naturally into the illustration: a narrow green-teal #6ECB8F continuous basketball sweatband across the upper forehead above the eyes, like Alex Caruso, no knots or tails. The headband must say exactly Antiek, bold, fun, simple dark warm-ink hand-drawn lettering integrated into the fabric, like image 2. Full slim legs are muted magenta #943D4A. Give each foot the EXACT B low-profile court sneaker shown in image 2, retaining its cream toe and cream sole, green-teal side panel, original warm-ink A monogram, and muted magenta #943D4A secondary heel, tongue and laces. Keep the shoes small with the same hand-drawn linework, adapt only their angle to the existing pose. Both shoes must remain fully visible. No shoe redesign, extra colors, detached objects, duplicate limbs, floor or shadow. Use a completely FLAT solid warm cream #FC EF DD background, without grain, gradients, shadows or vignette, for precise transparent extraction. The actual mascot linework and shading retain the original illustration quality. Preserve any eye occlusion by props. Both eyes remain CLOSED exactly like image 1. Retain the idle pose.",
+  "requested_at": "2026-10-01T06:25:58.487971+00:00",
+  "preview_only": true,
+  "job_id": "2bf2019c-2116-44b5-8841-f7a48d5ccea1",
+  "status": "completed",
+  "output": "blink-krea-b.png",
+  "generated_at": "2026-10-01T06:26:20.922Z",
+  "sha256": "3197814f2b594bba49ad217158a063d5dd1c9407f68486c32ba56a98e187dbd0"
+}
