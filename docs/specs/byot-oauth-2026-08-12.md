@@ -103,14 +103,18 @@ the official CLI own it.
 ### 3. Anthropic (Claude) — PKCE Authorization-Code Flow (Hosted Redirect)
 
 **Module:** `runtime/byok/anthropic_oauth.py`
-**Client:** Claude Code OAuth client (`9d1c250a-e61b-44d9-88ed-5944d1962f5e`)
+**Client:** ~~Claude Code OAuth client~~ — **retired 2026-09-29.** This spec described reusing
+the Claude Code registration. That identifier has been removed from the tree and the flow is gated
+behind `ANTIEK_BYOK_CLAUDE=1`; it now requires the operator's own registration
+(`ANTIEK_ANTHROPIC_OAUTH_CLIENT_ID` / `ANTIEK_ANTHROPIC_OAUTH_CLIENT_SECRET`). See the superseding
+note in `PR-REVIEW-2026-08-12.md`.
 
 | Property | Value |
 |---|---|
 | Flow | PKCE authorization-code (RFC 7636 + RFC 6749 §4.1) |
 | Authorization endpoint | `https://claude.ai/oauth/authorize` |
 | Token endpoint | `https://console.anthropic.com/v1/oauth/token` |
-| Client ID | `9d1c250a-e61b-44d9-88ed-5944d1962f5e` |
+| Client ID | *(retired 2026-09-29 — operator supplies their own)* |
 | Scopes | `org:create_api_key user:profile user:inference` |
 | Origin pin | `*.anthropic.com` |
 | Expiry | `expires_in` (opaque token, not JWT) |
@@ -271,7 +275,7 @@ Each module exposes the same surface (mirroring `grok_oauth.py`):
 - Codex CLIENT_ID: `app_EMoamEEZ73f0CkXaXp7hrann` (from `codex-rs/login/src/auth/manager.rs:1655`)
 - Codex token endpoint: `https://auth.openai.com/oauth/token` (from `codex-rs/login/src/auth/manager.rs:192`)
 - Anthropic OAuth flow: `https://gist.github.com/cedws/3a24b2c7569bb610e24aa90dd217d9f2`
-- Anthropic client ID: `9d1c250a-e61b-44d9-88ed-5944d1962f5e`
+- Anthropic client ID: *(retired 2026-09-29 — see PR-REVIEW-2026-08-12.md)*
 - Anthropic token endpoint: `https://console.anthropic.com/v1/oauth/token`
 - T3Code: `https://github.com/pingdotgg/t3code` (audited at `52e5a75a872289040df85621d7a82ea9cba05182`)
 - Antiek ADR: [`docs/decisions/provider-consumer-oauth-boundary.md`](../decisions/provider-consumer-oauth-boundary.md)

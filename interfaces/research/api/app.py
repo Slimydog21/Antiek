@@ -555,6 +555,11 @@ class InvestigationSummary(BaseModel):
     # translates this into the "found by the loop" badge — the raw policy_id is
     # never sent to the client, only this honest boolean.
     spawned_by_daemon: bool = False
+    # LB-2 (A1c-H1 / R8): the source document this investigation reads.
+    # Optional and additive — null when the investigation has no document
+    # (daemon-spawned or legacy runs). The frontend's source-document
+    # affordance (companionStore.sourceDocumentOf) resolves against this.
+    document_id: str | None = None
 
 
 class InvestigationListResponse(BaseModel):
@@ -675,6 +680,8 @@ class InvestigationStatusResponse(BaseModel):
     # Source-pack intent recorded on the start event. Empty for legacy runs
     # and for requests that did not choose a source pack; never recomputed.
     source_policy: list[str] = Field(default_factory=list)
+    # LB-2: parity with InvestigationSummary — the source document, or null.
+    document_id: str | None = None
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -2957,6 +2964,14 @@ def create_app(
         completed_action = ActionType.INVESTIGATION_COMPLETED.value
         failed_action = ActionType.INVESTIGATION_FAILED.value
 
+        # LB-2: the source document (envelope field on any row).
+        doc_id: str | None = None
+        for r in rows:
+            _doc = r.get("document_id")
+            if isinstance(_doc, str) and _doc.strip():
+                doc_id = _doc.strip()
+                break
+
         # Walk newest-first to find the latest phase, latest delivered,
         # and any terminal verdict.
         last_phase: int | None = None
@@ -3019,6 +3034,7 @@ def create_app(
                 rubric_score=rubric_score,
                 research_tier=research_tier,
                 source_policy=source_policy,
+                document_id=doc_id,
             )
 
         return InvestigationStatusResponse(
@@ -3030,6 +3046,7 @@ def create_app(
             rubric_score=rubric_score,
             research_tier=research_tier,
             source_policy=source_policy,
+            document_id=doc_id,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────
@@ -3118,6 +3135,7 @@ def create_app(
             question: str | None = None
             started_at: str | None = None
             completed_at: str | None = None
+            document_id: str | None = None
             cost_total = 0.0
             terminal_status = "in_progress"
             parent_inv_id: str | None = None
@@ -3182,6 +3200,10 @@ def create_app(
                 elif at == "dispatch.call":
                     with contextlib.suppress(TypeError, ValueError):
                         cost_total += float(payload.get("cost_usd", 0.0))
+                if document_id is None:
+                    _doc = r.get("document_id")
+                    if isinstance(_doc, str) and _doc.strip():
+                        document_id = _doc.strip()
 
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)
@@ -3195,6 +3217,7 @@ def create_app(
                 cost_usd_total=round(cost_total, 6),
                 parent_investigation_id=parent_inv_id,
                 spawned_by_daemon=spawned_by_daemon,
+                document_id=document_id,
             ))
 
         # Derive each session container's status from its leaves (the same
