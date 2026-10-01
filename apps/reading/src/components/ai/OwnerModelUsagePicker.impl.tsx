@@ -14,6 +14,7 @@ import {
 import type {
   InventoryRow,
   ModelInventory,
+  OwnerModelController,
 } from "../../hooks/useOwnerModelController";
 type ReadyInventory = Extract<ModelInventory, { kind: "ready" }>;
 type BalanceRead =
@@ -34,6 +35,7 @@ interface Metrics {
   balances: ReadonlyMap<string, BalanceRead>;
   receivedAt: number | null;
 }
+const alwaysCurrent = () => true;
 const executable = (row: ModelUsagePickerRow) =>
   row.enabled &&
   row.key_present &&
@@ -42,15 +44,72 @@ const executable = (row: ModelUsagePickerRow) =>
   row.pricing_status === "known" &&
   row.hard_ceiling_eligible &&
   row.execution_status === "executable";
+type PickerPresentation = Pick<
+  Parameters<typeof ModelUsagePickerView>[0],
+  | "rows"
+  | "value"
+  | "valueModelId"
+  | "loading"
+  | "loadError"
+  | "triggerLabel"
+  | "defaultSelected"
+  | "includeDefault"
+>;
+function pickerPresentation({
+  inventory,
+  selection,
+  resourceAvailable,
+  inventoryCurrent,
+  allowHouse,
+}: {
+  inventory: ModelInventory;
+  selection: OwnerModelController["selection"];
+  resourceAvailable: boolean;
+  inventoryCurrent: boolean;
+  allowHouse: boolean;
+}): PickerPresentation {
+  if (!resourceAvailable) {
+    return {
+      rows: [],
+      value: null,
+      valueModelId: null,
+      loading: false,
+      loadError: "Resource unavailable",
+      triggerLabel: "Resource unavailable",
+      defaultSelected: false,
+      includeDefault: false,
+    };
+  }
+  const selected = selection.kind === "saved" ? selection : null;
+  const house = selection.kind === "house";
+  return {
+    rows: inventory.kind === "ready" && inventoryCurrent ? inventory.rows : [],
+    value: selected?.recordId ?? (house ? "" : null),
+    valueModelId: selected?.modelId ?? null,
+    loading: inventory.kind === "loading" || inventory.kind === "suspended",
+    loadError: inventory.kind === "failed" ? "Your models couldn’t load." : null,
+    triggerLabel: house
+      ? "Default (house route)"
+      : selection.kind === "unavailable"
+        ? `Selected model unavailable · ${selection.modelId}`
+        : "Choose model",
+    defaultSelected: house,
+    includeDefault: allowHouse,
+  };
+}
 export default function OwnerModelUsagePickerImpl({
   controller,
   triggerAriaLabel = "Model",
   allowHouse,
+  isResourceCurrent = alwaysCurrent,
 }: OwnerModelUsagePickerProps) {
   const { inventory, selection, isInventoryCurrent } = controller;
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const cycleRef = useRef<Cycle | null>(null);
-  const allOnNextReadyRef = useRef<ReadyInventory["scope"] | null>(null);
+  const allOnNextReadyRef = useRef<{
+    scope: ReadyInventory["scope"];
+    isResourceCurrent: () => boolean;
+  } | null>(null);
   const update = useCallback(
     (cycle: Cycle, change: (previous: Metrics) => Metrics) => {
       if (!cycle.isCurrent()) return;
@@ -105,7 +164,11 @@ export default function OwnerModelUsagePickerImpl({
     [update],
   );
   useEffect(() => {
-    if (inventory.kind !== "ready" || !isInventoryCurrent(inventory)) {
+    if (
+      !isResourceCurrent() ||
+      inventory.kind !== "ready" ||
+      !isInventoryCurrent(inventory)
+    ) {
       cycleRef.current = null;
       setMetrics(null);
       return;
@@ -114,7 +177,8 @@ export default function OwnerModelUsagePickerImpl({
       snapshot: inventory,
       live: true,
       seen: new Set(),
-      isCurrent: () => cycle.live && isInventoryCurrent(inventory),
+      isCurrent: () =>
+        cycle.live && isResourceCurrent() && isInventoryCurrent(inventory),
     };
     cycleRef.current = cycle;
     setMetrics({
@@ -147,7 +211,11 @@ export default function OwnerModelUsagePickerImpl({
         }));
       }
     })();
-    const all = allOnNextReadyRef.current === inventory.scope;
+    const refreshIntent = allOnNextReadyRef.current;
+    const all =
+      refreshIntent?.scope === inventory.scope &&
+      refreshIntent.isResourceCurrent === isResourceCurrent &&
+      refreshIntent.isResourceCurrent();
     allOnNextReadyRef.current = null;
     enqueue(
       cycle,
@@ -159,48 +227,45 @@ export default function OwnerModelUsagePickerImpl({
       cycle.live = false;
       if (cycleRef.current === cycle) cycleRef.current = null;
     };
-  }, [inventory, isInventoryCurrent, enqueue, update]);
+  }, [inventory, isInventoryCurrent, isResourceCurrent, enqueue, update]);
   const onMenuMount = useCallback(() => {
     const cycle = metrics?.cycle;
     if (cycle?.isCurrent()) enqueue(cycle, cycle.snapshot.rows);
   }, [enqueue, metrics?.cycle]);
   const refresh = useCallback(async () => {
-    if (inventory.kind === "suspended" || !isInventoryCurrent(inventory))
+    if (
+      !isResourceCurrent() ||
+      inventory.kind === "suspended" ||
+      !isInventoryCurrent(inventory)
+    )
       return;
-    allOnNextReadyRef.current = inventory.scope;
+    allOnNextReadyRef.current = { scope: inventory.scope, isResourceCurrent };
     await controller.refresh();
-  }, [controller, inventory, isInventoryCurrent]);
-  const current = metrics?.cycle.isCurrent() ? metrics : null;
-  const rows =
-    inventory.kind === "ready" && isInventoryCurrent(inventory)
-      ? inventory.rows
-      : [];
-  const selected = selection.kind === "saved" ? selection : null;
-  const triggerLabel =
-    selection.kind === "house"
-      ? "Default (house route)"
-      : selection.kind === "unavailable"
-        ? `Selected model unavailable · ${selection.modelId}`
-        : "Choose model";
+  }, [controller, inventory, isInventoryCurrent, isResourceCurrent]);
+  const resourceAvailable = isResourceCurrent();
+  const current =
+    resourceAvailable && metrics?.cycle.isCurrent() ? metrics : null;
+  const presentation = pickerPresentation({
+    inventory,
+    selection,
+    resourceAvailable,
+    inventoryCurrent: isInventoryCurrent(inventory),
+    allowHouse,
+  });
   return (
     <div className="flex flex-wrap items-center gap-2">
       <ModelUsagePickerView
-        rows={rows}
-        value={selected?.recordId ?? (selection.kind === "house" ? "" : null)}
-        valueModelId={selected?.modelId ?? null}
-        loading={inventory.kind === "loading" || inventory.kind === "suspended"}
-        loadError={
-          inventory.kind === "failed" ? "Your models couldn’t load." : null
-        }
-        triggerLabel={triggerLabel}
+        {...presentation}
         triggerAriaLabel={triggerAriaLabel}
         size="sm"
-        defaultSelected={selection.kind === "house"}
-        includeDefault={allowHouse}
         defaultLabel="Default (house route)"
         isRowDisabled={(row) => !executable(row)}
         onChange={(id, modelId) => {
-          if (inventory.kind !== "ready" || !isInventoryCurrent(inventory))
+          if (
+            !isResourceCurrent() ||
+            inventory.kind !== "ready" ||
+            !isInventoryCurrent(inventory)
+          )
             return;
           if (id === "") controller.select({ kind: "house" });
           else if (modelId)
@@ -253,7 +318,9 @@ export default function OwnerModelUsagePickerImpl({
         className="text-xxs text-ink-soft"
         aria-label="Refresh model usage"
         disabled={
-          inventory.kind === "suspended" || inventory.kind === "loading"
+          !resourceAvailable ||
+          inventory.kind === "suspended" ||
+          inventory.kind === "loading"
         }
         onClick={() => void refresh()}
       >

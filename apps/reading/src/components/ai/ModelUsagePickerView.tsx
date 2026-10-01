@@ -247,7 +247,7 @@ export default function ModelUsagePickerView({
             {loading && enriched.length === 0 && (
               <div className="px-3 py-2 text-ink-mute">Loading models…</div>
             )}
-            {!loading && enriched.length === 0 && (
+            {!loading && !loadError && enriched.length === 0 && (
               <div className="px-3 py-2 text-ink-soft">
                 No API keys yet — connect one in Settings.
               </div>

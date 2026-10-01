@@ -25,7 +25,23 @@ import {
 } from "../../hooks/useOwnerModelController";
 import type { UserModelRow } from "../../api/settingsModels";
 import type { SettingsUsageKeyEntry } from "../../api/settingsUsage";
-import Picker from "./OwnerModelUsagePicker.impl";
+import Picker from "./OwnerModelUsagePicker";
+import type ModelUsagePickerView from "./ModelUsagePickerView";
+const capturedView = vi.hoisted<{
+  props: Parameters<typeof ModelUsagePickerView>[0] | null;
+}>(() => ({ props: null }));
+vi.mock("./ModelUsagePickerView", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ModelUsagePickerView")>();
+  const { createElement } = await import("react");
+  return {
+    ...actual,
+    default: (props: Parameters<typeof ModelUsagePickerView>[0]) => {
+      capturedView.props = props;
+      return createElement(actual.default, props);
+    },
+  };
+});
+let resourceCurrent: (() => boolean) | undefined;
 let auth: AuthContextValue;
 let controller: OwnerModelController;
 let owner: string;
@@ -80,6 +96,7 @@ function Probe() {
   return (
     <Picker
       controller={controller}
+      {...{ isResourceCurrent: resourceCurrent }}
       allowHouse
       triggerAriaLabel="Choose fixture model"
     />
@@ -87,6 +104,8 @@ function Probe() {
 }
 beforeEach(() => {
   modelsRead = null;
+  resourceCurrent = undefined;
+  capturedView.props = null;
   owner = "a";
   rows = [{ ...base }];
   usage = [
@@ -146,7 +165,7 @@ async function mount() {
   return view;
 }
 async function open() {
-  const button = screen.getByRole("button", { name: "Choose fixture model" });
+  const button = await screen.findByRole("button", { name: "Choose fixture model" });
   await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
   fireEvent.click(button);
 }
@@ -385,4 +404,201 @@ describe("mandatory scoped model usage picker", () => {
       paths.filter((path) => path === "/settings/models/user"),
     ).toHaveLength(2);
   });
+  it("denies retained picker commands immediately when host admission retires", async () => {
+    let admitted = true;
+    resourceCurrent = () => admitted;
+    await mount();
+    await open();
+    await screen.findByText("Provider-reported credit $0.0031");
+    const retained = capturedView.props;
+    expect(retained).not.toBeNull();
+    const before = paths.length;
+    admitted = false;
+    await act(async () => {
+      retained?.onChange("key-0", "secondary");
+      retained?.onMenuMount?.();
+      await retained?.onRefresh();
+    });
+    expect(controller.selection.kind).toBe("unselected");
+    expect(paths).toHaveLength(before);
+  });
+
+  it("hides retired selection and late metrics, then starts a fresh same-account resource cycle", async () => {
+    const oldAdmission = { current: true };
+    resourceCurrent = () => oldAdmission.current;
+    let release: (response: Response) => void = () => {
+      throw new Error("fixture response not captured");
+    };
+    balanceRead = () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+    const view = await mount();
+    await open();
+    fireEvent.click(screen.getByText("secondary"));
+    await open();
+    const retained = capturedView.props;
+    oldAdmission.current = false;
+    view.rerender(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await act(async () => release(json({ ...body("key-0"), balance_usd: 999 })));
+    expect(document.body.textContent).not.toContain("Fixture key");
+    expect(document.body.textContent).not.toContain("secondary");
+    expect(document.body.textContent).not.toContain("$999.00");
+    expect(document.body.textContent).not.toContain("No API keys yet");
+    expect(document.body.textContent).toMatch(/resource.*unavailable|unavailable.*resource/i);
+    const usageBefore = paths.filter(
+      (path) => path === "/settings/usage",
+    ).length;
+    resourceCurrent = () => true;
+    balanceRead = null;
+    view.rerender(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await waitFor(() =>
+      expect(paths.filter((path) => path === "/settings/usage")).toHaveLength(
+        usageBefore + 1,
+      ),
+    );
+    const before = paths.length;
+    await act(async () => {
+      retained?.onChange("", undefined);
+      await retained?.onRefresh();
+    });
+    expect(controller.selection).toEqual({
+      kind: "saved",
+      recordId: "key-0",
+      modelId: "secondary",
+    });
+    expect(paths).toHaveLength(before);
+    await screen.findByText("Provider-reported credit $0.0031");
+  });
+
+  it("keeps retired physical balance reads in the two-slot cap across fresh resource admission", async () => {
+    rows = Array.from({ length: 3 }, (_, i) => ({ ...base, id: `key-${i}` }));
+    usage = [];
+    const oldAdmission = { current: true };
+    resourceCurrent = () => oldAdmission.current;
+    const pending: { id: string; resolve: (value: Response) => void }[] = [];
+    let live = 0;
+    let peak = 0;
+    balanceRead = (id) => {
+      live++;
+      peak = Math.max(peak, live);
+      return new Promise<Response>((resolve) =>
+        pending.push({
+          id,
+          resolve: (value) => {
+            live--;
+            resolve(value);
+          },
+        }),
+      );
+    };
+    const view = await mount();
+    await waitFor(() => expect(pending).toHaveLength(2));
+    oldAdmission.current = false;
+    resourceCurrent = () => true;
+    view.rerender(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    expect(pending).toHaveLength(2);
+    await act(async () => pending[0].resolve(json({ ...body(pending[0].id), balance_usd: 999 })));
+    await waitFor(() => expect(pending).toHaveLength(3));
+    expect(peak).toBe(2);
+    await act(async () => pending[1].resolve(json(body(pending[1].id))));
+    await waitFor(() => expect(pending).toHaveLength(4));
+    await act(async () => {
+      pending[2].resolve(json(body(pending[2].id)));
+      pending[3].resolve(json(body(pending[3].id)));
+    });
+    await waitFor(() => expect(pending).toHaveLength(5));
+    await act(async () => pending[4].resolve(json(body(pending[4].id))));
+    await open();
+    expect(document.body.textContent).not.toContain("$999.00");
+    expect(peak).toBe(2);
+    expect(paths.filter((path) => path === "/settings/models/user")).toHaveLength(1);
+    expect(paths.filter((path) => path === "/settings/usage")).toHaveLength(2);
+  });
+
+  it("does not dispatch queued balance work when admission retires before a physical slot settles", async () => {
+    rows = Array.from({ length: 8 }, (_, i) => ({ ...base, id: `key-${i}` }));
+    usage = [];
+    let admitted = true;
+    resourceCurrent = () => admitted;
+    const pending: { id: string; resolve: (value: Response) => void }[] = [];
+    balanceRead = (id) =>
+      new Promise<Response>((resolve) => pending.push({ id, resolve }));
+    await mount();
+    await waitFor(() => expect(pending).toHaveLength(2));
+    const retained = capturedView.props;
+    admitted = false;
+    await act(async () => {
+      retained?.onMenuMount?.();
+      pending[0].resolve(json(body(pending[0].id)));
+      pending[1].resolve(json(body(pending[1].id)));
+    });
+    expect(pending).toHaveLength(2);
+    expect(paths.filter((path) => path.startsWith("/settings/balance/"))).toHaveLength(2);
+  });
+
+  it("does not transfer an old resource's held refresh-all marker to a new same-account resource", async () => {
+    rows = Array.from({ length: 8 }, (_, i) => ({
+      ...base,
+      id: `key-${i}`,
+      display_name: `Fixture ${i}`,
+    }));
+    usage = [];
+    const oldAdmission = { current: true };
+    resourceCurrent = () => oldAdmission.current;
+    const view = await mount();
+    await waitFor(() =>
+      expect(paths.filter((path) => path.startsWith("/settings/balance/"))).toHaveLength(6),
+    );
+    let release: (response: Response) => void = () => {
+      throw new Error("held inventory fixture not captured");
+    };
+    modelsRead = () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+    const retained = capturedView.props;
+    let refresh: void | Promise<void>;
+    act(() => {
+      refresh = retained?.onRefresh();
+    });
+    await waitFor(() => expect(controller.inventory.kind).toBe("loading"));
+    oldAdmission.current = false;
+    resourceCurrent = () => true;
+    view.rerender(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await act(async () => {
+      release(json({
+        models: rows,
+        count: rows.length,
+        stale_registered: [],
+        source: "fixture",
+      }));
+      await refresh;
+    });
+    await waitFor(() => expect(controller.inventory.kind).toBe("ready"));
+    await waitFor(() =>
+      expect(paths.filter((path) => path.startsWith("/settings/balance/"))).toHaveLength(12),
+    );
+    await open();
+    await waitFor(() =>
+      expect(paths.filter((path) => path.startsWith("/settings/balance/"))).toHaveLength(14),
+    );
+  });
+
 });
