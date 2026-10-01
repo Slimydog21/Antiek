@@ -47,7 +47,7 @@ export default function BrainCaughtAFish({
           <circle cx="49" cy="13.5" r="0.6" fill="#EEF1F6" />
         </g>
         <g className="mascot-fish-sparkle" transform="translate(22 -6) scale(0.45)">
-          <path d="M0 -6 L1.2 -1.2 L6 0 L1.2 1.2 L0 6 L-1.2 1.2 L-6 0 L-1.2 -1.2 Z" fill="var(--mascot-bill)" />
+          <path d="M0 -6 L1.2 -1.2 L6 0 L1.2 1.2 L0 6 L-1.2 1.2 L-6 0 L-1.2 -1.2 Z" fill="var(--highlighter)" />
         </g>
       </svg>
     </span>
