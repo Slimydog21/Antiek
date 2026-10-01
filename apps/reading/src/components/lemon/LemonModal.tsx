@@ -122,8 +122,12 @@ export function LemonModal({
   const overlay = (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center"
-      onMouseDown={() => {
-        if (!forceUserAction) onClose();
+      onMouseDown={(event) => {
+        if (forceUserAction || topModal() !== dialogRef.current) return;
+        // The caller may restore focus in onClose; the backdrop's default
+        // mousedown must not move it again after that restoration.
+        event.preventDefault();
+        onClose();
       }}
       aria-hidden={!open}
     >
