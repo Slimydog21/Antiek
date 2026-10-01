@@ -16,6 +16,7 @@ authors = [
 # Core runtime dependencies. Keep this list tight; add only what every
 # surface needs. Surface-specific deps belong in optional-dependencies below.
 dependencies = [
+  "html5lib==1.1",
   "duckdb>=1.1.0",
   "pydantic>=2.7",
   "pydantic-settings>=2.3",
