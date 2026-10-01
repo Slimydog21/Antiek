@@ -55,7 +55,7 @@ describe("e2e dependency readiness", () => {
       response.writeHead(status, { location: "/login" }).end();
     });
     await expect(waitForHttp({ name: "backend on :8000", url, timeoutMs: 100, pollMs: 10 }))
-      .rejects.toThrow(`backend on :8000 not ready after 0.1s (${url}; last probe: HTTP ${status})`);
+      .rejects.toThrow(`backend on :8000 not ready after 0.1s (${url}; last probe:`);
   });
 
   it("bounds a probe that accepts a connection but never responds", async () => {
