@@ -15,6 +15,7 @@ let logoutGate: Promise<Response> | null;
 let row: TabsSnapshot;
 const requests: { path: string; method: string; signal: AbortSignal | null | undefined }[] = [];
 let allocations: Map<string, number>;
+let initialHref: string;
 const tabs = () => useTabTrees.getState();
 function auth() { if (!controller) throw new Error("not mounted"); return controller; }
 function Consumer() {
@@ -31,9 +32,15 @@ async function mount() {
   await screen.findByText("authenticated");
   await tabs().bindActiveProject();
   await tabs().ensureMothership("reading");
+  expect(tabs().projectId).toBe("project-A");
+  expect(tabs().tabsPersistence).toBe("server");
+  expect(tabs().dispatchAllowed).toBe(true);
+  expect(tabs().loaded.reading).toBe(true);
 }
 async function refresh(reply: () => Promise<Response>) { authReply = reply; await act(async () => { await auth().refresh(); }); }
 beforeEach(() => {
+  initialHref = window.location.href;
+  window.history.replaceState({}, "", "/?project=project-A");
   setTabOwner(null); tabs().resetTabTrees(); controller = null;
   putGate = null; logoutGate = null; requests.length = 0; allocations = new Map();
   row = { tree: { nodes: {}, root_order: [] }, active: { left: null, right: null }, version: 0, next_child_index: {}, retired: [] };
@@ -65,7 +72,7 @@ beforeEach(() => {
     throw new Error(`Unexpected ${method} ${path}`);
   }));
 });
-afterEach(() => { act(() => { setTabOwner(null); }); cleanup(); tabs().resetTabTrees(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { window.history.replaceState({}, "", initialHref); act(() => { setTabOwner(null); }); cleanup(); tabs().resetTabTrees(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("AuthProvider and HTTP tab persistence", () => {
   it.each(["unavailable", "inferred"] as const)("%s suspends new HTTP work, retains pending tabs and resumes on same owner", async (kind) => {
