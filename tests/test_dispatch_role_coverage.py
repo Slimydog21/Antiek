@@ -31,41 +31,53 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 CONFIG = REPO / "substrate" / "dispatch" / "config.yaml"
-SCAN_ROOTS = ("substrate", "interfaces")
+
+# The whole first-party tree, not just the two directories the defect was first
+# seen in. An independent critic showed the narrower scan missed eight further
+# call sites (four with literal roles) under tools/, scripts/, skills/, roles/
+# and processing/ — all configured today, all invisible to a two-root scan.
+# Exclusions are vendored, generated, or test trees: tests legitimately call
+# dispatch with non-literal roles through mocks.
+SCAN_EXCLUDE = {
+    ".git", ".venv", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+    "node_modules", "worktrees", "clones", "third_party", "tests",
+    "site-packages", "__pycache__",
+}
 
 
 def _literal_roles() -> list[tuple[str, int, str]]:
     """Every ``dispatch(<prompt>, "<role>", ...)`` literal call site."""
     found: list[tuple[str, int, str]] = []
-    for root in SCAN_ROOTS:
-        for path in sorted((REPO / root).rglob("*.py")):
-            try:
-                tree = ast.parse(path.read_text(errors="replace"))
-            except SyntaxError:  # a file that does not parse is another test's business
+    for path in sorted(REPO.rglob("*.py")):
+        if set(path.relative_to(REPO).parts) & SCAN_EXCLUDE:
+            continue
+        try:
+            tree = ast.parse(path.read_text(errors="replace"))
+        except SyntaxError:  # a file that does not parse is another test's business
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
                 continue
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Call):
-                    continue
-                func = node.func
-                name = getattr(func, "id", None) or getattr(func, "attr", None)
-                if name != "dispatch":
-                    continue
-                role: str | None = None
+            func = node.func
+            name = getattr(func, "id", None) or getattr(func, "attr", None)
+            if name != "dispatch":
+                continue
+            role: str | None = None
+            if (
+                len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[1].value, str)
+            ):
+                role = node.args[1].value
+            for kw in node.keywords:
                 if (
-                    len(node.args) >= 2
-                    and isinstance(node.args[1], ast.Constant)
-                    and isinstance(node.args[1].value, str)
+                    kw.arg == "role"
+                    and isinstance(kw.value, ast.Constant)
+                    and isinstance(kw.value.value, str)
                 ):
-                    role = node.args[1].value
-                for kw in node.keywords:
-                    if (
-                        kw.arg == "role"
-                        and isinstance(kw.value, ast.Constant)
-                        and isinstance(kw.value.value, str)
-                    ):
-                        role = kw.value.value
-                if role is not None:
-                    found.append((str(path.relative_to(REPO)), node.lineno, role))
+                    role = kw.value.value
+            if role is not None:
+                found.append((str(path.relative_to(REPO)), node.lineno, role))
     return found
 
 
