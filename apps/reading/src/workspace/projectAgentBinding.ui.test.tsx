@@ -8,7 +8,7 @@ import { DocumentTabStrip } from "./DocumentTabStrip";
 import { assignPublicNumber, emptyTabTree, setPaneActive, spawnChild } from "./tabTree";
 import { toWireSnapshot } from "./tabTreeWire";
 import { parseTabsSnapshot, type TabsSnapshot } from "../lib/api/projectTabs";
-import { setTabOwner } from "./tabTreeOwner";
+import { setTabOwner, suspendTabDispatch } from "./tabTreeOwner";
 import { useTabTrees } from "./tabTreeStore";
 import { useCompanion } from "./companionStore";
 import { useProjectSelection } from "./projectSelection";
@@ -44,7 +44,10 @@ function server() {
   const projects = [project("A"), project("B")];
   const allocations: string[] = [];
   const puts: { project: string; row: TabsSnapshot }[] = [];
+  const statusReads: string[] = [];
   let holdA: Promise<void> | null = null;
+  let holdProjects: Promise<void> | null = null;
+  let listReply: (() => Response | Promise<Response>) | null = null;
   const fetcher = vi.fn<typeof fetch>(async (input, init) => {
     const path = new URL(String(input), window.location.origin).pathname.replace(/^\/api/, "");
     if (path === "/projects") {
@@ -54,9 +57,16 @@ function server() {
         rows.set("C", toWireSnapshot(emptyTabTree("reading")));
         return json(created);
       }
+      if (holdProjects) await holdProjects;
       return json({ projects });
     }
-    if (path === "/investigations") return json({ count: 3, investigations: ["A", "B", "new"].map((id) => ({ investigation_id: `thread${id}`, question: `Question ${id}`, status: "completed", started_at: null, completed_at: null, cost_usd_total: 0, parent_investigation_id: null, document_id: `source${id}` })) });
+    if (path === "/investigations") return listReply ? listReply() : json({ count: 3, investigations: ["A", "B", "new"].map((id) => ({ investigation_id: `thread${id}`, question: `Question ${id}`, status: "completed", started_at: null, completed_at: null, cost_usd_total: 0, parent_investigation_id: null, document_id: `source${id}` })) });
+    const statusMatch = /^\/investigations\/([^/]+)$/.exec(path);
+    if (statusMatch) {
+      const thread = decodeURIComponent(statusMatch[1]);
+      statusReads.push(thread);
+      return json({ investigation_id: thread, status: "completed" });
+    }
     if (/\/tabs\/(writing|research)$/.test(path)) return json(toWireSnapshot(emptyTabTree(path.endsWith("writing") ? "writing" : "research")));
     const match = /^\/projects\/([^/]+)\/tabs\/reading(\/allocate)?$/.exec(path);
     if (!match) throw new Error(`Unexpected request ${path}`);
@@ -84,7 +94,7 @@ function server() {
     return json(old);
   });
   vi.stubGlobal("fetch", fetcher);
-  return { rows, puts, allocations, fetcher, hold: (promise: Promise<void>) => { holdA = promise; } };
+  return { rows, projects, puts, allocations, statusReads, fetcher, hold: (promise: Promise<void>) => { holdA = promise; }, holdRegistry: (promise: Promise<void>) => { holdProjects = promise; }, list: (reply: () => Response | Promise<Response>) => { listReply = reply; } };
 }
 beforeEach(() => { setTabOwner(null); setTabOwner("owner"); tabs().resetTabTrees(); comp().reset(); useProjectSelection.setState({ requestedId: null, status: "idle" }); });
 afterEach(() => { cleanup(); setTabOwner(null); tabs().resetTabTrees(); comp().reset(); vi.unstubAllGlobals(); window.history.replaceState({}, "", "/"); });
@@ -136,6 +146,95 @@ it("revalidates a still-mounted selection after an explicit tree context reset",
   await waitFor(() => expect(comp().activeTabId).toBe("agentB"));
   expect(backend.fetcher.mock.calls.slice(calls).some(([url]) => String(url).endsWith("/projects"))).toBe(true);
   expect(backend.allocations).toEqual([]);
+});
+
+it("reads the restored thread's real status after the first admitted project list fails", async () => {
+  const backend = server();
+  mount("/library?project=A");
+  await screen.findByRole("tab", { name: /Question A/ });
+  backend.list(() => json({ detail: "List unavailable" }, 503));
+  fireEvent.change(screen.getByLabelText("Selected project"), { target: { value: "B" } });
+  await waitFor(() => expect(useProjectSelection.getState().status).toBe("ready"));
+  expect(tabs().projectId).toBe("B");
+  await screen.findByText("done");
+  expect(comp().activeTabId).toBe("agentB");
+  expect(backend.statusReads).toEqual(["threadB"]);
+  expect(screen.queryByText("Loading this thread’s status…")).toBeNull();
+  expect(screen.queryByText("Question A")).toBeNull();
+  expect(screen.queryByText("$0.00")).toBeNull();
+  expect(screen.queryByText("Open source document →")).toBeNull();
+  expect(screen.getByText("Open research →").closest("a")?.getAttribute("href")).toBe("/inv/threadB?project=B&m=reading");
+  expect(backend.puts).toEqual([]);
+  expect(backend.allocations).toEqual([]);
+});
+
+it("reads status for a restored older thread excluded from a successful list", async () => {
+  const backend = server();
+  backend.list(() => json({ count: 0, investigations: [] }));
+  mount();
+  await screen.findByText("done");
+  expect(useProjectSelection.getState().status).toBe("ready");
+  expect(backend.statusReads).toEqual(["threadB"]);
+  expect(screen.queryByText("Question B")).toBeNull();
+  expect(screen.queryByText("$0.00")).toBeNull();
+  expect(screen.queryByText("Open source document →")).toBeNull();
+});
+
+it("does not read saved-reference status when a pending list fails during auth uncertainty", async () => {
+  const backend = server();
+  mount("/library?project=A");
+  await screen.findByRole("tab", { name: /Question A/ });
+  let reject = (_error: Error) => {};
+  const pending = new Promise<Response>((_resolve, rejectRequest) => { reject = rejectRequest; });
+  backend.list(() => pending);
+  fireEvent.change(screen.getByLabelText("Selected project"), { target: { value: "B" } });
+  await waitFor(() => expect(useProjectSelection.getState().status).toBe("ready"));
+  await waitFor(() => expect(comp().activeTabId).toBe("agentB"));
+  await act(async () => { suspendTabDispatch(); reject(new Error("List unavailable")); });
+  expect(tabs().trees.reading?.nodes.agentB).toBeDefined();
+  expect(backend.statusReads).toEqual([]);
+  act(() => setTabOwner("owner"));
+  await screen.findByText("done");
+  expect(backend.statusReads).toEqual(["threadB"]);
+});
+
+it("does not read a saved reference for an unresolved owner", async () => {
+  const backend = server();
+  backend.list(() => json({ count: 0, investigations: [] }));
+  act(() => setTabOwner(null));
+  mount();
+  await waitFor(() => expect(useProjectSelection.getState().status).toBe("unavailable"));
+  expect(tabs().projectId).toBeNull();
+  expect(backend.statusReads).toEqual([]);
+  expect(backend.fetcher.mock.calls.some(([url]) => String(url).includes("/tabs/"))).toBe(false);
+});
+
+it("does not read the previous owner's reference while the replacement project's admission is pending or denied", async () => {
+  const backend = server();
+  mount();
+  await screen.findByRole("tab", { name: /Question B/ });
+  let release = () => {};
+  backend.holdRegistry(new Promise<void>((resolve) => { release = resolve; }));
+  backend.projects.splice(1, 1);
+  backend.list(() => json({ count: 0, investigations: [] }));
+  act(() => setTabOwner("replacement"));
+  await waitFor(() => expect(useProjectSelection.getState().status).toBe("loading"));
+  expect(comp().tabs).toEqual([]);
+  expect(tabs().projectId).toBeNull();
+  expect(backend.statusReads).toEqual([]);
+  await act(async () => { release(); });
+  await screen.findByText("This project is unavailable for this account. Choose a project.");
+  expect(backend.statusReads).toEqual([]);
+});
+
+it.each(["foreign", "invalid/project"])("does not request a saved-reference status for an unadmitted project %s", async (id) => {
+  const backend = server();
+  backend.list(() => json({ count: 0, investigations: [] }));
+  mount(`/library?project=${encodeURIComponent(id)}`);
+  await screen.findByText("This project is unavailable for this account. Choose a project.");
+  expect(tabs().projectId).toBeNull();
+  expect(backend.statusReads).toEqual([]);
+  expect(backend.fetcher.mock.calls.some(([url]) => String(url).includes("/tabs/"))).toBe(false);
 });
 
 it("ignores an old project's late tab GET and retains a one-shot draft during selection", async () => {

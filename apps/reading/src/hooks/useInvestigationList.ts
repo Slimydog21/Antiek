@@ -24,29 +24,37 @@ export function useInvestigationList(opts?: {
   const limit = opts?.limit ?? 50;
   const pollMs = opts?.pollIntervalMs ?? 30_000;
   const scopeKey = opts?.scopeKey ?? "";
-  const [investigations, setInvestigations] = useState<InvestigationSummary[]>([]);
-  const [loadedScope, setLoadedScope] = useState(scopeKey);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    scopeKey: string;
+    investigations: InvestigationSummary[];
+    loading: boolean;
+    error: string | null;
+  }>({ scopeKey, investigations: [], loading: true, error: null });
   const [tick, setTick] = useState(0);
 
   const refetch = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    setResult((previous) => ({
+      scopeKey,
+      investigations: previous.scopeKey === scopeKey ? previous.investigations : [],
+      loading: true,
+      error: null,
+    }));
     void (async () => {
       try {
         const resp = await listInvestigations({ limit });
         if (!cancelled) {
-          setInvestigations(resp.investigations);
-          setLoadedScope(scopeKey);
-          setError(null);
+          setResult({ scopeKey, investigations: resp.investigations, loading: false, error: null });
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setResult((previous) => ({
+          scopeKey,
+          investigations: previous.scopeKey === scopeKey ? previous.investigations : [],
+          loading: false,
+          error: e instanceof Error ? e.message : String(e),
+        }));
       }
     })();
     return () => {
@@ -71,5 +79,10 @@ export function useInvestigationList(opts?: {
     };
   }, [pollMs, refetch]);
 
-  return { investigations: loadedScope === scopeKey ? investigations : [], loading: loadedScope !== scopeKey || loading, error: loadedScope === scopeKey ? error : null, refetch };
+  return {
+    investigations: result.scopeKey === scopeKey ? result.investigations : [],
+    loading: result.scopeKey !== scopeKey || result.loading,
+    error: result.scopeKey === scopeKey ? result.error : null,
+    refetch,
+  };
 }
