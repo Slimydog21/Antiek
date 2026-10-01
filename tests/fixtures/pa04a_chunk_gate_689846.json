@@ -1,0 +1,1085 @@
+{
+  "cases": [
+    {
+      "alias": "d",
+      "owner": null,
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "attribution_eligible",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": null,
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "attribution_eligible",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "attribution_eligible",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "attribution_eligible",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": " A ",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "attribution_eligible",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": " A ",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "attribution_eligible",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "__operator__",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "attribution_eligible",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "__operator__",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "attribution_eligible",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "A",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "attribution_eligible",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "A",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "attribution_eligible",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": null,
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "owner_scoped",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": null,
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "owner_scoped",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "owner_scoped",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "owner_scoped",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": " A ",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "owner_scoped",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": " A ",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "owner_scoped",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "__operator__",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "owner_scoped",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "__operator__",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "owner_scoped",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "A",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private",
+        "personal_reading",
+        "user_authored_private",
+        "A"
+      ],
+      "policy": "owner_scoped",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?) OR (d.content_class IN (?,?) AND d.owner_user_id = ?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "A",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private",
+        "personal_reading",
+        "user_authored_private",
+        "A"
+      ],
+      "policy": "owner_scoped",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?) OR (source_doc.content_class IN (?,?) AND source_doc.owner_user_id = ?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": null,
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "research_only",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "operator_only",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": null,
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "research_only",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "operator_only",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "research_only",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "operator_only",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "research_only",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "operator_only",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": " A ",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "research_only",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "operator_only",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": " A ",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "research_only",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "operator_only",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "__operator__",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "research_only",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "operator_only",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "__operator__",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "research_only",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "operator_only",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "A",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "research_only",
+        "personal_reading",
+        "user_authored_private",
+        "A"
+      ],
+      "policy": "operator_only",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?) OR d.owner_user_id = ?) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "A",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "research_only",
+        "personal_reading",
+        "user_authored_private",
+        "A"
+      ],
+      "policy": "operator_only",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?) OR source_doc.owner_user_id = ?) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": null,
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "private_research",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": null,
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "private_research",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "private_research",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "private_research",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": " A ",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "private_research",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": " A ",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "private_research",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "__operator__",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "private_research",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "__operator__",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "user_authored_private"
+      ],
+      "policy": "private_research",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "A",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "user_authored_private",
+        "A"
+      ],
+      "policy": "private_research",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?) OR d.owner_user_id = ?) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "A",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "user_authored_private",
+        "A"
+      ],
+      "policy": "private_research",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?) OR source_doc.owner_user_id = ?) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": null,
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "unknown",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": null,
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "unknown",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "unknown",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "unknown",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": " A ",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "unknown",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": " A ",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "unknown",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "__operator__",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "unknown",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "__operator__",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "unknown",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "d",
+      "owner": "A",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "unknown",
+      "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+    },
+    {
+      "alias": "source_doc",
+      "owner": "A",
+      "params": [
+        "opt_in_licensed",
+        "personal_reading",
+        "public_domain",
+        "research_only",
+        "restricted_pending_opt_in",
+        "source_declared_open",
+        "user_authored_private",
+        "user_owned",
+        "user_public_contribution",
+        "personal_reading",
+        "research_only",
+        "restricted_pending_opt_in",
+        "user_authored_private"
+      ],
+      "policy": "unknown",
+      "sql": " AND (source_doc.content_class IS NULL OR source_doc.content_class IN (?,?,?,?,?,?,?,?,?)) AND (source_doc.content_class IS NULL OR source_doc.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+    }
+  ],
+  "default": {
+    "params": [
+      "opt_in_licensed",
+      "personal_reading",
+      "public_domain",
+      "research_only",
+      "restricted_pending_opt_in",
+      "source_declared_open",
+      "user_authored_private",
+      "user_owned",
+      "user_public_contribution",
+      "personal_reading",
+      "research_only",
+      "restricted_pending_opt_in",
+      "user_authored_private"
+    ],
+    "sql": " AND (d.content_class IS NULL OR d.content_class IN (?,?,?,?,?,?,?,?,?)) AND (d.content_class IS NULL OR d.content_class NOT IN (?,?,?,?)) AND NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)"
+  },
+  "personal_only_content_classes": [
+    "personal_reading",
+    "user_authored_private"
+  ],
+  "source_commit": "6898466631d288493346468048b651abd48eb3c5",
+  "source_path": "substrate/graph/retrieval_gate.py",
+  "source_sha256": "bde6c37e56054d9737db8c38e5bfedd9c3bb3b89031b63b5514d29f4d488131e",
+  "takedown_sql": {
+    "d": "NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = d.document_id AND td.taken_down IS TRUE)",
+    "source_doc": "NOT EXISTS (SELECT 1 FROM book_assets td WHERE td.document_id = source_doc.document_id AND td.taken_down IS TRUE)"
+  },
+  "usable_owner": [
+    {
+      "input": null,
+      "output": null
+    },
+    {
+      "input": "",
+      "output": null
+    },
+    {
+      "input": " A ",
+      "output": null
+    },
+    {
+      "input": "__operator__",
+      "output": null
+    },
+    {
+      "input": "A",
+      "output": "A"
+    }
+  ]
+}

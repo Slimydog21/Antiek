@@ -79,6 +79,7 @@ def gate_closure_db():
                 document_type="paper",
                 title=f"Title {doc_id}",
                 content_class=content_class,
+                owner_user_id="owner-a" if doc_id == DOC_PERSONAL else "__operator__",
             )
             insert_chunk(
                 con,
@@ -109,6 +110,7 @@ def _retrieval_probe(
     surface: str,
     policy_tag: str,
     top_k: int = 10,
+    owner_user_id: str | None = None,
 ) -> dict:
     """Run the same query on search, vss, or brute_force."""
     if surface == "search":
@@ -120,12 +122,16 @@ def _retrieval_probe(
                 model=model,
                 top_k=top_k,
                 policy_tag=policy_tag,
+                owner_user_id=owner_user_id,
             )
         finally:
             con.close()
     sub = make_substrate(surface, db_path, model=model)
     try:
-        return sub.query(QUERY, top_k=top_k, policy_tag=policy_tag)
+        return sub.query(
+            QUERY, top_k=top_k, policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
+        )
     finally:
         sub.close()
 
@@ -160,6 +166,7 @@ def test_operator_only_includes_personal_reading(gate_closure_db, surface):
         db["model"],
         surface=surface,
         policy_tag="operator_only",
+        owner_user_id="owner-a",
     )
     doc_ids = _document_ids(res)
     assert DOC_PUBLIC in doc_ids, f"{surface} lost public_domain under operator_only"

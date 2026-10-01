@@ -65,7 +65,10 @@ import os
 import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..graph.retrieval_substrate import RetrievalSnapshot
 
 try:
     from ..graph.search import cosine_similarity_sql
@@ -306,34 +309,12 @@ class ReuseCoverage:
 # ---------------------------------------------------------------------------
 
 
-def _substrate_connection(retrieval_substrate: Any) -> Any:
-    """The read connection the SPR-05 substrate holds.
-
-    Both reference impls (``BruteForceSubstrate``, ``DuckDbVssSubstrate``) keep
-    their read-only connection on ``_con``. We read insight/question NODES'
-    similarity over that same connection — knowledge units ARE nodes, and the
-    SPR-05 seam ranks CHUNKS, so node-level similarity is composed here over the
-    substrate's existing connection rather than by forking the seam. Accessed
-    through this one accessor (not inline) so a future substrate that exposes a
-    public connection handle changes exactly one line."""
-    con = getattr(retrieval_substrate, "_con", None)
-    if con is None:  # pragma: no cover — defensive; both shipped impls have _con
-        raise AttributeError(
-            "retrieval_substrate exposes no read connection (_con); "
-            "knowledge-unit similarity needs node-level access over the same "
-            "graph the substrate reads."
-        )
-    return con
-
-
-def _substrate_model(retrieval_substrate: Any) -> Any:
-    """The embedding model the substrate was opened with (its ``_model``). Reused
-    so the question is embedded with the SAME model the graph was embedded with —
-    a mismatch would silently zero out every similarity."""
-    model = getattr(retrieval_substrate, "_model", None)
-    if model is None:  # pragma: no cover — defensive
-        raise AttributeError("retrieval_substrate exposes no embedding model (_model)")
-    return model
+def _usable_reuse_snapshot(snapshot: RetrievalSnapshot) -> bool:
+    """A skipped/benchmark-only query has no vector for dependent node reads."""
+    return (
+        snapshot.query_vector is not None
+        and snapshot.result.get("status") not in {"skipped — no credentials", "benchmark-failed"}
+    )
 
 
 def retrieve_prior_units(
@@ -344,57 +325,49 @@ def retrieve_prior_units(
     policy_tag: str = "attribution_eligible",
     source_document_id: str | None = None,
 ) -> list[RetrievedUnit]:
-    """Retrieve prior knowledge units ranked by similarity to ``question_text``.
+    """Return fully materialized prior units from one candidate read snapshot."""
+    if not question_text or not question_text.strip():
+        return []
+    entered = False
+    try:
+        query_snapshot = getattr(retrieval_substrate, "query_snapshot", None)
+        if not callable(query_snapshot):
+            return []
+        with query_snapshot(
+            question_text, top_k=max(1, int(limit)), policy_tag=policy_tag,
+        ) as snapshot:
+            entered = True
+            if not _usable_reuse_snapshot(snapshot):
+                return []
+            return _materialize_prior_units_from_snapshot(
+                snapshot, limit=limit, source_document_id=source_document_id,
+            )
+    except Exception:
+        if not entered:
+            return []
+        raise
 
-    Signature mirrors ``note_retrieval.retrieve_project_notes`` one layer up: a
-    retrieval handle, the query text, a limit. Returns units ranked similarity-
-    desc (ties by ``node_id`` ascending, for content-independent determinism).
 
-    Composition (diligence, rigor #4):
-
-    1. The SPR-05 ``RetrievalSubstrate.query`` is called — this exercises the
-       §9.0-gated retrieval seam (the call site SPR-08's groundedness gate slots
-       into) and is the mandated wiring point. Its chunk results are not the
-       reuse units themselves (it ranks CHUNKS); they confirm the seam ran on
-       this question.
-    2. The reuse units are insight/question NODES ranked by cosine similarity to
-       the question, projected onto the SPR-04 ``KnowledgeUnitContract`` via
-       ``knowledge_unit_of`` so each carries provenance + the §9.0 servability
-       tag. Similarity is computed with ``cosine_similarity_sql`` over the same
-       read connection the substrate holds — the proven note_retrieval pattern.
-
-    An EMPTY graph returns ``[]`` — no crash, no synthetic padding (M1 acceptance).
-    """
-    # Lazy import: the contract + projection live in substrate.graph, and a
-    # top-level import would pull graph internals into context_pack at import
-    # time. Lazy keeps the dependency at call time only.
+def _materialize_prior_units_from_snapshot(
+    snapshot: RetrievalSnapshot,
+    *,
+    limit: int,
+    source_document_id: str | None = None,
+) -> list[RetrievedUnit]:
+    """Project all reuse dependencies from the candidate query's read lease."""
     try:
         from ..graph.insight_question import knowledge_unit_of
     except ImportError:  # pragma: no cover — direct-script fallback
         from graph.insight_question import knowledge_unit_of  # type: ignore[import-not-found,no-redef]  # noqa: I001
 
-    if not question_text or not question_text.strip():
+    con = snapshot.con
+    query_vec = snapshot.query_vector
+    if query_vec is None:
         return []
-
-    # (1) Run the SPR-05 seam on this question. We do not depend on its chunk
-    # ranking for the units, but calling it is the contract: every reuse goes
-    # through the swappable retrieval seam, so an operator who swaps the
-    # substrate swaps this path too. Failures here must not crash ``start`` — a
-    # retrieval seam hiccup degrades to "no reuse", never a dead investigation.
-    try:
-        retrieval_substrate.query(question_text, top_k=max(1, int(limit)), policy_tag=policy_tag)
-    except Exception:  # pragma: no cover — seam hiccup degrades to no-reuse
-        return []
-
-    con = _substrate_connection(retrieval_substrate)
-    model = _substrate_model(retrieval_substrate)
-
-    query_vec = list(model.encode(question_text))
-    dim = getattr(model, "dimension", len(query_vec))
+    dim = len(query_vec)
     sim_expr = cosine_similarity_sql("embedding", query_vec, dim)
 
-    try:
-        rows = con.execute(
+    rows = con.execute(
             f"SELECT node_id, content_class_of_unit.content_class, "
             f"       content_class_of_unit.taken_down, similarity FROM ("
             f"  SELECT node_id, {sim_expr} AS similarity "
@@ -411,19 +384,6 @@ def retrieve_prior_units(
             f") AS content_class_of_unit ON ranked.node_id = content_class_of_unit.nid",
             [int(limit)],
         ).fetchall()
-    except Exception:
-        # The content_class join depends on the deposit having a supported_by
-        # edge; fall back to a plain node-similarity scan (content_class then
-        # resolves via knowledge_unit_of's metadata fallback / None).
-        rows = [
-            (r[0], None, False, r[1])
-            for r in con.execute(
-                f"SELECT node_id, {sim_expr} AS similarity FROM nodes "
-                f"WHERE node_type IN ('insight', 'question') AND embedding IS NOT NULL "
-                f"ORDER BY similarity DESC, node_id ASC LIMIT ?",
-                [int(limit)],
-            ).fetchall()
-        ]
 
     out: list[RetrievedUnit] = []
     for node_id, content_class, taken_down, similarity in rows:
@@ -478,8 +438,7 @@ def retrieve_prior_units(
     # when global cosine-to-passage ranks them below the top-k ceiling.
     if source_document_id:
         have = {ru.unit_id for ru in out}
-        try:
-            same_rows = con.execute(
+        same_rows = con.execute(
                 "SELECT node_id FROM nodes "
                 "WHERE node_type IN ('insight', 'question') "
                 "AND embedding IS NOT NULL "
@@ -487,8 +446,6 @@ def retrieve_prior_units(
                 "ORDER BY node_id ASC LIMIT ?",
                 [source_document_id, int(limit)],
             ).fetchall()
-        except Exception:
-            same_rows = []
         for (node_id,) in same_rows:
             if node_id in have:
                 continue
@@ -499,14 +456,11 @@ def retrieve_prior_units(
             except ValueError:
                 continue
             # Similarity vs question for ordering; may be low for meta-notes.
-            try:
-                sim_row = con.execute(
+            sim_row = con.execute(
                     f"SELECT {sim_expr} FROM nodes WHERE node_id = ?",
                     [node_id],
                 ).fetchone()
-                similarity = float(sim_row[0]) if sim_row else 0.0
-            except Exception:
-                similarity = 0.0
+            similarity = float(sim_row[0]) if sim_row else 0.0
             cc = None
             src_doc = getattr(unit.provenance, "source_document_id", None)
             if src_doc:

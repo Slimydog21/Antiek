@@ -17,19 +17,21 @@ import json
 import math
 import os
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from runtime.db_lock import connect_read
 from substrate.constants import TURBOPUFFER_INDEX_CONTENT_CLASSES
-from substrate.graph.embedding_meta import _identity
+from substrate.graph.embedding_meta import _identity, assert_embedding_compatible
 from substrate.graph.retrieval_adapters.turbopuffer_client import (
     ShadowNamespace,
     make_namespace,
     response_rows,
 )
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+from substrate.graph.retrieval_substrate import RetrievalSnapshot, _SnapshotAdapter
 from substrate.graph.search import EmbeddingModel, search
 
 _SKIPPED = "skipped — no credentials"
@@ -206,7 +208,7 @@ def _max_export_rows() -> int:
     return _DEFAULT_MAX_ROWS
 
 
-class TurbopufferSubstrate:
+class TurbopufferSubstrate(_SnapshotAdapter):
     name = "turbopuffer"
 
     def __init__(self, con: Any, *, model: EmbeddingModel, api_key: str | None,
@@ -214,8 +216,10 @@ class TurbopufferSubstrate:
                  namespace_name: str = DEFAULT_NAMESPACE, region: str = "gcp-us-central1",
                  manifest_dir: str | Path | None = None, db_identity: str = "injected"):
         self._con, self._model, self._api_key = con, model, api_key
+        self._init_snapshot()
         self._namespace = namespace
         self._namespace_name = _validate_namespace(namespace_name)
+        self._bound_namespace_name = self._namespace_name if namespace is not None else None
         self._region = region
         self._manifest_dir = Path(manifest_dir) if manifest_dir else default_manifest_dir()
         self._context = {"region": region, "db_identity": db_identity,
@@ -338,19 +342,27 @@ class TurbopufferSubstrate:
             "export_ready": int(with_emb) == int(with_meta),
         }
 
-    def _ns(self) -> ShadowNamespace:
+    def _capture_query_namespace(self) -> str | None:
+        pointer = self._manifest_dir / "active.json"
+        if not pointer.exists():
+            return None
+        active = json.loads(pointer.read_text(encoding="utf-8"))
+        if active.get("context") != self._context:
+            raise RuntimeError("active namespace pointer context mismatch")
+        return _validate_namespace(active["active_namespace"])
+
+    def _ns(self, *, selected_namespace: str | None = None,
+            pointer_captured: bool = False) -> ShadowNamespace:
         if self._namespace is None:
             if not self._api_key:
                 raise RuntimeError(_SKIPPED)
-            pointer = self._manifest_dir / "active.json"
-            namespace = self._namespace_name
-            if pointer.exists():
-                active = json.loads(pointer.read_text(encoding="utf-8"))
-                if active.get("context") != self._context:
-                    raise RuntimeError("active namespace pointer context mismatch")
-                namespace = _validate_namespace(active["active_namespace"])
+            namespace = (
+                selected_namespace if pointer_captured
+                else self._capture_query_namespace()
+            ) or self._namespace_name
             self._namespace = make_namespace(api_key=self._api_key, region=self._region,
                                              namespace=namespace)
+            self._bound_namespace_name = namespace
         return self._namespace
 
     def rebuild_shadow(self, *, dry_run: bool = False, batch_size: int = 500) -> dict[str, Any]:
@@ -579,82 +591,184 @@ class TurbopufferSubstrate:
     def query(self, text: str, *, top_k: int = 5, source_tier_max: int | None = None,
               document_ids: Sequence[str] | None = None,
               policy_tag: str = "attribution_eligible",
+              owner_user_id: str | None = None,
               allow_fallback: bool = True) -> dict[str, Any]:
-        def fallback(reason: str) -> dict[str, Any]:
-            if not allow_fallback:
-                return {"query": text, "top_k": top_k, "results": [], "node_matches": [],
-                        "status": "benchmark-failed", "failure_reason": reason}
-            return {
-                **search(self._con, text, model=self._model, top_k=top_k,
-                         source_tier_max=source_tier_max, document_ids=document_ids,
-                         policy_tag=policy_tag),
-                "status": "degraded — brute_force", "degraded_reason": reason,
-            }
-        # Privileged / gated / owner paths stay DuckDB-only (never TP index).
-        if policy_tag != "attribution_eligible":
-            return {
-                **search(self._con, text, model=self._model, top_k=top_k,
-                         source_tier_max=source_tier_max, document_ids=document_ids,
-                         policy_tag=policy_tag),
-                "status": "duckdb — non_servable_policy",
-            }
-        if self.skipped:
-            if allow_fallback:
-                return fallback("no credentials")
-            return {"query": text, "top_k": top_k, "results": [], "node_matches": [],
-                    "status": _SKIPPED}
-        if document_ids is not None and not document_ids:
-            return fallback("empty document scope")
-        query_vec = list(self._model.encode(text))
-        filters: list[Any] = []
-        if source_tier_max is not None:
-            filters.append(("source_tier", "Lte", int(source_tier_max)))
+        with self.query_snapshot(
+            text, top_k=top_k, source_tier_max=source_tier_max,
+            document_ids=document_ids, policy_tag=policy_tag,
+            owner_user_id=owner_user_id, allow_fallback=allow_fallback,
+        ) as snapshot:
+            return snapshot.result
+
+    @contextmanager
+    def query_snapshot(
+        self, text: str, *, top_k: int = 5, source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
+        policy_tag: str = "attribution_eligible",
+        owner_user_id: str | None = None,
+        allow_fallback: bool = True,
+    ) -> Iterator[RetrievalSnapshot]:
+        with self._exclusive_query_access():
+            if top_k < 1:
+                raise ValueError(f"top_k must be >= 1, got {top_k}")
+            scoped_ids = None if document_ids is None else list(dict.fromkeys(document_ids))
+            empty_scope = scoped_ids is not None and not scoped_ids
+            tier = None if source_tier_max is None else int(source_tier_max)
+            skipped = self.skipped
+            # Validation and encoding are not preparation/remote failures.
+            vector: tuple[float, ...] | None = None
+            if not empty_scope and not (skipped and not allow_fallback and policy_tag == "attribution_eligible"):
+                vector = tuple(self._model.encode(text))
+                if len(vector) != self._model.dimension:
+                    raise ValueError(
+                        f"EmbeddingModel.encode returned {len(vector)} dims; "
+                        f"model.dimension is {self._model.dimension}. Match them."
+                    )
+
+            reason: str | None = None
+            ids: list[str] = []
+            selected_status = "shadow"
+            if policy_tag == "attribution_eligible":
+                if skipped:
+                    reason = "no credentials"
+                elif empty_scope:
+                    reason = "empty document scope"
+                else:
+                    filters: list[Any] = []
+                    if tier is not None:
+                        filters.append(("source_tier", "Lte", tier))
+                    if scoped_ids is not None:
+                        filters.append(("document_id", "In", scoped_ids))
+                    filter_arg: Any = (
+                        ("And", filters) if len(filters) > 1
+                        else (filters[0] if filters else None)
+                    )
+                    assert vector is not None
+                    try:
+                        selected = self._capture_query_namespace()
+                        ns = self._ns(selected_namespace=selected, pointer_captured=True)
+                        selected_status = (
+                            "servable" if selected is not None
+                            and self._bound_namespace_name == selected else "shadow"
+                        )
+                        response = ns.multi_query(
+                            queries=[
+                                {"rank_by": ("vector", "ANN", list(vector)), "limit": top_k,
+                                 **({"filters": filter_arg} if filter_arg else {})},
+                                {"rank_by": ("text", "BM25", text), "limit": top_k,
+                                 **({"filters": filter_arg} if filter_arg else {})},
+                            ],
+                            rerank_by=("RRF",), consistency={"level": "strong"}, timeout=30.0,
+                        )
+                        ids = [
+                            str(getattr(row, "id", "")) for row in response_rows(response)
+                            if getattr(row, "id", None)
+                        ]
+                        if not ids:
+                            reason = "vendor returned no candidates"
+                    except Exception as exc:
+                        reason = f"{type(exc).__name__}: {exc}"
+
+            useful = policy_tag != "attribution_eligible" or reason is None or allow_fallback
+            exposed_vector = vector if useful else None
+            with self._owned_read_transaction():
+                if policy_tag != "attribution_eligible":
+                    result = {
+                        **self._local_search(
+                            text, vector=vector, top_k=top_k, tier=tier,
+                            document_ids=scoped_ids, policy_tag=policy_tag,
+                            owner_user_id=owner_user_id,
+                        ),
+                        "status": "duckdb — non_servable_policy",
+                    }
+                elif reason is not None and not allow_fallback:
+                    result = {
+                        "query": text, "top_k": top_k, "results": [], "node_matches": [],
+                        "status": _SKIPPED if skipped else "benchmark-failed",
+                    }
+                    if not skipped:
+                        result["failure_reason"] = reason
+                elif reason is not None:
+                    result = {
+                        **self._local_search(
+                            text, vector=vector, top_k=top_k, tier=tier,
+                            document_ids=scoped_ids, policy_tag=policy_tag,
+                            owner_user_id=owner_user_id,
+                        ),
+                        "status": "degraded — brute_force", "degraded_reason": reason,
+                    }
+                else:
+                    assert vector is not None
+                    result = self._hydrate_candidates(
+                        text, ids=ids, vector=vector, top_k=top_k, tier=tier,
+                        document_ids=scoped_ids, policy_tag=policy_tag,
+                        owner_user_id=owner_user_id, status=selected_status,
+                    )
+                yield RetrievalSnapshot(result, self._con, exposed_vector)
+
+    def _local_search(
+        self, text: str, *, vector: tuple[float, ...] | None, top_k: int,
+        tier: int | None, document_ids: Sequence[str] | None,
+        policy_tag: str, owner_user_id: str | None,
+    ) -> dict[str, Any]:
+        return search(
+            self._con, text, model=self._model, top_k=top_k,
+            source_tier_max=tier, document_ids=document_ids,
+            policy_tag=policy_tag, owner_user_id=owner_user_id,
+            _prepared_query_vector=vector,
+        )
+
+    def _hydrate_candidates(
+        self, text: str, *, ids: list[str], vector: tuple[float, ...],
+        top_k: int, tier: int | None, document_ids: Sequence[str] | None,
+        policy_tag: str, owner_user_id: str | None, status: str,
+    ) -> dict[str, Any]:
+        placeholders = ",".join("?" for _ in ids)
+        gate_sql, gate_params = non_privileged_chunk_sql_clause(
+            table_alias="d", policy_tag=policy_tag, owner_user_id=owner_user_id,
+        )
+        eligible_sql = (
+            "FROM chunks c JOIN documents d ON d.document_id=c.document_id "
+            f"WHERE c.chunk_id IN ({placeholders}) AND c.embedding IS NOT NULL" + gate_sql
+        )
+        params: list[Any] = ids + gate_params
+        if tier is not None:
+            eligible_sql += " AND d.source_tier <= ?"
+            params.append(tier)
         if document_ids is not None:
-            filters.append(("document_id", "In", list(document_ids)))
-        filter_arg: Any = ("And", filters) if len(filters) > 1 else (filters[0] if filters else None)
-        try:
-            response = self._ns().multi_query(
-                queries=[{"rank_by": ("vector", "ANN", query_vec), "limit": top_k,
-                          **({"filters": filter_arg} if filter_arg else {})},
-                         {"rank_by": ("text", "BM25", text), "limit": top_k,
-                          **({"filters": filter_arg} if filter_arg else {})}],
-                rerank_by=("RRF",), consistency={"level": "strong"}, timeout=30.0)
-            ids = [str(getattr(row, "id", "")) for row in response_rows(response) if getattr(row, "id", None)]
-            if not ids:
-                return fallback("vendor returned no candidates")
-            placeholders = ",".join("?" for _ in ids)
-            gate_sql, gate_params = non_privileged_chunk_sql_clause(
-                table_alias="d", policy_tag=policy_tag, owner_user_id="__operator__")
-            sql = (
-                "SELECT c.chunk_id,c.section_path,c.text,c.token_count,c.document_id,c.chunk_index,"
-                "d.title,d.source_tier,d.document_type,c.embedding FROM chunks c JOIN documents d "
-                f"ON d.document_id=c.document_id WHERE c.chunk_id IN ({placeholders})" + gate_sql
+            doc_placeholders = ",".join("?" for _ in document_ids)
+            eligible_sql += f" AND c.document_id IN ({doc_placeholders})"
+            params.extend(document_ids)
+        assert_embedding_compatible(
+            self._con, self._model,
+            candidate_sql="SELECT c.chunk_id " + eligible_sql,
+            candidate_params=params,
+        )
+        rows = self._con.execute(
+            "SELECT c.chunk_id,c.section_path,c.text,c.token_count,c.document_id,c.chunk_index,"
+            "d.title,d.source_tier,d.document_type,c.embedding " + eligible_sql,
+            params,
+        ).fetchall()
+        by_id = {r[0]: r for r in rows}
+        results: list[dict[str, Any]] = []
+        for cid in ids:
+            r = by_id.get(cid)
+            if r is None:
+                continue
+            dot = sum(float(a) * float(b) for a, b in zip(r[9], vector, strict=True))
+            denom = math.sqrt(sum(float(a) ** 2 for a in r[9])) * math.sqrt(
+                sum(float(b) ** 2 for b in vector)
             )
-            params: list[Any] = ids + gate_params
-            if source_tier_max is not None:
-                sql += " AND d.source_tier <= ?"
-                params.append(int(source_tier_max))
-            if document_ids is not None:
-                doc_placeholders = ",".join("?" for _ in document_ids)
-                sql += f" AND c.document_id IN ({doc_placeholders})"
-                params.extend(document_ids)
-            rows = self._con.execute(sql, params).fetchall()
-            by_id = {r[0]: r for r in rows}
-            results = []
-            for cid in ids:
-                r = by_id.get(cid)
-                if r is None:
-                    continue
-                dot = sum(float(a) * float(b) for a, b in zip(r[9], query_vec, strict=True))
-                denom = math.sqrt(sum(float(a) ** 2 for a in r[9])) * math.sqrt(sum(float(b) ** 2 for b in query_vec))
-                results.append({"chunk_id": r[0], "section_path": r[1], "chunk_text": r[2],
-                                "token_count": r[3], "document_id": r[4], "chunk_index": r[5],
-                                "document_title": r[6], "source_tier": r[7], "document_type": r[8],
-                                "similarity": dot / denom if denom else 0.0})
-            return {"query": text, "top_k": top_k, "results": results[:top_k],
-                    "node_matches": [], "status": self.query_status_label()}
-        except Exception as exc:
-            return fallback(f"{type(exc).__name__}: {exc}")
+            results.append({
+                "chunk_id": r[0], "section_path": r[1], "chunk_text": r[2],
+                "token_count": r[3], "document_id": r[4], "chunk_index": r[5],
+                "document_title": r[6], "source_tier": r[7], "document_type": r[8],
+                "similarity": dot / denom if denom else 0.0,
+            })
+        return {
+            "query": text, "top_k": top_k, "results": results[:top_k],
+            "node_matches": [], "status": status,
+        }
 
     def sync_servable(
         self,
@@ -684,4 +798,4 @@ class TurbopufferSubstrate:
         return out
 
     def close(self) -> None:
-        self._con.close()
+        super().close()

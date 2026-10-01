@@ -19,8 +19,9 @@ RE-RESOLUTION (the four-step ladder, per anchor, in order):
   4. none    → orphaned (row kept, listed, never deleted)
 
 Rights at rest, at resolution time: quote/prefix/suffix are persisted ONLY
-when is_servable_full_text(servability_of(content_class)) holds for the
-document — the server decides from its own rights rows; the client's flag is
+when is_servable_full_text(servability_of(content_class, taken_down=...))
+holds for the document — the server decides from its own rights rows,
+including the independent book-level takedown override; the client's flag is
 never authoritative. Metadata-only anchors (non-servable at pin) get steps 1
 and 4 ONLY, exactly per the spec: without a stored quote there is no fuzzy
 path (steps 2-3 require the servable text columns). Every status/location
@@ -327,13 +328,18 @@ def document_servable(con: SqlExecutor, document_id: str) -> bool:
     Read-only: any connection that can execute a SELECT (write side and read
     side alike, the SqlExecutor protocol) satisfies it."""
     row = con.execute(
-        "SELECT content_class FROM documents WHERE document_id = ? LIMIT 1",
+        "SELECT d.content_class, COALESCE(b.taken_down, FALSE) "
+        "FROM documents AS d "
+        "LEFT JOIN book_assets AS b ON b.document_id = d.document_id "
+        "WHERE d.document_id = ? LIMIT 1",
         [document_id],
     ).fetchone()
     if row is None:
         return False
     content_class = None if row[0] is None else str(row[0])
-    return is_servable_full_text(servability_of(content_class))
+    return is_servable_full_text(
+        servability_of(content_class, taken_down=bool(row[1]))
+    )
 
 
 def _audit(

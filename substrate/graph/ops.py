@@ -232,7 +232,8 @@ def insert_document(
 
     stored_metadata = _maybe_json(metadata)
     guarded_body = guard_candidate_full_text(
-        raw_text, content_class, stored_metadata, owner=True
+        raw_text, content_class, stored_metadata,
+        owner=True, owner_user_id=owner_user_id,
     )
     twin_source_envelope = build_twin_source_envelope(
         document_id=document_id,
@@ -413,6 +414,7 @@ def replace_document_body(
         None if row[3] is None else str(row[3]),
         row[4],
         owner=True,
+        owner_user_id=row[2],
         taken_down=bool(row[5]),
     )
     envelope = build_twin_source_envelope(

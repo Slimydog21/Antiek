@@ -42,6 +42,8 @@ from substrate.graph.schema import init_database
 
 _OPERATOR_TOKEN = "op_secret_owner"
 _OWNER_HEADERS = {"Authorization": f"Bearer {_OPERATOR_TOKEN}"}
+_OWNER_EMAIL = "owner@example.test"
+_OWNER_AUTH_SECRET = "owner-read-synthetic-auth-secret-" + "x" * 32
 
 
 # ---------------------------------------------------------------------------
@@ -156,14 +158,28 @@ def owner_client(db, monkeypatch):
     return TestClient(app)
 
 
+@pytest.fixture
+def owner_cookie(db, owner_client, monkeypatch):
+    """A real D2 subject cookie bound to the canonical account owner in fixtures."""
+    from substrate.multi_user.auth import mint_session_cookie
+
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", _OWNER_AUTH_SECRET)
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _OWNER_EMAIL)
+    value = mint_session_cookie("magic_link", _OWNER_EMAIL, _OWNER_EMAIL)
+    return {"ANTIEK_SESSION": value}
+
+
 def _gated_book(db_path, document_id, *, content_class, title, probe="GATEDPROBE"):
     """A book of ``content_class`` WITH chunks carrying a unique probe term, so a
     test can prove whether the §9.0 gate admitted (owner) or excluded (public)
     the body. The chunk anchors to 'Page 1' so an admitted citation resolves."""
+    from substrate.multi_user.auth import subject_owner_id
+
     con = connect_write(db_path, purpose="insert")
     insert_document(
         con, document_id=document_id, source_tier=2, document_type="book",
         title=title, author="Author", raw_text=f"{probe} body " * 50,
+        owner_user_id=subject_owner_id("magic_link", _OWNER_EMAIL),
     )
     insert_chunk(
         con, document_id=document_id, chunk_index=0,
@@ -191,7 +207,7 @@ def _gated_book(db_path, document_id, *, content_class, title, probe="GATEDPROBE
     "content_class", ["personal_reading", "restricted_pending_opt_in"],
 )
 def test_owner_ask_book_reads_own_gated_content(
-    db, owner_client, stub_embeddings, content_class,
+    db, owner_client, owner_cookie, stub_embeddings, content_class,
 ):
     """The authenticated owner talking to HIS OWN gated/personal book gets the
     body: the answer is grounded, cites the chunk, and the gated body actually
@@ -203,6 +219,7 @@ def test_owner_ask_book_reads_own_gated_content(
         "/books/doc-owner/ask",
         json={"question": "what is the quantum passage about?"},
         headers=_OWNER_HEADERS,
+        cookies=owner_cookie,
     )
     assert res.status_code == 200, res.text
     body = res.json()
@@ -481,7 +498,7 @@ def test_local_unauthenticated_operation_endpoints_are_constant_401(
 
 
 def test_answer_capture_judgment_and_eval_export(
-    db, owner_client, stub_embeddings,
+    db, owner_client, owner_cookie, stub_embeddings,
 ):
     from substrate.event_log import trajectory
 
@@ -491,6 +508,7 @@ def test_answer_capture_judgment_and_eval_export(
         "/books/doc-eval/ask",
         json={"question": "what does the passage establish?"},
         headers=_OWNER_HEADERS,
+        cookies=owner_cookie,
     )
     assert answered.status_code == 200, answered.text
     answer_id = answered.json()["answer_id"]
@@ -507,12 +525,14 @@ def test_answer_capture_judgment_and_eval_export(
         f"/books/doc-eval/answers/{answer_id}/judgment",
         json={"verdict": "good"},
         headers=_OWNER_HEADERS,
+        cookies=owner_cookie,
     )
     assert judged.status_code == 200, judged.text
     replay = owner_client.post(
         f"/books/doc-eval/answers/{answer_id}/judgment",
         json={"verdict": "good"},
         headers=_OWNER_HEADERS,
+        cookies=owner_cookie,
     )
     assert replay.status_code == 200
     assert replay.json()["judgment_id"] == judged.json()["judgment_id"]
@@ -520,12 +540,14 @@ def test_answer_capture_judgment_and_eval_export(
         f"/books/doc-eval/answers/{answer_id}/judgment",
         json={"verdict": "bad"},
         headers=_OWNER_HEADERS,
+        cookies=owner_cookie,
     )
     assert conflict.status_code == 409
 
     exported = owner_client.get(
         "/books/doc-eval/answer-evaluations",
         headers=_OWNER_HEADERS,
+        cookies=owner_cookie,
     )
     assert exported.status_code == 200, exported.text
     assert exported.json()["count"] == 1
@@ -536,7 +558,7 @@ def test_answer_capture_judgment_and_eval_export(
 
 
 def test_disabled_event_log_returns_answer_without_inviting_paid_retry(
-    db, owner_client, stub_embeddings, monkeypatch,
+    db, owner_client, owner_cookie, stub_embeddings, monkeypatch,
 ):
     _gated_book(db, "doc-disabled", content_class="personal_reading", title="Disabled")
     provider = register_fake()
@@ -545,6 +567,7 @@ def test_disabled_event_log_returns_answer_without_inviting_paid_retry(
         "/books/doc-disabled/ask",
         json={"question": "what is here?"},
         headers=_OWNER_HEADERS,
+        cookies=owner_cookie,
     )
     assert response.status_code == 200
     assert response.json()["answer_id"] is None
@@ -554,7 +577,7 @@ def test_disabled_event_log_returns_answer_without_inviting_paid_retry(
 
 
 def test_capture_exception_returns_paid_answer_once(
-    db, owner_client, stub_embeddings, monkeypatch,
+    db, owner_client, owner_cookie, stub_embeddings, monkeypatch,
 ):
     import substrate.event_log
 
@@ -569,6 +592,7 @@ def test_capture_exception_returns_paid_answer_once(
         "/books/doc-capture-error/ask",
         json={"question": "what is here?"},
         headers=_OWNER_HEADERS,
+        cookies=owner_cookie,
     )
     assert response.status_code == 200
     assert response.json()["answer_id"] is None
@@ -674,7 +698,7 @@ def test_judgment_rejects_forged_or_other_owner_answer(
     "content_class", ["personal_reading", "restricted_pending_opt_in"],
 )
 def test_owner_corpus_search_finds_own_gated_content(
-    db, owner_client, stub_embeddings, content_class,
+    db, owner_client, owner_cookie, stub_embeddings, content_class,
 ):
     """The authenticated owner's corpus search surfaces HIS OWN gated/personal
     book (the privileged tag admits it through the §9.0 chunk gate)."""
@@ -684,6 +708,7 @@ def test_owner_corpus_search_finds_own_gated_content(
         "/corpus/search",
         params={"q": "quantum passage entanglement"},
         headers=_OWNER_HEADERS,
+        cookies=owner_cookie,
     )
     assert res.status_code == 200, res.text
     body = res.json()

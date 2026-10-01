@@ -558,21 +558,27 @@ def test_render_subgraph_block_withholds_free_text_insight_labels(db_path, monke
 def test_search_node_label_ilike(db_path):
     con = connect_write(db_path, purpose="seed")
     try:
+        insert_document(
+            con, document_id="ilike-source", source_tier=1,
+            document_type="paper", content_class="public_domain",
+        )
+        chunk_id = insert_chunk(
+            con, document_id="ilike-source", chunk_index=0,
+            text="PsiQuantum public source",
+        )
         insert_node(
             con, canonical_label="PsiQuantum Inc",
             node_type="organization", graph_scope="cross_domain",
             investigation_id="seed",
+            metadata={"chunk_id": chunk_id},
         )
     finally:
         con.close()
 
     con = connect_read(db_path)
     try:
-        # This node is seeded with no provenance (no chunk/document, no edge).
-        # SPR-01 gate: the non-privileged serve path fails such a node CLOSED,
-        # so this ILIKE-mechanic assertion runs on the owner (operator_only)
-        # path, where every labeled node is returned. The §9.0 serve-path
-        # exclusion is proven in tests/test_serve_node_gate.py.
+        # A real public source grounds the label. The query still checks
+        # case-insensitive matching through the provenance gate.
         rows = search_nodes_by_label(
             con, "psiQuantum", limit=5, policy_tag="operator_only",
         )

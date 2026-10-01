@@ -269,8 +269,25 @@ def test_promoted_query_reports_servable_status(graph, tmp_path, monkeypatch):
                 confirmation="PROMOTE-" + staged["content_hash"][:12])
     assert sub.query_status_label() == "servable"
     post = sub.query("government", top_k=1, allow_fallback=False)
-    assert post["status"] == "servable"
+    assert post["status"] == "shadow", "injected client is bound to its declared default name"
     assert post["results"]
+    made = []
+    monkeypatch.setattr(
+        "substrate.graph.retrieval_adapters.turbopuffer.make_namespace",
+        lambda **kwargs: made.append(kwargs["namespace"]) or fake,
+    )
+    monkeypatch.setenv("ANTIEK_TURBOPUFFER_SHADOW_ENABLED", "1")
+    bound = TurbopufferSubstrate.open(
+        graph, model=HashEmbedding(), api_key="x", manifest_dir=tmp_path,
+    )
+    try:
+        result = bound.query("government", top_k=1, allow_fallback=False)
+        assert made == [staged["namespace"]]
+        assert result["status"] == "servable"
+        assert result["results"]
+    finally:
+        bound.close()
+        sub.close()
 
 
 

@@ -63,6 +63,7 @@ from substrate.constants import (
     PERSONAL_READABLE_CONTENT_CLASSES,
     PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 )
 from substrate.rights import (
     RightsTier,
@@ -179,6 +180,7 @@ def guard_candidate_full_text(
     metadata: object,
     *,
     owner: bool = False,
+    owner_user_id: str | None = None,
     taken_down: bool = False,
 ) -> str | None:
     """Apply the stored-body serve rules before an atomic document insert.
@@ -191,7 +193,16 @@ def guard_candidate_full_text(
     status = servability_of(content_class, taken_down=taken_down)
     owner_readable = (
         owner
-        and content_class == PERSONAL_READING_CONTENT_CLASS
+        and (
+            content_class == PERSONAL_READING_CONTENT_CLASS
+            or (
+                content_class == USER_AUTHORED_PRIVATE_CONTENT_CLASS
+                and isinstance(owner_user_id, str)
+                and bool(owner_user_id.strip())
+                and owner_user_id == owner_user_id.strip()
+                and owner_user_id.strip() != "__operator__"
+            )
+        )
         and content_class in PERSONAL_READABLE_CONTENT_CLASSES
     )
     publicly_servable = (
@@ -227,7 +238,7 @@ def guard_document_candidate_full_text(
     one atomic UPDATE changes both fields.
     """
     row = con.execute(
-        "SELECT d.raw_text, d.metadata, COALESCE(b.taken_down, FALSE) "
+        "SELECT d.raw_text, d.metadata, COALESCE(b.taken_down, FALSE), d.owner_user_id "
         "FROM documents d LEFT JOIN book_assets b ON d.document_id=b.document_id "
         "WHERE d.document_id=?",
         [document_id],
@@ -239,12 +250,14 @@ def guard_document_candidate_full_text(
         content_class,
         row[1],
         owner=owner,
+        owner_user_id=row[3],
         taken_down=bool(row[2]),
     )
 
 
 def serve_full_text_guarded(
-    con: Any, document_id: str, *, owner: bool = False
+    con: Any, document_id: str, *, owner: bool = False,
+    owner_user_id: str | None = None,
 ) -> ServeResult:
     """Serve a full body through BOTH the content_class gate and an independent
     license-tier cross-check, and stamp the arXiv RIGHTS context onto the result.
@@ -278,7 +291,11 @@ def serve_full_text_guarded(
     # False withholds it. The license-tier arm below fires EITHER way — a
     # non-T1 arXiv body never leaves storage, even on the owner path (so it
     # can never slip into a model's system_context via the context picker).
-    result = serve_full_text(con, document_id, owner=owner)
+    result = serve_full_text(con, document_id, owner=owner, owner_user_id=owner_user_id)
+    if result.private_authored and result.reason == "private_authored_withheld":
+        # A denied private read must not expose source associations through the
+        # rights enrichment even though the body gate already withheld bytes.
+        return result
     ctx = _rights_context(con, document_id)
     canonical_url = (
         f"https://arxiv.org/abs/{ctx.arxiv_id}" if ctx.arxiv_id else None
@@ -316,8 +333,12 @@ def serve_full_text_guarded(
             )
     # Serve-time and payout-time consult the same predicate
     # (substrate.rights.ad_eligibility.ad_eligibility) over the same
-    # licence-tier derivation, so they cannot diverge.
-    ad_eligible = ad_eligibility(ctx.ad_tier, servable=result.servable).eligible
+    # licence-tier derivation, so they cannot diverge. Private-authored
+    # source bodies cannot enter an ad rail even when readable by their owner.
+    ad_eligible = (
+        False if result.private_authored
+        else ad_eligibility(ctx.ad_tier, servable=result.servable).eligible
+    )
     return dataclasses.replace(
         result,
         tier=ctx.tier.value if ctx.tier is not None else None,

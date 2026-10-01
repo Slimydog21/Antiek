@@ -350,15 +350,20 @@ def remove_folder_block(folder_id: str, node_id: str) -> dict[str, Any]:
 
 @write_router.get("/blocks/search")
 def search_repository(
+    request: Request,
     q: str = Query(default="", max_length=300),
     folder_id: str | None = Query(default=None),
     source_document_id: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> dict[str, Any]:
+    from .books import _retrieval_authority
+
+    policy_tag, owner_user_id = _retrieval_authority(request)
     with _read() as con:
         hits = block_search.search_blocks(
             con, query=q, folder_id=folder_id,
             source_document_id=source_document_id, limit=limit,
+            policy_tag=policy_tag, owner_user_id=owner_user_id,
         )
     return {
         "count": len(hits),

@@ -40,6 +40,7 @@ from substrate.constants import (
     BOOK_DEFAULT_SERVABILITY,
     PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 )
 
 
@@ -71,6 +72,7 @@ class ServabilityStatus(StrEnum):
     # reading" (owner can open it in full) distinctly from a gated book (the
     # owner cannot read a gated copyrighted book in full).
     PERSONAL_READABLE = "personal_readable"
+    PRIVATE_AUTHORED = "private_authored"
 
 
 # content_class → servable ServabilityStatus. Only the four allowlisted
@@ -127,6 +129,8 @@ def servability_of(
         return ServabilityStatus.TAKEN_DOWN
     if content_class == PERSONAL_READING_CONTENT_CLASS:
         return ServabilityStatus.PERSONAL_READABLE
+    if content_class == USER_AUTHORED_PRIVATE_CONTENT_CLASS:
+        return ServabilityStatus.PRIVATE_AUTHORED
     if content_class is None:
         return ServabilityStatus.GATED_METADATA_ONLY
     return _CONTENT_CLASS_TO_STATUS.get(

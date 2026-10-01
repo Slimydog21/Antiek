@@ -40,11 +40,19 @@ from substrate.auth import (
     verify_session_cookie,
 )
 from substrate.auth.magic_link import MAGIC_LINK_TTL_SECONDS
+from substrate.auth.passkeys import PasskeyCredential, PasskeySubjectBinding
+from substrate.multi_user.auth import subject_owner_id
 
 _OPERATOR = "ftn208@nyu.edu"
 _OPERATOR_SECOND = "the@faisalnazer.com"
 _MULTI_OPERATOR_ENV = f"{_OPERATOR},{_OPERATOR_SECOND}"
 _SECRET = "test-secret-" + "x" * 48
+
+
+@pytest.fixture(autouse=True)
+def _isolated_primary_db(monkeypatch, tmp_path):
+    """Subject-backed login tests must never touch the operator's real DB."""
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "auth.duckdb"))
 
 
 # ── Substrate primitives ─────────────────────────────────────────────
@@ -120,7 +128,20 @@ def _client(monkeypatch):
     monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
     # Existing magic-link contract tests model a device that has already
     # completed passkey onboarding. First-run redirection has its own test.
-    monkeypatch.setattr("interfaces.research.api.auth.list_credentials", lambda: [object()])
+    enrolled = PasskeyCredential(
+        credential_id="existing-operator-key",
+        public_key="existing-public-key",
+        sign_count=0,
+        transports=(),
+        device_type="single_device",
+        backed_up=False,
+        label="Existing key",
+        created_at=0,
+        binding=PasskeySubjectBinding(
+            "magic_link", _OPERATOR, subject_owner_id("magic_link", _OPERATOR),
+        ),
+    )
+    monkeypatch.setattr("interfaces.research.api.auth.list_credentials", lambda: [enrolled])
     # The in-process rate-limit windows are module-global; every client
     # gets a fresh slate so throttling tests are deterministic.
     from interfaces.research.api.auth import reset_auth_throttles
@@ -723,8 +744,9 @@ def test_dev_login_requires_auth_secret(monkeypatch):
 
 def test_dev_login_happy_path_sets_cookie_and_authorizes(monkeypatch):
     """Correct token: 302 + session cookie, and the cookie carries the
-    operator identity so the middleware-protected /auth/whoami accepts
-    it via the existing antiek_session_cookie path — unchanged."""
+    local operator identity so the middleware-protected /auth/whoami
+    accepts it through the legacy-session compatibility path. It is not a
+    VerifiedPrincipal and cannot authorize D2 owner routes."""
     client = _client(monkeypatch)
     monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
     r = client.get(f"/auth/dev-login?token={_DEV_TOKEN}", follow_redirects=False)

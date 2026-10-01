@@ -18,6 +18,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from substrate.auth import mint_magic_link_token
+
+_EMAIL = "notebook-test@example.test"
 
 
 @pytest.fixture()
@@ -25,6 +28,9 @@ def isolated_db(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="antiek-notebook-qg-")
     db_path = os.path.join(tmpdir, "antiek.duckdb")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "notebook-test-" + "x" * 48)
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _EMAIL)
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
     try:
         from substrate.graph import ensure_initialized
         ensure_initialized(db_path)
@@ -45,7 +51,12 @@ def _client_with_bus():
     app = create_app(register_wrestling=False)
     rec = _RecordingBroadcaster()
     app.state.broadcaster = rec
-    return TestClient(app), rec
+    client = TestClient(app)
+    assert client.get(
+        f"/auth/callback?token={mint_magic_link_token(_EMAIL)}",
+        follow_redirects=False,
+    ).status_code == 302
+    return client, rec
 
 
 def _create_notebook(client: TestClient, *, title: str = "test") -> str:

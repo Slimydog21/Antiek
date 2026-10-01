@@ -6,10 +6,12 @@ the resolver's substrate read is honestly degraded — see the route docstring).
 
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from interfaces.research.api import notebook_artifact as mod
+from interfaces.research.api.notebook_authority import NotebookAuthority
 from services.html_projection.adapters.notebook import ResolvedRefData
 
 CLAIM = {"type": "antiek_claim_card", "attrs": {"claim_id": "c1"}}
@@ -43,6 +45,16 @@ def _client() -> TestClient:
     app = FastAPI()
     mod.register_notebook_artifact_routes(app)
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _authorized_route_projection(monkeypatch):
+    # These format tests mock the DB resolver; the mounted auth boundary is
+    # exercised with signed cookies in test_notebook_owner_authority.py.
+    monkeypatch.setattr(
+        mod, "authority_from_request",
+        lambda _request: NotebookAuthority("u", True, False),
+    )
 
 
 def test_html_export_gate_clean_with_resolved_content(monkeypatch):

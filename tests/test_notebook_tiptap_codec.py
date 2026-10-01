@@ -6,7 +6,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from substrate.auth import mint_magic_link_token
 from substrate.notebooks.tiptap_codec import compose, decompose
+
+_EMAIL = "notebook-test@example.test"
 
 
 def test_decompose_empty_doc():
@@ -89,15 +92,23 @@ def test_compose_parses_json_string_content():
 # ── API endpoint ─────────────────────────────────────────────────────
 
 
-def _client():
-    return TestClient(create_app(register_wrestling=False, register_providers=False))
+def _client(monkeypatch):
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "notebook-test-" + "x" * 48)
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _EMAIL)
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
+    client = TestClient(create_app(register_wrestling=False, register_providers=False))
+    assert client.get(
+        f"/auth/callback?token={mint_magic_link_token(_EMAIL)}",
+        follow_redirects=False,
+    ).status_code == 302
+    return client
 
 
 def test_put_content_replaces_existing_blocks(tmp_path, monkeypatch):
     """Atomic-replace removes old blocks and inserts the new ones in
     order. The notebook's block list reflects the new content."""
     monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
-    client = _client()
+    client = _client(monkeypatch)
 
     # Create notebook + seed one block via the existing append endpoint
     r = client.post("/notebooks", json={"title": "T", "investigation_id": None})
@@ -128,7 +139,7 @@ def test_put_content_replaces_existing_blocks(tmp_path, monkeypatch):
 
 def test_put_content_unknown_notebook_404(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
-    client = _client()
+    client = _client(monkeypatch)
     r = client.put(
         "/notebooks/does-not-exist/content",
         json={"doc": {"type": "doc", "content": []}},
@@ -138,7 +149,7 @@ def test_put_content_unknown_notebook_404(tmp_path, monkeypatch):
 
 def test_put_content_malformed_doc_422(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
-    client = _client()
+    client = _client(monkeypatch)
     r = client.post("/notebooks", json={"title": "T"})
     nb_id = r.json()["notebook_id"]
     r = client.put(

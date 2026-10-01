@@ -69,6 +69,7 @@ def matrix_graph():
                 document_type="paper",
                 title=f"Title {doc_id}",
                 content_class=content_class,
+                owner_user_id="owner-a" if doc_id == DOC_PERSONAL else "__operator__",
             )
             chunk_id = insert_chunk(
                 con,
@@ -89,7 +90,10 @@ def matrix_graph():
     }
 
 
-def _doc_ids_from_search(db_path: str, model: StubEmbedding, *, policy_tag: str) -> set[str]:
+def _doc_ids_from_search(
+    db_path: str, model: StubEmbedding, *, policy_tag: str,
+    owner_user_id: str | None = None,
+) -> set[str]:
     con = connect_read(db_path)
     try:
         res = search(
@@ -98,6 +102,7 @@ def _doc_ids_from_search(db_path: str, model: StubEmbedding, *, policy_tag: str)
             model=model,
             top_k=10,
             policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
         )
     finally:
         con.close()
@@ -110,10 +115,14 @@ def _doc_ids_from_substrate(
     kind: str,
     *,
     policy_tag: str,
+    owner_user_id: str | None = None,
 ) -> set[str]:
     sub = make_substrate(kind, db_path, model=model)
     try:
-        res = sub.query(QUERY, top_k=10, policy_tag=policy_tag)
+        res = sub.query(
+            QUERY, top_k=10, policy_tag=policy_tag,
+            owner_user_id=owner_user_id,
+        )
     finally:
         sub.close()
     return {r["document_id"] for r in res["results"]}
@@ -160,11 +169,12 @@ def test_operator_only_includes_personal_reading(matrix_graph, surface):
     model = matrix_graph["model"]
     if surface == "search":
         doc_ids = _doc_ids_from_search(
-            db_path, model, policy_tag="operator_only",
+            db_path, model, policy_tag="operator_only", owner_user_id="owner-a",
         )
     else:
         doc_ids = _doc_ids_from_substrate(
             db_path, model, surface, policy_tag="operator_only",
+            owner_user_id="owner-a",
         )
     assert DOC_PERSONAL in doc_ids, (
         f"{surface} withheld personal_reading under operator_only"

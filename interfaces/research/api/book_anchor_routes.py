@@ -20,6 +20,7 @@ carries body text — ids, offsets, hashes only.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -28,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from interfaces.research.api.books import (
     _OWNER_READ_POLICY_TAG,
+    _admit_private_document,
     _owner_read_policy_tag,
     _reader_owner_id,
     _resolve_db_path,
@@ -111,8 +113,8 @@ def _document_exists(con: Any, document_id: str) -> bool:
     )
 
 
-def _anchor_out(row: AnchorRow, *, exact_valid: bool) -> AnchorOut:
-    servable = row.servable_at_pin
+def _anchor_out(row: AnchorRow, *, exact_valid: bool, current_text_servable: bool) -> AnchorOut:
+    servable = row.servable_at_pin and current_text_servable
     return AnchorOut(
         anchor_id=row.anchor_id,
         document_id=row.document_id,
@@ -233,6 +235,7 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         with connect_write(db, purpose="books/anchors/create") as con:
             if not _document_exists(con, document_id):
                 raise HTTPException(status_code=404, detail="book_not_found")
+            _admit_private_document(con, document_id, request)
             try:
                 if body.quote is not None:
                     if not body.quote.strip():
@@ -278,7 +281,11 @@ def register_book_anchor_routes(app: FastAPI) -> None:
             if existing is not None:
                 return JSONResponse(
                     status_code=200,
-                    content=_anchor_out(existing, exact_valid=True).model_dump(),
+                    content=_anchor_out(
+                        existing,
+                        exact_valid=True,
+                        current_text_servable=servable,
+                    ).model_dump(),
                 )
             row = HighlightsStore().create_pin(
                 con,
@@ -291,7 +298,7 @@ def register_book_anchor_routes(app: FastAPI) -> None:
                     page_index_hint=resolution.page_index_hint,
                 ),
             )
-        return _anchor_out(row, exact_valid=True)
+            return _anchor_out(row, exact_valid=True, current_text_servable=servable)
 
     @app.get(
         "/books/{document_id}/anchors",
@@ -331,14 +338,23 @@ def register_book_anchor_routes(app: FastAPI) -> None:
 
         con = connect_read(db)
         try:
+            con.execute("BEGIN TRANSACTION")
             if not _document_exists(con, document_id):
                 raise HTTPException(status_code=404, detail="book_not_found")
+            _admit_private_document(con, document_id, request)
+            current_text_servable = document_servable(con, document_id)
             if not highlights_table_exists(con):
+                con.execute("COMMIT")
                 return AnchorListOut(document_id=document_id, anchors=[], count=0)
             rows = [
                 r for r in store.list_for_document(con, document_id) if r.owner_user_id == owner
             ]
             exact = _exact_map(con, rows)
+            con.execute("COMMIT")
+        except Exception:
+            with suppress(Exception):
+                con.execute("ROLLBACK")
+            raise
         finally:
             con.close()
 
@@ -350,18 +366,35 @@ def register_book_anchor_routes(app: FastAPI) -> None:
                 reanchor_document(wcon, document_id=document_id)
             rcon = connect_read(db)
             try:
+                rcon.execute("BEGIN TRANSACTION")
+                if not _document_exists(rcon, document_id):
+                    raise HTTPException(status_code=404, detail="book_not_found")
+                _admit_private_document(rcon, document_id, request)
+                current_text_servable = document_servable(rcon, document_id)
                 rows = [
                     r
                     for r in store.list_for_document(rcon, document_id)
                     if r.owner_user_id == owner
                 ]
                 exact = _exact_map(rcon, rows)
+                rcon.execute("COMMIT")
+            except Exception:
+                with suppress(Exception):
+                    rcon.execute("ROLLBACK")
+                raise
             finally:
                 rcon.close()
 
         return AnchorListOut(
             document_id=document_id,
-            anchors=[_anchor_out(r, exact_valid=exact[r.anchor_id]) for r in rows],
+            anchors=[
+                _anchor_out(
+                    r,
+                    exact_valid=exact[r.anchor_id],
+                    current_text_servable=current_text_servable,
+                )
+                for r in rows
+            ],
             count=len(rows),
         )
 
@@ -377,11 +410,17 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         anchor. FIRST LINK WINS — a second spawn with a different thread is a
         409 (never a silent overwrite); re-linking the SAME thread is the
         idempotent 200."""
-        from runtime.db_lock import connect_read, connect_write
+        from runtime.db_lock import connect_write
 
         owner = _reader_owner_id(request)
         db = _resolve_db_path()
         with connect_write(db, purpose="books/anchors/link") as con:
+            try:
+                _admit_private_document(con, document_id, request, missing_ok=True)
+            except HTTPException as exc:
+                if exc.status_code != 404:
+                    raise
+                raise HTTPException(status_code=404, detail="anchor_not_found") from None
             outcome = HighlightsStore().set_investigation_link(
                 con, anchor_id, owner, body.investigation_id, document_id=document_id
             )
@@ -389,14 +428,15 @@ def register_book_anchor_routes(app: FastAPI) -> None:
                 raise HTTPException(status_code=404, detail="anchor_not_found")
             if outcome == "already_linked":
                 raise HTTPException(status_code=409, detail="anchor_already_linked")
-        rcon = connect_read(db)
-        try:
-            row = HighlightsStore().get(rcon, anchor_id)
-        finally:
-            rcon.close()
-        if row is None:  # pragma: no cover - database invariant
-            raise HTTPException(status_code=404, detail="anchor_not_found")
-        return _anchor_out(row, exact_valid=True)
+            row = HighlightsStore().get(con, anchor_id)
+            if row is None:  # pragma: no cover - database invariant
+                raise HTTPException(status_code=404, detail="anchor_not_found")
+            current_text_servable = document_servable(con, document_id)
+            return _anchor_out(
+                row,
+                exact_valid=True,
+                current_text_servable=current_text_servable,
+            )
 
     @app.delete(
         "/books/{document_id}/anchors/{anchor_id}",
@@ -409,6 +449,12 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         owner = _reader_owner_id(request)
         db = _resolve_db_path()
         with connect_write(db, purpose="books/anchors/delete") as con:
+            try:
+                _admit_private_document(con, document_id, request, missing_ok=True)
+            except HTTPException as exc:
+                if exc.status_code != 404:
+                    raise
+                return
             # Owner- and document-scoped AND idempotent: deleting twice, or
             # deleting an anchor that is not yours or not on this document, is
             # a 204, never a 404 — the only removal path reveals nothing about
@@ -421,13 +467,14 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         response_model=AnchorMapOut,
         tags=["books", "anchors"],
     )
-    def get_anchor_map(document_id: str) -> AnchorMapOut:
+    def get_anchor_map(document_id: str, request: Request) -> AnchorMapOut:
         from runtime.db_lock import connect_read
         from substrate.books.serve_guard import serve_full_text_guarded
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            _admit_private_document(con, document_id, request, owner_route=False)
             result = serve_full_text_guarded(con, document_id)
             if not result.found:
                 raise HTTPException(status_code=404, detail="book_not_found")
@@ -464,30 +511,44 @@ def register_book_anchor_routes(app: FastAPI) -> None:
         from runtime.db_lock import connect_read
         from substrate.books.serve_guard import serve_full_text_guarded
 
-        if _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
-            raise HTTPException(status_code=403, detail="owner_read_required")
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            result = serve_full_text_guarded(con, document_id, owner=True)
+            con.execute("BEGIN TRANSACTION")
+            admitted_owner = _admit_private_document(con, document_id, request)
+            if (
+                admitted_owner is None
+                and _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG
+            ):
+                raise HTTPException(status_code=403, detail="owner_read_required")
+            result = serve_full_text_guarded(
+                con, document_id, owner=True,
+                owner_user_id=admitted_owner,
+            )
             if not result.found:
                 raise HTTPException(status_code=404, detail="book_not_found")
             if result.full_text is None:
                 raise HTTPException(status_code=403, detail="anchor_map_gated")
             manifest = build_anchor_map(con, document_id=document_id, served_text=result.full_text)
+            response = AnchorMapOut(
+                document_id=document_id,
+                chunks=[
+                    AnchorMapChunkOut(
+                        chunk_id=c.chunk_id,
+                        section_path=c.section_path,
+                        body_start=c.body_start,
+                        body_end=c.body_end,
+                        node_text_sha256=c.node_text_sha256,
+                    )
+                    for c in manifest.chunks
+                ],
+                complete=manifest.complete,
+            )
+            con.execute("COMMIT")
+        except BaseException:
+            with suppress(Exception):
+                con.execute("ROLLBACK")
+            raise
         finally:
             con.close()
-        return AnchorMapOut(
-            document_id=document_id,
-            chunks=[
-                AnchorMapChunkOut(
-                    chunk_id=c.chunk_id,
-                    section_path=c.section_path,
-                    body_start=c.body_start,
-                    body_end=c.body_end,
-                    node_text_sha256=c.node_text_sha256,
-                )
-                for c in manifest.chunks
-            ],
-            complete=manifest.complete,
-        )
+        return response

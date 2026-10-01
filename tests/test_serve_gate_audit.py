@@ -38,7 +38,7 @@ def leaky_serve(con, needle):
 _GATED_OK = '''
 def gated_serve(con, needle, policy_tag="attribution_eligible"):
     gate_sql, gate_params = _retrieval_gate.non_privileged_node_provenance_clause(
-        node_alias="n", policy_tag=policy_tag,
+        node_alias="n", policy_tag=policy_tag, owner_user_id=None,
     )
     return con.execute(
         f"SELECT n.node_id, n.canonical_label FROM nodes n "
@@ -94,7 +94,7 @@ def leaky_two_queries(con, needle):
     """Gates query A, but a second ungated labelled query B slips through if the
     check only asks whether the gate is *mentioned* in the function."""
     gate_sql, gate_params = _retrieval_gate.non_privileged_node_provenance_clause(
-        node_alias="n",
+        node_alias="n", owner_user_id=None,
     )
     con.execute(f"SELECT n.node_id FROM nodes n WHERE 1=1{gate_sql}", gate_params)
     return con.execute(

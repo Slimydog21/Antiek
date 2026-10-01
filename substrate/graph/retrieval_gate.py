@@ -6,8 +6,9 @@ SQL fragment. ``search()``, VSS (RG-02), and HTTP (RG-03) must import
 (RESTRICTED_CONTENT_CLASSES)`` alone.
 
 **RESTRICTED_CONTENT_CLASSES alone is never sufficient** for chunk gates:
-owner-only ``personal_reading`` must be excluded on the same non-privileged
-branch as gated-but-public ``restricted_pending_opt_in``. The union is
+owner-only ``personal_reading`` / ``user_authored_private`` and agent-only
+``research_only`` must be excluded alongside gated-but-public
+``restricted_pending_opt_in``. The union is
 ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES``.
 
 Chunk search uses a **denylist** (exclude withheld classes on public paths).
@@ -24,9 +25,18 @@ content from search with no backfill); reconsider only with a legacy migration.
 
 from __future__ import annotations
 
+from substrate.access_policy import (
+    PERSONAL_ONLY_CONTENT_CLASSES as PERSONAL_ONLY_CONTENT_CLASSES,
+)
+from substrate.access_policy import (
+    _usable_owner_id as _usable_owner_id,
+)
+from substrate.access_policy import (
+    taken_down_chunk_exclusion_sql as taken_down_chunk_exclusion_sql,
+)
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
-    PERSONAL_READING_CONTENT_CLASS,
+    RESEARCH_ONLY_CONTENT_CLASS,
 )
 
 # Policy tags privileged to bypass the restricted-content gate.
@@ -39,6 +49,20 @@ PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({
     "private_research",
     "operator_only",
 })
+RESEARCH_AGENT_POLICY_TAG = "private_research"
+OWNER_SCOPED_POLICY_TAG = "owner_scoped"
+assert RESEARCH_AGENT_POLICY_TAG in PRIVILEGED_POLICY_TAGS
+assert OWNER_SCOPED_POLICY_TAG not in PRIVILEGED_POLICY_TAGS
+
+
+def research_policy_tag_from_env(value: str | None) -> str:
+    """Validate the research principal before retrieval or event emission."""
+    tag = (value or "").strip() or "attribution_eligible"
+    if tag not in {"attribution_eligible", RESEARCH_AGENT_POLICY_TAG}:
+        raise ValueError(
+            "ANTIEK_RESEARCH_POLICY_TAG must be attribution_eligible or private_research"
+        )
+    return tag
 
 # Content classes that the substrate may withhold from retrieval
 # depending on policy_tag. Per master-spec §9.0 §9.10.
@@ -63,21 +87,21 @@ RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
 # monetization semantics (restricted EARNS to escrow; personal_reading earns
 # nothing), and RESTRICTED_CONTENT_CLASSES carries the documented contract that
 # it equals the write-side GATED_DEFAULT_CONTENT_CLASS. Both sets are excluded on
-# the same non-privileged branch below, so personal_reading is filtered out of
-# the public chunk-search gate while remaining retrievable on the privileged
-# (private_research / operator_only) owner path. What would reverse this choice:
+# the same non-privileged branch below. Both owner-only classes require exact
+# owner identity on a privileged path. What would reverse this choice:
 # if personal_reading ever needed distinct policy_tag gating from
 # restricted_pending_opt_in (e.g. a tag privileged for one but not the other),
 # the separate set already supports it; folding them together would not.
-PERSONAL_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
-    PERSONAL_READING_CONTENT_CLASS,
+RESEARCH_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
+    RESEARCH_ONLY_CONTENT_CLASS,
 })
 
-# The full set of content classes withheld from a non-privileged retrieval —
-# the union of the gated-but-public class and the owner-only class. Both are
-# excluded on the public branch; only the PRIVILEGED_POLICY_TAGS bypass.
+# The full public-exclusion set. Research-only stays agent-only even when an
+# owner identity is present; operator_only cannot read it.
 _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES: frozenset[str] = (
-    RESTRICTED_CONTENT_CLASSES | PERSONAL_ONLY_CONTENT_CLASSES
+    RESTRICTED_CONTENT_CLASSES
+    | PERSONAL_ONLY_CONTENT_CLASSES
+    | RESEARCH_ONLY_CONTENT_CLASSES
 )
 
 
@@ -102,7 +126,7 @@ def non_privileged_chunk_sql_clause(
     *,
     table_alias: str = "d",
     policy_tag: str = "attribution_eligible",
-    owner_user_id: str = "__operator__",
+    owner_user_id: str | None = None,
 ) -> tuple[str, list[str]]:
     """SQL fragment + bind params for the non-privileged chunk gate.
 
@@ -124,115 +148,268 @@ def non_privileged_chunk_sql_clause(
         policy_tag: Retrieval policy; privileged tags bypass rights withholding.
         owner_user_id: Account allowed to retrieve owner-only classes.
     """
+    # Import after package initialization: rights.register imports graph.ops,
+    # whose package imports search -> this module. A top-level import cycles.
+    from substrate.rights.register import VALID_CONTENT_CLASSES
+
+    known = sorted(VALID_CONTENT_CLASSES)
+    known_ph = ",".join("?" for _ in known)
+    known_sql = (
+        f" AND ({table_alias}.content_class IS NULL OR "
+        f"{table_alias}.content_class IN ({known_ph}))"
+    )
+    takedown = " AND " + taken_down_chunk_exclusion_sql(table_alias=table_alias)
+    if policy_tag == OWNER_SCOPED_POLICY_TAG:
+        excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
+        excluded_ph = ",".join("?" for _ in excluded)
+        personal = sorted(PERSONAL_ONLY_CONTENT_CLASSES)
+        personal_ph = ",".join("?" for _ in personal)
+        owner_id = _usable_owner_id(owner_user_id)
+        owner_arm = (
+            f" OR ({table_alias}.content_class IN ({personal_ph}) "
+            f"AND {table_alias}.owner_user_id = ?)"
+            if owner_id is not None else ""
+        )
+        sql = (
+            f" AND ({table_alias}.content_class IS NULL OR "
+            f"{table_alias}.content_class NOT IN ({excluded_ph})"
+            f"{owner_arm})"
+        )
+        params = [*excluded]
+        if owner_id is not None:
+            params.extend([*personal, owner_id])
+        return known_sql + sql + takedown, [*known, *params]
     if policy_tag in PRIVILEGED_POLICY_TAGS:
         owner_only = sorted(PERSONAL_ONLY_CONTENT_CLASSES)
         placeholders = ",".join("?" for _ in owner_only)
-        return (
+        owner_id = _usable_owner_id(owner_user_id)
+        owner_clause = f" OR {table_alias}.owner_user_id = ?" if owner_id is not None else ""
+        sql = (
             f" AND ({table_alias}.content_class IS NULL OR "
-            f"{table_alias}.content_class NOT IN ({placeholders}) OR "
-            f"{table_alias}.owner_user_id = ?)",
-            [*owner_only, owner_user_id],
+            f"{table_alias}.content_class NOT IN ({placeholders}){owner_clause})"
         )
+        params = [*owner_only, *([owner_id] if owner_id is not None else [])]
+        if policy_tag != RESEARCH_AGENT_POLICY_TAG:
+            research_only = sorted(RESEARCH_ONLY_CONTENT_CLASSES)
+            research_ph = ",".join("?" for _ in research_only)
+            sql = (
+                f" AND ({table_alias}.content_class IS NULL OR "
+                f"{table_alias}.content_class NOT IN ({research_ph}))"
+                + sql
+            )
+            params = [*research_only, *params]
+        return known_sql + sql + takedown, [*known, *params]
     excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
     placeholders = ",".join("?" for _ in excluded)
     sql = (
         f" AND ({table_alias}.content_class IS NULL OR "
         f"{table_alias}.content_class NOT IN ({placeholders}))"
+        + takedown
     )
-    return sql, excluded
+    return known_sql + sql, [*known, *excluded]
+
+
+def _provenance_alias(alias: str) -> str:
+    """Validate an SQL identifier supplied by source code, never request text."""
+    if not alias.isidentifier():
+        raise ValueError("provenance alias must be a static identifier")
+    return alias
+
+
+def _outer_provenance_alias(alias: str) -> str:
+    """Keep caller aliases distinct from every private subquery alias."""
+    _provenance_alias(alias)
+    if alias.lower() == "td" or alias.lower().startswith("pa04_"):
+        raise ValueError("provenance alias collides with an internal alias")
+    return alias
+
+
+def _node_source_references_sql(node_alias: str) -> str:
+    """All declared links, including invalid declarations, as (kind, id) rows."""
+    na = _provenance_alias(node_alias)
+    meta = f"TRY_CAST({na}.metadata AS JSON)"
+    return (
+        "SELECT 'invalid' AS kind, NULL::TEXT AS ref_id "
+        f"WHERE {na}.metadata IS NOT NULL "
+        f"AND ({meta} IS NULL OR json_type({meta}) != 'OBJECT') "
+        "UNION ALL "
+        "SELECT CASE WHEN json_type(json_extract(" + meta + ", '$.chunk_id')) = 'VARCHAR' "
+        "THEN 'chunk' ELSE 'invalid' END, "
+        f"json_extract_string({meta}, '$.chunk_id') "
+        f"WHERE json_extract({meta}, '$.chunk_id') IS NOT NULL "
+        "UNION ALL "
+        "SELECT CASE WHEN json_type(json_extract(" + meta + ", '$.source_document_id')) = 'VARCHAR' "
+        "THEN 'doc' ELSE 'invalid' END, "
+        f"json_extract_string({meta}, '$.source_document_id') "
+        f"WHERE json_extract({meta}, '$.source_document_id') IS NOT NULL "
+        "UNION ALL "
+        "SELECT 'invalid', NULL::TEXT "
+        f"WHERE json_extract({meta}, '$.source_chunk_ids') IS NOT NULL "
+        f"AND json_type(json_extract({meta}, '$.source_chunk_ids')) != 'ARRAY' "
+        "UNION ALL "
+        "SELECT CASE WHEN json_type(pa04_item.value) = 'VARCHAR' "
+        "THEN 'chunk' ELSE 'invalid' END, "
+        "json_extract_string(pa04_item.value, '$') "
+        f"FROM json_each({meta}, '$.source_chunk_ids') pa04_item "
+        "UNION ALL "
+        "SELECT 'doc', pa04_edge.source_document_id "
+        "FROM edges pa04_edge "
+        f"WHERE (pa04_edge.source_node_id = {na}.node_id "
+        f"OR pa04_edge.target_node_id = {na}.node_id) "
+        "AND pa04_edge.source_document_id IS NOT NULL "
+        "UNION ALL "
+        "SELECT 'chunk', pa04_edge2.chunk_id "
+        "FROM edges pa04_edge2 "
+        f"WHERE (pa04_edge2.source_node_id = {na}.node_id "
+        f"OR pa04_edge2.target_node_id = {na}.node_id) "
+        "AND pa04_edge2.chunk_id IS NOT NULL"
+    )
+
+
+def _source_policy_sql(
+    *, document_alias: str, policy_tag: str, owner_user_id: str | None
+) -> tuple[str, list[str]]:
+    """Derived-label policy for a resolved source document, not raw body rights."""
+    from substrate.rights.register import VALID_CONTENT_CLASSES
+
+    da = _provenance_alias(document_alias)
+    known = sorted(VALID_CONTENT_CLASSES)
+    private = sorted(PERSONAL_ONLY_CONTENT_CLASSES)
+    denied = sorted(PERSONAL_ONLY_CONTENT_CLASSES | RESTRICTED_CONTENT_CLASSES | RESEARCH_ONLY_CONTENT_CLASSES)
+    owner = _usable_owner_id(owner_user_id)
+    known_sql = f"({da}.content_class IS NULL OR {da}.content_class IN ({','.join('?' for _ in known)}))"
+    withheld = private if policy_tag in PRIVILEGED_POLICY_TAGS else denied
+    # A verified owner can see their own private derived node on every
+    # private/owner-scoped policy, but public/unknown tags never use identity.
+    include_owner = owner is not None and (
+        policy_tag in PRIVILEGED_POLICY_TAGS or policy_tag == OWNER_SCOPED_POLICY_TAG
+    )
+    owner_arm = (
+        f" OR ({da}.content_class IN ({','.join('?' for _ in private)}) "
+        f"AND {da}.owner_user_id = ?)"
+        if include_owner
+        else ""
+    )
+    base = f"{da}.content_class NOT IN ({','.join('?' for _ in withheld)})"
+    sql = (
+        f"{known_sql} AND {taken_down_chunk_exclusion_sql(table_alias=da)} "
+        f"AND ({da}.content_class IS NULL OR {base}{owner_arm})"
+    )
+    params = [*known, *withheld]
+    if include_owner and owner is not None:
+        params.extend([*private, owner])
+    return sql, params
+
+
+def _references_valid_sql(
+    references: str, *, policy_tag: str, owner_user_id: str | None
+) -> tuple[str, list[str]]:
+    """Require a resolved source and reject any malformed, missing or denied one."""
+    policy, params = _source_policy_sql(
+        document_alias="pa04_doc", policy_tag=policy_tag, owner_user_id=owner_user_id
+    )
+    relation = (
+        f"FROM ({references}) pa04_ref "
+        "LEFT JOIN chunks pa04_chunk ON pa04_ref.kind = 'chunk' "
+        "AND pa04_chunk.chunk_id = pa04_ref.ref_id "
+        "LEFT JOIN documents pa04_doc ON pa04_doc.document_id = "
+        "CASE WHEN pa04_ref.kind = 'doc' THEN pa04_ref.ref_id "
+        "ELSE pa04_chunk.document_id END"
+    )
+    return (
+        f" AND EXISTS (SELECT 1 {relation} WHERE pa04_doc.document_id IS NOT NULL)"
+        f" AND NOT EXISTS (SELECT 1 {relation} WHERE "
+        "pa04_ref.kind = 'invalid' OR pa04_ref.ref_id IS NULL "
+        "OR trim(pa04_ref.ref_id) = '' OR pa04_doc.document_id IS NULL "
+        f"OR ({policy}) IS NOT TRUE)",
+        params,
+    )
+
+
+def _node_provenance_clause(
+    *, node_alias: str = "n", policy_tag: str = "attribution_eligible",
+    owner_user_id: str | None,
+) -> tuple[str, list[str]]:
+    """Require node ownership and every declared source's derived-label rights."""
+    na = _provenance_alias(node_alias)
+    owner = _usable_owner_id(owner_user_id)
+    owner_sql = f" AND {na}.owner_user_id IS NULL"
+    owner_params: list[str] = []
+    if owner is not None:
+        owner_sql = f" AND ({na}.owner_user_id IS NULL OR {na}.owner_user_id = ?)"
+        owner_params = [owner]
+    source_sql, source_params = _references_valid_sql(
+        _node_source_references_sql(na),
+        policy_tag=policy_tag,
+        owner_user_id=owner,
+    )
+    return owner_sql + source_sql, [*owner_params, *source_params]
 
 
 def non_privileged_node_provenance_clause(
-    *,
-    node_alias: str = "n",
-    policy_tag: str = "attribution_eligible",
+    *, node_alias: str = "n", policy_tag: str = "attribution_eligible",
+    owner_user_id: str | None,
 ) -> tuple[str, list[str]]:
-    """SQL fragment + bind params for the non-privileged **node** gate (SPR-01).
-
-    A node has no ``content_class`` column of its own — its rights class is
-    inherited from the document(s) it was extracted from (master-spec Open
-    Question A, the *provenance join*, chosen over the rejected denormalized
-    stamp: the join is authoritative and the node path is not a measured
-    hot-path). Provenance is resolved along **both** links the substrate
-    actually records:
-
-      * ``node.metadata ->> 'chunk_id'`` → ``chunks.document_id`` →
-        ``documents.content_class`` — the inbox / substack ingest link, which
-        stashes the grounding chunk in node metadata and writes **no** edge
-        (``acquisition/inbox/ingest.py``, ``acquisition/substack/adapter.py``).
-        This is the link the §9.0 leak actually travels.
-      * ``edges`` where the node is source or target → the edge's own
-        ``source_document_id`` (direct) or ``chunk_id`` →
-        ``chunks.document_id`` → ``documents.content_class`` — the grounding
-        link ``promote_insight`` records (see ``insight_question.py``).
-
-    **Most-restrictive wins:** a node is withheld on a non-privileged path if
-    *any* resolved provenance document is in
-    ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES``. A §9.0 under-exclusion is a
-    legal leak; an over-exclusion only hides owner value on the non-owner path.
-
-    **Fail-closed on unresolved provenance:** a node with *no* resolvable
-    provenance document at all (no metadata chunk_id, no edge) is withheld on
-    the non-privileged path — its rights class cannot be established, so it is
-    treated as non-servable. This is DISTINCT from the NULL-``content_class``
-    grandfathering contract: a node that resolves to a real document whose
-    class is NULL is still served (legacy rows remain searchable, mirroring
-    ``non_privileged_chunk_sql_clause``); only a node that resolves to *nothing*
-    fails closed.
-
-    On a privileged tag (``private_research`` / ``operator_only``) returns
-    ``("", [])`` — the owner path returns every labeled node unchanged.
-
-    Args:
-        node_alias: Alias of the ``nodes`` row in the outer query (default ``n``).
-        policy_tag: Retrieval policy; only PRIVILEGED_POLICY_TAGS bypass the gate.
-    """
-    if policy_tag in PRIVILEGED_POLICY_TAGS:
-        return "", []
-    excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
-    ph = ",".join("?" for _ in excluded)
-    na = node_alias
-    # (1) Does this node resolve to ANY provenance document? (metadata chunk_id
-    #     OR an edge's source_document_id OR an edge's chunk_id). Each branch is
-    #     a flat subquery correlated only to the outer node row.
-    prov_any = (
-        "SELECT 1 FROM chunks c "
-        f"WHERE c.chunk_id = json_extract_string({na}.metadata, '$.chunk_id') "
-        "UNION ALL "
-        "SELECT 1 FROM edges e "
-        f"WHERE (e.source_node_id = {na}.node_id OR e.target_node_id = {na}.node_id) "
-        "AND e.source_document_id IS NOT NULL "
-        "UNION ALL "
-        "SELECT 1 FROM edges e2 JOIN chunks c2 ON c2.chunk_id = e2.chunk_id "
-        f"WHERE (e2.source_node_id = {na}.node_id OR e2.target_node_id = {na}.node_id)"
+    """Require node ownership and every declared source's derived-label rights."""
+    return _node_provenance_clause(
+        node_alias=_outer_provenance_alias(node_alias),
+        policy_tag=policy_tag,
+        owner_user_id=owner_user_id,
     )
-    # (2) Does ANY resolved provenance document sit in the withheld set?
-    #     Same three links, each JOINed to documents with the excluded filter.
-    #     NULL content_class is grandfathered: `content_class IN (...)` is
-    #     UNKNOWN for NULL, so a NULL-class provenance doc never trips this.
-    prov_excluded = (
-        "SELECT 1 FROM chunks c JOIN documents d ON d.document_id = c.document_id "
-        f"WHERE c.chunk_id = json_extract_string({na}.metadata, '$.chunk_id') "
-        f"AND d.content_class IN ({ph}) "
+
+
+def non_privileged_edge_provenance_clause(
+    *, edge_alias: str = "e", policy_tag: str = "attribution_eligible",
+    owner_user_id: str | None,
+) -> tuple[str, list[str]]:
+    """Require edge owner, both endpoints and all of the edge's own sources."""
+    ea = _outer_provenance_alias(edge_alias)
+    owner = _usable_owner_id(owner_user_id)
+    owner_sql = f" AND {ea}.owner_user_id IS NULL"
+    owner_params: list[str] = []
+    if owner is not None:
+        owner_sql = f" AND ({ea}.owner_user_id IS NULL OR {ea}.owner_user_id = ?)"
+        owner_params = [owner]
+    source_node_sql, source_node_params = _node_provenance_clause(
+        node_alias="pa04_source_node", policy_tag=policy_tag, owner_user_id=owner
+    )
+    target_node_sql, target_node_params = _node_provenance_clause(
+        node_alias="pa04_target_node", policy_tag=policy_tag, owner_user_id=owner
+    )
+    edge_refs = (
+        f"SELECT 'doc' AS kind, {ea}.source_document_id AS ref_id "
+        f"WHERE {ea}.source_document_id IS NOT NULL "
         "UNION ALL "
-        "SELECT 1 FROM edges e JOIN documents d ON d.document_id = e.source_document_id "
-        f"WHERE (e.source_node_id = {na}.node_id OR e.target_node_id = {na}.node_id) "
-        f"AND d.content_class IN ({ph}) "
-        "UNION ALL "
-        "SELECT 1 FROM edges e2 JOIN chunks c2 ON c2.chunk_id = e2.chunk_id "
-        "JOIN documents d ON d.document_id = c2.document_id "
-        f"WHERE (e2.source_node_id = {na}.node_id OR e2.target_node_id = {na}.node_id) "
-        f"AND d.content_class IN ({ph})"
+        f"SELECT 'chunk', {ea}.chunk_id WHERE {ea}.chunk_id IS NOT NULL"
+    )
+    # An edge can inherit resolved provenance from its endpoints when it has
+    # no own pointer. Any declared own pointer must nevertheless be checked.
+    policy, policy_params = _source_policy_sql(
+        document_alias="pa04_edge_doc", policy_tag=policy_tag, owner_user_id=owner
+    )
+    edge_relation = (
+        f"FROM ({edge_refs}) pa04_edge_ref "
+        "LEFT JOIN chunks pa04_edge_chunk ON pa04_edge_ref.kind = 'chunk' "
+        "AND pa04_edge_chunk.chunk_id = pa04_edge_ref.ref_id "
+        "LEFT JOIN documents pa04_edge_doc ON pa04_edge_doc.document_id = "
+        "CASE WHEN pa04_edge_ref.kind = 'doc' THEN pa04_edge_ref.ref_id "
+        "ELSE pa04_edge_chunk.document_id END"
+    )
+    edge_invalid = (
+        f" AND NOT EXISTS (SELECT 1 {edge_relation} WHERE "
+        "pa04_edge_ref.ref_id IS NULL OR trim(pa04_edge_ref.ref_id) = '' "
+        "OR pa04_edge_doc.document_id IS NULL "
+        f"OR ({policy}) IS NOT TRUE)"
     )
     sql = (
-        # fail-closed: at least one resolvable provenance document …
-        f" AND EXISTS ({prov_any})"
-        # … and none of them in the withheld set.
-        f" AND NOT EXISTS ({prov_excluded})"
+        owner_sql
+        + f" AND EXISTS (SELECT 1 FROM nodes pa04_source_node WHERE "
+        f"pa04_source_node.node_id = {ea}.source_node_id{source_node_sql})"
+        + f" AND EXISTS (SELECT 1 FROM nodes pa04_target_node WHERE "
+        f"pa04_target_node.node_id = {ea}.target_node_id{target_node_sql})"
+        + edge_invalid
     )
-    # prov_any carries no binds; prov_excluded binds the excluded set 3×.
-    params = [*excluded, *excluded, *excluded]
-    return sql, params
+    return sql, [*owner_params, *source_node_params, *target_node_params, *policy_params]
 
 
 def is_chunk_body_withheld(

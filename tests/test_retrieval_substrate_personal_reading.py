@@ -57,6 +57,7 @@ def pr_substrate_db():
                 document_type="paper",
                 title=f"Title {doc_id}",
                 content_class=content_class,
+                owner_user_id="owner-a" if doc_id == "doc-pr" else "__operator__",
             )
             insert_chunk(
                 con,
@@ -103,6 +104,7 @@ def test_substrate_operator_only_includes_personal_reading(
             "quantum optics",
             top_k=10,
             policy_tag="operator_only",
+            owner_user_id="owner-a",
         )
     finally:
         sub.close()

@@ -31,7 +31,7 @@ import logging
 import re
 import threading
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import replace
 from html.parser import HTMLParser
 from typing import Any, Literal, cast
@@ -39,8 +39,16 @@ from typing import Any, Literal, cast
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
-from substrate.books.model import BookAsset, get_book_asset, list_book_assets
+from substrate.books.model import (
+    BookAsset,
+    catalog_is_uninitialized,
+    get_book_asset,
+    list_discoverable_book_assets,
+)
+from substrate.books.servability import ServabilityStatus
 from substrate.books.serve import ServeResult
+from substrate.constants import FORBIDDEN_OWNERS, USER_AUTHORED_PRIVATE_CONTENT_CLASS
+from substrate.multi_user.auth import VerifiedPrincipal
 from substrate.research_bridge.ingest import (
     CHUNK_TARGET_CHARS,
     _chunk_paragraphs,
@@ -137,6 +145,24 @@ def _owner_read_policy_tag(request: Request) -> str:
     return _PUBLIC_READ_POLICY_TAG
 
 
+def _retrieval_authority(request: Request) -> tuple[str, str | None]:
+    """Return the rights policy and exact owner authority for chunk retrieval.
+
+    Existing single-operator deployments retain their operator-only policy.
+    Under a multi-account allowlist, only the D2 concrete-principal guard can
+    grant owner-scoped access to that principal's personal/private chunks.
+    """
+    policy_tag = _owner_read_policy_tag(request)
+    if policy_tag == _OWNER_READ_POLICY_TAG:
+        return policy_tag, _private_owner_id(request)
+    owner_id = _private_owner_id(request)
+    if owner_id is not None:
+        from substrate.graph.retrieval_gate import OWNER_SCOPED_POLICY_TAG
+
+        return OWNER_SCOPED_POLICY_TAG, owner_id
+    return policy_tag, None
+
+
 def _reader_owner_id(request: Request) -> str:
     """Resolve ownership from middleware state, never from request data."""
     state = getattr(request, "state", None)
@@ -147,6 +173,68 @@ def _reader_owner_id(request: Request) -> str:
     if auth_method == "unauthenticated_local":
         return "__operator__"
     raise HTTPException(status_code=401, detail="authenticated_owner_required")
+
+
+def _private_owner_id(request: Request) -> str | None:
+    """Return owner authority only from the subject-backed auth middleware."""
+    state = getattr(request, "state", None)
+    user_id = getattr(state, "user_id", None)
+    auth_method = getattr(state, "auth_method", None)
+    principal = getattr(state, "verified_principal", None)
+    if not isinstance(principal, VerifiedPrincipal):
+        return None
+    owner_id = principal.owner_user_id
+    if (
+        auth_method != "antiek_session_cookie"
+        or principal.auth_method != "antiek_session_cookie"
+        or bool(getattr(state, "legacy_session", False))
+        or not isinstance(user_id, str)
+        or not isinstance(owner_id, str)
+        or not owner_id
+        or owner_id != owner_id.strip()
+        or owner_id.casefold() in FORBIDDEN_OWNERS
+        or user_id != owner_id
+    ):
+        return None
+    return owner_id
+
+
+def _admit_private_document(
+    con: Any, document_id: str, request: Request, *, owner_route: bool = True,
+    row: tuple[Any, ...] | None = None,
+    missing_ok: bool = False,
+) -> str | None:
+    """Hide a private document before detail, body, anchor, or ask work."""
+    if row is None:
+        row = con.execute(
+            "SELECT d.content_class, d.owner_user_id, b.pre_takedown_content_class, "
+            "COALESCE(b.taken_down,FALSE) FROM documents d "
+            "LEFT JOIN book_assets b ON d.document_id=b.document_id "
+            "WHERE d.document_id = ?",
+            [document_id],
+        ).fetchone()
+    if row is None:
+        if missing_ok:
+            return None
+        raise HTTPException(status_code=404, detail="book_not_found")
+    private_authored = row[0] == USER_AUTHORED_PRIVATE_CONTENT_CLASS or (
+        len(row) >= 4 and bool(row[3])
+        and row[2] == USER_AUTHORED_PRIVATE_CONTENT_CLASS
+    )
+    if private_authored:
+        owner_id = _private_owner_id(request)
+        stored_owner = row[1]
+        if (
+            not owner_route or owner_id is None
+            or not isinstance(stored_owner, str)
+            or not stored_owner.strip()
+            or stored_owner != stored_owner.strip()
+            or stored_owner.strip() == "__operator__"
+            or owner_id != stored_owner
+        ):
+            raise HTTPException(status_code=404, detail="book_not_found")
+        return owner_id
+    return None
 
 # arXiv canonical-link prefix; the serve guard stamps result.canonical_url as
 # ``https://arxiv.org/abs/<arxiv_id>`` for an arXiv doc (None otherwise), so the
@@ -300,7 +388,7 @@ class BookSummary(BaseModel):
     document_id: str
     title: str | None
     author: str | None
-    servability: str
+    servability: ServabilityStatus
     servable_full_text: bool
     page_count: int
     cover_uri: str | None
@@ -313,7 +401,7 @@ class BookSummary(BaseModel):
             document_id=a.document_id,
             title=a.title,
             author=a.author,
-            servability=a.servability.value,
+            servability=a.servability,
             servable_full_text=a.servable_full_text,
             page_count=a.page_count,
             cover_uri=a.cover_uri,
@@ -363,7 +451,7 @@ class BookImportResponse(BaseModel):
     was_new: bool
     chunk_count: int
     content_class: str | None
-    servability: str
+    servability: ServabilityStatus
     title: str | None
     source_format: Literal["epub"] = "epub"
     content_format: Literal["html"] = "html"
@@ -631,7 +719,7 @@ class BookHtmlPublishJobOut(BaseModel):
     author: str | None
     import_target: Literal["antiek_html"]
     content_class: str
-    servability: str
+    servability: ServabilityStatus
     servable_full_text: bool
     document_inserted: bool
     book_asset_registered: bool
@@ -975,7 +1063,7 @@ class SpinResearchResponse(BaseModel):
     document_id: str
     page_index: int
     gated: bool
-    servability: str
+    servability: ServabilityStatus
     seed_preview: str
     artifact_path: str | None = None
     twin_notes_path: str | None = None
@@ -1006,7 +1094,7 @@ class RecordImpressionsResponse(BaseModel):
 class FullTextResponse(BaseModel):
     document_id: str
     servable: bool
-    servability: str | None
+    servability: ServabilityStatus | None
     full_text: str | None
     snippet: str | None
     title: str | None
@@ -1076,7 +1164,7 @@ def _full_text_response(result: ServeResult) -> FullTextResponse:
     return FullTextResponse(
         document_id=result.document_id,
         servable=result.servable,
-        servability=result.servability.value if result.servability else None,
+        servability=result.servability,
         full_text=result.full_text,
         snippet=result.snippet,
         title=result.title,
@@ -1335,23 +1423,24 @@ def register_book_routes(app: FastAPI) -> None:
 
     @app.get("/books", response_model=BookListResponse, tags=["books"])
     async def list_books(
+        request: Request,
         status: Literal["servable", "gated", "all"] = "servable",
     ) -> BookListResponse:
         from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
 
-        db = _resolve_db_path()
-        con = connect_read(db)
         try:
-            if status == "servable":
-                assets = list_book_assets(con, servable_only=True)
-            else:
-                assets = list_book_assets(con, servable_only=False)
-                if status == "gated":
-                    assets = [a for a in assets if not a.servable_full_text]
-        finally:
-            con.close()
-        summaries = [BookSummary.from_asset(a) for a in assets]
-        return BookListResponse(books=summaries, count=len(summaries))
+            with connect_read(default_db_path()) as con:
+                assets = (
+                    [] if catalog_is_uninitialized(con) else
+                    list_discoverable_book_assets(
+                        con, owner_user_id=_private_owner_id(request), status=status,
+                    )
+                )
+            summaries = [BookSummary.from_asset(a) for a in assets]
+            return BookListResponse(books=summaries, count=len(summaries))
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="read_unavailable") from exc
 
     # Registered BEFORE /books/{document_id} so "curate" is not matched as
     # a document id.
@@ -1900,7 +1989,7 @@ def register_book_routes(app: FastAPI) -> None:
             author=req.author.strip() if req.author else None,
             import_target="antiek_html",
             content_class=content_class,
-            servability=asset.servability.value,
+            servability=asset.servability,
             servable_full_text=asset.servable_full_text,
             document_inserted=True,
             book_asset_registered=True,
@@ -2141,17 +2230,25 @@ def register_book_routes(app: FastAPI) -> None:
             was_new=published.was_new,
             chunk_count=published.chunk_count,
             content_class=published.content_class,
-            servability=published.servability,
+            servability=ServabilityStatus(published.servability),
             title=published.title,
         )
 
     @app.get("/books/{document_id}", response_model=BookDetail, tags=["books"])
-    async def get_book(document_id: str) -> BookDetail:
+    async def get_book(document_id: str, request: Request) -> BookDetail:
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            document_row = con.execute(
+                "SELECT d.content_class, d.owner_user_id, b.pre_takedown_content_class, "
+                "COALESCE(b.taken_down,FALSE) FROM documents d "
+                "LEFT JOIN book_assets b ON d.document_id=b.document_id "
+                "WHERE d.document_id = ?",
+                [document_id],
+            ).fetchone()
+            _admit_private_document(con, document_id, request, row=document_row)
             asset = get_book_asset(con, document_id)
         finally:
             con.close()
@@ -2164,12 +2261,13 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=FullTextResponse,
         tags=["books"],
     )
-    def get_book_full_text(document_id: str) -> FullTextResponse:
+    def get_book_full_text(document_id: str, request: Request) -> FullTextResponse:
         from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
+            _admit_private_document(con, document_id, request, owner_route=False)
             result = serve_full_text_guarded(con, document_id)
             result = _prefer_reader_html_body(con, document_id, result, owner=False)
         finally:
@@ -2204,19 +2302,30 @@ def register_book_routes(app: FastAPI) -> None:
         """
         from runtime.db_lock import connect_read
 
-        if _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
-            raise HTTPException(status_code=403, detail="owner_read_required")
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            result = serve_full_text_guarded(con, document_id, owner=True)
+            con.execute("BEGIN TRANSACTION")
+            admitted_owner = _admit_private_document(con, document_id, request)
+            if admitted_owner is None and _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
+                raise HTTPException(status_code=403, detail="owner_read_required")
+            result = serve_full_text_guarded(
+                con, document_id, owner=True,
+                owner_user_id=admitted_owner,
+            )
             result = _prefer_reader_html_body(con, document_id, result, owner=True)
+            if not result.found:
+                raise HTTPException(status_code=404, detail="book_not_found")
+            response = _full_text_response(result)
+            con.execute("COMMIT")
+        except BaseException:
+            with suppress(Exception):
+                con.execute("ROLLBACK")
+            raise
         finally:
             con.close()
-        if not result.found:
-            raise HTTPException(status_code=404, detail="book_not_found")
         _record_arxiv_serve_audit(db, document_id, result)
-        return _full_text_response(result)
+        return response
 
     @app.post(
         "/books/{document_id}/ad-impressions",
@@ -2386,7 +2495,7 @@ def register_book_routes(app: FastAPI) -> None:
             document_id=document_id,
             page_index=req.page_index,
             gated=seed.gated,
-            servability=seed.servability,
+            servability=ServabilityStatus(seed.servability),
             seed_preview=seed.seed_text[:240] + ("…" if len(seed.seed_text) > 240 else ""),
             artifact_path=artifact_path,
             twin_notes_path=twin_notes_path,
@@ -2406,13 +2515,12 @@ def register_book_routes(app: FastAPI) -> None:
         """Answer one talk-to-book turn, page-cited, over THIS book only.
 
         Retrieval is scoped to ``document_id`` through the §9.0 gate. For the
-        AUTHENTICATED OWNER (resolved server-side from the auth middleware via
-        ``_owner_read_policy_tag``) the gate runs on the PRIVILEGED
-        ``operator_only`` tag, so the owner can talk to HIS OWN gated/personal
-        book in full. For any non-owner / unauthenticated caller (which, when
-        enforcement is on, is 401'd by the middleware before reaching here) the
-        gate stays non-privileged, so a withheld book's body never reaches the
-        model context or a citation. A book with no extractable text (or one the
+        AUTHENTICATED OWNER, a shared retrieval authority decision preserves
+        the single-operator ``operator_only`` policy or grants multi-account
+        ``owner_scoped`` access to that exact account's private/personal chunks.
+        Non-owner / unauthenticated callers keep the public-compatible gate,
+        and private-authored books also pass the separate PA01 admission guard.
+        A book with no extractable text (or one the
         gate fully withholds) returns an honest ungrounded answer WITHOUT
         dispatching a model (no hallucination). The model is dispatched through
         the ONE Hermes-routed path (§16); 503 when no provider is keyed.
@@ -2434,13 +2542,21 @@ def register_book_routes(app: FastAPI) -> None:
         try:
             asset = get_book_asset(con, document_id)
             owner_row = con.execute(
-                "SELECT owner_user_id FROM documents WHERE document_id = ?",
+                "SELECT d.owner_user_id, d.content_class, b.pre_takedown_content_class, "
+                "COALESCE(b.taken_down,FALSE) FROM documents d "
+                "LEFT JOIN book_assets b ON d.document_id=b.document_id "
+                "WHERE d.document_id = ?",
                 [document_id],
             ).fetchone()
+            if asset is None:
+                raise HTTPException(status_code=404, detail="book_not_found")
+            if owner_row is not None:
+                _admit_private_document(
+                    con, document_id, request,
+                    row=(owner_row[1], owner_row[0], owner_row[2], owner_row[3]),
+                )
         finally:
             con.close()
-        if asset is None:
-            raise HTTPException(status_code=404, detail="book_not_found")
 
         authorized_dispatch = None
         selected_choice: UserModelChoice | None = None
@@ -2541,6 +2657,7 @@ def register_book_routes(app: FastAPI) -> None:
         except RuntimeError as exc:  # sentence-transformers not installed
             raise HTTPException(status_code=503, detail=f"embedding_unavailable: {exc}") from exc
 
+        retrieval_policy, retrieval_owner = _retrieval_authority(request)
         con = connect_read(db)
         try:
             try:
@@ -2552,9 +2669,9 @@ def register_book_routes(app: FastAPI) -> None:
                     investigation_id=f"read-{document_id}",
                     history=[Turn(question=t.question, answer=t.answer) for t in req.history],
                     research_tier=req.research_tier,
-                    # §9.0: privileged ONLY for the authenticated owner (resolved
-                    # server-side); non-owner / unauth callers stay gated.
-                    policy_tag=_owner_read_policy_tag(request),
+                    # §9.0: pass the server-derived policy and exact owner pair.
+                    policy_tag=retrieval_policy,
+                    owner_user_id=retrieval_owner,
                     authorized_dispatch=authorized_dispatch,
                 )
             except HTTPException:
@@ -2822,12 +2939,12 @@ def register_book_routes(app: FastAPI) -> None:
     ) -> CorpusSearchResponse:
         """Search the owned corpus by a natural-language query. Wraps
         ``substrate.graph.search.search`` through the §9.0 gate. For the
-        AUTHENTICATED OWNER (resolved server-side from the auth middleware via
-        ``_owner_read_policy_tag``) the gate runs on the PRIVILEGED
-        ``operator_only`` tag, so the owner can search across HIS OWN
-        gated/personal corpus. For any non-owner / unauthenticated caller (401'd
-        by the middleware before reaching here when enforcement is on) the gate
-        stays non-privileged and excludes restricted/personal content.
+        AUTHENTICATED OWNER, the shared retrieval authority decision retains
+        the single-operator ``operator_only`` policy or uses ``owner_scoped``
+        plus the exact verified account ID. The latter admits that account's
+        private/personal chunks while leaving restricted and research-only
+        classes excluded. Non-owner / unauthenticated callers retain the
+        public-compatible gate.
         ``document_id`` optionally scopes to one document. The Library's typed
         query + file-drop bias both POST text here (file = a query SIGNAL, never
         ingested)."""
@@ -2843,15 +2960,24 @@ def register_book_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=503, detail=f"embedding_unavailable: {exc}") from exc
 
         db = _resolve_db_path()
+        retrieval_policy, retrieval_owner = _retrieval_authority(request)
         con = connect_read(db)
         try:
+            con.execute("BEGIN TRANSACTION")
             res = search(
                 con, q, model=model, top_k=max(1, limit), document_id=document_id,
-                # §9.0: privileged ONLY for the authenticated owner (resolved
-                # server-side); non-owner / unauth callers stay gated.
-                policy_tag=_owner_read_policy_tag(request),
+                # §9.0: pass the server-derived policy and exact owner pair.
+                policy_tag=retrieval_policy,
+                owner_user_id=retrieval_owner,
             )
-        finally:
+            con.execute("COMMIT")
+        except BaseException:
+            with suppress(Exception):
+                con.execute("ROLLBACK")
+            with suppress(Exception):
+                con.close()
+            raise
+        else:
             con.close()
 
         hits: list[CorpusSearchHit] = []

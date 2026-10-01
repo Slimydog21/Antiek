@@ -56,8 +56,9 @@ def _seed_graph(db_path: str, emb: HashEmbedding) -> None:
         )
         con.execute(
             "INSERT INTO documents (document_id, title, source_tier, "
-            "document_type, content_class) VALUES (?, ?, 1, 'paper', 'personal_reading')",
-            ["doc-priv", "private doc"],
+            "document_type, content_class, owner_user_id) "
+            "VALUES (?, ?, 1, 'paper', 'personal_reading', ?)",
+            ["doc-priv", "private doc", "acct_test_A"],
         )
         con.execute(
             "INSERT INTO chunks (chunk_id, document_id, chunk_index, text, "
@@ -163,7 +164,8 @@ def test_privileged_owner_path_still_sees_personal_node(db, emb) -> None:
     con = duckdb.connect(db, read_only=True)
     try:
         result = search(con, "public domain quantum", model=emb, top_k=5,
-                        with_edges=True, policy_tag=next(iter(PRIVILEGED_POLICY_TAGS)))
+                        with_edges=True, policy_tag=next(iter(PRIVILEGED_POLICY_TAGS)),
+                        owner_user_id="acct_test_A")
     finally:
         con.close()
     assert _has_secret(_edge_and_node_labels(result)), (

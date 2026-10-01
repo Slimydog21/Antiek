@@ -63,7 +63,8 @@ def feedback_api(monkeypatch, tmp_path):
     rendered = f"<html><body><main>{island}</main></body></html>"
     content_hash = _sha(rendered.encode())
     assert store.add_version(
-        "artifact-1", "__operator__", "stone", rendered, content_hash
+        "artifact-1", "__operator__", "stone", rendered, content_hash,
+        source_hash=source_hash,
     )[0] == 1
     with connect_write(db_path, purpose="test/seed-feedback-route-rights") as con:
         con.execute(

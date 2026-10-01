@@ -261,9 +261,13 @@ def _reuse_step(
     from substrate.graph.retrieval_substrate import make_substrate_from_con
 
     substrate = make_substrate_from_con("brute_force", read_con, model=embedding_provider)
-    units = retrieve_prior_units(
-        substrate, question_text=reuse_question, policy_tag="attribution_eligible", limit=10
-    )
+    try:
+        units = retrieve_prior_units(
+            substrate, question_text=reuse_question,
+            policy_tag="attribution_eligible", limit=10,
+        )
+    finally:
+        substrate.close()
     pack = assemble_context_pack_with_reuse(
         role="evidence_retriever",
         investigation_id=investigation_id,

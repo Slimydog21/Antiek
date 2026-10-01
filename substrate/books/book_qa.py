@@ -237,6 +237,7 @@ def answer_book_question(
     top_k: int = DEFAULT_QA_TOP_K,
     config: Any | None = None,
     policy_tag: str = "attribution_eligible",
+    owner_user_id: str | None = None,
     authorized_dispatch: Callable[[str], tuple[DispatchResult, str]] | None = None,
 ) -> BookAnswer:
     """Answer one talk-to-book turn, page-cited, gate-safe.
@@ -247,16 +248,14 @@ def answer_book_question(
     conversation are dispatched through the curated research tier; the reply's
     claims are backed by the page-level citations of the retrieved chunks.
 
-    ``policy_tag`` is the §9.0 retrieval policy threaded straight through to
-    ``substrate.graph.search.search`` — it is NOT re-interpreted here. The
-    DEFAULT ('attribution_eligible') is non-privileged: the gate excludes
-    restricted (``restricted_pending_opt_in``) AND owner-only
-    (``personal_reading``) content, so a withheld book's chunks never enter the
-    result set, the model context, or a citation. The owner read path (the
-    authenticated owner talking to HIS OWN gated/personal book) passes a
-    PRIVILEGED tag (``operator_only`` ∈ ``PRIVILEGED_POLICY_TAGS``) so — and
-    only then — the gate admits those classes. The privilege decision is the
-    CALLER's (it owns the auth check); this function only forwards the tag.
+    ``policy_tag`` and optional ``owner_user_id`` are threaded unchanged to
+    ``substrate.graph.search.search`` — they are NOT re-interpreted here. The
+    default public-compatible policy excludes restricted and owner-only
+    content. An authenticated multi-account caller may supply ``owner_scoped``
+    and its exact verified owner ID to retrieve only that account's personal
+    classes; existing single-operator callers retain ``operator_only``. The
+    authorization decision belongs to the caller; this function only forwards
+    the pair.
 
     Raises ``ProviderError`` when every provider in the dispatch chain is
     unavailable (no key) — the caller maps that to an honest 503, never a
@@ -270,11 +269,12 @@ def answer_book_question(
         model=model,
         top_k=top_k,
         document_id=document_id,
-        # §9.0 gate, applied via the caller-supplied policy_tag. The DEFAULT is
-        # non-privileged ⇒ restricted/personal chunks never enter retrieval (so
-        # never the model context or a citation). The authenticated-owner caller
-        # passes a PRIVILEGED tag to read his own gated/personal book in full.
+        # §9.0 gate, applied via the caller-supplied policy/owner pair. The
+        # default is public-compatible; owner_scoped admits only this verified
+        # owner's personal classes while operator_only retains its existing
+        # single-operator rights.
         policy_tag=policy_tag,
+        owner_user_id=owner_user_id,
     )
     context_chunks = retrieved["results"]
 

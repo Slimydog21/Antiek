@@ -25,6 +25,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from substrate.auth import mint_magic_link_token
+
+_EMAIL = "notebook-test@example.test"
 
 
 @pytest.fixture()
@@ -32,6 +35,9 @@ def isolated_db(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="antiek-nb-guard-")
     db_path = os.path.join(tmpdir, "antiek.duckdb")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "notebook-test-" + "x" * 48)
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _EMAIL)
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
     try:
         from substrate.graph import ensure_initialized
 
@@ -42,7 +48,12 @@ def isolated_db(monkeypatch):
 
 
 def _client() -> TestClient:
-    return TestClient(create_app(register_wrestling=False))
+    client = TestClient(create_app(register_wrestling=False))
+    assert client.get(
+        f"/auth/callback?token={mint_magic_link_token(_EMAIL)}",
+        follow_redirects=False,
+    ).status_code == 302
+    return client
 
 
 # The exact doc a fresh/unhydrated editor emits: TipTap seeds ``<p></p>``
@@ -356,6 +367,10 @@ def test_a_failure_midway_through_the_replace_does_not_destroy_the_notebook(
     client = TestClient(
         create_app(register_wrestling=False), raise_server_exceptions=False
     )
+    assert client.get(
+        f"/auth/callback?token={mint_magic_link_token(_EMAIL)}",
+        follow_redirects=False,
+    ).status_code == 302
     nb_id, texts = _seed_notebook_with_blocks(client, 3)
 
     before = client.get(f"/notebooks/{nb_id}").json()["blocks"]

@@ -7,16 +7,24 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from substrate.auth import mint_magic_link_token
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
     monkeypatch.setenv("ANTIEK_EVENT_LOG_DIR", str(tmp_path / "events"))
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
-    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
-    monkeypatch.delenv("ANTIEK_AUTH_SECRET", raising=False)
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "notebook-test@example.test")
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "notebook-test-" + "x" * 48)
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
     from interfaces.research.api.app import create_app
-    return TestClient(create_app(register_wrestling=False, register_providers=False))
+    client = TestClient(create_app(register_wrestling=False, register_providers=False))
+    assert client.get(
+        f"/auth/callback?token={mint_magic_link_token('notebook-test@example.test')}",
+        follow_redirects=False,
+    ).status_code == 302
+    return client
 
 
 def _seed_notebook_block(client: TestClient) -> tuple[str, str]:
@@ -41,18 +49,15 @@ def _seed_notebook_block(client: TestClient) -> tuple[str, str]:
     return nb_id, block_id
 
 
-def test_apply_then_undo_round_trip(client: TestClient):
-    """End-to-end: emit ai.action.applied, then POST /ai/undo,
-    confirm the block is back to its prev_state."""
+def test_notebook_block_undo_requires_server_receipt(client: TestClient):
+    """An applied telemetry event cannot invert a notebook block."""
     nb_id, block_id = _seed_notebook_block(client)
 
-    # Simulate the AI sidecar's mutation: flip block_type via the
-    # patch endpoint. (In real life, the sidecar would call
-    # /notebooks/{id}/blocks/{block_id} then emit the event.)
-    # Here we directly patch + then emit.
+    # Apply a normal block edit, then record the AI telemetry event.
+    # block_type is immutable through this endpoint.
     r = client.patch(
         f"/notebooks/{nb_id}/blocks/{block_id}",
-        json={"block_type": "claim_card", "ref_id": "c-1"},
+        json={"ref_id": "c-1"},
     )
     assert r.status_code == 200, r.text
 
@@ -88,23 +93,20 @@ def test_apply_then_undo_round_trip(client: TestClient):
     assert r.status_code == 201, r.text
     applied_event_id = r.json()["event_id"]
 
-    # Undo.
+    before = client.get(f"/notebooks/{nb_id}").json()["blocks"]
+
+    # The event has no server-issued mutation receipt.
     r = client.post(
         "/ai/undo",
         json={"event_id": applied_event_id, "investigation_id": "inv-test"},
     )
-    assert r.status_code == 200, r.text
-    assert r.json()["action_type"] == "ai.action.undone"
-    undone_event_id = r.json()["event_id"]
-    assert undone_event_id != applied_event_id
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["code"] == "notebook_undo_requires_server_receipt"
 
-    # Block should be back to prose.
+    # No inverse occurred.
     r = client.get(f"/notebooks/{nb_id}")
     assert r.status_code == 200
-    blocks = r.json()["blocks"]
-    assert len(blocks) == 1
-    assert blocks[0]["block_type"] == "prose"
-    assert blocks[0]["ref_id"] is None
+    assert r.json()["blocks"] == before
 
 
 def test_undo_unknown_event_404(client: TestClient):

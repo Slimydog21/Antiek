@@ -7,7 +7,7 @@ name = "antiek"
 version = "0.0.1"
 description = "Research substrate consolidating Researchmaxx and DeepBlu"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "Proprietary" }
 authors = [
   { name = "Faisal", email = "ftn208@nyu.edu" },

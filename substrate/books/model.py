@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from runtime.db_lock import LockedConnection
 
@@ -251,3 +251,54 @@ def list_book_assets(
     params.extend([int(limit), int(offset)])
     rows = con.execute(sql, params).fetchall()
     return [_row_to_asset(r) for r in rows]
+
+
+def catalog_is_uninitialized(con: Any) -> bool:
+    """Only an entirely empty main schema is a fresh, empty catalog."""
+    from substrate.graph.schema import list_tables
+
+    tables = set(list_tables(con))
+    if not tables:
+        return True
+    if not {"documents", "book_assets"} <= tables:
+        raise RuntimeError("incomplete_catalog")
+    return False
+
+
+def list_discoverable_book_assets(
+    con: Any,
+    *,
+    owner_user_id: str | None,
+    status: Literal["servable", "gated", "all"] = "all",
+    limit: int = 200,
+    offset: int = 0,
+) -> list[BookAsset]:
+    """List visible books with status resolved before stable pagination."""
+    from substrate.constants import SERVABLE_CONTENT_CLASSES
+    from substrate.rights.document_visibility import document_discoverability_sql
+
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    if offset < 0:
+        raise ValueError("offset must be >= 0")
+    if status not in ("servable", "gated", "all"):
+        raise ValueError("invalid book status")
+
+    visibility_sql, params = document_discoverability_sql(
+        owner_user_id=owner_user_id, document_alias="d",
+    )
+    clauses = [visibility_sql, "b.taken_down = FALSE"]
+    if status != "all":
+        classes = sorted(SERVABLE_CONTENT_CLASSES)
+        placeholders = ",".join("?" for _ in classes)
+        status_sql = f"d.content_class IN ({placeholders})"
+        if status == "gated":
+            status_sql = f"(d.content_class IS NULL OR d.content_class NOT IN ({placeholders}))"
+        clauses.append(status_sql)
+        params.extend(classes)
+    sql = (
+        _BOOK_SELECT + " WHERE " + " AND ".join(clauses)
+        + " ORDER BY b.created_at DESC, b.document_id DESC LIMIT ? OFFSET ?"
+    )
+    rows = con.execute(sql, [*params, int(limit), int(offset)]).fetchall()
+    return [_row_to_asset(row) for row in rows]

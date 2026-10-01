@@ -35,6 +35,7 @@ from substrate.constants import (
     PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
     SERVE_SNIPPET_MAX_CHARS,
+    USER_AUTHORED_PRIVATE_CONTENT_CLASS,
 )
 
 from .html_sanitizer import is_trusted_sanitized
@@ -86,9 +87,13 @@ class ServeResult:
     canonical_url: str | None = None
     license: str | None = None
     content_format: Literal["text", "html"] = "text"
+    private_authored: bool = False
 
 
-def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> ServeResult:
+def serve_full_text(
+    con: Any, document_id: str, *, owner: bool = False,
+    owner_user_id: str | None = None,
+) -> ServeResult:
     """Resolve what body text may be served for ``document_id``.
 
     The single fetch returns ``content_class`` + ``raw_text`` + the
@@ -117,7 +122,8 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
     row = con.execute(
         """
         SELECT d.title, d.author, d.content_class, d.raw_text, d.metadata,
-               COALESCE(b.taken_down, FALSE) AS taken_down
+               COALESCE(b.taken_down, FALSE) AS taken_down, d.owner_user_id,
+               b.pre_takedown_content_class
         FROM documents d
         LEFT JOIN book_assets b ON d.document_id = b.document_id
         WHERE d.document_id = ?
@@ -132,9 +138,21 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
             title=None, author=None, reason="document_not_found",
         )
 
-    title, author, content_class, raw_text, metadata, taken_down = row
+    title, author, content_class, raw_text, metadata, taken_down, stored_owner, pre_takedown_class = row
     taken_down = bool(taken_down)
     status = servability_of(content_class, taken_down=taken_down)
+    private_authored = (
+        content_class == USER_AUTHORED_PRIVATE_CONTENT_CLASS
+        or (taken_down and pre_takedown_class == USER_AUTHORED_PRIVATE_CONTENT_CLASS)
+    )
+    exact_private_owner = (
+        owner and isinstance(owner_user_id, str)
+        and bool(owner_user_id.strip()) and owner_user_id == owner_user_id.strip()
+        and owner_user_id != "__operator__"
+        and isinstance(stored_owner, str)
+        and stored_owner == stored_owner.strip()
+        and owner_user_id == stored_owner
+    )
 
     if status is ServabilityStatus.TAKEN_DOWN:
         # Removal demand honoured absolutely — no body, no snippet. This wins
@@ -142,7 +160,26 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
         return ServeResult(
             document_id=document_id, found=True, servability=status,
             servable=False, full_text=None, snippet=None,
-            title=title, author=author, reason="taken_down",
+            title=title if not private_authored or exact_private_owner else None,
+            author=author if not private_authored or exact_private_owner else None,
+            reason=("private_authored_withheld" if private_authored and not exact_private_owner
+                    else "taken_down"), private_authored=private_authored,
+        )
+
+    if content_class == USER_AUTHORED_PRIVATE_CONTENT_CLASS:
+        if exact_private_owner:
+            return ServeResult(
+                document_id=document_id, found=True, servability=status,
+                servable=False, full_text=raw_text, snippet=None,
+                title=title, author=author, reason="owner_private_authored",
+                content_format="html" if is_trusted_sanitized(metadata) else "text",
+                private_authored=True,
+            )
+        return ServeResult(
+            document_id=document_id, found=True, servability=status,
+            servable=False, full_text=None, snippet=None,
+            title=None, author=None, reason="private_authored_withheld",
+            private_authored=True,
         )
 
     # Owner full-read (Personal-Reading Lane SPR-01). On the OWNER path only, a

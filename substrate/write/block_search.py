@@ -28,7 +28,6 @@ node.
 
 from __future__ import annotations
 
-import json
 import math
 import re
 from collections.abc import Sequence
@@ -75,31 +74,6 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
-def _node_meta(metadata_text: str | None) -> dict[str, Any]:
-    if not metadata_text:
-        return {}
-    try:
-        meta = json.loads(metadata_text)
-    except (json.JSONDecodeError, TypeError):
-        return {}
-    return meta if isinstance(meta, dict) else {}
-
-
-def _node_chunk_id(metadata_text: str | None) -> str | None:
-    cid = _node_meta(metadata_text).get("chunk_id")
-    return str(cid) if cid else None
-
-
-def _node_source_document_id(metadata_text: str | None) -> str | None:
-    """The grounding document recorded directly on the node, used when the
-    node has no chunk anchor to resolve it through. A user-authored in-book
-    marginalia note (Read SPR-07 M3) carries its book here even when the
-    reader client could not resolve a chunk id — so a per-book search still
-    returns it."""
-    did = _node_meta(metadata_text).get("source_document_id")
-    return str(did) if did else None
-
-
 def search_blocks(
     con: Any,
     *,
@@ -109,68 +83,62 @@ def search_blocks(
     query_embedding: Sequence[float] | None = None,
     node_types: Sequence[str] | None = None,
     limit: int = 20,
+    policy_tag: str = "attribution_eligible",
+    owner_user_id: str | None = None,
 ) -> list[BlockHit]:
     """Search the repository. Returns up to ``limit`` ranked ``BlockHit``s.
 
     ``con`` is any duckdb connection (read-only is fine). Ranking is
     documented above and deterministic."""
-    # Base candidate set, narrowed by folder membership if requested.
+    from substrate.graph.retrieval_gate import non_privileged_node_provenance_clause
+    from substrate.rights.document_visibility import document_discoverability_sql
+
+    if folder_id is not None and not _folders_schema_exists(con):
+        return []
+    node_sql, node_params = non_privileged_node_provenance_clause(
+        node_alias="n", policy_tag=policy_tag, owner_user_id=owner_user_id,
+    )
+    display_sql, display_params = document_discoverability_sql(
+        owner_user_id=owner_user_id, document_alias="d",
+    )
+    meta = "TRY_CAST(n.metadata AS JSON)"
+    chunk_id = (
+        f"CASE WHEN json_type(json_extract({meta}, '$.chunk_id')) = 'VARCHAR' "
+        f"THEN json_extract_string({meta}, '$.chunk_id') END"
+    )
+    direct_document_id = (
+        f"CASE WHEN json_type(json_extract({meta}, '$.source_document_id')) = 'VARCHAR' "
+        f"THEN json_extract_string({meta}, '$.source_document_id') END"
+    )
+    base_sql = (
+        "SELECT n.node_id, n.canonical_label, n.node_type, n.embedding, "
+        "d.document_id, d.title, d.source_tier FROM nodes n "
+        f"LEFT JOIN chunks c ON c.chunk_id = ({chunk_id}) "
+        "LEFT JOIN documents chunk_document ON chunk_document.document_id = c.document_id "
+        "LEFT JOIN documents d ON d.document_id = "
+        f"COALESCE(chunk_document.document_id, ({direct_document_id})) AND {display_sql} "
+    )
     if folder_id is not None:
-        if not _folders_schema_exists(con):
-            return []
-        base_sql = (
-            "SELECT n.node_id, n.canonical_label, n.node_type, n.metadata, n.embedding "
-            "FROM nodes n JOIN write_folder_members m ON n.node_id = m.node_id "
-            "WHERE m.folder_id = ?"
-        )
-        params: list[Any] = [folder_id]
-    else:
-        base_sql = (
-            "SELECT n.node_id, n.canonical_label, n.node_type, n.metadata, n.embedding "
-            "FROM nodes n WHERE 1=1"
-        )
-        params = []
+        base_sql += "JOIN write_folder_members m ON n.node_id = m.node_id "
+    base_sql += "WHERE 1=1"
+    params: list[Any] = list(display_params)
+    if folder_id is not None:
+        base_sql += " AND m.folder_id = ?"
+        params.append(folder_id)
     if node_types:
         placeholders = ",".join("?" for _ in node_types)
         base_sql += f" AND n.node_type IN ({placeholders})"
         params.extend(node_types)
+    base_sql += node_sql
+    params.extend(node_params)
+    if source_document_id is not None:
+        base_sql += " AND d.document_id = ?"
+        params.append(source_document_id)
 
     rows = con.execute(base_sql, params).fetchall()
 
     hits: list[BlockHit] = []
-    for node_id, label, node_type, metadata, embedding in rows:
-        # Resolve source document (for filter + display) via the node's
-        # distillation chunk.
-        document_id = document_title = source_tier = None
-        chunk_id = _node_chunk_id(metadata)
-        if chunk_id is not None:
-            doc_row = con.execute(
-                "SELECT c.document_id, d.title, d.source_tier FROM chunks c "
-                "LEFT JOIN documents d ON c.document_id = d.document_id "
-                "WHERE c.chunk_id = ? LIMIT 1",
-                [chunk_id],
-            ).fetchone()
-            if doc_row is not None:
-                document_id, document_title, source_tier = doc_row
-
-        # Fallback: a node grounded directly on its document (no chunk anchor)
-        # — a user-authored in-book marginalia note when the reader client
-        # could not resolve a chunk id. Resolve title/tier from the document
-        # row so a per-book search/filter still returns it.
-        if document_id is None:
-            meta_doc = _node_source_document_id(metadata)
-            if meta_doc is not None:
-                document_id = meta_doc
-                doc_row = con.execute(
-                    "SELECT title, source_tier FROM documents WHERE document_id = ? LIMIT 1",
-                    [meta_doc],
-                ).fetchone()
-                if doc_row is not None:
-                    document_title, source_tier = doc_row
-
-        if source_document_id is not None and document_id != source_document_id:
-            continue
-
+    for node_id, label, node_type, embedding, document_id, document_title, source_tier in rows:
         score = _text_score(query, label or "")
         if query_embedding is not None and embedding is not None:
             score += EMBED_WEIGHT * _cosine(query_embedding, list(embedding))

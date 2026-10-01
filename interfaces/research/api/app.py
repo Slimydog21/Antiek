@@ -64,7 +64,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 # Ensure package root on path for direct uvicorn invocation.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -1155,10 +1155,12 @@ class PublisherCreateRequest(BaseModel):
 
 
 class NotebookCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str
     investigation_id: str | None = None
     document_id: str | None = None
-    content_class: str = "user_owned"
+    content_class: Literal["user_owned"] = "user_owned"
 
 
 class NotebookAppendBlockRequest(BaseModel):
@@ -1773,6 +1775,10 @@ def create_app(
             return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
+        # The Trust Center is a public GET publication. Keep the exemption
+        # method-specific so its path cannot open other request methods.
+        if request.method == "GET" and request.url.path == "/trust-center":
+            return await call_next(request)
         if request.url.path in _OPERATOR_AUTH_OPEN_PATHS:
             return await call_next(request)
         # The outbound Herdr bridge has a narrower credential namespace and
@@ -1836,9 +1842,33 @@ def create_app(
         if os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
             session_value = request.cookies.get(_SESSION_COOKIE_NAME, "")
             if session_value:
+                principal = None
+                try:
+                    from substrate.multi_user.auth import resolve_authenticated_principal
+
+                    principal = resolve_authenticated_principal(request)
+                except Exception:  # noqa: BLE001 — invalid cookie falls through
+                    principal = None
+                if principal is not None:
+                    principal_email = (principal.email or "").strip().lower()
+                    if not operator_emails or principal_email in operator_emails:
+                        _attach_operator(
+                            request,
+                            method=principal.auth_method,
+                            email=principal.email,
+                            user_id=principal.owner_user_id,
+                        )
+                        request.state.verified_principal = principal
+                        return await call_next(request)
+
+                # Temporary local-operator compatibility for existing signed
+                # sessions and the env-gated computer-use bootstrap. These
+                # bytes never become a VerifiedPrincipal, so D2 owner routes
+                # can reject them without weakening legacy operator routes.
                 cookie_claims: SessionClaims | None
                 try:
                     from substrate.auth import verify_session_cookie
+
                     cookie_claims = verify_session_cookie(session_value)
                 except Exception:  # noqa: BLE001 — invalid cookie falls through
                     cookie_claims = None
@@ -1853,6 +1883,7 @@ def create_app(
                             email=cookie_claims.email,
                             user_id=cookie_claims.user_id,
                         )
+                        request.state.legacy_session = True
                         return await call_next(request)
 
         # Path 2: Cloudflare Access — Service Token (machine callers)
@@ -2604,6 +2635,15 @@ def create_app(
                         f"{payload.get('action_type')!r}; only "
                         "ai.action.applied events can be undone."
                     ),
+                },
+            )
+
+        if payload.get("target_kind") in {"notebook", "notebook_block"}:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "notebook_undo_requires_server_receipt",
+                    "message": "notebook undo requires a server receipt",
                 },
             )
 
@@ -3784,16 +3824,35 @@ def create_app(
 
     @app.get("/blocks/search", response_model=BlockSearchResponse)
     async def block_search(
+        request: Request,
         q: str = Query(default="", max_length=200),
         limit: int = Query(default=20, ge=1, le=100),
     ) -> BlockSearchResponse:
-        from runtime.db_lock import connect_read
         """Search the operator's graph for insight/claim/note blocks to
         drag into a deliverable section. Mode C palette uses this.
 
         Sprint 14 implementation: ILIKE over nodes.canonical_label +
         metadata. Sprint 15 swaps in cosine search via the embedding
         column so semantic matches surface."""
+
+        from runtime.db_lock import connect_read
+        from substrate.graph.retrieval_gate import non_privileged_node_provenance_clause
+        from substrate.rights.document_visibility import document_discoverability_sql
+
+        from .books import _retrieval_authority
+
+        policy_tag, owner_user_id = _retrieval_authority(request)
+        node_sql, node_params = non_privileged_node_provenance_clause(
+            node_alias="n", policy_tag=policy_tag, owner_user_id=owner_user_id,
+        )
+        display_sql, display_params = document_discoverability_sql(
+            owner_user_id=owner_user_id, document_alias="d",
+        )
+        meta = "TRY_CAST(n.metadata AS JSON)"
+        chunk_id = (
+            f"CASE WHEN json_type(json_extract({meta}, '$.chunk_id')) = 'VARCHAR' "
+            f"THEN json_extract_string({meta}, '$.chunk_id') END"
+        )
 
         db = _resolve_db_path()
         like = f"%{q}%" if q.strip() else "%"
@@ -3803,13 +3862,11 @@ def create_app(
                 "SELECT n.node_id, n.canonical_label, n.node_type, "
                 "       n.metadata, d.title, d.source_tier "
                 "FROM nodes n "
-                "LEFT JOIN chunks c ON ("
-                "    CAST(json_extract_string(n.metadata, '$.chunk_id') AS VARCHAR) = c.chunk_id"
-                ") "
-                "LEFT JOIN documents d ON c.document_id = d.document_id "
-                "WHERE n.canonical_label ILIKE ? "
+                f"LEFT JOIN chunks c ON c.chunk_id = ({chunk_id}) "
+                f"LEFT JOIN documents d ON c.document_id = d.document_id AND {display_sql} "
+                "WHERE n.canonical_label ILIKE ? " + node_sql + " "
                 "ORDER BY n.created_at DESC LIMIT ?",
-                [like, limit],
+                [*display_params, like, *node_params, limit],
             ).fetchall()
         finally:
             con.close()
@@ -5411,6 +5468,22 @@ def create_app(
     # TipTap-based literate-analysis documents. Substrate references
     # are live-pulled at render time, not denormalized — per §13.2
     # substrate-is-source-of-truth invariant.
+    from .notebook_authority import (
+        NotebookAuthority,
+        admit_parent,
+        authority_from_request,
+        visible_notebook_ids,
+    )
+
+    def _notebook_not_found() -> HTTPException:
+        return HTTPException(status_code=404, detail="notebook not found")
+
+    def _require_notebook_parent(
+        con: Any, notebook_id: str, authority: NotebookAuthority,
+        *, mode: Literal["read", "write"],
+    ) -> None:
+        if admit_parent(con, notebook_id, authority, mode=mode) is None:
+            raise _notebook_not_found()
 
     class NotebookBlockResponse(BaseModel):
         block_id: str
@@ -5462,21 +5535,27 @@ def create_app(
         status_code=201,
     )
     async def post_notebook(
+        request: Request,
         req: NotebookCreateRequest = Body(...),
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
         from substrate.notebooks import create_notebook, get_notebook
 
+        authority = authority_from_request(request)
+        owner_user_id = authority.owner_user_id
+        if owner_user_id is None:
+            raise HTTPException(status_code=403, detail="verified notebook owner required")
         db_path = default_db_path()
 
         def _sync() -> Any:
-            with connect_write(db_path, purpose="api:create_notebook") as con:
+            with connect_write(db_path, purpose="api:create_notebook") as con, con.transaction():
                 nb_id = create_notebook(
                     con,
                     title=req.title,
                     investigation_id=req.investigation_id,
                     document_id=req.document_id,
+                    owner_user_id=owner_user_id,
                     content_class=req.content_class,
                 )
                 return get_notebook(con, nb_id)
@@ -5492,24 +5571,27 @@ def create_app(
 
     @app.get("/notebooks", response_model=NotebookListResponse)
     async def list_notebooks_endpoint(
+        request: Request,
         investigation_id: Annotated[str | None, Query()] = None,
         document_id: Annotated[str | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
     ) -> NotebookListResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
-        from substrate.notebooks import list_notebooks
+        from substrate.notebooks import get_notebook
 
+        authority = authority_from_request(request)
         db_path = default_db_path()
 
         def _sync() -> Any:
-            with connect_write(db_path, purpose="api:list_notebooks") as con:
-                return list_notebooks(
-                    con,
+            with connect_write(db_path, purpose="api:list_notebooks") as con, con.transaction():
+                ids = visible_notebook_ids(
+                    con, authority,
                     investigation_id=investigation_id,
                     document_id=document_id,
                     limit=limit,
                 )
+                return [nb for nb_id in ids if (nb := get_notebook(con, nb_id))]
 
         # flock wait off the uvicorn loop (#3111 to_thread class).
         nbs = await asyncio.to_thread(_sync)
@@ -5519,15 +5601,17 @@ def create_app(
         )
 
     @app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
-    async def get_notebook_endpoint(notebook_id: str) -> NotebookResponse:
+    async def get_notebook_endpoint(notebook_id: str, request: Request) -> NotebookResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
         from substrate.notebooks import get_notebook
 
+        authority = authority_from_request(request)
         db_path = default_db_path()
 
         def _sync() -> Any:
-            with connect_write(db_path, purpose="api:get_notebook") as con:
+            with connect_write(db_path, purpose="api:get_notebook") as con, con.transaction():
+                _require_notebook_parent(con, notebook_id, authority, mode="read")
                 return get_notebook(con, notebook_id)
 
         # flock wait off the uvicorn loop (#3111 to_thread class).
@@ -5543,16 +5627,19 @@ def create_app(
     )
     async def append_notebook_block(
         notebook_id: str,
+        request: Request,
         req: NotebookAppendBlockRequest = Body(...),
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
         from substrate.notebooks import append_block, get_notebook
 
+        authority = authority_from_request(request)
         db_path = default_db_path()
 
         def _sync() -> Any:
-            with connect_write(db_path, purpose="api:append_notebook_block") as con:
+            with connect_write(db_path, purpose="api:append_notebook_block") as con, con.transaction():
+                _require_notebook_parent(con, notebook_id, authority, mode="write")
                 append_block(
                     con, notebook_id,
                     block_type=req.block_type,
@@ -5577,6 +5664,7 @@ def create_app(
     async def patch_notebook_block(
         notebook_id: str,
         block_id: str,
+        request: Request,
         req: NotebookUpdateBlockRequest = Body(...),
     ) -> NotebookResponse:
         """Update one block in place. content + ref_id are optional;
@@ -5587,12 +5675,14 @@ def create_app(
         from substrate.graph import default_db_path
         from substrate.notebooks import get_notebook, update_block
 
+        authority = authority_from_request(request)
         db_path = default_db_path()
 
         def _sync() -> Any:
             with connect_write(
                 db_path, purpose="api:patch_notebook_block",
-            ) as con:
+            ) as con, con.transaction():
+                _require_notebook_parent(con, notebook_id, authority, mode="write")
                 updated = update_block(
                     con, notebook_id, block_id,
                     content=req.content,
@@ -5617,7 +5707,7 @@ def create_app(
         response_model=NotebookResponse,
     )
     async def delete_notebook_block(
-        notebook_id: str, block_id: str,
+        notebook_id: str, block_id: str, request: Request,
     ) -> NotebookResponse:
         """Delete one block from a notebook. Per master-spec §13.2
         substrate-is-source-of-truth: this deletes the row, not just
@@ -5627,12 +5717,14 @@ def create_app(
         from substrate.graph import default_db_path
         from substrate.notebooks import delete_block, get_notebook
 
+        authority = authority_from_request(request)
         db_path = default_db_path()
 
         def _sync() -> Any:
             with connect_write(
                 db_path, purpose="api:delete_notebook_block",
-            ) as con:
+            ) as con, con.transaction():
+                _require_notebook_parent(con, notebook_id, authority, mode="write")
                 deleted = delete_block(con, notebook_id, block_id)
                 if not deleted:
                     raise HTTPException(
@@ -5653,6 +5745,7 @@ def create_app(
     )
     async def reorder_notebook_blocks(
         notebook_id: str,
+        request: Request,
         req: NotebookReorderBlocksRequest = Body(...),
     ) -> NotebookResponse:
         """Re-order a notebook's blocks. The request body must carry
@@ -5662,20 +5755,19 @@ def create_app(
         from substrate.graph import default_db_path
         from substrate.notebooks import get_notebook, reorder_blocks
 
+        authority = authority_from_request(request)
         db_path = default_db_path()
 
         def _sync() -> Any:
             with connect_write(
                 db_path, purpose="api:reorder_notebook_blocks",
-            ) as con:
-                # Confirm the notebook exists before reordering so the
-                # error path returns 404 for missing notebooks rather
-                # than the more confusing "permutation mismatch" 422.
+            ) as con, con.transaction():
+                _require_notebook_parent(con, notebook_id, authority, mode="write")
                 existing = get_notebook(con, notebook_id)
                 if existing is None:
-                    raise HTTPException(
-                        status_code=404, detail="notebook not found",
-                    )
+                    raise _notebook_not_found()
+                if len(req.ordered_block_ids) != len(set(req.ordered_block_ids)):
+                    raise ValueError("ordered_block_ids must not contain duplicates")
                 reorder_blocks(
                     con, notebook_id,
                     ordered_block_ids=req.ordered_block_ids,
@@ -5697,6 +5789,7 @@ def create_app(
     )
     async def put_notebook_content(
         notebook_id: str,
+        request: Request,
         req: NotebookPutContentRequest = Body(...),
     ) -> NotebookResponse:
         """Atomic-replace a notebook's content from a TipTap document.
@@ -5729,12 +5822,14 @@ def create_app(
         # live persisted-block count so it can't be raced.
         incoming_is_empty = is_effectively_empty(req.doc)
 
+        authority = authority_from_request(request)
         db_path = default_db_path()
 
         def _sync() -> Any:
             with connect_write(
                 db_path, purpose="api:put_notebook_content",
             ) as con:
+                _require_notebook_parent(con, notebook_id, authority, mode="write")
                 existing = get_notebook(con, notebook_id)
                 if existing is None:
                     raise HTTPException(
@@ -5800,7 +5895,7 @@ def create_app(
                         "WHERE notebook_id = ?",
                         [notebook_id],
                     )
-                return get_notebook(con, notebook_id)
+                    return get_notebook(con, notebook_id)
 
         # flock wait off the uvicorn loop (#3111 to_thread class).
         nb = await asyncio.to_thread(_sync)
@@ -5814,6 +5909,7 @@ def create_app(
     )
     async def get_notebook_content(
         notebook_id: str,
+        request: Request,
     ) -> NotebookContentResponse:
         """SPR-01 hydration GET — return the composed TipTap document for a
         notebook so the editor seeds from the substrate, not localStorage.
@@ -5829,10 +5925,12 @@ def create_app(
         from substrate.notebooks import get_notebook
         from substrate.notebooks.tiptap_codec import compose
 
+        authority = authority_from_request(request)
         db_path = default_db_path()
 
         def _sync() -> Any:
-            with connect_write(db_path, purpose="api:get_notebook_content") as con:
+            with connect_write(db_path, purpose="api:get_notebook_content") as con, con.transaction():
+                _require_notebook_parent(con, notebook_id, authority, mode="read")
                 return get_notebook(con, notebook_id)
 
         # flock wait off the uvicorn loop (#3111 to_thread class).
@@ -5850,6 +5948,7 @@ def create_app(
     )
     async def promote_notebook_to_public(
         notebook_id: str,
+        request: Request,
         rubric_score: float = Query(default=0.8, ge=0.0, le=1.0),
         force: bool = Query(default=False),
     ) -> NotebookResponse:
@@ -5872,10 +5971,12 @@ def create_app(
             promote_to_public,
         )
 
+        authority = authority_from_request(request)
         db_path = default_db_path()
 
         def _sync() -> tuple[Any, Any, Any]:
             with connect_write(db_path, purpose="api:promote_notebook_public") as con:
+                _require_notebook_parent(con, notebook_id, authority, mode="write")
                 existing = get_notebook(con, notebook_id)
                 if existing is None:
                     raise HTTPException(
@@ -7396,9 +7497,7 @@ def create_app(
         from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
 
-        # Tables to summarize. Each entry maps the response key →
-        # the SQL table. Missing tables are skipped (the substrate
-        # may not have provisioned them yet on a fresh install).
+        # Each entry maps the response key to its SQL table.
         TABLES = [
             ("investigations", "syntheses"),
             ("documents", "documents"),
@@ -7420,17 +7519,27 @@ def create_app(
         warnings: list[str] = []
         try:
             with connect_read(default_db_path()) as con:
+                present_tables = {
+                    row[0]
+                    for row in con.execute(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = current_schema()"
+                    ).fetchall()
+                }
                 for key, table in TABLES:
+                    if table not in present_tables:
+                        counts[key] = 0
+                        if table != "skill_rules":
+                            warnings.append(f"table {table!r} not present")
+                        continue
                     try:
                         row = con.execute(
                             f"SELECT COUNT(*) FROM {table}"
                         ).fetchone()
                         counts[key] = int(row[0]) if row else 0
-                    except Exception:
-                        # Table missing — substrate is partially
-                        # provisioned (legit for fresh deployments).
-                        warnings.append(f"table {table!r} not present")
+                    except Exception as exc:
                         counts[key] = 0
+                        warnings.append(f"count for table {table!r} failed: {exc!r}")
         except Exception as exc:
             warnings.append(f"stats partially unavailable: {exc!r}")
 
@@ -7458,6 +7567,7 @@ def create_app(
         response_model=DocumentListResponse,
     )
     async def list_documents(
+        request: Request,
         source_tier: int | None = Query(default=None, ge=1, le=5),
         investigation_id: str | None = Query(default=None),
         limit: int = Query(default=200, ge=1, le=2000),
@@ -7466,34 +7576,46 @@ def create_app(
         and investigation_id. Per §13.3 retrieval-time gates the
         listing inherits the substrate's gating posture."""
         from runtime.db_lock import connect_read
+        from substrate.books.model import catalog_is_uninitialized
         from substrate.graph import default_db_path
+        from substrate.rights.document_visibility import document_discoverability_sql
 
-        clauses: list[str] = []
-        params: list[Any] = []
+        from .books import _private_owner_id
+
+        visibility_sql, visibility_params = document_discoverability_sql(
+            owner_user_id=_private_owner_id(request), document_alias="d",
+        )
+        params: list[Any] = list(visibility_params)
+        clauses: list[str] = [visibility_sql]
         if source_tier is not None:
-            clauses.append("source_tier = ?")
+            clauses.append("d.source_tier = ?")
             params.append(source_tier)
         if investigation_id is not None:
-            clauses.append("investigation_id = ?")
+            clauses.append("d.investigation_id = ?")
             params.append(investigation_id)
-        where = ""
-        if clauses:
-            where = " WHERE " + " AND ".join(clauses)
         sql = (
-            "SELECT document_id, title, source_uri, document_type, "
-            "source_tier, investigation_id, content_class, ip_holder_id "
-            "FROM documents" + where +
-            " ORDER BY document_id DESC LIMIT ?"
+            "SELECT d.document_id, d.title, d.source_uri, d.document_type, "
+            "d.source_tier, d.investigation_id, d.content_class, d.ip_holder_id "
+            "FROM documents d WHERE " + " AND ".join(clauses) +
+            " ORDER BY d.document_id DESC LIMIT ?"
         )
         params.append(limit)
         try:
             with connect_read(default_db_path()) as con:
-                rows = con.execute(sql, params).fetchall()
-        except duckdb.CatalogException:
-            # The table has not been created yet — a genuinely empty state,
-            # not a failure. This is the ONLY exception that legitimately
-            # means "there are none".
-            rows = []
+                rows = [] if catalog_is_uninitialized(con) else con.execute(sql, params).fetchall()
+            out: list[DocumentSummary] = []
+            for r in rows:
+                out.append(DocumentSummary(
+                    document_id=r[0],
+                    title=r[1],
+                    source_uri=r[2],
+                    document_type=r[3],
+                    source_tier=int(r[4]),
+                    investigation_id=r[5],
+                    content_class=r[6],
+                    ip_holder_id=r[7],
+                ))
+            return DocumentListResponse(documents=out)
         except Exception as exc:
             # A read FAILURE is not an empty result set. Returning [] made
             # "there are none" and "we could not read" the same 200, with no
@@ -7510,19 +7632,6 @@ def create_app(
                     }
                 },
             ) from exc
-        out: list[DocumentSummary] = []
-        for r in rows:
-            out.append(DocumentSummary(
-                document_id=r[0],
-                title=r[1],
-                source_uri=r[2],
-                document_type=r[3],
-                source_tier=int(r[4]),
-                investigation_id=r[5],
-                content_class=r[6],
-                ip_holder_id=r[7],
-            ))
-        return DocumentListResponse(documents=out)
 
     # ── Sprint 30+ shared-substrate skill rule listing (§13.2) ──
     class SkillRuleResponse(BaseModel):

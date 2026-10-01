@@ -146,6 +146,7 @@ def search(
     with_edges: bool = False,
     policy_tag: str = "attribution_eligible",
     owner_user_id: str | None = None,
+    _prepared_query_vector: Sequence[float] | None = None,
 ) -> dict[str, Any]:
     """Vector search over ``chunks.embedding``. Returns top-``k``
     chunks ordered by cosine similarity desc.
@@ -214,7 +215,10 @@ def search(
                 "node_matches": [],
             }
 
-    query_vec = list(model.encode(query))
+    query_vec = list(
+        model.encode(query)
+        if _prepared_query_vector is None else _prepared_query_vector
+    )
     dim = model.dimension
     if len(query_vec) != dim:
         raise ValueError(
@@ -243,7 +247,7 @@ def search(
     gate_sql, gate_params = non_privileged_chunk_sql_clause(
         table_alias="d",
         policy_tag=policy_tag,
-        owner_user_id=owner_user_id or "__operator__",
+        owner_user_id=owner_user_id,
     )
     candidate_sql += gate_sql
     params.extend(gate_params)
@@ -325,16 +329,19 @@ def _fetch_edges_and_nodes(
     the non-privileged value (fail-safe): a caller that forgets it gets the
     gated result, never the leak."""
     g1_sql, g1_params = _retrieval_gate.non_privileged_node_provenance_clause(
-        node_alias="n1", policy_tag=policy_tag,
+        node_alias="n1", policy_tag=policy_tag, owner_user_id=owner_user_id,
     )
     g2_sql, g2_params = _retrieval_gate.non_privileged_node_provenance_clause(
-        node_alias="n2", policy_tag=policy_tag,
+        node_alias="n2", policy_tag=policy_tag, owner_user_id=owner_user_id,
     )
     o1_sql, o1_params = _retrieval_gate.node_owner_sql_clause(
         node_alias="n1", owner_user_id=owner_user_id,
     )
     o2_sql, o2_params = _retrieval_gate.node_owner_sql_clause(
         node_alias="n2", owner_user_id=owner_user_id,
+    )
+    edge_sql, edge_params = _retrieval_gate.non_privileged_edge_provenance_clause(
+        edge_alias="e", policy_tag=policy_tag, owner_user_id=owner_user_id,
     )
     edge_rows = con.execute(
         f"""
@@ -345,10 +352,10 @@ def _fetch_edges_and_nodes(
         FROM edges e
         JOIN nodes n1 ON e.source_node_id = n1.node_id
         JOIN nodes n2 ON e.target_node_id = n2.node_id
-        WHERE e.chunk_id = ?{g1_sql}{g2_sql}{o1_sql}{o2_sql}
+        WHERE e.chunk_id = ?{g1_sql}{g2_sql}{o1_sql}{o2_sql}{edge_sql}
         LIMIT 20
         """,
-        [chunk_id, *g1_params, *g2_params, *o1_params, *o2_params],
+        [chunk_id, *g1_params, *g2_params, *o1_params, *o2_params, *edge_params],
     ).fetchall()
 
     edges = [
@@ -368,7 +375,7 @@ def _fetch_edges_and_nodes(
     if node_ids:
         placeholders = ",".join(["?"] * len(node_ids))
         gn_sql, gn_params = _retrieval_gate.non_privileged_node_provenance_clause(
-            node_alias="n", policy_tag=policy_tag,
+            node_alias="n", policy_tag=policy_tag, owner_user_id=owner_user_id,
         )
         own_sql, own_params = _retrieval_gate.node_owner_sql_clause(
             node_alias="n", owner_user_id=owner_user_id,
@@ -419,6 +426,7 @@ def search_nodes_by_label(
     gate_sql, gate_params = _retrieval_gate.non_privileged_node_provenance_clause(
         node_alias="n",
         policy_tag=policy_tag,
+        owner_user_id=owner_user_id,
     )
     owner_sql, owner_params = _retrieval_gate.node_owner_sql_clause(
         node_alias="n", owner_user_id=owner_user_id,

@@ -13,6 +13,7 @@ everything.
 
 from __future__ import annotations
 
+import ast
 import textwrap
 from pathlib import Path
 
@@ -38,20 +39,57 @@ def test_lint_passes_on_the_current_tree() -> None:
 
 
 def test_real_owner_read_sites_resolve_tag_via_helper_not_a_literal() -> None:
-    """Non-vacuity of the GREEN result: the two legitimate owner-read call sites
-    genuinely pass the tag through ``_owner_read_policy_tag(request)`` (a call),
-    NOT a bare literal — so the lint is clean because of the resolved-via-auth
-    shape, not because the call sites are absent. If a refactor inlined the
-    literal there, the allowlist (defense in depth) still covers books.py, but
-    this asserts the real sites take the auth-checked path."""
+    """Both mounted retrieval routes use the shared policy/identity decision.
+
+    Keep this structural assertion non-vacuous: both endpoint definitions must
+    exist, call ``_retrieval_authority(request)``, and forward its exact pair to
+    their guarded retrieval adapter. The negative controls below still prove
+    that planted privileged literals are caught by the lint.
+    """
     books = (
         Path(__file__).resolve().parent.parent
         / "interfaces" / "research" / "api" / "books.py"
     ).read_text(encoding="utf-8")
-    # The resolved, auth-checked shape — a helper CALL, not a literal tag.
-    assert "policy_tag=_owner_read_policy_tag(request)" in books
-    # And the helper is the only place the privileged tag is named as a value.
-    assert '_OWNER_READ_POLICY_TAG = "operator_only"' in books
+    module = ast.parse(books)
+    functions = {
+        node.name: node for node in ast.walk(module)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    helper = functions["_retrieval_authority"]
+    helper_calls = {
+        node.func.id for node in ast.walk(helper)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert {"_owner_read_policy_tag", "_private_owner_id"} <= helper_calls
+
+    for endpoint, retrieval_callee in (
+        ("ask_book", "answer_book_question"),
+        ("corpus_search", "search"),
+    ):
+        function = functions[endpoint]
+        calls = [
+            node for node in ast.walk(function)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        ]
+        assert any(
+            node.func.id == "_retrieval_authority"
+            and len(node.args) == 1
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id == "request"
+            for node in calls
+        ), f"{endpoint} must resolve the shared server-side authority pair"
+        retrieval_calls = [node for node in calls if node.func.id == retrieval_callee]
+        assert retrieval_calls, f"{endpoint} must call {retrieval_callee}"
+
+        def _keyword_is_name(call: ast.Call, keyword: str, name: str) -> bool:
+            value = next((kw.value for kw in call.keywords if kw.arg == keyword), None)
+            return isinstance(value, ast.Name) and value.id == name
+
+        assert any(
+            _keyword_is_name(call, "policy_tag", "retrieval_policy")
+            and _keyword_is_name(call, "owner_user_id", "retrieval_owner")
+            for call in retrieval_calls
+        ), f"{endpoint} must forward both halves of the authority pair"
 
 
 # ──────────────────────────────────────────────────────────────────────────────

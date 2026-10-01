@@ -11,11 +11,11 @@ import contextlib
 import sys
 from typing import Literal
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 
-from substrate.books.model import list_book_assets
+from substrate.books.model import catalog_is_uninitialized, list_discoverable_book_assets
 
-from .books import BookSummary, _resolve_db_path
+from .books import BookSummary, _private_owner_id
 from .library_catalog import LibraryPage, build_library_page
 
 # Load the metadata-only catalog in bounded deterministic batches. The route
@@ -31,15 +31,19 @@ def register_library_routes(app: FastAPI) -> None:
 
     @app.get("/library", response_model=LibraryPage, tags=["library"])
     async def list_library(
+        request: Request,
         filter: Literal["servable", "gated", "all"] = "all",
         search: str = "",
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=20, ge=1, le=200),
     ) -> LibraryPage:
         from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
 
-        db = _resolve_db_path()
-        con = connect_read(db)
+        try:
+            con = connect_read(default_db_path())
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="read_unavailable") from exc
         transaction_started = False
         try:
             # DuckDB snapshots are transaction-scoped. Keep every offset batch
@@ -49,19 +53,20 @@ def register_library_routes(app: FastAPI) -> None:
             transaction_started = True
             assets = []
             offset = 0
-            while True:
-                batch = list_book_assets(
-                    con,
-                    servable_only=filter == "servable",
-                    limit=_CATALOG_BATCH_SIZE,
-                    offset=offset,
-                )
-                assets.extend(batch)
-                if len(batch) < _CATALOG_BATCH_SIZE:
-                    break
-                offset += len(batch)
+            if not catalog_is_uninitialized(con):
+                while True:
+                    batch = list_discoverable_book_assets(
+                        con, owner_user_id=_private_owner_id(request), status=filter,
+                        limit=_CATALOG_BATCH_SIZE, offset=offset,
+                    )
+                    assets.extend(batch)
+                    if len(batch) < _CATALOG_BATCH_SIZE:
+                        break
+                    offset += len(batch)
             con.execute("COMMIT")
             transaction_started = False
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="read_unavailable") from exc
         finally:
             primary_failure = sys.exc_info()[0] is not None
             try:
@@ -75,13 +80,21 @@ def register_library_routes(app: FastAPI) -> None:
                     with contextlib.suppress(Exception):
                         con.close()
                 else:
-                    con.close()
+                    try:
+                        con.close()
+                    except Exception as exc:
+                        raise HTTPException(
+                            status_code=503, detail="read_unavailable",
+                        ) from exc
 
-        summaries = [BookSummary.from_asset(a) for a in assets]
-        return build_library_page(
-            summaries,
-            filt=filter,
-            search=search,
-            page=page,
-            page_size=page_size,
-        )
+        try:
+            summaries = [BookSummary.from_asset(a) for a in assets]
+            return build_library_page(
+                summaries,
+                filt=filter,
+                search=search,
+                page=page,
+                page_size=page_size,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="read_unavailable") from exc

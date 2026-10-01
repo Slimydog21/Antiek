@@ -21,6 +21,7 @@ import tempfile
 import pytest
 
 from benchmarks.retrieval_bench import HashEmbedding, row_counts, seed_graph
+from runtime.db_lock import connect_write
 from substrate.graph import retrieval_substrate as _rs
 from substrate.graph.retrieval_substrate import (
     RetrievalSubstrate,
@@ -55,6 +56,11 @@ def seeded_db():
     d = tempfile.mkdtemp(prefix="antiek-spr05-iface-")
     db = os.path.join(d, "graph.duckdb")
     counts = seed_graph(db, emb)
+    with connect_write(db, purpose="pa02-interface-owner-fixture") as con:
+        con.execute(
+            "UPDATE documents SET owner_user_id='owner-a' "
+            "WHERE document_id='doc-personal'"
+        )
     yield db, emb, counts
 
 
@@ -208,7 +214,7 @@ def test_gate_includes_personal_reading_under_operator_only(seeded_db, kind):
     sub = make_substrate(kind, db, model=emb)
     try:
         res = sub.query("quantum computing milestones", top_k=20,
-                        policy_tag="operator_only")
+                        policy_tag="operator_only", owner_user_id="owner-a")
         ids = {r["chunk_id"] for r in res["results"]}
         assert "c-personal-1" in ids, f"{kind} withheld personal_reading under operator_only"
     finally:
@@ -304,23 +310,72 @@ def test_factory_rejects_unknown_kind(seeded_db):
         make_substrate("pinecone", db, model=emb)
 
 
-def test_default_factory_path_imports_no_vendor(monkeypatch):
-    """The default factory path (vss / brute_force) must not import any vendor
-    adapter at module load — a grep-equivalent assertion that the seam keeps
-    losers off the default path (M5)."""
+def test_default_factory_path_imports_no_vendor(tmp_path):
+    """Cold default import does not import either vendor adapter."""
+    import json
+    import subprocess
     import sys
+    from pathlib import Path
 
-    # Importing the substrate module must not pull in the vendor adapters.
-    # Pop via monkeypatch so teardown restores the process-global module cache:
-    # a raw sys.modules.pop leaks, and any later test that monkeypatches into
-    # a popped adapter then patches a fresh re-import while already-imported
-    # classes still read the original module object (shard-dependent failure).
-    for mod in ("substrate.graph.retrieval_adapters.turbopuffer",
-                "substrate.graph.retrieval_adapters.ducklake"):
-        monkeypatch.delitem(sys.modules, mod, raising=False)
-    import importlib
-
-    import substrate.graph.retrieval_substrate as rs
-    importlib.reload(rs)
-    assert "substrate.graph.retrieval_adapters.turbopuffer" not in sys.modules
-    assert "substrate.graph.retrieval_adapters.ducklake" not in sys.modules
+    root = Path(__file__).resolve().parents[1]
+    private = tmp_path / "cold-import"
+    private.mkdir()
+    paths = {
+        "HOME": private / "home",
+        "ANTIEK_HOME": private / "antiek-home",
+        "TMPDIR": private / "tmp",
+        "ANTIEK_RESEARCH_EVENTS_DIR": private / "events",
+        "ANTIEK_RESEARCH_ARTIFACTS_DIR": private / "artifacts",
+        "HF_HOME": private / "hf-home",
+        "XDG_CACHE_HOME": private / "cache",
+    }
+    for path in paths.values():
+        path.mkdir()
+    # Mirrors boot_providers candidates with no explicit ANTIEK_ENV_FILE.
+    candidates = [
+        root / "platform" / ".env",
+        root.parent / "platform" / ".env",
+        paths["HOME"] / ".antiek" / ".env",
+        root / ".env",
+    ]
+    assert all(not p.exists() and not p.is_symlink() for p in candidates)
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "LANG": "en_US.UTF-8",
+        "PYTHONPATH": str(root),
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "ANTIEK_DUCKDB_PATH": str(private / "graph.duckdb"),
+        "ANTIEK_PASSKEY_STORE": str(private / "passkeys.json"),
+        "ANTIEK_EMAIL_PROVIDER": "mock",
+        "ANTIEK_EMBEDDING_PROVIDER": "hash",
+        "ANTIEK_VSS_ALLOW_INSTALL": "0",
+        "HF_HUB_OFFLINE": "1",
+        "HF_DATASETS_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+    }
+    env.update({name: str(path) for name, path in paths.items()})
+    code = """
+import hashlib
+import json
+import os
+import sys
+from pathlib import Path
+import substrate.graph.retrieval_substrate as rs
+root = Path(sys.argv[1]).resolve()
+origin = Path(rs.__file__).resolve()
+assert origin == root / 'substrate/graph/retrieval_substrate.py'
+assert 'substrate.graph.retrieval_adapters.turbopuffer' not in sys.modules
+assert 'substrate.graph.retrieval_adapters.ducklake' not in sys.modules
+proof = {'origin': str(origin), 'sha256': hashlib.sha256(origin.read_bytes()).hexdigest(),
+         'vendor_adapters_imported': False}
+Path(os.environ['HOME']).parent.joinpath('cold-import-proof.json').write_text(json.dumps(proof))
+print(json.dumps(proof))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code, str(root)],
+        cwd=root, env=env, capture_output=True, text=True, timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert json.loads(completed.stdout)["vendor_adapters_imported"] is False

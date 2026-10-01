@@ -11,6 +11,9 @@ from __future__ import annotations
 import json
 
 from interfaces.research.api import notebook_artifact as mod
+from interfaces.research.api.notebook_authority import NotebookAuthority
+
+_HISTORICAL_AUTHORITY = NotebookAuthority(None, True, True)
 
 
 def _seed(db_path: str) -> None:
@@ -59,7 +62,9 @@ def _seed(db_path: str) -> None:
 def test_notebook_export_resolves_real_refs(tmp_path):
     db = str(tmp_path / "graph.duckdb")
     _seed(db)
-    source = mod.resolve_notebook_export("nb1", db_path=db)
+    source = mod.resolve_notebook_export(
+        "nb1", authority=_HISTORICAL_AUTHORITY, mode="read", db_path=db,
+    )
     assert source is not None
     assert "c1" in source.resolved_refs
     rr = source.resolved_refs["c1"]
@@ -82,4 +87,6 @@ def test_notebook_export_missing_returns_none(tmp_path):
 
     db = str(tmp_path / "g.duckdb")
     ensure_initialized(db)
-    assert mod.resolve_notebook_export("nope", db_path=db) is None
+    assert mod.resolve_notebook_export(
+        "nope", authority=_HISTORICAL_AUTHORITY, mode="read", db_path=db,
+    ) is None

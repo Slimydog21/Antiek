@@ -60,8 +60,8 @@ antiek_secrets_file: "{{ antiek_secrets_dir }}/secrets.env"
 
 # ── Python ───────────────────────────────────────────────────────────────────
 
-# Ubuntu 24.04 ships Python 3.12 in its default repos. Antiek's
-# pyproject.toml declares `requires-python = ">=3.11"`, so 3.12 is fine.
+# Ubuntu 24.04 ships Python 3.12 in its default repos. Antiek uses Python 3.12
+# syntax and declares `requires-python = ">=3.12"`, matching this runtime.
 # Setting `3.13` would require enabling the deadsnakes PPA — flag this as
 # a future decision if a 3.13-specific feature becomes load-bearing.
 python_version: "3.12"
