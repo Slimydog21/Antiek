@@ -36,6 +36,57 @@ import { sectionScopeFor, useWriteTreeSync } from "../../workspace/writeTreeSync
 /** The block repository's id (the Blocks toggle controls it). */
 const BLOCK_REPOSITORY_ID = "write-block-repository";
 
+interface LoadedPiece {
+  detail: DeliverableDetailResponse;
+  deliverableId: string;
+  contextEpoch: number;
+  projectId: string | null;
+}
+
+function useScopedDeliverable(deliverableId: string | undefined) {
+  const contextEpoch = useTabTrees((s) => s.contextEpoch);
+  const projectId = useTabTrees((s) => s.projectId);
+  const dispatchAllowed = useTabTrees((s) => s.dispatchAllowed);
+  const [loadedPiece, setLoadedPiece] = useState<LoadedPiece | null>(null);
+  const detail = dispatchAllowed && loadedPiece?.contextEpoch === contextEpoch &&
+    loadedPiece.projectId === projectId && loadedPiece.deliverableId === deliverableId
+    ? loadedPiece.detail : null;
+  const [loading, setLoading] = useState(false);
+  const detailRequest = useRef(0);
+
+  const refresh = useCallback(async () => {
+    const request = ++detailRequest.current;
+    const current = () => {
+      const state = useTabTrees.getState();
+      return detailRequest.current === request && state.contextEpoch === contextEpoch &&
+        state.projectId === projectId && state.dispatchAllowed;
+    };
+    if (!deliverableId || !dispatchAllowed) {
+      setLoadedPiece(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      await useTabTrees.getState().ensureMothership("writing");
+      if (!current()) return;
+      const next = await getDeliverable(deliverableId);
+      if (current()) setLoadedPiece(next ? { detail: next, deliverableId, contextEpoch, projectId } : null);
+    } catch {
+      if (current()) setLoadedPiece(null);
+    } finally {
+      setLoading((busy) => current() ? false : busy);
+    }
+  }, [deliverableId, contextEpoch, projectId, dispatchAllowed]);
+
+  useEffect(() => {
+    void refresh();
+    return () => { detailRequest.current++; };
+  }, [refresh]);
+
+  return { detail, loading, refresh };
+}
+
 /**
  * Write Home — the Write door (Product Depth SPR-07 M1).
  *
@@ -62,9 +113,8 @@ export default function WriteHome() {
   const fromInvestigation = (searchParams.get("investigation") || "").trim() || null;
   const titleFromQuery = (searchParams.get("title") || "").trim();
 
-  const [detail, setDetail] = useState<DeliverableDetailResponse | null>(null);
+  const { detail, loading, refresh } = useScopedDeliverable(deliverableId);
   const [pieces, setPieces] = useState<DeliverableSummary[]>([]);
-  const [loading, setLoading] = useState(false);
   const [onRamp, setOnRamp] = useState<"idea" | "context" | null>(null);
   // The piece-view surface: the outline loop, or the imported research canvas
   // (M1 — the SPR-03 Canvas of the linked investigation's blocks).
@@ -90,25 +140,6 @@ export default function WriteHome() {
   const registerAddHandler = useCallback((h: (hit: RepositoryHit) => void) => {
     addHandler.current = h;
   }, []);
-
-  const refresh = useCallback(async () => {
-    if (!deliverableId) {
-      setDetail(null);
-      return;
-    }
-    setLoading(true);
-    try {
-      setDetail(await getDeliverable(deliverableId));
-    } catch {
-      setDetail(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [deliverableId]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
 
   // C5: seed the writing document tree — the full body as tab 1, one child
   // tab per section (1.1, 1.2, …) — and surface the outline pane in the

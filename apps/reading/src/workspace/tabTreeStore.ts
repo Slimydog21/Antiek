@@ -526,15 +526,19 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
     const key = adapterKey();
     set((state) => ({ saving: { ...state.saving, [mothership]: true } }));
     try {
-      let retryTree: TabTree | null = null;
-      let retryOps = 0;
+      let retryBatch: { tree: TabTree; ops: TabOp[] } | null = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         if (!canDispatch()) return;
-        if (!retryTree && heldOn(mothership)) { deferredSaves.add(mothership); return; }
-        // Allocate before taking the PUT snapshot. A retry after a lost answer
-        // uses the same tab ID; the server registry makes it idempotent.
-        const freshIds = new Set(get().pendingOps[mothership].flatMap((op) => op.type === "spawn" ? [op.input.tab_id] : []));
-        const candidates = retryTree ? [] : Object.values(get().trees[mothership]?.nodes ?? {}).filter((node) => freshIds.has(node.tab_id));
+        if (!retryBatch && heldOn(mothership)) { deferredSaves.add(mothership); return; }
+        const currentTree = retryBatch?.tree ?? get().trees[mothership];
+        const sentOps = new Set(retryBatch?.ops ?? get().pendingOps[mothership]);
+        if (!currentTree || sentOps.size === 0) return;
+        let tree = prepareRestores(mothership, currentTree);
+        // Freeze the tree and its operations together before any allocation
+        // await. Later spawns remain pending for the next batch, including
+        // after a conflict. Imported nullable tabs are not pending spawns.
+        const freshIds = new Set([...sentOps].flatMap((op) => op.type === "spawn" ? [op.input.tab_id] : []));
+        const candidates = Object.values(tree.nodes).filter((node) => freshIds.has(node.tab_id));
         // Ordered requests let suspension stop the next POST rather than
         // dispatching every pending tab's allocation at once.
         for (const node of candidates) {
@@ -542,27 +546,27 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
           if (!canDispatch()) return;
           const number = await adapter.allocate(key, mothership, node.tab_id, signal);
           if (!current()) return;
-          const tree = get().trees[mothership];
-          if (!tree) return;
-          const assigned = assignPublicNumber(tree, node.tab_id, number.public_number);
+          const numbered = assignPublicNumber(tree, node.tab_id, number.public_number);
+          if (!numbered.ok) throw new Error(numbered.error.message);
+          tree = numbered.tree;
+          const shown = get().trees[mothership];
+          if (!shown) return;
+          const assigned = assignPublicNumber(shown, node.tab_id, number.public_number);
           if (assigned.ok) set((state) => ({
             trees: { ...state.trees, [mothership]: assigned.tree },
-            pendingOps: { ...state.pendingOps, [mothership]: [...state.pendingOps[mothership], assigned.op] },
+            pendingOps: { ...state.pendingOps, [mothership]: [...state.pendingOps[mothership], numbered.op] },
           }));
-          else if (tree.nodes[node.tab_id]) throw new Error(assigned.error.message);
-          if (assigned.ok) attempted.add(assigned.op);
+          else throw new Error(assigned.error.message);
+          sentOps.add(numbered.op);
+          attempted.add(numbered.op);
         }
         if (!canDispatch()) return;
-        if (!retryTree && heldOn(mothership)) { deferredSaves.add(mothership); return; }
-        const currentTree = retryTree ?? get().trees[mothership];
-        if (!currentTree || get().pendingOps[mothership].length === 0) return;
-        const tree = prepareRestores(mothership, currentTree);
-        const sentOps = retryTree ? retryOps : get().pendingOps[mothership].length;
-        for (const op of get().pendingOps[mothership].slice(0, sentOps)) attempted.add(op);
+        if (!retryBatch && heldOn(mothership)) { deferredSaves.add(mothership); return; }
+        for (const op of sentOps) attempted.add(op);
         const result = await adapter.save(key, mothership, toSnapshot(tree), signal);
         if (!current()) return;
         if (result.status === "saved") {
-          const remaining = get().pendingOps[mothership].slice(sentOps);
+          const remaining = get().pendingOps[mothership].filter((op) => !sentOps.has(op));
           const focused = get().trees[mothership]?.active_tab_id;
           const adopted = adopt(mothership, result.snapshot, remaining);
           if (adopted) {
@@ -577,9 +581,9 @@ export const useTabTrees = create<TabTreeState>()((set, get) => {
           return;
         }
         if (result.status === "conflict") {
-          retryTree = adopt(mothership, result.current, get().pendingOps[mothership]);
-          retryOps = get().pendingOps[mothership].length;
+          const retryTree = adopt(mothership, result.current, get().pendingOps[mothership]);
           if (!retryTree) return;
+          retryBatch = { tree: retryTree, ops: [...get().pendingOps[mothership]] };
           if (attempt === 2) {
             setIssue(mothership, { reason: "conflict", at: new Date().toISOString(), mothership });
             return;
