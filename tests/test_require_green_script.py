@@ -301,6 +301,61 @@ def test_deploy_pins_the_exact_sha_verified_by_the_gate():
     assert checkout["ansible.builtin.git"]["version"] == "{{ antiek_target_sha }}"
 
 
+def test_deploy_pause_registers_the_arxiv_sync_pre_pause_state():
+    """The interrupted crawl can only be resumed if its pre-stop state was kept."""
+    tasks = _deploy_playbook_tasks()
+    capture = next(
+        task for task in tasks if task.get("register") == "arxiv_sync_pre_pause"
+    )
+    command = capture["ansible.builtin.command"]["cmd"]
+    assert command == "systemctl is-active antiek-arxiv-oai-sync.service"
+    assert capture["failed_when"] is False
+    assert capture["changed_when"] is False
+    pause = next(
+        task
+        for task in tasks
+        if task["name"] == "pause every release-path consumer before cutover"
+    )
+    assert tasks.index(capture) < tasks.index(pause)
+
+
+def test_deploy_resume_restarts_an_interrupted_arxiv_sync_only():
+    """Resume the crawl that atomic deploy stopped, and never spawn a fresh one."""
+    tasks = _deploy_playbook_tasks()
+    pause = next(
+        task
+        for task in tasks
+        if task["name"] == "pause every release-path consumer before cutover"
+    )
+    resume = next(
+        task
+        for task in tasks
+        if task["name"] == "resume the interrupted arXiv sync crawl, if any"
+    )
+    systemd = resume["ansible.builtin.systemd"]
+    assert systemd["name"] == "antiek-arxiv-oai-sync.service"
+    assert systemd["state"] == "started"
+    assert "arxiv_sync_pre_pause" in resume["when"]
+    # Type=oneshot reports "activating" while a crawl is in flight. Matching
+    # only "active" would miss exactly the interrupted runs this task exists
+    # to resume.
+    assert "activating" in resume["when"]
+    assert tasks.index(pause) < tasks.index(resume)
+
+
+def test_deploy_resume_never_starts_the_backup_service():
+    """Backup remains timer-driven; starting the service would run off schedule."""
+    tasks = _deploy_playbook_tasks()
+    starters = [
+        task
+        for task in tasks
+        if (task.get("ansible.builtin.systemd") or {}).get("name")
+        == "antiek-backup.service"
+        and (task.get("ansible.builtin.systemd") or {}).get("state") == "started"
+    ]
+    assert starters == []
+
+
 def _resolve_step_run(env: dict[str, str]) -> subprocess.CompletedProcess:
     """Execute the gate's real Resolve step script with the given event data."""
     step = next(s for s in _gate_steps() if s.get("id") == "resolve")
