@@ -1,0 +1,22 @@
+{
+  "source": "j-b-blank-branding.png",
+  "source_provenance": "j-b-blank-branding.provenance.json",
+  "source_sha256": "424a581a4b20432e0a3ea46e31a5ad0905ade12d56423cbf39ead9417e131029",
+  "family": "Inter",
+  "font_source": "apps/reading/src/assets/fonts/inter-latin-var.woff2",
+  "font_sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4",
+  "axes": {
+    "wght": 800
+  },
+  "lettering": "Antiek and two A monograms drawn from original font glyph outlines, no generated or fallback lettering",
+  "magenta": "#943D4A",
+  "exact_rgb": [
+    148,
+    61,
+    74
+  ],
+  "verified_exact_fill_pixels": 16546,
+  "matte": "Border-connected cream plus enclosed negative space between legs; cream shoe panels retain alpha",
+  "preview": "b-inter-bold-exact.svg",
+  "status": "font confirmation pending; preview only"
+}

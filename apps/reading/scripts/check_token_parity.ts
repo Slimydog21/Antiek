@@ -67,6 +67,10 @@ const CSS_NAME: Record<keyof SemanticTokens, string> = {
   notRun: "--not-run",
   focus: "--focus",
   wash: "--wash",
+  readingPage: "--reading-page",
+  readingInk: "--reading-ink",
+  readingSoftPage: "--reading-soft-page",
+  readingSoftInk: "--reading-soft-ink",
 };
 for (const theme of THEMES) {
   for (const [key, cssName] of Object.entries(CSS_NAME) as Array<[keyof SemanticTokens, string]>) {
@@ -149,21 +153,25 @@ if (resolveVar(sheet, "dark", "--moonlight") !== resolveVar(sheet, "dark", "--te
 }
 const shadows = (tw.theme.extend.boxShadow ?? {}) as Record<string, string>;
 for (const key of ["z1-night", "z2-night", "z3-night", "lift-night"]) {
-  if (!String(shadows[key] ?? "").includes("var(--sun-deep)")) {
-    failures.push(`tailwind.config.js boxShadow["${key}"] must cast var(--sun-deep) (got ${shadows[key]}).`);
+  if (!String(shadows[key] ?? "").includes("var(--void)")) {
+    failures.push(`tailwind.config.js boxShadow["${key}"] must cast var(--void) (got ${shadows[key]}).`);
   }
 }
 
 // ── 5. the pinned values (deliberate re-tones only) ────────────────────────
 const EXPECTED: Array<[Theme, string, string]> = [
-  ["light", "--sun", "#F5DF24"],
-  ["dark", "--sun", "#F5DF24"],
-  ["light", "--sun-deep", "#9C8636"],
-  ["dark", "--sun-deep", "#84722F"],
-  ["light", "--sun-glow", "#F1E08F"],
-  ["dark", "--sun-glow", "#F2DE9A"],
-  ["light", "--danger", "#B82E1C"],
-  ["dark", "--danger", "#FF6155"],
+  ["light", "--sun", "#6ECB8F"],
+  ["dark", "--sun", "#6ECB8F"],
+  ["light", "--sun-deep", "#237242"],
+  ["dark", "--sun-deep", "#6ECB8F"],
+  ["light", "--sun-glow", "#D4ECDD"],
+  ["dark", "--sun-glow", "#355B42"],
+  ["light", "--danger", "#8A403B"],
+  ["light", "--mascot-primary", "#FF9273"],
+  ["dark", "--mascot-primary", "#FF9273"],
+  ["light", "--mascot-secondary", "#943D4A"],
+  ["dark", "--mascot-secondary", "#943D4A"],
+  ["dark", "--danger", "#D49B94"],
   ["light", "--success", "#237242"],
   ["dark", "--success", "#6ECB8F"],
 ];

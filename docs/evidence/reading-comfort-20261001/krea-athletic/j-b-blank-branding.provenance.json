@@ -1,0 +1,14 @@
+{
+  "label": "ai-generated",
+  "tool": "Krea API",
+  "model": "google/nano-banana-pro",
+  "reference_job_id": "ab887cec-2b86-43da-b004-7e32e57fa7fa",
+  "prompt": "Edit this selected Antiek mascot with absolute identity preservation. ONLY REMOVE THE LETTERING: erase the word Antiek from the green basketball headband, replacing those letters with seamless matching green cloth. Also erase the capital A logo from each shoe side panel, replacing it with the same matching green panel. Leave the headband and shoes otherwise identical, preserving their exact size, shape, color, borders, shading, magenta laces and heel panels. Keep the coral brain, long magenta legs, facial expression, body silhouette, pose and all linework exactly unchanged. This is a blank branding base so the exact licensed Antiek typeface can be rendered separately. Do not add any new text, symbols, objects, accessories, limbs or details. Same original canvas and cream background. ",
+  "requested_at": "2026-10-01T05:50:51.190821+00:00",
+  "status": "completed",
+  "preview_only": true,
+  "job_id": "f7a1694c-af76-4aad-a52a-564824be1d98",
+  "generated_at": "2026-10-01T05:51:18.627Z",
+  "output": "j-b-blank-branding.png",
+  "bytes": 846099
+}

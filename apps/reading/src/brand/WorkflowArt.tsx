@@ -21,20 +21,19 @@
  */
 import type { Workflow } from "../shell/workflowTaxonomy";
 
-
-import biographyArt from "./workflow-art/biography-512.png";
-import interviewsArt from "./workflow-art/interviews-512.png";
-import libraryArt from "./workflow-art/library-512.png";
-import notebooksArt from "./workflow-art/notebooks-512.png";
-import outcomesArt from "./workflow-art/outcomes-512.png";
-import pricingArt from "./workflow-art/pricing-512.png";
-import readArt from "./workflow-art/read-512.png";
-import researchArt from "./workflow-art/research-512.png";
-import speakArt from "./workflow-art/speak-512.png";
-import sourcesArt from "./workflow-art/sources-512.png";
-import trustArt from "./workflow-art/trust-512.png";
-import wrestlerArt from "./workflow-art/wrestler-512.png";
-import writeArt from "./workflow-art/write-512.png";
+import biographyArt from "./mascot-brain/athletic/biography-b-20261001.png";
+import interviewsArt from "./mascot-brain/athletic/interviews-b-20261001.png";
+import libraryArt from "./mascot-brain/athletic/library-b-20261001.png";
+import notebooksArt from "./mascot-brain/athletic/notebooks-b-20261001.png";
+import outcomesArt from "./mascot-brain/athletic/outcomes-b-20261001.png";
+import pricingArt from "./mascot-brain/athletic/pricing-b-20261001.png";
+import readArt from "./mascot-brain/athletic/read-b-20261001.png";
+import researchArt from "./mascot-brain/athletic/research-b-20261001.png";
+import speakArt from "./mascot-brain/athletic/speak-b-20261001.png";
+import sourcesArt from "./mascot-brain/athletic/sources-b-20261001.png";
+import trustArt from "./mascot-brain/athletic/trust-b-20261001.png";
+import wrestlerArt from "./mascot-brain/athletic/wrestler-b-20261001.png";
+import writeArt from "./mascot-brain/athletic/write-b-20261001.png";
 
 /** Features that carry their own art. The four product doors, plus surfaces
  *  that compose several doors and so cannot borrow one door's prop —
