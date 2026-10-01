@@ -65,6 +65,7 @@ def store_reader_html(
     main_html: str,
     source_kind: str,
     source_url: str | None = None,
+    edited_at: datetime | None = None,
 ) -> int:
     """The ONLY write path for the reader-HTML sidecar.
 
@@ -76,8 +77,11 @@ def store_reader_html(
 
     Idempotent: re-storing for the same ``document_id`` upserts the row
     (``revision`` increments, ``captured_at`` refreshes) — the safe behaviour
-    for the URL re-ingest / replace paths. Returns the stored byte length of
-    the sanitized body.
+    for the URL re-ingest / replace paths. By default, re-storing clears
+    ``edited_at`` as before. Internal repair callers may pass an existing
+    database editor timestamp to preserve it while the body is re-sanitized.
+    This argument is stored metadata, not client input. Returns the stored
+    byte length of the sanitized body.
     """
     _require_locked(con)
     sanitized = bounded_sanitized_reader_html(main_html)
@@ -87,17 +91,25 @@ def store_reader_html(
         INSERT INTO document_reader_html (
             document_id, html_body, sanitizer_version, source_kind,
             source_url, captured_at, edited_at, revision
-        ) VALUES (?, ?, ?, ?, ?, ?, NULL, 1)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
         ON CONFLICT (document_id) DO UPDATE SET
             html_body = EXCLUDED.html_body,
             sanitizer_version = EXCLUDED.sanitizer_version,
             source_kind = EXCLUDED.source_kind,
             source_url = EXCLUDED.source_url,
             captured_at = EXCLUDED.captured_at,
-            edited_at = NULL,
+            edited_at = EXCLUDED.edited_at,
             revision = document_reader_html.revision + 1
         """,
-        [document_id, sanitized, SANITIZER_VERSION, source_kind, source_url, captured_at],
+        [
+            document_id,
+            sanitized,
+            SANITIZER_VERSION,
+            source_kind,
+            source_url,
+            captured_at,
+            edited_at,
+        ],
     )
     return len(sanitized.encode("utf-8"))
 
