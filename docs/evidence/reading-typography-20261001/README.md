@@ -11,7 +11,7 @@ The separate typography candidate implements the [research decision](../../decis
 | Frontend command cwd | Product root plus `/apps/reading` |
 | Branch | `design/reading-typography-20261001` |
 | Base commit | `b21200200fdace1ec3b7ed0e1a8bde683cd4d81e` |
-| Candidate identity | Uncommitted local source; hashes in [candidate-source.json](candidate-source.json) |
+| Candidate identity | Original local snapshot below; release preparation at `521d37888c4fef299315d243bc116a90925d4c09` on main `facb9bf28`; hashes in [candidate-source.json](candidate-source.json) |
 | Node / npm | v25.6.1 / 11.9.0 |
 | Python | `/Library/Frameworks/Python.framework/Versions/3.11/bin/python3`, 3.11.2 |
 | Font tooling | fontTools 4.61.1 with WOFF2/Brotli support; tooling only |
@@ -81,7 +81,7 @@ The Env Card above pins the product checkout and tools. The harness root is `/Us
 
 ### Status
 
-Done for the authorized separate local candidate. Ready for source/design review; no commit, push, merge, or deployment performed.
+The original separate local candidate is complete. The operator subsequently authorized “Push to main and deploy”. Release preparation is in progress; no production claim is made before current-main reconciliation, independent review, exact-head CI, merge-slot coordination and direct production verification.
 
 ### Files touched
 
@@ -154,3 +154,11 @@ Diff review passed the applicable merge-bar checks: meaningful production behavi
 Start `npm run storybook -- --port 6193 --ci --no-open` from the frontend cwd. Stories are `reading-typography--reader`, `reading-typography--settings`, `reading-typography--manuscript`, and `reading-typography--portfolio`. Fixtures contain authored specimen text and no live user data. [Portfolio image](portfolio.png) shows the same passage in all five faces; [platform-font record](portfolio-platform-fonts.json) confirms real regular, italic, and bold glyphs. Some UI screenshots contain Chrome's Adobe extension bubble; that is not an Antiek control.
 
 The font manifest captures unmodified binaries and adjacent complete OFL notices. Embedded Source Serif/Source Sans notices differ from the adjacent Google notices; both are preserved. Source Sans's variable-font family metadata says ExtraLight, while the verified rendered regular instance and CSS use weight 400.
+
+## Release preparation, 2026-10-01
+
+The original evidence above describes the local candidate on `b21200200`. Implementation commit `521d37888c4fef299315d243bc116a90925d4c09` rebased cleanly onto `facb9bf28`; all 69 original source hashes still match. The separate palette PR #3596 is being coordinated first, with its existing appearance behavior preserved.
+
+Fresh checks on this revision passed: full frontend **388 files / 3,675 tests**, types, production build and bundle budgets, token/type-scale lint, and locked font integrity. The strict security scan returned **zero REAL findings**, LOW, 18 advisories; these are existing constants and OSV-verified patched dependency floors. Full command output is retained in `release-*.log`. None of these results establishes a production deployment.
+
+Cross-lineage review and intentional visual baseline review are pending before publication. Required contexts are measured from the live ruleset and the exact published head; the dependent pytest rollup also gates deployment. The served Cloudflare production assets and backend build SHA will be verified after merge.
