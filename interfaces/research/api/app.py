@@ -1992,6 +1992,11 @@ def create_app(
     # provenance read the review surface renders.
     from .reformat_routes import register_reformat_routes
     register_reformat_routes(app)
+    # Thread-merge + document fork SPR-01 — the fork primitive: copy/adopt
+    # creation idempotent on a client operation id, forks-of-this +
+    # forked-from in one read, fork detail, and depth-1 lineage.
+    from .fork_routes import register_fork_routes
+    register_fork_routes(app)
     # Doc→HTML S1 — reader-HTML serve route: GET /sources/{document_id}/reader-html.
     # Serves the URL reader snapshot as content_format="html" ONLY when the
     # sidecar body is exact-version trusted-sanitized (fail-closed gate in
