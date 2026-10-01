@@ -1,5 +1,6 @@
 /* ============================================================
-   Antiek design tokens: "paper, ink, and one sun".
+   Antiek design tokens: parchment, walnut ink, and a library at night.
+   Research and palette rationale: docs/decisions/reading-comfort-20261001.md.
 
    ONE colour source of truth, three layers (PostHog's discipline,
    Antiek's brand):
@@ -32,28 +33,26 @@
 
 /* ── 1. PRIMITIVES (theme-invariant) ─────────────────────────── */
 :root {
-  /* The brand. FILL ONLY, under ink text (ink on sun 13.6:1); never text
-     on paper (1.36:1). hover/press are derived by lightness (+/-), not
-     picked: hsl(54 91% 55%) is the base. */
-  --sun:           #F5DF24;
-  --sun-rgb:       245 223 36;
-  --sun-hover:     #F6E33C;
-  --sun-hover-rgb: 246 227 60;
-  --sun-press:     #EFD80B;
-  --sun-press-rgb: 239 216 11;
+  /* Primary fills keep the operator's green. Their labels use fixed ink. */
+  --sun:           #6ECB8F;
+  --sun-rgb:       110 203 143;
+  --sun-hover:     #82D59F;
+  --sun-hover-rgb: 130 213 159;
+  --sun-press:     #5CBD7D;
+  --sun-press-rgb: 92 189 125;
 
-  /* Weathered sun family (AMS-SPR-09): calm straw the chrome can lean on
-     without shouting. Theme-invariant by design. */
-  --sun-light:      #E8D98C;
-  --sun-light-soft: #F0E6B8;
-  --sun-light-deep: #9C8636;
-  /* Highlighter veils, built from the weathered rgb. --mark (semantic)
-     picks the one for the active theme. */
-  --sun-hl-faint: rgba(232,217,140,0.18);
-  --sun-hl-day:   rgba(232,217,140,0.45);
-  --sun-hl-night: rgba(242,222,154,0.30);
-  /* The loud night bottom-bar glow; must not soften with the chrome. */
-  --sun-bar-night: #FFEC5F;
+  /* Legacy sun names now hold pale green surfaces. */
+  --sun-light:      #BFE4CD;
+  --sun-light-soft: #D4ECDD;
+  --sun-light-deep: #237242;
+  /* The operator's highlighter is a pigment, independent of theme. */
+  --highlighter: #A9FF17;
+  --mark-ink: var(--fixed-ink);
+  --sun-hl-faint: rgba(169,255,23,0.16);
+  --sun-hl-day: var(--highlighter);
+  --sun-hl-night: var(--highlighter);
+  /* The selected bottom tab uses the same primary green. */
+  --sun-bar-night: #6ECB8F;
 
   /* Fixed ink and paper: the pigments that do NOT flip. They paint what
      is dark (or white) in both themes: ink printed on the sun, ink
@@ -63,47 +62,43 @@
      day --text-2, kept as a pigment because bg-shadow-1 is the hover of
      the bg-shadow-2 ink button under white text: white on it 6.56:1 in
      both themes. Following the night --text-2 it was 2.54:1. */
-  --fixed-ink:       #0F1419;
-  --fixed-ink-rgb:   15 20 25;
-  --fixed-ink-2:     #384858;
-  --fixed-ink-2-rgb: 56 72 88;
-  --fixed-ink-3:     #4F5F70;
-  --fixed-ink-3-rgb: 79 95 112;
+  --fixed-ink:       #2C2823;
+  --fixed-ink-rgb:   44 40 35;
+  --fixed-ink-2:     #4B4338;
+  --fixed-ink-2-rgb: 75 67 56;
+  --fixed-ink-3:     #5D5448;
+  --fixed-ink-3-rgb: 93 84 72;
   --fixed-paper:     #FFFFFF;
   --fixed-paper-rgb: 255 255 255;
-  /* The day red, and the danger FILL under white text in both themes
-     (white on it 6.09:1; the night --danger is a text colour, too light to
-     fill). Deeper than the old #CE3623 so danger text clears 4.5:1 where it
-     actually sits: on the inset ground and on its own 10-15% wash (the error
-     banner idiom); #CE3623 measured 4.45 on inset and 4.05 on its wash. */
-  --danger-fill:     #B82E1C;
-  --danger-fill-rgb: 184 46 28;
+  /* The operator's muted red is reserved for destructive/error semantics. */
+  --danger-fill:     #8A403B;
+  --danger-fill-rgb: 138 64 59;
 
   /* Night ramp ("majestic night sky"). Primitives: the night semantic
      block below points at them, and the Tailwind night keys used under
      dark: (dark:bg-charcoal-2, dark:text-moonlight) read them directly.
      --moonlight was #6B7585 (3.50:1 on the night card, 627 of the 727
      night axe failures); it is now the night --text-3. */
-  --void:           #040508;
-  --void-rgb:       4 5 8;
-  --space-1:        #080A10;
-  --space-1-rgb:    8 10 16;
-  --space-2:        #0D1019;
-  --space-2-rgb:    13 16 25;
-  --charcoal-1:     #13171F;
-  --charcoal-1-rgb: 19 23 31;
-  --charcoal-2:     #1B202A;
-  --charcoal-2-rgb: 27 32 42;
-  --slate-1:        #252B36;
-  --slate-1-rgb:    37 43 54;
-  --slate-2:        #323845;
-  --slate-2-rgb:    50 56 69;
-  --moonlight:      #858F9F;
-  --moonlight-rgb:  133 143 159;
-  --starlight:      #C4CCD7;
-  --starlight-rgb:  196 204 215;
-  --bright:         #EEF1F6;
-  --bright-rgb:     238 241 246;
+  --void:           #100F0D;
+  --void-rgb:       16 15 13;
+  --space-1:        #171511;
+  --space-1-rgb:    23 21 17;
+  --space-2:        #211E19;
+  --space-2-rgb:    33 30 25;
+  --charcoal-1:     #24211B;
+  --charcoal-1-rgb: 36 33 27;
+  --charcoal-2:     #29251F;
+  --charcoal-2-rgb: 41 37 31;
+  --slate-1:        #332D25;
+  --slate-1-rgb:    51 45 37;
+  --slate-2:        #3B342A;
+  --slate-2-rgb:    59 52 42;
+  --moonlight:      #ADA392;
+  --moonlight-rgb:  173 163 146;
+  --starlight:      #CFC5B3;
+  --starlight-rgb:  207 197 179;
+  --bright:         #E6DECE;
+  --bright-rgb:     230 222 206;
 
   /* Z-index ladder. Mirrors src/design/zIndex.ts value-for-value
      (zIndex.test.ts pins the pair); Tailwind exposes z-modal, z-toast… */
@@ -159,75 +154,80 @@
   --akb-border-inset-left:   0px;
 }
 
-/* ── 2. SEMANTIC, day (paper). THE block to edit to change the ground.
-      Return to glacial: page #F4F7FA, card #FFFFFF, inset #EAEFF4,
-      hairline #DCE5ED, rule #788596, text-3 #647380. ─────────── */
+/* ── 2. SEMANTIC, day (paper). Edit this block to change the ground. ── */
 :root {
   color-scheme: light;
 
-  --bg-page:           #FBF9F4;
-  --bg-page-rgb:       251 249 244;
-  --bg-card:           #FFFEFB;
-  --bg-card-rgb:       255 254 251;
-  --bg-inset:          #F4F1E8;
-  --bg-inset-rgb:      244 241 232;
+  --bg-page:           #F3EBDD;
+  --bg-page-rgb:       243 235 221;
+  --bg-card:           #F9F3E8;
+  --bg-card-rgb:       249 243 232;
+  --bg-inset:          #EAE0CD;
+  --bg-inset-rgb:      234 224 205;
   /* hairline: decorative dividers inside a surface (not a boundary). */
-  --border-hairline:     #E6E0D2;
-  --border-hairline-rgb: 230 224 210;
+  --border-hairline:     #D8CBB5;
+  --border-hairline-rgb: 216 203 181;
   /* rule: meaningful boundaries (fields, keycap edges, tables) >= 3:1. */
-  --border-rule:       #8A8473;
-  --border-rule-rgb:   138 132 115;
+  --border-rule:       #7E6F5D;
+  --border-rule-rgb:   126 111 93;
 
   --text-1:     var(--fixed-ink);
   --text-1-rgb: var(--fixed-ink-rgb);
   --text-2:     var(--fixed-ink-3);
   --text-2-rgb: var(--fixed-ink-3-rgb);
-  --text-3:     #5F6B79;
-  --text-3-rgb: 95 107 121;
+  --text-3:     #6C6252;
+  --text-3-rgb: 108 98 82;
 
   /* The brand as TEXT (replaces sun-deep-as-text at 3.3:1). */
-  --sun-ink:     #75620F;
-  --sun-ink-rgb: 117 98 15;
-  /* The weathered ochre EDGE (>= 3:1 as a line, not a text colour). */
-  --sun-deep:     #9C8636;
-  --sun-deep-rgb: 156 134 54;
-  --sun-glow:     #F1E08F;
+  --sun-ink:     #237242;
+  --sun-ink-rgb: 35 114 66;
+  /* Green edges and emphasis keep contrast on the page. */
+  --sun-deep:     #237242;
+  --sun-deep-rgb: 35 114 66;
+  --sun-glow:     #D4ECDD;
   --bar-accent:     var(--sun);
   --bar-accent-rgb: var(--sun-rgb);
   --keycap-edge:     var(--fixed-ink);
   --keycap-edge-rgb: var(--fixed-ink-rgb);
 
   /* Links and evidence (replaces day aurora-as-text at 2.2:1). */
-  --teal:     #0B7A7A;
-  --teal-rgb: 11 122 122;
+  --teal:     #237242;
+  --teal-rgb: 35 114 66;
   /* AI cognition FILL (thinking dots, mascot accents); never text. */
-  --aurora:     #16C2C2;
-  --aurora-rgb: 22 194 194;
+  --aurora:     #6ECB8F;
+  --aurora-rgb: 110 203 143;
 
   --danger:      var(--danger-fill);
   --danger-rgb:  var(--danger-fill-rgb);
   --success:     #237242;
   --success-rgb: 35 114 66;
-  --stale:       #8A5A00;
-  --stale-rgb:   138 90 0;
-  --not-run:     #5B4BB7;
-  --not-run-rgb: 91 75 183;
+  --stale:       #6C6252;
+  --stale-rgb:   108 98 82;
+  --not-run:     #6C6252;
+  --not-run-rgb: 108 98 82;
 
   --focus:     var(--fixed-ink);
   --focus-rgb: var(--fixed-ink-rgb);
-  --wash:      rgba(15,20,25,0.06);
+  --wash:      rgba(44,40,35,0.06);
   --mark:      var(--sun-hl-day);
+  --reading-page: var(--bg-card);
+  --reading-ink: var(--text-1);
+  --reading-soft-page: #E8DFCF;
+  --reading-soft-ink: var(--fixed-ink);
 
   --media-well: var(--charcoal-2);
 
-  --glass-bg:       rgba(255,254,251,0.72);
+  --glass-bg:       rgba(249,243,232,0.72);
   --glass-bg-solid: var(--bg-card);
-  --glass-border:   rgba(15,20,25,0.12);
+  --glass-border:   rgba(44,40,35,0.12);
   --glass-blur:     12px;
 
-  --mascot-coat:  var(--fixed-ink);
-  --mascot-belly: #FBFCFD;
-  --mascot-bill:  var(--sun);
+  --mascot-primary: #FF9273;
+  --mascot-secondary: #943D4A;
+  --mascot-coat:  var(--mascot-primary);
+  --mascot-belly: var(--bright);
+  --mascot-bill:  var(--mascot-secondary);
+  --mascot-foot:  var(--mascot-secondary);
 
   --pitch-base: #4C8F4F;
   --pitch-mid:  #3D7A41;
@@ -249,66 +249,71 @@
   --bg-card-rgb:         var(--charcoal-2-rgb);
   --bg-inset:            var(--charcoal-1);
   --bg-inset-rgb:        var(--charcoal-1-rgb);
-  --border-hairline:     #262C38;
-  --border-hairline-rgb: 38 44 56;
-  --border-rule:         #6A7689;
-  --border-rule-rgb:     106 118 137;
+  --border-hairline:     #463E32;
+  --border-hairline-rgb: 70 62 50;
+  --border-rule:         #8F816E;
+  --border-rule-rgb:     143 129 110;
 
   --text-1:     var(--bright);
   --text-1-rgb: var(--bright-rgb);
-  --text-2:     #9AA3B2;
-  --text-2-rgb: 154 163 178;
+  --text-2:     #C3BAAA;
+  --text-2-rgb: 195 186 170;
   --text-3:     var(--moonlight);
   --text-3-rgb: var(--moonlight-rgb);
 
   --sun-ink:          var(--sun);
   --sun-ink-rgb:      var(--sun-rgb);
-  --sun-deep:         #84722F;
-  --sun-deep-rgb:     132 114 47;
-  --sun-glow:         #F2DE9A;
+  --sun-deep:         #6ECB8F;
+  --sun-deep-rgb:     110 203 143;
+  --sun-glow:         #355B42;
   --bar-accent:       var(--sun-bar-night);
-  --bar-accent-rgb:   255 236 95;
-  --keycap-edge:      var(--sun-deep);
-  --keycap-edge-rgb:  var(--sun-deep-rgb);
+  --bar-accent-rgb:   110 203 143;
+  --keycap-edge:      var(--border-rule);
+  --keycap-edge-rgb:  var(--border-rule-rgb);
 
   --teal:       var(--aurora);
   --teal-rgb:   var(--aurora-rgb);
-  --aurora:     #3FE0DC;
-  --aurora-rgb: 63 224 220;
+  --aurora:     #6ECB8F;
+  --aurora-rgb: 110 203 143;
 
-  --danger:      #FF6155;
-  --danger-rgb:  255 97 85;
+  --danger:      #D49B94;
+  --danger-rgb:  212 155 148;
   --success:     #6ECB8F;
   --success-rgb: 110 203 143;
-  --stale:       #E0A84A;
-  --stale-rgb:   224 168 74;
-  --not-run:     #A99BFF;
-  --not-run-rgb: 169 155 255;
+  --stale:       #C3BAAA;
+  --stale-rgb:   195 186 170;
+  --not-run:     #ADA392;
+  --not-run-rgb: 173 163 146;
 
-  --focus:     var(--sun);
-  --focus-rgb: var(--sun-rgb);
-  --wash:      rgba(238,241,246,0.08);
+  --focus:     var(--highlighter);
+  --focus-rgb: 169 255 23;
+  --wash:      rgba(230,222,206,0.08);
   --mark:      var(--sun-hl-night);
+  --reading-page: var(--bg-card);
+  --reading-ink: var(--text-1);
+  --reading-soft-page: var(--bg-page);
+  --reading-soft-ink: #C7BBA7;
 
   --media-well: var(--void);
 
-  --glass-bg:       rgba(27,32,42,0.66);
+  --glass-bg:       rgba(41,37,31,0.66);
   --glass-bg-solid: var(--bg-card);
-  --glass-border:   rgba(238,241,246,0.14);
+  --glass-border:   rgba(230,222,206,0.14);
   --glass-blur:     12px;
 
-  --mascot-coat:  #0A0D14;
-  --mascot-belly: #DCE2EA;
-  --mascot-bill:  var(--sun);
+  --mascot-coat:  var(--mascot-primary);
+  --mascot-belly: var(--bright);
+  --mascot-bill:  var(--mascot-secondary);
+  --mascot-foot:  var(--mascot-secondary);
 
   --pitch-base: #2E5C33;
   --pitch-mid:  #244A29;
   --pitch-deep: #1B3A20;
 
-  --shadow-z1:   3px 3px 0 0 var(--sun-deep);
-  --shadow-z2:   5px 5px 0 0 var(--sun-deep);
-  --shadow-z3:   8px 8px 0 0 var(--sun-deep);
-  --shadow-lift: 12px 12px 0 0 var(--sun-deep);
+  --shadow-z1:   3px 3px 0 0 var(--void);
+  --shadow-z2:   5px 5px 0 0 var(--void);
+  --shadow-z3:   8px 8px 0 0 var(--void);
+  --shadow-lift: 12px 12px 0 0 var(--void);
 }
 
 /* No-JS fallback: follow the OS when nothing set data-theme. */
@@ -322,67 +327,72 @@
     --bg-card-rgb:         var(--charcoal-2-rgb);
     --bg-inset:            var(--charcoal-1);
     --bg-inset-rgb:        var(--charcoal-1-rgb);
-    --border-hairline:     #262C38;
-    --border-hairline-rgb: 38 44 56;
-    --border-rule:         #6A7689;
-    --border-rule-rgb:     106 118 137;
+    --border-hairline:     #463E32;
+    --border-hairline-rgb: 70 62 50;
+    --border-rule:         #8F816E;
+    --border-rule-rgb:     143 129 110;
 
     --text-1:     var(--bright);
     --text-1-rgb: var(--bright-rgb);
-    --text-2:     #9AA3B2;
-    --text-2-rgb: 154 163 178;
+    --text-2:     #C3BAAA;
+    --text-2-rgb: 195 186 170;
     --text-3:     var(--moonlight);
     --text-3-rgb: var(--moonlight-rgb);
 
     --sun-ink:          var(--sun);
     --sun-ink-rgb:      var(--sun-rgb);
-    --sun-deep:         #84722F;
-    --sun-deep-rgb:     132 114 47;
-    --sun-glow:         #F2DE9A;
+    --sun-deep:         #6ECB8F;
+    --sun-deep-rgb:     110 203 143;
+    --sun-glow:         #355B42;
     --bar-accent:       var(--sun-bar-night);
-    --bar-accent-rgb:   255 236 95;
-    --keycap-edge:      var(--sun-deep);
-    --keycap-edge-rgb:  var(--sun-deep-rgb);
+    --bar-accent-rgb:   110 203 143;
+    --keycap-edge:      var(--border-rule);
+    --keycap-edge-rgb:  var(--border-rule-rgb);
 
     --teal:       var(--aurora);
     --teal-rgb:   var(--aurora-rgb);
-    --aurora:     #3FE0DC;
-    --aurora-rgb: 63 224 220;
+    --aurora:     #6ECB8F;
+    --aurora-rgb: 110 203 143;
 
-    --danger:      #FF6155;
-    --danger-rgb:  255 97 85;
+    --danger:      #D49B94;
+    --danger-rgb:  212 155 148;
     --success:     #6ECB8F;
     --success-rgb: 110 203 143;
-    --stale:       #E0A84A;
-    --stale-rgb:   224 168 74;
-    --not-run:     #A99BFF;
-    --not-run-rgb: 169 155 255;
+    --stale:       #C3BAAA;
+    --stale-rgb:   195 186 170;
+    --not-run:     #ADA392;
+    --not-run-rgb: 173 163 146;
 
-    --focus:     var(--sun);
-    --focus-rgb: var(--sun-rgb);
-    --wash:      rgba(238,241,246,0.08);
+    --focus:     var(--highlighter);
+    --focus-rgb: 169 255 23;
+    --wash:      rgba(230,222,206,0.08);
     --mark:      var(--sun-hl-night);
+    --reading-page: var(--bg-card);
+    --reading-ink: var(--text-1);
+    --reading-soft-page: var(--bg-page);
+    --reading-soft-ink: #C7BBA7;
 
     --media-well: var(--void);
 
-    --glass-bg:       rgba(27,32,42,0.66);
+    --glass-bg:       rgba(41,37,31,0.66);
     --glass-bg-solid: var(--bg-card);
-    --glass-border:   rgba(238,241,246,0.14);
+    --glass-border:   rgba(230,222,206,0.14);
     --glass-blur:     12px;
 
-    --mascot-coat:  #0A0D14;
-    --mascot-belly: #DCE2EA;
-    --mascot-bill:  var(--sun);
+    --mascot-coat:  var(--mascot-primary);
+    --mascot-belly: var(--bright);
+    --mascot-bill:  var(--mascot-secondary);
+    --mascot-foot:  var(--mascot-secondary);
 
     --pitch-base: #2E5C33;
     --pitch-mid:  #244A29;
     --pitch-deep: #1B3A20;
 
-    --shadow-z1:   3px 3px 0 0 var(--sun-deep);
-    --shadow-z2:   5px 5px 0 0 var(--sun-deep);
-    --shadow-z3:   8px 8px 0 0 var(--sun-deep);
-    --shadow-lift: 12px 12px 0 0 var(--sun-deep);
-  }
+    --shadow-z1:   3px 3px 0 0 var(--void);
+    --shadow-z2:   5px 5px 0 0 var(--void);
+    --shadow-z3:   8px 8px 0 0 var(--void);
+    --shadow-lift: 12px 12px 0 0 var(--void);
+}
 }
 
 /* ── 3. LEGACY ALIASES. Declared once; they resolve through the theme.
@@ -421,7 +431,7 @@
   --rule:   var(--border-rule);
   --border: var(--border-rule);
 
-  /* one red, one name: emperor is danger */
+  /* The emperor alias follows the muted-red danger role. */
   --emperor: var(--danger);
 
   /* Honesty states: a colour AND a word (and an icon) at every call site,
