@@ -441,8 +441,8 @@ describe("BookReader", () => {
   it.each([true, false])("manual Pin reports the actual server outcome (accepted=%s)", async (accepted) => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
-    const warn = vi.spyOn(toast, "warn").mockImplementation(() => {});
-    const info = vi.spyOn(toast, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(toast, "warn").mockImplementation(() => 0);
+    const info = vi.spyOn(toast, "info").mockImplementation(() => 0);
     const fetchStub = vi.fn((input: unknown, init?: RequestInit) => {
       if (String(input).endsWith("/anchors") && init?.method === "POST") {
         return Promise.resolve(new Response(JSON.stringify(accepted

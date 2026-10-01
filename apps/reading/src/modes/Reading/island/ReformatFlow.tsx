@@ -14,7 +14,7 @@
  * opens nothing — the derived document stays registered (honest: it's in
  * the library whenever the operator wants it).
  */
-import { useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 
 import { linkAnchorInvestigation } from "../../../lib/api";
 import type { BookAnchor } from "../../../lib/api";
@@ -46,6 +46,7 @@ export default function ReformatFlow({
   passageQuote,
   onClose,
 }: ReformatFlowProps) {
+  const promptId = useId();
   const [phase, setPhase] = useState<Phase>("composing");
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<ReformatMode>("time_window");
@@ -149,7 +150,7 @@ export default function ReformatFlow({
 
   return (
     <div {...ESC_OVERLAY_PROPS} onKeyDown={onEscape} data-reformat-flow className="mb-2 border-t border-hairline pt-2">
-      <label className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1">
+      <label htmlFor={promptId} className="text-xxs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1">
         Reformat this book
       </label>
       <div className="mb-1.5 flex items-center gap-2 text-xxs font-mono text-shadow-1 dark:text-moonlight">
@@ -171,6 +172,7 @@ export default function ReformatFlow({
         </button>
       </div>
       <LemonTextarea
+        id={promptId}
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         disabled={phase === "busy"}

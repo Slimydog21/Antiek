@@ -93,6 +93,7 @@ export interface BookReaderProps {
   /** A one-shot page landing (the reformat trace jump, SPR-02): applied
    *  once when the pages resolve, then the bus owns the position. */
   initialPage?: number | null;
+  pageNavigation?: { pageIndex: number; version: number } | null;
 }
 
 /** The decorations registry needs a ReadingContext; the highlight
@@ -104,7 +105,7 @@ const ANCHOR_STUB_CTX: ReadingContext = {
   substrate: { getChunk: () => Promise.reject(new Error("not wired in the reader")) },
 };
 
-export default function BookReader({ documentId: documentIdProp, origin = null, initialPage = null }: BookReaderProps = {}) {
+export default function BookReader({ documentId: documentIdProp, origin = null, initialPage = null, pageNavigation = null }: BookReaderProps = {}) {
   const { documentId: routeDocumentId = "" } = useParams<{ documentId: string }>();
   const documentId = documentIdProp ?? routeDocumentId;
   const inWindow = useInWindow();
@@ -113,6 +114,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [body, setBody] = useState<FullTextResponse | null>(null);
+  const [loadedDocumentId, setLoadedDocumentId] = useState<string | null>(null);
   const [housePool, setHousePool] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +136,7 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
         if (cancelled) return;
         setBook(detail);
         setBody(full);
+        setLoadedDocumentId(documentId);
         // House-state candidates for the zero-buyer ad border.
         try {
           const servable = await listBooks("servable");
@@ -197,14 +200,17 @@ export default function BookReader({ documentId: documentIdProp, origin = null, 
   const pages = useMemo(() => paginate(normalizedBody), [normalizedBody]);
   const { pageIndex, setPageIndex } = useReadingState(documentId, pages.length);
 
-  // The one-shot page landing (the reformat trace jump): applied ONCE when
-  // the pages resolve; the bus owns the position from then on.
-  const initialPageAppliedRef = useRef(false);
+  const appliedNavigation = useRef<{ documentId: string; pageIndex: number; version: number | null } | null>(null);
+  const requestedPage = pageNavigation?.pageIndex ?? initialPage;
+  const navigationVersion = pageNavigation?.version ?? null;
   useEffect(() => {
-    if (initialPageAppliedRef.current || initialPage == null || pages.length === 0) return;
-    initialPageAppliedRef.current = true;
-    setPageIndex(initialPage);
-  }, [initialPage, pages.length, setPageIndex]);
+    if (loading || loadedDocumentId !== documentId || pages.length === 0 ||
+      requestedPage === null || !Number.isSafeInteger(requestedPage) || requestedPage < 0) return;
+    const prior = appliedNavigation.current;
+    if (prior?.documentId === documentId && prior.pageIndex === requestedPage && prior.version === navigationVersion) return;
+    appliedNavigation.current = { documentId, pageIndex: requestedPage, version: navigationVersion };
+    setPageIndex(requestedPage);
+  }, [loading, loadedDocumentId, documentId, requestedPage, navigationVersion, pages.length, setPageIndex]);
 
   // ── Anchored highlights (anchor-first SPR-02) ─────────────────────────
   // The owner's persisted anchors (SPR-03) and the chunk anchor-map — the

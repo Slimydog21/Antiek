@@ -5,12 +5,12 @@
  * marker").
  *
  *   - The honesty header: a generated reformat, from its source (human
- *     title, never a raw id), with the model + the date, PROVISIONAL —
- *     not yet forked. "Mostly generated" says so when the ceiling flipped.
+ *     title, never a raw id), with the model, date and acknowledged fork
+ *     status. "Mostly generated" says so when the ceiling flipped.
  *   - Per-bite class markers (the calm contract): author's words
  *     (byte-verified ✓) / compressed / expanded / research-added. A sourced
- *     bite's trace JUMP opens the CORE document at the passage (one click —
- *     the unit-1 anchor chain; the full probe is SPR-03). A null-source
+ *     bite's trace opens the CORE document at its known page; exact
+ *     passage landing requires a reader projection. A null-source
  *     bite shows the honest "generated connective tissue" line + the
  *     generation record note.
  *   - "Officially fork" + "Merge later", wired to unit 5's SHAPES — on a
@@ -31,7 +31,7 @@ import {
   type ProvenanceBite,
   type ProvenanceResponse,
 } from "../../api/reformat";
-import { openWindow, readerWindowId } from "../../components/windows/openWindow";
+import { openSourceReader } from "../../components/windows/openWindow";
 
 const CLASS_LABELS: Record<string, string> = {
   author_verbatim: "author's words",
@@ -43,9 +43,18 @@ const CLASS_LABELS: Record<string, string> = {
 export default function ReformatReview({ documentId }: { documentId: string }) {
   const [provenance, setProvenance] = useState<ProvenanceResponse | null>(null);
   const [unavailable, setUnavailable] = useState(false);
-  const [actionState, setActionState] = useState<
-    Record<string, "idle" | "busy" | "pending" | "done">
-  >({});
+  type Phase = "idle" | "busy" | "unavailable" | "failed" | "done";
+  const [actions, setActions] = useState<{
+    scope: string;
+    forkId: string | null;
+    fork: Phase;
+    merge: Phase;
+  }>({
+    scope: "",
+    forkId: null,
+    fork: "idle",
+    merge: "idle",
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -66,32 +75,34 @@ export default function ReformatReview({ documentId }: { documentId: string }) {
     };
   }, [documentId]);
 
-  if (unavailable || !provenance) return null; // a plain document shows nothing
+  if (unavailable || !provenance || provenance.document_id !== documentId) return null; // a plain document shows nothing
 
   const gen = provenance.generation;
+  const scope = JSON.stringify([documentId, gen.generation_id]);
+  const actionState: typeof actions = actions.scope === scope
+    ? actions
+    : { scope, forkId: null, fork: "idle", merge: "idle" };
 
   async function runAction(kind: "fork" | "merge") {
-    setActionState((s) => ({ ...s, [kind]: "busy" }));
+    if (kind === "merge" && !actionState.forkId) return;
+    setActions({ ...actionState, [kind]: "busy" });
     try {
       if (kind === "fork") {
-        await postFork(gen.source_document_id, {
+        const fork = await postFork(gen.source_document_id, {
           derived_document_id: provenance!.document_id,
           generation_id: gen.generation_id,
         });
-      } else {
-        await postForkMerge(gen.generation_id, {
+        setActions((state) => state.scope === scope ? { ...state, forkId: fork.fork_id, fork: "done" } : state);
+      } else if (actionState.forkId) {
+        await postForkMerge(actionState.forkId, {
           from_derived_document_id: provenance!.document_id,
           generation_id: gen.generation_id,
         });
+        setActions((state) => state.scope === scope ? { ...state, merge: "done" } : state);
       }
-      setActionState((s) => ({ ...s, [kind]: "done" }));
-    } catch (e) {
-      // HONEST DEGRADATION: a 404 means the unit-5 API isn't on this stack —
-      // the named pending state, never a fake success.
-      setActionState((s) => ({
-        ...s,
-        [kind]: e instanceof ApiError && e.status === 404 ? "pending" : "pending",
-      }));
+    } catch (error) {
+      const phase = error instanceof ApiError && error.status === 404 ? "unavailable" : "failed";
+      setActions((state) => state.scope === scope ? { ...state, [kind]: phase } : state);
     }
   }
 
@@ -104,7 +115,8 @@ export default function ReformatReview({ documentId }: { documentId: string }) {
       {/* The honesty header. */}
       <p className="mb-1 font-serif text-xs italic text-ink-soft dark:text-starlight" data-reformat-header>
         A generated reformat{gen.source_title ? ` of ${gen.source_title}` : " of its source"} ·
-        {" "}{gen.model} · {gen.created_at.slice(0, 10)} · provisional — not yet forked
+        {" "}{gen.model} · {gen.created_at.slice(0, 10)} ·{" "}
+        {actionState.forkId ? "officially forked" : "provisional — not yet forked"}
       </p>
       {gen.mostly_generated && (
         <p className="mb-1 font-mono text-xxs text-sun-deep dark:text-sun" data-reformat-mostly>
@@ -140,14 +152,16 @@ export default function ReformatReview({ documentId }: { documentId: string }) {
           type="button"
           data-reformat-merge
           onClick={() => void runAction("merge")}
-          disabled={actionState.merge === "busy" || actionState.merge === "done"}
+          disabled={!actionState.forkId || actionState.merge === "busy" || actionState.merge === "done"}
           className="font-mono text-xs text-shadow-1 underline-offset-2 hover:underline dark:text-moonlight"
         >
           {actionState.merge === "done" ? "queued to merge" : "Merge later"}
         </button>
-        {(actionState.fork === "pending" || actionState.merge === "pending") && (
+        {(actionState.fork === "unavailable" || actionState.merge === "unavailable" || actionState.fork === "failed" || actionState.merge === "failed") && (
           <span className="font-mono text-xxs text-shadow-1 dark:text-moonlight" role="status">
-            fork/merge API pending — unit 5's implementation isn't on this stack yet
+            {actionState.fork === "unavailable" || actionState.merge === "unavailable"
+              ? "Forking or merging is unavailable right now. Try again later."
+              : "Couldn't finish that change. Try again."}
           </span>
         )}
       </div>
@@ -168,20 +182,9 @@ function BiteRow({
 }) {
   const [open, setOpen] = useState(false);
   const label = CLASS_LABELS[bite.contribution_class] ?? bite.contribution_class;
-  const firstPage = bite.source_page_hints.find((h) => h !== null) ?? null;
 
-  function traceJump() {
-    // The anchor chain: derived bite → source span → the core document
-    // opened AT the passage (one reader per document — focus, never a dup).
-    openWindow(
-      "reader",
-      {
-        documentId: sourceDocumentId,
-        origin: { from: "reformat", id: generationThreadId },
-        ...(firstPage !== null ? { initialPage: firstPage } : {}),
-      },
-      { id: readerWindowId(sourceDocumentId), title: "The source passage" },
-    );
+  function traceJump(pageIndex: number | null) {
+    openSourceReader(sourceDocumentId, pageIndex, { from: "reformat", id: generationThreadId });
   }
 
   return (
@@ -229,20 +232,24 @@ function BiteTrace({
   bite: ProvenanceBite;
   sourceDocumentId: string;
   generationRecordNote: string;
-  onTraceJump: () => void;
+  onTraceJump: (pageIndex: number | null) => void;
 }) {
   const [snippet, setSnippet] = useState<PassageSnippet | null>(null);
+  const [snippetError, setSnippetError] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [probeState, setProbeState] = useState<"idle" | "busy" | "launched">("idle");
 
   async function pullSnippet() {
     if (!bite.source_refs?.length) return;
     const span = bite.source_refs[0];
-    const value = await getPassageSnippet(sourceDocumentId, span);
-    setSnippet(value);
-    // The probing composer prefills from the gate-served snippet (never
-    // from a withheld body — metadata-only there).
-    setQuestion((q) => q || (value.text ?? "the cited core passage"));
+    setSnippetError(null);
+    try {
+      const value = await getPassageSnippet(sourceDocumentId, span);
+      setSnippet(value);
+      setQuestion((q) => q || (value.text ?? "the cited core passage"));
+    } catch {
+      setSnippetError("Couldn't open that passage. Try again.");
+    }
   }
 
   async function probe() {
@@ -294,18 +301,20 @@ function BiteTrace({
       </p>
       {bite.source_refs ? (
         <ul className="mt-1 space-y-1">
-          {bite.source_refs.map((_span, i) => (
-            <li key={i}>
-              core passage, page{" "}
-              {(bite.source_page_hints[i] ?? 0) + 1}{" "}
+          {bite.source_refs.map((span, i) => (
+            <li key={`${span.node_id}:${span.start_scalar}:${span.end_scalar}:${bite.source_page_hints[i] ?? "unknown"}`}>
+              {Number.isSafeInteger(bite.source_page_hints[i]) && (bite.source_page_hints[i] ?? -1) >= 0
+                ? `core passage, page ${(bite.source_page_hints[i] ?? 0) + 1}`
+                : "core passage — page unavailable"}{" "}
               <button
                 type="button"
                 data-trace-jump={bite.bite_id}
-                onClick={onTraceJump}
+                onClick={() => onTraceJump(bite.source_page_hints[i] ?? null)}
                 className="text-sun-deep underline decoration-dotted underline-offset-2 hover:underline dark:text-sun"
-                title="Open the author's actual passage in the source"
+                title="Open the source document at its known page"
               >
-                open the source passage
+                {Number.isSafeInteger(bite.source_page_hints[i]) && (bite.source_page_hints[i] ?? -1) >= 0
+                  ? "open the source page" : "open the source document"}
               </button>
             </li>
           ))}
@@ -338,13 +347,16 @@ function BiteTrace({
           >
             pull the core passage
           </button>
+          {snippetError && <p role="alert">{snippetError}</p>}
           {snippet && (
             <blockquote
               data-probe-snippet
               className="mt-1 border-l-edge border-sun pl-2 font-serif not-italic text-ink-soft dark:text-starlight"
             >
               {snippet.text ??
-                `a withheld passage — page ${(snippet.page_index_hint ?? 0) + 1} (metadata only)`}
+                (snippet.page_index_hint === null
+                  ? "a withheld passage — page unavailable (metadata only)"
+                  : `a withheld passage — page ${snippet.page_index_hint + 1} (metadata only)`)}
             </blockquote>
           )}
           <div className="mt-1">

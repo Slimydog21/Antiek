@@ -19,7 +19,7 @@
  *      shows no marker.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { BookDetail, FullTextResponse } from "../../api/books";
@@ -527,6 +527,7 @@ describe("the derived document's review surface", () => {
       documentId: "doc-1",
       origin: { from: "reformat", id: "gen-1" },
       initialPage: 1,
+      pageNavigation: { pageIndex: 1, version: expect.any(Number) },
     });
   });
 
@@ -555,7 +556,7 @@ describe("merge later / officially fork", () => {
     await waitFor(() => expect(document.querySelector("[data-reformat-review]")).toBeTruthy());
 
     fireEvent.click(document.querySelector("[data-reformat-fork]")!);
-    await screen.findByText(/fork\/merge API pending/);
+    await screen.findByText("Forking or merging is unavailable right now. Try again later.");
     // No fake success state.
     expect(document.querySelector("[data-reformat-fork]")!.textContent).toBe("Officially fork");
   });
@@ -570,6 +571,8 @@ describe("merge later / officially fork", () => {
     fireEvent.click(document.querySelector("[data-reformat-fork]")!);
     await screen.findByText("forked");
     const forkPost = server.posts.find((c) => c.url.endsWith("/forks"))!;
+    expect(document.querySelector("[data-reformat-header]")!.textContent).toContain("officially forked");
+    expect(document.querySelector("[data-reformat-header]")!.textContent).not.toContain("not yet forked");
     expect(forkPost.url).toContain("/books/doc-1/forks");
     expect(forkPost.body.derived_document_id).toBe("drv-x1");
     expect(forkPost.body.generation_id).toBe("gen-1");
@@ -675,5 +678,103 @@ describe("probe-to-core (SPR-03)", () => {
     // citation mandate makes a probe without spans dishonest by construction.
     expect(trace.querySelector("[data-probe-launch]")).toBeNull();
     expect(server.posts.filter((c) => c.url.endsWith("/investigations"))).toHaveLength(0);
+  });
+});
+
+describe("Astra integration probes", () => {
+  it("merges the fork returned by the successful fork request rather than a generation id", async () => {
+    const server: Server = { posts: [], patches: [], forkReachable: true };
+    route(server);
+    await renderReader("drv-x1");
+    fireEvent.click(await screen.findByRole("button", { name: "Officially fork" }));
+    await screen.findByText("forked");
+    fireEvent.click(screen.getByRole("button", { name: "Merge later" }));
+    await waitFor(() => expect(server.posts.some((post) => post.url.endsWith("/merge"))).toBe(true));
+    expect(server.posts.find((post) => post.url.endsWith("/merge"))?.url).toContain("/forks/fork-1/merge");
+  });
+
+  it("lands on the selected second source span rather than the first", async () => {
+    const server: Server = { posts: [], patches: [], forkReachable: false };
+    route(server);
+    const handler = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation(async (input, init) => {
+      if (String(input).includes("/documents/drv-x1/provenance")) return jsonResponse({
+        ...PROVENANCE, bites: [{ ...PROVENANCE.bites[1],
+          source_refs: [{ node_id: "c-1", start_scalar: 0, end_scalar: 7 }, { node_id: "c-2", start_scalar: 0, end_scalar: 7 }],
+          source_page_hints: [0, 1],
+        }],
+      });
+      return handler(input, init);
+    });
+    await renderReader("drv-x1");
+    fireEvent.click(await screen.findByRole("button", { name: "trace" }));
+    const jumps = screen.getAllByRole("button", { name: "open the source page" });
+    expect(jumps).toHaveLength(2);
+    fireEvent.click(jumps[1]);
+    expect(useWindows.getState().windows[readerWindowId("doc-1")].payload.initialPage).toBe(1);
+  });
+
+  it("moves an already open source reader to the requested trace page without duplicating it", async () => {
+    const server: Server = { posts: [], patches: [], forkReachable: false };
+    route(server);
+    const { default: BookReader } = await import("./index");
+    const { default: ReformatReview } = await import("./ReformatReview");
+    const id = readerWindowId("doc-1");
+    useWindows.getState().open("reader", { documentId: "doc-1", initialPage: 0 }, { id });
+    function ExistingSource() {
+      const win = useWindows((state) => state.windows[id]);
+      return <div data-astra-source><BookReader {...win.payload} /></div>;
+    }
+    render(<MemoryRouter><ReformatReview documentId="drv-x1" /><ExistingSource /></MemoryRouter>);
+    await waitFor(() => expect(document.querySelector('[data-astra-source] article')?.textContent).toContain("The opening of the book."));
+    const source = document.querySelector("[data-astra-source]") as HTMLElement;
+    const originalReader = source.querySelector('[data-testid="book-reader-root"]');
+    fireEvent.click(document.querySelector('[data-bite-trace-toggle="bite-1"]')!);
+    fireEvent.click(document.querySelector('[data-trace-jump="bite-1"]')!);
+    expect(useWindows.getState().order).toEqual([id]);
+    await waitFor(() => expect(document.querySelector('[data-astra-source] article')?.textContent).toContain("The second page."));
+    expect(source.querySelector('[data-testid="book-reader-root"]')).toBe(originalReader);
+    fireEvent.click(within(source).getByRole("button", { name: /Previous/ }));
+    await waitFor(() => expect(source.querySelector("article")?.textContent).toContain("The opening of the book."));
+    fireEvent.click(document.querySelector('[data-trace-jump="bite-1"]')!);
+    await waitFor(() => expect(source.querySelector("article")?.textContent).toContain("The second page."));
+    expect(source.querySelector('[data-testid="book-reader-root"]')).toBe(originalReader);
+    expect(useWindows.getState().order).toEqual([id]);
+
+  });
+
+  it("keeps unknown page hints honest instead of claiming page one", async () => {
+    const server: Server = { posts: [], patches: [], forkReachable: false };
+    route(server);
+    const handler = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation(async (input, init) => {
+      if (String(input).includes("/documents/drv-x1/provenance")) return jsonResponse({
+        ...PROVENANCE, bites: [{ ...PROVENANCE.bites[1], source_page_hints: [null] }],
+      });
+      return handler(input, init);
+    });
+    await renderReader("drv-x1");
+    fireEvent.click(await screen.findByRole("button", { name: "trace" }));
+    expect(document.querySelector('[data-bite-trace="bite-1"]')?.textContent).not.toContain("core passage, page 1");
+  });
+});
+
+describe("fork response admission", () => {
+  it.each([null, {}, { fork_id: "" }, { fork_id: 7 }])("does not declare a fork or permit merge without a valid returned identity: %j", async (reply) => {
+    const server: Server = { posts: [], patches: [], forkReachable: true };
+    route(server);
+    const handler = apiFetchMock.getMockImplementation()!;
+    apiFetchMock.mockImplementation((input, init) => String(input).endsWith("/forks") && init?.method === "POST"
+      ? Promise.resolve(jsonResponse(reply, 201)) : handler(input, init));
+    await renderReader("drv-x1");
+    const fork = await screen.findByRole("button", { name: "Officially fork" });
+    const merge = screen.getByRole("button", { name: "Merge later" });
+    expect(merge.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(fork);
+    await screen.findByText("Couldn't finish that change. Try again.");
+    expect(screen.queryByText("forked")).toBeNull();
+    expect(merge.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(merge);
+    expect(server.posts.filter((post) => post.url.endsWith("/merge"))).toEqual([]);
   });
 });

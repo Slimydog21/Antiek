@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 
 import { getHydrationGeneration, useWorkspace } from "./WorkspaceStore";
@@ -63,18 +63,12 @@ export function PanelHost({ starters = [], children }: Props) {
   const panels = useWorkspace((s) => s.panels);
   const params = useParams();
 
-  // Latest starters for the effect (see the key comment above): the effect
-  // re-runs only when the starter key moves, and must then open the CURRENT
-  // list, not the one captured when the key last moved.
-  const startersRef = useRef(starters);
-  startersRef.current = starters;
-
   const signature = starterSignature(starters, params);
 
   useEffect(() => {
     const generation = getHydrationGeneration();
     const openedIds: string[] = [];
-    for (const starter of startersRef.current) {
+    for (const starter of starters) {
       const id = open(starter.kind, starter.props ?? {}, {
         mode: starter.mode,
         title: starter.title,

@@ -115,6 +115,8 @@ export type OpenWindowOptions = {
    * exact-identity open to an unrelated surface. Opt-in because replacement
    * is appropriate only when showing the requested asset is load-bearing. */
   replaceOldestAtLimit?: boolean;
+  /** An explicit navigation replaces the payload while preserving the window. */
+  updatePayloadOnReopen?: boolean;
 };
 
 export type WindowsActions = {
@@ -195,6 +197,9 @@ export const useWindows = create<Store>()((set, get) => ({
     // Re-opening an existing id focuses instead of duplicating (stable
     // per-instance windows, e.g. one window per documentId).
     if (get().windows[id]) {
+      if (opts.updatePayloadOnReopen && get().windows[id].kind === kind) {
+        set((state) => ({ windows: { ...state.windows, [id]: { ...state.windows[id], payload } } }));
+      }
       get().focus(id);
       return id;
     }

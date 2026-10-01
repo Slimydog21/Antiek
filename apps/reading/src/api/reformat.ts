@@ -12,6 +12,18 @@ import { API_BASE, ApiError, apiFetch } from "../lib/api";
 
 export type ReformatMode = "time_window" | "themes";
 
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function identity(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function coordinate(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
 export interface ReformatResponse {
   generation_id: string;
   derived_document_id: string;
@@ -72,7 +84,34 @@ export async function postReformat(
       await resp.text(),
     );
   }
-  return (await resp.json()) as ReformatResponse;
+  const raw: unknown = await resp.json();
+  if (
+    !record(raw) ||
+    !identity(raw.generation_id) ||
+    !identity(raw.derived_document_id) ||
+    !identity(raw.thread_id) ||
+    !coordinate(raw.bite_count) ||
+    !coordinate(raw.reclassed_verbatim) ||
+    !Array.isArray(raw.contribution_classes) ||
+    !raw.contribution_classes.every((value) => typeof value === "string") ||
+    typeof raw.mostly_generated !== "boolean" ||
+    typeof raw.null_source_share !== "number" ||
+    !Number.isFinite(raw.null_source_share) ||
+    raw.null_source_share < 0 ||
+    raw.null_source_share > 1
+  ) {
+    throw new Error("The reformat response was incomplete.");
+  }
+  return {
+    generation_id: raw.generation_id,
+    derived_document_id: raw.derived_document_id,
+    thread_id: raw.thread_id,
+    bite_count: raw.bite_count,
+    contribution_classes: raw.contribution_classes,
+    mostly_generated: raw.mostly_generated,
+    reclassed_verbatim: raw.reclassed_verbatim,
+    null_source_share: raw.null_source_share,
+  };
 }
 
 /** The derived document's provenance — null when the document is not
@@ -93,16 +132,70 @@ export async function getProvenance(
       await resp.text(),
     );
   }
-  const raw = (await resp.json()) as Partial<ProvenanceResponse>;
+  const raw: unknown = await resp.json();
   if (
-    !raw.generation ||
-    typeof raw.generation !== "object" ||
-    typeof raw.generation.generation_id !== "string" ||
-    !Array.isArray(raw.bites)
-  ) {
-    return null; // not a provenance payload — render nothing, honestly
+    !record(raw) || raw.document_id !== documentId ||
+    !record(raw.generation) || !Array.isArray(raw.bites)
+  ) return null;
+  const gen = raw.generation;
+  if (
+    !identity(gen.generation_id) || !identity(gen.source_document_id) ||
+    !(gen.source_title === null || typeof gen.source_title === "string") ||
+    typeof gen.prompt !== "string" || typeof gen.model !== "string" ||
+    typeof gen.created_at !== "string" || !record(gen.params) ||
+    typeof gen.mostly_generated !== "boolean"
+  ) return null;
+  const bites: ProvenanceBite[] = [];
+  for (const value of raw.bites) {
+    if (
+      !record(value) || !identity(value.bite_id) || !coordinate(value.ordinal) ||
+      typeof value.contribution_class !== "string" || typeof value.byte_verified !== "boolean" ||
+      !(value.investigation_id === null || identity(value.investigation_id))
+    ) return null;
+    let refs: ProvenanceBite["source_refs"] = null;
+    if (value.source_refs !== null) {
+      if (!Array.isArray(value.source_refs)) return null;
+      refs = [];
+      for (const ref of value.source_refs) {
+        if (
+          !record(ref) || !identity(ref.node_id) || !coordinate(ref.start_scalar) ||
+          !coordinate(ref.end_scalar) || ref.end_scalar < ref.start_scalar
+        ) return null;
+        refs.push({ node_id: ref.node_id, start_scalar: ref.start_scalar, end_scalar: ref.end_scalar });
+      }
+    }
+    const hints: (number | null)[] = [];
+    if (value.source_page_hints !== undefined) {
+      if (!Array.isArray(value.source_page_hints)) return null;
+      for (const hint of value.source_page_hints) {
+        if (hint !== null && !coordinate(hint)) return null;
+        hints.push(hint);
+      }
+    }
+    bites.push({
+      bite_id: value.bite_id,
+      ordinal: value.ordinal,
+      contribution_class: value.contribution_class,
+      source_refs: refs,
+      source_page_hints: refs?.map((_, index) => hints[index] ?? null) ?? [],
+      investigation_id: value.investigation_id,
+      byte_verified: value.byte_verified,
+    });
   }
-  return raw as ProvenanceResponse;
+  return {
+    document_id: documentId,
+    generation: {
+      generation_id: gen.generation_id,
+      source_document_id: gen.source_document_id,
+      source_title: gen.source_title,
+      prompt: gen.prompt,
+      model: gen.model,
+      params: gen.params,
+      mostly_generated: gen.mostly_generated,
+      created_at: gen.created_at,
+    },
+    bites,
+  };
 }
 
 /** "Officially fork" — the unit-5 contract path (POST /books/{id}/forks),
@@ -111,7 +204,7 @@ export async function getProvenance(
 export async function postFork(
   sourceDocumentId: string,
   body: { derived_document_id: string; generation_id: string; note?: string },
-): Promise<unknown> {
+): Promise<{ fork_id: string }> {
   const resp = await apiFetch(
     `${API_BASE}/books/${encodeURIComponent(sourceDocumentId)}/forks`,
     {
@@ -127,7 +220,11 @@ export async function postFork(
       await resp.text(),
     );
   }
-  return resp.json();
+  const raw: unknown = await resp.json();
+  if (!record(raw) || !identity(raw.fork_id)) {
+    throw new Error("The fork response did not include its identity.");
+  }
+  return { fork_id: raw.fork_id };
 }
 
 /** The pull-a-snippet probe (SPR-03): the core document's passage,
@@ -161,8 +258,26 @@ export async function getPassageSnippet(
       await resp.text(),
     );
   }
-  return (await resp.json()) as PassageSnippet;
+  const raw: unknown = await resp.json();
+  if (
+    !record(raw) || typeof raw.servable !== "boolean" ||
+    !(raw.text === null || typeof raw.text === "string") ||
+    !(raw.page_index_hint === null || coordinate(raw.page_index_hint)) ||
+    raw.chunk_id !== span.node_id || raw.start_scalar !== span.start_scalar ||
+    raw.end_scalar !== span.end_scalar
+  ) {
+    throw new Error("The passage response did not match its source reference.");
+  }
+  return {
+    servable: raw.servable,
+    text: raw.servable ? raw.text : null,
+    page_index_hint: raw.page_index_hint,
+    chunk_id: span.node_id,
+    start_scalar: span.start_scalar,
+    end_scalar: span.end_scalar,
+  };
 }
+
 /** "Merge later" — the unit-5 merge shape (fork-merge route family).
  *  Same honest-degradation rule: 404 on a stack without it. */
 export async function postForkMerge(

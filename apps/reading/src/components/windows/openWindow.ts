@@ -139,6 +139,7 @@ export interface ReaderOrigin {
 export interface ReaderWindowPayload extends Record<string, unknown> {
   documentId: string;
   origin?: ReaderOrigin;
+  pageNavigation?: { pageIndex: number; version: number };
 }
 
 /** The stable per-document reader window id (reading-global SPR-02): EVERY
@@ -184,4 +185,20 @@ export function openWindow(
     id: opts.id ?? `win:${kind}`,
     ...opts,
   });
+}
+
+let sourceNavigationVersion = 0;
+
+/** A source trace is a new navigation intent, including when its reader is open. */
+export function openSourceReader(documentId: string, pageIndex: number | null, origin: ReaderOrigin): string {
+  const id = readerWindowId(documentId);
+  const version = ++sourceNavigationVersion;
+  const pageNavigation = pageIndex !== null && Number.isSafeInteger(pageIndex) && pageIndex >= 0
+    ? { pageIndex, version } : undefined;
+  return openWindow("reader", {
+    documentId,
+    origin,
+    ...(pageNavigation ? { initialPage: pageNavigation.pageIndex, pageNavigation } : {}),
+  }, { id, title: pageNavigation ? "The source page" : "The source document",
+    updatePayloadOnReopen: true, replaceOldestAtLimit: true });
 }
