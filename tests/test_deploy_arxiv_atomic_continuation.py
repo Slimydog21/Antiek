@@ -20,6 +20,10 @@ def _flow() -> tuple[list[dict], list[dict]]:
     return quiesce["block"], quiesce["rescue"]
 
 
+def _play_vars() -> dict:
+    return yaml.safe_load(PLAYBOOK.read_text())[1]["vars"]
+
+
 def _task(tasks: list[dict], name: str) -> dict:
     return next(task for task in tasks if task.get("name") == name)
 
@@ -50,7 +54,11 @@ def test_candidate_pauses_timer_before_capture_and_resumes_after_public_parity()
     running = _task(candidate, "remember whether an arxiv run was interrupted")
     assert "active|activating" in running["ansible.builtin.set_fact"]["arxiv_was_running"]
     assert "PendingJobType=start" in running["ansible.builtin.set_fact"]["arxiv_was_running"]
-    consumers = _task(candidate, "pause every release-path consumer before cutover")["loop"]
+    # The loop reads ONE declared list (deploy_atomic.yml `release_path_consumers`),
+    # so the assertion resolves that list rather than searching the loop string.
+    loop_ref = _task(candidate, "pause every release-path consumer before cutover")["loop"]
+    assert loop_ref == "{{ release_path_consumers }}"
+    consumers = _play_vars()["release_path_consumers"]
     assert "antiek-arxiv-oai-sync.timer" in consumers
     assert "antiek-arxiv-oai-sync.service" in consumers
 
@@ -373,8 +381,16 @@ def test_rescue_stage_keeps_an_unpaused_sync_running(
     jinja.tests["search"] = lambda value, pattern: re.search(pattern, value) is not None
     context = {
         "antiek_previous_sha": "previous",
+        # stdout_lines matters: the rescue's `when` guards now test
+        # `arxiv_timer_pause_result.stdout_lines is defined` (the body reads
+        # stdout_lines, so guarding only `stdout` let a result without it
+        # through). Found by the sibling lane on PR #3585.
         "arxiv_timer_pause_result": ({"stdout": f"UnitFileState={'enabled' if timer_enabled else 'disabled'}\n"
-                                        f"ActiveState={'active' if timer_active else 'inactive'}\n"}
+                                        f"ActiveState={'active' if timer_active else 'inactive'}\n",
+                                       "stdout_lines": [
+                                           f"UnitFileState={'enabled' if timer_enabled else 'disabled'}",
+                                           f"ActiveState={'active' if timer_active else 'inactive'}",
+                                       ]}
                                        if stage != "before_timer_stop" else {}),
         "arxiv_service_pause_attempted": stage in {"after_service_stop", "partial_consumer_pause"},
         "arxiv_timer_was_enabled": timer_enabled,
@@ -471,9 +487,22 @@ def test_direct_start_at_consumer_loop_skips_every_item_then_fails_before_cutove
     )
     jinja = Environment()
     assert not all(jinja.compile_expression(gate)() for gate in loop_task["when"])
-    skipped_results = {"results": [{"item": item, "skipped": True} for item in loop_task["loop"]]}
-    assert not all(jinja.compile_expression(gate)(arxiv_pause_result=skipped_results)
-                   for gate in stage_assertion["ansible.builtin.assert"]["that"])
+    # The loop reads the ONE declared consumer list, so the simulated result
+    # sets are built from that list rather than from the loop expression.
+    consumers = _play_vars()["release_path_consumers"]
+    skipped_results = {"results": [{"item": item, "skipped": True} for item in consumers]}
+    # The post-condition is now STATE-based: it asks `systemctl show` what the
+    # box did. The equivalent of "every pause item was skipped" is the probe
+    # finding the consumers still active, and the assert must refuse.
+    still_active = {"results": [{"item": item, "stdout": "ActiveState=active"} for item in consumers]}
+    assert not all(
+        jinja.compile_expression(gate)(
+            arxiv_pause_result=skipped_results,
+            consumer_pause_states=still_active,
+            release_path_consumers=consumers,
+        )
+        for gate in stage_assertion["ansible.builtin.assert"]["that"]
+    )
     facts = _task(rescue, "classify arxiv service pause stage")["ansible.builtin.set_fact"]
     jinja.tests["search"] = lambda value, pattern: re.search(pattern, value) is not None
     assert jinja.from_string(facts["arxiv_loop_timer_pause_attempted"]).render(
@@ -483,12 +512,15 @@ def test_direct_start_at_consumer_loop_skips_every_item_then_fails_before_cutove
         arxiv_pause_result=skipped_results
     ) == "False"
 
+    stopped = {"results": [{"item": item, "stdout": "ActiveState=inactive"} for item in consumers]}
     completed = {
         "arxiv_timer_was_enabled": True,
         "arxiv_timer_was_active": True,
         "arxiv_timer_pause_result": {"rc": 0},
         "arxiv_service_pause_result": {"rc": 0},
-        "arxiv_pause_result": {"results": [{"item": item} for item in loop_task["loop"]]},
+        "arxiv_pause_result": {"results": [{"item": item} for item in consumers]},
+        "consumer_pause_states": stopped,
+        "release_path_consumers": consumers,
     }
     assert all(jinja.compile_expression(gate)(**completed) for gate in loop_task["when"])
     assert all(jinja.compile_expression(gate)(**completed)
