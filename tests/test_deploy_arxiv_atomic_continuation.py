@@ -374,7 +374,9 @@ def test_rescue_stage_keeps_an_unpaused_sync_running(
     context = {
         "antiek_previous_sha": "previous",
         "arxiv_timer_pause_result": ({"stdout": f"UnitFileState={'enabled' if timer_enabled else 'disabled'}\n"
-                                        f"ActiveState={'active' if timer_active else 'inactive'}\n"}
+                                        f"ActiveState={'active' if timer_active else 'inactive'}\n",
+                                       "stdout_lines": [f"UnitFileState={'enabled' if timer_enabled else 'disabled'}",
+                                                         f"ActiveState={'active' if timer_active else 'inactive'}"]}
                                        if stage != "before_timer_stop" else {}),
         "arxiv_service_pause_attempted": stage in {"after_service_stop", "partial_consumer_pause"},
         "arxiv_timer_was_enabled": timer_enabled,
