@@ -77,6 +77,8 @@ export interface OutlineProps {
    * switch keeps each editor, its draft and its pending save (F-02:
    * "never losing an edit on a tab switch"). null = the whole piece. */
   scopeSectionId?: string | null;
+  /** A retained editor cannot interact until its scoped detail is confirmed. */
+  interactive?: boolean;
 }
 
 export default function Outline({
@@ -86,6 +88,7 @@ export default function Outline({
   registerAddHandler,
   investigationId,
   scopeSectionId = null,
+  interactive = true,
 }: OutlineProps) {
   // A scope naming no section of this piece shows the whole piece.
   const scoped = scopeSectionId !== null && sections.some((s) => s.section_id === scopeSectionId);
@@ -143,6 +146,7 @@ export default function Outline({
               hidden={scoped && s.section_id !== scopeSectionId}
               onChanged={onChanged}
               investigationId={investigationId ?? "__operator__"}
+              interactive={interactive}
             />
           ))
         )}
@@ -164,6 +168,7 @@ function SectionCard({
   hidden = false,
   onChanged,
   investigationId,
+  interactive,
 }: {
   deliverableId: string;
   section: SectionResponse;
@@ -172,14 +177,17 @@ function SectionCard({
   hidden?: boolean;
   onChanged: () => Promise<void> | void;
   investigationId: string;
+  interactive: boolean;
 }) {
   const [blocks, setBlocks] = useState<OutlineBlockView[]>([]);
   const [dropHover, setDropHover] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const [proseSession] = useState(() =>
-    sectionProse(deliverableId, section.section_id, section.prose_text, section.prose_provenance ?? {}),
-  );
+  const [proseSession] = useState(() => {
+    const session = sectionProse(deliverableId, section.section_id, section.prose_text, section.prose_provenance ?? {});
+    session.setScopedAuthorization(interactive);
+    return session;
+  });
   const prose = useSyncExternalStore(proseSession.subscribe, proseSession.getSnapshot);
   const generating = prose.generation.status === "generating";
   const genResult = prose.generation.status === "result" ? prose.generation.result : null;
@@ -189,6 +197,7 @@ function SectionCard({
   const draftRevision = prose.revision;
   const proseText = prose.saved;
   const proseProvenance = prose.provenance;
+  useEffect(() => { proseSession.setScopedAuthorization(interactive); }, [proseSession, interactive]);
   const [projection, setProjection] = useState<ComposerModelProjection | null>(null);
   const [projectionError, setProjectionError] = useState<string | null>(null);
   const [modelChoice, setModelChoice] = useState<ComposerCandidateView | null>(null);
@@ -267,20 +276,18 @@ function SectionCard({
     if (editor && prose.document && JSON.stringify(editor.getJSON()) !== JSON.stringify(prose.document)) {
       editor.commands.setContent(prose.document, { emitUpdate: false });
     }
-    editor?.setEditable(prose.available && !generating, false);
-  }, [prose.available, prose.document, generating, draftRevision, draftContent]);
+    editor?.setEditable(prose.available && prose.dispatchAllowed && interactive && !generating, false);
+  }, [prose.available, prose.dispatchAllowed, prose.document, interactive, generating, draftRevision, draftContent]);
 
-  async function handleGenerate() {
+  const handleGenerate = useCallback(async () => {
     editorRef.current?.setEditable(false, false);
     await proseSession.generate();
-  }
+  }, [proseSession]);
 
   // M3 + M4: regenerate the section (the drag-in-X-ray gesture, and the
   // rewrite / make-stronger actions, both regenerate this section from its
   // blocks via the SHIPPED generate path — never a new model path). The
   // creative_writer re-anchors per-block, so the regenerated prose stays cited.
-  const handleGenerateRef = useRef(handleGenerate);
-  handleGenerateRef.current = handleGenerate;
   const handleRegenerate = useCallback(
     async (_paragraphIndex?: number) => {
       // This sprint's generate endpoint is section-granular (creative_writer
@@ -288,9 +295,9 @@ function SectionCard({
       // regenerate that re-anchors all paragraphs; the affected paragraph is
       // necessarily refreshed. (A true single-paragraph endpoint is a named
       // follow-up — see handoff Open questions.)
-      await handleGenerateRef.current();
+      await handleGenerate();
     },
-    [],
+    [handleGenerate],
   );
 
   // M4: the FloatMenu rewrite intents → the SHIPPED paths.
@@ -333,6 +340,7 @@ function SectionCard({
       const sel = selection;
       if (!sel || !sel.text) return;
       const ed = editorRef.current;
+      if (!ed?.isEditable || !interactive || !proseSession.getSnapshot().dispatchAllowed) return;
       const range = ed ? locateText(ed, sel.text) : null;
       if (!ed || !range) {
         toast.warn("That passage changed before the edit came back, so the edit was not applied.");
@@ -341,7 +349,7 @@ function SectionCard({
       ed.view.dispatch(ed.state.tr.insertText(editedText, range.from, range.to));
       window.getSelection()?.removeAllRanges();
     },
-    [selection, proseSession],
+    [selection, proseSession, interactive],
   );
 
   const canGenerate = prose.dispatchAllowed && blocks.length > 0 && !generating;
@@ -583,6 +591,7 @@ function SectionCard({
               sectionId={section.section_id}
               initialContent={draftContent}
               investigationId={investigationId}
+              editingAllowed={prose.dispatchAllowed && interactive && !generating}
               // SPR-02: persist coarse prose_text on edit (mirrors the shape
               // CreationStudio uses), debounced, with an honest save indicator.
               onContentChange={handleContentChange}

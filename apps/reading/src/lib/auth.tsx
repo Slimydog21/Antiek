@@ -29,6 +29,7 @@ import {
 import { posthog, posthogEnabled } from "./posthogClient";
 import { setReadingStateOwner } from "../hooks/useReadingState";
 import { setSectionProseOwner, suspendSectionProseDispatch } from "../modes/Write/sectionProseOwner";
+import RetainedContent from "../shared/RetainedContent";
 
 /** Layer A transport — never surface raw browser "Failed to fetch" to users. */
 export const AUTH_TRANSPORT_FETCH_MESSAGE = "Cannot reach Antiek API";
@@ -56,23 +57,24 @@ export type AuthState =
   | { status: "loading" }
   | { status: "authenticated"; identity: AuthIdentity }
   /**
-   * `inferred`: no readable /auth/me answer, but /health proved the API is
-   * up, so this is taken to be a CORS-masked 401 (P-02). It routes exactly
-   * like a real 401; it only differs in what it may erase (neither the
-   * reading-state owner nor the analytics identity).
+   * `inferred`: /health answered but /auth/me was unreadable (P-02).
+   * Initial visitors go to login. A previously proven owner's workspace
+   * stays hidden until a new readable identity answer permits resuming it.
    */
   | { status: "unauthenticated"; inferred?: true }
   /**
    * /auth/me could not give an identity answer: the fetch threw (offline),
    * the server answered with a transient failure (server), or a 200 body was
-   * unreadable (malformed). AuthProvider renders its own full-viewport
-   * screen INSTEAD of its children in this state, so no consumer (notably
-   * RequireAuth in App.tsx) ever observes it.
+   * unreadable (malformed). Previously authenticated children stay mounted
+   * but hidden/inert under the outage screen. Unknown visitors mount no
+   * protected workspace.
    */
   | { status: "unavailable"; reason: AuthUnavailableReason };
 
 export interface AuthContextValue {
   state: AuthState;
+  /** Previous proven identity permits memory retention, never dispatch. */
+  protectedIdentity: AuthIdentity | null;
   /** Re-check /auth/me. Used after sign-in callback redirects back. */
   refresh: () => Promise<void>;
   /** POST /auth/logout, drop cookie, set state to unauthenticated. */
@@ -202,7 +204,7 @@ function AuthUnavailableScreen({
   reason,
   onRetry,
 }: {
-  reason: AuthUnavailableReason;
+  reason: AuthUnavailableReason | "session";
   onRetry: () => Promise<void>;
 }) {
   const [retrying, setRetrying] = useState(false);
@@ -221,8 +223,8 @@ function AuthUnavailableScreen({
       className="min-h-screen flex items-center justify-center p-8 bg-ice-2 dark:bg-space-2 text-ink dark:text-bright font-sans"
     >
       <div className="max-w-md text-center">
-        <p className="text-lg font-semibold mb-2">{AUTH_UNAVAILABLE_COPY}</p>
-        <p className="text-sm text-shadow-1 dark:text-moonlight mb-6">{UNAVAILABLE_HINT[reason]}</p>
+        <p className="text-lg font-semibold mb-2">{reason === "session" ? "Antiek couldn't verify your session." : AUTH_UNAVAILABLE_COPY}</p>
+        <p className="text-sm text-shadow-1 dark:text-moonlight mb-6">{reason === "session" ? "Try again to return to your work." : UNAVAILABLE_HINT[reason]}</p>
         <button
           type="button"
           onClick={() => void retry()}
@@ -238,7 +240,7 @@ function AuthUnavailableScreen({
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({ status: "loading" });
+  const [{ state, protectedIdentity }, setSession] = useState<{ state: AuthState; protectedIdentity: AuthIdentity | null }>({ state: { status: "loading" }, protectedIdentity: null });
   const refreshEpochRef = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -260,7 +262,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // this preserves pending work across a transient API outage. F-03:
       // and do not claim "unauthenticated" either — that sent a signed-in
       // user to /login during every backend restart.
-      setState({ status: "unavailable", reason: answer.reason });
+      setSession((previous) => ({ ...previous, state: { status: "unavailable", reason: answer.reason } }));
       return;
     }
     const identity = answer.kind === "identity" ? answer.identity : null;
@@ -277,11 +279,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       suspendTabDispatch();
     }
     if (identity) {
-      setState({ status: "authenticated", identity });
+      setSession({ state: { status: "authenticated", identity }, protectedIdentity: identity });
     } else if (answer.kind === "anonymous" && answer.inferred) {
-      setState({ status: "unauthenticated", inferred: true });
+      setSession((previous) => ({ ...previous, state: { status: "unauthenticated", inferred: true } }));
     } else {
-      setState({ status: "unauthenticated" });
+      setSession({ state: { status: "unauthenticated" }, protectedIdentity: null });
     }
   }, []);
 
@@ -292,12 +294,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setReadingStateOwner(null);
     setSectionProseOwner(null);
     setTabOwner(null);
+    setSession({ state: { status: "unauthenticated" }, protectedIdentity: null });
     await apiFetch(authUrl("/auth/logout"), { method: "POST" });
-    setState({ status: "unauthenticated" });
   }, []);
 
   useEffect(() => {
     void refresh();
+    return () => { refreshEpochRef.current++; };
   }, [refresh]);
 
   // Link the PostHog person to the substrate session as auth state resolves.
@@ -326,16 +329,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, refresh, signOut }),
-    [state, refresh, signOut],
+    () => ({ state, protectedIdentity, refresh, signOut }),
+    [state, protectedIdentity, refresh, signOut],
   );
+  const inferredPause = state.status === "unauthenticated" && state.inferred && protectedIdentity !== null;
+  const blocked = state.status === "unavailable" || Boolean(inferredPause);
+  const retainChildren = !blocked || protectedIdentity !== null;
   return (
     <AuthCtx.Provider value={value}>
-      {state.status === "unavailable" ? (
-        <AuthUnavailableScreen reason={state.reason} onRetry={refresh} />
-      ) : (
-        children
-      )}
+      <RetainedContent key={protectedIdentity?.user_id ?? "anonymous"} blocked={blocked}>
+        {retainChildren ? children : null}
+      </RetainedContent>
+      {blocked && <AuthUnavailableScreen reason={state.status === "unavailable" ? state.reason : "session"} onRetry={refresh} />}
     </AuthCtx.Provider>
   );
 }

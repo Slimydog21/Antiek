@@ -68,6 +68,8 @@ import { WorkspaceWindow } from "../components/windows/WorkspaceWindow";
 import { prefixState } from "../components/hotkeys/prefixState";
 import FloatMenu from "../modes/shared/FloatMenu/FloatMenu";
 import { WriteEditor } from "../modes/Write/Editor/Editor";
+import { setSectionProseOwner } from "../modes/Write/sectionProseOwner";
+import { setTabOwner } from "./tabTreeOwner";
 import { useWindows } from "./windowsStore";
 import { installShortcuts } from "./shortcuts";
 import { countingHandlers, pinPlatform, press, pressKey, unpinPlatform } from "./keymapTestKit";
@@ -76,6 +78,8 @@ let uninstall: (() => void) | null = null;
 let counts: ReturnType<typeof countingHandlers>;
 
 beforeEach(() => {
+  setSectionProseOwner("keymap-test-owner");
+  setTabOwner("keymap-test-owner");
   pinPlatform("mac");
   counts = countingHandlers();
   uninstall = installShortcuts(vi.fn() as never, { handlers: counts.handlers });
@@ -85,6 +89,8 @@ afterEach(() => {
   uninstall?.();
   uninstall = null;
   cleanup();
+  setSectionProseOwner(null);
+  setTabOwner(null);
   prefixState.disarm();
   useWindows.getState().reset();
   unpinPlatform();

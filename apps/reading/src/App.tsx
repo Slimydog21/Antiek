@@ -1,10 +1,10 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import type { ReactNode } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import AppShell from "./AppShell";
 import CommandPalette from "./components/CommandPalette";
-import { AuthProvider, useAuth } from "./lib/auth";
+import { AuthProvider } from "./lib/auth";
+import RequireAuth from "./lib/RequireAuth";
 
 // ── WP-12.2 bundle budget (index chunk ceiling 700 KB gz) ──────────────
 // Every routed mode is code-split. Only the shell, the auth provider and
@@ -93,26 +93,6 @@ function RouteLoading({ label }: { label: string }) {
  * The actual layout + state lives inside each mode's component. This
  * file is route mapping + auth gating only.
  */
-
-/** Auth gate. Children render only when authenticated; otherwise we
- * redirect to /login with the original path preserved in ?next= so the
- * post-callback redirect lands the user where they tried to go. */
-function RequireAuth({ children }: { children: ReactNode }) {
-  const { state } = useAuth();
-  const location = useLocation();
-  if (state.status === "loading") {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-ice-2 dark:bg-space-2 text-shadow-1 dark:text-moonlight text-xs tracking-[0.18em] uppercase font-sans">
-        Loading…
-      </div>
-    );
-  }
-  if (state.status === "unauthenticated") {
-    const next = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/login?next=${next}`} replace />;
-  }
-  return <>{children}</>;
-}
 
 /** Speak SPR-08 one-door redirect for legacy /interview/:id deep-links.
  *  The duplicate Interview surface is gone; interview-as-acquisition has one
