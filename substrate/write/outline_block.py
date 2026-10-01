@@ -419,32 +419,8 @@ def move_block(
     investigation_id: str = "__operator__",
     parent_event_id: str | None = None,
 ) -> None:
-    """Reorder a block within its section, or move it to another section
-    (reparent). Emits ``OUTLINE_BLOCK_MOVED`` with both endpoints."""
+    """Move to a final list position, repairing affected section ranks atomically."""
     _assert_write_locked(con)
-    row = con.execute(
-        "SELECT section_id, block_index FROM outline_blocks "
-        "WHERE outline_block_id = ?",
-        [outline_block_id],
-    ).fetchone()
-    if row is None:
-        raise OutlineBlockError(f"outline block not found: {outline_block_id!r}")
-    from_section_id, from_index = row[0], int(row[1])
-    if to_section_id == from_section_id and int(to_index) == from_index:
-        from substrate.write.event_outbox import dispatch_pending_best_effort
-
-        dispatch_pending_best_effort(con, investigation_id)
-        return
-    # Validate the target section exists (reparent target).
-    if (
-        to_section_id != from_section_id
-        and con.execute(
-            "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
-            [to_section_id],
-        ).fetchone()
-        is None
-    ):
-        raise OutlineBlockError(f"target section not found: {to_section_id!r}")
     from substrate.write.event_outbox import (
         build_typed_envelope,
         dispatch_pending_best_effort,
@@ -453,38 +429,85 @@ def move_block(
         next_aggregate_operation_id,
     )
 
-    event = build_typed_envelope(
-        investigation_id,
-        OutlineBlockMovedPayload(
-            outline_block_id=outline_block_id,
-            from_section_id=from_section_id,
-            to_section_id=to_section_id,
-            from_index=from_index,
-            to_index=int(to_index),
-        ),
-        parent_event_id=parent_event_id,
-        role="write_composition",
-    )
-    operation_id = next_aggregate_operation_id(
-        con,
-        action="outline.move",
-        aggregate_kind="outline_block",
-        aggregate_id=outline_block_id,
-    )
-
     with eventful_transaction(con, investigation_id):
-        con.execute(
-            "UPDATE outline_blocks SET section_id = ?, block_index = ? "
-            "WHERE outline_block_id = ?",
-            [to_section_id, int(to_index), outline_block_id],
-        )
-        enqueue_event(
-            con,
-            operation_id=operation_id,
-            aggregate_kind="outline_block",
-            aggregate_id=outline_block_id,
-            event=event,
-        )
+        row = con.execute(
+            "SELECT section_id, block_index FROM outline_blocks WHERE outline_block_id = ?",
+            [outline_block_id],
+        ).fetchone()
+        if row is None:
+            raise OutlineBlockError(f"outline block not found: {outline_block_id!r}")
+        from_section_id = row[0]
+        from_index = int(row[1])
+        target_section = con.execute(
+            "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
+            [to_section_id],
+        ).fetchone()
+        if target_section is None:
+            raise OutlineBlockError(f"target section not found: {to_section_id!r}")
+
+        source_rows = con.execute(
+            "SELECT outline_block_id, block_index FROM outline_blocks "
+            "WHERE section_id = ? ORDER BY block_index, outline_block_id",
+            [from_section_id],
+        ).fetchall()
+        source_ids = [r[0] for r in source_rows]
+        source_ids.remove(outline_block_id)
+        if to_section_id == from_section_id:
+            target_rows = source_rows
+            target_ids = source_ids.copy()
+        else:
+            target_rows = con.execute(
+                "SELECT outline_block_id, block_index FROM outline_blocks "
+                "WHERE section_id = ? ORDER BY block_index, outline_block_id",
+                [to_section_id],
+            ).fetchall()
+            target_ids = [r[0] for r in target_rows]
+        final_index = min(max(int(to_index), 0), len(target_ids))
+        target_ids.insert(final_index, outline_block_id)
+
+        current = {r[0]: (from_section_id, int(r[1])) for r in source_rows}
+        if to_section_id != from_section_id:
+            current.update({r[0]: (to_section_id, int(r[1])) for r in target_rows})
+        desired = {bid: (to_section_id, i) for i, bid in enumerate(target_ids)}
+        if to_section_id != from_section_id:
+            desired.update({bid: (from_section_id, i) for i, bid in enumerate(source_ids)})
+        changed = [
+            (section, index, bid)
+            for bid, (section, index) in desired.items()
+            if current[bid] != (section, index)
+        ]
+        if changed:
+            event = build_typed_envelope(
+                investigation_id,
+                OutlineBlockMovedPayload(
+                    outline_block_id=outline_block_id,
+                    from_section_id=from_section_id,
+                    to_section_id=to_section_id,
+                    from_index=from_index,
+                    to_index=final_index,
+                ),
+                parent_event_id=parent_event_id,
+                role="write_composition",
+            )
+            operation_id = next_aggregate_operation_id(
+                con,
+                action="outline.move",
+                aggregate_kind="outline_block",
+                aggregate_id=outline_block_id,
+            )
+            for section, index, bid in changed:
+                con.execute(
+                    "UPDATE outline_blocks SET section_id = ?, block_index = ? "
+                    "WHERE outline_block_id = ?",
+                    [section, index, bid],
+                )
+            enqueue_event(
+                con,
+                operation_id=operation_id,
+                aggregate_kind="outline_block",
+                aggregate_id=outline_block_id,
+                event=event,
+            )
     dispatch_pending_best_effort(con, investigation_id)
 
 

@@ -17,10 +17,12 @@ M6 migration — section_blocks → outline_blocks, idempotent, lossless;
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
 import tempfile
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -388,7 +390,7 @@ def test_move_and_remove(db):
     moved = get_block(con, obid)
     con.close()
     assert moved.section_id == db["subsection"]
-    assert moved.block_index == 2
+    assert moved.block_index == 0
 
     with connect_write(db["path"], purpose="t") as con:
         assert remove_block(con, outline_block_id=obid) is True
@@ -396,6 +398,243 @@ def test_move_and_remove(db):
     con = _read(db["path"])
     assert get_block(con, obid) is None
     con.close()
+
+
+@pytest.fixture()
+def ordering_db(tmp_path, monkeypatch):
+    source = Path(_REPO, "README.md").read_bytes()
+    paragraphs = [p.strip() for p in source.decode().split("\n\n") if p.strip()][:4]
+    path = str(tmp_path / "ordering.duckdb")
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    init_database_at_path(path)
+    with connect_write(path, purpose="outline/order-regression") as con:
+        did = insert_deliverable(
+            con,
+            title=paragraphs[0].removeprefix("# "),
+            deliverable_kind="research_memo",
+        )
+        sections = [
+            insert_section(con, deliverable_id=did, section_index=i, title=None) for i in range(2)
+        ]
+        blocks = [
+            place_user_authored_block(
+                con,
+                section_id=sections[0],
+                content=text,
+                block_index=i,
+                metadata={
+                    "repository_source": "README.md",
+                    "sha256": hashlib.sha256(source).hexdigest(),
+                },
+            )
+            for i, text in enumerate(paragraphs)
+        ]
+    return path, sections, blocks
+
+
+@pytest.mark.parametrize(
+    "source_index,target_index,final_index",
+    [(1, 0, 0), (0, 3, 3), (3, 1, 1), (2, 3, 3), (1, -1, 0)],
+)
+def test_ordering_move_uses_final_position(ordering_db, source_index, target_index, final_index):
+    path, sections, ids = ordering_db
+    expected = ids.copy()
+    expected.insert(final_index, expected.pop(source_index))
+    with connect_write(path, purpose="outline/order-regression") as con:
+        before = {b.outline_block_id: b for b in list_section_blocks(con, sections[0])}
+        move_block(
+            con,
+            outline_block_id=ids[source_index],
+            to_section_id=sections[0],
+            to_index=target_index,
+        )
+        after = list_section_blocks(con, sections[0])
+        assert [b.outline_block_id for b in after] == expected
+        assert [b.block_index for b in after] == list(range(len(ids)))
+        for b in after:
+            assert b.content == before[b.outline_block_id].content
+            assert b.metadata == before[b.outline_block_id].metadata
+            assert b.node_id == before[b.outline_block_id].node_id
+            assert b.provenance_kind == before[b.outline_block_id].provenance_kind
+
+
+@pytest.mark.parametrize("ranks", [(0, 0, 5, 12), (4, 7, 20, 31)])
+def test_ordering_repairs_duplicate_and_sparse_ranks(ordering_db, ranks):
+    path, sections, ids = ordering_db
+    with connect_write(path, purpose="outline/order-regression") as con:
+        for block_id, rank in zip(ids, ranks, strict=True):
+            con.execute(
+                "UPDATE outline_blocks SET block_index=? WHERE outline_block_id=?", [rank, block_id]
+            )
+        original = list_section_blocks(con, sections[0])
+        from_rank = original[1].block_index
+        before = [b.outline_block_id for b in original]
+        moved = before.pop(1)
+        before.insert(0, moved)
+        move_block(con, outline_block_id=moved, to_section_id=sections[0], to_index=0)
+        after = list_section_blocks(con, sections[0])
+        assert [b.outline_block_id for b in after] == before
+        assert [b.block_index for b in after] == list(range(len(ids)))
+        event = json.loads(
+            con.execute(
+                "SELECT event_json FROM write_event_outbox WHERE aggregate_id=? "
+                "AND operation_id LIKE 'outline.move:%'",
+                [moved],
+            ).fetchone()[0]
+        )
+        assert event["payload"]["from_index"] == from_rank
+        assert event["payload"]["to_index"] == 0
+
+
+def test_ordering_same_position_repairs_legacy_ranks(ordering_db):
+    path, sections, ids = ordering_db
+    with connect_write(path, purpose="outline/order-regression") as con:
+        con.execute("UPDATE outline_blocks SET block_index=0 WHERE section_id=?", [sections[0]])
+        before = [b.outline_block_id for b in list_section_blocks(con, sections[0])]
+        move_block(con, outline_block_id=before[0], to_section_id=sections[0], to_index=0)
+        after = list_section_blocks(con, sections[0])
+        assert [b.outline_block_id for b in after] == before
+        assert [b.block_index for b in after] == list(range(len(ids)))
+
+
+def test_ordering_cross_section_clamps_and_records_effective_position(ordering_db):
+    path, sections, ids = ordering_db
+    with connect_write(path, purpose="outline/order-regression") as con:
+        move_block(con, outline_block_id=ids[1], to_section_id=sections[1], to_index=99)
+        assert [b.block_index for b in list_section_blocks(con, sections[0])] == [0, 1, 2]
+        assert [
+            (b.outline_block_id, b.block_index) for b in list_section_blocks(con, sections[1])
+        ] == [(ids[1], 0)]
+        event = json.loads(
+            con.execute(
+                "SELECT event_json FROM write_event_outbox WHERE aggregate_id=? AND operation_id LIKE 'outline.move:%'",
+                [ids[1]],
+            ).fetchone()[0]
+        )
+        assert event["payload"]["from_index"] == 1
+        assert event["payload"]["to_index"] == 0
+
+
+@pytest.mark.parametrize("target_index", [0, 99])
+def test_ordering_cross_section_preserves_populated_destination(ordering_db, target_index):
+    path, sections, ids = ordering_db
+    with connect_write(path, purpose="outline/order-regression") as con:
+        move_block(con, outline_block_id=ids[0], to_section_id=sections[1], to_index=0)
+        move_block(con, outline_block_id=ids[1], to_section_id=sections[1], to_index=target_index)
+        destination = [ids[1], ids[0]] if target_index == 0 else [ids[0], ids[1]]
+        assert [b.outline_block_id for b in list_section_blocks(con, sections[0])] == ids[2:]
+        assert [b.block_index for b in list_section_blocks(con, sections[0])] == [0, 1]
+        assert [b.outline_block_id for b in list_section_blocks(con, sections[1])] == destination
+        assert [b.block_index for b in list_section_blocks(con, sections[1])] == [0, 1]
+
+
+def test_ordering_failure_rolls_back_all_ranks_and_receipt(ordering_db, monkeypatch):
+    import substrate.write.event_outbox as outbox
+
+    path, sections, ids = ordering_db
+    with connect_write(path, purpose="outline/order-regression") as con:
+        before = con.execute("SELECT * FROM outline_blocks ORDER BY outline_block_id").fetchall()
+        receipts = con.execute("SELECT * FROM write_event_outbox ORDER BY event_id").fetchall()
+
+        def fail_enqueue(*args, **kwargs):
+            raise RuntimeError("injected outbox failure")
+
+        monkeypatch.setattr(outbox, "enqueue_event", fail_enqueue)
+        with pytest.raises(RuntimeError, match="injected outbox failure"):
+            move_block(con, outline_block_id=ids[1], to_section_id=sections[0], to_index=0)
+        assert (
+            con.execute("SELECT * FROM outline_blocks ORDER BY outline_block_id").fetchall()
+            == before
+        )
+        assert (
+            con.execute("SELECT * FROM write_event_outbox ORDER BY event_id").fetchall() == receipts
+        )
+
+
+def test_ordering_dense_same_position_does_not_add_receipt(ordering_db):
+    path, sections, ids = ordering_db
+    with connect_write(path, purpose="outline/order-regression") as con:
+        before = con.execute("SELECT * FROM outline_blocks ORDER BY outline_block_id").fetchall()
+        receipts = con.execute("SELECT * FROM write_event_outbox ORDER BY event_id").fetchall()
+        move_block(con, outline_block_id=ids[1], to_section_id=sections[0], to_index=1)
+        assert (
+            con.execute("SELECT * FROM outline_blocks ORDER BY outline_block_id").fetchall()
+            == before
+        )
+        assert (
+            con.execute("SELECT * FROM write_event_outbox ORDER BY event_id").fetchall() == receipts
+        )
+
+
+def test_ordering_dense_noop_delivers_pending_move(ordering_db, monkeypatch, tmp_path):
+    path, sections, ids = ordering_db
+    with connect_write(path, purpose="outline/order-regression") as con:
+        monkeypatch.setenv("ANTIEK_EVENTS_DISABLED", "1")
+        move_block(con, outline_block_id=ids[1], to_section_id=sections[0], to_index=0)
+        pending = con.execute(
+            "SELECT event_id, state FROM write_event_outbox "
+            "WHERE operation_id LIKE 'outline.move:%'"
+        ).fetchall()
+        assert len(pending) == 1 and pending[0][1] == "pending"
+        event_log = tmp_path / "events" / "__operator__.jsonl"
+        assert pending[0][0] not in event_log.read_text()
+        monkeypatch.delenv("ANTIEK_EVENTS_DISABLED")
+        move_block(con, outline_block_id=ids[1], to_section_id=sections[0], to_index=0)
+        assert con.execute(
+            "SELECT event_id, state FROM write_event_outbox "
+            "WHERE operation_id LIKE 'outline.move:%'"
+        ).fetchall() == [(pending[0][0], "delivered")]
+        assert [b.outline_block_id for b in list_section_blocks(con, sections[0])] == [
+            ids[1],
+            ids[0],
+            ids[2],
+            ids[3],
+        ]
+        emitted = [json.loads(line)["event_id"] for line in event_log.read_text().splitlines()]
+        assert emitted.count(pending[0][0]) == 1
+
+
+def test_ordering_invalid_target_is_atomic(ordering_db):
+    path, sections, ids = ordering_db
+    with connect_write(path, purpose="outline/order-regression") as con:
+        before = con.execute("SELECT * FROM outline_blocks ORDER BY outline_block_id").fetchall()
+        receipts = con.execute("SELECT * FROM write_event_outbox ORDER BY event_id").fetchall()
+        with pytest.raises(OutlineBlockError, match="target section not found"):
+            move_block(con, outline_block_id=ids[1], to_section_id="", to_index=0)
+        assert (
+            con.execute("SELECT * FROM outline_blocks ORDER BY outline_block_id").fetchall()
+            == before
+        )
+        assert (
+            con.execute("SELECT * FROM write_event_outbox ORDER BY event_id").fetchall() == receipts
+        )
+
+
+def test_ordering_outer_transaction_retains_rollback_authority(ordering_db, tmp_path):
+    path, sections, ids = ordering_db
+    with connect_write(path, purpose="outline/order-regression") as con:
+        before = con.execute("SELECT * FROM outline_blocks ORDER BY outline_block_id").fetchall()
+        receipts = con.execute("SELECT * FROM write_event_outbox ORDER BY event_id").fetchall()
+        event_log = tmp_path / "events" / "__operator__.jsonl"
+        emitted = event_log.read_bytes()
+        with pytest.raises(RuntimeError, match="outer operation aborted"), con.transaction():
+            move_block(con, outline_block_id=ids[1], to_section_id=sections[0], to_index=0)
+            assert [b.outline_block_id for b in list_section_blocks(con, sections[0])] == [
+                ids[1],
+                ids[0],
+                ids[2],
+                ids[3],
+            ]
+            assert event_log.read_bytes() == emitted
+            raise RuntimeError("outer operation aborted")
+        assert (
+            con.execute("SELECT * FROM outline_blocks ORDER BY outline_block_id").fetchall()
+            == before
+        )
+        assert (
+            con.execute("SELECT * FROM write_event_outbox ORDER BY event_id").fetchall() == receipts
+        )
+        assert event_log.read_bytes() == emitted
 
 
 # ── M6 — migration ─────────────────────────────────────────────────
