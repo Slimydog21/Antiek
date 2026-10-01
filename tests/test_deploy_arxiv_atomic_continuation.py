@@ -711,3 +711,51 @@ if [ "$1" = stop ]; then rm -f "$STATE/service-active"; fi
     assert (tmp_path / "timer-active").exists() is bool(disable_rc)
     failure = _task(rescue, "fail the deploy after a verified rollback")["ansible.builtin.fail"]["msg"]
     assert "enqueue" in failure and "operator" in failure
+
+
+def test_rescue_pause_classification_never_raises_on_unskipped_items() -> None:
+    """The rescue block's pause-stage classification crashed a live deploy
+    (run 36819650883, 2026-10-01): `rejectattr('skipped', 'equalto', true)`
+    raises under Ansible's strict undefined when a loop item that RAN carries
+    no `skipped` key. The classification must use an idiom that cannot raise
+    on missing attributes — map(attribute=..., default=...) + select."""
+    _, rescue = _flow()
+    classify = _task(rescue, "classify arxiv service pause stage")
+    facts = classify["ansible.builtin.set_fact"]
+    for fact_name in ("arxiv_service_pause_attempted", "arxiv_loop_timer_pause_attempted"):
+        expr = facts[fact_name]
+        assert "rejectattr('skipped'" not in expr, (
+            f"{fact_name} uses rejectattr on 'skipped', which raises under "
+            "strict undefined for items that ran (no 'skipped' key)"
+        )
+        assert "map(attribute='skipped', default=false)" in expr, fact_name
+
+
+def test_rescue_pause_classification_evaluates_correctly_for_all_item_shapes() -> None:
+    """Evaluate the playbook's own expression shape against synthetic result
+    lists: an item that ran (no 'skipped' key), a skipped item, an unrelated
+    unit, an empty result set, and a skipped-service-plus-ran-timer mix."""
+    env = Environment()
+    env.tests["equalto"] = lambda a, b: a == b
+    template = (
+        "{{ (results | default([])) "
+        "| selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.service') "
+        "| map(attribute='skipped', default=false) | select('equalto', false) "
+        "| list | length > 0 }}"
+    )
+    svc = "antiek-arxiv-oai-sync.service"
+    cases = [
+        (True, [{"item": svc, "changed": True}]),
+        (True, [{"item": svc, "changed": False}]),
+        (False, [{"item": svc, "skipped": True}]),
+        (False, [{"item": "antiek-arxiv-oai-sync.timer", "changed": True}]),
+        (False, []),
+        (False, [{"item": svc, "skipped": True},
+                 {"item": "antiek-arxiv-oai-sync.timer", "changed": False}]),
+        (False, None),  # arxiv_pause_result absent → .results | default([])
+    ]
+    for expected, results in cases:
+        ctx = {} if results is None else {"results": results}
+        assert env.from_string(template).render(**ctx) == str(expected), (
+            f"expected {expected} for {results}"
+        )

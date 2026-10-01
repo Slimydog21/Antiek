@@ -1039,11 +1039,11 @@
                  is search('(?m)^ServicePauseAttempted=1$')
                  or ((arxiv_pause_result | default({})).results | default([])
                      | selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.service')
-                     | rejectattr('skipped', 'equalto', true) | list | length > 0) }}
+                     | map(attribute='skipped', default=false) | select('equalto', false) | list | length > 0) }}
             arxiv_loop_timer_pause_attempted: >-
               {{ (arxiv_pause_result | default({})).results | default([])
                  | selectattr('item', 'equalto', 'antiek-arxiv-oai-sync.timer')
-                 | rejectattr('skipped', 'equalto', true) | list | length > 0 }}
+                 | map(attribute='skipped', default=false) | select('equalto', false) | list | length > 0 }}
           tags: [rollback]
 
         - name: recover arxiv timer policy from attempted stop
