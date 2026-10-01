@@ -40,12 +40,15 @@ import {
 } from "./panelLayoutLogic";
 import { EMPTY_SNAPSHOT } from "./panel.types";
 import type {
+  CockpitChrome,
+  LayoutPreset,
   PanelDescriptor,
   PanelKind,
   PanelMode,
+  PaneSide,
   WorkspaceSnapshot,
 } from "./panel.types";
-import { project, writeScope } from "./persistence";
+import { project, readLayoutPreset, writeLayoutPreset, writeScope } from "./persistence";
 import type { PersistScope } from "./persistence";
 
 export type OpenOptions = {
@@ -68,10 +71,22 @@ export type WorkspaceActions = {
   unpin: (id: string) => void;
   /** Resize the bottom dock (px). Min 120, max 60% of viewport. */
   setDockBottomHeight: (height: number) => void;
+  /** Cockpit chrome (C2): choose the layout recipe. Persists via its own
+   *  global blob (persistence.ts) — a reload keeps the operator's choice. */
+  setLayoutPreset: (preset: LayoutPreset) => void;
+  /** docked ⇄ omarchy-inset (the layout.togglePreset key row). */
+  toggleLayoutPreset: () => void;
+  /** Mark the inset pane holding the focus ring (null clears). */
+  setFocusedPane: (pane: PaneSide | null) => void;
+  /** Set/clear the fullscreen pane directly (Esc restores via null). */
+  setFullscreenPane: (pane: PaneSide | null) => void;
+  /** Fullscreen the focused pane (default "left") or restore when one is
+   *  already fullscreen — the pane.fullscreen key row. */
+  toggleFullscreenPane: () => void;
   reset: () => void;
 };
 
-type Store = WorkspaceSnapshot & WorkspaceActions;
+type Store = WorkspaceSnapshot & CockpitChrome & WorkspaceActions;
 
 function uniqueId(prefix: string): string {
   return `${prefix}:${Math.random().toString(36).slice(2, 10)}`;
@@ -111,8 +126,28 @@ function insertForMode(
   }
 }
 
+/**
+ * Would a panel in `mode` land where fullscreen is hiding it? The docked
+ * preset's fullscreen collapses every dock; the inset's hides one pane (the
+ * right pane holds the right dock, the left pane the left and bottom docks
+ * and the floating layer). A panel the operator just asked for must show,
+ * so opening one there restores the layout instead of mounting it into a
+ * 0 px dock (F-18).
+ */
+function hiddenByFullscreen(s: CockpitChrome, mode: PanelMode): boolean {
+  if (!s.fullscreenPane || mode === "popout") return false;
+  if (s.layoutPreset === "docked") return mode !== "floating";
+  return s.fullscreenPane === "left" ? mode === "docked-right" : mode !== "docked-right";
+}
+
 export const useWorkspace = create<Store>()((set, get) => ({
   ...EMPTY_SNAPSHOT,
+  // Cockpit chrome (C2): the persisted preset (default "docked" — nothing
+  // changes until the operator chooses the inset); the pane states are
+  // transient, never written to disk.
+  layoutPreset: readLayoutPreset(),
+  fullscreenPane: null,
+  focusedPane: null,
 
   open: (kind, props = {}, opts = {}) => {
     const id = opts.id ?? uniqueId(kind);
@@ -145,6 +180,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
         floatingIds: inserted.floatingIds ?? s.floatingIds,
         zCounter: z,
         focusedPanelId: id,
+        ...(hiddenByFullscreen(s, mode) ? { fullscreenPane: null } : {}),
       };
     });
     // Existing id path: focus instead of duplicate
@@ -200,6 +236,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
         floatingIds: inserted.floatingIds ?? s.floatingIds,
         zCounter: mode === "floating" ? z : s.zCounter,
         focusedPanelId: id,
+        ...(hiddenByFullscreen(s, mode) ? { fullscreenPane: null } : {}),
       };
     }),
 
@@ -268,7 +305,59 @@ export const useWorkspace = create<Store>()((set, get) => ({
       return { dockBottomHeight: clamped };
     }),
 
-  reset: () => set({ ...EMPTY_SNAPSHOT }),
+  setLayoutPreset: (preset) => {
+    writeLayoutPreset(preset);
+    // A preset swap clears the fullscreen state: the hidden pane's identity
+    // is preset-relative, so carrying it across the swap could hide the
+    // wrong area. Focused-pane ring state goes with it.
+    set({ layoutPreset: preset, fullscreenPane: null, focusedPane: null });
+  },
+
+  toggleLayoutPreset: () => {
+    get().setLayoutPreset(get().layoutPreset === "docked" ? "omarchy-inset" : "docked");
+  },
+
+  setFocusedPane: (pane) => set({ focusedPane: pane }),
+
+  setFullscreenPane: (pane) => set({ fullscreenPane: pane }),
+
+  toggleFullscreenPane: () => {
+    const s = get();
+    if (s.fullscreenPane) {
+      set({ fullscreenPane: null });
+      return;
+    }
+    // The docked preset's fullscreen collapses the docks; with none open it
+    // would hide nothing and silently swallow the next panel (F-18), so it
+    // is an honest no-op. The inset always has two panes on screen.
+    if (
+      s.layoutPreset === "docked" &&
+      s.dockLeftIds.length + s.dockRightIds.length + s.dockBottomIds.length === 0
+    ) {
+      return;
+    }
+    set({ fullscreenPane: s.focusedPane ?? "left" });
+  },
+
+  // Wipe the workspace layout. The transient pane states clear with it (they
+  // are ephemeral view state; leaking them into the next layout would hide
+  // panes the operator never hid). The layout PRESET survives: it is the
+  // operator's persisted chrome preference, not layout state — same standing
+  // as custom hotkeys.
+  //
+  // G-X2: a reset is NOT persisted. The palette clears the saved layout key
+  // and then resets; without the suppression below, this state change would
+  // schedule a debounced snapshot of the EMPTY layout and write it back into
+  // the very key just cleared (~250 ms later). Any write already pending for
+  // the pre-reset layout is cancelled for the same reason.
+  reset: () => {
+    if (pendingWrite) {
+      clearTimeout(pendingWrite);
+      pendingWrite = null;
+    }
+    suppressPersistAfterReset = true;
+    set({ ...EMPTY_SNAPSHOT, fullscreenPane: null, focusedPane: null });
+  },
 }));
 
 /**
@@ -285,6 +374,8 @@ export const useWorkspace = create<Store>()((set, get) => ({
 let activeScope: PersistScope = { kind: "global" };
 let persistenceEnabled = true;
 let pendingWrite: ReturnType<typeof setTimeout> | null = null;
+/** G-X2: swallow the one subscriber pass caused by `reset()` — see below. */
+let suppressPersistAfterReset = false;
 
 export function setPersistScope(scope: PersistScope): void {
   activeScope = scope;
@@ -303,7 +394,26 @@ export function enablePersistence(): void {
   persistenceEnabled = true;
 }
 
+/**
+ * Bumped each time the shell's hydration replaces the workspace with a stored
+ * layout. A route's PanelHost compares it in its cleanup: when a newer
+ * hydration has run (the route changed), that layout is authoritative, so
+ * the outgoing host must not close panels in it, even ones sharing its
+ * starter ids (MS-01, critic r1: a saved sidebar was reset to its default).
+ */
+let hydrationGeneration = 0;
+export function markHydrated(): void {
+  hydrationGeneration += 1;
+}
+export function getHydrationGeneration(): number {
+  return hydrationGeneration;
+}
+
 useWorkspace.subscribe((state, prev) => {
+  if (suppressPersistAfterReset) {
+    suppressPersistAfterReset = false;
+    return;
+  }
   if (!persistenceEnabled) return;
   // Cheap reference-equality check on the bits we care about — avoid
   // writing on every store mutation if the persisted slice didn't move.

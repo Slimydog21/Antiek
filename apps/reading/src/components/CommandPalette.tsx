@@ -10,6 +10,10 @@ import {
   project,
 } from "../workspace/persistence";
 import { toggleAISidecar } from "../workspace/shortcuts";
+import {
+  investigationIdForPath,
+  routeKey,
+} from "../workspace/useWorkspaceHydration";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
   WORKFLOWS,
@@ -510,26 +514,21 @@ export default function CommandPalette() {
   }, []);
 
   useEffect(() => {
-    // S8: the workspace shortcuts module (src/workspace/shortcuts.ts)
-    // owns the ⌘K binding now and dispatches "antiek:palette:toggle"
-    // so the NavRail Search button click + the keyboard handler both
-    // reach the same code path. We also keep an in-component ⌘K
-    // fallback so the palette still works when AppShell isn't the
-    // ancestor (e.g. in Storybook stories rendered without AppShell).
+    // The shell's keymap dispatcher (workspace/shortcuts.ts, table in
+    // components/hotkeys/keymap.ts) is the ONE owner of ⌘K / ⌘⇧P / prefix+g:
+    // it dispatches "antiek:palette:toggle", as the NavRail Search button
+    // does. The palette used to toggle on ⌘K itself as well, so ⌘K from the
+    // page body flipped it twice and nothing opened (MS-01 F1). Stories
+    // rendered without AppShell open it by dispatching the same event.
     const onToggle = () => setOpen((v) => !v);
     window.addEventListener(
       "antiek:palette:toggle" as keyof WindowEventMap,
       onToggle as EventListener,
     );
 
+    // Escape closes the open palette. Scoped to the open overlay; it claims
+    // no global combo.
     const handler = (e: KeyboardEvent) => {
-      const isToggle =
-        (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
-      if (isToggle) {
-        e.preventDefault();
-        setOpen((v) => !v);
-        return;
-      }
       if (e.key === "Escape" && open) {
         e.preventDefault();
         setOpen(false);
@@ -618,11 +617,13 @@ export default function CommandPalette() {
         title: "Reset workspace layout (this route)",
         subtitle: "Workspace · clears the per-route saved layout",
         run: () => {
-          // Compute the route key the same way useWorkspaceHydration does;
-          // we conservatively use the current pathname.
+          // The SAME collapsed route key useWorkspaceHydration writes under
+          // (a raw pathname cleared a key that never existed on dynamic
+          // routes like /wrestle/:id — G-X2). reset() itself suppresses the
+          // debounced write-back of the emptied layout.
           const path =
             typeof window !== "undefined" ? window.location.pathname : "/";
-          clearScope({ kind: "route", route: path });
+          clearScope({ kind: "route", route: routeKey(path) });
           useWorkspace.getState().reset();
           toast.ok("Layout reset for this route.");
         },
@@ -638,14 +639,14 @@ export default function CommandPalette() {
         run: () => {
           const path =
             typeof window !== "undefined" ? window.location.pathname : "/";
-          const m = path.match(/\/inv\/([^/]+)/);
-          if (!m) {
+          const investigationId = investigationIdForPath(path);
+          if (!investigationId) {
             toast.warn("No investigation in URL — nothing to reset.");
             return;
           }
-          clearScope({ kind: "investigation", id: m[1] });
+          clearScope({ kind: "investigation", id: investigationId });
           useWorkspace.getState().reset();
-          toast.ok(`Layout reset for investigation ${m[1].slice(0, 8)}.`);
+          toast.ok(`Layout reset for investigation ${investigationId.slice(0, 8)}.`);
         },
       },
       {
@@ -776,6 +777,7 @@ export default function CommandPalette() {
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
+      data-keymap-owner="palette.toggle"
     >
       <div
         className="w-[640px] max-w-[90vw] bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-lg shadow-2xl overflow-hidden"

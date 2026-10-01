@@ -687,7 +687,7 @@ export function workflowHasBuiltMode(workflow: Workflow): boolean {
 }
 
 /**
- * The workflow's landing scene — the mode the door (and ThreadJump) opens.
+ * The workflow's landing scene — the mode the door (and TrailJump) opens.
  *
  * It MUST agree with `WORKFLOWS[workflow].defaultRoute` so a door re-home is
  * honored in exactly one place: when a built mode's route matches the
